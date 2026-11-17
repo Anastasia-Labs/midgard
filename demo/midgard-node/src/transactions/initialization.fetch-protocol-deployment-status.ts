@@ -56,6 +56,7 @@ import {
   ensureEventHistoryRewardAccountsRegisteredProgram,
   ensureRuntimeRewardAccountsRegisteredProgram,
 } from "./script-reward-registration.js";
+import { rebuildOnTxExpiry } from "./utils.js";
 
 export type ProtocolDeploymentKeys = {
   /** The configured hub-oracle one-shot nonce. */
@@ -354,9 +355,23 @@ export const buildAtomicProtocolInitTxProgram = (
  * attempt that is not visible is attempted again: every attempt spends the
  * same nonce, so at most one lands. Over a landed deployment it registers the
  * reward accounts and returns that deployment's initialization transaction.
+ * An attempt (or a reward-account registration) that expired unconfirmed
+ * runs the program once more from fresh chain state (`rebuildOnTxExpiry`).
  */
 export const program = (
   runStatePath: string = defaultDeploymentRunStatePath(),
+): Effect.Effect<
+  string,
+  unknown,
+  Lucid | MidgardContracts | NodeConfig | IntentJournal
+> =>
+  rebuildOnTxExpiry(
+    "protocol initialization",
+    initializationAttempt(runStatePath),
+  );
+
+const initializationAttempt = (
+  runStatePath: string,
 ): Effect.Effect<
   string,
   unknown,

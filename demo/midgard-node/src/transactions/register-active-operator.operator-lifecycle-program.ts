@@ -60,11 +60,30 @@ import {
 } from "./register-active-operator/clock.js";
 import {
   handleSignSubmit,
+  rebuildOnTxExpiry,
   TxConfirmError,
+  TxExpiredError,
   TxSignError,
   TxSubmitError,
 } from "./utils.js";
 
+type OperatorLifecycleError =
+  | SDK.StateQueueError
+  | SDK.LucidError
+  | OperatorFundingShortfall
+  | OperatorWalletInputsEmpty
+  | TxConfirmError
+  | TxExpiredError
+  | TxSignError
+  | TxSubmitError;
+
+/**
+ * Registers and/or activates the operator. A step whose transaction expired
+ * unconfirmed runs the lifecycle again (bounded by `rebuildOnTxExpiry`): the
+ * rerun re-reads the operator directory, skips the steps that landed and
+ * rebuilds the rest. The expired transaction's inputs were all unspent once
+ * the tip passed its bound, so it can never land beside the rebuild.
+ */
 export const operatorLifecycleProgram = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
@@ -75,13 +94,33 @@ export const operatorLifecycleProgram = (
   permissionlessActivation?: PermissionlessActivation,
 ): Effect.Effect<
   OperatorLifecycleTxHashes,
-  | SDK.StateQueueError
-  | SDK.LucidError
-  | OperatorFundingShortfall
-  | OperatorWalletInputsEmpty
-  | TxConfirmError
-  | TxSignError
-  | TxSubmitError,
+  OperatorLifecycleError,
+  IntentJournal
+> =>
+  rebuildOnTxExpiry(
+    `operator lifecycle (${mode})`,
+    operatorLifecycleAttempt(
+      lucid,
+      contracts,
+      requiredBondLovelace,
+      mode,
+      referenceScriptsLucid,
+      referenceScriptsAddress,
+      permissionlessActivation,
+    ),
+  );
+
+const operatorLifecycleAttempt = (
+  lucid: LucidEvolution,
+  contracts: SDK.MidgardValidators,
+  requiredBondLovelace: bigint,
+  mode: OperatorLifecycleMode,
+  referenceScriptsLucid: LucidEvolution,
+  referenceScriptsAddress: string | undefined,
+  permissionlessActivation: PermissionlessActivation | undefined,
+): Effect.Effect<
+  OperatorLifecycleTxHashes,
+  OperatorLifecycleError,
   IntentJournal
 > =>
   Effect.gen(function* () {

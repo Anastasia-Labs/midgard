@@ -4,7 +4,8 @@
  * the deployment economics, and delegates to the pure-ish programs in this
  * directory. Local refusals and funding shortfalls surface as
  * `OperatorCommandRefusal` so the CLI can print one line and exit non-zero
- * instead of dumping a fiber trace.
+ * instead of dumping a fiber trace. A verb whose transaction expired
+ * unconfirmed re-plans from fresh chain state once (`rebuildOnTxExpiry`).
  */
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
@@ -17,6 +18,7 @@ import {
   OperatorRegistrationRefusal,
   registerOperatorProgram,
 } from "../register-active-operator.js";
+import { rebuildOnTxExpiry } from "../utils.js";
 import {
   configuredOperatorEconomicsProgram,
   OperatorExitRefusal,
@@ -169,61 +171,73 @@ export const deregisterOperatorCommand = Effect.gen(function* () {
 // Exit: retire / recover / force-retire / slash duplicate
 // ---------------------------------------------------------------------------
 
-export const retireOperatorCommand = Effect.gen(function* () {
-  const { lucid, contracts, economics, ownOperatorKeyHash } =
-    yield* operatorCommandContext;
-  return yield* retireOperatorProgram(
-    lucid.api,
-    contracts,
-    lucid.referenceScriptsAddress,
-    { operatorKeyHash: ownOperatorKeyHash, mode: "voluntary", economics },
-    { label: "retire-operator" },
-  );
-});
-
-export const recoverOperatorBondCommand = Effect.gen(function* () {
-  const { lucid, contracts, ownOperatorKeyHash } =
-    yield* operatorCommandContext;
-  return yield* recoverOperatorBondProgram(
-    lucid.api,
-    contracts,
-    lucid.referenceScriptsAddress,
-    { operatorKeyHash: ownOperatorKeyHash },
-    { label: "recover-operator-bond" },
-  );
-});
-
-export const forceRetireOperatorCommand = (input: {
-  readonly operatorKeyHash: string;
-}) =>
+export const retireOperatorCommand = rebuildOnTxExpiry(
+  "retire-operator",
   Effect.gen(function* () {
-    const { lucid, contracts, economics } = yield* operatorCommandContext;
+    const { lucid, contracts, economics, ownOperatorKeyHash } =
+      yield* operatorCommandContext;
     return yield* retireOperatorProgram(
       lucid.api,
       contracts,
       lucid.referenceScriptsAddress,
-      {
-        operatorKeyHash: input.operatorKeyHash,
-        mode: "forced-inactivity",
-        economics,
-      },
-      { label: "force-retire-operator" },
+      { operatorKeyHash: ownOperatorKeyHash, mode: "voluntary", economics },
+      { label: "retire-operator" },
     );
-  });
+  }),
+);
+
+export const recoverOperatorBondCommand = rebuildOnTxExpiry(
+  "recover-operator-bond",
+  Effect.gen(function* () {
+    const { lucid, contracts, ownOperatorKeyHash } =
+      yield* operatorCommandContext;
+    return yield* recoverOperatorBondProgram(
+      lucid.api,
+      contracts,
+      lucid.referenceScriptsAddress,
+      { operatorKeyHash: ownOperatorKeyHash },
+      { label: "recover-operator-bond" },
+    );
+  }),
+);
+
+export const forceRetireOperatorCommand = (input: {
+  readonly operatorKeyHash: string;
+}) =>
+  rebuildOnTxExpiry(
+    "force-retire-operator",
+    Effect.gen(function* () {
+      const { lucid, contracts, economics } = yield* operatorCommandContext;
+      return yield* retireOperatorProgram(
+        lucid.api,
+        contracts,
+        lucid.referenceScriptsAddress,
+        {
+          operatorKeyHash: input.operatorKeyHash,
+          mode: "forced-inactivity",
+          economics,
+        },
+        { label: "force-retire-operator" },
+      );
+    }),
+  );
 
 export const slashDuplicateOperatorCommand = (input: {
   readonly operatorKeyHash: string;
 }) =>
-  Effect.gen(function* () {
-    const { lucid, contracts, economics } = yield* operatorCommandContext;
-    return yield* slashDuplicateOperatorProgram(
-      lucid.api,
-      contracts,
-      lucid.referenceScriptsAddress,
-      { operatorKeyHash: input.operatorKeyHash, economics },
-      { label: "slash-duplicate-operator" },
-    );
-  });
+  rebuildOnTxExpiry(
+    "slash-duplicate-operator",
+    Effect.gen(function* () {
+      const { lucid, contracts, economics } = yield* operatorCommandContext;
+      return yield* slashDuplicateOperatorProgram(
+        lucid.api,
+        contracts,
+        lucid.referenceScriptsAddress,
+        { operatorKeyHash: input.operatorKeyHash, economics },
+        { label: "slash-duplicate-operator" },
+      );
+    }),
+  );
 
 // ---------------------------------------------------------------------------
 // Stalled-operator recovery by hand
@@ -236,46 +250,49 @@ const describeNotYet = (
   return `Operator ${plan.currentOperator} holds the shift and cannot be struck yet: the inactivity threshold (${plan.thresholdSource}) is ${new Date(Number(plan.thresholdMs)).toISOString()}, ${Math.max(0, Math.ceil(Number(waitMs) / 1000)).toString()} s from now`;
 };
 
-export const strikeInactiveOperatorCommand = Effect.gen(function* () {
-  const { lucid, contracts } = yield* operatorCommandContext;
-  const planning = yield* planTakeoverProgram(lucid.api, contracts);
-  const plan = planning.plan;
-  switch (plan.kind) {
-    case "no-shift":
-      return yield* Effect.fail(
-        new OperatorCommandRefusal(
-          "The scheduler names no operator; there is no shift to strike",
-        ),
-      );
-    case "no-neglected-event":
-      return yield* Effect.fail(
-        new OperatorCommandRefusal(
-          `Operator ${plan.currentOperator} cannot be struck: no deposit, withdrawal or tx order is undelivered, so the shift has no neglected L1 work`,
-        ),
-      );
-    case "not-yet":
-      return yield* Effect.fail(
-        new OperatorCommandRefusal(describeNotYet(plan)),
-      );
-    case "blocked":
-      return yield* Effect.fail(
-        new OperatorCommandRefusal(
-          `No strike can be built against ${plan.currentOperator}: ${plan.reason} (${plan.detail})`,
-        ),
-      );
-    case "strikes-exhausted":
-      return yield* Effect.fail(
-        new OperatorCommandRefusal(
-          `Operator ${plan.currentOperator} already carries ${plan.inactivityStrikes.toString()} of ${plan.maxInactivityStrikes.toString()} strikes; run force-retire-operator --operator-key-hash ${plan.currentOperator} instead`,
-        ),
-      );
-    case "ready":
-      return yield* submitInactivityStrikeProgram(
-        lucid.api,
-        contracts,
-        lucid.referenceScriptsAddress,
-        { ...planning, plan },
-        { label: "strike-inactive-operator", awaitLowerBound: true },
-      );
-  }
-});
+export const strikeInactiveOperatorCommand = rebuildOnTxExpiry(
+  "strike-inactive-operator",
+  Effect.gen(function* () {
+    const { lucid, contracts } = yield* operatorCommandContext;
+    const planning = yield* planTakeoverProgram(lucid.api, contracts);
+    const plan = planning.plan;
+    switch (plan.kind) {
+      case "no-shift":
+        return yield* Effect.fail(
+          new OperatorCommandRefusal(
+            "The scheduler names no operator; there is no shift to strike",
+          ),
+        );
+      case "no-neglected-event":
+        return yield* Effect.fail(
+          new OperatorCommandRefusal(
+            `Operator ${plan.currentOperator} cannot be struck: no deposit, withdrawal or tx order is undelivered, so the shift has no neglected L1 work`,
+          ),
+        );
+      case "not-yet":
+        return yield* Effect.fail(
+          new OperatorCommandRefusal(describeNotYet(plan)),
+        );
+      case "blocked":
+        return yield* Effect.fail(
+          new OperatorCommandRefusal(
+            `No strike can be built against ${plan.currentOperator}: ${plan.reason} (${plan.detail})`,
+          ),
+        );
+      case "strikes-exhausted":
+        return yield* Effect.fail(
+          new OperatorCommandRefusal(
+            `Operator ${plan.currentOperator} already carries ${plan.inactivityStrikes.toString()} of ${plan.maxInactivityStrikes.toString()} strikes; run force-retire-operator --operator-key-hash ${plan.currentOperator} instead`,
+          ),
+        );
+      case "ready":
+        return yield* submitInactivityStrikeProgram(
+          lucid.api,
+          contracts,
+          lucid.referenceScriptsAddress,
+          { ...planning, plan },
+          { label: "strike-inactive-operator", awaitLowerBound: true },
+        );
+    }
+  }),
+);
