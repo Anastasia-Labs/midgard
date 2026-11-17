@@ -738,6 +738,9 @@ export const runCommitWorker = async (
   /** The production lifecycle's services, its journal among them; without
    * them the run journals as a process with no follower does. */
   production?: OwnedCommitFixture,
+  /** The verification the node's fiber made, run by the caller before this
+   * attempt; without it, it runs here. */
+  verified?: Effect.Effect.Success<typeof verifiedFrontierNow>,
 ) => {
   const currentBlockStartTimeMs = await getStateQueueDatumEndTime(
     latestBlock.datum,
@@ -745,7 +748,7 @@ export const runCommitWorker = async (
   const workerInput = {
     // The node's verification runs off the commit path; here it runs before
     // each attempt, so a landed tail builds from the stored frontier.
-    ...(await runNodeDatabaseEffect(verifiedFrontierNow)),
+    ...(verified ?? (await runNodeDatabaseEffect(verifiedFrontierNow))),
     data: {
       availableConfirmedBlock: await Effect.runPromise(
         serializeStateQueueUTxO(latestBlock),
