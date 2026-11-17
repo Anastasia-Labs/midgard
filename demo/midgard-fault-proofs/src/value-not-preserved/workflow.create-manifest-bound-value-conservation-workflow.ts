@@ -342,6 +342,7 @@ export const createManifestBoundValueConservationWorkflow = async (
   let adapter = createValueConservationAdapter({
     stateQueueMutationLeaseCoordinator:
       config.stateQueueMutationLeaseCoordinator,
+    signedRecovery: l1,
     prepare: async ({ evidence, replayContext, classification }) => {
       const forced =
         classification.selected.violationId ===

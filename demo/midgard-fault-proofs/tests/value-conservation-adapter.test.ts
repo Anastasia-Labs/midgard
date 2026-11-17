@@ -108,6 +108,14 @@ const fixture = () => {
       current: async () => ({ kind: "action_required", action }),
       capture,
       confirmed,
+      signedRecovery: {
+        observeSignedTransaction: async () => {
+          throw new Error("no signed bytes are recorded here");
+        },
+        rebroadcastSignedTransaction: async () => {
+          throw new Error("no signed bytes are recorded here");
+        },
+      },
       stateQueueMutationLeaseCoordinator: {
         acquire: async () => lease,
         resume,

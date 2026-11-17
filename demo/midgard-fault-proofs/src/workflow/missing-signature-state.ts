@@ -305,6 +305,7 @@ export const reconcileMissingSignatureAction = async ({
   provenance,
   stage,
   transactionConfirmed,
+  recoverUnconfirmedTransaction,
 }: {
   readonly headerHash: string;
   readonly action: FraudProofWorkflowAction;
@@ -312,6 +313,10 @@ export const reconcileMissingSignatureAction = async ({
   readonly provenance: EvidenceProvenance;
   readonly stage: FraudProofRawL1FamilyStage;
   readonly transactionConfirmed: (txHash: string) => Promise<boolean>;
+  /** The shared signed read of the recorded attempt, for a stage it has not
+   * yet moved: only the attempt's own bytes tell a landing that failed
+   * phase 2, an expiry or an invalidation from one still in flight. */
+  readonly recoverUnconfirmedTransaction?: () => Promise<FraudProofWorkflowReconcileResult>;
 }): Promise<FraudProofWorkflowReconcileResult> => {
   const admittedStage = admitStage({ headerHash, provenance, stage });
   const parsed = parsedAction(action);
@@ -347,13 +352,19 @@ export const reconcileMissingSignatureAction = async ({
   });
   // Absence from release-final history does not authorize rebuilding a
   // submitted transaction whose inputs may already be spent at the live tip.
-  if (unchanged) return { kind: "pending", txHash };
+  if (unchanged) {
+    return !included && recoverUnconfirmedTransaction !== undefined
+      ? recoverUnconfirmedTransaction()
+      : { kind: "pending", txHash };
+  }
   if (
     !included &&
     parsed.stage === "remove" &&
     admittedStage.kind === "proof_token"
   ) {
-    return { kind: "pending", txHash };
+    return recoverUnconfirmedTransaction === undefined
+      ? { kind: "pending", txHash }
+      : recoverUnconfirmedTransaction();
   }
   return {
     kind: "conflict",

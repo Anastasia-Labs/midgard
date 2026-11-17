@@ -28,6 +28,7 @@ import {
   FRAUD_PROOF_WORKFLOW_SAFETY,
   type FraudProofFamilyWorkflowAdapter,
 } from "./orchestrator.js";
+import { reconcileQueueLeaseFamily } from "./queue-lease-family-reconcile.js";
 import {
   bindWorkflowPreflightTransaction,
   LOCAL_UPLC_EVALUATOR,
@@ -359,7 +360,14 @@ export const createMissingSignatureWorkflowAdapter = ({
         prepared.delete(key);
       }
     },
-    reconcile: async ({ identity, action, txHash, durableRecovery }) => {
+    reconcile: async ({
+      identity,
+      action,
+      txHash,
+      durableRecovery,
+      signedTransactionCborHex,
+      authorizeResubmission,
+    }) => {
       if (
         identity.category !== CATEGORY ||
         identity.target.kind !== "state_queue_header"
@@ -375,50 +383,37 @@ export const createMissingSignatureWorkflowAdapter = ({
             "missingSignature durable mutation-lease identity disagrees with removal topology",
         };
       }
-      let lease = txHash === undefined ? undefined : leaseByTxHash.get(txHash);
-      if (lease === undefined && recovery !== undefined) {
-        if (stateQueueMutationLeaseCoordinator.resume === undefined) {
-          return {
-            kind: "conflict",
-            reason:
-              "missingSignature mutation-lease coordinator cannot resume durable intent",
-          };
-        }
-        try {
-          lease = await stateQueueMutationLeaseCoordinator.resume(recovery);
-          if (txHash !== undefined) leaseByTxHash.set(txHash, lease);
-        } catch (cause) {
-          return {
-            kind: "conflict",
-            reason: `missingSignature durable mutation lease cannot resume: ${String(cause)}`,
-          };
-        }
-      }
       const observed = await l1.observe({
         headerHash,
       });
-      const result = await reconcileMissingSignatureAction({
-        headerHash,
-        action,
+      return await reconcileQueueLeaseFamily({
+        category: CATEGORY,
         ...(txHash === undefined ? {} : { txHash }),
-        provenance: observed.provenance,
-        stage: observed.stage,
-        transactionConfirmed: async (hash) =>
-          await l1.transactionConfirmed({
+        ...(recovery === undefined ? {} : { recovery }),
+        coordinator: stateQueueMutationLeaseCoordinator,
+        leaseByTxHash,
+        l1,
+        ...(signedTransactionCborHex === undefined
+          ? {}
+          : { signedTransactionCborHex }),
+        ...(authorizeResubmission === undefined
+          ? {}
+          : { authorizeResubmission }),
+        read: async (recoverUnconfirmedTransaction) =>
+          await reconcileMissingSignatureAction({
             headerHash,
-            txHash: hash,
+            action,
+            ...(txHash === undefined ? {} : { txHash }),
+            provenance: observed.provenance,
+            stage: observed.stage,
+            recoverUnconfirmedTransaction,
+            transactionConfirmed: async (hash) =>
+              await l1.transactionConfirmed({
+                headerHash,
+                txHash: hash,
+              }),
           }),
       });
-      if (result.kind === "confirmed") {
-        await lease?.release();
-        leaseByTxHash.delete(result.txHash);
-      } else if (result.kind === "conflict") {
-        await lease?.fail(result.reason);
-        if (txHash !== undefined) leaseByTxHash.delete(txHash);
-      } else {
-        await lease?.renew();
-      }
-      return result;
     },
   };
   return Object.freeze(adapter);

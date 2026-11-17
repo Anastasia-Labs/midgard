@@ -59,6 +59,10 @@ const valueConservation = (fixture: Fixture, { landed }: Attempts) => {
     capture: unused,
     confirmed: async ({ txHash }: { readonly txHash: string }) =>
       txHash === landed,
+    signedRecovery: {
+      observeSignedTransaction: fixture.observeSignedTransaction,
+      rebroadcastSignedTransaction: unused,
+    },
     stateQueueMutationLeaseCoordinator: {
       acquire: unused,
     } as unknown as StateQueueMutationLeaseCoordinator,

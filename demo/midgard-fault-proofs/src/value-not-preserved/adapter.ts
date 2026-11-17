@@ -7,12 +7,15 @@ import {
   journalJsonDigest,
   type JournalJsonObject,
 } from "../workflow/journal.js";
+import type { FraudProofSignedTransactionRecovery } from "../workflow/l1-source.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
   type FraudProofFamilyWorkflowAdapter,
   type FraudProofWorkflowObservation,
+  type FraudProofWorkflowReconcileResult,
 } from "../workflow/orchestrator.js";
+import { reconcileSignedWorkflowTransaction } from "../workflow/signed-transaction-reconciliation.js";
 import {
   bindWorkflowPreflightTransaction,
   LOCAL_UPLC_EVALUATOR,
@@ -53,6 +56,7 @@ export const createValueConservationAdapter = ({
   current,
   capture,
   confirmed,
+  signedRecovery,
   stateQueueMutationLeaseCoordinator,
 }: {
   readonly prepare: FraudProofFamilyWorkflowAdapter["prepare"];
@@ -68,6 +72,11 @@ export const createValueConservationAdapter = ({
       readonly txHash: string;
     },
   ) => Promise<boolean>;
+  /** The source's read of an exact signed attempt. An attempt whose
+   * checkpoint is not on chain is read from its own bytes, as every family's
+   * is: a landing that failed phase 2, an expiry or an invalidation is
+   * impossible at once, and only the bytes tell it from one in flight. */
+  readonly signedRecovery: FraudProofSignedTransactionRecovery;
   readonly stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }): FraudProofFamilyWorkflowAdapter => {
   const captured = new Map<string, ConservationCapturedAction>();
@@ -180,19 +189,47 @@ export const createValueConservationAdapter = ({
         await lease?.renew();
         return { kind: "not_found" };
       }
+      const { txHash, signedTransactionCborHex, authorizeResubmission } =
+        context;
       try {
-        if (await confirmed({ ...context, txHash: context.txHash })) {
+        if (await confirmed({ ...context, txHash })) {
           await lease?.release();
-          leases.delete(context.txHash);
-          return { kind: "confirmed", txHash: context.txHash };
+          leases.delete(txHash);
+          return { kind: "confirmed", txHash };
         }
-        await lease?.renew();
-        return { kind: "pending", txHash: context.txHash };
       } catch (cause) {
         await lease?.fail(String(cause));
-        leases.delete(context.txHash);
+        leases.delete(txHash);
         return { kind: "conflict", reason: String(cause) };
       }
+      const read: FraudProofWorkflowReconcileResult =
+        signedTransactionCborHex === undefined
+          ? { kind: "pending", txHash }
+          : await reconcileSignedWorkflowTransaction({
+              transactionHash: txHash,
+              signedTransactionCborHex,
+              observe: (input) =>
+                signedRecovery.observeSignedTransaction(input),
+              rebroadcast: (input) =>
+                signedRecovery.rebroadcastSignedTransaction(input),
+              authorizeResubmission:
+                authorizeResubmission === undefined
+                  ? undefined
+                  : async (signed) => {
+                      await lease?.renew();
+                      await authorizeResubmission(signed);
+                    },
+            });
+      if (read.kind === "not_found") {
+        await lease?.release();
+        leases.delete(txHash);
+      } else if (read.kind === "conflict") {
+        await lease?.fail(read.reason);
+        leases.delete(txHash);
+      } else {
+        await lease?.renew();
+      }
+      return read;
     },
   };
 };

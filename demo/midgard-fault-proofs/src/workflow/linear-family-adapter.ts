@@ -33,7 +33,7 @@ import {
   FRAUD_PROOF_WORKFLOW_SAFETY,
   type FraudProofFamilyWorkflowAdapter,
 } from "./orchestrator.js";
-import { reconcileSignedWorkflowTransaction } from "./signed-transaction-reconciliation.js";
+import { reconcileQueueLeaseFamily } from "./queue-lease-family-reconcile.js";
 import {
   bindWorkflowPreflightTransaction,
   LOCAL_UPLC_EVALUATOR,
@@ -416,76 +416,38 @@ export const createLinearFamilyWorkflowAdapter = <
           reason: `${category} durable mutation-lease identity disagrees with removal topology`,
         };
       }
-      let lease = txHash === undefined ? undefined : leaseByTxHash.get(txHash);
-      const restoreLease = async () => {
-        if (lease !== undefined || recovery === undefined) return;
-        if (stateQueueMutationLeaseCoordinator.resume === undefined) {
-          throw new Error(
-            `${category} lease coordinator cannot resume durable intent`,
-          );
-        }
-        lease = await stateQueueMutationLeaseCoordinator.resume(recovery);
-        if (txHash !== undefined) leaseByTxHash.set(txHash, lease);
-      };
       const observed = await l1.observe({
         headerHash,
       });
-      const result = await reconcileLinearFamilyAction({
+      return await reconcileQueueLeaseFamily({
         category,
-        headerHash,
-        action,
         ...(txHash === undefined ? {} : { txHash }),
-        provenance: observed.provenance,
-        stage: observed.stage,
-        recoverUnconfirmedTransaction:
-          txHash === undefined
-            ? undefined
-            : () =>
-                reconcileSignedWorkflowTransaction({
-                  transactionHash: txHash,
-                  signedTransactionCborHex,
-                  observe: l1.observeSignedTransaction,
-                  rebroadcast: l1.rebroadcastSignedTransaction,
-                  authorizeResubmission:
-                    authorizeResubmission === undefined
-                      ? undefined
-                      : async (signed) => {
-                          await restoreLease();
-                          await lease?.renew();
-                          await authorizeResubmission(signed);
-                        },
-                }),
-        transactionConfirmed: async (hash) =>
-          await l1.transactionConfirmed({
+        ...(recovery === undefined ? {} : { recovery }),
+        coordinator: stateQueueMutationLeaseCoordinator,
+        leaseByTxHash,
+        l1,
+        ...(signedTransactionCborHex === undefined
+          ? {}
+          : { signedTransactionCborHex }),
+        ...(authorizeResubmission === undefined
+          ? {}
+          : { authorizeResubmission }),
+        read: async (recoverUnconfirmedTransaction) =>
+          await reconcileLinearFamilyAction({
+            category,
             headerHash,
-            txHash: hash,
+            action,
+            ...(txHash === undefined ? {} : { txHash }),
+            provenance: observed.provenance,
+            stage: observed.stage,
+            recoverUnconfirmedTransaction,
+            transactionConfirmed: async (hash) =>
+              await l1.transactionConfirmed({
+                headerHash,
+                txHash: hash,
+              }),
           }),
       });
-      // Canonical reconciliation remains possible after a removal has made its
-      // old lease unavailable. A live lease is still required for any replay.
-      try {
-        await restoreLease();
-      } catch (cause) {
-        if (result.kind === "pending" || result.kind === "unknown") {
-          return {
-            kind: "unknown",
-            reason: `${category} durable lease cannot resume: ${String(cause)}`,
-          };
-        }
-      }
-      if (result.kind === "confirmed") {
-        await lease?.release();
-        leaseByTxHash.delete(result.txHash);
-      } else if (result.kind === "not_found") {
-        await lease?.release();
-        if (txHash !== undefined) leaseByTxHash.delete(txHash);
-      } else if (result.kind === "conflict") {
-        await lease?.fail(result.reason);
-        if (txHash !== undefined) leaseByTxHash.delete(txHash);
-      } else {
-        await lease?.renew();
-      }
-      return result;
     },
   };
   return Object.freeze(adapter);
