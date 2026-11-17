@@ -7,11 +7,12 @@ import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { type DepthParameters, isSafe } from "@al-ft/midgard-l1-follower/heads";
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML, type LucidEvolution, type OutRef } from "@lucid-evolution/lucid";
-import { Data, Effect, Metric } from "effect";
+import { Data, Effect, Either, Metric } from "effect";
 
 import type { L1ViewPoint } from "../l1-access.js";
 import {
   providerPointOnChain,
+  providerUtxosByOutRef,
   providerViewPoint,
 } from "../l1-provider-view.js";
 import { RETRY_ATTEMPTS } from "./utils.parse-structured-outside-validity-interval-details.js";
@@ -79,8 +80,12 @@ export type TxExpiryRead =
   | Readonly<{ kind: "open"; tipSlot: number }>
   /** The tip passed the bound, but not yet by the confirmation depth. */
   | Readonly<{ kind: "settling"; tipSlot: number; boundDepth: number }>
-  /** Nothing settled: a read failed or did not answer in time. */
-  | Readonly<{ kind: "undecided"; reason: string }>;
+  /** Nothing settled: the `read` failed or did not answer in time. */
+  | Readonly<{
+      kind: "undecided";
+      read: "tip" | "ancestry" | "inputs";
+      reason: string;
+    }>;
 
 const outRefKey = (ref: OutRef) => `${ref.txHash}#${ref.outputIndex}`;
 
@@ -102,25 +107,55 @@ const withReadDeadline = <A, E>(
   );
 
 /**
- * One kind of provider read, made one at a time, each call bounded by its
- * `deadlineMs` (`withReadDeadline`). A read that misses its deadline is
- * aborted (its `signal` fires, as when the caller is interrupted), so a
- * provider that honours the signal stops it. If it has still not settled
- * when the next call comes, that call first waits for it, within its own
- * deadline, and only then starts a read of its own: an answer is only ever
- * taken from a read the same call started, and a provider that never
- * answers holds one read of the kind, not one per call.
+ * How many reads of one kind may be in flight at once: the read being made,
+ * and one earlier read that outlived its abort.
+ *
+ * A read misses its deadline before the next is asked for; it is then
+ * aborted, and the next call gives it one whole deadline more before it
+ * reads beside it (`boundedReads`). So a read is left in flight beside a
+ * newer one only when it outlives its abort by a deadline. None of the
+ * node's sources do: the follower's store reads end at the abort, and every
+ * other read ends at its source's own bound (the node transport's request
+ * bound, Kupmios' and Blockfrost's request timeouts), under twice the read
+ * deadline the waits use. One read of a kind is then all there is in
+ * flight, and the second place is for a source that breaks that: one read
+ * it never ends costs one call its deadline, after which the reads go on
+ * beside it. A second such read stops new reads of the kind until one of
+ * the two settles, which holds what a source that never answers can pile
+ * up to two reads.
  */
-export const oneReadAtATime = (what: string) => {
-  let unsettled: Promise<void> | undefined;
+export const READS_IN_FLIGHT_PER_KIND = 2;
+
+/**
+ * One kind of provider read, each call bounded by its `deadlineMs`
+ * (`withReadDeadline`), at most `READS_IN_FLIGHT_PER_KIND` in flight. A
+ * read that misses its deadline is aborted (its `signal` fires, as when the
+ * caller is interrupted), so a source that honours the signal ends it. A
+ * call that finds the latest read still unsettled waits for it, within its
+ * own deadline, before it reads; once a call has waited a whole deadline
+ * for it, later calls read beside it. An answer is only ever taken from a
+ * read the same call started.
+ */
+export const boundedReads = (what: string) => {
+  /** Reads started and not yet settled, oldest first. */
+  const unsettled: Promise<void>[] = [];
+  /** Unsettled reads a later call already waited a whole deadline for. */
+  const outwaited = new WeakSet<Promise<void>>();
   return <A>(
     read: (signal: AbortSignal) => Promise<A>,
     deadlineMs: number,
   ): Effect.Effect<A, unknown> =>
     withReadDeadline(
       Effect.gen(function* () {
-        const earlier = unsettled;
-        if (earlier !== undefined) yield* Effect.promise(() => earlier);
+        const latest = unsettled.at(-1);
+        if (latest !== undefined && !outwaited.has(latest))
+          yield* Effect.promise(() => latest).pipe(
+            Effect.onInterrupt(() => Effect.sync(() => outwaited.add(latest))),
+          );
+        while (unsettled.length >= READS_IN_FLIGHT_PER_KIND) {
+          const inFlight = [...unsettled];
+          yield* Effect.promise(() => Promise.race(inFlight));
+        }
         return yield* Effect.tryPromise({
           try: (signal) => {
             const answer = read(signal);
@@ -128,9 +163,9 @@ export const oneReadAtATime = (what: string) => {
               () => undefined,
               () => undefined,
             );
-            unsettled = settled;
+            unsettled.push(settled);
             void settled.then(() => {
-              if (unsettled === settled) unsettled = undefined;
+              void unsettled.splice(unsettled.indexOf(settled), 1);
             });
             return answer;
           },
@@ -165,8 +200,9 @@ export const oneReadAtATime = (what: string) => {
  *
  * Each read's tip is read first and the inputs after it, so they are
  * answered at that tip or later. Every read has its own deadline,
- * `readDeadlineMs`, and each kind of read is made one at a time
- * (`oneReadAtATime`).
+ * `readDeadlineMs`; a read that misses it is aborted, which ends the
+ * follower's store reads, and each kind of read is held to
+ * `READS_IN_FLIGHT_PER_KIND` in flight (`boundedReads`).
  */
 export const watchTxExpiry = (
   lucid: LucidEvolution,
@@ -175,22 +211,27 @@ export const watchTxExpiry = (
   readDeadlineMs: number,
 ): Effect.Effect<TxExpiryRead> => {
   const pointOnChain = providerPointOnChain(lucid);
-  const tipReads = oneReadAtATime("the L1 tip");
-  const ancestryReads = oneReadAtATime("the ancestry read of the last L1 tip");
-  const inputReads = oneReadAtATime("the inputs read");
+  const tipReads = boundedReads("the L1 tip");
+  const ancestryReads = boundedReads("the ancestry read of the last L1 tip");
+  const inputReads = boundedReads("the inputs read");
   let boundDepth = 0;
   let lastTip: L1ViewPoint | undefined;
   return Effect.gen(function* () {
     const view = yield* Effect.either(
-      // The access's tip read takes no signal: it is tracked until it settles.
+      // The signal goes to the access's read, not to this promise, so the
+      // read counts as in flight until the access's read itself settles.
       tipReads(
-        () => Effect.runPromise(providerViewPoint(lucid)),
+        (signal) =>
+          Effect.runPromise(
+            Effect.either(providerViewPoint(lucid, { signal })),
+          ).then(Either.getOrThrowWith((error) => error)),
         readDeadlineMs,
       ),
     );
     if (view._tag === "Left")
       return {
         kind: "undecided",
+        read: "tip",
         reason: `the L1 tip could not be read: ${formatUnknownError(view.left)}`,
       } as const;
     const tip = view.right;
@@ -206,11 +247,15 @@ export const watchTxExpiry = (
       let forked = tipSlot <= previous.slot;
       if (!forked && pointOnChain !== undefined) {
         const onChain = yield* Effect.either(
-          ancestryReads(() => pointOnChain(previous), readDeadlineMs),
+          ancestryReads(
+            (signal) => pointOnChain(previous, { signal }),
+            readDeadlineMs,
+          ),
         );
         if (onChain._tag === "Left")
           return {
             kind: "undecided",
+            read: "ancestry",
             reason: `whether the last L1 tip is still on the chain could not be read: ${formatUnknownError(onChain.left)}`,
           } as const;
         forked = !onChain.right;
@@ -222,11 +267,15 @@ export const watchTxExpiry = (
     if (!isSafe(boundDepth, depthParameters))
       return { kind: "settling", tipSlot, boundDepth } as const;
     const unspent = yield* Effect.either(
-      inputReads(() => lucid.utxosByOutRef([...facts.inputs]), readDeadlineMs),
+      inputReads(
+        (signal) => providerUtxosByOutRef(lucid, facts.inputs, { signal }),
+        readDeadlineMs,
+      ),
     );
     if (unspent._tag === "Left")
       return {
         kind: "undecided",
+        read: "inputs",
         reason: `the inputs could not be read: ${formatUnknownError(unspent.left)}`,
       } as const;
     const present = new Set(unspent.right.map(outRefKey));

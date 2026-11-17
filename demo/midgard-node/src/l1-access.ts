@@ -60,6 +60,14 @@ export const l1SlotNowLeadGauge = Metric.gauge(
   },
 );
 
+/**
+ * One read the caller may give up on: an adapter that can end the read
+ * when `signal` fires does (the follower's store reads); any other read is
+ * bounded by its source alone (the node transport's request bound, a
+ * provider's own timeout).
+ */
+export type L1ReadOptions = Readonly<{ signal?: AbortSignal }>;
+
 /** What one adapter supplies. */
 export type L1AccessAdapter = Readonly<{
   kind: L1AccessKind;
@@ -77,13 +85,25 @@ export type L1AccessAdapter = Readonly<{
    * A view point that reflects the chain at least as far as the adapter's
    * tip read first; reads made after it are answered at that point or later.
    */
-  synchronizedViewPoint: () => Promise<L1ViewPoint>;
+  synchronizedViewPoint: (options?: L1ReadOptions) => Promise<L1ViewPoint>;
   /**
    * Whether `point`, a view point this access answered, still lies on its
    * chain: false once a rollback dropped it, whatever the slot of the new
    * tip. Absent where the adapter cannot tell.
    */
-  pointOnChain?: (point: L1ViewPoint) => Promise<boolean>;
+  pointOnChain?: (
+    point: L1ViewPoint,
+    options?: L1ReadOptions,
+  ) => Promise<boolean>;
+  /**
+   * The live outputs among `outRefs`, as the provider's `getUtxosByOutRef`
+   * answers them, read so that `options.signal` can end it. Absent where
+   * the provider's own read is all the adapter has.
+   */
+  utxosByOutRef?: (
+    outRefs: readonly LE.OutRef[],
+    options?: L1ReadOptions,
+  ) => Promise<LE.UTxO[]>;
   /** One submit-slot snapshot: bounds a new tx's validity interval. */
   submitSlotSnapshot: () => Promise<SubmitSlotSnapshot>;
   /** The ledger's protocol parameters as CBOR, where the adapter has them. */

@@ -1,11 +1,12 @@
 /**
  * The confirmation half of the submitted-transaction wait: polls the exact
  * transaction's status until it confirms, and settles a bounded
- * transaction's expiry on the way (`watchTxExpiry`). Each kind of read is
- * made one at a time and aborted when it misses its deadline
- * (`oneReadAtATime`).
+ * transaction's expiry on the way (`watchTxExpiry`). A read that misses its
+ * deadline is aborted, and each kind of read is held to a bounded number in
+ * flight (`boundedReads`).
  */
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { isEmulatorProvider, LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect, Metric } from "effect";
 
@@ -18,10 +19,11 @@ import {
   submitRecoverySleep,
 } from "./utils.submit-recovery-options.js";
 import {
-  oneReadAtATime,
+  boundedReads,
   signedTxExpiryFacts,
   txExpiredCounter,
   TxExpiredError,
+  type TxExpiryRead,
   watchTxExpiry,
 } from "./utils.tx-expiry.js";
 
@@ -29,6 +31,10 @@ import {
  * Polls `submission` until it confirms. A bounded transaction is polled until
  * its bound is settled; an unbounded one until `budgetMs` runs out. Each read
  * is bounded by `readDeadlineMs` (by the remaining budget too, unbounded).
+ *
+ * A bounded transaction's wait logs when its reads stop deciding (a read
+ * failed or missed its deadline) and when they decide again: one line per
+ * change of which reads are stuck, so a wait that goes on is seen.
  */
 export const awaitConfirmedOrExpired = (
   lucid: LucidEvolution,
@@ -58,9 +64,36 @@ export const awaitConfirmedOrExpired = (
     const deadline = (yield* now) + budgetMs;
     let budgetPassedLogged = false;
     let lastReadError: unknown;
-    const statusReads = oneReadAtATime(
+    const statusReads = boundedReads(
       `the status read of transaction ${txHash}`,
     );
+    /** The reads the last undecided line named stuck; empty while all decide. */
+    let stuckLogged = "";
+    const logUndecided = (
+      statusFailure: unknown,
+      read: TxExpiryRead,
+      boundSlot: number,
+    ) => {
+      const stuck = [
+        ...(statusFailure === undefined ? [] : ["status"]),
+        ...(read.kind === "undecided" ? [read.read] : []),
+      ].join(",");
+      if (stuck === stuckLogged) return Effect.void;
+      stuckLogged = stuck;
+      if (stuck === "")
+        return Effect.logInfo(
+          `Transaction ${txHash}: its confirmation reads decide again`,
+        );
+      const reasons = [
+        ...(statusFailure === undefined
+          ? []
+          : [`the status read failed: ${formatUnknownError(statusFailure)}`]),
+        ...(read.kind === "undecided" ? [read.reason] : []),
+      ];
+      return Effect.logWarning(
+        `Transaction ${txHash} is undecided: ${reasons.join("; ")}. The wait goes on until its upper validity bound (slot ${boundSlot.toString()}) is settled.`,
+      );
+    };
     const readStatus = (deadlineMs: number) =>
       Effect.either(
         statusReads(
@@ -79,6 +112,7 @@ export const awaitConfirmedOrExpired = (
           ? Math.max(1, Math.min(readDeadlineMs, remainingMs))
           : readDeadlineMs,
       );
+      let statusFailure = status._tag === "Left" ? status.left : undefined;
       if (status._tag === "Left") lastReadError = status.left;
       else if (status.right.status === "confirmed") return;
       else if (status.right.status === "failed")
@@ -122,7 +156,9 @@ export const awaitConfirmedOrExpired = (
             );
           }
           lastReadError = settled.left;
+          statusFailure = settled.left;
         }
+        yield* logUndecided(statusFailure, read, expiry.invalidHereafterSlot);
         if (remainingMs <= 0 && !budgetPassedLogged) {
           budgetPassedLogged = true;
           yield* Effect.logWarning(

@@ -285,7 +285,11 @@ but their expiries reach only that command's log, never this alert.
 its bound and the tip slot. For a one-shot command, its own output shows
 `rebuilding from fresh chain state`, or `rebuild(s) allowed are used up` when
 it gave up. Read `/readyz` for the `l1Follower` tip, and the L1 node's own
-block production: long gaps between blocks are the usual cause.
+block production: long gaps between blocks are the usual cause. A wait whose
+L1 reads stop answering logs `Transaction <hash> is undecided:` with the
+reads that fail (status, tip, ancestry or inputs), again only when that set
+changes, and `its confirmation reads decide again` once they all answer; it
+neither expires nor confirms in between.
 
 **Action.** Restore L1 block production or the provider the node reads its
 tip from. A one-shot command that gave up (`TxExpiredError`) is safe to run

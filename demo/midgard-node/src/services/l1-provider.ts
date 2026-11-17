@@ -21,6 +21,8 @@
  * - Every failure is typed and transient where a retry can clear it; none
  *   ends the process.
  */
+import { setTimeout as delay } from "node:timers/promises";
+
 import {
   type L1NodeTransport,
   sharedL1NodeTransport,
@@ -41,6 +43,7 @@ import type { SlotConfig } from "@lucid-evolution/lucid";
 import {
   type L1Access,
   type L1AccessAdapter,
+  type L1ReadOptions,
   type L1ViewPoint,
   openL1Access,
 } from "../l1-access.js";
@@ -223,10 +226,10 @@ export const nodeL1AccessOver = (
     ledgerTipPointOf(
       await transportCall(() => transport.query({ query: "chain_point" })),
     );
-  const viewPoint = async (): Promise<L1ViewPoint> => {
+  const viewPoint = async (options?: L1ReadOptions): Promise<L1ViewPoint> => {
     let cursor;
     try {
-      cursor = await store.cursor();
+      cursor = await store.cursor(options);
     } catch (error) {
       throw new L1ProviderTransientError("store", "unavailable", {
         cause: error,
@@ -260,11 +263,14 @@ export const nodeL1AccessOver = (
       });
     },
     viewPoint,
-    synchronizedViewPoint: async () => {
+    // `signal` ends the store reads and the polling between them; the
+    // ledger tip read is bounded by the transport's request bound.
+    synchronizedViewPoint: async (options) => {
       const deadline = Date.now() + VIEW_SYNC_TIMEOUT_MS;
       const tip = await ledgerTip();
       for (;;) {
-        const view = await viewPoint();
+        options?.signal?.throwIfAborted();
+        const view = await viewPoint(options);
         if (
           view.slot > tip.slot ||
           (view.slot === tip.slot && view.id === tip.id)
@@ -276,19 +282,23 @@ export const nodeL1AccessOver = (
               `the follower is at slot ${view.slot.toString()}, the node's tip at ${tip.slot.toString()}`,
             ),
           });
-        await new Promise((resolve) => setTimeout(resolve, VIEW_SYNC_POLL_MS));
+        await delay(VIEW_SYNC_POLL_MS, undefined, {
+          ...(options?.signal === undefined ? {} : { signal: options.signal }),
+        });
       }
     },
     // A point the stored chain does not hold is off it, except one below
     // the retained window, which the store cannot tell from a pruned one
     // (`point_beyond_retention`).
-    pointOnChain: async (point) =>
+    pointOnChain: async (point, options) =>
       (
-        await store.pointStatus({
-          slot: point.slot,
-          hash: Buffer.from(point.id, "hex"),
-        })
+        await store.pointStatus(
+          { slot: point.slot, hash: Buffer.from(point.id, "hex") },
+          options,
+        )
       ).kind !== "point_not_canonical",
+    utxosByOutRef: (outRefs, options) =>
+      provider.getUtxosByOutRef([...outRefs], options),
     protocolParametersCbor: () =>
       transportCall(() => transport.query({ query: "protocol_params" })),
     transportReadiness: () => transport.readiness,

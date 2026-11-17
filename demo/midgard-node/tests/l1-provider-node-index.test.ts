@@ -231,3 +231,32 @@ describe("the node's L1 reader and a rollback", () => {
     expect(await reader.pointOnChain?.(forkTip)).toBe(true);
   });
 });
+
+describe("the node's L1 reader and an abort", () => {
+  // The view read's store read takes the signal the same way; its first
+  // read is the node's tip, which the transport bounds, not the signal.
+  it("hands a read's abort signal to the follower store, so an aborted read ends with its reason", async () => {
+    const connectionString = await databases.create();
+    const reader = openReader(
+      connectionString,
+      scanRefusingTransport().transport,
+    );
+    const listen = openListenStore(connectionString);
+    expect((await listen.start()).kind).toBe("ready");
+    expect((await listen.initialize(SIM_ORIGIN)).kind).toBe("initialized");
+    const { event, txHash } = payReserve();
+    await applied(listen, event);
+    const tip = await reader.viewPoint();
+    const outRef = { txHash, outputIndex: 0 };
+    expect(await reader.pointOnChain?.(tip)).toBe(true);
+    expect(await reader.utxosByOutRef?.([outRef])).toHaveLength(1);
+
+    const signal = AbortSignal.abort(new Error("the read's deadline passed"));
+    await expect(reader.pointOnChain?.(tip, { signal })).rejects.toThrow(
+      "the read's deadline passed",
+    );
+    await expect(reader.utxosByOutRef?.([outRef], { signal })).rejects.toThrow(
+      "the read's deadline passed",
+    );
+  });
+});
