@@ -27,6 +27,7 @@ import {
 } from "../../src/runtime/watcher-runtime.js";
 import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
 import { ledgerParameterQuery } from "../support/ledger-protocol-parameters.js";
+import { testStorageRoot } from "../support/test-storage-root.js";
 import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 
 const directories: string[] = [];
@@ -214,10 +215,10 @@ const reservationRecords = async (
 
 describe("watcher production prover funding permit mint V1", () => {
   it("refuses a structural funding authority factory without reserving", async () => {
-    const { store, journal: workflowJournal } = await openStore();
+    const { store, journal: workflowJournal, directory } = await openStore();
     const admitted = createWatcherProverFundingAuthorityFactory({
       launchScope: ["doubleSpend"],
-      journalRoot: process.env.MIDGARD_TEST_STORAGE_ROOT ?? process.cwd(),
+      journalRoot: directory,
       journalAuthenticationKey: TEST_JOURNAL_KEY,
       workflowJournal,
       deploymentIdentity: makeWatcherDeploymentAuthorityFixture().result,
@@ -240,10 +241,10 @@ describe("watcher production prover funding permit mint V1", () => {
 
   it("refuses a runner that was not installed by its canonical workflow factory without reserving", async () => {
     const deploymentIdentity = makeWatcherDeploymentAuthorityFixture().result;
-    const { store, journal: workflowJournal } = await openStore();
+    const { store, journal: workflowJournal, directory } = await openStore();
     const factory = createWatcherProverFundingAuthorityFactory({
       launchScope: ["doubleSpend"],
-      journalRoot: process.env.MIDGARD_TEST_STORAGE_ROOT ?? process.cwd(),
+      journalRoot: directory,
       journalAuthenticationKey: TEST_JOURNAL_KEY,
       workflowJournal,
       deploymentIdentity,
@@ -259,7 +260,7 @@ describe("watcher production prover funding permit mint V1", () => {
 
   it("admits a measured runner and rejects an invalid actuation permit before reserving", async () => {
     const deploymentIdentity = makeWatcherDeploymentAuthorityFixture().result;
-    const { store, journal: workflowJournal } = await openStore();
+    const { store, journal: workflowJournal, directory } = await openStore();
     const protocolParameters =
       await createWatcherProtocolParameterRuntimeAuthority({
         deploymentIdentity,
@@ -267,7 +268,7 @@ describe("watcher production prover funding permit mint V1", () => {
       });
     const factory = createWatcherProverFundingAuthorityFactory({
       launchScope: ["doubleSpend"],
-      journalRoot: process.env.MIDGARD_TEST_STORAGE_ROOT ?? process.cwd(),
+      journalRoot: directory,
       journalAuthenticationKey: TEST_JOURNAL_KEY,
       workflowJournal,
       deploymentIdentity,
@@ -307,13 +308,12 @@ describe("watcher production prover funding permit mint V1", () => {
 
 const openStore = async () => {
   const directory = await mkdtemp(
-    join(
-      process.env.MIDGARD_TEST_STORAGE_ROOT ?? process.cwd(),
-      ".watcher-funding-permit-mint-test-",
-    ),
+    join(testStorageRoot, ".watcher-funding-permit-mint-test-"),
   );
   directories.push(directory);
-  return await openWatcherSqliteProverFundingReservationStore({
-    path: join(directory, "watcher.sqlite"),
-  });
+  const { store, journal } =
+    await openWatcherSqliteProverFundingReservationStore({
+      path: join(directory, "watcher.sqlite"),
+    });
+  return { store, journal, directory };
 };

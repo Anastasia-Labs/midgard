@@ -14,6 +14,7 @@ import {
   type WatcherProverFundingReservationStore,
 } from "../../src/funding/prover-funding-reservation.js";
 import { unsafeOpenWatcherSqliteProverFundingReservationStoreForTest } from "../../src/funding/sqlite-prover-funding-reservation-store.js";
+import { testStorageRoot } from "../support/test-storage-root.js";
 
 export const temporaryDirectories: string[] = [];
 
@@ -104,10 +105,7 @@ export const openStore = async (explicitPath?: string) => {
   let path = explicitPath;
   if (path === undefined) {
     const directory = await mkdtemp(
-      join(
-        process.env.MIDGARD_TEST_STORAGE_ROOT ?? process.cwd(),
-        ".watcher-funding-reservation-test-",
-      ),
+      join(testStorageRoot, ".watcher-funding-reservation-test-"),
     );
     temporaryDirectories.push(directory);
     path = join(directory, "watcher.sqlite");

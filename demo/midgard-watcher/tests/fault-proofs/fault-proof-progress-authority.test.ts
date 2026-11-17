@@ -24,6 +24,7 @@ import {
 } from "../support/fault-proof-funding-fixture.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
+import { testStorageRoot } from "../support/test-storage-root.js";
 import {
   emptyWorkflowJournal,
   TEST_JOURNAL_KEY,
@@ -163,7 +164,7 @@ describe("supervisor historical progress authority", () => {
   it("re-admits a completed execution decision appended by the live writer after startup cache creation", async () => {
     const fixture = await setupFundingRecoveryFixture();
     const journalRoot = await mkdtemp(
-      join(process.cwd(), ".watcher-progress-decision-"),
+      join(testStorageRoot, ".watcher-progress-decision-"),
     );
     try {
       const journalInput = {
@@ -241,7 +242,7 @@ describe("supervisor historical progress authority", () => {
     async (availability) => {
       const fixture = await setupFundingRecoveryFixture();
       const journalRoot = await mkdtemp(
-        join(process.cwd(), ".watcher-progress-decision-"),
+        join(testStorageRoot, ".watcher-progress-decision-"),
       );
       try {
         const writer = await DecisionJournal.openWatcherFaultDecisionJournal({
@@ -432,7 +433,7 @@ describe("supervisor progress authority: proof retention", () => {
   it("pins a newly admitted fault's header before indexing it, once", async () => {
     const fixture = await setupFundingRecoveryFixture();
     const journalRoot = await mkdtemp(
-      join(process.cwd(), ".watcher-progress-decision-"),
+      join(testStorageRoot, ".watcher-progress-decision-"),
     );
     try {
       const writer = await DecisionJournal.openWatcherFaultDecisionJournal({

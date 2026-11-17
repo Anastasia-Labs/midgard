@@ -19,6 +19,7 @@ import {
 } from "../support/fault-proof-funding-fixture.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
+import { testStorageRoot } from "../support/test-storage-root.js";
 import {
   emptyWorkflowJournal,
   TEST_JOURNAL_KEY,
@@ -85,7 +86,7 @@ afterEach(async () => {
 const newFaultWith = async (retention: WatcherProofRetention) => {
   const fixture = await setupFundingRecoveryFixture();
   const journalRoot = await mkdtemp(
-    join(process.cwd(), ".watcher-progress-pin-results-"),
+    join(testStorageRoot, ".watcher-progress-pin-results-"),
   );
   roots.push(journalRoot);
   const writer = await DecisionJournal.openWatcherFaultDecisionJournal({
