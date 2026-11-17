@@ -1344,8 +1344,10 @@ jobs:
             watcher-journeys/committee-acceptance.test.ts \
             watcher-journeys/correction-recovery.test.ts \
             watcher-journeys/correction.journey-progress-clock.test.ts \
+            watcher-journeys/correction.journey-progress-rule.test.ts \
             watcher-journeys/correction.test.ts \
             watcher-journeys/correction.watcher-start-deadline.test.ts \
+            watcher-journeys/deployment-l1-origin.test.ts \
             watcher-journeys/deployment-source.test.ts \
             watcher-journeys/error-chain.test.ts \
             watcher-journeys/forced-claim-coordinates.test.ts \
@@ -1364,6 +1366,7 @@ jobs:
             watcher-journeys/honest-successor.observables.test.ts \
             watcher-journeys/honest-successor.test.ts \
             watcher-journeys/honest-successor.transfer.test.ts \
+            watcher-journeys/journey-family-deadline.test.ts \
             watcher-journeys/journey-ledger.test.ts \
             watcher-journeys/journey-lucid.test.ts \
             watcher-journeys/journey-network.test.ts \
@@ -1426,7 +1429,9 @@ jobs:
             watcher-journeys/transaction-cases.test.ts \
             watcher-journeys/verified-headers.test.ts \
             watcher-journeys/watcher-evidence-reader.test.ts \
-            watcher-journeys/watcher-evidence-reader.transport.test.ts
+            watcher-journeys/watcher-evidence-reader.transport.test.ts \
+            watcher-journeys/withdrawal-owner-funding.test.ts \
+            watcher-journeys/withdrawal-owner-top-up.stack.test.ts
 
   da-e2e:
     name: Canonical V1 retained multi-peer DA paths
