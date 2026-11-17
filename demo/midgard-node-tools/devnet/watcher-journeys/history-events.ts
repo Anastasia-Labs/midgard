@@ -20,6 +20,8 @@ export {
   buildJourneyWithdrawnTransaction,
   journeyWithdrawalBody,
   ownedOutputWithdrawalBody,
+  signOwnerPassThrough,
+  withdrawnRetainedSpend,
 } from "./history-events.build-journey-withdrawn-transaction.js";
 export {
   buildJourneyFabricatedDeposit,

@@ -1,5 +1,4 @@
 import {
-  decodeMidgardAddressBytes,
   decodeMidgardTxOutput,
   encodeCbor,
   encodeMidgardTxOutput,
@@ -10,14 +9,22 @@ import {
 } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import { retainedTransactionFixture } from "@al-ft/midgard-fault-proofs/test-support/retained-transaction";
 import type * as SDK from "@al-ft/midgard-sdk";
-import { CML, walletFromSeed } from "@lucid-evolution/lucid";
 
+import {
+  journeyOwnerEntries,
+  journeyOwnerKey,
+  type JourneyOwnerTransactionInput,
+} from "./forced-transaction.js";
 import { buildAtJourneyMinFee } from "./journey-fee.js";
 import {
   checkedJourneyConstruction,
   type JourneyLedgerPredecessor,
 } from "./journey-ledger.js";
-import { journeyNetwork } from "./journey-network.js";
+import {
+  type OwnedOutput,
+  type OwnerSpend,
+  selectOwnerOutput,
+} from "./owner-output-selection.js";
 
 type Mutation = (input: {
   spendInput: Buffer;
@@ -91,46 +98,43 @@ export type JourneyTransactionInput = {
   blockSlot: bigint;
 };
 
-const buildJourneyTransaction = async (
-  input: JourneyTransactionInput & {
-    category?: JourneyTransactionCategory;
-    minFeeB?: bigint;
-  },
+/**
+ * The family's fee schedule: the minFee family's fault and control are priced
+ * at a 1-lovelace constant so its fault breaks only the fee rule.
+ */
+const familyMinFeeB = (
+  input: JourneyOwnerTransactionInput,
+  family: JourneyTransactionCategory | undefined,
+) => (family === "minFee" ? 1n : input.predecessor.header.minFeeB);
+
+/**
+ * The owner's signed transaction spending `spent` into one output carrying its
+ * value less the fee, which `category` mutates (none: the valid one). The
+ * minFee fault pays no fee. Every other transaction pays the minimum its
+ * schedule prices it at, so a fault breaks only its own rule. Its `outputs`
+ * are the outputs it pays.
+ */
+const journeyTransactionOf = (
+  input: JourneyOwnerTransactionInput,
+  spent: OwnedOutput,
+  category: JourneyTransactionCategory | undefined,
+  minFeeB: bigint,
 ) => {
-  const ledgerEntries = input.predecessor.ledger.entries;
-  const wallet = walletFromSeed(input.ledgerOwnerSeedPhrase, {
-    network: journeyNetwork().network,
-  });
-  const key = CML.PrivateKey.from_bech32(wallet.paymentKey);
-  const ownerHash = Buffer.from(key.to_public().hash().to_raw_bytes());
-  const spent = ledgerEntries.find(({ output }) => {
-    const { paymentCredential } = decodeMidgardAddressBytes(
-      decodeMidgardTxOutput(output).address,
-    );
-    return (
-      paymentCredential.kind === "PubKey" &&
-      paymentCredential.hash.equals(ownerHash)
-    );
-  });
-  if (spent === undefined)
-    throw new Error(
-      "Transaction journey requires a retained output owned by the ledger signer",
-    );
+  const key = journeyOwnerKey(input.ledgerOwnerSeedPhrase);
   const output = decodeMidgardTxOutput(spent.output);
   /** The spent output less the fee: the transaction's one output. */
   const paying = (fee: bigint) => ({
     ...output,
     value: { ...output.value, lovelace: output.value.lovelace - fee },
   });
-  const minFeeB = input.minFeeB ?? input.predecessor.header.minFeeB;
   const transactionInput = (fee: bigint): FixtureTransactionInput => ({
     spendInputs: [spent.outRef],
     outputs: [encodeMidgardTxOutput(paying(fee))],
     fee,
     networkId: input.predecessor.header.expectedNetworkId,
-    ...(input.category === undefined
+    ...(category === undefined
       ? {}
-      : mutations[input.category]({
+      : mutations[category]({
           spendInput: spent.outRef,
           output: paying(fee),
         })),
@@ -138,7 +142,7 @@ const buildJourneyTransaction = async (
   const sign = (fee: bigint) => {
     const body = transactionInput(fee);
     const unsigned = buildFixtureTransaction(body);
-    return buildFixtureTransaction({
+    const transaction = buildFixtureTransaction({
       ...body,
       addressWitnesses: body.addressWitnesses ?? [
         {
@@ -146,33 +150,81 @@ const buildJourneyTransaction = async (
             key.to_public().to_raw_bytes(),
           ).toString("hex"),
           signature:
-            input.category === "invalidSignature"
+            category === "invalidSignature"
               ? "00".repeat(64)
               : key.sign(Buffer.from(unsigned.txId, "hex")).to_hex(),
         },
       ],
     });
+    return {
+      canonicalCbor: transaction.canonicalCbor,
+      transaction,
+      outputs: body.outputs ?? [],
+    };
   };
-  // The minFee fault pays no fee. Every other transaction pays the minimum
-  // its schedule prices it at, so a fault breaks only its own rule.
-  const transaction =
-    input.category === "minFee"
-      ? sign(0n)
-      : buildAtJourneyMinFee(
-          { minFeeA: input.predecessor.header.minFeeA, minFeeB },
-          sign,
-          output.value.lovelace,
-        );
+  return category === "minFee"
+    ? sign(0n)
+    : buildAtJourneyMinFee(
+        { minFeeA: input.predecessor.header.minFeeA, minFeeB },
+        sign,
+        output.value.lovelace,
+      );
+};
+
+/**
+ * What a transaction family pays from an output: its valid control and, for a
+ * fault family, its fault, so the fault and the control spend the same
+ * output.
+ */
+export const journeyTransactionSpend =
+  (
+    input: JourneyOwnerTransactionInput,
+    family: JourneyTransactionCategory | undefined,
+  ): OwnerSpend =>
+  (entry) => {
+    const minFeeB = familyMinFeeB(input, family);
+    return [
+      ...journeyTransactionOf(input, entry, undefined, minFeeB).outputs,
+      ...(family === undefined
+        ? []
+        : journeyTransactionOf(input, entry, family, minFeeB).outputs),
+    ];
+  };
+
+/**
+ * The `family`'s transaction (`faulty`: its fault; otherwise its valid
+ * control), spending the owner's smallest output that funds both
+ * (`selectOwnerOutput`), committed alone in a block on the predecessor.
+ */
+const buildJourneyTransaction = async (
+  input: JourneyTransactionInput & {
+    family: JourneyTransactionCategory | undefined;
+    faulty: boolean;
+  },
+) => {
+  const { family } = input;
+  const minFeeB = familyMinFeeB(input, family);
+  const spent = selectOwnerOutput(
+    journeyOwnerEntries(input),
+    journeyTransactionSpend(input, family),
+    `the ${family ?? "valid"} transaction family`,
+  );
+  const { transaction } = journeyTransactionOf(
+    input,
+    spent,
+    input.faulty ? family : undefined,
+    minFeeB,
+  );
   const block = await retainedTransactionFixture({
     canonicalTransactionCbor: transaction.canonicalCbor,
     predecessor: input.predecessor,
-    ledgerEntries,
+    ledgerEntries: input.predecessor.ledger.entries,
     operatorVkey: input.operatorVkey,
     endTime: input.endTime,
     blockSlot: input.blockSlot,
     minFeeB,
   });
-  if (input.category === undefined && block.replay.trace.verdict !== "accepted")
+  if (!input.faulty && block.replay.trace.verdict !== "accepted")
     throw new Error("Journey recovery transaction failed honest validation");
   return checkedJourneyConstruction(block, block.postLedgerEntries);
 };
@@ -184,7 +236,8 @@ export const buildJourneyTransactionFault = async (
 ) => {
   const block = await buildJourneyTransaction({
     ...input,
-    ...(input.category === "minFee" ? { minFeeB: 1n } : {}),
+    family: input.category,
+    faulty: true,
   });
   if (block.replay.trace.verdict !== "rejected")
     throw new Error(
@@ -193,12 +246,8 @@ export const buildJourneyTransactionFault = async (
   return block;
 };
 
-/** Accepted signed counterpart against the same ledger and fee schedule. */
+/** Accepted signed counterpart against the same ledger, output and fee schedule. */
 export const buildJourneyTransactionControl = (
   input: JourneyTransactionInput & { category?: JourneyTransactionCategory },
 ) =>
-  buildJourneyTransaction({
-    ...input,
-    category: undefined,
-    ...(input.category === "minFee" ? { minFeeB: 1n } : {}),
-  });
+  buildJourneyTransaction({ ...input, family: input.category, faulty: false });

@@ -92,7 +92,7 @@ const stack = async (initial: readonly OwnedOutput[]) => {
       Number(lovelaceOf(left) - lovelaceOf(right)),
     );
     for (const entry of ascending)
-      if (lovelaceOf(entry) >= (await requirement.requiredOf(entry))) {
+      if (await requirement.funds(entry)) {
         outputs = outputs.filter((output) => output !== entry);
         return;
       }

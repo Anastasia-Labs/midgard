@@ -2,7 +2,6 @@ import {
   decodeMidgardTxOutput,
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
-  paymentCredentialFromMidgardAddress,
 } from "@al-ft/midgard-core";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { buildCountedRoot } from "@al-ft/midgard-fault-proofs";
@@ -15,15 +14,21 @@ import {
 } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import { retainedTransactionFixture } from "@al-ft/midgard-fault-proofs/test-support/retained-transaction";
 import * as SDK from "@al-ft/midgard-sdk";
-import { CML, Data, walletFromSeed } from "@lucid-evolution/lucid";
+import { type CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { journeyOwnerEntries, journeyOwnerKey } from "./forced-transaction.js";
 import { buildAtJourneyMinFee } from "./journey-fee.js";
 import {
   checkedJourneyConstruction,
   type JourneyLedgerPredecessor,
 } from "./journey-ledger.js";
-import { journeyNetwork } from "./journey-network.js";
+import {
+  ownedLedgerEntries,
+  type OwnedOutput,
+  type OwnerSpend,
+  selectOwnerOutput,
+} from "./owner-output-selection.js";
 
 export const JOURNEY_HISTORY_TRANSACTION_CATEGORIES = [
   "doubleSpend",
@@ -53,15 +58,7 @@ const ledgerEntries = (block: HistoryPredecessor) => block.ledger.entries;
 export const ownedHistoryLedgerEntries = (
   block: HistoryPredecessor,
   owner: string,
-) =>
-  ledgerEntries(block).filter(({ output }) => {
-    const credential = paymentCredentialFromMidgardAddress(
-      decodeMidgardTxOutput(output).address,
-    );
-    return (
-      credential.kind === "PubKey" && credential.hash.toString("hex") === owner
-    );
-  });
+) => ownedLedgerEntries(ledgerEntries(block), owner);
 
 /** Sign every body after mutation so only the selected ledger rule is broken. */
 export const signHistoryTransaction = (
@@ -196,22 +193,26 @@ export const retainHistoryTransactions = async (
   );
 };
 
-export const buildJourneyHistoryTransaction = async (
-  input: HistoryTransactionInput,
+/** What a history family's transactions are built from. */
+type HistorySpendInput = Pick<
+  HistoryTransactionInput,
+  "category" | "predecessor" | "ledgerOwnerSeedPhrase"
+>;
+
+/** The input a history family's absent-input fixtures name. */
+const ABSENT_INPUT = outRefCbor(0xf1, 0n);
+
+/**
+ * The history family's chained transactions spending `spent` (`honest`: its
+ * valid control; otherwise its fault), each at the minimum fee the
+ * predecessor's schedule prices it at, and every output they pay.
+ */
+const historyTransactionsOf = (
+  input: HistorySpendInput,
+  spent: OwnedOutput,
+  honest: boolean,
 ) => {
-  const key = CML.PrivateKey.from_bech32(
-    walletFromSeed(input.ledgerOwnerSeedPhrase, {
-      network: journeyNetwork().network,
-    }).paymentKey,
-  );
-  const spent = ownedHistoryLedgerEntries(
-    input.predecessor,
-    key.to_public().hash().to_hex(),
-  )[0];
-  if (spent === undefined)
-    throw new Error(
-      "History journey requires an output controlled by its ledger owner",
-    );
+  const key = journeyOwnerKey(input.ledgerOwnerSeedPhrase);
   const output = decodeMidgardTxOutput(spent.output);
   /** An output to the spent output's address paying `lovelace` and `assets`. */
   const paying = (lovelace: bigint, assets = output.value.assets) =>
@@ -238,17 +239,15 @@ export const buildJourneyHistoryTransaction = async (
       (minimum) => {
         const fee = minimum + surplus;
         const change = available - kept - fee;
+        const outputs = [
+          ...fixed,
+          paying(change, fixed.length === 0 ? output.value.assets : new Map()),
+        ];
         return {
           ...signHistoryTransaction(
             {
               spendInputs: [spendInput],
-              outputs: [
-                ...fixed,
-                paying(
-                  change,
-                  fixed.length === 0 ? output.value.assets : new Map(),
-                ),
-              ],
+              outputs,
               fee,
               networkId: input.predecessor.header.expectedNetworkId,
               ...rest,
@@ -256,29 +255,23 @@ export const buildJourneyHistoryTransaction = async (
             key,
           ),
           change,
+          outputs,
         };
       },
       available - kept,
     );
   };
   const lovelace = output.value.lovelace;
-  let transactions: FixtureTransaction[];
+  let transactions: ReturnType<typeof transaction>[];
   if (
     input.category === "nonExistentInput" ||
     input.category === "noReferenceInput"
   ) {
-    const absent = outRefCbor(0xf1, 0n);
-    if (
-      ledgerEntries(input.predecessor).some((entry) =>
-        entry.outRef.equals(absent),
-      )
-    )
-      throw new Error("Absent-input fixture collides with retained ledger");
     transactions = [
       input.category === "nonExistentInput"
-        ? transaction(input.honest ? spent.outRef : absent, lovelace)
+        ? transaction(honest ? spent.outRef : ABSENT_INPUT, lovelace)
         : transaction(spent.outRef, lovelace, {
-            referenceInputs: input.honest ? [] : [absent],
+            referenceInputs: honest ? [] : [ABSENT_INPUT],
           }),
     ];
   } else if (input.category === "referenceInputNoIdx") {
@@ -294,7 +287,7 @@ export const buildJourneyHistoryTransaction = async (
         outputIndex: index,
       });
     const consumer = transaction(produced(0), half, {
-      referenceInputs: [produced(input.honest ? 1 : 2)],
+      referenceInputs: [produced(honest ? 1 : 2)],
     });
     transactions = [producer, consumer];
   } else {
@@ -307,16 +300,56 @@ export const buildJourneyHistoryTransaction = async (
     transactions = [
       producer,
       input.category === "doubleSpend"
-        ? input.honest
+        ? honest
           ? transaction(produced(0), producer.change)
           : // One lovelace above the minimum fee makes this a distinct signed
             // body spending the producer's input again.
             transaction(spent.outRef, lovelace, {}, 1n)
-        : transaction(
-            input.honest ? produced(0) : produced(1),
-            producer.change,
-          ),
+        : transaction(honest ? produced(0) : produced(1), producer.change),
     ];
   }
+  return {
+    transactions: transactions satisfies FixtureTransaction[],
+    outputs: transactions.flatMap(({ outputs }) => outputs),
+  };
+};
+
+/**
+ * What a history family pays from an output: every transaction of its valid
+ * control's chain and of its fault's, so both spend the same output.
+ */
+export const journeyHistoryTransactionSpend =
+  (input: HistorySpendInput): OwnerSpend =>
+  (entry) => [
+    ...historyTransactionsOf(input, entry, true).outputs,
+    ...historyTransactionsOf(input, entry, false).outputs,
+  ];
+
+/**
+ * The history family's fault (or, `honest`, its valid control), spending the
+ * owner's smallest output that funds every transaction of both
+ * (`selectOwnerOutput`).
+ */
+export const buildJourneyHistoryTransaction = async (
+  input: HistoryTransactionInput,
+) => {
+  if (
+    (input.category === "nonExistentInput" ||
+      input.category === "noReferenceInput") &&
+    ledgerEntries(input.predecessor).some((entry) =>
+      entry.outRef.equals(ABSENT_INPUT),
+    )
+  )
+    throw new Error("Absent-input fixture collides with retained ledger");
+  const spent = selectOwnerOutput(
+    journeyOwnerEntries(input),
+    journeyHistoryTransactionSpend(input),
+    `the ${input.category} history family's transactions`,
+  );
+  const { transactions } = historyTransactionsOf(
+    input,
+    spent,
+    input.honest === true,
+  );
   return retainHistoryTransactions({ ...input, transactions });
 };

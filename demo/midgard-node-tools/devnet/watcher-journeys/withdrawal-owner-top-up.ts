@@ -17,6 +17,7 @@ import {
 } from "midgard-watcher/tests/support/published-deposit-trace";
 
 import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";
+import { familyOwnerRequirement } from "./family-owner-requirement.js";
 import type { JourneySuccessor } from "./fixture.js";
 import {
   journeyLedgerOwnerKey,
@@ -36,8 +37,6 @@ import { createJourneyVerifiedHeaders } from "./verified-headers.js";
 import {
   ensureWithdrawalOwnerFunding,
   type OwnerFundingRequirement,
-  withdrawalFundingShape,
-  withdrawalOwnerRequirement,
 } from "./withdrawal-owner-funding.js";
 import { stackWithdrawalOwnerFundingPorts } from "./withdrawal-owner-top-up.stack.js";
 
@@ -173,27 +172,36 @@ const devnetTopUp = async (
 };
 
 /**
- * Before a withdrawal family's timer starts, outside its limit: tops the
+ * Before the timer of a family that withdraws or spends an output of the
+ * ledger owner's (`familyOwnerRequirement`), outside its limit: tops the
  * ledger owner up when no output of the owner's on the tail the family
  * builds on meets what the family needs (`ensureWithdrawalOwnerFunding`).
  * A devnet tops up through an honest deposit trace on its head; before the
  * run's first block it has no head and tops nothing up, and only the first
  * family's deposit trace funds the owner. A stack deposits to the owner's wallet address and waits
  * for our node to absorb it and its committee to attest the block, as the
- * run's own funding does. A family that withdraws nothing needs nothing.
+ * run's own funding does. A family that neither withdraws nor spends an
+ * output of the owner's needs nothing.
  */
 export const withdrawalOwnerTopUpBeforeFamily = async (
   session: JourneySession | AttachedJourneySession,
   input: Readonly<{ category: string; onStage(name: string): void }>,
 ) => {
-  const shape = withdrawalFundingShape(input.category);
-  if (shape === undefined) return "not-withdrawal" as const;
   const { onStage } = input;
   const { deployment } = session.context;
+  const requirementFor = (seedPhrase: string) =>
+    familyOwnerRequirement(input.category, {
+      ledgerOwnerSeedPhrase: seedPhrase,
+      quote: journeyWithdrawalQuote({
+        deployment,
+        ownerKey: journeyLedgerOwnerKey(seedPhrase),
+      }),
+    });
   if (session.mode === "attached") {
-    const key = journeyLedgerOwnerKey(
+    const requirement = requirementFor(
       session.context.accounts.ledgerOwner.seedPhrase,
     );
+    if (requirement === undefined) return "spends-no-owner-output" as const;
     const { owner, ourLedger, readTail } = await stackLedgerOwnerFunding(
       session,
       input,
@@ -208,13 +216,7 @@ export const withdrawalOwnerTopUpBeforeFamily = async (
             output: utxo.outputCbor,
           })),
         requirement: (tail) =>
-          withdrawalOwnerRequirement({
-            shape,
-            quote: journeyWithdrawalQuote({ deployment, ownerKey: key }),
-            key,
-            header: tail.header,
-            topUpAddress: midgardAddressFromText(owner.address),
-          }),
+          requirement(tail, midgardAddressFromText(owner.address)),
         // The run's own funding, with a deposit of the top-up's amount in
         // the family's own record.
         fundingPorts: async (lovelace) =>
@@ -231,10 +233,10 @@ export const withdrawalOwnerTopUpBeforeFamily = async (
       }),
     );
   }
-  const key = journeyLedgerOwnerKey(
-    session.context.accounts.operator.seedPhrase,
-  );
-  const owner = key.to_public().hash().to_hex();
+  const { seedPhrase } = session.context.accounts.operator;
+  const requirement = requirementFor(seedPhrase);
+  if (requirement === undefined) return "spends-no-owner-output" as const;
+  const owner = journeyLedgerOwnerKey(seedPhrase).to_public().hash().to_hex();
   const address = credentialToAddress(journeyNetwork().network, {
     type: "Key",
     hash: owner,
@@ -258,14 +260,7 @@ export const withdrawalOwnerTopUpBeforeFamily = async (
         ? undefined
         : decodeJourneyRetainedBlock(head.block, session.ledgerAt);
     },
-    requirement: (tail) =>
-      withdrawalOwnerRequirement({
-        shape,
-        quote: journeyWithdrawalQuote({ deployment, ownerKey: key }),
-        key,
-        header: tail.header,
-        topUpAddress: midgardAddressFromText(address),
-      }),
+    requirement: (tail) => requirement(tail, midgardAddressFromText(address)),
     topUp: async (requirement) => {
       const head = await readHead();
       if (head === undefined)

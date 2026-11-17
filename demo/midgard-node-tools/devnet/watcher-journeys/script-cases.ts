@@ -15,6 +15,7 @@ import {
   prepareJourneyForcedTransaction,
 } from "./forced-transaction.js";
 import type { JourneyLedgerPredecessor } from "./journey-ledger.js";
+import type { OwnedOutput } from "./owner-output-selection.js";
 
 /** `(lam ctx [(lam _ ()) ctx])`: a Plutus V3 script must return Unit. */
 const unitScriptBytes = encodeCbor(Buffer.from("0101002324980041", "hex"));
@@ -22,11 +23,12 @@ const unitScriptBytes = encodeCbor(Buffer.from("0101002324980041", "hex"));
 const failingScriptBytes = encodeCbor(Buffer.from("0101002601", "hex"));
 
 /**
- * The owner's signed mint under a Plutus V3 policy, for normal L2 submission
- * only: a forced transaction cannot carry it.
+ * The owner's signed mint under a Plutus V3 policy, spending `spent`, for
+ * normal L2 submission only: a forced transaction cannot carry it.
  */
 export const buildJourneyScriptTransaction = (
   input: JourneyOwnerTransactionInput & {
+    spent: OwnedOutput;
     variant?: "plutusMint" | "failingPlutusMint";
     /** Paid from the spent output; zero unless the caller prices it. */
     fee?: bigint;
@@ -41,6 +43,7 @@ export const buildJourneyScriptTransaction = (
   return buildJourneyOwnerMintTransaction({
     predecessor: input.predecessor,
     ledgerOwnerSeedPhrase: input.ledgerOwnerSeedPhrase,
+    spent: input.spent,
     policyScript: {
       language: "PlutusV3",
       scriptBytes:

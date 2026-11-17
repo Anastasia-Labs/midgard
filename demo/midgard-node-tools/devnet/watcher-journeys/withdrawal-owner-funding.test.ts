@@ -123,7 +123,10 @@ const runFamilies = async (
     // The family's funding precondition: an owned output that funds it.
     const entry = await smallestQualifyingOutput(
       ownedHistoryLedgerEntries(tail, owner),
-      { requiredOf: async (candidate) => (await required(candidate)).total },
+      {
+        funds: async (candidate) =>
+          lovelaceOf(candidate.output) >= (await required(candidate)).total,
+      },
     );
     expect(entry, `a ${shape} after ${outcomes.join(", ")}`).toBeDefined();
     const withdrawn = entry!;
@@ -234,7 +237,10 @@ it("withdraws the smallest owned output that funds the withdrawal", async () => 
   });
   const entry = await smallestQualifyingOutput(
     ownedHistoryLedgerEntries(tail, owner),
-    { requiredOf: async (candidate) => (await required(candidate)).total },
+    {
+      funds: async (candidate) =>
+        lovelaceOf(candidate.output) >= (await required(candidate)).total,
+    },
   );
   expect(lovelaceOf(entry!.output)).toBe(9_000_000n);
 });

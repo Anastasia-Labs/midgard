@@ -9,9 +9,10 @@ import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { replacePlutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import { buildCountedRoot } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
-import { CML, Data, walletFromSeed } from "@lucid-evolution/lucid";
+import { type CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { journeyOwnerKey } from "./forced-transaction.js";
 import {
   type HistoryPredecessor,
   ownedHistoryLedgerEntries,
@@ -30,7 +31,11 @@ import {
   checkedJourneyConstruction,
   journeyLedgerPairs,
 } from "./journey-ledger.js";
-import { journeyNetwork } from "./journey-network.js";
+import {
+  type OwnedOutput,
+  type OwnerSpend,
+  selectOwnerOutput,
+} from "./owner-output-selection.js";
 
 export const buildJourneyWithdrawalEvent = async (
   input: HistoryEventBlockInput & {
@@ -174,11 +179,87 @@ export const ownedOutputWithdrawalBody = (input: {
   };
 };
 
+/** The header fields a pass-through prices and signs against. */
+type PassThroughHeader = Pick<
+  SDK.Header,
+  "minFeeA" | "minFeeB" | "expectedNetworkId"
+>;
+
+/**
+ * The owner's signed transaction spending `entry` into one output at its
+ * address carrying its value less the fee, reading `referenceInputs`, at the
+ * minimum fee `header` prices it at: a withdrawn-input family's valid
+ * control, and its faults. Its `outputs` are the outputs it pays.
+ */
+export const signOwnerPassThrough = (
+  input: Readonly<{
+    header: PassThroughHeader;
+    key: CML.PrivateKey;
+    entry: OwnedOutput;
+    referenceInputs: readonly Buffer[];
+  }>,
+) => {
+  const output = decodeMidgardTxOutput(input.entry.output);
+  return buildAtJourneyMinFee(
+    input.header,
+    (fee) => {
+      const outputs = [
+        encodeMidgardTxOutput({
+          ...output,
+          value: { ...output.value, lovelace: output.value.lovelace - fee },
+        }),
+      ];
+      return {
+        ...signHistoryTransaction(
+          {
+            spendInputs: [input.entry.outRef],
+            referenceInputs: [...input.referenceInputs],
+            outputs,
+            fee,
+            networkId: input.header.expectedNetworkId,
+          },
+          input.key,
+        ),
+        outputs,
+      };
+    },
+    output.value.lovelace,
+  );
+};
+
+/**
+ * What a withdrawn-input family pays from the retained output it spends
+ * besides the withdrawn one: its valid control's pass-through and, when it
+ * `readsWithdrawn`, its reference-input fault's, which reads `withdrawn`.
+ */
+export const withdrawnRetainedSpend =
+  (
+    input: Readonly<{
+      header: PassThroughHeader;
+      key: CML.PrivateKey;
+      withdrawn: Buffer;
+      readsWithdrawn: boolean;
+    }>,
+  ): OwnerSpend =>
+  (entry) => [
+    ...signOwnerPassThrough({ ...input, entry, referenceInputs: [] }).outputs,
+    ...(input.readsWithdrawn
+      ? signOwnerPassThrough({
+          ...input,
+          entry,
+          referenceInputs: [input.withdrawn],
+        }).outputs
+      : []),
+  ];
+
 /**
  * A withdrawal followed by an accepted claim that still spends/reads its
- * output. The honest control spends a retained output instead; with
- * `controlReferencesRetained` the reference-input control also reads a second
- * retained output, so the control carries a reference input that exists.
+ * output. The honest control spends a retained output instead, the owner's
+ * smallest other output that funds it (`selectOwnerOutput`), as the
+ * reference-input fault does; with `controlReferencesRetained` the
+ * reference-input control also reads a second retained output, any one other
+ * than the one it spends, since a read output pays nothing, so the control
+ * carries a reference input that exists.
  */
 export const buildJourneyWithdrawnTransaction = async (
   input: HistoryEventBlockInput & {
@@ -202,34 +283,35 @@ export const buildJourneyWithdrawnTransaction = async (
   const withdrawnOutput = journeyLedgerPairs(input.predecessor.ledger).find(
     ([key]) => key === withdrawn.toString("hex"),
   );
-  const owner = CML.PrivateKey.from_bech32(
-    walletFromSeed(input.ledgerOwnerSeedPhrase, {
-      network: journeyNetwork().network,
-    }).paymentKey,
-  )
-    .to_public()
-    .hash()
-    .to_hex();
+  const key = journeyOwnerKey(input.ledgerOwnerSeedPhrase);
+  const owner = key.to_public().hash().to_hex();
   const retained = ownedHistoryLedgerEntries(input.predecessor, owner).filter(
     ({ outRef }) => !outRef.equals(withdrawn),
   );
-  const unspent = retained[0];
+  if (withdrawnOutput === undefined)
+    throw new Error(
+      "Withdrawn-input journeys need the withdrawn output on their predecessor",
+    );
+  const unspent = selectOwnerOutput(
+    retained,
+    withdrawnRetainedSpend({
+      header: input.predecessor.header,
+      key,
+      withdrawn,
+      readsWithdrawn: input.category === "withdrawnReferenceInput",
+    }),
+    `the ${input.category} family's spend of a retained output`,
+  );
   const referencesRetained =
     input.honest === true &&
     input.category === "withdrawnReferenceInput" &&
     input.controlReferencesRetained === true;
-  const controlReference = referencesRetained ? retained[1] : undefined;
+  const controlReference = referencesRetained
+    ? retained.find(({ outRef }) => !outRef.equals(unspent.outRef))
+    : undefined;
   if (referencesRetained && controlReference === undefined)
     throw new Error(
       "A reference-input control needs a second retained predecessor output",
-    );
-  const remaining =
-    unspent === undefined
-      ? undefined
-      : [unspent.outRef.toString("hex"), unspent.output.toString("hex")];
-  if (withdrawnOutput === undefined || remaining === undefined)
-    throw new Error(
-      "Withdrawn-input journeys need two actual predecessor outputs, one withdrawn and one retained for the valid control",
     );
   const withdrawalBlock = await retainJourneyWithdrawals({
     ...input,
@@ -239,44 +321,23 @@ export const buildJourneyWithdrawnTransaction = async (
     throw new Error(
       "Withdrawn-input journey requires an honestly valid staged withdrawal",
     );
-  const key = CML.PrivateKey.from_bech32(
-    walletFromSeed(input.ledgerOwnerSeedPhrase, {
-      network: journeyNetwork().network,
-    }).paymentKey,
-  );
-  const selected =
-    !input.honest && input.category === "withdrawnInput"
-      ? withdrawnOutput
-      : remaining;
-  const selectedOutput = decodeMidgardTxOutput(Buffer.from(selected[1], "hex"));
-  const transaction = buildAtJourneyMinFee(
-    input.predecessor.header,
-    (fee) =>
-      signHistoryTransaction(
-        {
-          spendInputs: [Buffer.from(selected[0], "hex")],
-          referenceInputs:
-            !input.honest && input.category === "withdrawnReferenceInput"
-              ? [withdrawn]
-              : controlReference === undefined
-                ? []
-                : [controlReference.outRef],
-          outputs: [
-            encodeMidgardTxOutput({
-              ...selectedOutput,
-              value: {
-                ...selectedOutput.value,
-                lovelace: selectedOutput.value.lovelace - fee,
-              },
-            }),
-          ],
-          fee,
-          networkId: input.predecessor.header.expectedNetworkId,
-        },
-        key,
-      ),
-    selectedOutput.value.lovelace,
-  );
+  const transaction = signOwnerPassThrough({
+    header: input.predecessor.header,
+    key,
+    entry:
+      !input.honest && input.category === "withdrawnInput"
+        ? {
+            outRef: withdrawn,
+            output: Buffer.from(withdrawnOutput[1], "hex"),
+          }
+        : unspent,
+    referenceInputs:
+      !input.honest && input.category === "withdrawnReferenceInput"
+        ? [withdrawn]
+        : controlReference === undefined
+          ? []
+          : [controlReference.outRef],
+  });
   const transactions = await retainHistoryTransactions({
     ...input,
     predecessor: {

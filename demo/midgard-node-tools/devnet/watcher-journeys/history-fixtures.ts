@@ -81,10 +81,10 @@ const fundingOwnerOutput = async (
   const entry = await smallestQualifyingOutput(
     ownedHistoryLedgerEntries(predecessor, owner),
     {
-      requiredOf: async (candidate) => {
+      funds: async (candidate) => {
         const { total, orderLovelace } = await required(candidate);
         requirements.set(candidate.outRef.toString("hex"), orderLovelace);
-        return total;
+        return decodeMidgardTxOutput(candidate.output).value.lovelace >= total;
       },
     },
   );

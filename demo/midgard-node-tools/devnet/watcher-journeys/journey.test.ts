@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, it } from "vitest";
 import { journeyFamilyDirectory } from "./artifacts.js";
 import { selectJourneyFixtures } from "./catalogue.js";
 import { selectJourneyDeploymentSource } from "./deployment-source.js";
+import { spendsOwnerOutput } from "./family-owner-requirement.js";
 import { journeyFamilyDeadline } from "./journey-family-deadline.js";
 import { runAutonomousWatcherJourney } from "./journey-runner.js";
 import {
@@ -21,7 +22,6 @@ import { readStackJourneyTimingPaths } from "./stack-context.js";
 import { fundStackLedgerOwner } from "./stack-ledger-owner.js";
 import { verifiedPredecessorBeforeFamily } from "./stack-verified-predecessor.before-family.js";
 import { checkStackVerifiedPredecessor } from "./stack-verified-predecessor.js";
-import { withdrawalFundingShape } from "./withdrawal-owner-funding.js";
 import { withdrawalOwnerTopUpBeforeFamily } from "./withdrawal-owner-top-up.js";
 
 // Devnet mode (the default) runs from MIDGARD_WATCHER_JOURNEY_RUN_DIR and
@@ -81,11 +81,13 @@ beforeAll(async () => {
 // absorption bound and the family's decision allowance, for the new block to
 // be attested and verified.
 //
-// A withdrawal family then needs an output of the ledger owner's that funds
-// what it withdraws. An earlier family, or the heal's transfer, may have
-// spent or split them, so when none on the tail it builds on does, one
-// deposit of exactly what the family needs tops the owner up and the check
-// waits for it to be absorbed (`withdrawalOwnerTopUpBeforeFamily`). It runs
+// A family that withdraws or spends an output of the ledger owner's then
+// needs one that funds what it withdraws or every transaction it builds from
+// it, each output at its minimum ADA after its fee. An earlier family, or the
+// heal's transfer, may have spent or split them, so when none on the tail it
+// builds on does, one deposit of exactly what the family needs (never less
+// than the SDK deposits) tops the owner up and the check waits for it to be
+// absorbed (`withdrawalOwnerTopUpBeforeFamily`). It runs
 // last, so no transfer moves the output it found. Neither does anything once
 // the session has closed, nor for a family resuming its staging.
 const familyTitle = (category: string) =>
@@ -97,8 +99,7 @@ beforeEach(async ({ task }) => {
     ({ category }) => familyTitle(category) === task.name,
   );
   if (fixture === undefined) return;
-  const withdraws = withdrawalFundingShape(fixture.category) !== undefined;
-  if (source.mode !== "stack" && !withdraws) return;
+  if (source.mode !== "stack" && !spendsOwnerOutput(fixture.category)) return;
   const opened = await openSession();
   const onStage = (name: string) => {
     console.info(`Before the family: ${name}`);

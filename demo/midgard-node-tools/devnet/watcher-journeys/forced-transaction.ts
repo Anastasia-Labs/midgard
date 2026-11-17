@@ -1,5 +1,4 @@
 import {
-  decodeMidgardAddressBytes,
   decodeMidgardTxOutput,
   decodeMidgardVersionedScript,
   encodeCbor,
@@ -18,6 +17,12 @@ import { CML, walletFromSeed } from "@lucid-evolution/lucid";
 import { buildAtJourneyMinFee } from "./journey-fee.js";
 import type { JourneyLedgerPredecessor } from "./journey-ledger.js";
 import { journeyNetwork } from "./journey-network.js";
+import {
+  ownedLedgerEntries,
+  type OwnedOutput,
+  type OwnerSpend,
+  selectOwnerOutput,
+} from "./owner-output-selection.js";
 
 /** `[0, all []]`: the versioned native script that every transaction satisfies. */
 const alwaysNativeScript = decodeMidgardVersionedScript(
@@ -29,13 +34,29 @@ export type JourneyOwnerTransactionInput = {
   ledgerOwnerSeedPhrase: string;
 };
 
+/** The ledger owner's payment key. */
+export const journeyOwnerKey = (seedPhrase: string) =>
+  CML.PrivateKey.from_bech32(
+    walletFromSeed(seedPhrase, { network: journeyNetwork().network })
+      .paymentKey,
+  );
+
+/** The ledger owner's outputs on `predecessor`. */
+export const journeyOwnerEntries = (input: JourneyOwnerTransactionInput) =>
+  ownedLedgerEntries(
+    input.predecessor.ledger.entries,
+    journeyOwnerKey(input.ledgerOwnerSeedPhrase).to_public().hash().to_hex(),
+  );
+
 /**
- * The ledger owner's signed transaction that spends its own retained output
- * into one protected output carrying that output's value plus one token minted
- * under `policyScript`.
+ * The ledger owner's signed transaction that spends `spent`, one of its own
+ * retained outputs, into one protected output carrying that output's value
+ * plus one token minted under `policyScript`. Its `outputs` are the outputs
+ * it pays.
  */
 export const buildJourneyOwnerMintTransaction = (
   input: JourneyOwnerTransactionInput & {
+    spent: OwnedOutput;
     policyScript: MidgardVersionedScript;
     /** Paid from the spent output. */
     fee: bigint;
@@ -46,21 +67,9 @@ export const buildJourneyOwnerMintTransaction = (
     referenceInputs?: readonly Buffer[];
   },
 ) => {
-  const wallet = walletFromSeed(input.ledgerOwnerSeedPhrase, {
-    network: journeyNetwork().network,
-  });
-  const key = CML.PrivateKey.from_bech32(wallet.paymentKey);
+  const key = journeyOwnerKey(input.ledgerOwnerSeedPhrase);
   const owner = Buffer.from(key.to_public().hash().to_raw_bytes());
-  const spent = input.predecessor.ledger.entries.find(({ output: bytes }) => {
-    const credential = decodeMidgardAddressBytes(
-      decodeMidgardTxOutput(bytes).address,
-    ).paymentCredential;
-    return (
-      credential.kind === "PubKey" && Buffer.from(credential.hash).equals(owner)
-    );
-  });
-  if (spent === undefined)
-    throw new Error("Owner journey transaction needs a retained ledger input");
+  const { spent } = input;
   const output = decodeMidgardTxOutput(spent.output);
   const policy = hashMidgardVersionedScript(input.policyScript);
   const assets = new Map(
@@ -99,6 +108,7 @@ export const buildJourneyOwnerMintTransaction = (
   };
   const unsigned = buildFixtureTransaction(transactionInput);
   return {
+    outputs: transactionInput.outputs ?? [],
     transaction: buildFixtureTransaction({
       ...transactionInput,
       addressWitnesses: [
@@ -113,6 +123,35 @@ export const buildJourneyOwnerMintTransaction = (
   };
 };
 
+/** The forced transaction spending `spent`, at its minimum fee. */
+const forcedTransactionOf = (
+  input: JourneyOwnerTransactionInput & {
+    referenceInputs?: readonly Buffer[];
+  },
+  spent: OwnedOutput,
+) =>
+  buildAtJourneyMinFee(input.predecessor.header, (fee) => {
+    const built = buildJourneyOwnerMintTransaction({
+      predecessor: input.predecessor,
+      ledgerOwnerSeedPhrase: input.ledgerOwnerSeedPhrase,
+      spent,
+      policyScript: alwaysNativeScript,
+      fee,
+      referenceInputs: input.referenceInputs,
+    });
+    return { canonicalCbor: built.transaction.canonicalCbor, built };
+  }).built;
+
+/** What a forced-order fixture's valid transaction pays from an output. */
+export const journeyForcedTransactionSpend =
+  (
+    input: JourneyOwnerTransactionInput & {
+      referenceInputs?: readonly Buffer[];
+    },
+  ): OwnerSpend =>
+  (entry) =>
+    forcedTransactionOf(input, entry).outputs;
+
 /**
  * The exact valid transaction every forced-order fixture places in its L1
  * order. Forced transactions are native-only: it carries no redeemer, Plutus
@@ -120,7 +159,8 @@ export const buildJourneyOwnerMintTransaction = (
  * validity upper bound. Its single spend input, output, required signer, mint
  * policy and native script witness are the coordinates the wrongful claims
  * name. It pays the minimum fee the predecessor's schedule prices it at, the
- * schedule its block's replay applies.
+ * schedule its block's replay applies, from the owner's smallest output that
+ * pays that fee and the output's minimum ADA (`selectOwnerOutput`).
  */
 export const prepareJourneyForcedTransaction = (
   input: JourneyOwnerTransactionInput & {
@@ -128,15 +168,12 @@ export const prepareJourneyForcedTransaction = (
     referenceInputs?: readonly Buffer[];
   },
 ) => ({
-  transaction: buildAtJourneyMinFee(
-    input.predecessor.header,
-    (fee) =>
-      buildJourneyOwnerMintTransaction({
-        predecessor: input.predecessor,
-        ledgerOwnerSeedPhrase: input.ledgerOwnerSeedPhrase,
-        policyScript: alwaysNativeScript,
-        fee,
-        referenceInputs: input.referenceInputs,
-      }).transaction,
-  ),
+  transaction: forcedTransactionOf(
+    input,
+    selectOwnerOutput(
+      journeyOwnerEntries(input),
+      journeyForcedTransactionSpend(input),
+      "a forced-order fixture's valid transaction",
+    ),
+  ).transaction,
 });

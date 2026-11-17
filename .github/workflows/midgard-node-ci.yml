@@ -1391,6 +1391,7 @@ jobs:
             watcher-journeys/operator-pause.compose-transport.test.ts \
             watcher-journeys/operator-pause.test.ts \
             watcher-journeys/operator-release-guard.test.ts \
+            watcher-journeys/owner-output-selection.test.ts \
             watcher-journeys/process.test.ts \
             watcher-journeys/prover-address-isolation.test.ts \
             watcher-journeys/public-da-preflight.test.ts \

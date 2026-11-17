@@ -3,10 +3,8 @@ import {
   decodeMidgardTxOutput,
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
-  MIDGARD_MAX_OUTPUT_INDEX,
   type MidgardTxOutput,
 } from "@al-ft/midgard-core";
-import { TX_HASH_BYTE_LENGTH } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   outputCborMeetsMinAda,
@@ -19,8 +17,20 @@ import {
   ownedHistoryLedgerEntries,
   signHistoryTransaction,
 } from "./history-cases.js";
-import { ownedOutputWithdrawalBody } from "./history-events.js";
+import {
+  ownedOutputWithdrawalBody,
+  withdrawnRetainedSpend,
+} from "./history-events.js";
 import { buildAtJourneyMinFee } from "./journey-fee.js";
+import {
+  ascendingByLovelace,
+  lovelaceOf,
+  type OwnedOutput,
+  ownerSpendLeastLovelace,
+  topUpTemplate,
+} from "./owner-output-selection.js";
+
+export type { OwnedOutput } from "./owner-output-selection.js";
 
 /**
  * What a withdrawal family needs of the ledger owner's outputs: one output
@@ -57,17 +67,11 @@ export type WithdrawalQuote = (
   body: SDK.WithdrawalBody,
 ) => Promise<{ orderLovelace: bigint; targetMinimum: bigint }>;
 
-/** An output of the ledger owner's: its reference and canonical bytes. */
-export type OwnedOutput = Readonly<{ outRef: Buffer; output: Buffer }>;
-
 /** The header fields a split prices and signs against. */
 export type SplitHeader = Pick<
   SDK.Header,
   "minFeeA" | "minFeeB" | "expectedNetworkId"
 >;
-
-const lovelaceOf = (entry: OwnedOutput) =>
-  decodeMidgardTxOutput(entry.output).value.lovelace;
 
 const withLovelace = (
   output: MidgardTxOutput,
@@ -183,9 +187,12 @@ export const signOwnerSplit = (
 
 /**
  * What a split of `entry` needs: the withdrawn first output's requirement,
- * the least change at the entry's address that meets its own minimum ADA,
- * and the fee of the split that pays exactly those. An entry holding at
- * least the total splits with change at least that minimum.
+ * the least change at the entry's address that meets its own minimum ADA and
+ * funds the withdrawn-input family's spend of it (`withdrawnRetainedSpend`,
+ * reading the withdrawn output: either family's), and the fee of the split
+ * that pays exactly those. An entry holding at least the total splits with
+ * change that funds the family's control however little else the owner
+ * holds.
  */
 export const splitRequirement = async (
   quote: WithdrawalQuote,
@@ -197,11 +204,10 @@ export const splitRequirement = async (
   }>,
 ) => {
   const output = decodeMidgardTxOutput(input.entry.output);
+  const { txId } = decodeMidgardSpendInputItem(input.entry.outRef);
   const orderLovelace = await withdrawalRequirement(quote, {
     owner: input.owner,
-    outRef: splitFirstOutRef(
-      decodeMidgardSpendInputItem(input.entry.outRef).txId,
-    ),
+    outRef: splitFirstOutRef(txId),
     output,
   });
   const changeAt = (lovelace: bigint) =>
@@ -216,6 +222,19 @@ export const splitRequirement = async (
     if (minimum <= change) break;
     change = minimum;
   }
+  const spent = ownerSpendLeastLovelace(
+    withdrawnRetainedSpend({
+      header: input.header,
+      key: input.key,
+      withdrawn: splitFirstOutRef(txId),
+      readsWithdrawn: true,
+    }),
+    {
+      outRef: encodeMidgardSpendInputItem({ txId, outputIndex: 1 }),
+      output: changeAt(0n),
+    },
+  );
+  if (spent > change) change = spent;
   const { fee } = pricedSplit({
     header: input.header,
     key: input.key,
@@ -227,16 +246,24 @@ export const splitRequirement = async (
 };
 
 /**
- * What one withdrawal family needs of the ledger owner, read against the
- * tail it will build on.
+ * What one family needs of the ledger owner's outputs, read against the tail
+ * it will build on.
  */
 export type OwnerFundingRequirement = Readonly<{
-  shape: WithdrawalFundingShape;
+  /** What one qualifying output funds, as stages and refusals name it. */
+  purpose: string;
   /** The lovelace an output at the top-up's address needs to qualify. */
   topUpLovelace: bigint;
-  /** What `entry` needs to qualify. */
-  requiredOf(entry: OwnedOutput): Promise<bigint>;
+  /** Whether `entry` qualifies. */
+  funds(entry: OwnedOutput): Promise<boolean>;
 }>;
+
+/** A withdrawal family's requirement, with what each output needs. */
+export type WithdrawalOwnerRequirement = OwnerFundingRequirement &
+  Readonly<{
+    /** The lovelace `entry` needs to qualify. */
+    requiredOf(entry: OwnedOutput): Promise<bigint>;
+  }>;
 
 /**
  * What `entry` needs to fund a family of `shape`, with the lovelace its
@@ -288,23 +315,14 @@ export const withdrawalOwnerRequirement = async (
     /** The canonical address bytes a top-up deposit's output carries. */
     topUpAddress: Buffer;
   }>,
-): Promise<OwnerFundingRequirement> => {
+): Promise<WithdrawalOwnerRequirement> => {
   const required = ownerOutputRequirement(input);
   const requiredOf = async (entry: OwnedOutput) =>
     (await required(entry)).total;
-  const template: OwnedOutput = {
-    outRef: encodeMidgardSpendInputItem({
-      txId: Buffer.alloc(TX_HASH_BYTE_LENGTH),
-      outputIndex: MIDGARD_MAX_OUTPUT_INDEX,
-    }),
-    output: encodeMidgardTxOutput({
-      address: input.topUpAddress,
-      value: { lovelace: 0n, assets: new Map() },
-    }),
-  };
   return {
-    shape: input.shape,
-    topUpLovelace: await requiredOf(template),
+    purpose: `a ${input.shape}`,
+    topUpLovelace: await requiredOf(topUpTemplate(input.topUpAddress)),
+    funds: async (entry) => lovelaceOf(entry) >= (await requiredOf(entry)),
     requiredOf,
   };
 };
@@ -315,15 +333,10 @@ export const withdrawalOwnerRequirement = async (
  */
 export const smallestQualifyingOutput = async (
   entries: readonly OwnedOutput[],
-  requirement: Pick<OwnerFundingRequirement, "requiredOf">,
+  requirement: Pick<OwnerFundingRequirement, "funds">,
 ): Promise<OwnedOutput | undefined> => {
-  const ascending = [...entries].sort((left, right) => {
-    const difference = lovelaceOf(left) - lovelaceOf(right);
-    return difference < 0n ? -1 : difference > 0n ? 1 : 0;
-  });
-  for (const entry of ascending)
-    if (lovelaceOf(entry) >= (await requirement.requiredOf(entry)))
-      return entry;
+  for (const entry of ascendingByLovelace(entries))
+    if (await requirement.funds(entry)) return entry;
   return undefined;
 };
 
@@ -331,7 +344,7 @@ export const smallestQualifyingOutput = async (
 export const qualifyingOwnedOutput = (
   tail: HistoryPredecessor,
   owner: string,
-  requirement: Pick<OwnerFundingRequirement, "requiredOf">,
+  requirement: Pick<OwnerFundingRequirement, "funds">,
 ) =>
   smallestQualifyingOutput(ownedHistoryLedgerEntries(tail, owner), requirement);
 
@@ -377,7 +390,7 @@ export const ensureWithdrawalOwnerFunding = async (
     return "funded";
   }
   ports.onStage(
-    `topping up the ledger owner with ${requirement.topUpLovelace.toString()} lovelace for a ${requirement.shape}`,
+    `topping up the ledger owner with ${requirement.topUpLovelace.toString()} lovelace for ${requirement.purpose}`,
   );
   await ports.topUp(requirement);
   const after = await ports.readTail();
@@ -386,7 +399,7 @@ export const ensureWithdrawalOwnerFunding = async (
     (await qualifyingOwnedOutput(after, ports.owner, requirement)) === undefined
   )
     throw new Error(
-      `The ledger owner's top-up of ${requirement.topUpLovelace.toString()} lovelace left no output that funds a ${requirement.shape}`,
+      `The ledger owner's top-up of ${requirement.topUpLovelace.toString()} lovelace left no output that funds ${requirement.purpose}`,
     );
   await ports.settle(requirement);
   return "topped-up";
