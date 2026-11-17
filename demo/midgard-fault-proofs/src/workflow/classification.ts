@@ -5,6 +5,7 @@ import "./detection-subject.js";
 import "./classification.fraud-proof-classification-rules.js";
 import "./classification.classify-canonical-block-violations.js";
 export {
+  admittedCanonicalViolationDetections,
   type CanonicalBlockClassification,
   type CanonicalViolationDetection,
   classifyCanonicalBlockViolations,

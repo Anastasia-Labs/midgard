@@ -26,6 +26,7 @@ import {
 import { detectValueConservationFaults } from "../value-not-preserved/replay.js";
 import { detectWithdrawalMistagReplay } from "../withdrawal-mistag/replay.js";
 import {
+  admittedCanonicalViolationDetections,
   type CanonicalViolationDetection,
   selectsProvableFault,
 } from "./classification.js";
@@ -197,10 +198,11 @@ export const createCompleteCanonicalReplayUnion = (
       if (held.length !== 0) {
         // Held events can only add findings at or after their own order, so
         // the block is decided without them only by a finding strictly
-        // before every held event.
+        // before every held event, and only one the classifier may select.
         const earliest = Math.min(
-          ...detections.map((detection) =>
-            detectionEventOrder(evidence.reconstruction, detection),
+          ...admittedCanonicalViolationDetections(evidence, detections).map(
+            (detection) =>
+              detectionEventOrder(evidence.reconstruction, detection),
           ),
         );
         const blocking = held.find(

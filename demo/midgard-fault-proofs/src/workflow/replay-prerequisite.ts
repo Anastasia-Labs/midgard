@@ -14,6 +14,7 @@ import {
   type SourceEventRecord,
 } from "../transition-trace/reconstruct.js";
 import {
+  admittedCanonicalViolationDetections,
   type CanonicalViolationDetection,
   FRAUD_PROOF_CLASSIFICATION_RULES,
 } from "./classification.js";
@@ -222,7 +223,7 @@ const coveredAtOrBefore = (
     }
   })();
   if (limit === undefined) return false;
-  return detections.some(
+  return admittedCanonicalViolationDetections(evidence, detections).some(
     (detection) =>
       detection.headerHash === evidence.headerHash &&
       FRAUD_PROOF_CLASSIFICATION_RULES.some((rule) =>
