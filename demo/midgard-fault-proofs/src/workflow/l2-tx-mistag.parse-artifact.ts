@@ -7,7 +7,10 @@ import {
   admitCanonicalEvidenceForProofBuild,
   type CanonicalEvidenceBuilderInput,
 } from "../evidence/prepare-from-evidence.js";
-import { prepareL2TxMistagFromTransactions } from "../l2-tx-mistag/prepare-l2-tx-mistag.js";
+import {
+  type L2TxMistagCommittedLeafInclusion,
+  l2TxMistagInclusionFromCommittedLeaves,
+} from "../l2-tx-mistag/committed-leaf-inclusion.js";
 import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
@@ -18,7 +21,12 @@ import {
   type LinearFamilyAssemblyContext,
   type LinearFamilyReferenceScripts,
 } from "./family-definition.js";
-import { type JournalJsonObject, normalizeJournalJson } from "./journal.js";
+import {
+  journalJsonDigest,
+  type JournalJsonObject,
+  normalizeJournalJson,
+} from "./journal.js";
+import type { WorkflowRawFamilyEvidence } from "./orchestrator.fraud-proof-family-workflow-adapter.js";
 
 export const L2_TX_MISTAG_ARTIFACT =
   "midgard-production-l2-tx-mistag-artifact-v1" as const;
@@ -244,6 +252,33 @@ export const admitL2TxMistagArtifact = async (
   return Object.freeze({ artifact, inclusion });
 };
 
+const artifactFromInclusion = async ({
+  headerHash,
+  inclusion,
+}: {
+  readonly headerHash: string;
+  readonly inclusion: L2TxMistagCommittedLeafInclusion;
+}): Promise<L2TxMistagArtifact> => {
+  const artifact = normalizeJournalJson({
+    schemaVersion: L2_TX_MISTAG_ARTIFACT,
+    headerHash,
+    detectionId: `l2-tx-mistag:${inclusion.transactionIndex.toString()}:${inclusion.nativeTxId}:1`,
+    transactionIndex: inclusion.transactionIndex,
+    transactionCount: inclusion.transactionCount,
+    committedTransactionsRoot: inclusion.committedTransactionsRoot,
+    transactionsPhasRoot: inclusion.transactionsPhasRoot,
+    nativeTxId: inclusion.nativeTxId,
+    nativeTxCompactCbor: inclusion.nativeTxCompactCbor,
+    l2TransactionSourceCbor: inclusion.l2TransactionSourceCbor,
+    txMembershipProofCbor: inclusion.txMembershipProofCbor,
+  }) as L2TxMistagArtifact;
+  await admitL2TxMistagArtifact(artifact);
+  return Object.freeze(artifact);
+};
+
+/** The artifact for a classified code-1 normal leaf. It is built from the
+ * committed leaves alone, so a leaf whose inputs or fields do not decode is
+ * still proven. */
 export const prepareL2TxMistagArtifact = async ({
   evidence,
   classification,
@@ -263,39 +298,69 @@ export const prepareL2TxMistagArtifact = async ({
     );
   }
   const transactionIndex = Number(classification.selected.position);
-  const selected = admitted.transactions[transactionIndex];
+  const selected = evidence.reconstruction.transactions[transactionIndex];
   if (selected === undefined) {
     throw new Error("l2-tx-mistag selected transaction is absent");
   }
-  const expectedDetection = `l2-tx-mistag:${transactionIndex.toString()}:${selected.nodeTxId}:1`;
+  const expectedDetection = `l2-tx-mistag:${transactionIndex.toString()}:${selected.txId}:1`;
   if (
     classification.selected.violationId !== "l2-tx-mistag" ||
     classification.selected.detectionId !== expectedDetection
   ) {
     throw new Error("l2-tx-mistag classification changed selected leaf");
   }
-  const prepared = await prepareL2TxMistagFromTransactions({
+  return await artifactFromInclusion({
     headerHash: admitted.headerHash,
-    transactions: admitted.transactions,
-    expectedTransactionsRoot: admitted.expectedTransactionsRoot,
-    txId: selected.nodeTxId,
+    inclusion: await l2TxMistagInclusionFromCommittedLeaves({
+      entries: evidence.reconstruction.transactions.map(
+        ({ keyBytes, valueBytes }) =>
+          [keyBytes.toString("hex"), valueBytes.toString("hex")] as const,
+      ),
+      transactionIndex,
+      committedTransactionsRoot: admitted.expectedTransactionsRoot,
+      l2TransactionCount: evidence.header.l2TransactionCount,
+    }),
   });
-  const inclusion = prepared.tx.txInclusion;
-  const artifact = normalizeJournalJson({
-    schemaVersion: L2_TX_MISTAG_ARTIFACT,
-    headerHash: admitted.headerHash,
-    detectionId: expectedDetection,
-    transactionIndex,
-    transactionCount: prepared.txCount,
-    committedTransactionsRoot: prepared.committedTransactionsRoot,
-    transactionsPhasRoot: prepared.transactionsPhasRoot,
-    nativeTxId: inclusion.nativeTxId,
-    nativeTxCompactCbor: inclusion.nativeTxCompactCbor,
-    l2TransactionSourceCbor: inclusion.l2TransactionSourceCbor,
-    txMembershipProofCbor: inclusion.txMembershipProofCbor,
-  }) as L2TxMistagArtifact;
-  await admitL2TxMistagArtifact(artifact);
-  return Object.freeze(artifact);
+};
+
+type RoutedL2TxMistag = Extract<
+  WorkflowRawFamilyEvidence,
+  { readonly kind: "l2_tx_mistag" }
+>;
+
+const requireRoutedL2TxMistag = (
+  routed: WorkflowRawFamilyEvidence,
+): RoutedL2TxMistag => {
+  if (routed.kind !== "l2_tx_mistag")
+    throw new Error(`l2-tx-mistag raw preparation received ${routed.kind}`);
+  return routed;
+};
+
+/** The artifact for a code-1 normal leaf the early raw routes decided, before
+ * the block was reconstructed. */
+export const prepareL2TxMistagRawArtifact = async (
+  routed: WorkflowRawFamilyEvidence,
+): Promise<L2TxMistagArtifact> => {
+  const { evidence } = requireRoutedL2TxMistag(routed);
+  return await artifactFromInclusion({
+    headerHash: evidence.headerHash,
+    inclusion: evidence.selected,
+  });
+};
+
+/** Rebuilds the raw-route artifact and requires the durable one to match. */
+export const validatePreparedL2TxMistagRawArtifact = async ({
+  routed,
+  artifact,
+}: {
+  readonly routed: WorkflowRawFamilyEvidence;
+  readonly artifact: JournalJsonObject;
+}): Promise<void> => {
+  const expected = await prepareL2TxMistagRawArtifact(routed);
+  if (journalJsonDigest(expected) !== journalJsonDigest(artifact))
+    throw new Error(
+      "l2-tx-mistag durable artifact differs from authenticated raw evidence",
+    );
 };
 
 export const WITNESS_ROLES = CHUNKED_VERIFY_WITNESS_ROLES;

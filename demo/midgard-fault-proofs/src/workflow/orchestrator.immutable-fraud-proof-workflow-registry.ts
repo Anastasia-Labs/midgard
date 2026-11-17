@@ -159,6 +159,7 @@ export type WorkflowEvidenceBinding = JournalJsonObject &
         readonly route: "authenticated_raw_family";
         readonly category:
           | "fieldPreimageLengthMismatch"
+          | "l2TxMistag"
           | "mintDeclaredAssetLimit"
           | "observersForbiddenOnUntaggedNetwork";
         readonly headerHash: string;

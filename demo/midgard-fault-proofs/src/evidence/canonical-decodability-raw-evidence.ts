@@ -16,6 +16,7 @@ import {
   commitCountedRoot,
   keyValuePhasRootWithCount,
 } from "../transition-trace/phas.js";
+import { isCommittedInvalidNormalLeaf } from "./committed-normal-leaf-validity.js";
 
 export const CANONICAL_DECODABILITY_RAW_EVIDENCE =
   "midgard-canonical-decodability-raw-evidence-v1" as const;
@@ -102,18 +103,25 @@ const sourceFromMaterial = (
 /**
  * Reopens an L1-authenticated transactions root and total-decodes only the
  * outer transaction envelope. A result exists iff one exact committed field
- * has a non-grammatical §5.1 envelope; arbitrary malformed payloads still fail.
+ * of a leaf committed with validity code 0 has a non-grammatical §5.1
+ * envelope; arbitrary malformed payloads still fail. A leaf committed with a
+ * non-zero code is passed over: the step opens a normal leaf only at code 0,
+ * and the leaf is an `l2TxMistag` fault instead. Among defective leaves the
+ * one earliest on `orderOf` (the block's event order; committed order when
+ * omitted) is selected.
  */
 export const canonicalDecodabilityRawBlockEvidenceFromVerifiedPayload = async ({
   observation,
   payloadEnvelopeCbor,
   daProvenance,
   minimumConfirmationDepth,
+  orderOf = (transactionIndex) => transactionIndex,
 }: {
   readonly observation: SDK.AuthenticatedStateQueueHeaderObservation;
   readonly payloadEnvelopeCbor: Uint8Array;
   readonly daProvenance: SDK.EvidenceProvenance;
   readonly minimumConfirmationDepth?: number;
+  readonly orderOf?: (transactionIndex: number) => number;
 }): Promise<CanonicalDecodabilityRawBlockEvidence> => {
   const raw = await daHashPreimageBlockEvidenceFromVerifiedPayload({
     observation,
@@ -207,7 +215,11 @@ export const canonicalDecodabilityRawBlockEvidenceFromVerifiedPayload = async ({
         material,
       }),
     );
-    if (selected === undefined) {
+    if (
+      !isCommittedInvalidNormalLeaf(source) &&
+      (selected === undefined ||
+        orderOf(index) < orderOf(selected.transactionIndex))
+    ) {
       for (const [
         fieldIndex,
         committedPreimage,
@@ -237,7 +249,7 @@ export const canonicalDecodabilityRawBlockEvidenceFromVerifiedPayload = async ({
   }
   if (selected === undefined) {
     throw new Error(
-      "canonical-decodability raw route found no committed field-envelope violation",
+      "canonical-decodability raw route found no committed field-envelope violation on a code-0 leaf",
     );
   }
   const trie = await buildTrieView(entries);

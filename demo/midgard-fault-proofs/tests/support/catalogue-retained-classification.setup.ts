@@ -15,6 +15,7 @@ import {
   requireTransitionTraceL1Events,
 } from "../../src/transition-trace/l1-events.js";
 import { createCatalogueCompleteCanonicalReplay } from "../../src/workflow/catalogue-replay.js";
+import type { CompleteCanonicalReplayIsolation } from "../../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
 import {
   authenticatedStateQueueObservationDigest,
   createHeaderClassifier,
@@ -77,6 +78,7 @@ export const setup = async (
     "block" | "predecessor" | "transaction" | "orderKey"
   >,
   sourceKind: "normal" | "forced",
+  isolation?: CompleteCanonicalReplayIsolation,
 ) => {
   const seedHandle = await captureRetainedPlutusIdentityOrigins(fixture, {
     omitEvent: sourceKind === "normal",
@@ -150,6 +152,7 @@ export const setup = async (
     hubOraclePolicyId,
     minimumConfirmationDepth: policy.confirmationDepth,
     owner: "b1".repeat(28),
+    ...(isolation === undefined ? {} : { isolation }),
   });
   const classifierInput = {
     l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,

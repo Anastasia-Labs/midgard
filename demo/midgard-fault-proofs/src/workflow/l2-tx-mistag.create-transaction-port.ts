@@ -25,7 +25,9 @@ import {
   type L2TxMistagWorkflowReferenceScripts,
   parseArtifact,
   prepareL2TxMistagArtifact,
+  prepareL2TxMistagRawArtifact,
   record,
+  validatePreparedL2TxMistagRawArtifact,
   WITNESS_ROLES,
 } from "./l2-tx-mistag.parse-artifact.js";
 import {
@@ -153,6 +155,8 @@ const createTransactionPort = (
   category: "l2TxMistag",
   prepare: async ({ evidence, classification }) =>
     await prepareL2TxMistagArtifact({ evidence, classification }),
+  prepareRaw: async (routed) => await prepareL2TxMistagRawArtifact(routed),
+  validatePreparedRawArtifact: validatePreparedL2TxMistagRawArtifact,
   capture: async ({ action, artifact }) => {
     const admitted = await admitL2TxMistagArtifact(artifact);
     if (admitted.artifact.headerHash !== config.headerHash) {

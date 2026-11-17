@@ -170,32 +170,48 @@ const eventOrders = new WeakMap<
 >();
 
 /**
- * Every source event's order, built once per reconstruction. The trace is
- * scanned in `step_index` order and the lowest step naming an event wins;
- * untraced events are placed after the last step in source-event order.
+ * The order of each given event, by fingerprint, in source-event order. The
+ * trace is scanned in `step_index` order and the lowest step naming an event
+ * wins; untraced events are placed after the last step in the given order.
+ * The early raw routes, which run before a block is reconstructed, order its
+ * normal leaves by this same rule.
  */
-const eventOrdersOf = (
-  reconstruction: EventOrderSource,
+export const eventOrdersOver = (
+  transitionTrace: readonly Readonly<{
+    key: bigint;
+    value: Pick<SDK.TransitionStep, "event_key">;
+  }>[],
+  fingerprints: readonly string[],
 ): ReadonlyMap<string, EventOrder> => {
-  const cached = eventOrders.get(reconstruction.sourceEvents);
-  if (cached !== undefined) return cached;
   const stepByFingerprint = new Map<string, number>();
-  for (const { key, value } of [...reconstruction.transitionTrace].sort(
-    (left, right) => (left.key < right.key ? -1 : left.key > right.key ? 1 : 0),
+  for (const { key, value } of [...transitionTrace].sort((left, right) =>
+    left.key < right.key ? -1 : left.key > right.key ? 1 : 0,
   )) {
     const fingerprint = eventKeyFingerprint(value.event_key);
     if (!stepByFingerprint.has(fingerprint))
       stepByFingerprint.set(fingerprint, Number(key));
   }
-  const untracedBase = reconstruction.transitionTrace.length;
-  const orders = new Map(
-    reconstruction.sourceEvents.map(
-      ({ fingerprint }, index) =>
+  const untracedBase = transitionTrace.length;
+  return new Map(
+    fingerprints.map(
+      (fingerprint, index) =>
         [
           fingerprint,
           stepByFingerprint.get(fingerprint) ?? untracedBase + index,
         ] as const,
     ),
+  );
+};
+
+/** Every source event's order, built once per reconstruction. */
+const eventOrdersOf = (
+  reconstruction: EventOrderSource,
+): ReadonlyMap<string, EventOrder> => {
+  const cached = eventOrders.get(reconstruction.sourceEvents);
+  if (cached !== undefined) return cached;
+  const orders = eventOrdersOver(
+    reconstruction.transitionTrace,
+    reconstruction.sourceEvents.map(({ fingerprint }) => fingerprint),
   );
   eventOrders.set(reconstruction.sourceEvents, orders);
   return orders;

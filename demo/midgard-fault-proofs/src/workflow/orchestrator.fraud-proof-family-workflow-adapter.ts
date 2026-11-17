@@ -152,6 +152,7 @@ export type WorkflowRawFamilyEvidence = Extract<
   {
     readonly kind:
       | "field_preimage_length_mismatch"
+      | "l2_tx_mistag"
       | "mint_declared_asset_limit"
       | "observers_forbidden_on_untagged_network";
   }

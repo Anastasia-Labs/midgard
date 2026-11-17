@@ -32,4 +32,6 @@ export {
   type L2TxMistagArtifact,
   type L2TxMistagWorkflowReferenceScripts,
   prepareL2TxMistagArtifact,
+  prepareL2TxMistagRawArtifact,
+  validatePreparedL2TxMistagRawArtifact,
 } from "./l2-tx-mistag.parse-artifact.js";

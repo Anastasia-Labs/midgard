@@ -54,7 +54,10 @@ export type LinearFamilyCapturedAction = Readonly<{
 
 export interface LinearFamilyTransactionPort<
   Category extends LinearFamilyCategory,
-> {
+> extends Pick<
+    FraudProofFamilyWorkflowAdapter,
+    "prepareRaw" | "validatePreparedRawArtifact"
+  > {
   readonly portVersion: typeof LINEAR_FAMILY_TRANSACTION_PORT;
   readonly category: Category;
   /** Pure public-evidence preparation; no operator file/API input. */
@@ -294,6 +297,8 @@ export const createLinearFamilyWorkflowAdapter = <
         > & { readonly category: Category },
       });
     },
+    prepareRaw: transactions.prepareRaw,
+    validatePreparedRawArtifact: transactions.validatePreparedRawArtifact,
     observe: async ({ identity }) => {
       if (
         identity.category !== category ||

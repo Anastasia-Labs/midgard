@@ -14,10 +14,12 @@ import { GENESIS_HEADER_HASH } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { afterEach, describe, expect, it } from "vitest";
 
+import type { CompleteCanonicalReplayIsolation } from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
 import { classifyHeader } from "../src/workflow/header-classifier.js";
 import {
   buildCanonicalBlockFixture,
   buildFixtureTransaction,
+  outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
 import {
   replayBudget,
@@ -36,20 +38,28 @@ const BLOCK_SLOT = 100n;
 
 const script = plutusScript(1);
 
+/** A spend input of the exact item width whose interior is not a §5.3
+ * output reference: the field envelope is sound, the item does not decode. */
+const undecodableSpendInput = (() => {
+  const item = Buffer.from(outRefCbor(4, 0n));
+  item[0] = 0x83;
+  return item;
+})();
+
 const classifyInvalidTaggedLeaf = async (
-  leaf: Omit<
-    Parameters<typeof buildFixtureTransaction>[0],
-    "validity" | "spendInputs" | "fee"
+  leaf: Partial<
+    Omit<Parameters<typeof buildFixtureTransaction>[0], "validity" | "fee">
   >,
+  isolation?: CompleteCanonicalReplayIsolation,
 ) => {
   const predecessor = await buildCanonicalBlockFixture({
     transactions: [],
     prevHeaderHash: GENESIS_HEADER_HASH,
   });
   const transaction = buildFixtureTransaction({
+    spendInputs: [],
     ...leaf,
     validity: "TxIsInvalid",
-    spendInputs: [],
     fee: 0n,
   });
   const block = await buildRetainedValidationBlockFixture({
@@ -72,6 +82,7 @@ const classifyInvalidTaggedLeaf = async (
       orderKey: { transactionId: "52".repeat(32), outputIndex: 0n },
     },
     "normal",
+    isolation,
   );
   return {
     headerHash: block.headerHash,
@@ -111,6 +122,26 @@ describe(
         category: "l2TxMistag",
         headerHash,
       });
+    });
+
+    // Most detectors decode every leaf's inputs, so on this block they fail
+    // and the watcher's isolation withholds them. The mistag is read from
+    // the committed compact alone, so it still decides the block.
+    it("decides a leaf whose spend input does not decode as l2TxMistag", async () => {
+      const withheld: string[] = [];
+      const { headerHash, decision } = await classifyInvalidTaggedLeaf(
+        { spendInputs: [undecodableSpendInput] },
+        {
+          failsPass: () => false,
+          withheld: ({ launchScope }) => withheld.push(...launchScope),
+        },
+      );
+      expect(decision).toMatchObject({
+        decision: "fault_detected",
+        category: "l2TxMistag",
+        headerHash,
+      });
+      expect(withheld).not.toContain("l2TxMistag");
     });
   },
 );

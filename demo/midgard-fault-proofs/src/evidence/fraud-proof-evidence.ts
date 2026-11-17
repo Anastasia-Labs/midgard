@@ -41,6 +41,10 @@ import {
   type CanonicalDecodabilityRawBlockEvidence,
   canonicalDecodabilityRawBlockEvidenceFromVerifiedPayload,
 } from "./canonical-decodability-raw-evidence.js";
+import {
+  type L2TxMistagRawBlockEvidence,
+  rawNormalLeavesFromVerifiedPayload,
+} from "./l2-tx-mistag-raw-evidence.js";
 
 export const FRAUD_PROOF_EVIDENCE_ROUTE =
   "midgard-production-fraud-proof-evidence-route-v1" as const;
@@ -68,6 +72,11 @@ export type FraudProofEvidence =
       schemaVersion: typeof FRAUD_PROOF_EVIDENCE_ROUTE;
       kind: "field_preimage_length_mismatch";
       evidence: RoutedFieldPreimageLengthEvidence;
+    }>
+  | Readonly<{
+      schemaVersion: typeof FRAUD_PROOF_EVIDENCE_ROUTE;
+      kind: "l2_tx_mistag";
+      evidence: L2TxMistagRawBlockEvidence;
     }>
   | Readonly<{
       schemaVersion: typeof FRAUD_PROOF_EVIDENCE_ROUTE;
@@ -109,8 +118,11 @@ const isAuthenticatedFieldPreimageLengthDefect = (
  * One public retained-DA payload is fetched and admitted once. Canonical
  * reconstruction is always attempted first. Only its dedicated typed error,
  * emitted after the raw transactions root/count and header are authenticated
- * against L1, may enter a raw-fault preparation route. Transport, provenance,
- * finality, envelope, header, root, and count errors propagate unchanged.
+ * against L1, may enter a raw-fault preparation route. A committed-field or
+ * field-length route may instead yield `l2_tx_mistag`, for a normal leaf
+ * committed with a non-zero validity code that precedes the defect. Transport,
+ * provenance, finality, envelope, header, root, and count errors propagate
+ * unchanged.
  */
 export const fetchFraudProofEvidence = async ({
   observation,
@@ -264,30 +276,86 @@ export const fetchFraudProofEvidence = async ({
     }
   }
 
-  if (defectRoute === "canonical_decodability") {
-    return Object.freeze({
-      schemaVersion: FRAUD_PROOF_EVIDENCE_ROUTE,
-      kind: "canonical_decodability",
-      evidence: await canonicalDecodabilityRawBlockEvidenceFromVerifiedPayload({
-        observation: admittedObservation,
-        payloadEnvelopeCbor: fetched.payloadEnvelopeCbor,
-        daProvenance,
-        ...(minimumConfirmationDepth === undefined
-          ? {}
-          : { minimumConfirmationDepth }),
-      }),
+  if (
+    defectRoute === "canonical_decodability" ||
+    defectRoute === "field_preimage_length_mismatch"
+  ) {
+    // A normal leaf committed with a non-zero validity code is an l2TxMistag
+    // fault, and both defect families pass such leaves over. The defect on
+    // the earliest admissible leaf competes with the earliest mistag on the
+    // block's event order, then on catalogue order (canonicalDecodability,
+    // l2TxMistag, fieldPreimageLengthMismatch), as the classifier orders
+    // findings. A forced field-length finding is taken first, as before.
+    const leaves = await rawNormalLeavesFromVerifiedPayload({
+      observation: admittedObservation,
+      payloadEnvelopeCbor: fetched.payloadEnvelopeCbor,
+      daProvenance,
+      ...(minimumConfirmationDepth === undefined
+        ? {}
+        : { minimumConfirmationDepth }),
     });
-  }
-
-  if (defectRoute === "field_preimage_length_mismatch") {
-    return Object.freeze({
-      schemaVersion: FRAUD_PROOF_EVIDENCE_ROUTE,
-      kind: "field_preimage_length_mismatch",
-      evidence: await fieldPreimageLengthEvidenceFromVerifiedPayload({
-        observation: admittedObservation,
-        payloadEnvelopeCbor: fetched.payloadEnvelopeCbor,
-      }),
-    });
+    const mistag =
+      leaves.mistag === undefined
+        ? undefined
+        : Object.freeze({
+            schemaVersion: FRAUD_PROOF_EVIDENCE_ROUTE,
+            kind: "l2_tx_mistag" as const,
+            evidence: leaves.mistag.evidence,
+          });
+    const mistagOrder = leaves.mistag?.order;
+    let defect:
+      | Extract<
+          FraudProofEvidence,
+          {
+            readonly kind:
+              | "canonical_decodability"
+              | "field_preimage_length_mismatch";
+          }
+        >
+      | undefined;
+    try {
+      defect =
+        defectRoute === "canonical_decodability"
+          ? Object.freeze({
+              schemaVersion: FRAUD_PROOF_EVIDENCE_ROUTE,
+              kind: "canonical_decodability" as const,
+              evidence:
+                await canonicalDecodabilityRawBlockEvidenceFromVerifiedPayload({
+                  observation: admittedObservation,
+                  payloadEnvelopeCbor: fetched.payloadEnvelopeCbor,
+                  daProvenance,
+                  ...(minimumConfirmationDepth === undefined
+                    ? {}
+                    : { minimumConfirmationDepth }),
+                  orderOf: leaves.orderOf,
+                }),
+            })
+          : Object.freeze({
+              schemaVersion: FRAUD_PROOF_EVIDENCE_ROUTE,
+              kind: "field_preimage_length_mismatch" as const,
+              evidence: await fieldPreimageLengthEvidenceFromVerifiedPayload({
+                observation: admittedObservation,
+                payloadEnvelopeCbor: fetched.payloadEnvelopeCbor,
+                orderOf: leaves.orderOf,
+              }),
+            });
+    } catch (cause) {
+      // The defect family found nothing it can prove; the mistag stands.
+      if (mistag === undefined) throw cause;
+      return mistag;
+    }
+    if (mistag === undefined || mistagOrder === undefined) return defect;
+    if (defect.kind === "canonical_decodability")
+      // canonicalDecodability precedes l2TxMistag in catalogue order.
+      return leaves.orderOf(defect.evidence.selected.transactionIndex) <=
+        mistagOrder
+        ? defect
+        : mistag;
+    if (defect.evidence.prepared.sourceKind === "forced") return defect;
+    // l2TxMistag precedes fieldPreimageLengthMismatch in catalogue order.
+    return mistagOrder <= leaves.orderOf(Number(defect.evidence.position))
+      ? mistag
+      : defect;
   }
 
   // This second derivation is intentionally independent of the reconstruction

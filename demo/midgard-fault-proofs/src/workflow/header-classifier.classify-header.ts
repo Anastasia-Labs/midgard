@@ -152,6 +152,21 @@ export const classifyHeader = async ({
       },
     });
   }
+  if (routed.kind === "l2_tx_mistag") {
+    const selected = routed.evidence.selected;
+    return sealPreUnionDecision({
+      ...preUnion,
+      headerHash: routed.evidence.headerHash,
+      route: "authenticated_l2_tx_mistag_raw_v1",
+      category: "l2TxMistag",
+      selected: {
+        detectionId: `l2-tx-mistag:${selected.transactionIndex.toString()}:${selected.nativeTxId}:1`,
+        headerHash: routed.evidence.headerHash,
+        violationId: "l2-tx-mistag",
+        position: BigInt(selected.transactionIndex),
+      },
+    });
+  }
   if (routed.kind === "da_hash_preimage") {
     return sealPreUnionDecision({
       ...preUnion,

@@ -11,6 +11,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { isCommittedInvalidNormalLeaf } from "../evidence/committed-normal-leaf-validity.js";
 import type { RoutedFieldPreimageLengthEvidence } from "./evidence.js";
 import { forcedFieldPreimageLengthRawFinding } from "./evidence-forced.js";
 import { prepareAcceptedFieldPreimageLengthMismatch } from "./prepare-accepted.js";
@@ -32,12 +33,22 @@ const canonicalData = <T>(
   return decoded;
 };
 
+/**
+ * The exact field-length finding of a retained block whose reconstruction
+ * stopped at a source that does not authenticate. A forced finding is taken
+ * first. Otherwise the accepted finding on the leaf earliest on `orderOf`
+ * (the block's event order; committed order when omitted) is taken, among
+ * leaves committed with validity code 0 only: the step opens a normal leaf
+ * only at code 0, and a leaf with a non-zero code is an `l2TxMistag` fault.
+ */
 export const exactFieldPreimageLengthRawFinding = async ({
   observation,
   payloadEnvelopeCbor,
+  orderOf = (transactionIndex) => transactionIndex,
 }: {
   readonly observation: SDK.AuthenticatedStateQueueHeaderObservation;
   readonly payloadEnvelopeCbor: Uint8Array;
+  readonly orderOf?: (transactionIndex: number) => number;
 }): Promise<RoutedFieldPreimageLengthEvidence> => {
   const payloadCbor = Buffer.from(
     (
@@ -127,6 +138,7 @@ export const exactFieldPreimageLengthRawFinding = async ({
           `fieldPreimageLengthMismatch transactions[${index.toString()}] differs outside its field-length vector`,
         );
       }
+      if (isCommittedInvalidNormalLeaf(source)) continue;
       const declared = decodeMidgardNativeTxProofFieldLengths(
         Buffer.from(source.source.field_preimage_lengths_cbor, "hex"),
       );
@@ -154,7 +166,11 @@ export const exactFieldPreimageLengthRawFinding = async ({
         `fieldPreimageLengthMismatch retained raw source yielded ${findings.length.toString()} exact accepted findings`,
       );
     }
-    const finding = findings[0]!;
+    const finding = findings.reduce((first, candidate) =>
+      orderOf(Number(candidate.position)) < orderOf(Number(first.position))
+        ? candidate
+        : first,
+    );
     const direct = await prepareAcceptedFieldPreimageLengthMismatch({
       headerHash: observation.headerHash,
       committedTransactionsRoot: observation.header.transactionsRoot,

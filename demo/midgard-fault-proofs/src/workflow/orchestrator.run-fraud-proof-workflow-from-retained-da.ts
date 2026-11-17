@@ -167,15 +167,18 @@ export const runFraudProofWorkflowFromRetainedDa = async ({
   }
   if (
     routed.kind === "field_preimage_length_mismatch" ||
+    routed.kind === "l2_tx_mistag" ||
     routed.kind === "mint_declared_asset_limit" ||
     routed.kind === "observers_forbidden_on_untagged_network"
   ) {
     const category =
       routed.kind === "field_preimage_length_mismatch"
         ? "fieldPreimageLengthMismatch"
-        : routed.kind === "mint_declared_asset_limit"
-          ? "mintDeclaredAssetLimit"
-          : "observersForbiddenOnUntaggedNetwork";
+        : routed.kind === "l2_tx_mistag"
+          ? "l2TxMistag"
+          : routed.kind === "mint_declared_asset_limit"
+            ? "mintDeclaredAssetLimit"
+            : "observersForbiddenOnUntaggedNetwork";
     const headerHash =
       routed.kind === "field_preimage_length_mismatch"
         ? routed.evidence.prepared.headerHash

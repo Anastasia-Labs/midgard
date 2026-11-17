@@ -8,6 +8,7 @@ import {
   blockTransactionsFromCanonicalEvidence,
   type CanonicalBlockEvidence,
 } from "../evidence/canonical-block-evidence.js";
+import { isCommittedInvalidNormalLeaf } from "../evidence/committed-normal-leaf-validity.js";
 import {
   FRAUD_PROOF_CLASSIFICATION_RULES,
   FRAUD_PROOF_CLASSIFICATION_SCHEMA_VERSION,
@@ -216,25 +217,25 @@ const compareDetections = (
 
 /**
  * The families whose proofs open a normal leaf whatever its committed
- * validity tag. A normal leaf is the operator's acceptance verdict, so a leaf
- * committed `TxIsInvalid` is itself the fault, and `l2TxMistag` proves it
- * (`l2-tx-mistag/step-01.ak` accepts any code but 0). `daHashPreimage` binds
- * the leaf at either tag (`da-hash-preimage/rule.ak`). `transitionTrace`
- * findings are of the trace's structure, and its semantic replay stops before
- * a leaf committed invalid. Every other family's step validator opens an
- * accepted subject only at validity code 0, so its finding at such a leaf can
- * never be proven.
+ * validity code. A normal leaf is the operator's acceptance verdict, so a leaf
+ * committed with a non-zero code is itself the fault, and `l2TxMistag` proves
+ * it (`l2-tx-mistag/step-01.ak` accepts any code but 0). `daHashPreimage`
+ * binds the leaf at either code (`da-hash-preimage/rule.ak`). Every other
+ * family's step opens an accepted subject only at code 0, `transitionTrace`
+ * included (`accepted-transaction-yields.ak` expects a normal leaf's code to
+ * be 0), so its finding at such a leaf can never be proven.
  */
 const OPENS_INVALID_TAGGED_NORMAL_LEAF: ReadonlySet<FraudProofCatalogueCategoryName> =
-  new Set(["l2TxMistag", "daHashPreimage", "transitionTrace"]);
+  new Set(["l2TxMistag", "daHashPreimage"]);
 
 /**
  * Whether the classifier may select `detection`: a finding about normal
- * leaves is admitted only when every leaf it names was committed
- * `TxIsValid`, unless its family proves invalid-tagged normal leaves. The
- * installed catalogue always holds `l2TxMistag`, which finds every such leaf
- * at the same event, so dropping the others never loses the leaf's fault. An
- * unregistered finding is kept, so it still surfaces as a gap.
+ * leaves is admitted only when no leaf it names carries a non-zero committed
+ * validity code (`isCommittedInvalidNormalLeaf`), unless its family proves
+ * such leaves. The installed catalogue always holds `l2TxMistag`, which finds
+ * every such leaf at the same event, so dropping the others never loses the
+ * leaf's fault. An unregistered finding is kept, so it still surfaces as a
+ * gap.
  */
 const admitsDetection = (
   reconstruction: CanonicalBlockEvidence["reconstruction"],
@@ -248,10 +249,27 @@ const admitsDetection = (
     const source = reconstruction.sourceEventsByFingerprint.get(eventKeyCbor);
     // An unknown event is left for the event order to refuse.
     return (
-      source?.phase !== "L2Transaction" || source.entry.validity === "TxIsValid"
+      source?.phase !== "L2Transaction" ||
+      !isCommittedInvalidNormalLeaf(source.entry.value)
     );
   });
 };
+
+/**
+ * The detections from one block the classifier may select, in their given
+ * order (see `admitsDetection`). A hold or prerequisite check that weighs
+ * findings must weigh only these, or a finding the classifier drops would
+ * decide a block it cannot prove.
+ */
+export const admittedCanonicalViolationDetections = <
+  Detection extends CanonicalViolationDetection,
+>(
+  evidence: CanonicalBlockEvidence,
+  detections: readonly Detection[],
+): Detection[] =>
+  detections.filter((detection) =>
+    admitsDetection(evidence.reconstruction, detection),
+  );
 
 /**
  * The detection `classifyCanonicalBlockViolations` orders first among the
@@ -265,11 +283,15 @@ export const firstCanonicalViolationDetection = <
 ): Detection | undefined => {
   const orderOf = (detection: CanonicalViolationDetection): EventOrder =>
     detectionEventOrder(evidence.reconstruction, detection);
-  return detections
-    .filter((detection) => admitsDetection(evidence.reconstruction, detection))
-    .reduce<
-      Detection | undefined
-    >((first, detection) => (first === undefined || compareDetections(orderOf, detection, first) < 0 ? detection : first), undefined);
+  return admittedCanonicalViolationDetections(evidence, detections).reduce<
+    Detection | undefined
+  >(
+    (first, detection) =>
+      first === undefined || compareDetections(orderOf, detection, first) < 0
+        ? detection
+        : first,
+    undefined,
+  );
 };
 
 /**

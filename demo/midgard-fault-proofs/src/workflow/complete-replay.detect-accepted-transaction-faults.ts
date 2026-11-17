@@ -25,6 +25,7 @@ import {
   EventLedgerReplayRefusal,
 } from "../event-ledger.js";
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { isCommittedInvalidNormalLeaf } from "../evidence/committed-normal-leaf-validity.js";
 import { detectInvalidRangeForcedReplay } from "../invalid-range/replay.js";
 import { type CheckedLedger } from "../ledger-at.js";
 import { decodeTransactionMaterial } from "../prepare-double-spend.js";
@@ -133,27 +134,27 @@ export const detectZeroInputs = async (
   return [...accepted, ...forced];
 };
 
+/** Every normal leaf committed with a non-zero validity code, read from its
+ * committed compact alone: a leaf whose inputs, outputs or fields do not
+ * decode is still found, as the `l2-tx-mistag` step decodes none of them. */
 export const detectL2TxMistags = async (
   evidence: CanonicalBlockEvidence,
-): Promise<readonly CanonicalViolationDetection[]> => {
-  const transactions = await Promise.all(
-    evidence.transactions.map(decodeTransactionMaterial),
+): Promise<readonly CanonicalViolationDetection[]> =>
+  evidence.reconstruction.transactions.flatMap(
+    ({ txId, value }, transactionIndex) =>
+      isCommittedInvalidNormalLeaf(value)
+        ? [
+            {
+              ...acceptedTransactionSubject(txId),
+              detectionId: `l2-tx-mistag:${transactionIndex.toString()}:${txId}:1`,
+              headerHash: evidence.headerHash,
+              violationId: "l2-tx-mistag",
+              position: BigInt(transactionIndex),
+              diagnostic: `normal transactions-root leaf ${txId} is mistagged with validity code 1`,
+            },
+          ]
+        : [],
   );
-  return transactions.flatMap((transaction, transactionIndex) =>
-    transaction.nativeTxCompact.validity_code === 1n
-      ? [
-          {
-            ...acceptedTransactionSubject(transaction.nodeTxId),
-            detectionId: `l2-tx-mistag:${transactionIndex.toString()}:${transaction.nodeTxId}:1`,
-            headerHash: evidence.headerHash,
-            violationId: "l2-tx-mistag",
-            position: BigInt(transactionIndex),
-            diagnostic: `normal transactions-root leaf ${transaction.nodeTxId} is mistagged with validity code 1`,
-          },
-        ]
-      : [],
-  );
-};
 
 export const detectMinFees = async (
   evidence: CanonicalBlockEvidence,
