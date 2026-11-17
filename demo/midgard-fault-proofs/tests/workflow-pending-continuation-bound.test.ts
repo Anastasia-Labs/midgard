@@ -348,38 +348,43 @@ describe("bounded pending continuation", () => {
     expect(execute).toHaveBeenCalledTimes(polls + 1);
   });
 
-  it("stalls within its bound when the same action is accepted, expires unseen and is resubmitted every window", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
-    const journal = recordJournal();
-    // Accepted at submission but never included: every 3 min validity window
-    // the attempt is reconciled missing, retired and submitted again.
-    const execute = vi.fn(async () =>
-      execute.mock.calls.length % 180 === 0
-        ? journal.resubmit()
-        : journal.pollPending(),
-    );
-    const onProgress = vi.fn();
-    const runner = await runnerFor(execute, onProgress);
-    const startedAtMs = Date.now();
-    const running = settledFlag(runner.runOrResume("run"));
-    await vi.advanceTimersByTimeAsync(WORKFLOW_CONTINUATION_QUIET_BOUND_MS);
-    await waitFor(() => running.settled);
-    expect(Date.now() - startedAtMs).toBeLessThanOrEqual(
-      WORKFLOW_CONTINUATION_QUIET_BOUND_MS,
-    );
-    expect(running.value).toMatchObject({
-      kind: "pending",
-      resumeOnObservation: true,
-      reason: expect.stringContaining(
-        FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED,
-      ),
-    });
-    expect(
-      journal.entries.filter(({ event }) => event.kind === "submitted").length,
-    ).toBeGreaterThan(5);
-    expect(onProgress).not.toHaveBeenCalled();
-    expect(runner.close).toHaveBeenCalledOnce();
-  });
+  it.each([undefined, "reconciliation failed for walk: provider unavailable"])(
+    "stalls within its bound when the same action is accepted, expires unseen and is resubmitted every window (diagnostic %j)",
+    async (diagnostic) => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+      const journal = recordJournal();
+      // Never included: every 3 min the attempt is retired and resubmitted,
+      // after any diagnostic, of which only the first is news.
+      const execute = vi.fn(async () => {
+        if (execute.mock.calls.length % 180 !== 0) return journal.pollPending();
+        const stall = { event: { kind: "stalled", reason: diagnostic } };
+        if (diagnostic !== undefined) journal.entries.push(stall);
+        return journal.resubmit();
+      });
+      const news = diagnostic === undefined ? 0 : 1;
+      const boundMs = WORKFLOW_CONTINUATION_QUIET_BOUND_MS + news * 180_000;
+      const onProgress = vi.fn();
+      const runner = await runnerFor(execute, onProgress);
+      const startedAtMs = Date.now();
+      const running = settledFlag(runner.runOrResume("run"));
+      await vi.advanceTimersByTimeAsync(boundMs);
+      await waitFor(() => running.settled);
+      expect(Date.now() - startedAtMs).toBeLessThanOrEqual(boundMs);
+      expect(running.value).toMatchObject({
+        kind: "pending",
+        resumeOnObservation: true,
+        reason: expect.stringContaining(
+          FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED,
+        ),
+      });
+      const submitted = journal.entries.filter(
+        ({ event }) => event.kind === "submitted",
+      );
+      expect(submitted.length).toBeGreaterThan(5);
+      expect(onProgress).toHaveBeenCalledTimes(news);
+      expect(runner.close).toHaveBeenCalledOnce();
+    },
+  );
 
   it("keeps a session that journals progress past the bound until it completes", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });

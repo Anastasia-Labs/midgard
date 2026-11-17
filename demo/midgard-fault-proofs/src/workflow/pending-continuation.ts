@@ -32,27 +32,39 @@ const eventOf = (entry: unknown): JournalEvent | undefined =>
 /**
  * Journaled progress of a result: the number of distinct milestones its
  * entries reach. Every confirmation is one, and so is every entry that names
- * no action. Everything else an action journals (its preflight, intents,
- * submissions, pending or missing reconciliations and re-observations) counts
- * once for that action however often it repeats, and a retired attempt counts
- * for nothing: resubmitting an action whose last attempt never landed is not
- * progress. Absent entries are none.
+ * no action, such as a terminal one. Everything else an action journals (its
+ * preflight, intents, submissions, pending or missing reconciliations and
+ * re-observations) counts once for that action however often it repeats, and
+ * a retired attempt counts for nothing: resubmitting an action whose last
+ * attempt never landed is not progress. A `stalled` diagnostic counts only
+ * when its reason is new since the last of those milestones, so a loop that
+ * journals the same diagnostic between resubmissions of the same action is
+ * not progress either. Absent entries are none.
  */
 export const journaledProgress = (result: object): number => {
   if (!("entries" in result) || !Array.isArray(result.entries)) return -1;
   const milestones = new Set<string>();
+  let stallsSinceProgress = new Set<unknown>();
   result.entries.forEach((entry: unknown, index) => {
     const event = eventOf(entry);
     const kind = event?.kind;
     if (kind === "signed_attempt_retired") return;
+    if (kind === "stalled") {
+      if (stallsSinceProgress.has(event?.reason)) return;
+      stallsSinceProgress.add(event?.reason);
+      milestones.add(`entry:${index.toString()}`);
+      return;
+    }
     const confirmed =
       kind === "confirmed" ||
       (kind === "reconciled" && event?.outcome === "confirmed");
-    milestones.add(
+    const milestone =
       typeof event?.actionId === "string" && !confirmed
         ? `action:${event.actionId}`
-        : `entry:${index.toString()}`,
-    );
+        : `entry:${index.toString()}`;
+    if (milestones.has(milestone)) return;
+    milestones.add(milestone);
+    stallsSinceProgress = new Set();
   });
   return milestones.size;
 };
