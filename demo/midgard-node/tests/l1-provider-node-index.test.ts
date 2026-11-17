@@ -5,7 +5,7 @@
  * recorded its tracked set; and the reader and `listen`'s follower configure
  * the same set, so reopening the store through either never resets it.
  */
-import type { LedgerQuery } from "@al-ft/l1-node-transport";
+import { encodeCbor, type LedgerQuery } from "@al-ft/l1-node-transport";
 import { fakeL1NodeTransport } from "@al-ft/l1-node-transport/testing";
 import {
   applyChainSyncEvent,
@@ -243,8 +243,6 @@ describe("the node's L1 reader and a rollback", () => {
 });
 
 describe("the node's L1 reader and an abort", () => {
-  // The view read's store read takes the signal the same way; its first
-  // read is the node's tip, which the transport bounds, not the signal.
   it("hands a read's abort signal to the follower store, so an aborted read ends with its reason", async () => {
     const connectionString = await databases.create();
     const reader = openReader(
@@ -268,6 +266,56 @@ describe("the node's L1 reader and an abort", () => {
     await expect(reader.utxosByOutRef?.([outRef], { signal })).rejects.toThrow(
       "the read's deadline passed",
     );
+    await expect(
+      (reader.provider as L1FollowerProvider).getTransactionStatus(txHash, {
+        signal,
+      }),
+    ).rejects.toThrow("the read's deadline passed");
+  });
+
+  // The view read's first read is the node's tip, which the transport
+  // bounds; its store read is the one the signal ends.
+  it("ends a synchronized view read at its abort though the store never answers it", async () => {
+    const connectionString = await databases.create();
+    const listen = openListenStore(connectionString);
+    expect((await listen.start()).kind).toBe("ready");
+    expect((await listen.initialize(SIM_ORIGIN)).kind).toBe("initialized");
+    await applied(listen, payReserve().event);
+    const proxy = await freezablePostgresProxy(connectionString);
+    const reader = nodeL1AccessOver(
+      fakeL1NodeTransport({
+        query: async (query) => {
+          if (query.query !== "chain_point")
+            throw new Error(`the ledger refuses ${query.query}`);
+          return encodeCbor([0n, Buffer.alloc(32)]);
+        },
+      }),
+      {
+        index,
+        connectionString: proxy.url,
+        endpoint: "/dev/null",
+        nodeBehindMaxMs: 60_000,
+      },
+    );
+    try {
+      await reader.viewPoint();
+      // The reader's one open connection goes silent.
+      proxy.freeze();
+      const controller = new AbortController();
+      const read = reader.synchronizedViewPoint({ signal: controller.signal });
+      read.catch(() => undefined);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      const reason = new Error("the view read's deadline passed");
+      controller.abort(reason);
+      await expect(within("the view read", 5_000, read)).rejects.toMatchObject({
+        cause: reason,
+      });
+    } finally {
+      await within("closing the reader", 5_000, reader.close()).catch(
+        () => undefined,
+      );
+      await proxy.close();
+    }
   });
 });
 

@@ -5,16 +5,21 @@
  * after which the reads go on beside it, so the wait still settles once the
  * provider answers again; and a provider that never answers holds at most
  * two reads of each kind, not one per poll. A bounded wait logs one line
- * when its reads stop deciding and one when they decide again. Lucid and
- * the L1 access are faked; the node's wait runs as is, on the production
- * confirmation options and the test clock.
+ * when its reads stop deciding and one when they decide again. A tip read
+ * is handed its abort, so one that ends at its abort ends at its deadline.
+ * Lucid and the L1 access are faked; the node's wait runs as is, on the
+ * production confirmation options and the test clock.
  */
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import type { OutRef } from "@lucid-evolution/lucid";
 import { Effect, Fiber, Logger, Option, TestClock, TestContext } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { type L1ViewPoint, openL1Access } from "../src/l1-access.js";
+import {
+  type L1ReadOptions,
+  type L1ViewPoint,
+  openL1Access,
+} from "../src/l1-access.js";
 import { awaitSubmittedTransactionConfirmation } from "../src/transactions/utils.js";
 import { signedTxCbor } from "./transactions-utils.parse-outside-validity-interval-details.js";
 
@@ -79,7 +84,10 @@ describe("confirmation wait over a provider read that never answers", () => {
   });
 
   /** Opens a fake kupmios access over `provider` whose tip read is `tip`. */
-  const openFakeAccess = (provider: object, tip: () => Promise<L1ViewPoint>) =>
+  const openFakeAccess = (
+    provider: object,
+    tip: (options?: L1ReadOptions) => Promise<L1ViewPoint>,
+  ) =>
     openL1Access({
       kind: "kupmios",
       provider: provider as never,
@@ -322,6 +330,59 @@ describe("confirmation wait over a provider read that never answers", () => {
       invalidHereafterSlot: 50,
     });
     expect(tips.reads.most).toBe(2);
+  });
+
+  it("ends a tip read at its deadline when the read ends at its abort, as the follower store's read does", async () => {
+    // The chain grows one block every poll; the first tip read answers
+    // nothing and ends only when its signal fires, every later one answers.
+    let polls = 0;
+    let tipCalls = 0;
+    let firstTipReadEnded = false;
+    const provider = {};
+    openFakeAccess(provider, (options) => {
+      tipCalls += 1;
+      if (tipCalls > 1)
+        return Promise.resolve({
+          slot: polls * 10,
+          id: `block-${polls.toString()}`,
+        });
+      return new Promise<L1ViewPoint>((_, reject) => {
+        options?.signal?.addEventListener(
+          "abort",
+          () => {
+            firstTipReadEnded = true;
+            reject(options.signal?.reason as Error);
+          },
+          { once: true },
+        );
+      });
+    });
+    const outcome = await runOnTestClock(
+      awaitSubmittedTransactionConfirmation(
+        {
+          config: () => ({ provider }),
+          transactionStatus: async (txHash: string) => {
+            polls += 1;
+            return { status: "not_found" as const, txHash };
+          },
+          utxosByOutRef: async (refs: readonly OutRef[]) => refs,
+          wallet: () => ({}),
+        } as never,
+        {
+          txHash: "tx-tip-read-ends-at-its-abort",
+          signedTxCbor: signedTxCbor({ invalidHereafterSlot: 50 }),
+        },
+      ),
+      1_000,
+      3 * 95_000 + (DEPTH + 10) * 5_000,
+    );
+
+    expect(Option.isSome(outcome)).toBe(true);
+    expect(Option.getOrThrow(outcome)).toMatchObject({
+      _tag: "Left",
+      left: { _tag: "TxExpiredError" },
+    });
+    expect(firstTipReadEnded).toBe(true);
   });
 
   it("logs one undecided line while the tip read keeps failing, and one line when the reads decide again", async () => {
