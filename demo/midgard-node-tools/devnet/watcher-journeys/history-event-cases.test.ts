@@ -244,24 +244,26 @@ it("ordinary history admission and withdrawn-input honest control stay healthy",
 }, 1_800_000);
 
 // Withdrawals run first, so the withdrawn output is absent from the spender's
-// pre-state: the installed catalogue proves it as input existence, and the
-// family's own replay still selects the fixture as exactly its fault. The
-// input-existence preparation on the published block finds the withdrawn
-// output absent; the control's input is present, which step 04 refuses.
+// pre-state and the ledger-absence family finds it too: the input-existence
+// preparation on the published block finds the withdrawn output absent, and
+// the control's input is present, which step 04 refuses. The installed
+// catalogue ranks the withdrawn family ahead of ledger absence (the
+// 2026-11-17 promotion in classification), so it proves the fixture as
+// exactly its own fault, with or without the family's own replay.
 it.each([
   {
     category: "withdrawnInput",
-    proved: "nonExistentInput",
+    outranks: "nonExistentInput",
     replayer: WITHDRAWN_INPUT_COMPLETE_CANONICAL_REPLAY,
   },
   {
     category: "withdrawnReferenceInput",
-    proved: "noReferenceInput",
+    outranks: "noReferenceInput",
     replayer: WITHDRAWN_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
   },
 ] as const)(
-  "$category against its real published withdrawal is proved as $proved by the installed catalogue and its honest control passes",
-  async ({ category, proved, replayer }) => {
+  "$category against its real published withdrawal is proved as itself ahead of $outranks by the installed catalogue and its honest control passes",
+  async ({ category, replayer }) => {
     const field = category === "withdrawnInput" ? 0 : 1;
     // The reference control reads a second retained deposit.
     const { predecessor, history } = await openFamilyWindow(2 + field);
@@ -285,7 +287,7 @@ it.each([
         honest,
         controlReferencesRetained: field === 1,
       });
-      await select({ category: proved, block, predecessor, history, honest });
+      await select({ category, block, predecessor, history, honest });
       await select({ category, block, predecessor, history, honest, replayer });
       const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
         observation: authenticatedHeaderObservation(block),
