@@ -2,7 +2,8 @@
  * The watcher's L1 source reads an attempt whose phase-2-invalid landing a
  * rollback removed: the transaction is absent again and every input it
  * recorded, its collateral among them, is live, so the source reports it as
- * one that could be sent again.
+ * one that could be sent again. Without an upper validity bound it stays so
+ * for as long as those inputs stay live.
  */
 import { fraudProofSignedTransactionRecovery } from "@al-ft/midgard-fault-proofs";
 import type { SimTx } from "@al-ft/midgard-l1-follower/testing";
@@ -16,7 +17,7 @@ import {
   sourceOver,
 } from "../support/l1-follower-raw-source-fixture.js";
 
-it("reads an attempt whose phase-2-invalid landing a rollback removed as absent with every input live, ready to be sent again", async () => {
+it("reads an attempt with no upper validity bound whose phase-2-invalid landing a rollback removed as absent with every input live, ready to be sent again, however far the chain moves on", async () => {
   const h = await harness();
   const funding: SimTx = {
     inputs: [h.chain.outsideInput()],
@@ -58,4 +59,11 @@ it("reads an attempt whose phase-2-invalid landing a rollback removed as absent 
   expect(observed.inputs.map(({ outRef }) => outRef).sort()).toEqual(
     [`${hashes[0]!}#0`, `${hashes[0]!}#1`].sort(),
   );
+
+  // With no upper validity bound, nothing ends it as the chain moves on.
+  for (let block = 0; block < 4; block += 1) await h.forward([]);
+  expect(await observe()).toMatchObject({
+    status: "rebroadcast",
+    canonicalPoint: h.tipPoint(),
+  });
 });

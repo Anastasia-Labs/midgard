@@ -151,7 +151,9 @@ const restoreWorkflowAttemptCollateral = async ({
 
 /** The collateral accounting that one read of the workflow's own attempt
  * calls for (`accountAttemptCollateral`), each step under the family's
- * reconciliation check. Returns the failure, if the accounting failed. */
+ * reconciliation check. Returns the failure, if the accounting failed. A
+ * failure is named and holds nothing, not even the attempt's replacement:
+ * later reads of the attempt retry it. */
 export const accountWorkflowAttemptCollateral = async ({
   writer,
   assertReconcile,

@@ -109,6 +109,25 @@ export const recordsPhaseTwoInvalidLanding = (
       event.kind === "collateral_forfeited" && event.txHash === transactionHash,
   );
 
+/**
+ * The read of a recorded attempt the run acts on. Bytes the journal records
+ * as landed failing phase 2 can never land valid: the body and the inputs it
+ * resolves fix that verdict. They are never sent again, so once a rollback
+ * leaves them absent there is nothing to wait for, with or without an upper
+ * validity bound: the read counts as not found, and the attempt is
+ * superseded like any other attempt impossible at the tip.
+ */
+export const notFoundIfNeverResent = (
+  entries: readonly FraudProofWorkflowJournalEntry[],
+  transactionHash: string,
+  read: FraudProofWorkflowReconcileResult,
+): FraudProofWorkflowReconcileResult =>
+  read.kind === "unknown" &&
+  read.absent === true &&
+  recordsPhaseTwoInvalidLanding(entries, transactionHash)
+    ? { kind: "not_found" }
+    : read;
+
 const ACCOUNTING_FAILED = "collateral accounting failed for attempt ";
 const ACCOUNTING_MOOT = "collateral accounting no longer needed for attempt ";
 

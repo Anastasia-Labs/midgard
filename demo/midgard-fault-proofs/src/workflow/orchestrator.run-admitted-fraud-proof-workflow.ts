@@ -9,6 +9,7 @@ import {
 } from "./actuation-permit.js";
 import {
   isCollateralForfeitureEvent,
+  notFoundIfNeverResent,
   recordsPhaseTwoInvalidLanding,
 } from "./collateral-forfeiture.js";
 import { isFinalWorkflowCompletion } from "./completion-finality.js";
@@ -564,8 +565,8 @@ export const runAdmittedFraudProofWorkflow = async ({
           `reconciliation failed for ${action.actionId}: ${formatUnknownError(cause)}`,
         );
       }
-      // A failed collateral accounting is named and holds nothing, not even
-      // the attempt's replacement: later reads of the attempt retry it.
+      if (!workflowJournalIsReconciliationOnly(journal))
+        reconciled = notFoundIfNeverResent(entries, intent.txHash, reconciled);
       await accountWorkflowAttemptCollateral({
         writer,
         assertReconcile,
