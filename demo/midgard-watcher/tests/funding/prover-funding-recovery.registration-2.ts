@@ -48,7 +48,7 @@ it.each([
     const hashes = watcherDeploymentAppliedScriptHashes(deploymentIdentity);
     const action = { actionId: "init", input: { actionKind: "proof.init" } };
     await beginWorkflowFundingReservationAction({ journal, action });
-    const input = context.plan.inputs.find(({ role }) => role === "funding")!;
+    const input = context.fundingInput;
     const build = (hash: string) => {
       const inputs = CML.TransactionInputList.new();
       const [txHash, index] = input.outRef.split("#");
@@ -186,9 +186,10 @@ describe("additive deployed funding roster recovery", () => {
     );
     await test.run(journal);
     const before = (await test.records())[0]!;
-    const spent = before.activeInputs.find(
-      ({ role }) => role === "funding",
-    )!.outRef;
+    // A coin the reservation still holds after the confirmation, spent
+    // outside it.
+    const spent = before.activeInputs[0]!.outRef;
+    expect(spent).not.toBe(test.fundingInput.outRef);
     test.walletUtxos.splice(
       0,
       test.walletUtxos.length,

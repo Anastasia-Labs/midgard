@@ -83,6 +83,7 @@ import {
   captureValidationTraceVerifySource,
   type ValidationTraceDisputeDeployment,
 } from "./transactions.js";
+import { validationTraceUnfunded } from "./unfunded-move.js";
 import { validationTraceArtifactCheck } from "./validated-artifact.js";
 import {
   validationTraceCaseOpenReason,
@@ -428,6 +429,7 @@ export const createValidationTraceDisputeWorkflowAdapter = ({
       }).catch(claimHeld(evidence.headerHash)),
     validatePreparedArtifact: artifactCheck.check,
     observe,
+    unfunded: validationTraceUnfunded({ lucid, deadlines, ourCase }),
     preflight: async (context) => {
       const { action, workflowId } = context;
       const parsed = parseValidationTraceAction(action);

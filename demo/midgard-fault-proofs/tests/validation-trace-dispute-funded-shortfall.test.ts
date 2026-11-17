@@ -30,7 +30,11 @@ import {
   WORKFLOW_FUNDING_SHORTFALL,
 } from "../src/workflow/funding-reservation-permit.js";
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
-import { drainProver, topUpProver } from "./support/installed-prover-wallet.js";
+import {
+  drainProver,
+  drainProverToOneCoin,
+  topUpProver,
+} from "./support/installed-prover-wallet.js";
 import {
   openFundedDispute,
   turnUntil,
@@ -109,13 +113,13 @@ describe("validation-trace dispute funding under the prover funding permit", () 
       await drainProver(h as never, FUNDED);
       const dispute = await openFundedDispute(scene);
       try {
-        // Init lands; then the operator moves all but 3 ada of plain funding
-        // out of the wallet, which Open cannot be paid from.
+        // Init lands; then the operator moves all but one 3 ada coin out of
+        // the wallet, below the collateral line: Open cannot be paid from it.
         const init = await dispute.turn();
         expect("reason" in init && init.reason).toContain(
           "validation-trace-init:first",
         );
-        await drainProver(h as never, 3n * ADA);
+        await drainProverToOneCoin(h as never, 3n * ADA);
         const paused = await turnUntil(dispute, WORKFLOW_FUNDING_SHORTFALL);
         expect(paused.result.kind, paused.history.join("\n")).toBe("pending");
         if (paused.result.kind !== "pending") return;
@@ -172,8 +176,8 @@ describe("validation-trace dispute funding under the prover funding permit", () 
       const dispute = await openFundedDispute(scene);
       let recorded: ReturnType<typeof recordSubmitted> | undefined;
       try {
-        // Plain funding for Init and Open, not VerifySource besides.
-        await drainProver(
+        // One plain coin for Init and Open, not VerifySource besides.
+        await drainProverToOneCoin(
           h as never,
           BOND_LOVELACE + FLOOR + (await dispute.walletMoveReserve()),
         );

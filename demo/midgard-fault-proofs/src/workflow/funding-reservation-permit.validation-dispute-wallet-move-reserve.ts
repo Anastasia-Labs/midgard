@@ -10,10 +10,8 @@ export const VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED =
 const reservedPlainLovelace = (state: PermitState): bigint =>
   state.snapshot.activeInputs
     .filter(
-      ({ outRef, role, assets }) =>
-        role === "funding" &&
-        assets.length === 0 &&
-        state.currentFundingOutRefs.includes(outRef),
+      ({ outRef, assets }) =>
+        assets.length === 0 && state.currentFundingOutRefs.includes(outRef),
     )
     .reduce((sum, { lovelace }) => sum + BigInt(lovelace), 0n);
 

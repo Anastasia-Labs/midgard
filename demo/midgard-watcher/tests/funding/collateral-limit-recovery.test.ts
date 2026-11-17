@@ -1,15 +1,11 @@
-import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
-
 import {
   beginWorkflowFundingReservationAction,
   createWorkflowActuationPermitController,
   readWorkflowFundingRecovery,
 } from "@al-ft/midgard-fault-proofs";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, expect, it } from "vitest";
 
 import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.js";
-import * as authorityCreation from "../../src/funding/prover-funding-authority.create-watcher-prover-funding-authority.js";
 import { createWatcherProverFundingAuthorityFactory } from "../../src/funding/prover-funding-authority.js";
 import {
   cleanupFundingRecoveryFixtures,
@@ -18,13 +14,19 @@ import {
   walletAddress,
 } from "../support/fault-proof-funding-fixture.js";
 import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
-import { capacityTransition } from "./parameter-capacity-transition.js";
+import { collateralLimitTransition } from "./collateral-limit-transition.js";
 import { runtimeAuthority } from "./prover-funding-calculation.runtime-authority.js";
+
+/**
+ * The ledger's collateral input limit bounds each transaction, not the
+ * reservation: a signed step posting two reserved coins as collateral
+ * recovers exactly after the limit falls to one, its collateral stays
+ * reserved, and the next action begins over the same reservation.
+ */
 afterEach(async () => {
-  vi.restoreAllMocks();
   await cleanupFundingRecoveryFixtures();
 });
-it("recovers exact signed leases through cap one to three to one, then refreshes under the current cap", async () => {
+it("recovers an exact signed step posting two collateral coins after the limit falls to one, then begins the next action", async () => {
   const fixture = await setupFundingRecoveryFixture(
     false,
     false,
@@ -34,10 +36,6 @@ it("recovers exact signed leases through cap one to three to one, then refreshes
     1,
   );
   const current = await runtimeAuthority(deploymentIdentity, 45, 3, 600);
-  const create = vi.spyOn(
-    authorityCreation,
-    "createWatcherProverFundingAuthority",
-  );
   const before = await fixture.records();
   const factory = createWatcherProverFundingAuthorityFactory({
     journalRoot: fixture.journalRoot,
@@ -67,12 +65,6 @@ it("recovers exact signed leases through cap one to three to one, then refreshes
       throw new Error("unexpected protocol read");
     },
   });
-  expect(
-    BigInt(
-      create.mock.calls[0]![0].selectionCalculation!
-        .maximumSlashCollateralLovelace,
-    ),
-  ).toBe(3_000_000_000n);
   const journal = fixture.bind(fixture.fresh, {
     permit,
     controller,
@@ -96,16 +88,14 @@ it("recovers exact signed leases through cap one to three to one, then refreshes
     action: { actionId: "next", input: { actionKind: "step-one" } },
   });
   const after = (await fixture.records())[0]!;
-  expect(
-    after.activeInputs.filter(({ role }) => role === "collateral"),
-  ).toHaveLength(2);
   expect(after).toMatchObject({
     reservationId: before[0]!.reservationId,
     policyDigest: before[0]!.policyDigest,
     reservationBasisDigest: before[0]!.reservationBasisDigest,
   });
   expect(await journal.load(fixture.initial.workflowId)).toEqual(signedPrefix);
-  const transition = capacityTransition(after);
+  const transition = collateralLimitTransition(after, 2);
+  const posted = after.activeInputs.slice(1, 3).map(({ outRef }) => outRef);
   await fixture.prepareAttempt(
     { plan: fixture.plan, expectedRevision: after.revision, ...transition },
     {
@@ -123,8 +113,8 @@ it("recovers exact signed leases through cap one to three to one, then refreshes
     },
   );
   await fixture.restartStore();
-  // Return to the exact original digest. Historical two-input leases still
-  // require authenticated capacity, while the next action can use only one.
+  // Return to the exact original digest, whose limit admits one collateral
+  // input per transaction.
   const decreased = await runtimeAuthority(deploymentIdentity, 44, 1);
   const restore = async () => {
     const controller = createWorkflowActuationPermitController({
@@ -162,41 +152,12 @@ it("recovers exact signed leases through cap one to three to one, then refreshes
         factory.releaseUnused({ actuationPermit: controller.permit }),
     });
   };
-  const database = new DatabaseSync(
-    join(fixture.journalRoot, "watcher.sqlite"),
-  );
-  try {
-    const saved = database
-      .prepare(
-        "SELECT canonical_json, authentication_tag FROM watcher_prover_funding_capacity_v1 WHERE reservation_id = ?",
-      )
-      .get(after.reservationId)!;
-    database
-      .prepare(
-        "DELETE FROM watcher_prover_funding_capacity_v1 WHERE reservation_id = ?",
-      )
-      .run(after.reservationId);
-    await expect(restore()).rejects.toThrow(
-      "exceeds its collateral input bound",
-    );
-    database
-      .prepare(
-        "INSERT OR REPLACE INTO watcher_prover_funding_capacity_v1 VALUES (?, ?, ?)",
-      )
-      .run(
-        after.reservationId,
-        saved.canonical_json!,
-        saved.authentication_tag!,
-      );
-  } finally {
-    database.close();
-  }
   const recoveredJournal = await restore();
   const recovered = await readWorkflowFundingRecovery(recoveredJournal);
   expect(recovered.transition!.signedTransactionCborHex).toBe(
     transition.signedTransactionCborHex,
   );
-  // Mirror inclusion: only exact produced ordinary change replaces spent inputs.
+  // Mirror inclusion: the produced change replaces the one spent input.
   for (const outRef of transition.consumedOutRefs) {
     const index = fixture.walletUtxos.findIndex(
       (utxo) => `${utxo.txHash}#${utxo.outputIndex}` === outRef,
@@ -215,15 +176,17 @@ it("recovers exact signed leases through cap one to three to one, then refreshes
     fixture.initial.workflowId,
   );
   expect(recoveredEntries.slice(0, signedPrefix.length)).toEqual(signedPrefix);
+  expect(
+    (await fixture.records())[0]!.activeInputs.map(({ outRef }) => outRef),
+  ).toEqual(expect.arrayContaining(posted));
   await beginWorkflowFundingReservationAction({
     journal: recoveredJournal,
     action: { actionId: "after-decrease", input: { actionKind: "step-one" } },
   });
-  expect(
-    (await fixture.records())[0]!.activeInputs.filter(
-      ({ role }) => role === "collateral",
-    ),
-  ).toHaveLength(1);
+  expect((await fixture.records())[0]).toMatchObject({
+    reservationId: before[0]!.reservationId,
+    policyDigest: before[0]!.policyDigest,
+  });
   expect(await recoveredJournal.load(fixture.initial.workflowId)).toEqual(
     recoveredEntries,
   );

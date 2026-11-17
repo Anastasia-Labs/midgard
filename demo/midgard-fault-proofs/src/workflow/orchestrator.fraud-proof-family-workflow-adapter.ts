@@ -4,6 +4,7 @@ import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidenc
 import { type FraudProofEvidence } from "../evidence/fraud-proof-evidence.js";
 import { type CanonicalBlockClassification } from "./classification.js";
 import { type CompleteCanonicalReplayContext } from "./complete-replay.js";
+import type { WorkflowFundingShortfallError } from "./funding-reservation-permit.workflow-funding-shortfall.js";
 import {
   type FraudProofWorkflowIdentity,
   type FraudProofWorkflowJournalEntry,
@@ -204,6 +205,18 @@ export interface FraudProofFamilyWorkflowAdapter {
       readonly action: FraudProofWorkflowAction;
     },
   ): Promise<FraudProofWorkflowPreflight>;
+  /**
+   * The error `action` pauses on when the prover wallet cannot fund its
+   * reservation, before the action is built: `shortfall`, or the alarm the
+   * action's own build names when the wallet is short, such as a dispute
+   * move's, naming what must land and by when. Without it, `shortfall`.
+   */
+  unfunded?(
+    context: FraudProofWorkflowAdapterContext & {
+      readonly action: FraudProofWorkflowAction;
+      readonly shortfall: WorkflowFundingShortfallError;
+    },
+  ): Promise<WorkflowFundingShortfallError>;
   /** Called only after a durable `submission_intent` journal entry exists. */
   submit(
     context: FraudProofWorkflowAdapterContext & {
@@ -255,6 +268,7 @@ export const freezeWorkflowAdapter = (
   const submit = adapter.submit;
   const reconcile = adapter.reconcile;
   const observeOwnThreads = adapter.observeOwnThreads;
+  const unfunded = adapter.unfunded;
   return Object.freeze({
     adapterVersion: adapter.adapterVersion,
     category: adapter.category,
@@ -303,6 +317,13 @@ export const freezeWorkflowAdapter = (
           observeOwnThreads: Object.freeze(
             (input: Parameters<typeof observeOwnThreads>[0]) =>
               observeOwnThreads(input),
+          ),
+        }),
+    ...(unfunded === undefined
+      ? {}
+      : {
+          unfunded: Object.freeze((input: Parameters<typeof unfunded>[0]) =>
+            unfunded(input),
           ),
         }),
   });

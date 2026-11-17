@@ -6,7 +6,6 @@ import {
   exact,
   NATURAL,
   OUT_REF,
-  type PermitState,
   reservedInput,
   type WorkflowFundingReservationSnapshot,
   WorkflowFundingReservationUnavailableError,
@@ -87,35 +86,6 @@ export const parseSnapshot = (
     state: record.state,
     activeInputs: Object.freeze(activeInputs),
   });
-};
-
-export const assertSnapshotInputBounds = ({
-  snapshot,
-  maximumCollateralInputs,
-}: {
-  readonly snapshot: WorkflowFundingReservationSnapshot;
-  readonly maximumCollateralInputs: number;
-}): void => {
-  if (
-    snapshot.activeInputs.filter(({ role }) => role === "collateral").length >
-    maximumCollateralInputs
-  ) {
-    throw new Error(
-      "production funding reservation exceeds its collateral input bound",
-    );
-  }
-};
-
-export const parseStateSnapshot = (
-  state: PermitState,
-  value: unknown,
-): WorkflowFundingReservationSnapshot => {
-  const snapshot = parseSnapshot(value);
-  assertSnapshotInputBounds({
-    snapshot,
-    maximumCollateralInputs: state.reservationMaximumCollateralInputs,
-  });
-  return snapshot;
 };
 
 export const exactUtxos = ({

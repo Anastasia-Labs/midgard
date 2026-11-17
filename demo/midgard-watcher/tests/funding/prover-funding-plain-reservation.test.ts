@@ -70,7 +70,7 @@ it("reserves only plain-ADA coins as funding, save a superseded attempt's input"
   });
   const plan = (
     utxos: readonly ReturnType<typeof coin>[],
-    avoidCollateralOutRefs?: readonly string[],
+    supersededInputOutRefs?: readonly string[],
   ) =>
     planWatcherProverFundingReservation({
       deploymentIdentity,
@@ -78,24 +78,29 @@ it("reserves only plain-ADA coins as funding, save a superseded attempt's input"
       decisionDigest: "77".repeat(32),
       walletAddress,
       utxos,
-      ...(avoidCollateralOutRefs === undefined
+      ...(supersededInputOutRefs === undefined
         ? {}
-        : { avoidCollateralOutRefs }),
+        : { supersededInputOutRefs }),
     });
   const tokenOutRef = `${TOKEN_COIN.txHash}#0`;
 
-  // The larger coin holds a token: only the plain coin funds.
+  // The largest coin holds a token: only the plain coins are reserved.
   const mixed = plan([TOKEN_COIN, COLLATERAL, PLAIN]);
-  expect(mixed.inputs.map(({ outRef, role }) => [outRef, role])).toEqual([
-    [`${PLAIN.txHash}#0`, "funding"],
-    [`${COLLATERAL.txHash}#0`, "collateral"],
+  expect(mixed.inputs.map(({ outRef }) => outRef)).toEqual([
+    `${PLAIN.txHash}#0`,
+    `${COLLATERAL.txHash}#0`,
   ]);
-  expect(mixed.fundingLovelace).toBe("6000000");
+  expect(mixed.fundingLovelace).toBe("906000000");
   expect(mixed.assets).toEqual([]);
 
-  // No plain coin beside the collateral: funding is unavailable until a
-  // top-up, rather than a reservation of a coin no transaction spends.
-  expect(() => plan([TOKEN_COIN, COLLATERAL])).toThrow(
+  // The coin that covers the collateral funds the action too.
+  expect(
+    plan([TOKEN_COIN, COLLATERAL]).inputs.map(({ outRef }) => outRef),
+  ).toEqual([`${COLLATERAL.txHash}#0`]);
+
+  // The token coin never counts toward collateral: without a plain coin that
+  // covers it, funding is unavailable until a top-up.
+  expect(() => plan([TOKEN_COIN, PLAIN])).toThrow(
     WatcherProverFundingUnavailableError,
   );
 
@@ -103,7 +108,5 @@ it("reserves only plain-ADA coins as funding, save a superseded attempt's input"
   // it too, so it stays reserved as funding.
   expect(
     plan([TOKEN_COIN, COLLATERAL, PLAIN], [tokenOutRef]).inputs,
-  ).toContainEqual(
-    expect.objectContaining({ outRef: tokenOutRef, role: "funding" }),
-  );
+  ).toContainEqual(expect.objectContaining({ outRef: tokenOutRef }));
 });

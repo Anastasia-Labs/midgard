@@ -83,6 +83,16 @@ export const withScriptDecodePrerequisite = <
     ...(base.validatePreparedRawArtifact === undefined
       ? {}
       : { validatePreparedRawArtifact: base.validatePreparedRawArtifact }),
+    // The base names its own actions' alarm; this wrapper's own pause on
+    // the shortfall itself.
+    ...(base.unfunded === undefined
+      ? {}
+      : {
+          unfunded: async (context) =>
+            isScriptDecodePrerequisiteAction(context.action)
+              ? context.shortfall
+              : ((await base.unfunded?.(context)) ?? context.shortfall),
+        }),
     observe: async (context) => {
       const observed = await base.observe(context);
       if (

@@ -44,7 +44,6 @@ const twoFundingPlan = (): WatcherProverFundingReservationPlan => {
         ...base.inputs,
         Object.freeze({
           outRef: second,
-          role: "funding" as const,
           lovelace: "100000000",
           assets: Object.freeze([]),
         }),

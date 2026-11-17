@@ -208,9 +208,8 @@ export const slashFundingFixture = async (
     walletAddress: fundingAddress,
     fundingPaymentKeyHash: fundingKey.to_public().hash().to_hex(),
     state: "active",
-    activeInputs: wallets.map((utxo, index) => ({
+    activeInputs: wallets.map((utxo) => ({
       outRef: ref(utxo),
-      role: index === 0 ? "funding" : "collateral",
       lovelace: utxo.assets.lovelace.toString(),
       assets: [],
     })),

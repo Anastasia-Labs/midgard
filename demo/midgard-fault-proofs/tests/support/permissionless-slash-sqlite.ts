@@ -234,20 +234,17 @@ export const preparePermissionlessSlashSqlite = async ({
       expect(utxo.scriptRef).toBeUndefined();
       return {
         outRef: outRefLabel(utxo),
-        role: collateral.includes(outRefLabel(utxo))
-          ? ("collateral" as const)
-          : ("funding" as const),
         lovelace: utxo.assets.lovelace!.toString(),
         assets: [],
       };
     })
     .sort((a, b) => a.outRef.localeCompare(b.outRef, "en"));
-  expect(inputs.some((input) => input.role === "funding")).toBe(true);
+  // Every coin the slash posts as collateral is reserved.
   expect(
-    inputs
-      .filter((input) => input.role === "collateral")
-      .map((input) => input.outRef),
-  ).toEqual([...collateral].sort());
+    collateral.filter(
+      (outRef) => !inputs.some((input) => input.outRef === outRef),
+    ),
+  ).toEqual([]);
   const basis = {
     walletAddress,
     callerKeyHash,
@@ -264,11 +261,6 @@ export const preparePermissionlessSlashSqlite = async ({
     walletAddress,
     inputs,
     fundingLovelace: inputs
-      .filter((input) => input.role === "funding")
-      .reduce((sum, input) => sum + BigInt(input.lovelace), 0n)
-      .toString(),
-    collateralLovelace: inputs
-      .filter((input) => input.role === "collateral")
       .reduce((sum, input) => sum + BigInt(input.lovelace), 0n)
       .toString(),
     assets: [],
@@ -380,12 +372,9 @@ export const preparePermissionlessSlashSqlite = async ({
         });
         const confirmed = await record();
         expect(confirmed.pendingTransition).toBeNull();
-        // Collateral is released at confirmation (owner ruling G5); the
-        // consumed funding stays leased until final completion.
-        const leasedAfterConfirmation = inputs.filter(
-          (input) => input.role !== "collateral",
-        );
-        expect(confirmed.activeInputs).toEqual(leasedAfterConfirmation);
+        // A phase-2-valid slash spends no reserved coin: the coins it posted
+        // as collateral stay leased with the rest until final completion.
+        expect(confirmed.activeInputs).toEqual(inputs);
         expect(confirmed.lastConfirmedTransitionDigest).toBe(
           pending.pendingTransition?.transitionDigest,
         );
@@ -417,7 +406,7 @@ export const preparePermissionlessSlashSqlite = async ({
         expect(
           (await readWorkflowFundingRecovery(journal)).transition,
         ).toBeNull();
-        expect((await record()).activeInputs).toEqual(leasedAfterConfirmation);
+        expect((await record()).activeInputs).toEqual(inputs);
         expect(
           await store.readConfirmedInput({
             reservationId: plan.reservationId,

@@ -6,7 +6,7 @@ import {
 } from "./actuation-permit.js";
 import { isFinalWorkflowCompletion } from "./completion-finality.js";
 import { stateForJournal } from "./funding-reservation-permit.create-workflow-funding-reservation-permit.js";
-import { parseStateSnapshot } from "./funding-reservation-permit.parse-workflow-funding-snapshot.js";
+import { parseSnapshot } from "./funding-reservation-permit.parse-workflow-funding-snapshot.js";
 import {
   type PermitState,
   WorkflowFundingReservationUnavailableError,
@@ -30,7 +30,6 @@ const clearAction = (state: PermitState): void => {
   state.currentActionDigest = undefined;
   state.currentFundingOutRefs = Object.freeze([]);
   state.currentRequiredFundingOutRefs = Object.freeze([]);
-  state.currentCollateralOutRefs = Object.freeze([]);
 };
 
 type JournaledChange = Readonly<{
@@ -77,7 +76,7 @@ const applyTransition = async ({
             journal,
           }),
   });
-  state.snapshot = parseStateSnapshot(state, next);
+  state.snapshot = parseSnapshot(next);
   state.pendingTransactionHash = undefined;
   clearAction(state);
 };
@@ -130,7 +129,7 @@ export const reobserveWorkflowFundingReservationTransaction = async (
     },
   });
   if (observed === null) return false;
-  state.snapshot = parseStateSnapshot(state, observed);
+  state.snapshot = parseSnapshot(observed);
   state.pendingTransactionHash = input.transactionHash;
   clearAction(state);
   return true;
@@ -157,8 +156,7 @@ export const abandonWorkflowFundingReservationTransaction = async (
     throw new Error(
       "funding abandonment changed its exact transaction identity",
     );
-  state.snapshot = parseStateSnapshot(
-    state,
+  state.snapshot = parseSnapshot(
     await commitWithJournal({
       port: state.port,
       writer: input.writer,
@@ -239,8 +237,7 @@ export const releaseIdleWorkflowFundingReservation = async (input: {
     category: state.category,
     rollbackGeneration: state.snapshot.rollbackGeneration,
   });
-  state.snapshot = parseStateSnapshot(
-    state,
+  state.snapshot = parseSnapshot(
     await state.port.releaseIdle({
       expectedRevision: state.snapshot.revision,
     }),
@@ -269,8 +266,7 @@ export const releaseUnfundedWorkflowFundingInputs = async (input: {
     category: state.category,
     rollbackGeneration: state.snapshot.rollbackGeneration,
   });
-  state.snapshot = parseStateSnapshot(
-    state,
+  state.snapshot = parseSnapshot(
     await state.port.releaseIdle({
       expectedRevision: state.snapshot.revision,
     }),
@@ -306,8 +302,7 @@ export const releaseWorkflowFundingReservation = async ({
       await appendWorkflowJournalEvents(writer, [event]);
       return;
     }
-    state.snapshot = parseStateSnapshot(
-      state,
+    state.snapshot = parseSnapshot(
       await commitWithJournal({
         port: state.port,
         writer,
@@ -325,8 +320,7 @@ export const releaseWorkflowFundingReservation = async ({
     await appendWorkflowJournalEvents(writer, [event]);
     return;
   }
-  state.snapshot = parseStateSnapshot(
-    state,
+  state.snapshot = parseSnapshot(
     await commitWithJournal({
       port: state.port,
       writer,
@@ -363,8 +357,7 @@ export const retireWorkflowFundingSupersededAttempt = async (
   const retire = state?.port.retireSupersededAttempt?.bind(state.port);
   if (state === undefined || retire === undefined)
     throw new Error("Funding authority cannot retire a superseded attempt");
-  state.snapshot = parseStateSnapshot(
-    state,
+  state.snapshot = parseSnapshot(
     await commitWithJournal({
       port: state.port,
       writer: input.writer,

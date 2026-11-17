@@ -3,9 +3,9 @@
  * reservation permit, begun for one action, and the real restricted wallet
  * (`restrictWorkflowFundingSigner`) over the prover's live emulator coins.
  *
- * Only the reservation store is the test's: its snapshot reserves one
- * collateral coin and every other plain coin of the wallet as funding, the
- * shape the watcher's planner leases from a fresh wallet. The permit is the
+ * Only the reservation store is the test's: its snapshot reserves every plain
+ * coin of the wallet as one pool, the shape the watcher's planner leases from
+ * a fresh wallet. The permit is the
  * fixture double-spend objective's; the restricted wallet does not depend on
  * the category, so any family's builder runs under it.
  */
@@ -19,7 +19,6 @@ import {
   bindWorkflowFundingReservationJournal,
   createWorkflowFundingReservationPermit,
   restrictWorkflowFundingSigner,
-  unsafeWorkflowFundingReservationSelectedOutRefsForTest,
 } from "../../src/workflow/funding-reservation-permit.js";
 import { readWorkflowRuntimeFundingPolicy } from "../../src/workflow/runtime-funding-policy.js";
 import {
@@ -42,8 +41,8 @@ const outRefOf = (outRef: string) => {
   return { txHash: txHash!, outputIndex: Number(outputIndex) };
 };
 
-/** The funder pays the prover the coin the reservation will hold as collateral. */
-export const fundReservedCollateral = async ({
+/** The funder pays the prover a small plain coin the reservation will hold. */
+export const fundReservedCoin = async ({
   emulator,
   funderLucid,
   signer,
@@ -67,16 +66,15 @@ export const fundReservedCollateral = async ({
 /**
  * `signer` restricted to a reservation begun for one action over the wallet
  * as it is now, and a pre-submit boundary that holds the signed transaction
- * to the watcher's reserved ordinary/collateral separation.
+ * to the reserved pool: every wallet coin it spends and every coin it posts
+ * as collateral is reserved.
  */
 export const restrictedProverFunding = async ({
   emulator,
   signer,
-  collateral,
 }: {
   readonly emulator: Emulator;
   readonly signer: ResolvedProverSigner;
-  readonly collateral: UTxO;
 }): Promise<{
   readonly signer: ResolvedProverSigner;
   readonly preSubmitBoundary: FraudProofPreSubmitBoundary;
@@ -87,7 +85,6 @@ export const restrictedProverFunding = async ({
   const coins = (await emulator.getUtxos(signer.address))
     .filter(isPlainFundingOutput)
     .sort((left, right) => (label(left) < label(right) ? -1 : 1));
-  expect(coins.map(label)).toContain(label(collateral));
   const actuation = await admittedActuation();
   const { runner, policy } = runtimeFundingPolicyFixture({
     deploymentFingerprint: DEPLOYMENT,
@@ -108,10 +105,6 @@ export const restrictedProverFunding = async ({
       coins.map((utxo) =>
         Object.freeze({
           outRef: label(utxo),
-          role:
-            label(utxo) === label(collateral)
-              ? ("collateral" as const)
-              : ("funding" as const),
           lovelace: utxo.assets.lovelace!.toString(),
           assets: Object.freeze([]),
         }),
@@ -149,32 +142,34 @@ export const restrictedProverFunding = async ({
     journal,
     action: { actionId: "step-one", input: { actionKind: "step-one" } },
   });
-  const reserved =
-    unsafeWorkflowFundingReservationSelectedOutRefsForTest(permit);
-  expect(reserved.collateralOutRefs).toEqual([label(collateral)]);
+  const pool = new Set(coins.map(label));
   let checked = 0;
   return {
     signer: restrictWorkflowFundingSigner({ signer, permit }),
     // The rule `prepareWorkflowFundingReservationTransaction` enforces before
-    // it records an attempt: no reserved collateral among the body inputs,
-    // and collateral only from the reserved collateral.
-    preSubmitBoundary: ({ signed }) => {
+    // it records an attempt: wallet coins spent and coins posted as
+    // collateral all come from the reservation.
+    preSubmitBoundary: async ({ signed }) => {
       checked += 1;
-      const bodyInputs = workflowTransactionInputOutRefs(signed);
-      const collateralInputs =
-        workflowTransactionCollateralInputOutRefs(signed);
+      const wallet = new Set(
+        (await emulator.getUtxos(signer.address)).map(label),
+      );
+      const collateralInputs = [
+        ...workflowTransactionCollateralInputOutRefs(signed),
+      ];
       expect(
-        {
-          bodyInputsHoldingCollateral: bodyInputs.filter((outRef) =>
-            reserved.collateralOutRefs.includes(outRef),
+        collateralInputs,
+        "signed transaction posted no collateral",
+      ).not.toEqual([]);
+      expect(
+        [
+          ...workflowTransactionInputOutRefs(signed).filter((outRef) =>
+            wallet.has(outRef),
           ),
-          collateralInputs: [...collateralInputs],
-        },
-        "signed transaction changed reserved ordinary/collateral separation",
-      ).toEqual({
-        bodyInputsHoldingCollateral: [],
-        collateralInputs: [...reserved.collateralOutRefs],
-      });
+          ...collateralInputs,
+        ].filter((outRef) => !pool.has(outRef)),
+        "signed transaction used a coin outside the reservation",
+      ).toEqual([]);
     },
     checked: () => checked,
   };

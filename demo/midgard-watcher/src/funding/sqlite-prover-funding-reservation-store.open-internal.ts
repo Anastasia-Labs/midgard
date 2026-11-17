@@ -22,7 +22,6 @@ import {
   pendingProverFundingLineageParameters,
   proverFundingReobservationInputs,
   retainedProverFundingInputs,
-  signedCollateralOutRefs,
 } from "./prover-funding-reservation.retained-signed-inputs.js";
 import { OUT_REF } from "./prover-funding-reservation.watcher-prover-funding-reservation-store.js";
 import { createProverFundingAbandonmentRecords } from "./sqlite-prover-funding-reservation-store.abandonment-records.js";
@@ -110,7 +109,6 @@ export const openInternal = async (
       out_ref TEXT PRIMARY KEY,
       reservation_id TEXT NOT NULL,
       lease_phase TEXT NOT NULL CHECK (lease_phase IN ('active', 'pending')),
-      role TEXT NOT NULL CHECK (role IN ('funding', 'collateral')),
       FOREIGN KEY (reservation_id)
         REFERENCES watcher_prover_funding_reservation_v1(reservation_id)
         ON DELETE CASCADE
@@ -182,7 +180,7 @@ export const openInternal = async (
     WHERE reservation_id = ? AND record_digest = ?
   `);
   const selectAllLeases = database.prepare(`
-    SELECT out_ref, reservation_id, lease_phase, role
+    SELECT out_ref, reservation_id, lease_phase
     FROM watcher_prover_funding_lease_v1
     ORDER BY out_ref ASC
   `);
@@ -193,8 +191,8 @@ export const openInternal = async (
   `);
   const insertLease = database.prepare(`
     INSERT INTO watcher_prover_funding_lease_v1(
-      out_ref, reservation_id, lease_phase, role
-    ) VALUES (?, ?, ?, ?)
+      out_ref, reservation_id, lease_phase
+    ) VALUES (?, ?, ?)
   `);
   const insertProducedRelease = database.prepare(`
     INSERT OR IGNORE INTO watcher_prover_funding_produced_release_v1(
@@ -518,12 +516,7 @@ export const openInternal = async (
     const projection = leaseProjection();
     for (const record of readAll()) deleteLeases.run(record.reservationId);
     for (const lease of projection.leases)
-      insertLease.run(
-        lease.outRef,
-        lease.reservationId,
-        lease.phase,
-        lease.role,
-      );
+      insertLease.run(lease.outRef, lease.reservationId, lease.phase);
   };
 
   const persistPendingLineage = (input: {
@@ -638,8 +631,7 @@ export const openInternal = async (
       if (
         typeof row.out_ref !== "string" ||
         typeof row.reservation_id !== "string" ||
-        (row.lease_phase !== "active" && row.lease_phase !== "pending") ||
-        (row.role !== "funding" && row.role !== "collateral")
+        (row.lease_phase !== "active" && row.lease_phase !== "pending")
       ) {
         throw new Error("prover funding reservation lease is malformed");
       }
@@ -647,8 +639,7 @@ export const openInternal = async (
       if (
         value === undefined ||
         value.reservationId !== row.reservation_id ||
-        value.phase !== row.lease_phase ||
-        value.role !== row.role
+        value.phase !== row.lease_phase
       ) {
         throw new Error("prover funding reservation lease metadata mismatch");
       }
@@ -903,9 +894,9 @@ export const openInternal = async (
           throw new Error(
             "reobserved transaction has no signed funding intent",
           );
-        const candidates = new Map(
+        const candidates = new Set(
           reobservationInputs(current.reservationId, transactionHash).map(
-            ({ outRef, role }) => [outRef, role],
+            ({ outRef }) => outRef,
           ),
         );
         const transition = makeTransition(recorded.transition);
@@ -920,7 +911,7 @@ export const openInternal = async (
           transition.producedInputs.map(({ outRef }) => outRef),
         );
         for (const value of inputs) {
-          if (candidates.get(value.outRef) !== value.role)
+          if (!candidates.has(value.outRef))
             throw new Error("reobserved funding input has no recorded lineage");
           if (!produced.has(value.outRef))
             assertLeaseAvailable(value.outRef, current.reservationId);
@@ -1064,9 +1055,9 @@ export const openInternal = async (
             signedTransactionCborHex: transitionInput.signedTransactionCborHex,
             attempt,
             uncovered: uncoveredSuperseded(current.reservationId),
-            reservedFundingOutRefs: current.activeInputs
-              .filter(({ role }) => role === "funding")
-              .map(({ outRef }) => outRef),
+            reservedFundingOutRefs: current.activeInputs.map(
+              ({ outRef }) => outRef,
+            ),
           })
         )
           throw new Error(
@@ -1122,16 +1113,14 @@ export const openInternal = async (
         ) {
           throw new Error("prover reservation confirmation mismatch");
         }
-        // A confirmed transaction's collateral lease ends here, so it never
-        // blocks a later action of any reservation. A rollback that finds it
-        // spent re-signs with fresh collateral; this reservation's next
-        // action selects collateral again.
-        const consumed = new Set([
-          ...current.pendingTransition.consumedOutRefs,
-          ...signedCollateralOutRefs(
-            current.pendingTransition.signedTransactionCborHex,
-          ),
-        ]);
+        // A phase-2-valid inclusion spends its body inputs alone: the coins
+        // it posted as collateral stay in the reservation, which the next
+        // action may use again. This single pool supersedes the earlier
+        // mechanism (G5) that released such a coin at inclusion. Its goal
+        // still holds: the coin stays in the reservation that used it, so it
+        // cannot block that reservation's next action, and a rollback can
+        // re-land the identical bytes because the coin is still held.
+        const consumed = new Set(current.pendingTransition.consumedOutRefs);
         // Once its outputs are released (`releaseProducedOutputs`), what
         // this attempt produces funds other proofs, as a confirmed one's does.
         const active = [

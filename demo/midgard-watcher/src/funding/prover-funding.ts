@@ -161,13 +161,6 @@ export type WatcherProtocolParameterHistory = Readonly<{
   read(
     record: WatcherProverFundingReservationRecord,
   ): WatcherProtocolParameterRuntimeAuthority | null;
-  readCapacity(
-    record: WatcherProverFundingReservationRecord,
-  ): WatcherProtocolParameterRuntimeAuthority | null;
-  rememberCapacity(
-    record: WatcherProverFundingReservationRecord,
-    authority: WatcherProtocolParameterRuntimeAuthority,
-  ): void;
   remember(
     record: WatcherProverFundingReservationRecord,
     authority: WatcherProtocolParameterRuntimeAuthority,
@@ -192,13 +185,8 @@ export const createWatcherProtocolParameterHistory = (input: {
     ...input,
     deploymentFingerprint: input.deploymentIdentity.manifestId,
   });
-  const read = (
-    record: WatcherProverFundingReservationRecord,
-    capacity = false,
-  ) => {
-    const snapshot = capacity
-      ? storage.readCapacity(record)
-      : storage.read(record);
+  const read = (record: WatcherProverFundingReservationRecord) => {
+    const snapshot = storage.read(record);
     if (snapshot === null) return null;
     const identity = Object.freeze({
       schemaVersion: WATCHER_PROTOCOL_PARAMETER_RUNTIME_AUTHORITY,
@@ -217,18 +205,6 @@ export const createWatcherProtocolParameterHistory = (input: {
   };
   const history: WatcherProtocolParameterHistory = Object.freeze({
     read,
-    readCapacity: (record) => read(record, true),
-    rememberCapacity: (record, authority) => {
-      assertWatcherProtocolParameterRuntimeAuthority(authority);
-      if (
-        authority.source !== "local_node" ||
-        authority.deploymentFingerprint !== input.deploymentIdentity.manifestId
-      )
-        throw new Error(
-          "Funding capacity requires admitted live local parameters",
-        );
-      storage.remember(record, authority.snapshot, true);
-    },
     remember: (record, authority) => {
       assertWatcherProtocolParameterRuntimeAuthority(authority);
       if (

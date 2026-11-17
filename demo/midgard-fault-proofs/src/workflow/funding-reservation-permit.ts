@@ -71,6 +71,7 @@ export {
   asWorkflowFundingShortfall,
   isWorkflowFundingShortfall,
   WORKFLOW_FUNDING_SHORTFALL,
+  WorkflowFundingReservationShortfallError,
   WorkflowFundingShortfallError,
 } from "./funding-reservation-permit.workflow-funding-shortfall.js";
 export {

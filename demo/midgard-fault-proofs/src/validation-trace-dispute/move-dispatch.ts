@@ -149,6 +149,47 @@ export const isValidationTraceBuildPassedOn = (cause: unknown): boolean =>
   isWorkflowFundingShortfall(cause) ||
   isFraudProofL1WaitError(cause);
 
+/** What the operator's alarm on the `stage` move on `threadOutRef` of our
+ * case `caseUnit`, whose datum is `caseDatum`, names: the case, the thread
+ * and the deadline the move must land by. */
+const namedMove = async (input: {
+  readonly stage: ValidationTraceStage;
+  readonly lucid: ValidationTraceMoveInput["lucid"];
+  readonly caseUnit: string;
+  readonly threadOutRef: string;
+  readonly caseDatum: SDK.Case;
+}) => {
+  const thread = await ours(input.lucid, input.threadOutRef, "thread").catch(
+    () => undefined,
+  );
+  return {
+    caseUnit: input.caseUnit,
+    threadOutRef: input.threadOutRef,
+    deadlineMs: validationTraceMoveDeadlineMs({
+      stage: input.stage,
+      caseExpiresAtMs: validationTraceCaseExpiryMs(input.caseDatum),
+      thread,
+    }),
+  };
+};
+
+/**
+ * The operator's alarm on the `stage` move on `threadOutRef` of our case
+ * that our wallet cannot fund, `cause` being why: before the move is built,
+ * when its reservation cannot be funded, as when its build is short.
+ */
+export const validationTraceThreadMoveUnfunded = async (
+  input: Parameters<typeof namedMove>[0] & { readonly cause: unknown },
+): Promise<ValidationDisputeWalletMoveUnfundedError> =>
+  new ValidationDisputeWalletMoveUnfundedError({
+    actionId: validationTraceActionId({
+      stage: input.stage,
+      consumes: input.threadOutRef,
+    }),
+    ...(await namedMove(input)),
+    cause: input.cause,
+  });
+
 /**
  * The move on a thread of our case, whose datum is `caseDatum`. A build our
  * wallet is short of ada for is the operator's alarm, and so is a move that
@@ -165,32 +206,20 @@ export const captureValidationTraceThreadMove = async ({
     return await capture(input);
   } catch (cause) {
     if (isFraudProofL1WaitError(cause)) throw cause;
-    const unfunded = isWorkflowFundingShortfall(cause);
-    if (!unfunded && cause instanceof WorkflowActionChangedError) throw cause;
-    const thread = await ours(move.lucid, move.threadOutRef, "thread").catch(
-      () => undefined,
-    );
     const named = {
+      stage: input.stage,
+      lucid: move.lucid,
       caseUnit: move.caseUnit,
       threadOutRef: move.threadOutRef,
-      deadlineMs: validationTraceMoveDeadlineMs({
-        stage: input.stage,
-        caseExpiresAtMs: validationTraceCaseExpiryMs(caseDatum),
-        thread,
-      }),
-      cause,
+      caseDatum,
     };
-    if (!unfunded)
-      throw new ValidationTraceMoveUnbuiltError({
-        stage: input.stage,
-        ...named,
-      });
-    throw new ValidationDisputeWalletMoveUnfundedError({
-      actionId: validationTraceActionId({
-        stage: input.stage,
-        consumes: move.threadOutRef,
-      }),
-      ...named,
+    if (isWorkflowFundingShortfall(cause))
+      throw await validationTraceThreadMoveUnfunded({ ...named, cause });
+    if (cause instanceof WorkflowActionChangedError) throw cause;
+    throw new ValidationTraceMoveUnbuiltError({
+      stage: input.stage,
+      ...(await namedMove(named)),
+      cause,
     });
   }
 };

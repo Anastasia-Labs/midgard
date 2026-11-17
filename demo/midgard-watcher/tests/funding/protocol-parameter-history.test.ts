@@ -50,42 +50,16 @@ it("authenticates historical parameters and refuses disk tampering, identity sub
     expect(() => history.remember(record, { ...authority })).toThrow(
       "not admitted",
     );
-    expect(history.readCapacity(record)).toBeNull();
-    expect(() => history.rememberCapacity(record, { ...authority })).toThrow(
-      "not admitted",
-    );
     history.remember(record, authority);
-    history.rememberCapacity(record, authority);
-    history.rememberCapacity(
-      record,
-      await runtimeAuthority(deploymentIdentity, 46, 1),
-    );
-    expect(history.readCapacity(record)!.snapshot.maxCollateralInputs).toBe(
-      "3",
-    );
-    history.rememberCapacity(
-      record,
-      await runtimeAuthority(deploymentIdentity, 47, 5),
-    );
-    expect(history.readCapacity(record)!.snapshot.maxCollateralInputs).toBe(
-      "5",
-    );
     const restarted = createWatcherProtocolParameterHistory({
       database,
       deploymentIdentity,
       authenticationKey: key,
     });
-    const capacity = restarted.readCapacity(record)!;
-    expect(capacity.snapshot.maxCollateralInputs).toBe("5");
-    expect(() => restarted.rememberCapacity(record, capacity)).toThrow(
-      "admitted live local parameters",
+    const changed = await runtimeAuthority(deploymentIdentity, 46, 1);
+    expect(() => restarted.remember(record, changed)).toThrow(
+      "changed original snapshot",
     );
-    expect(() =>
-      restarted.readCapacity({
-        ...record,
-        reservationBasisDigest: "67".repeat(32),
-      }),
-    ).toThrow("identity mismatch");
     const recovered = restarted.read(record)!;
     expect(recovered.snapshot.minFeeA).toBe("45");
     expect(recovered.source).toBe("authenticated_history");
@@ -104,46 +78,6 @@ it("authenticates historical parameters and refuses disk tampering, identity sub
       authenticationKey: Buffer.alloc(32, 0x92),
     });
     expect(() => wrongKey.read(record)).toThrow("authentication mismatch");
-    expect(() => wrongKey.readCapacity(record)).toThrow(
-      "authentication mismatch",
-    );
-    const savedCapacity = database
-      .prepare(
-        "SELECT canonical_json, authentication_tag FROM watcher_prover_funding_capacity_v1 WHERE reservation_id = ?",
-      )
-      .get(record.reservationId)!;
-    database
-      .prepare(
-        `UPDATE watcher_prover_funding_capacity_v1 SET canonical_json = replace(canonical_json, '"maxCollateralInputs":"5"', '"maxCollateralInputs":"6"') WHERE reservation_id = ?`,
-      )
-      .run(record.reservationId);
-    expect(() => restarted.readCapacity(record)).toThrow(
-      "authentication mismatch",
-    );
-    database
-      .prepare(
-        "UPDATE watcher_prover_funding_capacity_v1 SET canonical_json = (SELECT canonical_json FROM watcher_prover_funding_parameters_v1 WHERE reservation_id = ?), authentication_tag = (SELECT authentication_tag FROM watcher_prover_funding_parameters_v1 WHERE reservation_id = ?) WHERE reservation_id = ?",
-      )
-      .run(record.reservationId, record.reservationId, record.reservationId);
-    expect(() => restarted.readCapacity(record)).toThrow("identity mismatch");
-    database
-      .prepare(
-        "DELETE FROM watcher_prover_funding_capacity_v1 WHERE reservation_id = ?",
-      )
-      .run(record.reservationId);
-    expect(restarted.readCapacity(record)).toBeNull();
-    database
-      .prepare(
-        "INSERT INTO watcher_prover_funding_capacity_v1 VALUES (?, ?, ?)",
-      )
-      .run(
-        record.reservationId,
-        savedCapacity.canonical_json!,
-        savedCapacity.authentication_tag!,
-      );
-    expect(restarted.readCapacity(record)!.snapshot.maxCollateralInputs).toBe(
-      "5",
-    );
     database
       .prepare(
         'UPDATE watcher_prover_funding_parameters_v1 SET canonical_json = replace(canonical_json, \'"minFeeA":"45"\', \'"minFeeA":"46"\') WHERE reservation_id = ?',

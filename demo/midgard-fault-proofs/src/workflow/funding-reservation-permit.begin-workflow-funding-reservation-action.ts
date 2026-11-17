@@ -10,7 +10,7 @@ import {
   stateForJournal,
 } from "./funding-reservation-permit.create-workflow-funding-reservation-permit.js";
 import { workflowFundingExclusiveProtocolInput } from "./funding-reservation-permit.excluded-by-protocol-input.js";
-import { parseStateSnapshot } from "./funding-reservation-permit.parse-workflow-funding-snapshot.js";
+import { parseSnapshot } from "./funding-reservation-permit.parse-workflow-funding-snapshot.js";
 import { isValidationDisputeStagingReclaim } from "./funding-reservation-permit.validation-dispute-staging-authority.js";
 import {
   admittedPermits,
@@ -20,11 +20,11 @@ import {
   type WorkflowFundingReservationPermit,
   WorkflowFundingReservationUnavailableError,
 } from "./funding-reservation-permit.workflow-funding-reservation-port.js";
-import type { FraudProofWorkflowAction } from "./orchestrator.js";
 import {
-  readWorkflowRuntimeFundingPolicy,
-  type WorkflowRuntimeFundingPolicy,
-} from "./runtime-funding-policy.js";
+  WorkflowFundingReservationShortfallError,
+  WorkflowFundingShortfallError,
+} from "./funding-reservation-permit.workflow-funding-shortfall.js";
+import type { FraudProofWorkflowAction } from "./orchestrator.js";
 
 export const bindWorkflowFundingReservationJournal = <Journal extends object>({
   journal,
@@ -89,8 +89,8 @@ export const assertFundingSubmissionAuthority = (state: PermitState): void => {
 };
 
 /** Begins the spend back `action` under reconciliation-only authority: it
- * spends its staging output alone, so it reserves no wallet coin and no
- * collateral. */
+ * spends its staging output alone, so it reserves no wallet coin, for its
+ * body or its collateral. */
 const beginReconciliationReclaim = async (
   state: PermitState,
   action: FraudProofWorkflowAction,
@@ -102,46 +102,7 @@ const beginReconciliationReclaim = async (
   state.currentActionDigest = computeDeploymentManifestJsonDigest(action);
   state.currentFundingOutRefs = Object.freeze([]);
   state.currentRequiredFundingOutRefs = Object.freeze([]);
-  state.currentCollateralOutRefs = Object.freeze([]);
   reconciliationReclaims.add(state);
-};
-
-export const assertCurrentFundingCollateralLimit = (
-  state: PermitState,
-): void => {
-  // Recovery reads and confirmation use the original admitted bounds. A new
-  // action must use the current limit even if its old inputs still exist.
-  if (
-    state.snapshot.activeInputs.filter(({ role }) => role === "collateral")
-      .length > state.maximumCollateralInputs
-  )
-    throw new WorkflowFundingReservationUnavailableError();
-};
-
-/**
- * Whether the reservation's collateral covers less than the watcher's planner
- * reserves: the largest of the release floor, an ordinary action's collateral
- * and a removal's (the slashing penalty's percentage) under the current
- * policy. A removal's collateral can take several coins, and a confirmation
- * releases only the coins its transaction named.
- */
-const collateralBelowReservation = (
-  state: PermitState,
-  policy: WorkflowRuntimeFundingPolicy,
-): boolean => {
-  const funding = readWorkflowRuntimeFundingPolicy(policy);
-  const required = [
-    funding.economics.policy.proverCollateralFloorLovelace,
-    funding.maximumCollateralLovelace,
-    funding.maximumSlashCollateralLovelace,
-  ].reduce((maximum, value) => {
-    const amount = BigInt(value);
-    return amount > maximum ? amount : maximum;
-  }, 0n);
-  const reserved = state.snapshot.activeInputs
-    .filter(({ role }) => role === "collateral")
-    .reduce((sum, { lovelace }) => sum + BigInt(lovelace), 0n);
-  return reserved < required;
 };
 
 export const beginWorkflowFundingReservationAction = async ({
@@ -175,22 +136,24 @@ export const beginWorkflowFundingReservationAction = async ({
   if (
     (staleInputs ||
       state.snapshot.activeInputs.length === 0 ||
-      state.requiresParameterRefresh ||
-      // Confirmation releases a transaction's collateral lease, so the next
-      // action selects collateral again whenever what remains is short of
-      // what the reservation holds for any action (none at all included).
-      collateralBelowReservation(state, state.policy) ||
-      state.snapshot.activeInputs.filter(({ role }) => role === "collateral")
-        .length > state.maximumCollateralInputs) &&
+      state.requiresParameterRefresh) &&
     state.port.refreshIdle !== undefined
   ) {
-    const refreshed = await state.port.refreshIdle({
-      expectedRevision: state.snapshot.revision,
-      releaseStaleInputs: state.idleReleaseAuthorized,
-    });
+    let refreshed: unknown;
+    try {
+      refreshed = await state.port.refreshIdle({
+        expectedRevision: state.snapshot.revision,
+        releaseStaleInputs: state.idleReleaseAuthorized,
+      });
+    } catch (error) {
+      // The wallet cannot fund this action: its shortfall, named for it.
+      if (error instanceof WorkflowFundingReservationShortfallError)
+        throw new WorkflowFundingShortfallError(action.actionId, error);
+      throw error;
+    }
     if (refreshed === null)
       throw new WorkflowFundingReservationUnavailableError();
-    state.snapshot = parseStateSnapshot(state, refreshed);
+    state.snapshot = parseSnapshot(refreshed);
     await refresh(state);
     state.requiresParameterRefresh = false;
   } else if (staleInputs) {
@@ -199,12 +162,11 @@ export const beginWorkflowFundingReservationAction = async ({
   assertFundingSubmissionAuthority(state);
   if (state.snapshot.state !== "active")
     throw new Error("production funding reservation is not active");
-  assertCurrentFundingCollateralLimit(state);
   state.currentActionKind = actionKind(action);
   state.currentActionDigest = computeDeploymentManifestJsonDigest(action);
-  const funding = state.snapshot.activeInputs
-    .filter(({ role }) => role === "funding")
-    .map(({ outRef }) => outRef);
+  // One pool: any reserved coin may fund the action, post its collateral, or
+  // both at once.
+  const funding = state.snapshot.activeInputs.map(({ outRef }) => outRef);
   // Owner ruling (whichever lands wins): a replacement must be mutually
   // exclusive with each superseded attempt. A shared protocol input already
   // makes it so; one shared funding input per attempt also does, and the rest
@@ -240,11 +202,6 @@ export const beginWorkflowFundingReservationAction = async ({
   // derives the exact consumed subset from its signed transaction.
   state.currentFundingOutRefs = Object.freeze(funding);
   state.currentRequiredFundingOutRefs = Object.freeze(required.sort());
-  state.currentCollateralOutRefs = Object.freeze(
-    state.snapshot.activeInputs
-      .filter(({ role }) => role === "collateral")
-      .map(({ outRef }) => outRef),
-  );
 };
 
 export const bodySha256 = (signed: TxSigned): string =>

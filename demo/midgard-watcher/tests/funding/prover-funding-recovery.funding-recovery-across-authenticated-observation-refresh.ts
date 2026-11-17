@@ -102,7 +102,10 @@ describe("funding recovery across authenticated observation refresh", () => {
     async (role) => {
       const test = await setup(false, role === "collateral");
       test.useUnspentPendingInputs();
-      const spent = test.plan.inputs.find((input) => input.role === role)!;
+      // The reserved coin the attempt spent, or the one it posted as
+      // collateral.
+      const spent =
+        role === "funding" ? test.fundingInput : test.collateralInput;
       const admitted = await test.createPermit(test.fresh, "2");
       const journal = test.bind(test.fresh, admitted);
       test.walletUtxos.splice(
@@ -507,7 +510,6 @@ describe("funding recovery across authenticated observation refresh", () => {
           producedInputs: [
             {
               outRef: `${transactionHash}#0`,
-              role: "funding",
               lovelace: remaining.toString(),
               assets: [],
             },
@@ -586,9 +588,12 @@ describe("funding recovery across authenticated observation refresh", () => {
       state: "active",
       pendingTransition: null,
     });
+    // Every reserved coin the init did not spend stays in the pool.
     expect(record!.activeInputs).toEqual(
       expect.arrayContaining(
-        test.plan.inputs.filter(({ role }) => role === "collateral"),
+        test.plan.inputs.filter(
+          ({ outRef }) => outRef !== test.fundingInput.outRef,
+        ),
       ),
     );
     expect(

@@ -41,16 +41,14 @@ export const runtimeFunding = async (
     amendPolicy?: (
       input: ReturnType<typeof runtimeFundingPolicyFixture>["constructorInput"],
     ) => ReturnType<typeof createWorkflowRuntimeFundingPolicy>;
-    amendCapacityPolicy?: (
-      input: ReturnType<typeof runtimeFundingPolicyFixture>["constructorInput"],
-    ) => ReturnType<typeof createWorkflowRuntimeFundingPolicy>;
     governedReference?: Script;
     referenceOutRefs?: readonly string[];
     resolvedReference?: Script;
     useStage?: boolean;
+    /** Further plain-ada reserved coins, which tests post as collateral. */
     collateral?: boolean | number;
-    /** Each collateral coin holds the reservation's whole collateral
-     * requirement, as the watcher's planner reserves it, instead of 5 ada. */
+    /** Each such coin holds the reservation's whole collateral requirement,
+     * as the watcher's planner reserves it, instead of 5 ada. */
     coveringCollateral?: boolean;
     begin?: boolean;
     recovery?: Parameters<WorkflowFundingReservationPort["prepare"]>[0];
@@ -109,15 +107,16 @@ export const runtimeFunding = async (
         BigInt(value) > BigInt(maximum) ? value : maximum,
       )
     : "5000000";
-  for (let index = 0; index < collateralCount; index++)
-    values.set(`${"76".repeat(32)}#${index}`, BigInt(collateralLovelace));
+  const collateralOutRefs = Array.from(
+    { length: collateralCount },
+    (_, index) => `${"76".repeat(32)}#${index.toString()}`,
+  );
+  for (const outRef of collateralOutRefs)
+    values.set(outRef, BigInt(collateralLovelace));
   const activeInputs = Object.freeze(
     [...values].map(([outRef, lovelace]) =>
       Object.freeze({
         outRef,
-        role: outRef.startsWith("76".repeat(32))
-          ? ("collateral" as const)
-          : ("funding" as const),
         lovelace: lovelace.toString(),
         assets: Object.freeze(
           outRef === token?.outRef ? [{ unit: token.unit, quantity: "1" }] : [],
@@ -176,7 +175,6 @@ export const runtimeFunding = async (
     runner,
     policy: options.amendPolicy?.(constructorInput) ?? policy,
     reservationPolicy: policy,
-    capacityPolicy: options.amendCapacityPolicy?.(constructorInput),
     actuationPermit: actuation.actuationPermit,
     rollbackGeneration: "7",
     port: {
@@ -270,6 +268,8 @@ export const runtimeFunding = async (
         events: fundingAttemptEvents(input.action, input.preflight),
       }),
     selected: unsafeWorkflowFundingReservationSelectedOutRefsForTest(permit),
+    /** The reserved coins added by the `collateral` option. */
+    collateralOutRefs,
     setSnapshot: (value: WorkflowFundingReservationSnapshot) => {
       currentSnapshot = value;
     },

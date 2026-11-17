@@ -18,11 +18,13 @@ export {
 export {
   assertWatcherProverFundingReservationPlan,
   WATCHER_PROVER_FUNDING_RESERVATION_PLAN,
+  type WatcherProverFundingReobservationCandidate,
   type WatcherProverFundingReservationInput,
   type WatcherProverFundingReservationPlan,
   type WatcherProverFundingReservationRecord,
   type WatcherProverFundingReservationStore,
   type WatcherProverFundingReservationTransition,
+  WatcherProverFundingShortfallError,
   WatcherProverFundingUnavailableError,
   type WatcherWalletLeases,
 } from "./prover-funding-reservation.watcher-prover-funding-reservation-store.js";

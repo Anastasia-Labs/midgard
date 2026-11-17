@@ -165,7 +165,9 @@ const expectRefused = async (wrap: AdapterWrap, refusal: string) => {
   ).toBe("stalled");
   if (result.kind !== "stalled") return;
   expect(result.reason.startsWith(FAILED), result.reason).toBe(true);
-  expect(result.reason.endsWith(`: ${refusal}`), result.reason).toBe(true);
+  // A refusal of a coin names it.
+  const [, tail] = result.reason.split(`: ${refusal}`);
+  expect(tail, result.reason).toMatch(/^(?:: [0-9a-f]{64}#\d+)?$/u);
   expect(watch.ours()).toHaveLength(0);
   expect((await stagedOutputs()).map(outRefOf).sort()).toStrictEqual(before);
 };

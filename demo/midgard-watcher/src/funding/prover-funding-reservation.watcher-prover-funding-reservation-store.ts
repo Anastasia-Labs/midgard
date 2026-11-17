@@ -22,11 +22,23 @@ export const OUT_REF = /^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u;
 
 export class WatcherProverFundingUnavailableError extends Error {}
 
+/** The prover wallet's plain-ADA coins cannot fund a reservation: too
+ * little to post the most collateral one transaction may need, or no coin
+ * free to reserve. A top-up fixes it. */
+export class WatcherProverFundingShortfallError extends WatcherProverFundingUnavailableError {}
+
 export type WatcherProverFundingReservationInput = Readonly<{
   outRef: string;
-  role: "funding" | "collateral";
   lovelace: string;
   assets: readonly Readonly<{ unit: string; quantity: string }>[];
+}>;
+
+/** A coin a rolled-back attempt may take back into its reservation: one it
+ * spent, one the reservation holds, or one it posted as collateral alone
+ * (`collateralOnly`), which another reservation may hold by then. */
+export type WatcherProverFundingReobservationCandidate = Readonly<{
+  outRef: string;
+  collateralOnly: boolean;
 }>;
 
 export type WatcherProverFundingReservationPlan = Readonly<{
@@ -37,9 +49,10 @@ export type WatcherProverFundingReservationPlan = Readonly<{
   reservationBasisDigest: string;
   fundingPaymentKeyHash: string;
   walletAddress: string;
+  /** One pool: a transaction may spend any of these, post any plain-Ada one
+   * as collateral, or both. */
   inputs: readonly WatcherProverFundingReservationInput[];
   fundingLovelace: string;
-  collateralLovelace: string;
   assets: readonly Readonly<{ unit: string; quantity: string }>[];
   reservationId: string;
 }>;
@@ -101,9 +114,7 @@ export type WatcherProverFundingReservationStore = Readonly<{
   readReobservationInputs?(input: {
     readonly reservationId: string;
     readonly transactionHash: string;
-  }): Promise<
-    readonly Pick<WatcherProverFundingReservationInput, "outRef" | "role">[]
-  >;
+  }): Promise<readonly WatcherProverFundingReobservationCandidate[]>;
   reobserveTransition?(
     input: Journaled & {
       readonly plan: WatcherProverFundingReservationPlan;
@@ -281,15 +292,10 @@ const parseReservationInput = (
   value: unknown,
   label: string,
 ): WatcherProverFundingReservationInput => {
-  const record = exactRecord(
-    value,
-    ["outRef", "role", "lovelace", "assets"],
-    label,
-  );
+  const record = exactRecord(value, ["outRef", "lovelace", "assets"], label);
   if (
     typeof record.outRef !== "string" ||
     !OUT_REF.test(record.outRef) ||
-    (record.role !== "funding" && record.role !== "collateral") ||
     typeof record.lovelace !== "string" ||
     !NATURAL.test(record.lovelace) ||
     BigInt(record.lovelace) <= 0n ||
@@ -318,14 +324,12 @@ const parseReservationInput = (
     assets.some(
       (asset, index) =>
         index > 0 && assets[index - 1]!.unit.localeCompare(asset.unit) >= 0,
-    ) ||
-    (record.role === "collateral" && assets.length !== 0)
+    )
   ) {
     throw new Error(`${label} asset ordering is invalid`);
   }
   return Object.freeze({
     outRef: record.outRef,
-    role: record.role,
     lovelace: record.lovelace,
     assets: Object.freeze(assets),
   });

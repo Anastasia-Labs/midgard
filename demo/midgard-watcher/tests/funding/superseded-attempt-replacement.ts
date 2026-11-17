@@ -16,8 +16,7 @@ import { signFundingRecoveryFixtureBody } from "../support/fault-proof-funding-f
 
 export type Fixture = Awaited<ReturnType<typeof setupFundingRecoveryFixture>>;
 
-export const fundingOf = (fixture: Fixture) =>
-  fixture.plan.inputs.find(({ role }) => role === "funding")!;
+export const fundingOf = (fixture: Fixture) => fixture.fundingInput;
 
 /** A signed replacement spending `outRef` with `collateral`, as a builder
  * would produce it for the current action. `protocolInputs` are further
@@ -72,7 +71,6 @@ export const signReplacement = (
     producedInputs: [
       {
         outRef: `${signed.transactionHash}#0`,
-        role: "funding" as const,
         lovelace: remaining.toString(),
         assets: [],
       },
@@ -144,9 +142,7 @@ export const replaceAfterExpiry = async (fixture: Fixture) => {
     journal,
     action: { actionId: "init", input: { actionKind: "proof.init" } },
   });
-  const collateral = (await fixture.records())[0]!.activeInputs
-    .filter(({ role }) => role === "collateral")
-    .map(({ outRef }) => outRef);
+  const collateral = [fixture.collateralInput.outRef];
   const replacement = signReplacement(
     funding.outRef,
     BigInt(funding.lovelace),

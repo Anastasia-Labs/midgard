@@ -63,7 +63,7 @@ import {
 import { MINT_ITEM_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
 import { WORKFLOW_FUNDING_SHORTFALL } from "../src/workflow/funding-reservation-permit.js";
 import {
-  drainProver,
+  drainProverToOneCoin,
   sendTokenCoin,
   topUpProver,
 } from "./support/installed-prover-wallet.js";
@@ -142,19 +142,27 @@ type Harness = InstalledTurnContext["harness"];
 
 describe("a mint-item proof the prover wallet cannot fund, in the installed watcher application", () => {
   it("pauses on a wallet whose ada sits in a coin holding a token, and convicts after a top-up without spending that coin", async () => {
+    let drained = false;
     let tokenCoin: OutRef | undefined;
     let harness: Harness | undefined;
     let toppedUp = false;
     const pausedReasons: string[] = [];
     const run = await runInstalled(SCENARIO, hooks, {
-      beforeTurns: async (context) => {
+      beforeTurns: (context) => {
         harness = context.harness;
         context.clock.state.crashAfterPolls = POLL_CAP;
-        await drainProver(context.harness, 1_500_000n);
-        tokenCoin = await sendTokenCoin(context.harness, 5_000n * ADA);
+        // Once the proof has begun, the operator leaves one plain coin below
+        // the collateral line while the runner waits for a confirmation; the
+        // wallet's ada now sits in a coin that also holds a token.
+        context.clock.state.onPoll = async () => {
+          if (drained) return;
+          drained = true;
+          await drainProverToOneCoin(context.harness, 1_500_000n);
+          tokenCoin = await sendTokenCoin(context.harness, 5_000n * ADA);
+        };
       },
       afterTurn: async ({ harness, result }) => {
-        if (toppedUp) return;
+        if (!drained || toppedUp) return;
         if (result.reason?.startsWith(WORKFLOW_FUNDING_SHORTFALL) !== true)
           return;
         // Paused, not wedged: it pauses again on the next observation.
@@ -165,6 +173,7 @@ describe("a mint-item proof the prover wallet cannot fund, in the installed watc
       },
     });
 
+    expect(drained).toBe(true);
     expect(pausedReasons).toHaveLength(2);
     expect(run.convicted).toBe(true);
     expect(await harness!.emulator.getUtxosByOutRef([tokenCoin!])).toHaveLength(

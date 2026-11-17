@@ -182,21 +182,21 @@ describe("SQLite prover funding reservation store V1", () => {
         transactionHash: signed.transactionHash,
         transitionDigest: prepared.pendingTransition!.transitionDigest,
       });
-      // Consumed and produced capital stays leased for a re-land; the
-      // confirmed transaction's collateral lease ended at confirmation.
+      // Consumed and produced capital stays leased for a re-land, and the
+      // coin the transaction only posted as collateral stays in the pool.
       const reserved = await runtime.store.readReservedOutRefs({});
       expect(reserved).toEqual(
         expect.arrayContaining([
           first.inputs[0]!.outRef,
           signed.producedInputs[0]!.outRef,
+          `${"12".repeat(32)}#0`,
         ]),
       );
-      expect(reserved).not.toContain(`${"12".repeat(32)}#0`);
       const competitorBase = plan("bb", "77");
       const competitor = {
         ...competitorBase,
         inputs: competitorBase.inputs.map((i) =>
-          i.role === "collateral"
+          i.outRef === `${"12".repeat(32)}#0`
             ? { ...i, outRef: `${"13".repeat(32)}#0` }
             : i,
         ),
@@ -734,8 +734,8 @@ describe("SQLite prover funding reservation store V1", () => {
       revision: "2",
       pendingTransition: null,
       activeInputs: [
-        { outRef: `${"12".repeat(32)}#0`, role: "collateral" },
-        { outRef: `${signed.transactionHash}#0`, role: "funding" },
+        { outRef: `${"12".repeat(32)}#0` },
+        { outRef: `${signed.transactionHash}#0` },
       ],
     });
     await expect(
@@ -788,8 +788,8 @@ describe("SQLite prover funding reservation store V1", () => {
     expect(secondConfirmed).toMatchObject({
       revision: "4",
       activeInputs: [
-        { outRef: `${"12".repeat(32)}#0`, role: "collateral" },
-        { outRef: `${secondSigned.transactionHash}#0`, role: "funding" },
+        { outRef: `${"12".repeat(32)}#0` },
+        { outRef: `${secondSigned.transactionHash}#0` },
       ],
     });
 
@@ -920,7 +920,9 @@ describe("SQLite prover funding reservation store V1", () => {
           transitionDigest: secondPrepared.pendingTransition!.transitionDigest,
         });
         expect(
-          secondConfirmed.activeInputs.filter(({ role }) => role === "funding"),
+          secondConfirmed.activeInputs.filter(
+            ({ outRef }) => outRef !== `${"12".repeat(32)}#0`,
+          ),
         ).toEqual(secondSigned.producedInputs);
         const assertConfirmedHistory = async () => {
           for (const signed of [firstSigned, secondSigned]) {
@@ -1010,7 +1012,6 @@ describe("SQLite prover funding reservation store V1", () => {
         producedInputs: [
           {
             outRef: `${"78".repeat(32)}#0`,
-            role: "funding",
             lovelace: "99000000",
             assets: [],
           },

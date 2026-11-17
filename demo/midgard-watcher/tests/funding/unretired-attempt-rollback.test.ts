@@ -68,21 +68,20 @@ it("re-lands the exact bytes of a confirmed, unretired attempt rolled back after
     actionId: "init",
     txHash: fixture.transactionHash,
   });
-  // The next step reprices at once; it does not wait for retirement.
+  // The next step reprices at once, re-planning its pool with the new coin;
+  // it does not wait for retirement.
   await beginWorkflowFundingReservationAction({
     journal,
     action: { actionId: "next", input: { actionKind: "step-one" } },
   });
   expect(
-    (await fixture.records())[0]!.activeInputs
-      .filter(({ role }) => role === "collateral")
-      .map(({ outRef }) => outRef),
-  ).toEqual([`${"cd".repeat(32)}#0`]);
+    (await fixture.records())[0]!.activeInputs.map(({ outRef }) => outRef),
+  ).toContain(`${"cd".repeat(32)}#0`);
 
   // A rollback within k drops the confirmed attempt: its funding input is
   // unspent again, its change no longer exists, and the chain asks for it.
   const change = `${fixture.transactionHash}#0`;
-  const restored = fixture.plan.inputs.find(({ role }) => role === "funding")!;
+  const restored = fixture.fundingInput;
   const [restoredHash, restoredIndex] = restored.outRef.split("#");
   fixture.walletUtxos.splice(
     fixture.walletUtxos.findIndex(

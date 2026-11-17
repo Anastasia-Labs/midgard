@@ -3,12 +3,12 @@
  * support/validation-trace-dispute-funded-one-step-staging.ts: the watcher
  * has bisected our case's one thread to the PrepareSelected move's holder.
  *
- * A wallet too short to build the step's first staging holds it under the
- * operator's alarm, naming the case, the thread, the deadline and what the
- * step still needs from our wallet, before any byte reaches the ledger,
- * releasing what it reserved. A wallet that can build the first staging but
- * not the next stages the first and holds the next the same way, the first
- * run's staging output live and no wallet coin spent twice. Topped up, each
+ * A wallet below the collateral line holds the step's first staging under
+ * the operator's alarm, naming the case, the thread, the deadline and what
+ * the step still needs from our wallet, before any byte reaches the ledger,
+ * releasing what it reserved. A wallet above the line stages the first run;
+ * run below it, the next is held the same way, the first run's staging
+ * output live and no wallet coin spent twice. Topped up, each
  * run left is staged under the permit, the thread plays through the staged
  * chain to the award, and each staging output is spent back to our wallet
  * under the permit; a spend back the ledger drops after its confirmation is
@@ -20,7 +20,11 @@ import { VALIDATION_TRACE_STAGING_RECLAIM } from "../src/validation-trace-disput
 import { validationTraceRunState } from "../src/validation-trace-dispute/waiting.js";
 import { VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED } from "../src/workflow/funding-reservation-permit.validation-dispute-wallet-move-reserve.js";
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
-import { drainProver, topUpProver } from "./support/installed-prover-wallet.js";
+import {
+  COLLATERAL_LINE,
+  drainProverToOneCoin,
+  topUpProver,
+} from "./support/installed-prover-wallet.js";
 import { watchLedger } from "./support/own-outputs-installed.js";
 import {
   digestOf,
@@ -53,7 +57,8 @@ const { at, turns, place, open, stagingAddress, stagedOutputs, depositOf } =
 const stagedOutRefs: string[] = [];
 
 /**
- * Turns the watcher twice from a wallet holding `held` and expects each
+ * Turns the watcher twice from a wallet holding one coin of `held` and
+ * expects each
  * turn to hold the staging of the step's run `index` under the operator's
  * alarm, naming what the step still needs, before any byte of it reaches
  * the ledger, releasing what it reserved; returns our transactions the
@@ -61,8 +66,8 @@ const stagedOutRefs: string[] = [];
  */
 const expectHeldUnderAlarm = async (held: bigint, index: number) => {
   const { h } = at.scene;
-  await topUpProver(h as never, 200n * ADA);
-  await drainProver(h as never, held);
+  await topUpProver(h as never, held + 200n * ADA);
+  await drainProverToOneCoin(h as never, held);
   const watch = watchLedger(h.emulator);
   try {
     await holdTwice(index);
@@ -131,14 +136,24 @@ describe("validation-trace dispute staging of a staged builtin step's operands u
   );
 
   it(
-    "stages the step's first run from a wallet that can build it, then holds the next run under the operator's alarm, the first run's staging output live and no wallet coin spent twice",
+    "stages the step's first run from a wallet above the collateral line, then holds the next run under the operator's alarm once the wallet runs below it, the first run's staging output live and no wallet coin spent twice",
     async () => {
-      // Enough for the first staging and its fee, short of the next.
-      const held = depositOf(runs[0]!.datumCbor) + 5n * ADA;
-      expect(held).toBeLessThan(
-        depositOf(runs[0]!.datumCbor) + depositOf(runs[1]!.datumCbor),
-      );
-      const ours = await expectHeldUnderAlarm(held, 1);
+      const { h } = at.scene;
+      // Back above the collateral line.
+      await topUpProver(h as never, COLLATERAL_LINE + 200n * ADA);
+      const watch = watchLedger(h.emulator);
+      try {
+        await playThreads({
+          scene: at.scene,
+          runner: turns(),
+          sides: [at.side],
+          until: async () => (await stagedOutputs()).length > 0,
+          limit: 12,
+        });
+      } finally {
+        watch.restore();
+      }
+      const ours = watch.ours();
       expect(ours).toHaveLength(1);
       const [staging] = ours;
       expect(
@@ -149,6 +164,8 @@ describe("validation-trace dispute staging of a staged builtin step's operands u
           assets: { lovelace: depositOf(runs[0]!.datumCbor) },
         },
       ]);
+      // The operator leaves one coin below the collateral line.
+      expect(await expectHeldUnderAlarm(1n * ADA, 1)).toHaveLength(0);
       const live = await stagedOutputs();
       expect(live.map(outRefOf)).toStrictEqual([
         outRefOf({
@@ -160,7 +177,7 @@ describe("validation-trace dispute staging of a staged builtin step's operands u
       ]);
       expect(live[0]!.datum).toBe(runs[0]!.datumCbor);
       // The staging's wallet coins are spent once, and by nothing else.
-      const consumed = ours.flatMap(({ inputs }) => inputs);
+      const consumed = staging!.inputs;
       expect(new Set(consumed).size).toBe(consumed.length);
       expect(
         await at.scene.h.emulator.getUtxosByOutRef(
@@ -174,7 +191,8 @@ describe("validation-trace dispute staging of a staged builtin step's operands u
   it(
     "stages each run left under the funding permit once our wallet is topped up, and plays the thread through the staged chain to the award",
     async () => {
-      await topUpProver(at.scene.h as never, 400n * ADA);
+      // Back above the collateral line.
+      await topUpProver(at.scene.h as never, COLLATERAL_LINE + 400n * ADA);
       const { result, history } = await playThreads({
         scene: at.scene,
         runner: turns(),

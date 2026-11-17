@@ -458,24 +458,11 @@ export const createWatcherProverFundingAuthorityFactory = (input: {
         calculation,
         selectionCalculation,
         policy,
-        capacityPolicy:
-          existing === undefined
-            ? policy
-            : createWorkflowRuntimeFundingPolicy({
-                ...policyInput,
-                protocolParameters:
-                  input.protocolParameterHistory?.readCapacity(existing)
-                    ?.snapshot ?? policyInput.protocolParameters,
-              }),
         reservationPolicy,
         decisionDigest: execution.executionDecisionDigest,
         onReserved: (record) => {
           // Persist the original admitted basis before any signed intent exists.
           input.protocolParameterHistory?.remember(record, protocolParameters);
-          input.protocolParameterHistory?.rememberCapacity(
-            record,
-            currentParameters,
-          );
           reservationByPermit.set(request.actuationPermit, record);
           live.add(record.reservationId);
         },

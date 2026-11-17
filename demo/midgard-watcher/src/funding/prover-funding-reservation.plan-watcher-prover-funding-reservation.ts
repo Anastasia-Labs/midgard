@@ -24,42 +24,29 @@ import {
   HEX_32,
   WATCHER_PROVER_FUNDING_RESERVATION_PLAN,
   type WatcherProverFundingReservationPlan,
-  WatcherProverFundingUnavailableError,
+  WatcherProverFundingShortfallError,
 } from "./prover-funding-reservation.watcher-prover-funding-reservation-store.js";
 
-const selectCollateral = (input: {
+/**
+ * Throws unless at most `maximumInputs` of the plain-Ada `candidates`, the
+ * largest, together hold `required`: the most collateral one transaction may
+ * post from the pool.
+ */
+const assertCollateralCoverage = (input: {
   readonly candidates: readonly Candidate[];
   readonly required: bigint;
   readonly maximumInputs: number;
-}): readonly Candidate[] => {
-  if (input.required === 0n) return Object.freeze([]);
-  const pureAda = input.candidates.filter(
-    (candidate) => candidate.assets.size === 0,
-  );
-  const one = pureAda
-    .filter((candidate) => candidate.lovelace >= input.required)
-    .sort((left, right) =>
-      left.lovelace === right.lovelace
-        ? compareOutRef(left, right)
-        : left.lovelace < right.lovelace
-          ? -1
-          : 1,
-    )[0];
-  if (one !== undefined) return Object.freeze([one]);
-  const selected: Candidate[] = [];
-  let total = 0n;
-  for (const candidate of pureAda.sort(compareLargestFirst)) {
-    if (selected.length === input.maximumInputs) break;
-    selected.push(candidate);
-    total += candidate.lovelace;
-    if (total >= input.required) break;
-  }
-  if (total < input.required) {
-    throw new WatcherProverFundingUnavailableError(
-      "prover wallet has insufficient plain-Ada collateral",
+}): void => {
+  const coverage = input.candidates
+    .filter((candidate) => candidate.assets.size === 0)
+    .sort(compareLargestFirst)
+    .slice(0, input.maximumInputs)
+    .reduce((total, candidate) => total + candidate.lovelace, 0n);
+  if (coverage < input.required) {
+    throw new WatcherProverFundingShortfallError(
+      `prover wallet has insufficient plain-Ada collateral: required=${input.required.toString()} available=${coverage.toString()}`,
     );
   }
-  return Object.freeze(selected.sort(compareOutRef));
 };
 
 type ReservationIdentityInput = Readonly<{
@@ -111,7 +98,10 @@ const reservationIdentity = (input: ReservationIdentityInput) => {
 };
 
 /**
- * Deterministically plans disjoint funding and pure-Ada collateral inputs.
+ * Deterministically plans one pool of reserved coins: every plain-Ada coin of
+ * the wallet, any of which a transaction may spend, post as collateral, or
+ * both. Its plain-Ada coins must cover the largest collateral any action
+ * posts; the same coins also fund the action, so the two are not added.
  * The plan is not a live reservation: the durable coordinator must atomically
  * persist it and reauthenticate every out-ref before minting an actuation
  * permit for a runner.
@@ -123,8 +113,9 @@ export const planWatcherProverFundingReservation = (input: {
   readonly walletAddress: string;
   readonly utxos: readonly UTxO[];
   readonly selectionCalculation?: WatcherRuntimeProverFundingCalculation;
-  /** Kept as funding when other collateral suffices. */
-  readonly avoidCollateralOutRefs?: readonly string[];
+  /** Superseded attempts' inputs, reserved even when they hold a token: a
+   * replacement must spend one. */
+  readonly supersededInputOutRefs?: readonly string[];
 }): WatcherProverFundingReservationPlan => {
   const identity = reservationIdentity(input);
   const selection = input.selectionCalculation ?? input.calculation;
@@ -135,7 +126,7 @@ export const planWatcherProverFundingReservation = (input: {
     selection.economicsPolicyDigest !== input.calculation.economicsPolicyDigest
   )
     throw new Error("prover funding selection changed reservation authority");
-  const avoided = new Set(input.avoidCollateralOutRefs ?? []);
+  const superseded = new Set(input.supersededInputOutRefs ?? []);
   const seen = new Set<string>();
   const candidates: Candidate[] = [];
   for (const utxo of input.utxos) {
@@ -147,7 +138,8 @@ export const planWatcherProverFundingReservation = (input: {
     seen.add(candidate.outRef);
     // Only plain-ADA coins fund: a coin holding a token is never spent, save
     // a superseded attempt's input, which its replacement must spend.
-    if (!isPlainFundingOutput(utxo) && !avoided.has(candidate.outRef)) continue;
+    if (!isPlainFundingOutput(utxo) && !superseded.has(candidate.outRef))
+      continue;
     candidates.push(candidate);
   }
   const maximumCollateralInputs = Number(selection.maximumCollateralInputs);
@@ -165,64 +157,37 @@ export const planWatcherProverFundingReservation = (input: {
     const required = BigInt(value);
     return required > maximum ? required : maximum;
   }, 0n);
-  const collateralFrom = (pool: readonly Candidate[]) =>
-    selectCollateral({
-      candidates: pool,
-      required: collateralRequired,
-      maximumInputs: maximumCollateralInputs,
-    });
-  let collateral: readonly Candidate[];
-  try {
-    collateral = collateralFrom(
-      candidates.filter(({ outRef }) => !avoided.has(outRef)),
+  assertCollateralCoverage({
+    candidates,
+    required: collateralRequired,
+    maximumInputs: maximumCollateralInputs,
+  });
+  const pool = [...candidates].sort(compareOutRef);
+  if (pool.length === 0)
+    throw new WatcherProverFundingShortfallError(
+      "prover wallet has no available funding inputs",
     );
-  } catch (error) {
-    if (!(error instanceof WatcherProverFundingUnavailableError)) throw error;
-    collateral = collateralFrom(candidates);
-  }
-  const collateralOutRefs = new Set(
-    collateral.map((candidate) => candidate.outRef),
-  );
-  const funding = candidates
-    .filter((candidate) => !collateralOutRefs.has(candidate.outRef))
-    .sort(compareOutRef);
-  if (funding.length === 0)
-    throw new WatcherProverFundingUnavailableError(
-      "prover wallet has no available funding inputs after collateral reservation",
-    );
-  const fundingAssets = new Map<string, bigint>();
-  for (const candidate of funding)
+  const poolAssets = new Map<string, bigint>();
+  for (const candidate of pool)
     for (const [unit, quantity] of candidate.assets)
-      fundingAssets.set(unit, (fundingAssets.get(unit) ?? 0n) + quantity);
+      poolAssets.set(unit, (poolAssets.get(unit) ?? 0n) + quantity);
   const reservationInput = Object.freeze({
     ...identity,
     inputs: Object.freeze(
-      [
-        ...funding.map((candidate) =>
+      pool
+        .map((candidate) =>
           Object.freeze({
             outRef: candidate.outRef,
-            role: "funding" as const,
             lovelace: candidate.lovelace.toString(),
             assets: assetEntries(candidate.assets),
           }),
-        ),
-        ...collateral.map((candidate) =>
-          Object.freeze({
-            outRef: candidate.outRef,
-            role: "collateral" as const,
-            lovelace: candidate.lovelace.toString(),
-            assets: assetEntries(candidate.assets),
-          }),
-        ),
-      ].sort((left, right) => left.outRef.localeCompare(right.outRef)),
+        )
+        .sort((left, right) => left.outRef.localeCompare(right.outRef)),
     ),
-    fundingLovelace: funding
+    fundingLovelace: pool
       .reduce((total, candidate) => total + candidate.lovelace, 0n)
       .toString(),
-    collateralLovelace: collateral
-      .reduce((total, candidate) => total + candidate.lovelace, 0n)
-      .toString(),
-    assets: assetEntries(fundingAssets),
+    assets: assetEntries(poolAssets),
   });
   const plan = Object.freeze({
     ...reservationInput,
@@ -246,7 +211,7 @@ export const planFirstWatcherProverFundingReservation = (
   const plan = planWatcherProverFundingReservation(input);
   const required = input.calculation.validationDisputeCustodyLovelace;
   if (required !== undefined && BigInt(plan.fundingLovelace) < BigInt(required))
-    throw new WatcherProverFundingUnavailableError(
+    throw new WatcherProverFundingShortfallError(
       `prover wallet cannot reserve the validation dispute bond, case floor and wallet-move reserve: required=${required} available=${plan.fundingLovelace}`,
     );
   return plan;
@@ -272,27 +237,18 @@ export const restoreWatcherProverFundingReservationPlan = (
     throw new Error("restored prover funding reservation identity mismatch");
   if (record.state === "conflict")
     throw new Error("restored prover funding reservation is conflicted");
-  const fundingAssets = new Map<string, bigint>();
+  const poolAssets = new Map<string, bigint>();
   let fundingLovelace = 0n;
-  let collateralLovelace = 0n;
   for (const entry of record.activeInputs) {
-    if (entry.role === "collateral") {
-      collateralLovelace += BigInt(entry.lovelace);
-    } else {
-      fundingLovelace += BigInt(entry.lovelace);
-      for (const { unit, quantity } of entry.assets)
-        fundingAssets.set(
-          unit,
-          (fundingAssets.get(unit) ?? 0n) + BigInt(quantity),
-        );
-    }
+    fundingLovelace += BigInt(entry.lovelace);
+    for (const { unit, quantity } of entry.assets)
+      poolAssets.set(unit, (poolAssets.get(unit) ?? 0n) + BigInt(quantity));
   }
   const plan = Object.freeze({
     ...identity,
     inputs: record.activeInputs,
     fundingLovelace: fundingLovelace.toString(),
-    collateralLovelace: collateralLovelace.toString(),
-    assets: assetEntries(fundingAssets),
+    assets: assetEntries(poolAssets),
     reservationId,
   });
   admittedPlans.add(plan);

@@ -2,17 +2,22 @@ import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core";
 import type { WorkflowFundingPreparedTransition } from "@al-ft/midgard-fault-proofs";
 import { CML } from "@lucid-evolution/lucid";
 
-import type { WatcherProverFundingReservationRecord } from "./prover-funding-reservation.js";
+import type {
+  WatcherProverFundingReobservationCandidate,
+  WatcherProverFundingReservationRecord,
+} from "./prover-funding-reservation.js";
 
 /** Consumed inputs and change of a signed attempt stay leased until final
  * completion: re-landing its exact bytes, or a replacement that must spend one
  * of its inputs, needs them. Once its workflow recorded its correction's
  * inclusion (`producedReleased`), only the consumed inputs stay: no later
  * step spends its outputs, which then fund other proofs, and an exact
- * re-landing needs only what it spent. Collateral is never retained for an
- * attempt; a confirmed attempt's collateral is free once the reservation
- * stops using it, and a rollback whose collateral was spent meanwhile
- * re-signs. */
+ * re-landing needs only what it spent. A coin an attempt only posted as
+ * collateral is not retained for it: it stays in the reservation's single
+ * pool, which supersedes releasing it at inclusion (G5) while keeping that
+ * mechanism's goal, since the coin held there blocks none of the
+ * reservation's own actions and lets a rollback re-land the identical bytes.
+ * A rollback that finds it spent meanwhile re-signs. */
 export const retainedProverFundingInputs = ({
   record,
   submissions,
@@ -25,18 +30,16 @@ export const retainedProverFundingInputs = ({
   readonly abandonedTransactionHashes: ReadonlySet<string>;
   readonly completed: boolean;
   readonly producedReleased?: boolean;
-}) => {
-  const inputs = new Map<string, "funding" | "collateral">();
+}): readonly string[] => {
+  const inputs = new Set<string>();
   for (const transition of completed ? [] : submissions) {
     if (abandonedTransactionHashes.has(transition.transactionHash)) continue;
-    for (const outRef of transition.consumedOutRefs)
-      inputs.set(outRef, "funding");
+    for (const outRef of transition.consumedOutRefs) inputs.add(outRef);
     if (producedReleased) continue;
-    for (const value of transition.producedInputs)
-      inputs.set(value.outRef, value.role);
+    for (const { outRef } of transition.producedInputs) inputs.add(outRef);
   }
-  for (const { outRef, role } of record.activeInputs) inputs.set(outRef, role);
-  return [...inputs].map(([outRef, role]) => ({ outRef, role }));
+  for (const { outRef } of record.activeInputs) inputs.add(outRef);
+  return [...inputs];
 };
 
 export const signedCollateralOutRefs = (
@@ -59,20 +62,21 @@ export const proverFundingReobservationInputs = ({
   readonly record: WatcherProverFundingReservationRecord;
   readonly submissions: readonly WorkflowFundingPreparedTransition[];
   readonly transactionHash: string;
-}) => {
-  const candidates = new Map(
-    record.activeInputs.map(({ outRef, role }) => [outRef, role]),
-  );
+}): readonly WatcherProverFundingReobservationCandidate[] => {
+  const candidates = new Map<string, boolean>();
   for (const transition of submissions) {
     if (transition.transactionHash !== transactionHash) continue;
-    for (const outRef of transition.consumedOutRefs)
-      candidates.set(outRef, "funding");
     for (const outRef of signedCollateralOutRefs(
       transition.signedTransactionCborHex,
     ))
-      candidates.set(outRef, "collateral");
+      candidates.set(outRef, true);
+    for (const outRef of transition.consumedOutRefs)
+      candidates.set(outRef, false);
   }
-  return [...candidates].map(([outRef, role]) => ({ outRef, role }));
+  for (const { outRef } of record.activeInputs) candidates.set(outRef, false);
+  return [...candidates].map(([outRef, collateralOnly]) =>
+    Object.freeze({ outRef, collateralOnly }),
+  );
 };
 
 export const pendingProverFundingLineage = (input: {

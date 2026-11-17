@@ -54,13 +54,13 @@ it("leaves a freed output with the reservation that took it when a rollback drop
       expectedRevision: confirmed.revision,
     });
 
-    // Proof B takes A's change, with collateral of its own, and spends it.
+    // Proof B takes A's change, with a small coin of its own, and spends it.
     const base = plan("bb", "77", change);
     const second = {
       ...base,
       inputs: base.inputs
         .map((input) =>
-          input.role === "collateral"
+          input.outRef === `${"12".repeat(32)}#0`
             ? { ...input, outRef: `${"13".repeat(32)}#0` }
             : input,
         )
@@ -89,7 +89,9 @@ it("leaves a freed output with the reservation that took it when a rollback drop
       plan: first,
       expectedRevision: freed.revision,
       transactionHash: step.transactionHash,
-      inputs: first.inputs.filter(({ role }) => role === "funding"),
+      inputs: first.inputs.filter(
+        ({ outRef }) => outRef !== `${"12".repeat(32)}#0`,
+      ),
     });
     expect(restored.pendingTransition?.transactionHash).toBe(
       step.transactionHash,

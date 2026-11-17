@@ -25,12 +25,9 @@ import {
   type StepFunding,
   submitStep,
 } from "../src/step-completion.js";
+import { workflowTransactionInputOutRefs } from "../src/workflow/transaction-boundary.js";
 import {
-  workflowTransactionCollateralInputOutRefs,
-  workflowTransactionInputOutRefs,
-} from "../src/workflow/transaction-boundary.js";
-import {
-  fundReservedCollateral,
+  fundReservedCoin,
   restrictedProverFunding,
 } from "./support/restricted-prover-funding.js";
 
@@ -196,12 +193,12 @@ describe("fundStep and completeStep", () => {
     );
   });
 
-  it("take a script step's collateral from the restricted wallet's reserved collateral and fund it from reserved funding", async () => {
+  it("fund a script step and post its collateral from the restricted wallet's reserved pool", async () => {
     const { emulator, lucid, funderLucid, signer, scriptUtxo } = await prover([
       { lovelace: ada(40n) },
       { lovelace: ada(30n) },
     ]);
-    const collateral = await fundReservedCollateral({
+    await fundReservedCoin({
       emulator,
       funderLucid,
       signer,
@@ -209,7 +206,6 @@ describe("fundStep and completeStep", () => {
     const restricted = await restrictedProverFunding({
       emulator,
       signer,
-      collateral,
     });
 
     const funding = await fundStep(lucid, { signer: restricted.signer });
@@ -227,10 +223,6 @@ describe("fundStep and completeStep", () => {
     });
 
     expect(restricted.checked()).toBe(1);
-    expect(workflowTransactionCollateralInputOutRefs(signed)).toEqual([
-      label(collateral),
-    ]);
-    expect(await unspent(lucid, [collateral])).toEqual([label(collateral)]);
   });
 });
 

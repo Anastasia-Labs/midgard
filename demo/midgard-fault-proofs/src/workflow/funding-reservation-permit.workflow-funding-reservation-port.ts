@@ -19,7 +19,6 @@ export const ACTION_KIND = /^[a-z][a-zA-Z0-9_.:-]{0,127}$/u;
 
 export type WorkflowFundingReservedInput = Readonly<{
   outRef: string;
-  role: "funding" | "collateral";
   lovelace: string;
   assets: readonly Readonly<{ unit: string; quantity: string }>[];
 }>;
@@ -152,7 +151,9 @@ export interface WorkflowFundingReservationPort {
     readonly journal: readonly FraudProofWorkflowJournalEntry[];
   }): Promise<unknown>;
   releaseIdle?(input: { readonly expectedRevision: string }): Promise<unknown>;
-  /** Refill an idle reservation under fresh submission authority; null means unavailable. */
+  /** Refill an idle reservation under fresh submission authority; null means
+   * unavailable. Throws `WorkflowFundingReservationShortfallError` when the
+   * wallet's plain-ADA coins cannot fund the reservation. */
   refreshIdle?(input: {
     readonly expectedRevision: string;
     readonly releaseStaleInputs: boolean;
@@ -209,7 +210,6 @@ export type PermitState = {
   readonly actuationPermit: WorkflowActuationPermit;
   readonly port: WorkflowFundingReservationPort;
   readonly maximumCollateralInputs: number;
-  readonly reservationMaximumCollateralInputs: number;
   requiresParameterRefresh: boolean;
   snapshot: WorkflowFundingReservationSnapshot;
   resolvedInputs: ReadonlyMap<string, UTxO>;
@@ -220,7 +220,6 @@ export type PermitState = {
   /** Funding inputs every transaction of the current action must spend, one
    * per superseded attempt, so that it is mutually exclusive with each. */
   currentRequiredFundingOutRefs: readonly string[];
-  currentCollateralOutRefs: readonly string[];
   pendingTransactionHash: string | undefined;
   idleReleaseAuthorized: boolean;
   preparedTransaction:
@@ -278,11 +277,10 @@ export const reservedInput = (
   value: unknown,
   label: string,
 ): WorkflowFundingReservedInput => {
-  const record = exact(value, ["outRef", "role", "lovelace", "assets"], label);
+  const record = exact(value, ["outRef", "lovelace", "assets"], label);
   if (
     typeof record.outRef !== "string" ||
     !OUT_REF.test(record.outRef) ||
-    (record.role !== "funding" && record.role !== "collateral") ||
     typeof record.lovelace !== "string" ||
     !NATURAL.test(record.lovelace) ||
     BigInt(record.lovelace) <= 0n ||
@@ -311,14 +309,12 @@ export const reservedInput = (
     assets.some(
       (asset, index) =>
         index > 0 && assets[index - 1]!.unit.localeCompare(asset.unit) >= 0,
-    ) ||
-    (record.role === "collateral" && assets.length !== 0)
+    )
   ) {
     throw new Error(`${label} asset set is invalid`);
   }
   return Object.freeze({
     outRef: record.outRef,
-    role: record.role,
     lovelace: record.lovelace,
     assets: Object.freeze(assets),
   });

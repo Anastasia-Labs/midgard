@@ -4,9 +4,10 @@
  * that our wallet could not fund, raises no alarm once the unlock passes,
  * and the run stops under defender-won. A node that names no unlock stands
  * on the case's bound; when neither can be read, the slash is not due, and
- * the failure is logged once. A slash another watcher lands while our
- * process is stopped at our own submit is found after the restart, and the
- * run stops cleanly. */
+ * the failure is logged once. A wallet run below the collateral line
+ * before the slash raises the slash's alarm, naming the bond unlock. A
+ * slash another watcher lands while our process is stopped at our own
+ * submit is found after the restart, and the run stops cleanly. */
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
@@ -27,6 +28,7 @@ import {
 import { validationTraceRunState } from "../src/validation-trace-dispute/waiting.js";
 import { VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED } from "../src/workflow/funding-reservation-permit.validation-dispute-wallet-move-reserve.js";
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
+import { drainProverToOneCoin } from "./support/installed-prover-wallet.js";
 import {
   confirmed,
   defenderNodes,
@@ -46,6 +48,7 @@ import {
 } from "./support/validation-trace-dispute-funded-moves.js";
 import type { AdapterWrap } from "./support/validation-trace-dispute-funded-runner.js";
 import {
+  ADA,
   entriesOf,
   TIMEOUT,
 } from "./support/validation-trace-dispute-funded-verify-source.js";
@@ -205,6 +208,55 @@ describe("the deadline of the slash of a defender who lost a thread of our case"
         // The rate stays raised: a slash proposed again would alarm again.
         passUnlock(journey, unlock);
         await stopsCleanly(journey);
+      } finally {
+        await journey.dispute.close();
+      }
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "raises the slash's alarm, naming its deadline, the defender's bond unlock, when our wallet runs below the collateral line before the slash",
+    async () => {
+      const journey = await openTwoDefendedFundedCase();
+      try {
+        const [node] = await defenderNodes(journey);
+        const unlock = nodeBondUnlock(node!)!;
+        // Once our close of the thread is sent, the operator leaves one coin
+        // below the collateral line, before the slash it settles.
+        let drained = false;
+        const draining: AdapterWrap = (adapter) => ({
+          ...adapter,
+          submit: async (input) => {
+            const submitted = await adapter.submit(input);
+            if (!drained && input.action.actionId.startsWith(CLOSE_THREAD)) {
+              drained = true;
+              await drainProverToOneCoin(journey.scene.h as never, 1n * ADA);
+            }
+            return submitted;
+          },
+        });
+        const { result, history } = await playToDefenderWon(
+          journey,
+          draining,
+          VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED,
+        );
+        expect(drained, history.join("\n")).toBe(true);
+        expect(validationTraceRunState(result)).toMatchObject({
+          namedState: {
+            name: VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED,
+            alarm: true,
+          },
+        });
+        expect("reason" in result && result.reason).toContain(
+          `, which must land before its deadline ${unlock.toString()}, the defender's bond unlock;`,
+        );
+        expect("reason" in result && result.reason).toContain(
+          "insufficient plain-Ada collateral",
+        );
+        expect(confirmed(result).map(({ stage }) => stage)).not.toContain(
+          "slash_lost_defense",
+        );
       } finally {
         await journey.dispute.close();
       }

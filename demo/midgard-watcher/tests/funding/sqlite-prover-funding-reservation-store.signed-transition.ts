@@ -93,7 +93,6 @@ export const signedTransition = ({
     producedInputs: Object.freeze([
       Object.freeze({
         outRef: `${transactionHash}#0`,
-        role: "funding" as const,
         lovelace: outputLovelace.toString(),
         assets: Object.freeze([]),
       }),
@@ -136,22 +135,21 @@ export const plan = (
     reservationBasisDigest: "44".repeat(32),
     fundingPaymentKeyHash: fundingKeyHash,
     walletAddress,
-    inputs: Object.freeze([
-      Object.freeze({
-        outRef: fundingOutRef,
-        role: "funding" as const,
-        lovelace: "100000000",
-        assets: Object.freeze([]),
-      }),
-      Object.freeze({
-        outRef: `${"12".repeat(32)}#0`,
-        role: "collateral" as const,
-        lovelace: "5000000",
-        assets: Object.freeze([]),
-      }),
-    ]),
-    fundingLovelace: "100000000",
-    collateralLovelace: "5000000",
+    inputs: Object.freeze(
+      [
+        Object.freeze({
+          outRef: fundingOutRef,
+          lovelace: "100000000",
+          assets: Object.freeze([]),
+        }),
+        Object.freeze({
+          outRef: `${"12".repeat(32)}#0`,
+          lovelace: "5000000",
+          assets: Object.freeze([]),
+        }),
+      ].sort((left, right) => (left.outRef < right.outRef ? -1 : 1)),
+    ),
+    fundingLovelace: "105000000",
     assets: Object.freeze([]),
     reservationId: reservationByte.repeat(32),
   });

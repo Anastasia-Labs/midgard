@@ -35,16 +35,15 @@ it("re-signs a rolled-back proof at once after a rollback also drops the next st
     action: { actionId: next.actionId, input: { actionKind: next.actionKind } },
   });
   const [begun] = await fixture.records();
+  const collateral = [fixture.collateralInput.outRef];
   const stepFunding = begun!.activeInputs.find(
-    ({ role, outRef }) => role === "funding" && outRef !== funding.outRef,
+    ({ outRef }) => outRef !== funding.outRef && !collateral.includes(outRef),
   )!;
   const step = signReplacement(
     stepFunding.outRef,
     BigInt(stepFunding.lovelace),
     300n,
-    begun!.activeInputs
-      .filter(({ role }) => role === "collateral")
-      .map(({ outRef }) => outRef),
+    collateral,
     [thread],
   );
   await recordReplacement(fixture, step, 1, next);
@@ -109,14 +108,11 @@ it("re-signs a rolled-back proof at once after a rollback also drops the next st
   for (const set of sets) expect(set).toContain(funding.outRef);
   expect(sets.some((set) => set.includes(thread))).toBe(true);
   const [record] = await fixture.records();
-  const collateral = record!.activeInputs
-    .filter(({ role }) => role === "collateral")
-    .map(({ outRef }) => outRef);
   const other = record!.activeInputs.find(
-    ({ role, outRef }) =>
-      role === "funding" &&
+    ({ outRef }) =>
       outRef !== funding.outRef &&
-      outRef !== stepFunding.outRef,
+      outRef !== stepFunding.outRef &&
+      !collateral.includes(outRef),
   );
   expect(other).toBeDefined();
   // Negative: a proof that spends neither attempt's lineage is refused.

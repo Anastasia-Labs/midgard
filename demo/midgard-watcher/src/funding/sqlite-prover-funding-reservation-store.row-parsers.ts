@@ -75,7 +75,6 @@ export type LeaseRow = Readonly<{
   out_ref: unknown;
   reservation_id: unknown;
   lease_phase: unknown;
-  role: unknown;
 }>;
 export type LineageRow = Readonly<{
   reservation_id: unknown;

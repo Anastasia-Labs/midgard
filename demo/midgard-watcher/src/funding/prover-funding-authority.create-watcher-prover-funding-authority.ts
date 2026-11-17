@@ -4,6 +4,7 @@ import {
   type WorkflowActuationPermit,
   type WorkflowAdapterRunner,
   type WorkflowFundingReservationPort,
+  WorkflowFundingReservationShortfallError,
   type WorkflowRuntimeFundingPolicy,
 } from "@al-ft/midgard-fault-proofs";
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
@@ -26,6 +27,7 @@ import {
   restoreWatcherProverFundingReservationPlan,
   type WatcherProverFundingReservationRecord,
   type WatcherProverFundingReservationStore,
+  WatcherProverFundingShortfallError,
   WatcherProverFundingUnavailableError,
 } from "./prover-funding-reservation.js";
 import { isWatcherProverFundingReservationConflict } from "./sqlite-prover-funding-reservation-store.js";
@@ -40,7 +42,6 @@ export const createWatcherProverFundingAuthority = async (input: {
   readonly selectionCalculation?: WatcherRuntimeProverFundingCalculation;
   readonly policy: WorkflowRuntimeFundingPolicy;
   readonly reservationPolicy?: WorkflowRuntimeFundingPolicy;
-  readonly capacityPolicy?: WorkflowRuntimeFundingPolicy;
   readonly decisionDigest: string;
   readonly walletAddress: string;
   readonly walletUtxos: readonly UTxO[];
@@ -130,9 +131,10 @@ export const createWatcherProverFundingAuthority = async (input: {
         throw new Error(
           "prover funding store cannot reobserve signed attempts",
         );
-      // Collateral never blocks a later action: collateral another reservation
-      // now holds is not reclaimed. The exact bytes still land while it is
-      // unspent; once it is spent the attempt is invalidated and re-signed.
+      // A coin the attempt posted as collateral alone is not reclaimed once
+      // another reservation holds it (this one released it while idle). The
+      // exact bytes still land while it is unspent; once it is spent the
+      // attempt is invalidated and re-signed.
       const elsewhere = new Set(
         await input.store.readReservedOutRefs({
           excludingReservationId: plan.reservationId,
@@ -144,24 +146,21 @@ export const createWatcherProverFundingAuthority = async (input: {
           transactionHash,
         })
       ).filter(
-        ({ outRef, role }) => role !== "collateral" || !elsewhere.has(outRef),
+        ({ outRef, collateralOnly }) =>
+          !collateralOnly || !elsewhere.has(outRef),
       );
-      const roles = new Map(
-        candidates.map(({ outRef, role }) => [outRef, role]),
-      );
+      const recorded = new Set(candidates.map(({ outRef }) => outRef));
       const resolved = await input.resolveInputs(
         candidates.map(({ outRef }) => outRef),
       );
       const inputs = resolved.map((utxo) => {
         const outRef = `${utxo.txHash}#${utxo.outputIndex}`;
-        const role = roles.get(outRef);
-        if (role === undefined || utxo.address !== plan.walletAddress)
+        if (!recorded.has(outRef) || utxo.address !== plan.walletAddress)
           throw new Error(
             "reobserved funding source substituted a wallet input",
           );
         return {
           outRef,
-          role,
           lovelace: (utxo.assets.lovelace ?? 0n).toString(),
           assets: Object.entries(utxo.assets)
             .filter(([unit]) => unit !== "lovelace")
@@ -324,8 +323,8 @@ export const createWatcherProverFundingAuthority = async (input: {
             ({ txHash, outputIndex }) =>
               !leased.has(`${txHash}#${outputIndex}`),
           ),
-          // A replacement spends a superseded attempt's input as funding.
-          avoidCollateralOutRefs: (
+          // A replacement spends a superseded attempt's input.
+          supersededInputOutRefs: (
             (await input.store.readSupersededAttemptFundingOutRefs?.(
               reserved,
             )) ?? []
@@ -334,6 +333,11 @@ export const createWatcherProverFundingAuthority = async (input: {
         assertSubmission();
         await input.store.reserve(refreshedPlan, current.revision);
       } catch (error) {
+        // The action this refill is for pauses on the wallet's shortfall.
+        if (error instanceof WatcherProverFundingShortfallError)
+          throw new WorkflowFundingReservationShortfallError(error.message, {
+            cause: error,
+          });
         if (
           error instanceof WatcherProverFundingUnavailableError ||
           isWatcherProverFundingReservationConflict(error)
@@ -486,7 +490,6 @@ export const createWatcherProverFundingAuthority = async (input: {
     runner: input.runner,
     policy: input.policy,
     reservationPolicy: input.reservationPolicy,
-    capacityPolicy: input.capacityPolicy,
     actuationPermit: input.actuationPermit,
     rollbackGeneration: input.rollbackGeneration,
     port,

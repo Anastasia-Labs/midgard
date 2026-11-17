@@ -12,7 +12,6 @@ import {
   appendWorkflowJournalEvents,
   assertWorkflowFundingReservationReadyToSubmit,
   asWorkflowFundingShortfall,
-  beginWorkflowFundingReservationAction,
   confirmWorkflowFundingReservationTransaction,
   conflictWorkflowFundingReservationTransaction,
   prepareWorkflowFundingReservationTransaction,
@@ -45,6 +44,7 @@ import {
   isFraudProofL1WaitError,
 } from "./l1-source.js";
 import { adoptLandedSupersededAttempt } from "./orchestrator.adopt-landed-superseded-attempt.js";
+import { beginFundedWorkflowAction } from "./orchestrator.begin-funded-workflow-action.js";
 import {
   FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
   type FraudProofFamilyWorkflowAdapter,
@@ -806,7 +806,7 @@ export const runAdmittedFraudProofWorkflow = async ({
         headerHash,
         checkpoint: beforePreflight,
       });
-      await beginWorkflowFundingReservationAction({ journal, action });
+      await beginFundedWorkflowAction({ journal, action, adapter, context });
       assertWorkflowJournalActuation({
         journal,
         deploymentFingerprint,

@@ -41,14 +41,11 @@ it("admits a replacement for an attempt that expired at the tip at once, drawing
   });
   const [refreshed] = await fixture.records();
   expect(refreshed!.activeInputs).toContainEqual(
-    expect.objectContaining({ outRef: funding.outRef, role: "funding" }),
+    expect.objectContaining({ outRef: funding.outRef }),
   );
-  const collateral = refreshed!.activeInputs
-    .filter(({ role }) => role === "collateral")
-    .map(({ outRef }) => outRef);
-  expect(collateral).not.toContain(funding.outRef);
+  const collateral = [fixture.collateralInput.outRef];
   const other = refreshed!.activeInputs.find(
-    ({ role, outRef }) => role === "funding" && outRef !== funding.outRef,
+    ({ outRef }) => outRef !== funding.outRef,
   );
   // Negative: a replacement that avoids the expired attempt's input could
   // land beside it, so the store refuses it.
@@ -92,11 +89,9 @@ it("keeps a superseded attempt's input that holds a token as its replacement's f
   });
   const [refreshed] = await fixture.records();
   expect(refreshed!.activeInputs).toContainEqual(
-    expect.objectContaining({ outRef: funding.outRef, role: "funding" }),
+    expect.objectContaining({ outRef: funding.outRef }),
   );
-  const collateral = refreshed!.activeInputs
-    .filter(({ role }) => role === "collateral")
-    .map(({ outRef }) => outRef);
+  const collateral = [fixture.collateralInput.outRef];
   const replacement = signReplacement(
     funding.outRef,
     BigInt(funding.lovelace),
@@ -282,11 +277,9 @@ it("refuses a fresh attempt of an action whose superseded attempt landed, and ad
   });
   const [record] = await fixture.records();
   const spendable = record!.activeInputs.find(
-    ({ role }) => role === "funding",
+    ({ outRef }) => outRef !== fixture.collateralInput.outRef,
   )!;
-  const collateral = record!.activeInputs
-    .filter(({ role }) => role === "collateral")
-    .map(({ outRef }) => outRef);
+  const collateral = [fixture.collateralInput.outRef];
   expect(record!.activeInputs.map(({ outRef }) => outRef)).toContain(landed);
   const fresh = signReplacement(
     spendable.outRef,
@@ -332,18 +325,17 @@ it("refuses a fresh attempt of an action whose superseded attempt landed, and ad
 it("re-signs a mutually exclusive proof with fresh collateral when a rollback drops a confirmed proof whose collateral was spent meanwhile", async () => {
   const fixture = await setupFundingRecoveryFixture(false, true);
   const funding = fundingOf(fixture);
-  const collateral = fixture.plan.inputs.find(
-    ({ role }) => role === "collateral",
-  )!.outRef;
+  const collateral = fixture.collateralInput.outRef;
   const change = `${fixture.transactionHash}#0`;
   const journal = await fixture.recover();
   await fixture.run(journal);
   expect(
     (await journal.load(fixture.initial.workflowId)).at(-1)!.event.kind,
   ).toBe("confirmed");
-  expect(await fixture.store.readReservedOutRefs({})).not.toContain(collateral);
+  // The confirmed proof's collateral stays in its reservation's pool.
+  expect(await fixture.store.readReservedOutRefs({})).toContain(collateral);
 
-  // Another action spends the released collateral; then a rollback within k
+  // A later action spends that collateral coin; then a rollback within k
   // drops the proof. Its funding input is unspent again, its change is gone,
   // and its collateral no longer exists, so the identical bytes cannot land.
   fixture.walletUtxos.splice(
@@ -403,18 +395,18 @@ it("re-signs a mutually exclusive proof with fresh collateral when a rollback dr
     }),
   ).toEqual([[funding.outRef]]);
   const [record] = await fixture.records();
-  const fresh = record!.activeInputs
-    .filter(({ role }) => role === "collateral")
-    .map(({ outRef }) => outRef);
-  expect(fresh).toHaveLength(1);
-  expect(fresh).not.toContain(collateral);
+  expect(record!.activeInputs.map(({ outRef }) => outRef)).not.toContain(
+    collateral,
+  );
   expect(record!.activeInputs).toContainEqual(
-    expect.objectContaining({ outRef: funding.outRef, role: "funding" }),
+    expect.objectContaining({ outRef: funding.outRef }),
   );
   const other = record!.activeInputs.find(
-    ({ role, outRef }) => role === "funding" && outRef !== funding.outRef,
+    ({ outRef }) => outRef !== funding.outRef,
   );
   expect(other).toBeDefined();
+  // Fresh collateral from the pool, the spent coin gone from it.
+  const fresh = [other!.outRef];
   await expect(
     fixture.store.prepareTransition({
       attempt: fixture.attempt,

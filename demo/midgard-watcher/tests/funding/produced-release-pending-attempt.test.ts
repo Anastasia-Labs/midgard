@@ -56,13 +56,13 @@ it("frees the change of an attempt still pending when the proof's outputs are re
     expect(confirmed.activeInputs.map(({ outRef }) => outRef)).not.toContain(
       change,
     );
-    // Another fault's reservation can take it, with collateral of its own.
+    // Another fault's reservation can take it, with a small coin of its own.
     const base = plan("bb", "77", change);
     const second = {
       ...base,
       inputs: base.inputs
         .map((input) =>
-          input.role === "collateral"
+          input.outRef === `${"12".repeat(32)}#0`
             ? { ...input, outRef: `${"13".repeat(32)}#0` }
             : input,
         )

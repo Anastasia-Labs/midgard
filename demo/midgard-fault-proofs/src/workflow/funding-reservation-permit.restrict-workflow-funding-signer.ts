@@ -24,8 +24,8 @@ import {
 } from "./funding-reservation-permit.workflow-funding-reservation-port.js";
 
 /**
- * Returns a signer whose wallet API exposes exactly the currently reserved
- * collateral and the reserved plain-ADA funding UTxOs.
+ * Returns a signer whose wallet API exposes exactly the reserved plain-ADA
+ * coins, one pool offered both to coin selection and as collateral.
  * Signing and submission still delegate to the original enterprise-key
  * wallet.
  */
@@ -54,9 +54,7 @@ export const restrictWorkflowFundingSigner = ({
   return Object.freeze({
     ...signer,
     reservedFunding: () =>
-      state.snapshot.activeInputs
-        .filter(({ role }) => role === "funding")
-        .map(({ outRef }) => outRef),
+      state.snapshot.activeInputs.map(({ outRef }) => outRef),
     selectWallet: (lucid: LucidEvolution): void => {
       // Installing the API is safe before a resumed action has begun; every
       // funding read, transaction signature and submission checks its authority.
@@ -65,22 +63,19 @@ export const restrictWorkflowFundingSigner = ({
       // Builders may retain this Lucid wallet across prerequisite transactions.
       // Read the action refreshed by begin(), rather than the preceding action's
       // candidates, which may already have been spent by a publication.
-      const inputs = (role: "funding" | "collateral"): readonly UTxO[] => {
-        assertCurrentAction();
-        const outRefs =
-          role === "funding"
-            ? state.currentFundingOutRefs
-            : state.currentCollateralOutRefs;
-        return outRefs.map((outRef) => state.resolvedInputs.get(outRef)!);
-      };
-      // Only reserved plain-ADA funding is offered: no datum, no script, no
+      // Only reserved plain-ADA coins are offered: no datum, no script, no
       // token. An action's own datum output at the wallet (staged bytes a
       // later action reads) and any coin holding a token stay reserved but
       // out of coin selection, so no builder needs a preset that would hide
       // the reserved collateral from Lucid (which takes collateral only from
-      // a preset).
-      const selectable = (): readonly UTxO[] =>
-        inputs("funding").filter(isPlainFundingOutput);
+      // a preset). The same coins are the collateral Lucid may post; a
+      // transaction may spend a coin it also posts as collateral.
+      const selectable = (): readonly UTxO[] => {
+        assertCurrentAction();
+        return state.currentFundingOutRefs
+          .map((outRef) => state.resolvedInputs.get(outRef)!)
+          .filter(isPlainFundingOutput);
+      };
       const addressHex = CML.Address.from_bech32(signer.address).to_hex();
       const api: WalletApi = Object.freeze({
         getNetworkId: async () =>
@@ -110,10 +105,10 @@ export const restrictWorkflowFundingSigner = ({
           return await original.submitTx(tx);
         },
         getCollateral: async () =>
-          inputs("collateral").map((utxo) => utxoToCore(utxo).to_cbor_hex()),
+          selectable().map((utxo) => utxoToCore(utxo).to_cbor_hex()),
         experimental: Object.freeze({
           getCollateral: async () =>
-            inputs("collateral").map((utxo) => utxoToCore(utxo).to_cbor_hex()),
+            selectable().map((utxo) => utxoToCore(utxo).to_cbor_hex()),
           on: () => undefined,
           off: () => undefined,
         }),
@@ -239,7 +234,6 @@ export const unsafeCreateWorkflowFundingReservationPermitForTest = ({
     actuationPermit,
     port,
     maximumCollateralInputs: 0,
-    reservationMaximumCollateralInputs: 0,
     requiresParameterRefresh: false,
     idleReleaseAuthorized: false,
     snapshot,
@@ -249,7 +243,6 @@ export const unsafeCreateWorkflowFundingReservationPermitForTest = ({
     currentActionDigest: undefined,
     currentFundingOutRefs: Object.freeze([]),
     currentRequiredFundingOutRefs: Object.freeze([]),
-    currentCollateralOutRefs: Object.freeze([]),
     pendingTransactionHash: undefined,
     preparedTransaction: undefined,
   });
@@ -260,7 +253,6 @@ export const unsafeWorkflowFundingReservationSelectedOutRefsForTest = (
   permit: WorkflowFundingReservationPermit,
 ): Readonly<{
   fundingOutRefs: readonly string[];
-  collateralOutRefs: readonly string[];
 }> => {
   if (process.env.NODE_ENV !== "test") {
     throw new Error("unsafe funding reservation inspection is test-only");
@@ -271,6 +263,5 @@ export const unsafeWorkflowFundingReservationSelectedOutRefsForTest = (
   }
   return Object.freeze({
     fundingOutRefs: Object.freeze([...state.currentFundingOutRefs]),
-    collateralOutRefs: Object.freeze([...state.currentCollateralOutRefs]),
   });
 };

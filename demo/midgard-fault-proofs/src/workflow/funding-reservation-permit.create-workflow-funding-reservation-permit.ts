@@ -8,10 +8,8 @@ import {
 } from "./actuation-permit.js";
 import type { WorkflowAdapterRunner } from "./adapters.js";
 import {
-  assertSnapshotInputBounds,
   exactUtxos,
   parseSnapshot,
-  parseStateSnapshot,
 } from "./funding-reservation-permit.parse-workflow-funding-snapshot.js";
 import {
   ACTION_KIND,
@@ -151,7 +149,7 @@ export const parseProtocolInputAuthority = (
 };
 
 export const refresh = async (state: PermitState): Promise<void> => {
-  const snapshot = parseStateSnapshot(state, await state.port.load());
+  const snapshot = parseSnapshot(await state.port.load());
   if (
     snapshot.reservationId !== state.snapshot.reservationId ||
     snapshot.deploymentFingerprint !== state.snapshot.deploymentFingerprint ||
@@ -193,7 +191,6 @@ export const createWorkflowFundingReservationPermit = async ({
   runner,
   policy,
   reservationPolicy = policy,
-  capacityPolicy = reservationPolicy,
   actuationPermit,
   rollbackGeneration,
   port,
@@ -203,8 +200,6 @@ export const createWorkflowFundingReservationPermit = async ({
   readonly policy: WorkflowRuntimeFundingPolicy;
   /** Existing leases retain their original identity through live parameter updates and additive roster corrections. */
   readonly reservationPolicy?: WorkflowRuntimeFundingPolicy;
-  /** Authenticated historical capacity may admit recovery snapshots, never fresh spending. */
-  readonly capacityPolicy?: WorkflowRuntimeFundingPolicy;
   readonly actuationPermit: WorkflowActuationPermit;
   readonly rollbackGeneration: string;
   readonly port: WorkflowFundingReservationPort;
@@ -222,12 +217,6 @@ export const createWorkflowFundingReservationPermit = async ({
     category,
   });
   const reservedFunding = readWorkflowRuntimeFundingPolicy(reservationPolicy);
-  assertWorkflowRuntimeFundingPolicyRunner({
-    policy: capacityPolicy,
-    runner,
-    category,
-  });
-  const capacityFunding = readWorkflowRuntimeFundingPolicy(capacityPolicy);
   // Only L1 parameters and their derived bounds may change. The admitted
   // original policy still pins every durable lease and signed journal intent.
   // The validation dispute's wallet-move reserve is such a bound, priced at
@@ -256,19 +245,15 @@ export const createWorkflowFundingReservationPermit = async ({
       maximumCollateralInputs: "",
     });
   if (
-    [reservedFunding, capacityFunding].some(
-      (prior) => stableIdentity(funding) !== stableIdentity(prior),
-    ) ||
-    [reservedFunding, capacityFunding].some((priorPolicy) =>
-      priorPolicy.contracts.some(
-        (prior) =>
-          !funding.contracts.some(
-            (current) =>
-              current.address === prior.address &&
-              current.scriptHash === prior.scriptHash &&
-              current.role === prior.role,
-          ),
-      ),
+    stableIdentity(funding) !== stableIdentity(reservedFunding) ||
+    reservedFunding.contracts.some(
+      (prior) =>
+        !funding.contracts.some(
+          (current) =>
+            current.address === prior.address &&
+            current.scriptHash === prior.scriptHash &&
+            current.role === prior.role,
+        ),
     )
   )
     throw new Error(
@@ -300,15 +285,6 @@ export const createWorkflowFundingReservationPermit = async ({
     throw new Error(
       "production funding reservation has a foreign wallet credential",
     );
-  const reservationMaximumCollateralInputs = Math.max(
-    Number(reservedFunding.maximumCollateralInputs),
-    maximumCollateralInputs,
-    Number(capacityFunding.maximumCollateralInputs),
-  );
-  assertSnapshotInputBounds({
-    snapshot,
-    maximumCollateralInputs: reservationMaximumCollateralInputs,
-  });
   const permit: WorkflowFundingReservationPermit = Object.freeze({
     permitVersion: WORKFLOW_FUNDING_RESERVATION_PERMIT,
   });
@@ -318,7 +294,6 @@ export const createWorkflowFundingReservationPermit = async ({
     actuationPermit,
     port,
     maximumCollateralInputs,
-    reservationMaximumCollateralInputs,
     requiresParameterRefresh:
       funding.protocolParametersDigest !==
       reservedFunding.protocolParametersDigest,
@@ -332,7 +307,6 @@ export const createWorkflowFundingReservationPermit = async ({
     currentActionDigest: undefined,
     currentFundingOutRefs: Object.freeze([]),
     currentRequiredFundingOutRefs: Object.freeze([]),
-    currentCollateralOutRefs: Object.freeze([]),
     pendingTransactionHash: undefined,
     idleReleaseAuthorized: false,
     preparedTransaction: undefined,

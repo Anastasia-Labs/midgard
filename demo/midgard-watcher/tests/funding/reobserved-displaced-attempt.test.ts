@@ -33,12 +33,14 @@ it("supersedes a pending step that a reobserved earlier action displaces, so its
     action: { actionId: next.actionId, input: { actionKind: next.actionKind } },
   });
   const [begun] = await fixture.records();
-  const collateral = begun!.activeInputs
-    .filter(({ role }) => role === "collateral")
-    .map(({ outRef }) => outRef);
+  const collateral = [fixture.collateralInput.outRef];
+  // A reserved coin the proof did not produce, so the rollback leaves it:
+  // the coin the proof posted as collateral, which the step both spends and
+  // posts.
   const stepFunding = begun!.activeInputs.find(
-    ({ role, outRef }) => role === "funding" && outRef !== funding.outRef,
+    ({ outRef }) => outRef !== funding.outRef && outRef !== change,
   )!;
+  expect(stepFunding.outRef).toBe(fixture.collateralInput.outRef);
   const step = signReplacement(
     stepFunding.outRef,
     BigInt(stepFunding.lovelace),
@@ -128,10 +130,7 @@ it("supersedes a pending step that a reobserved earlier action displaces, so its
   // is refused, so the displaced bytes and the replacement cannot both land.
   const [record] = await fixture.records();
   const other = record!.activeInputs.find(
-    ({ role, outRef }) =>
-      role === "funding" &&
-      outRef !== funding.outRef &&
-      outRef !== stepFunding.outRef,
+    ({ outRef }) => outRef !== funding.outRef && outRef !== stepFunding.outRef,
   );
   expect(other).toBeDefined();
   await expect(

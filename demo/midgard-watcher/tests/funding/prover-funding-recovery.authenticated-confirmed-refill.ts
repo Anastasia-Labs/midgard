@@ -187,7 +187,7 @@ export const registerConfirmedFundingRefillTest = () => {
     expect(test.readWalletUtxos).not.toHaveBeenCalled();
     const spent = `${test.transactionHash}#0`;
     expect(before[0]!.activeInputs).toContainEqual(
-      expect.objectContaining({ role: "funding", outRef: spent }),
+      expect.objectContaining({ outRef: spent }),
     );
     test.walletUtxos.splice(
       0,

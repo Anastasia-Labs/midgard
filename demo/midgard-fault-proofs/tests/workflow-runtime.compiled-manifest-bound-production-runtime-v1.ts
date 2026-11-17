@@ -274,38 +274,31 @@ describe("compiled manifest-bound production runtime V1", () => {
   });
 
   it("keeps the collateral availability floor separate from exact failure forfeiture", async () => {
-    const runtime = await runtimeFunding("step-one", { collateral: true });
-    await expect(
-      prepareRuntimeFunding(
+    // Collateral posted for 300_000 covers the fee's percentage; one less
+    // does not.
+    for (const [total, admitted] of [
+      [300_000n, true],
+      [299_999n, false],
+    ] as const) {
+      const runtime = await runtimeFunding("step-one", { collateral: true });
+      const prepared = prepareRuntimeFunding(
         runtime,
         signedFundingTransaction({
-          inputOutRefs: runtime.selected.fundingOutRefs,
+          inputOutRefs: runtime.selected.fundingOutRefs.filter(
+            (outRef) => !runtime.collateralOutRefs.includes(outRef),
+          ),
           outputLovelace: 14_800_000n,
           redeemerMemory: 1n,
           collateral: {
-            outRefs: runtime.selected.collateralOutRefs,
-            total: 300_000n,
-            returned: 4_700_000n,
+            outRefs: runtime.collateralOutRefs,
+            total,
+            returned: 5_000_000n - total,
           },
         }),
-      ),
-    ).resolves.toBeUndefined();
-    const insufficient = await runtimeFunding("step-one", { collateral: true });
-    await expect(
-      prepareRuntimeFunding(
-        insufficient,
-        signedFundingTransaction({
-          inputOutRefs: insufficient.selected.fundingOutRefs,
-          outputLovelace: 14_800_000n,
-          redeemerMemory: 1n,
-          collateral: {
-            outRefs: insufficient.selected.collateralOutRefs,
-            total: 299_999n,
-            returned: 4_700_001n,
-          },
-        }),
-      ),
-    ).rejects.toThrow("collateral");
+      );
+      if (admitted) await expect(prepared).resolves.toBeUndefined();
+      else await expect(prepared).rejects.toThrow("collateral");
+    }
   });
 
   it("uses the unchanged journal stage to prepare actual signed funding", async () => {
@@ -356,7 +349,6 @@ describe("compiled manifest-bound production runtime V1", () => {
         `${"72".repeat(32)}#0`,
         `${"73".repeat(32)}#0`,
       ],
-      collateralOutRefs: [],
     });
     await expect(runtimeFundingSelection("step-three")).resolves.toEqual({
       fundingOutRefs: [
@@ -364,7 +356,6 @@ describe("compiled manifest-bound production runtime V1", () => {
         `${"72".repeat(32)}#0`,
         `${"73".repeat(32)}#0`,
       ],
-      collateralOutRefs: [],
     });
   });
 
@@ -415,8 +406,12 @@ describe("compiled manifest-bound production runtime V1", () => {
     });
     const outRef = (utxo: UTxO) => `${utxo.txHash}#${utxo.outputIndex}`;
     const previousInputs = await wallet.getUtxos();
+    // The publication spends every reserved coin but its collateral's.
+    const [collateralOutRef] = runtime.collateralOutRefs;
     const published = signedFundingTransaction({
-      inputOutRefs: previousInputs.map(outRef),
+      inputOutRefs: previousInputs
+        .map(outRef)
+        .filter((value) => value !== collateralOutRef),
       outputLovelace: 14_800_000n,
     });
     await runtime.prepareTransaction({
@@ -432,7 +427,9 @@ describe("compiled manifest-bound production runtime V1", () => {
       address: fundingAddress,
       assets: { lovelace: 14_800_000n },
     };
-    const collateral = await getCollateral();
+    const collateral = previousInputs.filter(
+      (utxo) => outRef(utxo) === collateralOutRef,
+    );
     const currentInputs = [change, ...collateral];
     runtime.resolveInputs.mockImplementation(async (refs) =>
       currentInputs.filter((utxo) => refs.includes(outRef(utxo))),
@@ -443,12 +440,11 @@ describe("compiled manifest-bound production runtime V1", () => {
       activeInputs: [
         {
           outRef: outRef(change),
-          role: "funding" as const,
           lovelace: "14800000",
           assets: [],
         },
         ...runtime.snapshot.activeInputs.filter(
-          ({ role }) => role === "collateral",
+          (input) => input.outRef === collateralOutRef,
         ),
       ].sort((left, right) => left.outRef.localeCompare(right.outRef)),
     });
@@ -475,11 +471,14 @@ describe("compiled manifest-bound production runtime V1", () => {
     });
     // The linear continuation builder reuses Lucid without selecting its signer again.
     expect(lucid.wallet()).toBe(wallet);
-    expect(await wallet.getUtxos()).toEqual([change]);
-    expect(await restarted.wallet().getUtxos()).toEqual([change]);
-    expect(await getCollateral()).toEqual(collateral);
+    const pool = [...currentInputs].sort((left, right) =>
+      outRef(left) < outRef(right) ? -1 : 1,
+    );
+    expect(await wallet.getUtxos()).toEqual(pool);
+    expect(await restarted.wallet().getUtxos()).toEqual(pool);
+    expect(await getCollateral()).toEqual(pool);
     const signed = signedFundingTransaction({
-      inputOutRefs: (await wallet.getUtxos()).map(outRef),
+      inputOutRefs: [outRef(change)],
       outputLovelace: 14_600_000n,
     });
     await runtime.prepareTransaction({
@@ -589,7 +588,6 @@ describe("compiled manifest-bound production runtime V1", () => {
           ...runtime.snapshot.activeInputs,
           Object.freeze({
             outRef: `${"75".repeat(32)}#0`,
-            role: "collateral" as const,
             lovelace: "1",
             assets: Object.freeze([]),
           }),

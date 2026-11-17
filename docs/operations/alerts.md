@@ -470,8 +470,8 @@ meets something else, as the first run after a top-up does, or once the
 objective settles.
 
 **First checks.** `l1Readiness` in `GET /v1/status`, and the prover wallet's
-plain-ADA coins (a coin holding a token is never spent, and collateral and
-funding are separate coins).
+plain-ADA coins (a coin holding a token is never spent; one reserved pool of
+coins funds a transaction and posts its collateral).
 
 **Action.** Top up the prover wallet with plain-ADA coins at once: the proof
 still has to land before its header matures, and `supervisor.deadlineHealth`

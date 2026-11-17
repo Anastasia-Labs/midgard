@@ -62,6 +62,19 @@ export class WorkflowFundingShortfallError extends WorkflowFundingReservationUna
 }
 
 /**
+ * What a reservation's refill throws when the prover wallet's plain-ADA coins
+ * cannot fund it: too little to post the most collateral one transaction may
+ * need, or no coin free to reserve. A top-up fixes it. The action the
+ * reservation was refilled for pauses on it as its funding shortfall.
+ */
+export class WorkflowFundingReservationShortfallError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "WorkflowFundingReservationShortfallError";
+  }
+}
+
+/**
  * `cause` as a preflight failure of `actionId`: a funding shortfall becomes
  * the resumable funding-unavailable error; anything else, including a
  * failure already typed as unavailable funding, is returned unchanged.

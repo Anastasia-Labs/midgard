@@ -5,7 +5,6 @@ import { assertRuntimeTransactionBound } from "./funding-reservation-permit.asse
 import { readValidationDisputeFundingAuthority } from "./funding-reservation-permit.assert-validation-dispute-funding.js";
 import { readValidationDisputeMoveAuthority } from "./funding-reservation-permit.assert-validation-dispute-move.js";
 import {
-  assertCurrentFundingCollateralLimit,
   assertFundingSubmissionAuthority,
   bodySha256,
 } from "./funding-reservation-permit.begin-workflow-funding-reservation-action.js";
@@ -16,7 +15,7 @@ import {
 } from "./funding-reservation-permit.create-workflow-funding-reservation-permit.js";
 import { parseWorkflowFundingSupersededAttempt } from "./funding-reservation-permit.parse-workflow-funding-attempt.js";
 import { parseWorkflowFundingPreparedTransition } from "./funding-reservation-permit.parse-workflow-funding-prepared-transition.js";
-import { parseStateSnapshot } from "./funding-reservation-permit.parse-workflow-funding-snapshot.js";
+import { parseSnapshot } from "./funding-reservation-permit.parse-workflow-funding-snapshot.js";
 import {
   canonicalOutRefs,
   type WorkflowFundingPreparedTransition,
@@ -74,7 +73,6 @@ const producedFundingInputs = ({
     produced.push(
       Object.freeze({
         outRef: `${transactionHash}#${index.toString()}`,
-        role: "funding" as const,
         lovelace: decoded.assets.lovelace!.toString(),
         assets: Object.freeze(assets),
       }),
@@ -133,10 +131,6 @@ export const prepareWorkflowFundingReservationTransaction = async ({
     state.currentFundingOutRefs,
     "reserved funding inputs",
   );
-  const collateralCandidates = canonicalOutRefs(
-    state.currentCollateralOutRefs,
-    "reserved collateral inputs",
-  );
   const bodyInputs = [...workflowTransactionInputOutRefs(signed)].sort();
   const collateralOutRefs = [
     ...workflowTransactionCollateralInputOutRefs(signed),
@@ -144,21 +138,14 @@ export const prepareWorkflowFundingReservationTransaction = async ({
   const fundingOutRefs = Object.freeze(
     bodyInputs.filter((outRef) => candidates.includes(outRef)),
   );
-  // Each breach is named by its out-ref, so a refusal says which side broke.
-  const breaches = [
-    ...bodyInputs
-      .filter((outRef) => collateralCandidates.includes(outRef))
-      .map((outRef) => `reserved collateral ${outRef} is spent as an input`),
-    ...collateralOutRefs
-      .filter((outRef) => !collateralCandidates.includes(outRef))
-      .map(
-        (outRef) =>
-          `collateral ${outRef} is ${candidates.includes(outRef) ? "reserved funding" : "not reserved collateral"}`,
-      ),
-  ];
-  if (breaches.length !== 0)
+  // Collateral comes from the one reserved pool, as body inputs do; a coin
+  // may be both, as the ledger allows.
+  const foreignCollateral = collateralOutRefs.filter(
+    (outRef) => !candidates.includes(outRef),
+  );
+  if (foreignCollateral.length !== 0)
     throw new Error(
-      `signed transaction changed reserved ordinary/collateral separation: ${breaches.join("; ")}`,
+      `signed transaction uses collateral outside the reservation: ${foreignCollateral.join(", ")}`,
     );
   await assertRuntimeTransactionBound({
     state,
@@ -199,8 +186,7 @@ export const prepareWorkflowFundingReservationTransaction = async ({
     supersededAttemptReadSchedule.forget(landed);
     throw new WorkflowFundingSupersededAttemptLandedError(landed);
   }
-  state.snapshot = parseStateSnapshot(
-    state,
+  state.snapshot = parseSnapshot(
     await commitWithJournal({
       port: state.port,
       writer,
@@ -242,7 +228,6 @@ export const assertWorkflowFundingReservationReadyToSubmit = async ({
   const expectedPending = state.pendingTransactionHash;
   await refresh(state);
   assertFundingSubmissionAuthority(state);
-  assertCurrentFundingCollateralLimit(state);
   if (state.preparedTransaction !== undefined) {
     const { signed, cborHex } = state.preparedTransaction;
     if (

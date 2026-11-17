@@ -10,7 +10,10 @@
 import type { TxSigned } from "@lucid-evolution/lucid";
 
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
-import { isWorkflowFundingShortfall } from "../workflow/funding-reservation-permit.workflow-funding-shortfall.js";
+import {
+  isWorkflowFundingShortfall,
+  type WorkflowFundingShortfallError,
+} from "../workflow/funding-reservation-permit.workflow-funding-shortfall.js";
 import type {
   JournalJsonObject,
   JournalJsonValue,
@@ -57,6 +60,13 @@ export type OwnKeyActions = Readonly<{
   resolved?: (
     context: FraudProofWorkflowAdapterContext,
   ) => Promise<FraudProofWorkflowObservation | undefined>;
+  /** The alarm `action` of ours pauses on when its reservation cannot be
+   * funded, `shortfall` being the pause; none to pause on `shortfall`. */
+  unfunded?: (
+    context: FraudProofWorkflowAdapterContext,
+    action: FraudProofWorkflowAction,
+    shortfall: WorkflowFundingShortfallError,
+  ) => Promise<WorkflowFundingShortfallError | undefined>;
   /** The signed transaction of `action`, what its recovery keeps besides
    * the signed bytes, and the published reference scripts it runs, if it
    * runs any (each script it runs must be one of them). */
@@ -145,6 +155,10 @@ export const withOwnKeyActions = ({
   const adapter: FraudProofFamilyWorkflowAdapter = {
     ...base,
     observe,
+    unfunded: async (context) =>
+      (own.owns(context.action)
+        ? await own.unfunded?.(context, context.action, context.shortfall)
+        : await base.unfunded?.(context)) ?? context.shortfall,
     preflight: async (context) => {
       if (!own.owns(context.action)) return await base.preflight(context);
       const { actionId } = context.action;

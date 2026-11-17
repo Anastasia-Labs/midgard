@@ -29,7 +29,11 @@ import {
 import { validationTraceCaseExpiryMs } from "../src/validation-trace-dispute/threads.js";
 import { validationTraceRunState } from "../src/validation-trace-dispute/waiting.js";
 import { VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED } from "../src/workflow/funding-reservation-permit.validation-dispute-wallet-move-reserve.js";
-import { drainProver, topUpProver } from "./support/installed-prover-wallet.js";
+import {
+  drainProver,
+  drainProverToOneCoin,
+  topUpProver,
+} from "./support/installed-prover-wallet.js";
 import { watchLedger } from "./support/own-outputs-installed.js";
 import {
   type FundedMoves,
@@ -216,7 +220,8 @@ describe("validation-trace dispute wallet-paid moves on two threads of one case 
   it(
     "holds our first reveal under the operator's alarm, naming the end of our clock on its thread, while the wallet cannot fund it",
     async () => {
-      await drainProver(journey.scene.h as never, SHORT);
+      // Our wallet runs below the collateral line: no reservation holds it.
+      await drainProverToOneCoin(journey.scene.h as never, SHORT);
       const thread = (await liveThreads()).get(journey.second.unit)!;
       await expectUnfundedAlarms({
         stage: "reveal",
@@ -237,7 +242,8 @@ describe("validation-trace dispute wallet-paid moves on two threads of one case 
       const { scene, dispute, capture } = journey;
       const reserve = await dispute.walletMoveReserve();
       const before = await liveThreads();
-      await topUpProver(scene.h as never, 100n * ADA);
+      // Back above the collateral line.
+      await topUpProver(scene.h as never, 2_100n * ADA + 2n * reserve);
       await drainProver(scene.h as never, 2n * reserve + 5n * ADA);
       const { result, history } = await turnUntil(
         dispute,

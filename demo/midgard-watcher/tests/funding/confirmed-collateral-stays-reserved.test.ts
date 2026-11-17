@@ -1,6 +1,7 @@
 import { join } from "node:path";
 
 import { beginWorkflowFundingReservationAction } from "@al-ft/midgard-fault-proofs";
+import { CML } from "@lucid-evolution/lucid";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { unsafeOpenWatcherSqliteProverFundingReservationStoreForTest } from "../../src/funding/sqlite-prover-funding-reservation-store.js";
@@ -18,12 +19,21 @@ afterEach(async () => {
 
 const setup = async () => {
   const fixture = await setupFundingRecoveryFixture(false, true);
-  const collateral = fixture.plan.inputs.find(
-    ({ role }) => role === "collateral",
+  // The pending attempt posts one reserved coin as collateral and spends
+  // the other.
+  const body = CML.Transaction.from_cbor_hex(
+    fixture.signedTransactionCborHex,
+  ).body();
+  const outRefOf = (input: CML.TransactionInput) =>
+    `${input.transaction_id().to_hex()}#${input.index().toString()}`;
+  const collateral = outRefOf(body.collateral_inputs()!.get(0));
+  const spent = Array.from({ length: body.inputs().len() }, (_, index) =>
+    outRefOf(body.inputs().get(index)),
+  );
+  const funding = fixture.plan.inputs.find(({ outRef }) =>
+    spent.includes(outRef),
   )!.outRef;
-  const funding = fixture.plan.inputs.find(
-    ({ role }) => role === "funding",
-  )!.outRef;
+  expect(spent).not.toContain(collateral);
   const change = `${fixture.transactionHash}#0`;
   // Only fixture creation uses the unsafe seam: a second reservation that
   // wants the confirmed proof's collateral.
@@ -38,9 +48,9 @@ const setup = async () => {
       ...base,
       inputs: base.inputs
         .map((input) =>
-          input.role === "collateral"
-            ? { ...input, outRef: collateralOutRef }
-            : input,
+          input.outRef === fundingOutRef
+            ? input
+            : { ...input, outRef: collateralOutRef },
         )
         .sort((left, right) => (left.outRef < right.outRef ? -1 : 1)),
     };
@@ -63,21 +73,13 @@ const setup = async () => {
   };
 };
 
-it("releases a confirmed proof's collateral lease at confirmation so another reservation can use it", async () => {
-  const {
-    fixture,
-    collateral,
-    funding,
-    change,
-    peer,
-    competitorFor,
-    other,
-    own,
-  } = await setup();
+it("keeps a confirmed step's collateral in its reservation, where the next action uses it again", async () => {
+  const { fixture, collateral, funding, change, peer, other, own } =
+    await setup();
   try {
-    // Pending: the signed attempt's collateral is leased.
-    expect((await own()).activeInputs).toContainEqual(
-      expect.objectContaining({ outRef: collateral, role: "collateral" }),
+    // Pending: the signed attempt's collateral is reserved.
+    expect((await own()).activeInputs.map(({ outRef }) => outRef)).toContain(
+      collateral,
     );
     await expect(peer.store.reserve(other)).rejects.toThrow("already reserved");
 
@@ -89,45 +91,30 @@ it("releases a confirmed proof's collateral lease at confirmation so another res
       actionId: "init",
       txHash: fixture.transactionHash,
     });
-    const record = await own();
-    expect(record.pendingTransition).toBeNull();
-    expect(record.activeInputs.map(({ outRef }) => outRef)).not.toContain(
-      collateral,
-    );
-    const reserved = await peer.store.readReservedOutRefs({});
-    expect(reserved).not.toContain(collateral);
-    // The consumed input and the change stay leased for a re-land.
-    expect(reserved).toEqual(expect.arrayContaining([funding, change]));
+    // A phase-2-valid transaction leaves its collateral unspent: it stays
+    // reserved beside the change, and the spent input is gone.
+    const confirmed = await own();
+    expect(confirmed.pendingTransition).toBeNull();
+    const held = confirmed.activeInputs.map(({ outRef }) => outRef);
+    expect(held).toEqual(expect.arrayContaining([collateral, change]));
+    expect(held).not.toContain(funding);
+    await expect(peer.store.reserve(other)).rejects.toThrow("already reserved");
 
-    await expect(peer.store.reserve(other)).resolves.toBe("reserved");
-    expect(
-      await peer.store.readReservedOutRefs({
-        excludingReservationId: fixture.plan.reservationId,
-      }),
-    ).toContain(collateral);
-    // This reservation's next action selects fresh collateral at once.
+    // The next action begins on the reservation as it is: nothing is
+    // reserved again, and the coin is still there to post.
     await beginWorkflowFundingReservationAction({
       journal,
       action: { actionId: "next", input: { actionKind: "step-one" } },
     });
-    const nextCollateral = (await own()).activeInputs.filter(
-      ({ role }) => role === "collateral",
-    );
-    expect(nextCollateral).toHaveLength(1);
-    expect(nextCollateral[0]!.outRef).not.toBe(collateral);
-    await expect(
-      peer.store.reserve({
-        ...competitorFor(`${"ac".repeat(32)}#0`, change),
-        reservationId: "ed".repeat(32),
-        decisionDigest: "ec".repeat(32),
-      }),
-    ).rejects.toThrow("already reserved");
+    const next = await own();
+    expect(next.revision).toBe(confirmed.revision);
+    expect(next.activeInputs.map(({ outRef }) => outRef)).toContain(collateral);
   } finally {
     peer.close();
   }
 });
 
-it("rebroadcasts the identical bytes after a rollback while another reservation holds the collateral lease", async () => {
+it("rebroadcasts the identical bytes after a rollback while another reservation holds the collateral its inclusion released", async () => {
   const { fixture, collateral, funding, change, peer, other, own } =
     await setup();
   try {
@@ -135,6 +122,13 @@ it("rebroadcasts the identical bytes after a rollback while another reservation 
     await fixture.run(journal);
     const confirmed = await journal.load(fixture.initial.workflowId);
     expect(confirmed.at(-1)!.event.kind).toBe("confirmed");
+    // The correction's inclusion frees what the reservation holds; another
+    // reservation takes the collateral.
+    await fixture.store.releaseProducedOutputs!({
+      journal: [],
+      plan: fixture.plan,
+      expectedRevision: (await own()).revision,
+    });
     await peer.store.reserve(other);
 
     // A rollback within k drops the proof: its funding input is unspent again
@@ -190,8 +184,10 @@ it("rebroadcasts the identical bytes after a rollback while another reservation 
         return { kind: "pending", txHash: txHash! };
       },
     );
+    // The watcher resumes on the reservation as the inclusion left it.
+    const resumed = await fixture.recover();
     const result = await fixture.run(
-      journal,
+      resumed,
       () => new Date(Date.now() + 60_000),
     );
     expect(result).toMatchObject({ kind: "pending" });

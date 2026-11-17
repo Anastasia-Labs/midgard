@@ -4,10 +4,10 @@
  * from a short wallet, its thread paying the fee, and the defender goes
  * silent. Fees then rise until the timeout and the thread's close are priced
  * over the per-move cap, so our plain-Ada wallet pays each of them whole. A
- * wallet holding less than the timeout needs holds it under the operator's
- * alarm, naming the case, the thread and the deadline, before any byte
- * reaches the ledger, releasing what it reserved, and keeps retrying at each
- * observation without wedging. Topped up to less than the wallet-move
+ * wallet run below the collateral line, from which nothing can be reserved,
+ * holds the timeout under the operator's alarm, naming the case, the thread
+ * and the deadline, before any byte reaches the ledger, releasing what it
+ * reserved, and keeps retrying at each observation without wedging. Topped up to less than the wallet-move
  * reserve but enough for the move, it lands the timeout with no alarm, its
  * successor keeping all of the thread's lovelace; refilled to that reserve,
  * it lands the thread's close, which pays the thread's rest less the receipt
@@ -27,7 +27,11 @@ import { VALIDATION_TRACE_THREAD_AWAITING } from "../src/validation-trace-disput
 import { validationTraceCaseExpiryMs } from "../src/validation-trace-dispute/threads.js";
 import { validationTraceRunState } from "../src/validation-trace-dispute/waiting.js";
 import { VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED } from "../src/workflow/funding-reservation-permit.validation-dispute-wallet-move-reserve.js";
-import { drainProver, topUpProver } from "./support/installed-prover-wallet.js";
+import {
+  drainProver,
+  drainProverToOneCoin,
+  topUpProver,
+} from "./support/installed-prover-wallet.js";
 import { watchLedger } from "./support/own-outputs-installed.js";
 import { network } from "./support/submit-init-emulator-shared.js";
 import {
@@ -129,7 +133,7 @@ describe("validation-trace dispute wallet-paid thread moves under the prover fun
   );
 
   it(
-    "holds a timeout priced over the cap under the operator's alarm, naming the case, the thread and the deadline, when the wallet holds less than it needs, before any byte reaches the ledger, and keeps retrying without wedging",
+    "holds a timeout priced over the cap under the operator's alarm, naming the case, the thread and the deadline, when the wallet is below the collateral line, before any byte reaches the ledger, and keeps retrying without wedging",
     async () => {
       const { scene, dispute, capture, caseOrigin } = journey;
       // Fees rise until the timeout's and the close's minimums pass the
@@ -144,7 +148,8 @@ describe("validation-trace dispute wallet-paid thread moves under the prover fun
       const caseUnit = Object.keys(caseOrigin.assets).find((unit) =>
         unit.startsWith(scene.chain.case.policyId),
       )!;
-      // Our wallet still holds the short balance the reveal left it.
+      // Our wallet runs below the collateral line: no reservation holds it.
+      await drainProverToOneCoin(scene.h as never, SHORT);
       const watch = watchLedger(scene.h.emulator);
       try {
         for (let pause = 0; pause < 2; pause += 1) {
@@ -197,7 +202,8 @@ describe("validation-trace dispute wallet-paid thread moves under the prover fun
       // Enough for the builder to select the move's coins; less than the
       // reserve.
       const held = reserve / 2n;
-      await topUpProver(scene.h as never, 100n * ADA);
+      // Back above the collateral line.
+      await topUpProver(scene.h as never, 2_100n * ADA);
       await drainProver(scene.h as never, held);
       const reasons: string[] = [];
       for (let turns = 0; turns < 6; turns += 1) {

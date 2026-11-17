@@ -4,7 +4,6 @@ type ProverFundingLeaseClaim = Readonly<{
   outRef: string;
   reservationId: string;
   phase: "active" | "pending";
-  role: "funding" | "collateral";
 }>;
 
 /** One lease per output: a reservation's active claim on an output takes
@@ -17,33 +16,33 @@ export const projectRetainedProverFundingLeases = ({
   records: readonly WatcherProverFundingReservationRecord[];
   readInputs: (
     record: WatcherProverFundingReservationRecord,
-  ) => readonly { outRef: string; role: "funding" | "collateral" }[];
+  ) => readonly string[];
   transferred: (reservationId: string, outRef: string) => boolean;
 }) => {
   const byOutput = new Map<string, ProverFundingLeaseClaim>();
   const claim = (
     record: WatcherProverFundingReservationRecord,
-    value: { outRef: string; role: "funding" | "collateral" },
+    outRef: string,
     phase: "active" | "pending",
   ) => {
-    const previous = byOutput.get(value.outRef);
+    const previous = byOutput.get(outRef);
     if (
       previous !== undefined &&
       previous.reservationId !== record.reservationId
     )
       throw new Error("prover funding reservation repeats an output lease");
     if (previous === undefined || phase === "active")
-      byOutput.set(value.outRef, {
-        ...value,
+      byOutput.set(outRef, {
+        outRef,
         reservationId: record.reservationId,
         phase,
       });
   };
   for (const record of records) {
-    for (const value of readInputs(record)) claim(record, value, "active");
-    for (const value of record.pendingTransition?.producedInputs ?? [])
-      if (!transferred(record.reservationId, value.outRef))
-        claim(record, value, "pending");
+    for (const outRef of readInputs(record)) claim(record, outRef, "active");
+    for (const { outRef } of record.pendingTransition?.producedInputs ?? [])
+      if (!transferred(record.reservationId, outRef))
+        claim(record, outRef, "pending");
   }
   return { leases: [...byOutput.values()] };
 };

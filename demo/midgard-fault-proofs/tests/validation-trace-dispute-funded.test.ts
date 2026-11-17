@@ -29,7 +29,11 @@ import {
 } from "../src/workflow/funding-reservation-permit.js";
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { workflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
-import { drainProver, topUpProver } from "./support/installed-prover-wallet.js";
+import {
+  drainProver,
+  drainProverToOneCoin,
+  topUpProver,
+} from "./support/installed-prover-wallet.js";
 import {
   plantTokenCoin,
   watchLedger,
@@ -289,7 +293,7 @@ describe("validation-trace dispute VerifySource under the prover funding permit"
     "holds an objective whose wallet cannot reserve the bond on the prover-funding pause, then lands after a top-up",
     async () => {
       const { h } = scene;
-      await drainProver(h as never, 5_000n * ADA);
+      await drainProverToOneCoin(h as never, 5_000n * ADA);
       const dispute = await openFundedDispute(scene);
       try {
         const reserve = await dispute.walletMoveReserve();
@@ -339,9 +343,10 @@ describe("validation-trace dispute VerifySource under the prover funding permit"
       const { h } = scene;
       const dispute = await openFundedDispute(scene);
       try {
-        // Enough to reserve the bond, the case floor and the wallet-move
-        // reserve, not to pay for Init, Open and VerifySource besides.
-        await drainProver(
+        // One coin enough to reserve the bond, the case floor and the
+        // wallet-move reserve, not to pay for Init, Open and VerifySource
+        // besides.
+        await drainProverToOneCoin(
           h as never,
           BOND_LOVELACE + FLOOR + (await dispute.walletMoveReserve()),
         );
@@ -408,9 +413,10 @@ describe("validation-trace dispute VerifySource under the prover funding permit"
         });
         expect(confirmedStages(held.result)).toStrictEqual(["init", "open"]);
         // The bond and less than the reserve over VerifySource's fee: enough
-        // to build VerifySource, not to keep the reserve after it.
+        // to build VerifySource, not to keep the reserve after it, in one
+        // coin.
         const reserve = await dispute.walletMoveReserve();
-        await drainProver(h as never, BOND_LOVELACE + reserve);
+        await drainProverToOneCoin(h as never, BOND_LOVELACE + reserve);
         const watch = watchLedger(h.emulator);
         try {
           const paused = await turnUntil(dispute, WORKFLOW_FUNDING_SHORTFALL);

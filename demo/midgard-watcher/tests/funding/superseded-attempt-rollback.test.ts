@@ -167,9 +167,7 @@ it("refuses a fresh attempt that spends an output of its action's landed superse
       outRef.startsWith(fixture.transactionHash),
     ),
   ).toBe(false);
-  const collateral = record!.activeInputs
-    .filter(({ role }) => role === "collateral")
-    .map(({ outRef }) => outRef);
+  const collateral = [fixture.collateralInput.outRef];
   const sign = (others: readonly string[]) =>
     signReplacement(
       funding.outRef,

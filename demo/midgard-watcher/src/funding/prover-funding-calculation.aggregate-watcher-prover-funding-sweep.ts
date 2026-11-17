@@ -176,7 +176,11 @@ export const aggregateWatcherProverFundingSweep = (
       reusableCollateralLovelace: reusableCollateral.toString(),
       peakCapitalLovelace: flow.peakLovelace.toString(),
       endingCapitalLovelace: flow.endingLovelace.toString(),
-      requiredLovelace: (flow.peakLovelace + reusableCollateral).toString(),
+      // Collateral comes from the same reserved coins that fund the peak.
+      requiredLovelace: (flow.peakLovelace > reusableCollateral
+        ? flow.peakLovelace
+        : reusableCollateral
+      ).toString(),
       requiredNativeAssets: flow.peakNativeAssets,
     }),
   });

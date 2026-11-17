@@ -144,7 +144,26 @@ export const validationTraceStagingSigner = ({
     };
   };
 
+  /** The operator's alarm on the staging `actionId` of `step` our wallet
+   * cannot fund, `cause` being why: naming the case, the thread, the
+   * deadline and what the step still needs from our wallet. */
+  const unfunded = async (
+    context: FraudProofWorkflowAdapterContext,
+    actionId: string,
+    step: ValidationTraceStagingStep,
+    cause: unknown,
+  ) =>
+    new ValidationDisputeWalletMoveUnfundedError({
+      actionId,
+      ...(await alarmOf(context, step.threadOutRef)),
+      cause: new Error(
+        `${needsOf(step)}: ${cause instanceof Error ? cause.message : String(cause)}`,
+        { cause },
+      ),
+    });
+
   return {
+    unfunded,
     /** The signed staging of `step`'s run, and the index of its staging
      * output. */
     stage: async (
@@ -159,14 +178,7 @@ export const validationTraceStagingSigner = ({
         );
       } catch (cause) {
         if (!isWorkflowFundingShortfall(cause)) throw cause;
-        throw new ValidationDisputeWalletMoveUnfundedError({
-          actionId,
-          ...(await alarmOf(context, step.threadOutRef)),
-          cause: new Error(
-            `${needsOf(step)}: ${cause instanceof Error ? cause.message : String(cause)}`,
-            { cause },
-          ),
-        });
+        throw await unfunded(context, actionId, step, cause);
       }
       const { outputIndex } = midgardCekStagingOutRef(unsigned, step.run);
       const signed = await unsigned.sign.withWallet().complete();

@@ -260,11 +260,7 @@ export const deriveSignedTransition = ({
   const transactionBodySha256 = createHash("sha256")
     .update(Buffer.from(body.to_cbor_hex(), "hex"))
     .digest("hex");
-  const planFunding = new Set(
-    activeInputs
-      .filter(({ role }) => role === "funding")
-      .map(({ outRef }) => outRef),
-  );
+  const planFunding = new Set(activeInputs.map(({ outRef }) => outRef));
   const consumedOutRefs = transactionInputOutRefs(body.inputs()).filter(
     (outRef) => planFunding.has(outRef),
   );
@@ -280,7 +276,6 @@ export const deriveSignedTransition = ({
     producedInputs.push(
       Object.freeze({
         outRef: `${transactionHash}#${index.toString()}`,
-        role: "funding" as const,
         lovelace: lovelace.toString(),
         assets: Object.freeze(
           Object.entries(output.assets)

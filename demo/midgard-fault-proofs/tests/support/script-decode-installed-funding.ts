@@ -308,7 +308,6 @@ export const openInstalledProverFunding = async ({
         selectionCalculation: current.calculation,
         policy: current.policy,
         reservationPolicy: admitted.policy,
-        capacityPolicy: current.policy,
         decisionDigest,
         walletAddress,
         walletUtxos: existing === undefined ? await readWalletUtxos() : [],

@@ -425,6 +425,21 @@ export const validationTraceStaging = ({
       if (staged?.kind === "action_required") return staged;
       return (await sweep(context, staged ?? observed)) ?? staged;
     },
+    // A staging the reservation cannot fund names what its build would.
+    unfunded: async (context, action, shortfall) => {
+      const step =
+        action.input.schemaVersion === VALIDATION_TRACE_STAGING
+          ? runs.get(action.actionId)
+          : undefined;
+      return step === undefined
+        ? undefined
+        : await signing.unfunded(
+            context,
+            action.actionId,
+            step,
+            shortfall.cause,
+          );
+    },
     // Once the header rolls back, each staging output no thread of ours
     // needs is still spent back; nothing is staged.
     reclaim: async (context, observed) => await sweep(context, observed),

@@ -45,13 +45,12 @@ const twoFundingPlan = (): WatcherProverFundingReservationPlan => {
         ...base.inputs,
         Object.freeze({
           outRef: second,
-          role: "funding" as const,
           lovelace: "100000000",
           assets: Object.freeze([]),
         }),
       ].sort((left, right) => (left.outRef < right.outRef ? -1 : 1)),
     ),
-    fundingLovelace: "200000000",
+    fundingLovelace: "205000000",
   });
 };
 
@@ -145,11 +144,11 @@ it("admits a replacement for a rolled-back proof and its rolled-back child throu
     const kc = await supersedePending(store, owner, pc);
     const ra = await reobserve(store, owner, kc.revision, a.transactionHash);
     const ka = await supersedePending(store, owner, ra);
-    expect(
-      ka.activeInputs
-        .filter(({ role }) => role === "funding")
-        .map(({ outRef }) => outRef),
-    ).toEqual([first, second]);
+    expect(ka.activeInputs.map(({ outRef }) => outRef)).toEqual([
+      first,
+      `${"12".repeat(32)}#0`,
+      second,
+    ]);
     // C's exclusion set reaches A's input: C cannot land unless A does.
     expect(await exclusionSets(store, owner)).toEqual([
       [first],

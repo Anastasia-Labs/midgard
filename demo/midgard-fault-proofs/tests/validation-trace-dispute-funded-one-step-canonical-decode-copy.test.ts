@@ -8,12 +8,11 @@
  * key address from its funding; spent outside the watcher before the move
  * lands, the copy is published again once its publication is past the
  * recovery depth, and the move reads the new copy. The thread is then
- * awarded and closes into our case. Our funding reservation holds plain
- * coins only, so the copy, which carries a datum, is not among them: the
- * watcher leaves it at our key address, and the convicted block's removal
- * waits undisturbed. The copy is spent back by key where our signer is not
- * restricted to a reservation
- * (validation-trace-dispute-one-step-canonical-decode-8-observe-copy.test.ts).
+ * awarded and closes into our case. Once the observe move is final the
+ * watcher spends the copy back to our key address by our key alone, as it
+ * does where our signer is not restricted to a reservation
+ * (validation-trace-dispute-one-step-canonical-decode-8-observe-copy.test.ts),
+ * and the convicted block's removal waits.
  *
  * The category is not installed until its defender exists; this file
  * stands in for that install so the production classifier mints the
@@ -42,7 +41,9 @@ import {
   TIMEOUT,
 } from "./support/validation-trace-dispute-funded-verify-source.js";
 import {
+  blockOf,
   copiesOf,
+  expectReclaimedByKey,
   landed,
   outRefsOf,
   readersOf,
@@ -208,19 +209,22 @@ describe("validation-trace dispute one-step resolution through a canonical-decod
   );
 
   it(
-    "leaves the copy, which our funding reservation does not hold, at our key address while the removal waits",
+    "spends the copy back to our key address by our key alone once the observe move is final, while the removal waits",
     async () => {
       const [, copy] = copiesOf(scene, BYTES);
+      await playUntil(() => spenderOf(scene, copy!) !== undefined);
+      const spender = spenderOf(scene, copy!);
+      expect(spender).toBeDefined();
+      expectReclaimedByKey(scene, spender!);
+      const [reader] = readersOf(scene, copy!);
+      expect(await blockOf(scene, spender!.hash)).toBeGreaterThan(
+        await blockOf(scene, reader!.hash),
+      );
       const { result, history } = await turnUntil(
         dispute,
         VALIDATION_TRACE_CASE_CONVICTED,
       );
       expect(result.kind, history.join("\n")).toBe("pending");
-      expect(spenderOf(scene, copy!)).toBeUndefined();
-      const [utxo] = await scene.h.emulator.getUtxosByOutRef([
-        parseOwnOutRef(copy!),
-      ]);
-      expect(utxo?.address).toBe(scene.h.proverSigner.address);
     },
     TIMEOUT,
   );

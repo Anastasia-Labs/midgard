@@ -83,8 +83,7 @@ export const parseWorkflowFundingPreparedTransition = (
     if (
       !produced.outRef.startsWith(`${transactionHash}#`) ||
       !Number.isSafeInteger(index) ||
-      index >= outputs.len() ||
-      produced.role !== "funding"
+      index >= outputs.len()
     )
       throw new Error("funding produced input belongs to another transaction");
     const decoded = coreToUtxo(

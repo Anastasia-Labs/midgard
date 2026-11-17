@@ -400,7 +400,11 @@ export const setupFundingRecoveryFixture = async (
   const initial = await run(journal);
   if (!("workflowId" in initial))
     throw new Error("fixture did not start workflow");
-  const funding = plan.inputs.find(({ role }) => role === "funding")!;
+  // One pool: one reserved coin funds the attempt, another is its collateral.
+  const [collateralInput, funding] = plan.inputs as readonly [
+    (typeof plan.inputs)[number],
+    (typeof plan.inputs)[number],
+  ];
   const [fundingHash, fundingIndex] = funding.outRef.split("#");
   const inputs = CML.TransactionInputList.new();
   inputs.add(
@@ -421,17 +425,13 @@ export const setupFundingRecoveryFixture = async (
   if (attemptTtl !== null) body.set_ttl(attemptTtl);
   if (withCollateral) {
     const collateral = CML.TransactionInputList.new();
-    for (const reserved of plan.inputs.filter(
-      ({ role }) => role === "collateral",
-    )) {
-      const [txHash, index] = reserved.outRef.split("#");
-      collateral.add(
-        CML.TransactionInput.new(
-          CML.TransactionHash.from_hex(txHash!),
-          BigInt(index!),
-        ),
-      );
-    }
+    const [txHash, index] = collateralInput.outRef.split("#");
+    collateral.add(
+      CML.TransactionInput.new(
+        CML.TransactionHash.from_hex(txHash!),
+        BigInt(index!),
+      ),
+    );
     body.set_collateral_inputs(collateral);
   }
   const { signedTransactionCborHex, transactionHash } =
@@ -484,7 +484,6 @@ export const setupFundingRecoveryFixture = async (
           producedInputs: [
             {
               outRef: `${transactionHash}#0`,
-              role: "funding",
               lovelace: remaining.toString(),
               assets: [],
             },
@@ -586,6 +585,11 @@ export const setupFundingRecoveryFixture = async (
     initial,
     pending,
     plan,
+    /** The reserved coin the init attempt spends. */
+    fundingInput: funding,
+    /** The reserved coin the init attempt posts as collateral, when it has
+     * any. */
+    collateralInput,
     transactionHash,
     signedTransactionCborHex,
     originalEntries,

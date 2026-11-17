@@ -102,9 +102,9 @@ it("plans no reservation over a coin an unconfirmed removal holds", async () => 
     // The authority plans from the wallet less every reserved out-ref.
     const reserved = new Set(await store.readReservedOutRefs({}));
     const planned = plan(wallet.filter((utxo) => !reserved.has(outRef(utxo))));
-    expect(planned.inputs.map(({ outRef, role }) => [outRef, role])).toEqual([
-      [outRef(FREE_FEE), "funding"],
-      [outRef(FREE_COLLATERAL), "collateral"],
+    expect(planned.inputs.map((input) => input.outRef)).toEqual([
+      outRef(FREE_FEE),
+      outRef(FREE_COLLATERAL),
     ]);
     await expect(store.reserve(planned)).resolves.toBe("reserved");
 
@@ -174,7 +174,7 @@ it("holds wallet coins in memory until release or expiry, never over a lease", a
       .reserve({
         ...competitor,
         inputs: competitor.inputs.map((input) =>
-          input.role === "collateral"
+          input.outRef === `${"12".repeat(32)}#0`
             ? { ...input, outRef: `${"15".repeat(32)}#0` }
             : input,
         ),

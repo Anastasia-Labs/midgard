@@ -1,8 +1,7 @@
 /** The non-existent-input route with every step built under the watcher's
- * restricted prover wallet. That wallet offers coin selection its reserved
- * plain funding and keeps its reserved collateral apart, so a step that hands
- * Lucid a needless preset loses that collateral and pays it from funding,
- * which the reservation refuses. */
+ * restricted prover wallet. That wallet offers coin selection and collateral
+ * its reserved plain coins alone, so every step must spend and post as
+ * collateral reserved coins only. */
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
@@ -17,7 +16,7 @@ import { runInputExistenceRoute } from "./support/emulator/input-existence-route
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
 import {
-  fundReservedCollateral,
+  fundReservedCoin,
   restrictedProverFunding,
 } from "./support/restricted-prover-funding.js";
 import { registerPexcludesExclusionRewardAccount } from "./support/submit-init-emulator-fixtures.js";
@@ -28,7 +27,7 @@ import {
 } from "./support/submit-init-emulator-shared.js";
 
 describe("non-existent-input steps under the watcher's restricted wallet", () => {
-  it("takes every step's collateral from the reserved collateral and convicts", async () => {
+  it("funds every step and posts its collateral from the reserved pool and convicts", async () => {
     const h = await makeFaultProofEmulatorHarness({
       contractOptions: {
         realNonExistentInput: true,
@@ -84,7 +83,7 @@ describe("non-existent-input steps under the watcher's restricted wallet", () =>
       }),
       owner: h.proverSigner.paymentKeyHash,
     });
-    const collateral = await fundReservedCollateral({
+    await fundReservedCoin({
       emulator: h.emulator,
       funderLucid: h.funderLucid,
       signer: h.proverSigner,
@@ -100,7 +99,6 @@ describe("non-existent-input steps under the watcher's restricted wallet", () =>
         const funding = await restrictedProverFunding({
           emulator: h.emulator,
           signer: args.signer,
-          collateral,
         });
         const result = await submitInputExistenceStep({
           ...args,

@@ -232,7 +232,7 @@ describe("production prover funding calculation V1", () => {
       requiredBondLovelace: "900000000",
       requiredRewardCustodyLovelace: "100000000",
       reusableCollateralLovelace: "5000000",
-      requiredLovelace: "1008600000",
+      requiredLovelace: "1003600000",
       requiredNativeAssets: [{ unit: `${"aa".repeat(28)}00`, quantity: "1" }],
       maximumCollateralInputs: "3",
       maximumOrdinaryInputs: "1",
@@ -652,13 +652,11 @@ describe("production prover funding calculation V1", () => {
     expect(first.inputs).toEqual([
       {
         outRef: `${"01".repeat(32)}#0`,
-        role: "funding",
         lovelace: "6000000",
         assets: [],
       },
       {
         outRef: `${"02".repeat(32)}#0`,
-        role: "collateral",
         lovelace: "900000000",
         assets: [],
       },
@@ -681,13 +679,12 @@ describe("production prover funding calculation V1", () => {
       walletAddress,
       utxos: splitCandidates,
     });
-    expect(split.collateralLovelace).toBe("1000000000");
-    expect(split.fundingLovelace).toBe("30000000");
-    expect(split.inputs.map(({ role }) => role)).toEqual([
-      "collateral",
-      "collateral",
-      "funding",
-    ]);
+    // One pool: the two coins that together cover the removal's collateral
+    // also fund, so nothing is set aside from the total.
+    expect(split.fundingLovelace).toBe("1030000000");
+    expect(split.inputs.map(({ outRef }) => outRef)).toEqual(
+      splitCandidates.map(({ txHash }) => `${txHash}#0`),
+    );
     expect(
       planWatcherProverFundingReservation({
         deploymentIdentity,
@@ -707,53 +704,22 @@ describe("production prover funding calculation V1", () => {
       }),
     ).toThrow("insufficient plain-Ada collateral");
 
-    // A replacement for a superseded attempt must spend one of its inputs as
-    // funding, so selection keeps that input out of collateral when it can...
-    const twins = [1_000_000_000n, 1_000_000_000n, 30_000_000n].map(
-      (lovelace, index) => ({
-        txHash: String(index + 7)
-          .padStart(2, "0")
-          .repeat(32),
-        outputIndex: 0,
-        address: walletAddress,
-        assets: { lovelace },
-      }),
-    );
-    const plainTwins = planWatcherProverFundingReservation({
+    // A single coin that just covers the removal's collateral is a whole
+    // reservation: it funds the action and posts its collateral.
+    const exact = planWatcherProverFundingReservation({
       deploymentIdentity,
       calculation,
       decisionDigest: "77".repeat(32),
       walletAddress,
-      utxos: twins,
+      utxos: [{ ...splitCandidates[0]!, assets: { lovelace: 750_000_000n } }],
     });
-    const chosen = plainTwins.inputs.find(
-      ({ role }) => role === "collateral",
-    )!.outRef;
-    const avoiding = planWatcherProverFundingReservation({
-      deploymentIdentity,
-      calculation,
-      decisionDigest: "77".repeat(32),
-      walletAddress,
-      utxos: twins,
-      avoidCollateralOutRefs: [chosen],
-    });
-    expect(avoiding.inputs).toContainEqual(
-      expect.objectContaining({ outRef: chosen, role: "funding" }),
-    );
-    expect(
-      avoiding.inputs.filter(({ role }) => role === "collateral"),
-    ).toHaveLength(1);
-    // ...and falls back to it rather than refusing when nothing else can
-    // serve as collateral.
-    const fallback = planWatcherProverFundingReservation({
-      deploymentIdentity,
-      calculation,
-      decisionDigest: "77".repeat(32),
-      walletAddress,
-      utxos: candidates,
-      avoidCollateralOutRefs: [`${"02".repeat(32)}#0`],
-    });
-    expect(fallback.inputs).toEqual(first.inputs);
+    expect(exact.inputs).toEqual([
+      {
+        outRef: `${splitCandidates[0]!.txHash}#0`,
+        lovelace: "750000000",
+        assets: [],
+      },
+    ]);
 
     // The wallet owns the budget. Actual signed transaction admission selects
     // and checks its subset instead of enforcing a measured input-count recipe.
@@ -768,7 +734,7 @@ describe("production prover funding calculation V1", () => {
           : candidate,
       ),
     });
-    expect(smaller.fundingLovelace).toBe("2000000");
+    expect(smaller.fundingLovelace).toBe("902000000");
     expect(smaller.reservationId).toBe(first.reservationId);
     const rotated = planWatcherProverFundingReservation({
       deploymentIdentity,
@@ -781,8 +747,8 @@ describe("production prover funding calculation V1", () => {
     });
     expect(rotated.reservationId).toBe(first.reservationId);
     expect(rotated.inputs).not.toEqual(first.inputs);
-    // Confirmed wallet change can be smaller than the dedicated collateral.
-    // Resuming must preserve the collateral and exact funding descendants.
+    // Confirmed wallet change can be smaller than the coin that covers the
+    // collateral. Resuming must preserve both exactly.
     const { recordDigest: _recordDigest, ...initialRecord } =
       makeWatcherProverFundingReservationRecord({ plan: first });
     const rotatedRecord = {
@@ -793,7 +759,6 @@ describe("production prover funding calculation V1", () => {
         first.inputs[1]!,
         {
           outRef: `${"05".repeat(32)}#0`,
-          role: "funding" as const,
           lovelace: "5000000",
           assets: [],
         },
@@ -812,8 +777,7 @@ describe("production prover funding calculation V1", () => {
     const restored = restoreWatcherProverFundingReservationPlan(restoreInput);
     expect(restored.reservationId).toBe(first.reservationId);
     expect(restored.inputs).toEqual(rotatedRecord.activeInputs);
-    expect(restored.collateralLovelace).toBe("900000000");
-    expect(restored.fundingLovelace).toBe("5000000");
+    expect(restored.fundingLovelace).toBe("905000000");
     expect(() =>
       assertWatcherProverFundingReservationPlan(restored),
     ).not.toThrow();
@@ -866,7 +830,9 @@ describe("production prover funding calculation V1", () => {
         utxos: [candidates[0]!],
       }),
     ).toThrow("insufficient plain-Ada collateral");
-    expect(() =>
+    // One coin that covers the collateral is the whole pool: it funds the
+    // action and stands behind it as collateral.
+    expect(
       planWatcherProverFundingReservation({
         deploymentIdentity,
         calculation,
@@ -874,7 +840,10 @@ describe("production prover funding calculation V1", () => {
         walletAddress,
         utxos: [candidates[1]!],
       }),
-    ).toThrow("no available funding inputs");
+    ).toMatchObject({
+      inputs: [{ outRef: `${"02".repeat(32)}#0`, lovelace: "900000000" }],
+      fundingLovelace: "900000000",
+    });
     expect(() =>
       planWatcherProverFundingReservation({
         deploymentIdentity,

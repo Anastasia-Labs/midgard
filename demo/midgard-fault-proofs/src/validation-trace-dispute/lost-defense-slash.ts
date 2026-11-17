@@ -327,6 +327,27 @@ const buildSlash = async ({
 };
 
 /**
+ * The operator's alarm on the slash by the receipt at `receiptOutRef` that
+ * our wallet cannot fund, `cause` being why, naming the defender and the
+ * slash's deadline: before the slash is built, when its reservation cannot
+ * be funded, as when its build is short.
+ */
+export const validationTraceLostDefenseSlashUnfunded = async (
+  input: Pick<SlashInput, "lucid" | "receiptOutRef" | "deadlineMs"> & {
+    readonly cause: unknown;
+  },
+): Promise<ValidationTraceLostDefenseSlashUnfundedError> => {
+  const { lucid, receiptOutRef } = input;
+  const receipt = await ours(lucid, receiptOutRef, "lost-defense receipt");
+  return new ValidationTraceLostDefenseSlashUnfundedError({
+    receiptOutRef,
+    defenderVkh: receiptOf(receipt).defender_vkh,
+    deadlineMs: await input.deadlineMs?.(),
+    cause: input.cause,
+  });
+};
+
+/**
  * The slash of the defender the receipt at `receiptOutRef` names, signed
  * and evaluated, with its funding authority. A wallet short of the
  * collateral is the operator's alarm, naming the slash's deadline.
@@ -338,13 +359,6 @@ export const captureValidationTraceLostDefenseSlash = async (
     return await buildSlash(input);
   } catch (cause) {
     if (!isWorkflowFundingShortfall(cause)) throw cause;
-    const { lucid, receiptOutRef } = input;
-    const receipt = await ours(lucid, receiptOutRef, "lost-defense receipt");
-    throw new ValidationTraceLostDefenseSlashUnfundedError({
-      receiptOutRef,
-      defenderVkh: receiptOf(receipt).defender_vkh,
-      deadlineMs: await input.deadlineMs?.(),
-      cause,
-    });
+    throw await validationTraceLostDefenseSlashUnfunded({ ...input, cause });
   }
 };

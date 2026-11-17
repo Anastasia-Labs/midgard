@@ -53,7 +53,7 @@ export const registerLateMultiStepTests = (
     const test = await setupScenario(BigInt(headerEndTime), true, true);
     const { fixture } = test;
     fixture.useUnspentPendingInputs();
-    const funding = fixture.plan.inputs.find(({ role }) => role === "funding")!;
+    const funding = fixture.fundingInput;
     // Step 1 is signed twice: its first attempt's validity lapses unlanded.
     // Step 2, the last, spends step 1's change.
     const lapsed = signReplacement(

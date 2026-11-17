@@ -12,7 +12,7 @@
  * the per-move cap is paid from the thread it spends; the timeout, priced
  * over the cap, is paid entirely from our plain-Ada wallet through the
  * funding permit, and its successor keeps all of the thread's lovelace. The
- * wallet otherwise lends plain-Ada collateral only.
+ * wallet otherwise lends plain-Ada collateral only, from its reserved coins.
  *
  * The category is not installed until its defender exists; this file
  * stands in for that install so the production classifier mints the
@@ -74,7 +74,8 @@ const hashesOf = (kind: string) =>
 
 /** A move under the cap spends no wallet output from before the first
  * move, one over it spends only such outputs holding plain Ada beside its
- * thread, and each move's collateral is one of them holding plain Ada. */
+ * thread, and each move's collateral is a plain-Ada coin of our wallet: one
+ * of those, or the change an earlier move of ours paid back to it. */
 const expectWalletOnlyLendsCollateral = () => {
   for (const { signed } of journey.moves) {
     const body = signed.toTransaction().body();
@@ -95,10 +96,11 @@ const expectWalletOnlyLendsCollateral = () => {
     const collateral = body.collateral_inputs();
     expect(collateral?.len()).toBe(1);
     const input = collateral!.get(0);
-    const lent = wallet.get(
-      `${input.transaction_id().to_hex()}#${input.index().toString()}`,
-    );
-    expect(Object.keys(lent?.assets ?? {})).toStrictEqual(["lovelace"]);
+    const lentOutRef = `${input.transaction_id().to_hex()}#${input.index().toString()}`;
+    const lent =
+      wallet.get(lentOutRef) ?? recordedOutput(journey.scene, lentOutRef);
+    expect(lent.address).toBe(journey.scene.h.proverSigner.address);
+    expect(Object.keys(lent.assets)).toStrictEqual(["lovelace"]);
   }
 };
 

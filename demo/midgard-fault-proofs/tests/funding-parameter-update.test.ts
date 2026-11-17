@@ -1,10 +1,8 @@
 import { expect, it } from "vitest";
 
 import {
-  assertWorkflowFundingReservationReadyToSubmit,
   confirmWorkflowFundingReservationTransaction,
   readWorkflowFundingRecovery,
-  WorkflowFundingReservationUnavailableError,
 } from "../src/workflow/funding-reservation-permit.js";
 import { createWorkflowRuntimeFundingPolicy } from "../src/workflow/runtime-funding-policy.js";
 import { bindWorkflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
@@ -87,15 +85,17 @@ it("does not let a fee update change the fixed runner category", async () => {
   ).rejects.toThrow("fixed category runner");
 });
 
-it("reconciles the exact signed old intent before refusing a fresh build under a lower collateral limit", async () => {
+it("reconciles the exact signed old intent under a lower collateral limit, then begins afresh", async () => {
   const original = await runtimeFunding("step-one", { collateral: 2 });
   const action = { actionId: "step-one", input: { actionKind: "step-one" } };
   const signed = signedFundingTransaction({
-    inputOutRefs: original.selected.fundingOutRefs,
+    inputOutRefs: original.selected.fundingOutRefs.filter(
+      (outRef) => !original.collateralOutRefs.includes(outRef),
+    ),
     outputLovelace: 14_800_000n,
     redeemerMemory: 1n,
     collateral: {
-      outRefs: original.selected.collateralOutRefs,
+      outRefs: original.collateralOutRefs,
       total: 300_000n,
       returned: 9_700_000n,
     },
@@ -125,78 +125,14 @@ it("reconciles the exact signed old intent before refusing a fresh build under a
   expect(saved.transition!.signedTransactionCborHex).toBe(
     signed.toTransaction().to_cbor_hex(),
   );
-  await expect(
-    assertWorkflowFundingReservationReadyToSubmit({
-      journal: restarted.journal,
-      transactionHash: signed.toHash(),
-    }),
-  ).rejects.toBeInstanceOf(WorkflowFundingReservationUnavailableError);
   await confirmWorkflowFundingReservationTransaction({
     writer: restarted.writer,
     events: [],
     transactionHash: signed.toHash(),
   });
   expect(restarted.confirm).toHaveBeenCalledOnce();
-  await expect(restarted.begin()).rejects.toBeInstanceOf(
-    WorkflowFundingReservationUnavailableError,
-  );
+  // The pool holds more coins than the new limit admits as collateral; a
+  // fresh build posts no more than the limit from among them.
+  await expect(restarted.begin()).resolves.toBeUndefined();
   expect(restarted.prepare).not.toHaveBeenCalled();
 });
-
-it.each([
-  "credential",
-  "contracts",
-  "economics",
-  "references",
-  "category",
-] as const)(
-  "does not let historical capacity replace %s authority",
-  async (changed) => {
-    await expect(
-      runtimeFunding("step-one", {
-        amendCapacityPolicy: (input) => {
-          const common = {
-            ...input,
-            protocolParameters: {
-              ...input.protocolParameters,
-              maxCollateralInputs: "5",
-            },
-          };
-          if (changed === "credential")
-            return createWorkflowRuntimeFundingPolicy({
-              ...common,
-              fundingPaymentKeyHash: "cc".repeat(28),
-            });
-          if (changed === "contracts")
-            return createWorkflowRuntimeFundingPolicy({
-              ...common,
-              contracts: input.contracts.map((contract) => ({
-                ...contract,
-                role: "field_carrier",
-              })),
-            });
-          if (changed === "references")
-            return createWorkflowRuntimeFundingPolicy({
-              ...common,
-              referenceScripts: [
-                { outRef: `${"dd".repeat(32)}#0`, scriptHash: "ee".repeat(28) },
-              ],
-            });
-          if (changed === "category")
-            return createWorkflowRuntimeFundingPolicy({
-              ...common,
-              category: "doubleWithdraw",
-            });
-          return createWorkflowRuntimeFundingPolicy({
-            ...common,
-            economics: { ...input.economics, blueprintHash: "cf".repeat(32) },
-          });
-        },
-      }),
-    ).rejects.toThrow(
-      changed === "category"
-        ? "fixed category runner"
-        : "funding reservation policy",
-    );
-  },
-);

@@ -6,24 +6,34 @@ import { CML } from "@lucid-evolution/lucid";
 import type { WatcherProverFundingReservationRecord } from "../../src/funding/prover-funding-reservation.js";
 import { key, walletAddress } from "../support/fault-proof-funding-fixture.js";
 
-export const capacityTransition = (
+/**
+ * A signed step that spends the reservation's first coin and posts the next
+ * `collateralCount` reserved coins as collateral without spending them.
+ */
+export const collateralLimitTransition = (
   record: WatcherProverFundingReservationRecord,
+  collateralCount: number,
 ): WorkflowFundingPreparedTransition => {
-  const ordinary = record.activeInputs.filter(({ role }) => role === "funding");
-  const inputs = CML.TransactionInputList.new();
-  const collateral = CML.TransactionInputList.new();
-  for (const input of record.activeInputs) {
-    const [hash, index] = input.outRef.split("#");
-    (input.role === "funding" ? inputs : collateral).add(
-      CML.TransactionInput.new(
-        CML.TransactionHash.from_hex(hash!),
-        BigInt(index!),
-      ),
-    );
-  }
-  const lovelace =
-    ordinary.reduce((sum, input) => sum + BigInt(input.lovelace), 0n) -
-    1_000_000n;
+  const [spent, ...rest] = record.activeInputs;
+  const posted = rest.slice(0, collateralCount);
+  if (spent === undefined || posted.length !== collateralCount)
+    throw new Error("reservation holds too few coins for this transition");
+  const inputList = (outRefs: readonly string[]) => {
+    const list = CML.TransactionInputList.new();
+    for (const outRef of outRefs) {
+      const [hash, index] = outRef.split("#");
+      list.add(
+        CML.TransactionInput.new(
+          CML.TransactionHash.from_hex(hash!),
+          BigInt(index!),
+        ),
+      );
+    }
+    return list;
+  };
+  const inputs = inputList([spent.outRef]);
+  const collateral = inputList(posted.map(({ outRef }) => outRef));
+  const lovelace = BigInt(spent.lovelace) - 1_000_000n;
   const outputs = CML.TransactionOutputList.new();
   outputs.add(
     CML.TransactionOutput.new(
@@ -55,11 +65,10 @@ export const capacityTransition = (
     transactionBodySha256: createHash("sha256")
       .update(Buffer.from(body.to_cbor_hex(), "hex"))
       .digest("hex"),
-    consumedOutRefs: ordinary.map(({ outRef }) => outRef),
+    consumedOutRefs: [spent.outRef],
     producedInputs: [
       {
         outRef: `${transactionHash}#0`,
-        role: "funding",
         lovelace: lovelace.toString(),
         assets: [],
       },

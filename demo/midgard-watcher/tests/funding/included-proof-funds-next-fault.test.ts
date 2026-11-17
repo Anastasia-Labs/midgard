@@ -79,9 +79,7 @@ const detectSecondFault = async (journalRoot: string) => {
 
 it("funds a second fault's proof from the outputs of a proof whose correction is included but not yet final", async () => {
   const fixture = await setupFundingRecoveryFixture(false, true);
-  const consumed = fixture.plan.inputs.find(
-    ({ role }) => role === "funding",
-  )!.outRef;
+  const consumed = fixture.fundingInput.outRef;
   const change = `${fixture.transactionHash}#0`;
   // Fault A: its init confirms, then its correction is included within the
   // recovery window.
@@ -117,14 +115,6 @@ it("funds a second fault's proof from the outputs of a proof whose correction is
     ({ decisionDigest }) => decisionDigest === second.decisionDigest,
   );
   expect(reservation?.state).toBe("active");
-  const funding = reservation!.activeInputs.filter(
-    ({ role }) => role === "funding",
-  );
-  const collateral = reservation!.activeInputs.filter(
-    ({ role }) => role === "collateral",
-  );
-  expect(funding.length).toBeGreaterThan(0);
-  expect(collateral.length).toBeGreaterThan(0);
   // A's change funds B; A's spent input never does.
   expect(reservation!.activeInputs.map(({ outRef }) => outRef)).toContain(
     change,

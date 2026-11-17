@@ -195,8 +195,9 @@ export const assertRuntimeTransactionBound = async ({
     const percentage =
       (body.fee() * BigInt(parameters.collateralPercentage) + 99n) / 100n;
     const floor = BigInt(policy.economics.policy.proverCollateralFloorLovelace);
+    // Any reserved plain-ADA coin may be posted as collateral.
     const reservedCollateral = state.snapshot.activeInputs
-      .filter(({ role }) => role === "collateral")
+      .filter(({ assets }) => assets.length === 0)
       .reduce((sum, input) => sum + BigInt(input.lovelace), 0n);
     if (reservedCollateral < floor)
       throw new Error(
@@ -271,7 +272,7 @@ export const assertRuntimeTransactionBound = async ({
         throw new Error("fraud slash cannot consume ordinary wallet funding");
       if (!fundingOutRefs.includes(outRef))
         throw new Error(
-          "signed transaction consumed an unreserved wallet input",
+          `signed transaction consumed an unreserved wallet input: ${outRef}`,
         );
       addAssets(walletAssets, input.assets);
       continue;
