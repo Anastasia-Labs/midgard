@@ -6,7 +6,7 @@ pub type Args {
   input_index: Int,
   output_index: Int,
   witnesses_opening: FieldOpeningV1,
-  /// `None` on the opening turn (empty `checkpoint_hash`); every resume
+  /// Ignored on the opening turn (empty `checkpoint_hash`); every resume
   /// supplies the exact bytes `checkpoint_hash` commits.
   checkpoint_cbor: Option<ByteArray>,
 }
