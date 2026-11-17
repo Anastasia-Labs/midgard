@@ -21,9 +21,11 @@ import {
   type BridgeDependencies,
   exactInstalledScope,
   failureHoldsTarget,
+  FAULT_TARGET_CHANGED,
   MAXIMUM_CLASSIFICATION_CONCURRENCY,
   observationPreservesTarget,
   preservesObservationAuthority,
+  revokeDroppedTarget,
   selectedTarget,
   WATCHER_FAULT_DECISION_BRIDGE_SCHEMA_VERSION,
   type WatcherFaultDecisionBridge,
@@ -133,8 +135,7 @@ export const createBridge = (input: {
       actuationController !== null &&
       !observationPreservesTarget(candidate, target)
     ) {
-      // A new observation replaces classification context, not an invocation's
-      // permit. The supervisor retains active attempts until they return.
+      revokeDroppedTarget(candidate, target, actuationController);
       actuationController = null;
       rollbackGeneration += 1;
       observation = null;
@@ -454,6 +455,7 @@ export const createBridge = (input: {
       );
     }
     if (!preservesActuation) {
+      actuationController?.revoke(FAULT_TARGET_CHANGED); // still queued
       rollbackGeneration += 1;
       actuationController =
         selectedDecision === null

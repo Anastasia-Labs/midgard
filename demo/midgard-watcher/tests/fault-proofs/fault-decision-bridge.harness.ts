@@ -52,6 +52,10 @@ export const harness = (input: {
   readonly driveProvenRemoval?: BridgeDependencies["driveProvenRemoval"];
   readonly perHeaderAlerts?: BridgeDependencies["perHeaderAlerts"];
   readonly daFetchAlert?: BridgeDependencies["daFetchAlert"];
+  /** A real controller for the decision, in place of the recording one. */
+  readonly actuationControllerFor?: (
+    decision: HeaderDecision,
+  ) => ReturnType<BridgeDependencies["createActuationController"]> | undefined;
 }) => {
   const admitted = new WeakSet<object>([input.current]);
   // Production admits only the objects the classifier returned in this
@@ -67,6 +71,7 @@ export const harness = (input: {
   const enqueuedGenerations: string[] = [];
   const controllerGenerations: string[] = [];
   const revocations: string[] = [];
+  const revokedPermits = new WeakSet<object>();
   const restrictions: string[] = [];
   const progressRequests: WatcherFaultProofProgressRequest[] = [];
   const authorityRevocations: string[] = [];
@@ -165,7 +170,7 @@ export const harness = (input: {
           stored === undefined ||
           stored.decision.category !== category ||
           stored.generation !== rollbackGeneration ||
-          revocations.length !== 0
+          revokedPermits.has(permit)
         )
           throw new Error("test permit revoked or substituted");
         return {
@@ -183,23 +188,30 @@ export const harness = (input: {
       createActuationController: (_fresh, rollbackGeneration) => {
         requireClassified(_fresh);
         controllerGenerations.push(rollbackGeneration);
-        const permit = Object.freeze({
-          permitVersion:
-            "midgard-production-workflow-actuation-permit-v1" as const,
-        });
+        const supplied = input.actuationControllerFor?.(_fresh);
+        const permit =
+          supplied?.permit ??
+          Object.freeze({
+            permitVersion:
+              "midgard-production-workflow-actuation-permit-v1" as const,
+          });
         permitIdentities.set(permit, {
           decision: _fresh,
           generation: rollbackGeneration,
         });
-        return Object.freeze({
-          permit,
-          restrictToReconciliation: (reason: string) => {
-            restrictions.push(reason);
-          },
-          revoke: (reason: string) => {
-            revocations.push(reason);
-          },
-        });
+        return (
+          supplied ??
+          Object.freeze({
+            permit,
+            restrictToReconciliation: (reason: string) => {
+              restrictions.push(reason);
+            },
+            revoke: (reason: string) => {
+              revocations.push(reason);
+              revokedPermits.add(permit);
+            },
+          })
+        );
       },
       deadlineForHeader: (header) =>
         Object.freeze({

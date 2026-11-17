@@ -410,6 +410,28 @@ export const selectedTarget = (input: {
   });
 };
 
+export const FAULT_TARGET_CHANGED = "fault_target_changed";
+
+/**
+ * Revokes a dropped target whose header is still queued: only the selected
+ * fault holds submission authority, so a retry held for it is refused rather
+ * than run without its replay context. A departed header's target keeps its
+ * permit: the supervisor releases it, reconciles its signed work under a
+ * reconciliation permit or, once that work landed, lets it complete.
+ */
+export const revokeDroppedTarget = (
+  observation: WatcherAuthenticatedStateQueueObservation,
+  target: WatcherFaultDecisionTarget,
+  controller: WorkflowActuationPermitController,
+): void => {
+  if (
+    observation.finalizedHeaders.some(
+      ({ headerHash }) => headerHash === target.headerHash,
+    )
+  )
+    controller.revoke(FAULT_TARGET_CHANGED);
+};
+
 export const observationPreservesTarget = (
   observation: WatcherAuthenticatedStateQueueObservation,
   target: WatcherFaultDecisionTarget,

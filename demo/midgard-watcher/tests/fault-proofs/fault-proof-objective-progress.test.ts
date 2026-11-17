@@ -552,6 +552,29 @@ describe("proof objective progress with durable funding and journals", () => {
     expect(supervisor.status().phase).toBe("accepting");
   });
 
+  it("drops a pending transport retry once its header leaves the queue with no signed attempt, so the retry never runs", async () => {
+    const test = await setup(BigInt(Date.now()), true, true);
+    test.setBeforeRun(async () => {
+      throw new FraudProofL1UnavailableError("canonical provider HTTP 503");
+    });
+    const supervisor = test.createSupervisor();
+    await test.request(supervisor, 1).accepted;
+    await test.idle(supervisor);
+    expect(test.runOrResume).toHaveBeenCalledOnce();
+    // The bridge no longer selects it and its header left the queue; the
+    // retry would otherwise fire with the permit it was first handed.
+    await test.request(supervisor, 2, test.fixture.fresh, false).accepted;
+    await test.idle(supervisor);
+    // Past the first backoff (1 s).
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    await test.idle(supervisor);
+    expect(test.runOrResume).toHaveBeenCalledOnce();
+    expect(supervisor.status()).toMatchObject({
+      phase: "accepting",
+      unfinishedObjectiveCount: 0,
+    });
+  });
+
   it("releases an unheld objective with no signed attempt once its header leaves the queue, with its workflow rows, and admits it afresh if the header returns", async () => {
     const test = await setup(BigInt(Date.now()), true, true);
     const { pinned, retention } = recordingRetention();
