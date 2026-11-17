@@ -144,7 +144,15 @@ const undefendedCaseWaitMs = (
   return dispute_side_clock_ms + dispute_max_validity_range_ms;
 };
 
-export const HEALTHY_REPLAY_BLOCK_ALLOWANCE_MS = 10_000;
+/**
+ * The watcher follower's cost to replay one L1 block, as an allowance. Measured
+ * on the local devnet (seven catch-ups from the L1 origin, 1,119 blocks
+ * including every deployment publication): at most 22.6 ms per block averaged
+ * over any 0.5 s readiness interval, and no block took longer than the 519 ms
+ * between two readiness reports. One second covers that bound with margin and
+ * keeps replay utilization at f or below for one-second slots.
+ */
+export const HEALTHY_REPLAY_BLOCK_ALLOWANCE_MS = 1_000;
 
 export const MAX_TIMER_MS = 2_147_483_647;
 

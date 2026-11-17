@@ -235,8 +235,8 @@ describe("fixed native backlog replay allowance", () => {
     const plan = healthyJourneyReplayTiming(workload);
     expect(plan.replayOrigin).toBe("origin");
     expect(plan.initialBacklogBlocks).toBe(1701);
-    expect(plan.replayUtilization).toBe(0.5);
-    expect(plan.timeoutMs).toBe(34_220_000);
+    expect(plan.replayUtilization).toBeCloseTo(0.05, 12);
+    expect(plan.timeoutMs).toBe(1_886_316);
     expect(plan.timeoutMs).toBeGreaterThanOrEqual(
       (plan.initialBacklogBlocks + plan.blocksDuringReplay) *
         plan.blockAllowanceMs +
@@ -293,7 +293,20 @@ describe("fixed native backlog replay allowance", () => {
     ).toThrow("fixed outer deadline");
   });
 
-  it.each([0.1, 0.2, 1])(
+  it("plans the local devnet's four-second cadence at half utilization or less", () => {
+    const plan = healthyJourneyReplayTiming({
+      ...workload,
+      activeSlotsCoeff: 0.25,
+    });
+    expect(plan.replayUtilization).toBeLessThanOrEqual(0.5);
+    expect(plan.timeoutMs).toBeGreaterThanOrEqual(
+      (plan.initialBacklogBlocks + plan.blocksDuringReplay) *
+        plan.blockAllowanceMs +
+        plan.observationAllowanceMs,
+    );
+  });
+
+  it.each([1])(
     "refuses unstable replay utilization at active coefficient %s",
     (activeSlotsCoeff) => {
       expect(() =>
@@ -317,7 +330,7 @@ describe("fixed native backlog replay allowance", () => {
         healthyJourneyReplayTiming({ ...workload, tipBlockNo }),
       ).toThrow("Invalid");
     expect(() =>
-      healthyJourneyReplayTiming({ ...workload, tipBlockNo: 1_000_000 }),
+      healthyJourneyReplayTiming({ ...workload, tipBlockNo: 10_000_000 }),
     ).toThrow("supported timer range");
   });
 
@@ -328,7 +341,7 @@ describe("fixed native backlog replay allowance", () => {
       slotLengthSeconds: 2,
     });
     expect(slower.initialBacklogBlocks).toBe(base.initialBacklogBlocks);
-    expect(slower.replayUtilization).toBe(0.25);
+    expect(slower.replayUtilization).toBeCloseTo(0.025, 12);
     expect(slower.timeoutMs).toBeLessThan(base.timeoutMs);
   });
 });
