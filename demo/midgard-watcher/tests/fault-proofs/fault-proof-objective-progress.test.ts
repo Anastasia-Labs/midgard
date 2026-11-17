@@ -61,6 +61,7 @@ import { progressObservation } from "../support/fault-proof-progress-observation
 import { waitForFaultProofSupervisorIdle } from "../support/fault-proof-supervisor-idle.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
 import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
+import { registerDepartedRevokedTests } from "./fault-proof-objective-progress.departed-revoked.js";
 import { registerFaultProofResubmissionVisibilityTest } from "./fault-proof-objective-progress.hold-visibility.js";
 import { registerLateMultiStepTests } from "./fault-proof-objective-progress.late-multi-step.js";
 import { registerLateStartTests } from "./fault-proof-objective-progress.late-start.js";
@@ -1170,6 +1171,7 @@ describe("proof objective progress with durable funding and journals", () => {
   registerLateStartTests(setup);
   registerLateMultiStepTests(setup);
   registerTerminalStandingTests(setup);
+  registerDepartedRevokedTests(setup);
   it("does not spin or repeat funding admission for identical pending observations", async () => {
     const test = await setup();
     const supervisor = test.createSupervisor();

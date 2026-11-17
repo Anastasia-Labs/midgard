@@ -1049,38 +1049,6 @@ describe("production fault decision bridge", () => {
     expect(currentHarness.retainedDecisionAuthorities).toEqual([null, null]);
   });
 
-  it("canonical queue removal preserves the active invocation until explicit authority loss", async () => {
-    const current = observation([headerFixture("0d")]);
-    const header = current.finalizedHeaders[0]!;
-    const currentHarness = harness({
-      current,
-      categoryByHeader: { [header.headerHash]: "transitionTrace" },
-    });
-    await currentHarness.bridge.reconcileAndDispatch(current);
-    const activePermit =
-      currentHarness.progressRequests[0]!.fault!.actuationPermit;
-    const removed = Object.freeze({
-      ...observation([]),
-      observationDigest: "55".repeat(32),
-    });
-    currentHarness.admitted.add(removed);
-    await currentHarness.bridge.reconcileAndDispatch(removed);
-    expect(currentHarness.restrictions).toEqual([]);
-    expect(currentHarness.revocations).toEqual([]);
-    expect(currentHarness.progressRequests[0]!.fault!.actuationPermit).toBe(
-      activePermit,
-    );
-    await currentHarness.bridge.dispatchPrepared();
-    expect(currentHarness.progressRequests.at(-1)).toMatchObject({
-      observation: removed,
-    });
-    expect(currentHarness.progressRequests.at(-1)!.fault).toBeUndefined();
-    currentHarness.bridge.invalidateForRollback();
-    expect(currentHarness.authorityRevocations).toEqual([
-      "native_chain_rollback",
-    ]);
-  });
-
   it.each([
     { invalidate: "invalidateForRollback", reason: "native_chain_rollback" },
   ] as const)(

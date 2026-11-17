@@ -24,7 +24,6 @@ import {
   MAXIMUM_CLASSIFICATION_CONCURRENCY,
   observationPreservesTarget,
   preservesObservationAuthority,
-  revokeDroppedTarget,
   selectedTarget,
   unclassifiedTargetIndex,
   WATCHER_FAULT_DECISION_BRIDGE_SCHEMA_VERSION,
@@ -135,7 +134,8 @@ export const createBridge = (input: {
       actuationController !== null &&
       !observationPreservesTarget(candidate, target)
     ) {
-      revokeDroppedTarget(candidate, target, actuationController);
+      // Revoked before its replay context goes: no retry runs without it.
+      actuationController.revoke(FAULT_TARGET_CHANGED);
       actuationController = null;
       rollbackGeneration += 1;
       observation = null;
@@ -455,7 +455,7 @@ export const createBridge = (input: {
       );
     }
     if (!preservesActuation) {
-      actuationController?.revoke(FAULT_TARGET_CHANGED); // still queued
+      actuationController?.revoke(FAULT_TARGET_CHANGED);
       rollbackGeneration += 1;
       actuationController =
         selectedDecision === null
