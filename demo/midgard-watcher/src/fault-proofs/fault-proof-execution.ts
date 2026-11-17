@@ -37,10 +37,11 @@ import { holdWatcherFaultProofOnFunding } from "./fault-proof-funding-hold.js";
 import { createWatcherFaultProofObjectiveAlerts } from "./fault-proof-objective-alerts.js";
 import type { WatcherProofObjective } from "./fault-proof-objective-journal.js";
 import {
-  isWatcherFaultProofQuarantined,
+  holdsReadiness,
   quarantineCause,
+  quarantineSettlement,
   quarantineWatcherFaultProof,
-  settleWatcherFaultProofQuarantine,
+  type WatcherFaultProofHolds,
 } from "./fault-proof-quarantine.js";
 import type {
   WatcherFaultProofDeadline,
@@ -250,7 +251,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
   // failure: the objective is held by name and runs again on the next
   // observation, which clears or renews the hold. An objective that needs a
   // resubmission after its header matured is held by name the same way.
-  const holds = new Map<string, Readonly<{ reason: string; detail: string }>>();
+  const holds: WatcherFaultProofHolds = new Map();
   const alerts = createWatcherFaultProofObjectiveAlerts(dependencies);
   const objectiveOf = ({ category, headerHash }: WatcherProofObjective) =>
     `${category}/${headerHash}`;
@@ -268,9 +269,12 @@ export const createWatcherFaultProofExecution = (dependencies: {
     return { kind: "pending", reason: `${reason}: ${refusal.detail}` };
   };
   return Object.freeze({
-    readiness: () => Object.freeze([...holds.values(), ...alerts.readiness()]),
+    readiness: () =>
+      Object.freeze([...holdsReadiness(holds), ...alerts.readiness()]),
     objectiveSettled: (objective) => {
+      const settle = quarantineSettlement(holds, objective, dependencies);
       holds.delete(objectiveOf(objective));
+      settle();
       alerts.settled(objective);
     },
     verifyCompleted: async ({ job, actuationPermit, entries, terminal }) => {
@@ -299,6 +303,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
         throw new Error(
           "completed proof verification changed its durable execution identity",
         );
+      const settle = quarantineSettlement(holds, job, dependencies);
       try {
         const verification = await dependencies.application.verifyCompleted({
           category: job.category,
@@ -321,6 +326,8 @@ export const createWatcherFaultProofExecution = (dependencies: {
             retryAfterMs: 1_000,
           };
         throw cause;
+      } finally {
+        settle();
       }
     },
     execute: async ({ job, actuationPermit, admission }) => {
@@ -347,7 +354,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
       record("preflight", "prepare");
       // Any outcome but a refusal, resubmission or quarantine ends the hold.
       let held: ReturnType<typeof holdOnRefusal>;
-      const wasQuarantined = isWatcherFaultProofQuarantined(holds, job);
+      const settleQuarantine = quarantineSettlement(holds, job, dependencies);
       // Set while the objective's own funding and run are in hand: a failure
       // there quarantines this objective alone (fault-proof-quarantine.ts).
       let objectiveWork = false;
@@ -542,13 +549,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
         if (held === undefined) holds.delete(objectiveOf(job));
         alerts.funding(job, holds);
         alerts.collateral(job);
-        settleWatcherFaultProofQuarantine({
-          holds,
-          job,
-          decisionDigest,
-          sink: dependencies.operationsSink,
-          wasQuarantined,
-        });
+        settleQuarantine();
         await dependencies.fundingFactory.releaseUnused({ actuationPermit });
       }
     },

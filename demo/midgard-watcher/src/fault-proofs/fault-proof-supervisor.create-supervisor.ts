@@ -137,6 +137,7 @@ export const createSupervisor = (input: {
       retention: input.proofRetention,
       onObjectiveSettled: (objective) => {
         openDeadlines.settled(objective, progressAuthority.decisionHolds());
+        dropRetry(objectiveKey(objective)); // nothing drives it again
         input.dependencies.objectiveSettled?.(objective);
       },
       // A merged or departed header ends the race against maturity once.
@@ -254,6 +255,10 @@ export const createSupervisor = (input: {
       timer: ReturnType<typeof setTimeout> | undefined;
     }
   >();
+  const dropRetry = (key: string): void => {
+    clearTimeout(transportRetries.get(key)?.timer);
+    transportRetries.delete(key);
+  };
   const contextKey = (job: WatcherFaultProofJob) =>
     `${job.rollbackGeneration}:${job.observationRevision ?? job.decisionDigest}`;
 
@@ -311,9 +316,7 @@ export const createSupervisor = (input: {
             entry.reject(
               new Error("fault-proof job requeued after journal_busy"),
             );
-          for (const retry of transportRetries.values())
-            if (retry.timer !== undefined) clearTimeout(retry.timer);
-          transportRetries.clear();
+          for (const key of transportRetries.keys()) dropRetry(key);
           jobs.clear();
           pendingUpdates.clear();
           selectedExecutions.clear();
@@ -647,7 +650,8 @@ export const createSupervisor = (input: {
           retry.timer = setTimeout(() => {
             void serializeSchedule(async () => {
               retry.timer = undefined;
-              if (phase !== "accepting") return;
+              if (phase !== "accepting" || transportRetries.get(key) !== retry)
+                return;
               const latest = retry.update;
               processedContexts.delete(key);
               await handover(latest);
@@ -655,9 +659,7 @@ export const createSupervisor = (input: {
           }, delay);
         }
       } else {
-        const retry = transportRetries.get(key);
-        if (retry?.timer !== undefined) clearTimeout(retry.timer);
-        transportRetries.delete(key);
+        dropRetry(key);
         if (
           pending !== undefined &&
           (phase === "accepting" || phase === "closing")
@@ -1006,9 +1008,7 @@ export const createSupervisor = (input: {
         selectedExecutions.delete(key);
       completedValidations.clear();
       processedContexts.clear();
-      for (const retry of transportRetries.values())
-        if (retry.timer !== undefined) clearTimeout(retry.timer);
-      transportRetries.clear();
+      for (const key of transportRetries.keys()) dropRetry(key);
     },
     status: () => {
       // Held and waiting objectives count with queued and active jobs.

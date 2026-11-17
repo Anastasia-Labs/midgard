@@ -23,7 +23,13 @@ import {
 export const WATCHER_FAULT_PROOF_QUARANTINED =
   "fault_proof_objective_quarantined";
 
-type Holds = Map<string, Readonly<{ reason: string; detail: string }>>;
+/** A quarantine hold also names the decision digest its alert was raised
+ * under, so whatever ends the hold clears that alert. */
+export type WatcherFaultProofHolds = Map<
+  string,
+  Readonly<{ reason: string; detail: string; decisionDigest?: string }>
+>;
+type Holds = WatcherFaultProofHolds;
 type AlertSink = Pick<WatcherOperationsSink, "setAlert">;
 
 const objectiveOf = ({ category, headerHash }: WatcherProofObjective) =>
@@ -50,6 +56,22 @@ export const isWatcherFaultProofQuarantined = (
 ): boolean =>
   holds.get(objectiveOf(objective))?.reason === WATCHER_FAULT_PROOF_QUARANTINED;
 
+/** The readiness entries of `holds`, without a quarantine's digest. */
+export const holdsReadiness = (holds: Holds) =>
+  [...holds.values()].map(({ reason, detail }) => ({ reason, detail }));
+
+/** The decision digest the quarantine of `objective` raised its alert
+ * under, or undefined while it is not quarantined. */
+const watcherFaultProofQuarantineAlert = (
+  holds: Holds,
+  objective: WatcherProofObjective,
+): string | undefined => {
+  const hold = holds.get(objectiveOf(objective));
+  return hold?.reason === WATCHER_FAULT_PROOF_QUARANTINED
+    ? hold.decisionDigest
+    : undefined;
+};
+
 /**
  * Holds the objective in quarantine under `cause`. Entering it raises the
  * objective's `proof_submission_failure` alert and logs at error level; the
@@ -63,12 +85,16 @@ export const quarantineWatcherFaultProof = (input: {
   readonly cause: string;
 }) => {
   const objective = objectiveOf(input.job);
+  const raised = watcherFaultProofQuarantineAlert(input.holds, input.job);
   const entering = !isWatcherFaultProofQuarantined(input.holds, input.job);
   const hold = {
     reason: WATCHER_FAULT_PROOF_QUARANTINED,
     detail: `${objective}: ${input.cause}`,
   };
-  input.holds.set(objective, hold);
+  input.holds.set(objective, {
+    ...hold,
+    decisionDigest: raised ?? input.decisionDigest,
+  });
   if (entering) {
     process.stderr.write(
       `${JSON.stringify({ packageName: WATCHER_PACKAGE_NAME, level: "error", ...hold })}\n`,
@@ -88,24 +114,27 @@ export const quarantineWatcherFaultProof = (input: {
   });
 };
 
-/** Clears the objective's alert once a run that began in quarantine ends
- * out of it; quarantine raises its own alert on entering. */
-export const settleWatcherFaultProofQuarantine = (input: {
-  readonly holds: Holds;
-  readonly job: WatcherProofObjective;
-  readonly decisionDigest: string;
-  readonly sink: AlertSink;
-  readonly wasQuarantined: boolean;
-}): void => {
-  if (
-    !input.wasQuarantined ||
-    isWatcherFaultProofQuarantined(input.holds, input.job)
-  )
-    return;
-  input.sink.setAlert({
-    code: "proof_submission_failure",
-    subjectDigest: input.decisionDigest,
-    active: false,
-    observedAtMs: Date.now().toString(),
-  });
+/**
+ * Reads, before the hold can change, the alert a quarantine of `job` raised.
+ * The call it returns clears that alert once the objective is out of
+ * quarantine: a run or a verification ended out of it, or the objective
+ * settled, by outcome or because its header departed. Quarantine raises its
+ * own alert on entering.
+ */
+export const quarantineSettlement = (
+  holds: Holds,
+  job: WatcherProofObjective,
+  { operationsSink: sink }: Readonly<{ operationsSink: AlertSink }>,
+): (() => void) => {
+  const raisedUnder = watcherFaultProofQuarantineAlert(holds, job);
+  return () => {
+    if (raisedUnder === undefined || isWatcherFaultProofQuarantined(holds, job))
+      return;
+    sink.setAlert({
+      code: "proof_submission_failure",
+      subjectDigest: raisedUnder,
+      active: false,
+      observedAtMs: Date.now().toString(),
+    });
+  };
 };

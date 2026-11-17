@@ -419,7 +419,10 @@ newest refusal's detail.
 
 **Meaning.** The watcher could not land a fault-proof transaction
 (`proof_submission_failure` alert): a submission failed, an objective was
-quarantined, or a funding reservation was orphaned.
+quarantined, or a funding reservation was orphaned. A quarantine's alert
+clears once the objective leaves quarantine: a run meets another outcome, or
+the objective settles, including when its header leaves the observed queue
+between retries. A settled objective is not retried.
 
 **First checks.**
 
@@ -442,7 +445,7 @@ names why:
 | `reason`                              | What holds it                                                                | What clears it                               |
 | ------------------------------------- | ---------------------------------------------------------------------------- | -------------------------------------------- |
 | `fault_proof_continuation_stalled`    | A run journaled no progress within its continuation bound                    | A later run that journals progress           |
-| `fault_proof_objective_quarantined`   | A run stalled or met an integrity error of its own; retried on a backoff     | The first run that meets something else      |
+| `fault_proof_objective_quarantined`   | A run stalled or met an integrity error of its own; retried on a backoff     | Another outcome, or its objective settling   |
 | `fault_proof_resubmission_required`   | The next action needs a fresh submission under reconciliation-only authority | See escalation                               |
 | `fault_proof_start_deadline_passed`   | The objective's header matured before it signed any attempt                  | Its header leaving the finalized state queue |
 | `prover_funding_orphaned_reservation` | A reservation no workflow will drive holds attempts not yet retired          | Its attempts retired past release finality   |

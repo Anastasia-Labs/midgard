@@ -208,8 +208,11 @@ const setup = async (cause: () => unknown) => {
     headers: [fixture.fixture, second.block],
     revision: 1,
   });
-  const request = (decision: typeof second.decision) => ({
-    observation,
+  const request = (
+    decision: typeof second.decision,
+    observed: typeof observation = observation,
+  ) => ({
+    observation: observed,
     rollbackGeneration: "1",
     fault: {
       decision,
@@ -218,7 +221,7 @@ const setup = async (cause: () => unknown) => {
         rollbackGeneration: "1",
       }).permit,
       deadline: watcherFaultProofDeadline(
-        observation.finalizedHeaders.find(
+        observed.finalizedHeaders.find(
           ({ headerHash }) => headerHash === decision.headerHash,
         )!,
       ),
@@ -272,6 +275,19 @@ const setup = async (cause: () => unknown) => {
     /** An admission naming the convicted objective alone. */
     admitOther: async () =>
       await watcher.supervisor.requestProgress(request(fixture.old)),
+    /** An admission of the convicted objective from an observation the
+     * held objective's header has left. */
+    depart: async () =>
+      await watcher.supervisor.requestProgress(
+        request(
+          fixture.old,
+          progressObservation({
+            deploymentFingerprint: deploymentIdentity.manifestId,
+            headers: [fixture.fixture],
+            revision: 2,
+          }),
+        ),
+      ),
     restart: async () => {
       await watcher.supervisor.close();
       watcher = await start();
@@ -421,6 +437,35 @@ describe("an objective whose header left the queue without a conviction of ours"
     expect(test.alerts(true)).toBe(1);
     expect(test.failed()).toBeUndefined();
     expect(test.supervisor.status().phase).toBe("accepting");
+  }, 120_000);
+
+  it("clears the alarm of a quarantined objective whose header departs between its retries", async () => {
+    const test = await setup(() =>
+      goneStall("fraudulent header disappeared without a retained proof token"),
+    );
+    await test.dispatch();
+    // Its second run has ended quarantined; the next waits on the backoff.
+    await vi.waitFor(
+      () =>
+        expect(
+          test.heldSteps().filter((status) => status === "failed"),
+        ).toHaveLength(2),
+      { timeout: 30_000 },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(test.alerts(true)).toBe(1);
+
+    await test.depart();
+    await vi.waitFor(() => expect(test.execution.readiness()).toEqual([]), {
+      timeout: 30_000,
+    });
+    // No retry raises it again once the objective has settled.
+    const ended = await settledRuns(test.heldRuns);
+    expect(ended.after).toBe(ended.before);
+    expect(test.execution.readiness()).toEqual([]);
+    expect(test.alerts(true)).toBe(1);
+    expect(test.alerts(false)).toBe(1);
+    expect(test.failed()).toBeUndefined();
   }, 120_000);
 
   it("keeps the objective quarantined and alarmed when no removal against a record of its header took it out", async () => {
