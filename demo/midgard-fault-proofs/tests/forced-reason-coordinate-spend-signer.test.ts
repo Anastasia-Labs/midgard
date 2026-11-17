@@ -13,12 +13,20 @@ import {
   encodeMidgardForcedTxCanonical,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
-import { acceptedVerdictSubject, Proof } from "@al-ft/midgard-sdk";
+import {
+  acceptedVerdictSubject,
+  Proof,
+  type RejectionReason,
+} from "@al-ft/midgard-sdk";
 import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { SPEND_INPUT_SIGNER_MISSING_ID } from "../src/spend-input-signer-missing/index.js";
+import {
+  SPEND_INPUT_SIGNER_MISSING_ID,
+  SpendInputSignerStep01RedeemerSchema,
+  SpendInputSignerStep02DatumSchema,
+} from "../src/spend-input-signer-missing/index.js";
 import {
   commitForcedBlock,
   publishReferences,
@@ -34,6 +42,7 @@ import {
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { nodeForcedVerdict } from "./support/emulator/node-forced-verdict.js";
+import { submitRawForcedStep01 } from "./support/emulator/raw-forced-step-01.js";
 
 /**
  * A forced SpendInputSignerMissing reason names a spend input by its field
@@ -126,10 +135,15 @@ const priorLedger = async () => {
 };
 
 /**
- * A block committing the transaction under `SpendInputSignerMissing {
- * inputIndex }`, and the family driver over it.
+ * A block committing the transaction under `reason` (by default
+ * `SpendInputSignerMissing { inputIndex }`), and the family driver over it.
  */
-const setupScenario = async (inputIndex: bigint) => {
+const setupScenario = async (
+  inputIndex: bigint,
+  reason: RejectionReason = {
+    SpendInputSignerMissing: { input_index: inputIndex },
+  },
+) => {
   const harness = await newHarness();
   const family = await registeredContracts(harness);
   const prior = await priorLedger();
@@ -138,7 +152,7 @@ const setupScenario = async (inputIndex: bigint) => {
     family,
     nativeTx,
     prior.priorRoot,
-    { SpendInputSignerMissing: { input_index: inputIndex } },
+    reason,
     "e3",
   );
   const { references, certificateReference } = await publishReferences(
@@ -149,7 +163,7 @@ const setupScenario = async (inputIndex: bigint) => {
   );
   const run = familyDriver(harness, family, references, certificateReference);
   const resolved = await prior.resolved(Number(inputIndex));
-  return { block, run, resolved };
+  return { harness, family, references, block, run, resolved };
 };
 
 describe("forced SpendInputSignerMissing coordinate the node writes", () => {
@@ -163,7 +177,7 @@ describe("forced SpendInputSignerMissing coordinate the node writes", () => {
       canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
       resolved,
     });
-    expect(evidence.signerMissing).toBe(false);
+    expect(evidence.signerPresent).toBe(true);
     const thread = await run.initThread(block.blockOutRef);
     const step01 = await run.step01Forced(
       thread.threadOutRef,
@@ -176,24 +190,69 @@ describe("forced SpendInputSignerMissing coordinate the node writes", () => {
       block.compactCbor,
       block.witnessSetCompactCbor,
     );
-    const step03 = await run.step03(
+    const scan = await run.scan(
       step02.nextThreadOutRef,
       evidence,
       block.compactCbor,
       block.witnessSetCompactCbor,
     );
-    const step04 = await run.step04(
-      step03.nextThreadOutRef,
-      evidence,
-      block.compactCbor,
-      block.witnessSetCompactCbor,
-    );
-    expect(step04.stage).toBe("step05");
+    expect(scan.stage).toBe("terminal");
     expect(
-      (await run.step05(step04.nextThreadOutRef, evidence)).fraudProofUnit,
+      (await run.terminal(scan.nextThreadOutRef, evidence)).fraudProofUnit,
     ).toBeTruthy();
     const removal = await run.removal(block.headerHash);
     expect(removal.result.fraudCategoryId).toBe(SPEND_INPUT_SIGNER_MISSING_ID);
+  }, 600_000);
+
+  it("refuses a spend-input thread over a leaf rejected for a protected output's signer", async () => {
+    // Cross-family: the leaf carries the other signer family's reason. The
+    // thread binds the subject the leaf opens, exactly, and step 01's reason
+    // binder refuses it before any input or scan is read, so no state the
+    // shared scan writes can ever be reached under the wrong family.
+    const written = await writtenInputIndex();
+    const { harness, family, references, block, run, resolved } =
+      await setupScenario(written, {
+        ProtectedOutputSignerMissing: { output_index: 0n },
+      });
+    const coordinates = prepareSpendInputSignerMissingEvidence({
+      subject: acceptedVerdictSubject(block.nativeTxId),
+      inputIndex: written,
+      canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
+      resolved,
+    });
+    const thread = await run.initThread(block.blockOutRef);
+    await expectOnchainRefusal(
+      () =>
+        submitRawForcedStep01({
+          lucid: harness.proverLucid,
+          family: FAMILY,
+          contracts: family.contracts,
+          categoryId: family.category.categoryId,
+          signer: harness.proverSigner,
+          threadOutRef: thread.threadOutRef,
+          nextDatum: Data.to(
+            {
+              fraud_prover: harness.proverSigner.paymentKeyHash,
+              data: {
+                subject: block.subject,
+                input_index: written,
+                prior_root: coordinates.priorRoot,
+                witness_set_hash: coordinates.witnessSetHashHex,
+              },
+            } as never,
+            SpendInputSignerStep02DatumSchema as never,
+          ),
+          forcedSource: block.forcedSource,
+          coordinate: { input_index: written },
+          redeemerSchema: SpendInputSignerStep01RedeemerSchema,
+          referenceScriptUtxo: references[0]!,
+        }),
+      {
+        refusedBy: "fraud_proofs/spend_input_signer_missing/step_01",
+        check:
+          /^expect cbor\.serialise\(actual\) == cbor\.serialise\(expected\)/u,
+      },
+    );
   }, 600_000);
 
   it("refuses the written coordinate on chain", async () => {
@@ -208,7 +267,7 @@ describe("forced SpendInputSignerMissing coordinate the node writes", () => {
       canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
       resolved,
     });
-    expect(contradicting.signerMissing).toBe(true);
+    expect(contradicting.signerPresent).toBe(false);
     const honest = {
       ...contradicting,
       subject: block.subject,
@@ -228,26 +287,20 @@ describe("forced SpendInputSignerMissing coordinate the node writes", () => {
       block.compactCbor,
       block.witnessSetCompactCbor,
     );
-    const step03 = await run.step03(
+    const scan = await run.scan(
       step02.nextThreadOutRef,
       honest,
       block.compactCbor,
       block.witnessSetCompactCbor,
     );
-    const step04 = await run.step04(
-      step03.nextThreadOutRef,
-      honest,
-      block.compactCbor,
-      block.witnessSetCompactCbor,
-    );
-    expect(step04.stage).toBe("step05");
-    // Input 1's signer is missing, as the leaf says. Step 05 authenticates
-    // the thread and the terminal rule, which convicts a forced rejection
-    // only when the signer is present, returns false.
+    expect(scan.stage).toBe("terminal");
+    // Input 1's signer is missing, as the leaf says. The shared terminal
+    // authenticates the thread and the terminal rule, which convicts a forced
+    // rejection only when the signer is present, returns false.
     await expectOnchainRefusal(
-      () => run.finalizeDirect(step04.nextThreadOutRef),
+      () => run.finalizeDirect(scan.nextThreadOutRef),
       {
-        refusedBy: "fraud_proofs/spend_input_signer_missing/step_05",
+        refusedBy: "fraud_proofs/signer_witness_scan/terminal",
         check: /^Validator returned false$/u,
       },
     );

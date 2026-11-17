@@ -20,9 +20,9 @@ use midgard/fraud_proofs/native_tx/types.{
   PubKeyCredential, ScriptCredential,
 }
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
+use midgard/fraud_proofs/signer_witness_scan_v1/state.{VerdictV1, start}
 use midgard/fraud_proofs/spend_input_signer_missing/rule.{
-  AuthenticatedCredentialV1, BoundSpendInputV1, VerdictV1,
-  authenticate_credential_v1, direct_verdict_v1,
+  BoundSpendInputV1, direct_verdict_v1,
 }
 use midgard/fraud_proofs/spend_input_signer_missing/step_02.{
   Args, Datum, SpendRedeemer,
@@ -35,8 +35,8 @@ use midgard/native_tx_machine_walk_v1.{spend_input_at, spend_input_count}
 use midgard/rejection_reason_v1.{SpendInputSignerMissing}
 
 validator main(
-  step_03_hash: ScriptHash,
-  step_05_hash: ScriptHash,
+  scan_hash: ScriptHash,
+  terminal_hash: ScriptHash,
   thread_policy: PolicyId,
   certificate_policy: PolicyId,
 ) {
@@ -93,7 +93,7 @@ validator main(
         if bound.input_index < 0 || bound.input_index >= spend_input_count(view) {
           let expected: Data = direct_verdict_v1(bound)
           and {
-            next_hash == step_05_hash,
+            next_hash == terminal_hash,
             next_state == expected,
           }
         } else {
@@ -118,12 +118,13 @@ validator main(
           )
           when address.payment_credential is {
             PubKeyCredential(payment_credential) -> {
-              let expected: Data = authenticate_credential_v1(
-                bound,
+              let expected: Data = start(
+                bound.subject,
+                bound.witness_set_hash,
                 payment_credential,
               )
               and {
-                next_hash == step_03_hash,
+                next_hash == scan_hash,
                 next_state == expected,
               }
             }
@@ -133,7 +134,7 @@ validator main(
             ScriptCredential(_) -> {
               let expected: Data = direct_verdict_v1(bound)
               and {
-                next_hash == step_05_hash,
+                next_hash == terminal_hash,
                 next_state == expected,
               }
             }
@@ -153,8 +154,8 @@ validator main(
 // Step 02 opens field 0 of the bound transaction against the thread's
 // `BodyAnchor`, resolves the bound spend input in the bound prior root, and
 // classifies the resolved credential. A pub-key credential is handed to the
-// witness scan at step 03 in both directions; a script credential or a
-// coordinate past the authenticated count closes at step 05 directly, and
+// witness scan in both directions; a script credential or a
+// coordinate past the authenticated count closes at the terminal directly, and
 // only for a wrongful forced rejection.
 
 const credential_a = #"30303030303030303030303030303030303030303030303030303030"
@@ -248,12 +249,11 @@ fn expected_credential(
   state: BoundSpendInputV1,
   payment_credential: ByteArray,
 ) -> Data {
-  let value: Data = AuthenticatedCredentialV1 {
-    subject: state.subject,
-    transaction_id: state.subject.transaction_id,
-    witness_set_hash: state.witness_set_hash,
+  let value: Data = start(
+    state.subject,
+    state.witness_set_hash,
     payment_credential,
-  }
+  )
   value
 }
 
@@ -261,7 +261,7 @@ fn direct_verdict(subject: substrate.VerdictSubjectV1) -> Data {
   let value: Data = VerdictV1 {
     subject,
     signer_required: False,
-    signer_missing: False,
+    signer_present: False,
   }
   value
 }
@@ -319,8 +319,8 @@ fn handoff_tx(
 }
 
 fn run_step_02(
-  step_03_hash: ScriptHash,
-  step_05_hash: ScriptHash,
+  scan_hash: ScriptHash,
+  terminal_hash: ScriptHash,
   state: BoundSpendInputV1,
   args: Args,
   tx: Transaction,
@@ -336,8 +336,8 @@ fn run_step_02(
     args
   }
   main.spend(
-    step_03_hash,
-    step_05_hash,
+    scan_hash,
+    terminal_hash,
     fixture.computation_thread_policy_id,
     fixture.test_certificate_policy_id,
     Some(
@@ -557,7 +557,7 @@ test spend_input_step_02_refuses_a_direct_verdict_claiming_a_required_signer() f
   let claimed: Data = VerdictV1 {
     subject,
     signer_required: True,
-    signer_missing: True,
+    signer_present: False,
   }
   run_direct_exit(
     state,
@@ -630,7 +630,7 @@ test spend_input_step_02_refuses_a_substituted_prior_root() fail {
   )
 }
 
-/// The direct verdict may only continue at step 05.
+/// The direct verdict may only continue at the terminal.
 test spend_input_step_02_refuses_the_direct_exit_at_the_scan_successor() fail {
   let block = fixture.challenged_block_v1()
   let (descriptor, root) = prior_material(block, ScriptCredential(credential_a))
@@ -643,7 +643,7 @@ test spend_input_step_02_refuses_the_direct_exit_at_the_scan_successor() fail {
   )
 }
 
-/// The credential hand-off may only continue at step 03.
+/// The credential hand-off may only continue at the scan.
 test spend_input_step_02_refuses_the_scan_hand_off_at_the_terminal_successor() fail {
   let block = fixture.challenged_block_v1()
   let (descriptor, root) = prior_material(block, PubKeyCredential(credential_a))

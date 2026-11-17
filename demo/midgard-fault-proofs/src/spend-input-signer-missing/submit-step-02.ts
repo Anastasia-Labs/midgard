@@ -30,6 +30,14 @@ import {
   phasMembershipRewardAddress,
   type ResolvedProverSigner,
 } from "../runtime.js";
+import {
+  SignerWitnessScanDatumSchema,
+  SignerWitnessTerminalDatumSchema,
+} from "../signer-witness-scan/schemas.js";
+import {
+  SIGNER_WITNESS_SCAN_STEP_INDEX,
+  SIGNER_WITNESS_TERMINAL_STEP_INDEX,
+} from "../signer-witness-scan/submit-scan.js";
 import { completeStep, fundStep, submitStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessWithdrawalValidatorCarriage } from "../witness-reference-scripts.js";
@@ -46,8 +54,6 @@ import { planSpendInputSignerInputOpening } from "./field-plans.js";
 import {
   SpendInputSignerStep02DatumSchema,
   SpendInputSignerStep02RedeemerSchema,
-  SpendInputSignerStep03DatumSchema,
-  SpendInputSignerStep05DatumSchema,
 } from "./schemas.js";
 import {
   requireSpendInputSignerResolvedOutput,
@@ -57,9 +63,10 @@ import {
 
 /**
  * Step 02 resolves the bound spend input and classifies its credential the
- * way the validator does: a pub-key credential is handed to the witness scan
- * at step 03; a script credential, or a negative coordinate or one past the
- * field-0 count, closes at step 05 with the direct verdict. The out-of-range
+ * way the validator does: a pub-key credential is handed to the shared
+ * witness scan; a script credential, or a negative coordinate or one past the
+ * field-0 count, goes straight to the shared terminal with the direct
+ * verdict. The out-of-range
  * arm reads no prior-ledger membership, so it carries none.
  */
 export const submitSpendInputSignerMissingStep02 = async ({
@@ -200,25 +207,27 @@ export const submitSpendInputSignerMissingStep02 = async ({
     stepReference,
     ...(resolved === undefined ? [] : membershipCarriage.referenceInputs),
   ];
-  // The witness-scan route hands the credential to step 03; every direct
-  // route writes the terminal verdict step 02 derives on chain
-  // (`direct_verdict_v1`) and continues at step 05.
+  // The witness-scan route writes the unopened scan state (`start`); every
+  // direct route writes the verdict step 02 derives on chain
+  // (`direct_verdict_v1`) straight to the terminal.
   const scan = evidence.route === "witness_scan";
-  const nextStepIndex = scan ? 2 : 4;
+  const nextStepIndex = scan
+    ? SIGNER_WITNESS_SCAN_STEP_INDEX
+    : SIGNER_WITNESS_TERMINAL_STEP_INDEX;
   const nextDatum = scan
     ? Data.to(
         {
           fraud_prover: signer.paymentKeyHash,
           data: {
             subject: evidence.subject,
-            transaction_id: evidence.subject.transaction_id,
             witness_set_hash: evidence.witnessSetHashHex,
             payment_credential:
               requireSpendInputSignerScanEvidence(evidence)
                 .paymentCredentialHex,
+            checkpoint_hash: "",
           },
         } as never,
-        SpendInputSignerStep03DatumSchema as never,
+        SignerWitnessScanDatumSchema as never,
       )
     : Data.to(
         {
@@ -226,10 +235,10 @@ export const submitSpendInputSignerMissingStep02 = async ({
           data: {
             subject: evidence.subject,
             signer_required: false,
-            signer_missing: false,
+            signer_present: false,
           },
         } as never,
-        SpendInputSignerStep05DatumSchema as never,
+        SignerWitnessTerminalDatumSchema as never,
       );
   const outputMatches = computationThreadOutputPredicate({
     address: contracts.steps[nextStepIndex].spendingScriptAddress,
@@ -354,6 +363,6 @@ export const submitSpendInputSignerMissingStep02 = async ({
     nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
     carriageTier: planned.plan.tier,
     route: evidence.route,
-    stage: scan ? ("step03" as const) : ("step05" as const),
+    stage: scan ? ("scanning" as const) : ("terminal" as const),
   };
 };

@@ -22,7 +22,6 @@ const evidence = Object.freeze({
   paymentCredentialHex: "22".repeat(28),
   witnessSetHashHex: "33".repeat(32),
   addressWitnessFieldPreimageHex: "80",
-  validSignerHashes: Object.freeze([]),
   signerPresent: false,
   outputCarriage: "Inline" as const,
   witnessCarriage: "Inline" as const,
@@ -47,9 +46,9 @@ describe("protectedOutputSignerMissing durable workflow", () => {
     entries.push({
       sequence: 0,
       identity,
-      sourceStage: "step03",
+      sourceStage: "step02",
       targetStage: "scanning",
-      action: "submitStep03",
+      action: "submitStep02",
       phase: "intent",
       txHash: "44".repeat(32),
     });
@@ -59,8 +58,8 @@ describe("protectedOutputSignerMissing durable workflow", () => {
       transactionConfirmed: async (hash) =>
         hash === "44".repeat(32) || hash === "55".repeat(32),
       build: async ({ action }) => {
-        if (action === "submitScan") stage = "step05";
-        else if (action === "submitStep05") stage = "proven";
+        if (action === "submitScan") stage = "terminal";
+        else if (action === "submitTerminal") stage = "proven";
         else throw new Error(`unexpected ${action}`);
         return {
           txHash: "55".repeat(32),
@@ -86,9 +85,9 @@ describe("protectedOutputSignerMissing durable workflow", () => {
     entries.push({
       sequence: 0,
       identity,
-      sourceStage: "step02",
-      targetStage: "step03",
-      action: "submitStep02",
+      sourceStage: "step01",
+      targetStage: "step02",
+      action: "submitStep01",
       phase: "intent",
       txHash: "66".repeat(32),
     });
@@ -97,7 +96,7 @@ describe("protectedOutputSignerMissing durable workflow", () => {
         evidence,
         journal,
         actuator: {
-          observe: async () => "step05",
+          observe: async () => "terminal",
           transactionConfirmed: async () => true,
           build: async () => {
             throw new Error("must not build");

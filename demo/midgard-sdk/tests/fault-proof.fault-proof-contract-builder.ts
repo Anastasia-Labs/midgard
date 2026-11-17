@@ -257,6 +257,9 @@ describe("fault-proof contract builder", () => {
         // The withdrawn spend/reference pair shares its step-03 membership
         // check.
         ["withdrawnReferenceInput[2]", "withdrawnInput[2]"],
+        // The two signer families share one witness scan and its terminal.
+        ["spendInputSignerMissing[2]", "protectedOutputSignerMissing[2]"],
+        ["spendInputSignerMissing[3]", "protectedOutputSignerMissing[3]"],
         // Both convict from the same final ordered-collection comparison.
         ["mintDeclaredAssetLimit[3]", "observerOrderInvalid[3]"],
         // DIRECT shares source auth and map; DIRECT[3..5] claim and terminal.

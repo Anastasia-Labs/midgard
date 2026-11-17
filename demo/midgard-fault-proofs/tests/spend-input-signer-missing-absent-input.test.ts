@@ -111,9 +111,9 @@ const convict = async ({
       block.witnessSetCompactCbor,
     ),
   );
-  expect(direct.result.stage).toBe("step05");
+  expect(direct.result.stage).toBe("terminal");
   const minted = await captureEmulatorSubmission(harness.emulator, () =>
-    run.step05(direct.result.nextThreadOutRef, evidence),
+    run.terminal(direct.result.nextThreadOutRef, evidence),
   );
   expect(minted.result.fraudProofUnit).toBeTruthy();
   const removal = await run.removal(block.headerHash);
@@ -213,7 +213,7 @@ describe("spendInputSignerMissing forced rejection of a coordinate naming no inp
         ).toString("hex"),
       }),
     });
-    expect(thread.evidence.signerMissing).toBe(true);
+    expect(thread.evidence.signerPresent).toBe(false);
     // Step 02 routes a held position to the ledger membership proof, which the
     // out-of-range route does not carry.
     await expectOnchainRefusal(
@@ -224,7 +224,7 @@ describe("spendInputSignerMissing forced rejection of a coordinate naming no inp
             ...thread.evidence,
             route: "coordinate_out_of_range",
             signerRequired: false,
-            signerMissing: false,
+            signerPresent: false,
           },
           thread.block.compactCbor,
           thread.block.witnessSetCompactCbor,

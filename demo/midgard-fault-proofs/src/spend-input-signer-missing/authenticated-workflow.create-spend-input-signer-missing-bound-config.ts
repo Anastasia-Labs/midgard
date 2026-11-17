@@ -14,7 +14,10 @@ import {
   type FraudProofWorkflowDeploymentBinding,
   requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding.js";
-import type { SpendInputSignerMissingContracts } from "./contracts.js";
+import {
+  SPEND_INPUT_SIGNER_MISSING_BLUEPRINT_TITLES,
+  type SpendInputSignerMissingContracts,
+} from "./contracts.js";
 import { type SpendInputSignerMissingEvidence } from "./spend-input-signer-missing.js";
 import {
   type SpendInputSignerJournal,
@@ -32,7 +35,6 @@ export const SPEND_INPUT_SIGNER_MISSING_MANIFEST_CONTRACTS = Object.freeze({
   step02: "fraudProofSpendInputSignerMissingStep02",
   step03: "fraudProofSpendInputSignerMissingStep03",
   step04: "fraudProofSpendInputSignerMissingStep04",
-  step05: "fraudProofSpendInputSignerMissingStep05",
   computationThreadMint: "computationThreadMint",
   fraudProofMint: "fraudProofMint",
   phasMembershipWithdraw: "phasMembershipWithdraw",
@@ -44,7 +46,6 @@ export type SpendInputSignerMissingReferenceScripts = Readonly<{
   step02: UTxO;
   step03: UTxO;
   step04: UTxO;
-  step05: UTxO;
   fieldPreimageCertificateMint: UTxO;
   witnesses: FaultProofWitnessReferenceScripts & {
     readonly computationThreadMint: UTxO;
@@ -124,11 +125,6 @@ export const bindSpendInputSignerMissingReferenceScripts = ({
       contractName: names.step04,
       utxo: referenceScripts.step04,
     }),
-    step05: bindReference({
-      binding,
-      contractName: names.step05,
-      utxo: referenceScripts.step05,
-    }),
     fieldPreimageCertificateMint: bindReference({
       binding,
       contractName: names.fieldPreimageCertificateMint,
@@ -164,9 +160,9 @@ export const createSpendInputSignerMissingBoundConfig = (
   };
   const chain = localContracts.spendInputSignerMissing;
   const certificate = binding.fieldPreimageCertificate;
-  if (chain === undefined || chain.steps.length !== 5) {
+  if (chain === undefined || chain.steps.length !== 4) {
     throw new Error(
-      "spendInputSignerMissing deployment changed its five-step topology",
+      "spendInputSignerMissing deployment changed its four-step topology",
     );
   }
   if (certificate === null) {
@@ -184,32 +180,19 @@ export const createSpendInputSignerMissingBoundConfig = (
     signer: input.signer,
     binding: binding as unknown as SpendInputSignerMissingDeploymentBinding,
     contracts: {
-      steps: chain.steps.map((step, index) => ({
-        ...step,
-        blueprintTitle: [
-          "fraud_proofs/protected_output_signer_missing/step_01.main.spend",
-          "fraud_proofs/protected_output_signer_missing/step_02.main.spend",
-          "fraud_proofs/protected_output_signer_missing/step_03.main.spend",
-          "fraud_proofs/protected_output_signer_missing/step_04.main.spend",
-          "fraud_proofs/protected_output_signer_missing/step_05.main.spend",
-        ][index]!,
-        referenceOutRef: [
+      steps: chain.steps.map((step, index) => {
+        const reference = [
           referenceScripts.step01,
           referenceScripts.step02,
           referenceScripts.step03,
           referenceScripts.step04,
-          referenceScripts.step05,
-        ][index]!.txHash.concat(
-          "#",
-          [
-            referenceScripts.step01,
-            referenceScripts.step02,
-            referenceScripts.step03,
-            referenceScripts.step04,
-            referenceScripts.step05,
-          ][index]!.outputIndex.toString(),
-        ),
-      })) as unknown as SpendInputSignerMissingContracts["steps"],
+        ][index]!;
+        return {
+          ...step,
+          blueprintTitle: SPEND_INPUT_SIGNER_MISSING_BLUEPRINT_TITLES[index]!,
+          referenceOutRef: `${reference.txHash}#${reference.outputIndex.toString()}`,
+        };
+      }) as unknown as SpendInputSignerMissingContracts["steps"],
       computationThread: binding.resolvedContracts.contracts.computationThread,
       fraudProof: binding.resolvedContracts.contracts.fraudProof,
       hubOraclePolicyId: binding.contractEntries.hubOracleMint!.scriptHash,
@@ -259,9 +242,8 @@ export type SpendInputSignerMissingRuntimeLoader = Readonly<{
       | "submitInit"
       | "submitStep01"
       | "submitStep02"
-      | "submitStep03"
       | "submitScan"
-      | "submitStep05"
+      | "submitTerminal"
       | "removeDescendants"
       | "cancel";
     readonly evidence: SpendInputSignerMissingEvidence;

@@ -4,20 +4,21 @@ import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/subm
 import { requireLinearFaultThreadUtxo } from "../src/linear-fault-family.js";
 import { submitLinearFaultFinalize } from "../src/linear-fault-finalize.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
+import { SignerWitnessTerminalRedeemerSchema } from "../src/signer-witness-scan/schemas.js";
+import {
+  SIGNER_WITNESS_TERMINAL_STEP_INDEX,
+  submitSignerWitnessScan,
+} from "../src/signer-witness-scan/submit-scan.js";
+import { submitSignerWitnessTerminal } from "../src/signer-witness-scan/submit-terminal.js";
 import {
   type SpendInputSignerMissingEvidence,
   submitSpendInputSignerMissingCancel,
   submitSpendInputSignerMissingStep01Accepted,
   submitSpendInputSignerMissingStep01Forced,
   submitSpendInputSignerMissingStep02,
-  submitSpendInputSignerMissingStep03,
-  submitSpendInputSignerMissingStep04,
-  submitSpendInputSignerMissingStep05,
 } from "../src/spend-input-signer-missing/index.js";
-import { SpendInputSignerStep05RedeemerSchema } from "../src/spend-input-signer-missing/schemas.js";
 import { type SubmitStep01TxInclusion } from "../src/step-support.js";
 import {
-  type Captured,
   FAMILY,
   type Family,
   type Harness,
@@ -129,15 +130,16 @@ export const familyDriver = (
         harness.witnessReferenceScripts.phasMembershipWithdraw!,
       certificateReferenceScriptUtxo: certificateReference,
     });
-  const step03 = (
+  /** One turn of the shared scan: the opening turn or a resume. */
+  const scan = (
     threadOutRef: string,
     evidence: SpendInputSignerMissingEvidence,
     nativeTxCompactCbor: string,
     witnessSetCompactCbor: string,
   ) =>
-    submitSpendInputSignerMissingStep03({
+    submitSignerWitnessScan({
       lucid,
-      network,
+      family: FAMILY,
       contracts,
       categoryId,
       signer,
@@ -148,37 +150,19 @@ export const familyDriver = (
       referenceScriptUtxo: references[2]!,
       certificateReferenceScriptUtxo: certificateReference,
     });
-  const step04 = (
+  const terminal = (
     threadOutRef: string,
     evidence: SpendInputSignerMissingEvidence,
-    nativeTxCompactCbor: string,
-    witnessSetCompactCbor: string,
   ) =>
-    submitSpendInputSignerMissingStep04({
+    submitSignerWitnessTerminal({
       lucid,
-      network,
+      family: FAMILY,
       contracts,
       categoryId,
       signer,
       threadOutRef,
       evidence,
-      nativeTxCompactCbor,
-      witnessSetCompactCbor,
       referenceScriptUtxo: references[3]!,
-      certificateReferenceScriptUtxo: certificateReference,
-    });
-  const step05 = (
-    threadOutRef: string,
-    evidence: SpendInputSignerMissingEvidence,
-  ) =>
-    submitSpendInputSignerMissingStep05({
-      lucid,
-      contracts,
-      categoryId,
-      signer,
-      threadOutRef,
-      evidence,
-      referenceScriptUtxo: references[4]!,
       witnessReferenceScripts: harness.witnessReferenceScripts,
     });
   const cancel = (threadOutRef: string, stepIndex: number) =>
@@ -192,7 +176,7 @@ export const familyDriver = (
       witnessReferenceScripts: harness.witnessReferenceScripts,
     });
   /**
-   * The generic finalizer over a step-05 thread, with no family evidence in
+   * The generic finalizer over a terminal thread, with no family evidence in
    * the way: this is what an honest terminal has to be refused by, on chain.
    */
   const finalizeDirect = async (threadOutRef: string) => {
@@ -201,20 +185,20 @@ export const familyDriver = (
       contracts,
       categoryId,
       family: FAMILY,
-      stepIndex: 4,
+      stepIndex: SIGNER_WITNESS_TERMINAL_STEP_INDEX,
       threadOutRef,
     });
     return submitLinearFaultFinalize({
       lucid,
       family: FAMILY,
-      stepIndex: 4,
-      step: contracts.steps[4],
+      stepIndex: SIGNER_WITNESS_TERMINAL_STEP_INDEX,
+      step: contracts.steps[SIGNER_WITNESS_TERMINAL_STEP_INDEX],
       computationThread: contracts.computationThread,
       fraudProof: contracts.fraudProof,
       signer,
       threadUtxo,
       threadToken,
-      spendRedeemerSchema: SpendInputSignerStep05RedeemerSchema,
+      spendRedeemerSchema: SignerWitnessTerminalRedeemerSchema,
       buildFamilyArgs: ({
         inputIndex,
         outputIndex,
@@ -224,27 +208,30 @@ export const familyDriver = (
         output_index: outputIndex,
         fraud_proof_mint_redeemer_index: fraudProofMintRedeemerIndex,
       }),
-      referenceScriptUtxo: references[4]!,
+      referenceScriptUtxo: references[SIGNER_WITNESS_TERMINAL_STEP_INDEX]!,
       witnessReferenceScripts: harness.witnessReferenceScripts,
       awaitConfirmation: true,
     });
   };
-  /** Runs step 04 to its terminal, returning every capture. */
+  /** Runs the scan from its opening turn to the terminal, returning every
+   * capture. */
   const scanToTerminal = async (
     threadOutRef: string,
     evidence: SpendInputSignerMissingEvidence,
     nativeTxCompactCbor: string,
     witnessSetCompactCbor: string,
   ) => {
-    const scans: Captured[] = [];
+    const captureTurn = (outRef: string) =>
+      captureEmulatorSubmission(harness.emulator, () =>
+        scan(outRef, evidence, nativeTxCompactCbor, witnessSetCompactCbor),
+      );
+    const scans: Awaited<ReturnType<typeof captureTurn>>[] = [];
     let outRef = threadOutRef;
     for (;;) {
-      const scan = await captureEmulatorSubmission(harness.emulator, () =>
-        step04(outRef, evidence, nativeTxCompactCbor, witnessSetCompactCbor),
-      );
-      scans.push(scan);
-      outRef = scan.result.nextThreadOutRef;
-      if (scan.result.stage === "step05") break;
+      const turn = await captureTurn(outRef);
+      scans.push(turn);
+      outRef = turn.result.nextThreadOutRef;
+      if (turn.result.stage === "terminal") break;
     }
     return { scans, threadOutRef: outRef };
   };
@@ -283,9 +270,8 @@ export const familyDriver = (
     step01Accepted,
     step01Forced,
     step02,
-    step03,
-    step04,
-    step05,
+    scan,
+    terminal,
     cancel,
     finalizeDirect,
     scanToTerminal,

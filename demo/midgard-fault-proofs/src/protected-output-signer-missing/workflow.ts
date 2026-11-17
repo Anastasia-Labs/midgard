@@ -7,9 +7,8 @@ export const PROTECTED_OUTPUT_SIGNER_STAGES = [
   "none",
   "step01",
   "step02",
-  "step03",
   "scanning",
-  "step05",
+  "terminal",
   "proven",
   "removed",
   "cancelled",
@@ -20,9 +19,8 @@ export type ProtectedOutputSignerAction =
   | "submitInit"
   | "submitStep01"
   | "submitStep02"
-  | "submitStep03"
   | "submitScan"
-  | "submitStep05"
+  | "submitTerminal"
   | "cancel"
   | "removeDescendants"
   | "done";
@@ -89,12 +87,10 @@ export const nextProtectedOutputSignerAction = (
       return "submitStep01";
     case "step02":
       return "submitStep02";
-    case "step03":
-      return "submitStep03";
     case "scanning":
       return "submitScan";
-    case "step05":
-      return "submitStep05";
+    case "terminal":
+      return "submitTerminal";
     case "proven":
       return "removeDescendants";
     case "removed":
@@ -113,20 +109,18 @@ const requiredTargetStage = (
     case "submitStep01":
       return "step02";
     case "submitStep02":
-      // The witness scan continues at step 03; a coordinate that needs no
-      // signer closes at step 05 directly.
-      if (claimed !== "step03" && claimed !== "step05")
+      // The witness scan opens next; a coordinate that needs no signer goes
+      // straight to the terminal.
+      if (claimed !== "scanning" && claimed !== "terminal")
         throw new Error(
           "protectedOutputSignerMissing step-02 target is invalid",
         );
       return claimed;
-    case "submitStep03":
-      return "scanning";
     case "submitScan":
-      if (claimed !== "scanning" && claimed !== "step05")
+      if (claimed !== "scanning" && claimed !== "terminal")
         throw new Error("protectedOutputSignerMissing scan target is invalid");
       return claimed;
-    case "submitStep05":
+    case "submitTerminal":
       return "proven";
     case "cancel":
       return "cancelled";

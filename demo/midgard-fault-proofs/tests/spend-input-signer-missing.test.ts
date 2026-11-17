@@ -152,8 +152,7 @@ describe("spendInputSignerMissing V1", () => {
       canonicalTransactionCbor: encodeMidgardNativeTxCanonical(empty),
       resolved,
     });
-    expect(missing.signerMissing).toBe(true);
-    expect(missing.validSignerHashes).toEqual([]);
+    expect(missing.signerPresent).toBe(false);
 
     const invalid = transactionWithSignature("invalid");
     const invalidTxId = computeMidgardNativeTxId(invalid).toString("hex");
@@ -163,8 +162,7 @@ describe("spendInputSignerMissing V1", () => {
       canonicalTransactionCbor: encodeMidgardNativeTxCanonical(invalid),
       resolved,
     });
-    expect(invalidEvidence.signerMissing).toBe(true);
-    expect(invalidEvidence.validSignerHashes).toEqual([]);
+    expect(invalidEvidence.signerPresent).toBe(false);
 
     const valid = transactionWithSignature("valid");
     const validTxId = computeMidgardNativeTxId(valid).toString("hex");
@@ -187,8 +185,7 @@ describe("spendInputSignerMissing V1", () => {
       canonicalTransactionCbor: encodeMidgardForcedTxCanonical(valid),
       resolved,
     });
-    expect(forced.signerMissing).toBe(false);
-    expect(forced.validSignerHashes).toEqual([paymentCredential]);
+    expect(forced.signerPresent).toBe(true);
   });
 
   it("refuses out-ref, descriptor, and transaction substitutions", () => {
@@ -229,7 +226,10 @@ describe("spendInputSignerMissing V1", () => {
       canonicalTransactionCbor: encodeMidgardNativeTxCanonical(maximum),
       resolved,
     });
-    expect(evidence.checkpoints).toHaveLength(20);
+    // One checkpoint per 32-witness scan turn, the last at the field's end.
+    expect(evidence.checkpoints.map(({ cursor }) => cursor)).toEqual([
+      32, 64, 96, 128, 160, 192, 224, 256, 288, 318,
+    ]);
     expect(evidence.checkpoints.at(-1)).toEqual({
       cursor: 318,
       signerPresent: false,
@@ -287,7 +287,7 @@ describe("spendInputSignerMissing V1", () => {
     });
     expect(scriptLocked.route).toBe("script_credential");
     expect(scriptLocked.signerRequired).toBe(false);
-    expect(scriptLocked.signerMissing).toBe(false);
+    expect(scriptLocked.signerPresent).toBe(false);
     expect(scriptLocked.paymentCredentialHex).toBeUndefined();
     expect(scriptLocked.resolved).toEqual(scriptResolved);
     expect(scriptLocked.checkpoints).toHaveLength(0);
@@ -344,7 +344,7 @@ describe("spendInputSignerMissing V1", () => {
     });
     expect(scan.route).toBe("witness_scan");
     expect(scan.signerRequired).toBe(true);
-    expect(scan.signerMissing).toBe(true);
+    expect(scan.signerPresent).toBe(false);
   });
 });
 

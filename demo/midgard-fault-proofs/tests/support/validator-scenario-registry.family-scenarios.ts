@@ -485,7 +485,7 @@ export const FAMILY_SCENARIOS: Readonly<
     passing: [
       {
         file: "demo/midgard-fault-proofs/tests/protected-output-signer-missing-lifecycle.test.ts",
-        test: "runs maximum-carriage evidence through cancel, restartable scan, mint and leased removal",
+        test: "runs maximum-carriage evidence ($shape) through cancel, restartable scan, mint and leased removal",
       },
     ],
     failing: [

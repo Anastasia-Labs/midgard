@@ -4,6 +4,11 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
+import { planSignerWitnessOpening } from "../signer-witness-scan/field-plans.js";
+import {
+  SignerWitnessScanDatumSchema,
+  SignerWitnessTerminalDatumSchema,
+} from "../signer-witness-scan/schemas.js";
 import {
   type CompleteCanonicalReplayContext,
   SPEND_INPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY,
@@ -45,16 +50,8 @@ import {
   type SpendInputSignerMissingAssemblyRuntime,
   spendInputSignerStageFromL1,
 } from "./authenticated-workflow.derive-spend-input-signer-missing-authenticated-source.js";
-import {
-  planSpendInputSignerInputOpening,
-  planSpendInputSignerWitnessOpening,
-} from "./field-plans.js";
-import {
-  SpendInputSignerStep02DatumSchema,
-  SpendInputSignerStep03DatumSchema,
-  SpendInputSignerStep04DatumSchema,
-  SpendInputSignerStep05DatumSchema,
-} from "./schemas.js";
+import { planSpendInputSignerInputOpening } from "./field-plans.js";
+import { SpendInputSignerStep02DatumSchema } from "./schemas.js";
 import { type SpendInputSignerMissingEvidence } from "./spend-input-signer-missing.js";
 import {
   nextSpendInputSignerAction,
@@ -148,7 +145,7 @@ export type ManifestBoundSpendInputSignerMissingInstallation = Readonly<{
     "spendInputSignerMissing",
     "computationThreadMint" | "fraudProofMint" | "phasMembershipWithdraw",
     true,
-    5
+    4
   >;
   workflowVersion: typeof SPEND_INPUT_SIGNER_MISSING_WORKFLOW;
   config: ManifestBoundSpendInputSignerMissingConfig;
@@ -163,16 +160,15 @@ export const SPEND_INPUT_SIGNER_MISSING_FAMILY_DEFINITION = defineFamily<
   "spendInputSignerMissing",
   "computationThreadMint" | "fraudProofMint" | "phasMembershipWithdraw",
   true,
-  5,
+  4,
   SpendInputSignerMissingAssemblyRuntime
 >({
   category: "spendInputSignerMissing",
   stepDatumSchemas: [
     FraudProofComputationThreadStepDatum,
     SpendInputSignerStep02DatumSchema,
-    SpendInputSignerStep03DatumSchema,
-    SpendInputSignerStep04DatumSchema,
-    SpendInputSignerStep05DatumSchema,
+    SignerWitnessScanDatumSchema,
+    SignerWitnessTerminalDatumSchema,
   ],
   witnessRoles: CORE_WITNESS_ROLES,
   fieldPreimageCertificate: true,
@@ -214,9 +210,8 @@ export const SPEND_INPUT_SIGNER_MISSING_FAMILY_DEFINITION = defineFamily<
             init: "submitInit",
             step_01: "submitStep01",
             step_02: "submitStep02",
-            step_03: "submitStep03",
-            step_04: "submitScan",
-            step_05: "submitStep05",
+            step_03: "submitScan",
+            step_04: "submitTerminal",
           } as const;
           const familyAction = actions[input.stage as keyof typeof actions];
           if (familyAction === undefined)
@@ -274,8 +269,7 @@ export const SPEND_INPUT_SIGNER_MISSING_FAMILY_DEFINITION = defineFamily<
         const { binding } = context;
         if (
           action.input.stage !== "step_02" &&
-          action.input.stage !== "step_03" &&
-          action.input.stage !== "step_04"
+          action.input.stage !== "step_03"
         )
           return null;
         const { evidence, source } = material.require(artifact);
@@ -291,12 +285,13 @@ export const SPEND_INPUT_SIGNER_MISSING_FAMILY_DEFINITION = defineFamily<
                   owner: config.signer.paymentKeyHash,
                   publish: true,
                 })
-              : planSpendInputSignerWitnessOpening({
+              : planSignerWitnessOpening({
                   evidence,
                   nativeTxCompactCbor: source.nativeTxCompactCbor,
                   witnessSetCompactCbor: source.witnessSetCompactCbor,
                   owner: config.signer.paymentKeyHash,
                   publish: true,
+                  label: "spend-input-signer-missing address witnesses",
                 }),
           compactCbor: source.nativeTxCompactCbor,
           witnessSetCompactCbor: source.witnessSetCompactCbor,

@@ -11,6 +11,14 @@ import {
 } from "../linear-fault-family.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import {
+  SignerWitnessScanDatumSchema,
+  SignerWitnessTerminalDatumSchema,
+} from "../signer-witness-scan/schemas.js";
+import {
+  SIGNER_WITNESS_SCAN_STEP_INDEX,
+  SIGNER_WITNESS_TERMINAL_STEP_INDEX,
+} from "../signer-witness-scan/submit-scan.js";
+import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
@@ -25,8 +33,6 @@ import {
 import {
   ProtectedOutputSignerStep02DatumSchema,
   ProtectedOutputSignerStep02RedeemerSchema,
-  ProtectedOutputSignerStep03DatumSchema,
-  ProtectedOutputSignerStep05DatumSchema,
 } from "./schemas.js";
 import { submitProtectedOutputSignerOpeningTransition } from "./submit-opening-transition.js";
 
@@ -142,9 +148,9 @@ export const submitProtectedOutputSignerMissingStep02 = async ({
     fieldGrammar,
     label: "protected-output-signer-missing outputs",
   });
-  // The witness-scan route hands the protected credential to step 03; every
-  // direct route writes the terminal verdict step 02 derives on chain
-  // (`direct_verdict_v1`) and continues at step 05.
+  // The witness-scan route writes the unopened scan state (`start`); every
+  // direct route writes the verdict step 02 derives on chain
+  // (`direct_verdict_v1`) straight to the terminal.
   const scan = evidence.route === "witness_scan";
   const nextDatum = scan
     ? Data.to(
@@ -152,15 +158,14 @@ export const submitProtectedOutputSignerMissingStep02 = async ({
           fraud_prover: signer.paymentKeyHash,
           data: {
             subject: evidence.subject,
-            transaction_id: evidence.subject.transaction_id,
             witness_set_hash: evidence.witnessSetHashHex,
-            output_index: evidence.outputIndex,
             payment_credential:
               requireProtectedOutputSignerScanEvidence(evidence)
                 .paymentCredentialHex,
+            checkpoint_hash: "",
           },
         } as never,
-        ProtectedOutputSignerStep03DatumSchema as never,
+        SignerWitnessScanDatumSchema as never,
       )
     : Data.to(
         {
@@ -171,7 +176,7 @@ export const submitProtectedOutputSignerMissingStep02 = async ({
             signer_present: false,
           },
         } as never,
-        ProtectedOutputSignerStep05DatumSchema as never,
+        SignerWitnessTerminalDatumSchema as never,
       );
   const result = await submitProtectedOutputSignerOpeningTransition({
     lucid,
@@ -180,7 +185,9 @@ export const submitProtectedOutputSignerMissingStep02 = async ({
     signer,
     threadOutRef,
     stepIndex: 1,
-    nextStepIndex: scan ? 2 : 4,
+    nextStepIndex: scan
+      ? SIGNER_WITNESS_SCAN_STEP_INDEX
+      : SIGNER_WITNESS_TERMINAL_STEP_INDEX,
     nextDatum,
     openingFor: actuated.openingFor,
     coordinateOutOfRange,
@@ -197,6 +204,6 @@ export const submitProtectedOutputSignerMissingStep02 = async ({
   return {
     ...result,
     route: evidence.route,
-    stage: scan ? ("step03" as const) : ("step05" as const),
+    stage: scan ? ("scanning" as const) : ("terminal" as const),
   };
 };

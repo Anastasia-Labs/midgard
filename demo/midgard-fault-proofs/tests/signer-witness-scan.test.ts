@@ -10,6 +10,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import {
   planSignerWitnessScanTurn,
   scanSignerWitnesses,
+  SIGNER_WITNESS_SCAN_BATCH,
 } from "../src/signer-witness-scan/signer-witness-scan.js";
 
 beforeAll(() => ledgerEd25519SignatureReady());
@@ -50,31 +51,25 @@ const filler = (count: number) =>
 describe("scanSignerWitnesses", () => {
   it("records the cumulative signer state at every batch boundary and at the end", () => {
     const witnesses = [
-      ...filler(5),
+      ...filler(40),
       { verificationKey: signer.verificationKey, signature: signer.signature },
-      ...filler(4),
+      ...filler(29),
     ];
     const scan = scanSignerWitnesses({
       transactionId,
       witnesses,
       paymentCredentialHex: signer.hash,
-      batch: 4,
     });
+    expect(SIGNER_WITNESS_SCAN_BATCH).toBe(32);
     expect(scan.checkpoints).toEqual([
-      { cursor: 4, signerPresent: false },
-      { cursor: 8, signerPresent: true },
-      { cursor: 10, signerPresent: true },
+      { cursor: 32, signerPresent: false },
+      { cursor: 64, signerPresent: true },
+      { cursor: 70, signerPresent: true },
     ]);
     expect(scan.signerPresent).toBe(true);
-    expect(scan.validSignerHashes).toEqual([
-      ...Array.from({ length: 5 }, () => other.hash),
-      signer.hash,
-      ...Array.from({ length: 4 }, () => other.hash),
-    ]);
     expect(Object.isFrozen(scan)).toBe(true);
     expect(Object.isFrozen(scan.checkpoints)).toBe(true);
     expect(Object.isFrozen(scan.checkpoints[0])).toBe(true);
-    expect(Object.isFrozen(scan.validSignerHashes)).toBe(true);
   });
 
   it("does not count the credential's key under a signature that fails", () => {
@@ -82,11 +77,18 @@ describe("scanSignerWitnesses", () => {
       transactionId,
       witnesses: [unsigned, ...filler(1)],
       paymentCredentialHex: signer.hash,
-      batch: 16,
     });
     expect(scan.signerPresent).toBe(false);
-    expect(scan.validSignerHashes).toEqual([other.hash]);
     expect(scan.checkpoints).toEqual([{ cursor: 2, signerPresent: false }]);
+  });
+
+  it("does not count another key's valid signature", () => {
+    const scan = scanSignerWitnesses({
+      transactionId,
+      witnesses: filler(3),
+      paymentCredentialHex: signer.hash,
+    });
+    expect(scan.signerPresent).toBe(false);
   });
 
   it("checkpoints the initial position of an empty witness field", () => {
@@ -94,10 +96,8 @@ describe("scanSignerWitnesses", () => {
       transactionId,
       witnesses: [],
       paymentCredentialHex: signer.hash,
-      batch: 32,
     });
     expect(scan).toEqual({
-      validSignerHashes: [],
       signerPresent: false,
       checkpoints: [{ cursor: 0, signerPresent: false }],
     });
@@ -105,8 +105,8 @@ describe("scanSignerWitnesses", () => {
 });
 
 describe("planSignerWitnessScanTurn", () => {
-  const itemCount = 10;
-  const totalLength = 1 + itemCount * 103;
+  const itemCount = 70;
+  const totalLength = 2 + itemCount * 103;
   const checkpointAt = (nextItemIndex: number) =>
     missingSignatureFieldWalkCheckpoint({
       txId: transactionId,
@@ -114,92 +114,91 @@ describe("planSignerWitnessScanTurn", () => {
       totalLength,
       nextItemIndex,
     });
-  const checkpoints = [
-    { cursor: 4, signerPresent: false },
-    { cursor: 8, signerPresent: true },
-    { cursor: 10, signerPresent: true },
+  const signerAt40 = [
+    { cursor: 32, signerPresent: false },
+    { cursor: 64, signerPresent: true },
+    { cursor: 70, signerPresent: true },
   ];
-  const turnFrom = (checkpointHash: string) =>
+  const noSigner = [
+    { cursor: 32, signerPresent: false },
+    { cursor: 64, signerPresent: false },
+    { cursor: 70, signerPresent: false },
+  ];
+  const turnFrom = (
+    checkpoints: readonly { cursor: number; signerPresent: boolean }[],
+    checkpointHash: string,
+  ) =>
     planSignerWitnessScanTurn({
       checkpoints,
       txId: transactionId,
       itemCount,
       totalLength,
       checkpointHash,
-      batch: 4,
     });
 
-  it("resumes at every cursor of the batch schedule", () => {
-    expect(turnFrom(checkpointAt(0).checkpointHash)).toEqual({
-      checkpoint: checkpointAt(0),
-      nextCursor: 4,
-      exhausted: false,
+  it("opens at cursor 0 from an empty checkpoint and carries no checkpoint bytes", () => {
+    expect(turnFrom(signerAt40, "")).toEqual({
+      checkpointCbor: null,
+      nextCursor: 32,
       signerPresent: false,
-      nextCheckpoint: checkpointAt(4),
-    });
-    expect(turnFrom(checkpointAt(4).checkpointHash)).toEqual({
-      checkpoint: checkpointAt(4),
-      nextCursor: 8,
-      exhausted: false,
-      signerPresent: true,
-      nextCheckpoint: checkpointAt(8),
+      terminal: false,
+      nextCheckpointHash: checkpointAt(32).checkpointHash,
     });
   });
 
-  it("clamps the last batch to the field and carries no further checkpoint", () => {
-    expect(turnFrom(checkpointAt(8).checkpointHash)).toEqual({
-      checkpoint: checkpointAt(8),
-      nextCursor: 10,
-      exhausted: true,
+  it("ends the scan at the batch where the signer is found", () => {
+    expect(turnFrom(signerAt40, checkpointAt(32).checkpointHash)).toEqual({
+      checkpointCbor: checkpointAt(32).checkpointCbor,
+      nextCursor: 64,
       signerPresent: true,
-      nextCheckpoint: undefined,
+      terminal: true,
+      nextCheckpointHash: undefined,
+    });
+  });
+
+  it("walks every batch when the signer is absent and clamps the last one to the field", () => {
+    expect(turnFrom(noSigner, checkpointAt(32).checkpointHash)).toMatchObject({
+      nextCursor: 64,
+      terminal: false,
+      nextCheckpointHash: checkpointAt(64).checkpointHash,
+    });
+    expect(turnFrom(noSigner, checkpointAt(64).checkpointHash)).toEqual({
+      checkpointCbor: checkpointAt(64).checkpointCbor,
+      nextCursor: 70,
+      signerPresent: false,
+      terminal: true,
+      nextCheckpointHash: undefined,
     });
   });
 
   it("refuses a checkpoint off the batch schedule", () => {
-    expect(() => turnFrom(checkpointAt(5).checkpointHash)).toThrow(
-      /not on the deterministic 4-item schedule/u,
-    );
-    expect(() => turnFrom(checkpointAt(10).checkpointHash)).toThrow(
-      /not on the deterministic 4-item schedule/u,
-    );
+    for (const cursor of [0, 5, 70])
+      expect(() =>
+        turnFrom(noSigner, checkpointAt(cursor).checkpointHash),
+      ).toThrow(/not on the deterministic 32-item schedule/u);
   });
 
   it("refuses a turn whose end the scan did not checkpoint", () => {
     expect(() =>
-      planSignerWitnessScanTurn({
-        checkpoints: checkpoints.slice(0, 1),
-        txId: transactionId,
-        itemCount,
-        totalLength,
-        checkpointHash: checkpointAt(4).checkpointHash,
-        batch: 4,
-      }),
-    ).toThrow(/scan has no checkpoint at cursor 8/u);
+      turnFrom(noSigner.slice(0, 1), checkpointAt(32).checkpointHash),
+    ).toThrow(/scan has no checkpoint at cursor 64/u);
   });
 
-  it("closes an empty witness field in its one turn", () => {
-    const empty = missingSignatureFieldWalkCheckpoint({
-      txId: transactionId,
-      itemCount: 0,
-      totalLength: 1,
-      nextItemIndex: 0,
-    });
+  it("closes an empty witness field in its opening turn", () => {
     expect(
       planSignerWitnessScanTurn({
         checkpoints: [{ cursor: 0, signerPresent: false }],
         txId: transactionId,
         itemCount: 0,
         totalLength: 1,
-        checkpointHash: empty.checkpointHash,
-        batch: 16,
+        checkpointHash: "",
       }),
     ).toEqual({
-      checkpoint: empty,
+      checkpointCbor: null,
       nextCursor: 0,
-      exhausted: true,
       signerPresent: false,
-      nextCheckpoint: undefined,
+      terminal: true,
+      nextCheckpointHash: undefined,
     });
   });
 });

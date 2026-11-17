@@ -33,8 +33,7 @@ const evidence: SpendInputSignerMissingEvidence = Object.freeze({
     membershipProof: [],
   }),
   paymentCredentialHex: "55".repeat(28),
-  validSignerHashes: Object.freeze([]),
-  signerMissing: true,
+  signerPresent: false,
   inputCarriage: "Inline",
   witnessCarriage: "Inline",
   checkpoints: Object.freeze([{ cursor: 0, signerPresent: false }]),
@@ -58,9 +57,9 @@ describe("spendInputSignerMissing durable workflow", () => {
     entries.push({
       sequence: 0,
       identity,
-      sourceStage: "step03",
+      sourceStage: "step02",
       targetStage: "scanning",
-      action: "submitStep03",
+      action: "submitStep02",
       phase: "intent",
       txHash: "66".repeat(32),
     });
@@ -70,8 +69,8 @@ describe("spendInputSignerMissing durable workflow", () => {
       transactionConfirmed: async (hash) =>
         hash === "66".repeat(32) || hash === "77".repeat(32),
       build: async ({ action }) => {
-        if (action === "submitScan") stage = "step05";
-        else if (action === "submitStep05") stage = "proven";
+        if (action === "submitScan") stage = "terminal";
+        else if (action === "submitTerminal") stage = "proven";
         else throw new Error(`unexpected ${action}`);
         return {
           txHash: "77".repeat(32),
@@ -95,9 +94,9 @@ describe("spendInputSignerMissing durable workflow", () => {
     entries.push({
       sequence: 0,
       identity,
-      sourceStage: "step02",
-      targetStage: "step03",
-      action: "submitStep02",
+      sourceStage: "step01",
+      targetStage: "step02",
+      action: "submitStep01",
       phase: "intent",
       txHash: "88".repeat(32),
     });
@@ -106,7 +105,7 @@ describe("spendInputSignerMissing durable workflow", () => {
         evidence,
         journal,
         actuator: {
-          observe: async () => "step05",
+          observe: async () => "terminal",
           transactionConfirmed: async () => true,
           build: async () => {
             throw new Error("must not build");
@@ -137,7 +136,7 @@ describe("spendInputSignerMissing durable workflow", () => {
     expect(entries[0]?.phase).toBe("intent");
   });
 
-  it.each(["step01", "step02", "step03", "scanning", "step05"] as const)(
+  it.each(["step01", "step02", "scanning", "terminal"] as const)(
     "selects cancel from nonterminal %s when the production actuator requests it",
     async (sourceStage) => {
       const { entries, journal } = memoryJournal();

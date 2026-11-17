@@ -1,4 +1,4 @@
-import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
+import type { LucidEvolution, Script, UTxO } from "@lucid-evolution/lucid";
 
 import {
   requireLinearFaultStepState,
@@ -8,18 +8,36 @@ import { submitLinearFaultFinalize } from "../linear-fault-finalize.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
-import type { ProtectedOutputSignerMissingContracts } from "./contracts.js";
 import {
-  type ProtectedOutputSignerMissingEvidence,
-  protectedOutputSignerMissingEvidenceCloses,
-} from "./protected-output-signer-missing.js";
+  type SignerWitnessScanEvidence,
+  signerWitnessVerdictCloses,
+} from "./evidence.js";
 import {
-  ProtectedOutputSignerStep05DatumSchema,
-  ProtectedOutputSignerStep05RedeemerSchema,
+  SignerWitnessTerminalDatumSchema,
+  SignerWitnessTerminalRedeemerSchema,
 } from "./schemas.js";
+import {
+  SIGNER_WITNESS_TERMINAL_STEP_INDEX,
+  type SignerWitnessScanContracts,
+} from "./submit-scan.js";
 
-export const submitProtectedOutputSignerMissingStep05 = async ({
+export type SignerWitnessTerminalContracts = SignerWitnessScanContracts & {
+  readonly computationThread: {
+    readonly policyId: string;
+    readonly mintingScript: Script;
+  };
+  readonly fraudProof: {
+    readonly policyId: string;
+    readonly mintingScript: Script;
+    readonly spendingScriptAddress: string;
+  };
+};
+
+/** Finalizes a signer-witness verdict that contradicts the block: burns the
+ * thread token and mints the fraud proof. */
+export const submitSignerWitnessTerminal = async ({
   lucid,
+  family,
   contracts,
   categoryId,
   signer,
@@ -31,26 +49,28 @@ export const submitProtectedOutputSignerMissingStep05 = async ({
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly contracts: ProtectedOutputSignerMissingContracts;
+  readonly family: string;
+  readonly contracts: SignerWitnessTerminalContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly evidence: ProtectedOutputSignerMissingEvidence;
+  readonly evidence: SignerWitnessScanEvidence;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
-  if (!protectedOutputSignerMissingEvidenceCloses(evidence))
+  if (!signerWitnessVerdictCloses(evidence))
     throw new Error(
-      "protected-output-signer-missing: terminal verdict does not contradict the block",
+      `${family}: terminal verdict does not contradict the block`,
     );
+  const stepIndex = SIGNER_WITNESS_TERMINAL_STEP_INDEX;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
     categoryId,
-    family: "protected-output-signer-missing",
-    stepIndex: 4,
+    family,
+    stepIndex,
     threadOutRef,
   });
   const state = requireLinearFaultStepState<{
@@ -60,28 +80,26 @@ export const submitProtectedOutputSignerMissingStep05 = async ({
   }>({
     threadUtxo,
     signer,
-    schema: ProtectedOutputSignerStep05DatumSchema as never,
-    family: "protected-output-signer-missing",
-    stepIndex: 4,
+    schema: SignerWitnessTerminalDatumSchema as never,
+    family,
+    stepIndex,
   });
   if (
     state.signer_required !== evidence.signerRequired ||
     state.signer_present !== evidence.signerPresent
   )
-    throw new Error(
-      "protected-output-signer-missing: terminal signer result changed",
-    );
+    throw new Error(`${family}: terminal signer verdict changed`);
   return await submitLinearFaultFinalize({
     lucid,
-    family: "protected-output-signer-missing",
-    stepIndex: 4,
-    step: contracts.steps[4],
+    family,
+    stepIndex,
+    step: contracts.steps[stepIndex]!,
     computationThread: contracts.computationThread,
     fraudProof: contracts.fraudProof,
     signer,
     threadUtxo,
     threadToken,
-    spendRedeemerSchema: ProtectedOutputSignerStep05RedeemerSchema,
+    spendRedeemerSchema: SignerWitnessTerminalRedeemerSchema,
     buildFamilyArgs: ({
       inputIndex,
       outputIndex,

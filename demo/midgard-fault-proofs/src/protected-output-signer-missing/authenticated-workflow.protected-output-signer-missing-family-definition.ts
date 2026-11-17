@@ -4,6 +4,11 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
+import { planSignerWitnessOpening } from "../signer-witness-scan/field-plans.js";
+import {
+  SignerWitnessScanDatumSchema,
+  SignerWitnessTerminalDatumSchema,
+} from "../signer-witness-scan/schemas.js";
 import { PROTECTED_OUTPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import { CURSOR_FAMILY_TRANSACTION_PORT } from "../workflow/cursor-family-adapter.js";
 import {
@@ -42,17 +47,9 @@ import {
   type ProtectedOutputSignerMissingAssemblyRuntime,
   protectedOutputSignerStageFromL1,
 } from "./authenticated-workflow.derive-protected-output-signer-missing-authenticated-source.js";
-import {
-  planProtectedOutputSignerOutputOpening,
-  planProtectedOutputSignerWitnessOpening,
-} from "./field-plans.js";
+import { planProtectedOutputSignerOutputOpening } from "./field-plans.js";
 import { type ProtectedOutputSignerMissingEvidence } from "./protected-output-signer-missing.js";
-import {
-  ProtectedOutputSignerStep02DatumSchema,
-  ProtectedOutputSignerStep03DatumSchema,
-  ProtectedOutputSignerStep04DatumSchema,
-  ProtectedOutputSignerStep05DatumSchema,
-} from "./schemas.js";
+import { ProtectedOutputSignerStep02DatumSchema } from "./schemas.js";
 import {
   nextProtectedOutputSignerAction,
   protectedOutputSignerEvidenceIdentity,
@@ -143,7 +140,7 @@ export type ManifestBoundProtectedOutputSignerMissingInstallation = Readonly<{
     "protectedOutputSignerMissing",
     "computationThreadMint" | "fraudProofMint" | "phasMembershipWithdraw",
     true,
-    5
+    4
   >;
   workflowVersion: typeof PROTECTED_OUTPUT_SIGNER_MISSING_WORKFLOW;
   config: ManifestBoundProtectedOutputSignerMissingConfig;
@@ -157,16 +154,15 @@ export const PROTECTED_OUTPUT_SIGNER_MISSING_FAMILY_DEFINITION = defineFamily<
   "protectedOutputSignerMissing",
   "computationThreadMint" | "fraudProofMint" | "phasMembershipWithdraw",
   true,
-  5,
+  4,
   ProtectedOutputSignerMissingAssemblyRuntime
 >({
   category: "protectedOutputSignerMissing",
   stepDatumSchemas: [
     FraudProofComputationThreadStepDatum,
     ProtectedOutputSignerStep02DatumSchema,
-    ProtectedOutputSignerStep03DatumSchema,
-    ProtectedOutputSignerStep04DatumSchema,
-    ProtectedOutputSignerStep05DatumSchema,
+    SignerWitnessScanDatumSchema,
+    SignerWitnessTerminalDatumSchema,
   ],
   witnessRoles: CORE_WITNESS_ROLES,
   fieldPreimageCertificate: true,
@@ -209,9 +205,8 @@ export const PROTECTED_OUTPUT_SIGNER_MISSING_FAMILY_DEFINITION = defineFamily<
             init: "submitInit",
             step_01: "submitStep01",
             step_02: "submitStep02",
-            step_03: "submitStep03",
-            step_04: "submitScan",
-            step_05: "submitStep05",
+            step_03: "submitScan",
+            step_04: "submitTerminal",
           } as const;
           const familyAction = actions[input.stage as keyof typeof actions];
           if (familyAction === undefined)
@@ -268,8 +263,7 @@ export const PROTECTED_OUTPUT_SIGNER_MISSING_FAMILY_DEFINITION = defineFamily<
         const { binding } = context;
         if (
           action.input.stage !== "step_02" &&
-          action.input.stage !== "step_03" &&
-          action.input.stage !== "step_04"
+          action.input.stage !== "step_03"
         )
           return null;
         const { evidence, source } = material.require(artifact);
@@ -285,12 +279,13 @@ export const PROTECTED_OUTPUT_SIGNER_MISSING_FAMILY_DEFINITION = defineFamily<
                   owner: config.signer.paymentKeyHash,
                   publish: true,
                 })
-              : planProtectedOutputSignerWitnessOpening({
+              : planSignerWitnessOpening({
                   evidence,
                   nativeTxCompactCbor: source.nativeTxCompactCbor,
                   witnessSetCompactCbor: source.witnessSetCompactCbor,
                   owner: config.signer.paymentKeyHash,
                   publish: true,
+                  label: "protected-output-signer-missing address witnesses",
                 }),
           compactCbor: source.nativeTxCompactCbor,
           witnessSetCompactCbor: source.witnessSetCompactCbor,

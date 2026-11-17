@@ -3786,6 +3786,46 @@
         "mem": 4367247,
         "cpu": 907682181
       }
+    },
+    "fraud_proofs/signer_witness_scan/scan/scan_max_open_turn_honest - scan_max_open_turn_honest_control": {
+      "test": "fraud_proofs/signer_witness_scan/scan/scan_max_open_turn_honest",
+      "minusControl": "scan_max_open_turn_honest_control",
+      "ceiling": {
+        "mem": 8143280,
+        "cpu": 4075675035
+      }
+    },
+    "fraud_proofs/signer_witness_scan/scan/scan_max_resume_turn_honest - scan_max_resume_turn_honest_control": {
+      "test": "fraud_proofs/signer_witness_scan/scan/scan_max_resume_turn_honest",
+      "minusControl": "scan_max_resume_turn_honest_control",
+      "ceiling": {
+        "mem": 8849997,
+        "cpu": 4292504150
+      }
+    },
+    "fraud_proofs/signer_witness_scan/scan/scan_max_open_turn_adversarial - scan_max_open_turn_adversarial_control": {
+      "test": "fraud_proofs/signer_witness_scan/scan/scan_max_open_turn_adversarial",
+      "minusControl": "scan_max_open_turn_adversarial_control",
+      "ceiling": {
+        "mem": 8236943,
+        "cpu": 5836431467
+      }
+    },
+    "fraud_proofs/signer_witness_scan/scan/scan_max_resume_turn_adversarial - scan_max_resume_turn_adversarial_control": {
+      "test": "fraud_proofs/signer_witness_scan/scan/scan_max_resume_turn_adversarial",
+      "minusControl": "scan_max_resume_turn_adversarial_control",
+      "ceiling": {
+        "mem": 8943661,
+        "cpu": 6053260582
+      }
+    },
+    "fraud_proofs/signer_witness_scan/scan/scan_max_final_turn_finds_the_last_signer - scan_max_final_turn_finds_the_last_signer_control": {
+      "test": "fraud_proofs/signer_witness_scan/scan/scan_max_final_turn_finds_the_last_signer",
+      "minusControl": "scan_max_final_turn_finds_the_last_signer_control",
+      "ceiling": {
+        "mem": 9046303,
+        "cpu": 3365808771
+      }
     }
   },
   "growth": {

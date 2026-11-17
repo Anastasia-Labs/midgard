@@ -6,6 +6,8 @@ import {
 import { submitCommittedFieldShapeInit } from "../committed-field-shape/submit-committed-field-shape-init.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { submitRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
+import { submitSignerWitnessScan } from "../signer-witness-scan/submit-scan.js";
+import { submitSignerWitnessTerminal } from "../signer-witness-scan/submit-terminal.js";
 import {
   createOwnOutputJournal,
   type OwnOutputJournal,
@@ -21,9 +23,6 @@ import { submitProtectedOutputSignerMissingCancel } from "./submit-cancel.js";
 import { submitProtectedOutputSignerMissingStep01Accepted } from "./submit-step-01-accepted.js";
 import { submitProtectedOutputSignerMissingStep01Forced } from "./submit-step-01-forced.js";
 import { submitProtectedOutputSignerMissingStep02 } from "./submit-step-02.js";
-import { submitProtectedOutputSignerMissingStep03 } from "./submit-step-03.js";
-import { submitProtectedOutputSignerMissingStep04 } from "./submit-step-04.js";
-import { submitProtectedOutputSignerMissingStep05 } from "./submit-step-05.js";
 import { type ProtectedOutputSignerStage } from "./workflow.js";
 
 export const createManifestBoundProtectedOutputSignerMissingSubmission = ({
@@ -48,9 +47,8 @@ export const createManifestBoundProtectedOutputSignerMissingSubmission = ({
       | "submitInit"
       | "submitStep01"
       | "submitStep02"
-      | "submitStep03"
       | "submitScan"
-      | "submitStep05"
+      | "submitTerminal"
       | "removeDescendants",
     evidence: ProtectedOutputSignerMissingEvidence,
   ) => {
@@ -160,14 +158,15 @@ export const createManifestBoundProtectedOutputSignerMissingSubmission = ({
         outputReference: result.nextThreadOutRef,
       };
     }
-    if (action === "submitStep03") {
-      const result = await submitProtectedOutputSignerMissingStep03({
+    if (action === "submitScan") {
+      const result = await submitSignerWitnessScan({
         ownOutputs,
         lucid: config.lucid,
+        family: "protected-output-signer-missing",
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,
         signer: config.signer,
-        threadOutRef: required(stage.threadOutRef, "step03 thread out-ref"),
+        threadOutRef: required(stage.threadOutRef, "scan thread out-ref"),
         evidence,
         nativeTxCompactCbor: required(
           stage.nativeTxCompactCbor,
@@ -185,53 +184,21 @@ export const createManifestBoundProtectedOutputSignerMissingSubmission = ({
         preSubmitBoundary,
       });
       return {
-        stage: "scanning" as const,
+        stage: result.stage,
         txHash: result.txHash,
         outputReference: result.nextThreadOutRef,
       };
     }
-    if (action === "submitScan") {
-      const result = await submitProtectedOutputSignerMissingStep04({
-        ownOutputs,
+    if (action === "submitTerminal") {
+      const result = await submitSignerWitnessTerminal({
         lucid: config.lucid,
+        family: "protected-output-signer-missing",
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,
         signer: config.signer,
-        threadOutRef: required(
-          stage.threadOutRef,
-          "reconstruction thread out-ref",
-        ),
+        threadOutRef: required(stage.threadOutRef, "terminal thread out-ref"),
         evidence,
-        nativeTxCompactCbor: required(
-          stage.nativeTxCompactCbor,
-          "native transaction compact CBOR",
-        ),
-        witnessSetCompactCbor: required(
-          stage.witnessSetCompactCbor,
-          "witness-set compact CBOR",
-        ),
-        certificateReferenceScriptUtxo:
-          config.referenceScripts.fieldPreimageCertificateMint,
-        publicationBoundary: preSubmitBoundary,
-        certificateBoundary: preSubmitBoundary,
         referenceScriptUtxo: config.referenceScripts.step04,
-        preSubmitBoundary,
-      });
-      return {
-        stage: result.terminal ? ("step05" as const) : ("scanning" as const),
-        txHash: result.txHash,
-        outputReference: result.nextThreadOutRef,
-      };
-    }
-    if (action === "submitStep05") {
-      const result = await submitProtectedOutputSignerMissingStep05({
-        lucid: config.lucid,
-        contracts: config.contracts,
-        categoryId: config.binding.resolvedContracts.category.categoryId,
-        signer: config.signer,
-        threadOutRef: required(stage.threadOutRef, "step05 thread out-ref"),
-        evidence,
-        referenceScriptUtxo: config.referenceScripts.step05,
         witnessReferenceScripts: config.referenceScripts.witnesses,
         preSubmitBoundary,
       });
@@ -269,18 +236,11 @@ export const createManifestBoundProtectedOutputSignerMissingSubmission = ({
     };
   },
   cancel: async (
-    current: "step01" | "step02" | "step03" | "scanning",
+    current: "step01" | "step02" | "scanning" | "terminal",
     evidence: ProtectedOutputSignerMissingEvidence,
   ) => {
     const stage = await resolveStage({ action: "cancel", evidence });
-    const index =
-      current === "step01"
-        ? 0
-        : current === "step02"
-          ? 1
-          : current === "step03"
-            ? 2
-            : 3;
+    const index = { step01: 0, step02: 1, scanning: 2, terminal: 3 }[current];
     const result = await submitProtectedOutputSignerMissingCancel({
       lucid: config.lucid,
       contracts: config.contracts,

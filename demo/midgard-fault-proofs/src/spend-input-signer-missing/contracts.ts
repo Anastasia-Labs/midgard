@@ -1,6 +1,7 @@
 import {
   buildSpendInputSignerMissingChain,
   parseFaultProofBlueprint,
+  SIGNER_WITNESS_SCAN_TITLES,
   type SpendingValidator,
 } from "@al-ft/midgard-sdk";
 import {
@@ -20,9 +21,8 @@ import {
 export const SPEND_INPUT_SIGNER_MISSING_BLUEPRINT_TITLES = [
   "fraud_proofs/spend_input_signer_missing/step_01.main.spend",
   "fraud_proofs/spend_input_signer_missing/step_02.main.spend",
-  "fraud_proofs/spend_input_signer_missing/step_03.main.spend",
-  "fraud_proofs/spend_input_signer_missing/step_04.main.spend",
-  "fraud_proofs/spend_input_signer_missing/step_05.main.spend",
+  SIGNER_WITNESS_SCAN_TITLES.scan,
+  SIGNER_WITNESS_SCAN_TITLES.terminal,
 ] as const;
 
 export type SpendInputSignerMissingAppliedStep = Readonly<{
@@ -35,7 +35,6 @@ export type SpendInputSignerMissingAppliedStep = Readonly<{
 
 export type SpendInputSignerMissingContracts = Readonly<{
   steps: readonly [
-    SpendInputSignerMissingAppliedStep,
     SpendInputSignerMissingAppliedStep,
     SpendInputSignerMissingAppliedStep,
     SpendInputSignerMissingAppliedStep,
@@ -121,7 +120,6 @@ export const applySpendInputSignerMissingScripts = ({
     adapt(steps[1], 1),
     adapt(steps[2], 2),
     adapt(steps[3], 3),
-    adapt(steps[4], 4),
   ];
 };
 

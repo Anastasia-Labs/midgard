@@ -21,7 +21,11 @@ import {
   VAN_ROSSEM_MAX_CPU_UNITS,
   VAN_ROSSEM_MAX_MEMORY_UNITS,
 } from "../src/proof-fit/van-rossem.js";
-import { prepareProtectedOutputSignerMissingEvidence } from "../src/protected-output-signer-missing/index.js";
+import {
+  prepareProtectedOutputSignerMissingEvidence,
+  ProtectedOutputSignerStep01RedeemerSchema,
+  ProtectedOutputSignerStep02DatumSchema,
+} from "../src/protected-output-signer-missing/index.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { makeScenario } from "./protected-output-signer-missing-lifecycle.make-scenario.js";
 import {
@@ -35,6 +39,7 @@ import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { nodeForcedVerdict } from "./support/emulator/node-forced-verdict.js";
+import { submitRawForcedStep01 } from "./support/emulator/raw-forced-step-01.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { deployHarnessFieldGrammarCertificate } from "./support/field-grammar-certificate-deployment-fixture.js";
 import {
@@ -189,21 +194,15 @@ describe("forced ProtectedOutputSignerMissing coordinate the node writes", () =>
       evidence,
       adjudicated,
     );
-    const carriage = await s.step03(
+    const terminal = await scanToTerminal(
+      s,
       credential.nextThreadOutRef,
       evidence,
       adjudicated,
     );
-    const terminal = await scanToTerminal(
-      s,
-      carriage.nextThreadOutRef,
-      evidence,
-      adjudicated,
-      carriage,
-    );
-    expect((await s.step05(terminal, evidence)).fraudProofUnit).toContain(
-      s.category.categoryId,
-    );
+    expect(
+      (await s.terminal(terminal.threadOutRef, evidence)).fraudProofUnit,
+    ).toContain(s.category.categoryId);
     expect((await remove()).fraudCategoryId).toBe(s.category.categoryId);
   }, 600_000);
 
@@ -230,25 +229,68 @@ describe("forced ProtectedOutputSignerMissing coordinate the node writes", () =>
       evidence,
       adjudicated,
     );
-    const carriage = await s.step03(
+    const terminal = await scanToTerminal(
+      s,
       credential.nextThreadOutRef,
       evidence,
       adjudicated,
     );
-    const terminal = await scanToTerminal(
-      s,
-      carriage.nextThreadOutRef,
-      evidence,
-      adjudicated,
-      carriage,
-    );
-    // Output 1's signer is missing, as the leaf says. Step 05 authenticates
-    // the thread and the terminal rule, which convicts a forced rejection
-    // only when the signer is present, returns false.
-    await expectOnchainRefusal(() => s.rawStep05(terminal), {
-      refusedBy: "fraud_proofs/protected_output_signer_missing/step_05",
+    // Output 1's signer is missing, as the leaf says. The shared terminal
+    // authenticates the thread and the terminal rule, which convicts a forced
+    // rejection only when the signer is present, returns false.
+    await expectOnchainRefusal(() => s.rawTerminal(terminal.threadOutRef), {
+      refusedBy: "fraud_proofs/signer_witness_scan/terminal",
       check: /^Validator returned false$/u,
     });
+  }, 600_000);
+
+  it("refuses a protected-output thread over a leaf rejected for a spend input's signer", async () => {
+    // Cross-family: the leaf carries the other signer family's reason. The
+    // thread binds the subject the leaf opens, exactly, and step 01's reason
+    // binder refuses it before any field or scan is read, so no state the
+    // shared scan writes can ever be reached under the wrong family.
+    const foreignReason = {
+      SpendInputSignerMissing: { input_index: 0n },
+    } as const;
+    const s = await makeScenario({ nativeTx, forcedReason: foreignReason });
+    const subject = forcedVerdictSubject({
+      transactionId: s.block.nativeTxId,
+      sourceKey: FORCED_ORDER_KEY,
+      rejectionReason: foreignReason,
+    });
+    const coordinates = prepareProtectedOutputSignerMissingEvidence({
+      subject: acceptedVerdictSubject(s.block.nativeTxId),
+      outputIndex: 1n,
+      canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
+    });
+    const thread = await s.init();
+    await expectOnchainRefusal(
+      async () =>
+        submitRawForcedStep01({
+          lucid: s.harness.proverLucid,
+          family: "protected-output-signer-missing",
+          contracts: s.contracts,
+          categoryId: s.category.categoryId,
+          signer: s.harness.proverSigner,
+          threadOutRef: thread,
+          nextDatum: s.datum(ProtectedOutputSignerStep02DatumSchema, {
+            bound: { subject, output_index: 0n },
+            witness_set_hash: coordinates.witnessSetHashHex,
+          }),
+          forcedSource: {
+            header: s.block.header,
+            membership: await s.forcedMembership(),
+          },
+          coordinate: { output_index: 0n },
+          redeemerSchema: ProtectedOutputSignerStep01RedeemerSchema,
+          referenceScriptUtxo: s.refs[0]!,
+        }),
+      {
+        refusedBy: "fraud_proofs/protected_output_signer_missing/step_01",
+        check:
+          /^expect cbor\.serialise\(actual\) == cbor\.serialise\(expected\)/u,
+      },
+    );
   }, 600_000);
 
   it("convicts a negative coordinate, which names no output", async () => {
@@ -265,9 +307,9 @@ describe("forced ProtectedOutputSignerMissing coordinate the node writes", () =>
       evidence,
       adjudicated,
     );
-    expect(direct.stage).toBe("step05");
+    expect(direct.stage).toBe("terminal");
     expect(
-      (await s.step05(direct.nextThreadOutRef, evidence)).fraudProofUnit,
+      (await s.terminal(direct.nextThreadOutRef, evidence)).fraudProofUnit,
     ).toContain(s.category.categoryId);
     expect((await remove()).fraudCategoryId).toBe(s.category.categoryId);
   }, 600_000);
@@ -292,9 +334,9 @@ describe("forced ProtectedOutputSignerMissing coordinate the node writes", () =>
         evidence,
         adjudicated,
       );
-      expect(direct.stage).toBe("step05");
+      expect(direct.stage).toBe("terminal");
       expect(
-        (await s.step05(direct.nextThreadOutRef, evidence)).fraudProofUnit,
+        (await s.terminal(direct.nextThreadOutRef, evidence)).fraudProofUnit,
       ).toContain(s.category.categoryId);
       expect((await remove()).fraudCategoryId).toBe(s.category.categoryId);
     },
@@ -366,9 +408,9 @@ describe("forced ProtectedOutputSignerMissing coordinate the node writes", () =>
         grammar.fieldGrammar,
       ),
     );
-    expect(direct.result.stage).toBe("step05");
+    expect(direct.result.stage).toBe("terminal");
     const minted = await captureEmulatorSubmission(s.harness.emulator, () =>
-      s.step05(direct.result.nextThreadOutRef, evidence),
+      s.terminal(direct.result.nextThreadOutRef, evidence),
     );
     for (const { measurement } of [bound, direct, minted]) {
       expect(measurement.executionMemory).toBeLessThanOrEqual(
@@ -379,7 +421,7 @@ describe("forced ProtectedOutputSignerMissing coordinate the node writes", () =>
       );
     }
     console.info(
-      `max-shape negative output coordinate (${MAXIMUM_OUTPUT_COUNT.toString()} outputs, ${encodeMidgardFieldPreimage(outputs).length.toString()} bytes): step-01 mem=${bound.measurement.executionMemory.toString()} cpu=${bound.measurement.executionSteps.toString()}; step-02 mem=${direct.measurement.executionMemory.toString()} cpu=${direct.measurement.executionSteps.toString()}; step-05 mem=${minted.measurement.executionMemory.toString()} cpu=${minted.measurement.executionSteps.toString()}`,
+      `max-shape negative output coordinate (${MAXIMUM_OUTPUT_COUNT.toString()} outputs, ${encodeMidgardFieldPreimage(outputs).length.toString()} bytes): step-01 mem=${bound.measurement.executionMemory.toString()} cpu=${bound.measurement.executionSteps.toString()}; step-02 mem=${direct.measurement.executionMemory.toString()} cpu=${direct.measurement.executionSteps.toString()}; terminal mem=${minted.measurement.executionMemory.toString()} cpu=${minted.measurement.executionSteps.toString()}`,
     );
     expect((await remove()).fraudCategoryId).toBe(s.category.categoryId);
   }, 1_800_000);

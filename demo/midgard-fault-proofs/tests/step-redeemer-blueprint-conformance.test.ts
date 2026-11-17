@@ -19,6 +19,7 @@ import * as ProtectedOutputSignerMissing from "../src/protected-output-signer-mi
 import * as RedeemerCanonicity from "../src/redeemer-canonicity/schemas.js";
 import * as ResolvedOutputNonCanonical from "../src/resolved-output-non-canonical/schemas.js";
 import * as ScriptIntegrityHashMissing from "../src/script-integrity-hash-missing/schemas.js";
+import * as SignerWitnessScan from "../src/signer-witness-scan/schemas.js";
 import * as SpendInputSignerMissing from "../src/spend-input-signer-missing/schemas.js";
 import * as TransactionOutputNonCanonical from "../src/transaction-output-non-canonical/schemas.js";
 import * as ValueNotPreserved from "../src/value-not-preserved/schemas.js";
@@ -53,6 +54,7 @@ const FAMILY_SCHEMA_MODULES: Readonly<Record<string, Exports>> = {
   redeemer_canonicity: RedeemerCanonicity,
   resolved_output_non_canonical: ResolvedOutputNonCanonical,
   script_integrity_hash_missing: ScriptIntegrityHashMissing,
+  signer_witness_scan: SignerWitnessScan,
   spend_input_signer_missing: SpendInputSignerMissing,
   transaction_output_non_canonical: TransactionOutputNonCanonical,
   value_not_preserved: ValueNotPreserved,

@@ -33,7 +33,6 @@ export const submitProtectedOutputSignerOpeningTransition = async ({
   nextStepIndex,
   nextDatum,
   openingFor,
-  checkpointCbor,
   coordinateOutOfRange,
   grammarRefInputIndex,
   referenceScriptUtxo,
@@ -47,16 +46,15 @@ export const submitProtectedOutputSignerOpeningTransition = async ({
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly stepIndex: 1 | 2 | 3;
-  /** Step 02 continues at index 2 (witness scan) or index 4 (direct verdict). */
-  readonly nextStepIndex: 2 | 3 | 4;
+  readonly stepIndex: 1;
+  /** Step 02 continues at the witness scan (2) or the terminal (3). */
+  readonly nextStepIndex: 2 | 3;
   readonly nextDatum: string;
   /** The opening, resolved against the built transaction's reference inputs. */
   readonly openingFor: (ctx: RedeemerContext) => FieldOpening;
-  readonly checkpointCbor?: string;
-  /** Step 02 only: names the out-of-range direct arm in the redeemer. */
+  /** Names the out-of-range direct arm in the redeemer. */
   readonly coordinateOutOfRange?: boolean;
-  /** Step 02 only: the field grammar certificate's slot, or null to walk. */
+  /** The field grammar certificate's slot, or null to walk. */
   readonly grammarRefInputIndex?: (
     referenceInputs: readonly UTxO[],
   ) => bigint | null;
@@ -110,18 +108,9 @@ export const submitProtectedOutputSignerOpeningTransition = async ({
             input_index: inputIndex,
             output_index: outputIndex,
             opening: openingFor(ctx),
-            // Step 02's redeemer names the out-of-range arm; the scan and
-            // credential arms leave it unset.
-            ...(stepIndex === 1
-              ? {
-                  coordinate_out_of_range: coordinateOutOfRange ?? false,
-                  grammar_ref_input_index:
-                    grammarRefInputIndex?.(ctx.referenceInputs) ?? null,
-                }
-              : {}),
-            ...(checkpointCbor === undefined
-              ? {}
-              : { checkpoint_cbor: checkpointCbor }),
+            coordinate_out_of_range: coordinateOutOfRange ?? false,
+            grammar_ref_input_index:
+              grammarRefInputIndex?.(ctx.referenceInputs) ?? null,
           },
         ],
       } as never,

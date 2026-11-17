@@ -86,6 +86,7 @@ export * from "./script-integrity-hash-missing/family.js";
 export * from "./script-integrity-hash-missing/replay.js";
 export * from "./script-integrity-hash-missing/staged-plan.js";
 export * from "./script-integrity-hash-missing/v1.js";
+export * from "./signer-witness-scan/index.js";
 export * from "./spend-input-signer-missing/index.js";
 export * from "./submit/record-completed-fraud.js";
 export * from "./submit-da-hash-preimage-step-01.js";

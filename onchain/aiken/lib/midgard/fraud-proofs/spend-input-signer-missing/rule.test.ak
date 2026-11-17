@@ -1,6 +1,9 @@
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
+use midgard/fraud_proofs/signer_witness_scan_v1/state
 use midgard/fraud_proofs/spend_input_signer_missing/rule
-use midgard/rejection_reason_v1.{SpendInputSignerMissing}
+use midgard/rejection_reason_v1.{
+  ProtectedOutputSignerMissing, SpendInputSignerMissing,
+}
 
 const tx_id =
   #"0101010101010101010101010101010101010101010101010101010101010101"
@@ -33,22 +36,31 @@ fn forced_subject(input_index: Int) -> substrate.VerdictSubjectV1 {
   }
 }
 
+/// The verdict the shared scan writes once it reached the field's end or a
+/// valid matching signature.
+fn scan_verdict(
+  subject: substrate.VerdictSubjectV1,
+  signer_present: Bool,
+) -> state.VerdictV1 {
+  state.VerdictV1 { subject, signer_required: True, signer_present }
+}
+
 test accepted_missing_signer_closes() {
-  rule.terminal_v1(rule.scan_verdict_v1(accepted_subject(), True))
+  state.terminal_v1(scan_verdict(accepted_subject(), False))
 }
 
 test accepted_present_signer_is_honest() fail {
-  rule.terminal_v1(rule.scan_verdict_v1(accepted_subject(), False))
+  state.terminal_v1(scan_verdict(accepted_subject(), True))
 }
 
 test forced_present_signer_closes() {
   let subject = forced_subject(3)
   expect _ = rule.bind_spend_input_v1(subject, 3, prior_root, witness_set_hash)
-  rule.terminal_v1(rule.scan_verdict_v1(subject, False))
+  state.terminal_v1(scan_verdict(subject, True))
 }
 
 test forced_missing_signer_is_honest() fail {
-  rule.terminal_v1(rule.scan_verdict_v1(forced_subject(3), True))
+  state.terminal_v1(scan_verdict(forced_subject(3), False))
 }
 
 test forced_wrong_coordinate_is_refused() fail {
@@ -61,6 +73,17 @@ test forced_wrong_coordinate_is_refused() fail {
   True
 }
 
+/// The sibling protected-output reason at the same coordinate is another
+/// family's subject: the bind compares the whole canonical reason encoding.
+test forced_foreign_reason_constructor_is_refused() fail {
+  let subject = substrate.VerdictSubjectV1 {
+    ..forced_subject(3),
+    rejection_reason: Some(ProtectedOutputSignerMissing { output_index: 3 }),
+  }
+  expect _ = rule.bind_spend_input_v1(subject, 3, prior_root, witness_set_hash)
+  True
+}
+
 /// A coordinate canonical validation authorizes without a signer contradicts
 /// the forced rejection with no scan at all.
 test forced_no_signer_required_closes() {
@@ -69,8 +92,8 @@ test forced_no_signer_required_closes() {
   let verdict = rule.direct_verdict_v1(bound)
   and {
     !verdict.signer_required,
-    !verdict.signer_missing,
-    rule.terminal_v1(verdict),
+    !verdict.signer_present,
+    state.terminal_v1(verdict),
   }
 }
 
@@ -90,11 +113,11 @@ test accepted_subject_cannot_take_the_direct_exit() fail {
 /// Even a hand-built `signer_required = False` verdict never closes an
 /// accepted subject: the decisive fault needs a required, missing signer.
 test accepted_unrequired_signer_never_closes() fail {
-  rule.terminal_v1(
-    rule.VerdictV1 {
+  state.terminal_v1(
+    state.VerdictV1 {
       subject: accepted_subject(),
       signer_required: False,
-      signer_missing: True,
+      signer_present: False,
     },
   )
 }
@@ -109,7 +132,7 @@ test forced_negative_coordinate_closes() {
     prior_root,
     witness_set_hash,
   )
-  rule.terminal_v1(rule.direct_verdict_v1(bound))
+  state.terminal_v1(rule.direct_verdict_v1(bound))
 }
 
 /// An accepted subject at a negative coordinate has no fault to close on.
@@ -120,5 +143,5 @@ test accepted_negative_coordinate_never_closes() fail {
     prior_root,
     witness_set_hash,
   )
-  rule.terminal_v1(rule.direct_verdict_v1(bound))
+  state.terminal_v1(rule.direct_verdict_v1(bound))
 }

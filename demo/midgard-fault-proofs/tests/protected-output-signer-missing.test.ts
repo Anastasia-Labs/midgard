@@ -158,7 +158,6 @@ describe("protectedOutputSignerMissing V1 binding", () => {
         canonicalTransactionCbor: encodeMidgardNativeTxCanonical(transaction),
       });
       expect(evidence.signerPresent).toBe(false);
-      expect(evidence.validSignerHashes).toEqual([]);
     }
 
     const valid = transactionWithWitness("valid");
@@ -182,7 +181,6 @@ describe("protectedOutputSignerMissing V1 binding", () => {
       canonicalTransactionCbor: encodeMidgardForcedTxCanonical(valid),
     });
     expect(forced.signerPresent).toBe(true);
-    expect(forced.validSignerHashes).toEqual([paymentCredential]);
 
     const missing = transactionWithWitness("empty");
     const missingId = computeMidgardNativeTxId(missing).toString("hex");

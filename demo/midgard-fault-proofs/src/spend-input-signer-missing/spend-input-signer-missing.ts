@@ -14,7 +14,6 @@ import {
   forcedVerdictSubject,
   PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE,
   PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
-  terminalVerdictContradiction,
   type VerdictSubject,
   verdictSubjectIsCanonical,
 } from "@al-ft/midgard-sdk";
@@ -26,14 +25,14 @@ import type {
   ResolvedOutputPriorLedgerReplay,
 } from "../resolved-output-non-canonical/resolved-output-non-canonical.js";
 import {
-  scanSignerWitnesses,
-  type SignerWitnessScanCheckpoint,
-} from "../signer-witness-scan/signer-witness-scan.js";
+  type SignerWitnessScanEvidence,
+  signerWitnessVerdictCloses,
+} from "../signer-witness-scan/evidence.js";
+import { scanSignerWitnesses } from "../signer-witness-scan/signer-witness-scan.js";
 
 export const SPEND_INPUT_SIGNER_MISSING_CATEGORY =
   "spendInputSignerMissing" as const;
 export const SPEND_INPUT_SIGNER_MISSING_ID = "00000027" as const;
-export const SPEND_INPUT_SIGNER_SCAN_BATCH = 16;
 export const SPEND_INPUT_SIGNER_MAX_WITNESSES = 318;
 
 const fail = (message: string): never => {
@@ -58,7 +57,7 @@ export type SpendInputSignerMissingFinding = Readonly<{
  * cursor visits (`input_signer_authorization`); a script credential is
  * authorized with no signer and a negative position or one past the field-0
  * count is never evaluated, so a forced rejection citing either is wrong
- * without any witness and step 02 closes at step 05 directly.
+ * without any witness and step 02 writes the terminal verdict directly.
  */
 export type SpendInputSignerMissingRoute =
   | "witness_scan"
@@ -66,28 +65,20 @@ export type SpendInputSignerMissingRoute =
   | "coordinate_out_of_range";
 
 export type SpendInputSignerMissingEvidence = SpendInputSignerMissingFinding &
+  SignerWitnessScanEvidence &
   Readonly<{
     canonicalTransactionCborHex: string;
     inputFieldPreimageHex: string;
-    addressWitnessFieldPreimageHex: string;
-    witnessSetHashHex: string;
     /** The header's committed `prev_utxos_root` the thread binds. */
     priorRoot: string;
     route: SpendInputSignerMissingRoute;
-    /** `true` exactly on the witness-scan route. */
-    signerRequired: boolean;
     /**
      * Absent only when the coordinate is negative or past the field-0
      * count.
      */
     resolved?: AuthenticatedPriorLedgerOutput;
-    /** Present only on the witness-scan route. */
-    paymentCredentialHex?: string;
-    validSignerHashes: readonly string[];
-    signerMissing: boolean;
     inputCarriage: "Inline" | "RawUtxo" | "Certified";
     witnessCarriage: "Inline" | "RawUtxo" | "Certified";
-    checkpoints: readonly SignerWitnessScanCheckpoint[];
   }>;
 
 /** Narrows in-range evidence to the resolved prior-ledger output step 02 proves. */
@@ -209,17 +200,16 @@ export const prepareSpendInputSignerMissingEvidence = ({
     route: Exclude<SpendInputSignerMissingRoute, "witness_scan">,
   ): SpendInputSignerMissingEvidence => {
     // No signer is required, so no scan runs: the verdict step 02 writes is
-    // `signer_required = False, signer_missing = False` by construction.
+    // `signer_required = False, signer_present = False` by construction.
     const evidence: SpendInputSignerMissingEvidence = Object.freeze({
       ...common,
       route,
       signerRequired: false,
       ...(resolved === undefined ? {} : { resolved }),
-      validSignerHashes: Object.freeze([]),
-      signerMissing: false,
+      signerPresent: false,
       checkpoints: Object.freeze([]),
     });
-    if (!spendInputSignerMissingEvidenceCloses(evidence))
+    if (!signerWitnessVerdictCloses(evidence))
       return fail(
         "authenticated signer state agrees with the operator verdict",
       );
@@ -274,7 +264,6 @@ export const prepareSpendInputSignerMissingEvidence = ({
     transactionId: subject.transaction_id,
     witnesses,
     paymentCredentialHex,
-    batch: SPEND_INPUT_SIGNER_SCAN_BATCH,
   });
   const evidence: SpendInputSignerMissingEvidence = Object.freeze({
     ...common,
@@ -282,26 +271,13 @@ export const prepareSpendInputSignerMissingEvidence = ({
     signerRequired: true,
     resolved,
     paymentCredentialHex,
-    validSignerHashes: scan.validSignerHashes,
-    signerMissing: !scan.signerPresent,
+    signerPresent: scan.signerPresent,
     checkpoints: scan.checkpoints,
   });
-  if (!spendInputSignerMissingEvidenceCloses(evidence))
+  if (!signerWitnessVerdictCloses(evidence))
     return fail("authenticated signer state agrees with the operator verdict");
   return evidence;
 };
-
-/** Mirrors `rule.terminal_v1`: the decisive fault is a required, missing signer. */
-export const spendInputSignerMissingEvidenceCloses = (
-  evidence: Pick<
-    SpendInputSignerMissingEvidence,
-    "subject" | "signerRequired" | "signerMissing"
-  >,
-): boolean =>
-  terminalVerdictContradiction(
-    evidence.subject,
-    evidence.signerRequired && evidence.signerMissing,
-  );
 
 export const spendInputSignerMissingEvidenceIdentity = (
   evidence: SpendInputSignerMissingEvidence,

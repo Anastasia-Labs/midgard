@@ -11,6 +11,7 @@ import {
   forcedVerdictSubject,
   hashBlockHeader,
   Proof,
+  type RejectionReason,
 } from "@al-ft/midgard-sdk";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -43,7 +44,7 @@ import {
   transitionTraceOutRef,
 } from "./support/submit-init-emulator-shared.js";
 
-/** Publishes the five applied steps and the certificate mint as plain
+/** Publishes the four applied steps and the certificate mint as plain
  * reference scripts; checked only for the maximum run. */
 export const publishReferences = async (
   harness: Harness,
@@ -171,9 +172,7 @@ export const commitForcedBlock = async (
   family: Family,
   nativeTx: MidgardNativeTxFull,
   priorRoot: string,
-  reason: {
-    readonly SpendInputSignerMissing: { readonly input_index: bigint };
-  },
+  reason: RejectionReason,
   sourceKeyByte: string,
 ) => {
   const nativeTxId = computeMidgardNativeTxId(nativeTx).toString("hex");

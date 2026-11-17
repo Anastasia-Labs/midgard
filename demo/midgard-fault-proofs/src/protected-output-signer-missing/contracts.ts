@@ -2,6 +2,7 @@ import {
   buildFieldGrammarCertificateValidator,
   buildProtectedOutputSignerMissingChain,
   parseFaultProofBlueprint,
+  SIGNER_WITNESS_SCAN_TITLES,
   type SpendingValidator,
 } from "@al-ft/midgard-sdk";
 import {
@@ -21,9 +22,8 @@ import {
 export const PROTECTED_OUTPUT_SIGNER_MISSING_BLUEPRINT_TITLES = [
   "fraud_proofs/protected_output_signer_missing/step_01.main.spend",
   "fraud_proofs/protected_output_signer_missing/step_02.main.spend",
-  "fraud_proofs/protected_output_signer_missing/step_03.main.spend",
-  "fraud_proofs/protected_output_signer_missing/step_04.main.spend",
-  "fraud_proofs/protected_output_signer_missing/step_05.main.spend",
+  SIGNER_WITNESS_SCAN_TITLES.scan,
+  SIGNER_WITNESS_SCAN_TITLES.terminal,
 ] as const;
 
 export type ProtectedOutputSignerAppliedStep = Readonly<{
@@ -62,7 +62,6 @@ export type ProtectedOutputSignerManifest = Readonly<{
   categoryId: typeof PROTECTED_OUTPUT_SIGNER_MISSING_ID;
   network: Network;
   steps: readonly [
-    ProtectedOutputSignerAppliedStep,
     ProtectedOutputSignerAppliedStep,
     ProtectedOutputSignerAppliedStep,
     ProtectedOutputSignerAppliedStep,
@@ -127,7 +126,6 @@ export const applyProtectedOutputSignerMissingScripts = ({
     adapt(steps[1], 1),
     adapt(steps[2], 2),
     adapt(steps[3], 3),
-    adapt(steps[4], 4),
   ];
 };
 

@@ -1,7 +1,7 @@
 import { type MidgardNativeTxFull } from "@al-ft/midgard-core";
 import { type MidgardForcedTxFull } from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Data, type UTxO } from "@lucid-evolution/lucid";
+import { Data, type RedeemerContext, type UTxO } from "@lucid-evolution/lucid";
 
 import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
 import type { FaultProofFieldGrammarDeployment } from "../src/field-grammar-certificate.js";
@@ -9,16 +9,18 @@ import { requireLinearFaultThreadUtxo } from "../src/linear-fault-family.js";
 import { submitLinearFaultFinalize } from "../src/linear-fault-finalize.js";
 import {
   type ProtectedOutputSignerMissingEvidence,
-  ProtectedOutputSignerStep05RedeemerSchema,
   submitProtectedOutputSignerMissingCancel,
   submitProtectedOutputSignerMissingStep01Accepted,
   submitProtectedOutputSignerMissingStep01Forced,
   submitProtectedOutputSignerMissingStep02,
-  submitProtectedOutputSignerMissingStep03,
-  submitProtectedOutputSignerMissingStep04,
-  submitProtectedOutputSignerMissingStep05,
 } from "../src/protected-output-signer-missing/index.js";
 import { submitProtectedOutputSignerOpeningTransition } from "../src/protected-output-signer-missing/submit-opening-transition.js";
+import {
+  SIGNER_WITNESS_TERMINAL_STEP_INDEX,
+  SignerWitnessTerminalRedeemerSchema,
+  submitSignerWitnessScan,
+  submitSignerWitnessTerminal,
+} from "../src/signer-witness-scan/index.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
 import {
   compactHex,
@@ -28,6 +30,7 @@ import {
   witnessSetCompactHex,
 } from "./protected-output-signer-missing-lifecycle.registered-contracts.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
+import { submitRawSignerWitnessScanTurn } from "./support/emulator/signer-witness-scan-raw-turn.js";
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
@@ -38,7 +41,7 @@ import {
 
 /**
  * One committed block on the registered chain (a normal subject or a forced
- * leaf, plus any extra normal transactions), the family's five reference
+ * leaf, plus any extra normal transactions), the family's four reference
  * scripts, and submitters that hand the caller's exact datum, opening and
  * checkpoint to the chain, so every negative below is a validator refusal
  * rather than an off-chain guard.
@@ -201,70 +204,66 @@ export const makeScenario = async ({
       certificateReferenceScriptUtxo: certificateRef,
       ...(fieldGrammar === undefined ? {} : { fieldGrammar }),
     });
-  const step03 = (
+  /** One scan turn; a resumed turn reuses the opening turn's carriage. */
+  const scan = (
     threadOutRef: string,
     evidence: ProtectedOutputSignerMissingEvidence,
     subject: MidgardNativeTxFull | MidgardForcedTxFull,
-  ) =>
-    submitProtectedOutputSignerMissingStep03({
-      ...common(2),
-      threadOutRef,
-      evidence,
-      nativeTxCompactCbor: compactHex(subject),
-      witnessSetCompactCbor: witnessSetCompactHex(subject),
-      certificateReferenceScriptUtxo: certificateRef,
-    });
-  const step04 = (
-    threadOutRef: string,
-    evidence: ProtectedOutputSignerMissingEvidence,
-    subject: MidgardNativeTxFull | MidgardForcedTxFull,
-    carriage: Awaited<
-      ReturnType<typeof submitProtectedOutputSignerMissingStep03>
+    carriage?: Pick<
+      Awaited<ReturnType<typeof submitSignerWitnessScan>>,
+      "carriageUtxos" | "certificateUtxo"
     >,
   ) =>
-    submitProtectedOutputSignerMissingStep04({
-      ...common(3),
+    submitSignerWitnessScan({
+      ...common(2),
+      family: "protected-output-signer-missing",
       threadOutRef,
       evidence,
       nativeTxCompactCbor: compactHex(subject),
       witnessSetCompactCbor: witnessSetCompactHex(subject),
       certificateReferenceScriptUtxo: certificateRef,
-      publishedCarriageUtxos: carriage.carriageUtxos,
-      ...(carriage.certificateUtxo === undefined
+      ...(carriage === undefined
         ? {}
-        : { certificateUtxo: carriage.certificateUtxo }),
+        : {
+            publishedCarriageUtxos: carriage.carriageUtxos,
+            ...(carriage.certificateUtxo === undefined
+              ? {}
+              : { certificateUtxo: carriage.certificateUtxo }),
+          }),
     });
-  const step05 = (
+  const terminal = (
     threadOutRef: string,
     evidence: ProtectedOutputSignerMissingEvidence,
   ) =>
-    submitProtectedOutputSignerMissingStep05({
-      ...common(4),
+    submitSignerWitnessTerminal({
+      ...common(3),
+      family: "protected-output-signer-missing",
       threadOutRef,
       evidence,
       witnessReferenceScripts: harness.witnessReferenceScripts,
     });
-  /** Step 05 without the off-chain polarity guard: the validator decides. */
-  const rawStep05 = async (threadOutRef: string) => {
+  /** The terminal without the off-chain polarity guard: the validator decides. */
+  const rawTerminal = async (threadOutRef: string) => {
+    const stepIndex = SIGNER_WITNESS_TERMINAL_STEP_INDEX;
     const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
       lucid: harness.proverLucid,
       contracts,
       categoryId: category.categoryId,
       family: "protected-output-signer-missing",
-      stepIndex: 4,
+      stepIndex,
       threadOutRef,
     });
     return await submitLinearFaultFinalize({
       lucid: harness.proverLucid,
       family: "protected-output-signer-missing",
-      stepIndex: 4,
-      step: contracts.steps[4],
+      stepIndex,
+      step: contracts.steps[stepIndex],
       computationThread: contracts.computationThread,
       fraudProof: contracts.fraudProof,
       signer: harness.proverSigner,
       threadUtxo,
       threadToken,
-      spendRedeemerSchema: ProtectedOutputSignerStep05RedeemerSchema,
+      spendRedeemerSchema: SignerWitnessTerminalRedeemerSchema,
       buildFamilyArgs: ({
         inputIndex,
         outputIndex,
@@ -274,7 +273,7 @@ export const makeScenario = async ({
         output_index: outputIndex,
         fraud_proof_mint_redeemer_index: fraudProofMintRedeemerIndex,
       }),
-      referenceScriptUtxo: refs[4]!,
+      referenceScriptUtxo: refs[stepIndex]!,
       witnessReferenceScripts: harness.witnessReferenceScripts,
       awaitConfirmation: true,
     });
@@ -290,14 +289,13 @@ export const makeScenario = async ({
       { fraud_prover: harness.proverSigner.paymentKeyHash, data } as never,
       schema as never,
     );
-  /** Hands an arbitrary datum, opening and checkpoint to a step validator. */
+  /** Hands an arbitrary datum and opening to step 02. */
   const rawTransition = (input: {
     readonly threadOutRef: string;
-    readonly stepIndex: 1 | 2 | 3;
-    readonly nextStepIndex: 2 | 3 | 4;
+    readonly stepIndex: 1;
+    readonly nextStepIndex: 2 | 3;
     readonly nextDatum: string;
     readonly opening: SDK.FieldOpening;
-    readonly checkpointCbor?: string;
     readonly carriageReferenceInputs: readonly UTxO[];
     readonly redeemerSchema: unknown;
   }) =>
@@ -311,12 +309,37 @@ export const makeScenario = async ({
       nextStepIndex: input.nextStepIndex,
       nextDatum: input.nextDatum,
       openingFor: () => input.opening,
-      ...(input.checkpointCbor === undefined
-        ? {}
-        : { checkpointCbor: input.checkpointCbor }),
       referenceScriptUtxo: refs[input.stepIndex]!,
       carriageReferenceInputs: input.carriageReferenceInputs,
       redeemerSchema: input.redeemerSchema as never,
+    });
+  /** Hands an arbitrary datum, opening and checkpoint to the shared scan. */
+  const rawScan = (input: {
+    readonly threadOutRef: string;
+    readonly terminal?: boolean;
+    readonly nextDatum: string;
+    readonly opening:
+      | SDK.FieldOpening
+      | ((ctx: RedeemerContext) => SDK.FieldOpening);
+    readonly checkpointCbor: string | null;
+    readonly carriageReferenceInputs: readonly UTxO[];
+  }) =>
+    submitRawSignerWitnessScanTurn({
+      lucid: harness.proverLucid,
+      family: "protected-output-signer-missing",
+      contracts,
+      categoryId: category.categoryId,
+      signer: harness.proverSigner,
+      threadOutRef: input.threadOutRef,
+      terminal: input.terminal ?? false,
+      nextDatum: input.nextDatum,
+      openingFor:
+        typeof input.opening === "function"
+          ? input.opening
+          : () => input.opening as SDK.FieldOpening,
+      checkpointCbor: input.checkpointCbor,
+      referenceScriptUtxo: refs[2]!,
+      carriageReferenceInputs: input.carriageReferenceInputs,
     });
   return {
     harness,
@@ -331,12 +354,12 @@ export const makeScenario = async ({
     forced01,
     forcedMembership,
     step02,
-    step03,
-    step04,
-    step05,
-    rawStep05,
+    scan,
+    terminal,
+    rawTerminal,
     cancel,
     datum,
     rawTransition,
+    rawScan,
   };
 };

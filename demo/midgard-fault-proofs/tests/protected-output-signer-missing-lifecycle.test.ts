@@ -11,8 +11,8 @@ import "../src/field-opening.js";
 import "../src/linear-fault-family.js";
 import "../src/linear-fault-finalize.js";
 import "../src/protected-output-signer-missing/index.js";
-import "../src/protected-output-signer-missing/submit-opening-transition.js";
 import "../src/remove-fraudulent-block.js";
+import "../src/signer-witness-scan/index.js";
 import "../src/step-support.js";
 import "../src/testing/complete-lifecycle.js";
 import "../src/transition-trace/witnesses.js";
@@ -24,6 +24,7 @@ import "./support/emulator/native-tx.js";
 import "./support/emulator/reference-scripts.js";
 import "./support/emulator/registered-chain.js";
 import "./support/emulator/removal-deployment.js";
+import "./support/emulator/signer-witness-scan-raw-turn.js";
 import "./support/lifecycle-coverage.js";
 import "./support/native-script-decoding-emulator.js";
 import "./support/submit-init-emulator-fixtures.js";
@@ -39,7 +40,6 @@ import {
   encodeCbor,
   encodeMidgardNativeTxCanonical,
   encodeMidgardNativeTxCompact,
-  encodeMidgardTxOutput,
   MIDGARD_CHUNK_BYTES_K,
   MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME,
   type MidgardFieldCarriagePlan,
@@ -67,25 +67,23 @@ import {
 } from "../src/field-opening.js";
 import {
   planProtectedOutputSignerOutputOpening,
-  planProtectedOutputSignerWitnessOpening,
   prepareProtectedOutputSignerMissingEvidence,
   PROTECTED_OUTPUT_SIGNER_MAX_WITNESSES,
-  PROTECTED_OUTPUT_SIGNER_SCAN_BATCH,
   type ProtectedOutputSignerMissingEvidence,
   ProtectedOutputSignerStep02RedeemerSchema,
-  ProtectedOutputSignerStep03DatumSchema,
-  ProtectedOutputSignerStep03RedeemerSchema,
-  ProtectedOutputSignerStep04DatumSchema,
-  ProtectedOutputSignerStep04RedeemerSchema,
   submitProtectedOutputSignerMissingCancel,
   submitProtectedOutputSignerMissingStep01Accepted,
   submitProtectedOutputSignerMissingStep02,
-  submitProtectedOutputSignerMissingStep03,
-  submitProtectedOutputSignerMissingStep04,
-  submitProtectedOutputSignerMissingStep05,
 } from "../src/protected-output-signer-missing/index.js";
-import { submitProtectedOutputSignerOpeningTransition } from "../src/protected-output-signer-missing/submit-opening-transition.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
+import {
+  planSignerWitnessOpening,
+  SIGNER_WITNESS_SCAN_BATCH,
+  SignerWitnessScanDatumSchema,
+  SignerWitnessTerminalDatumSchema,
+  submitSignerWitnessScan,
+  submitSignerWitnessTerminal,
+} from "../src/signer-witness-scan/index.js";
 import { nativeTxFromCoreCompact } from "../src/step-support.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
@@ -120,6 +118,7 @@ import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { l2TransactionSourceCbor } from "./support/emulator/native-tx.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
+import { submitRawSignerWitnessScanTurn } from "./support/emulator/signer-witness-scan-raw-turn.js";
 import {
   countedTransactionsRoot,
   EMULATOR_HEADER_CLOCK_HEADROOM_MS,
@@ -129,457 +128,508 @@ import {
 } from "./support/submit-init-emulator-fixtures.js";
 import {
   makeHeader,
-  makeNativeTx,
   network,
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
 
 describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
-  it("runs maximum-carriage evidence through cancel, restartable scan, mint and leased removal", async () => {
-    const harness = await makeFaultProofEmulatorHarness({
-      contractOptions: {
-        realProtectedOutputSignerMissing: true,
-        alwaysFraudProofCatalogue: true,
-      },
-      lucidOptions: {
-        evaluator: makeProtectedOutputSignerIsolatedEvaluator(),
-      },
-    });
-    if (process.env.MIDGARD_PRINT_FIT === "1")
-      console.info("protected-output-signer-missing:max:harness-ready");
-    const { steps, contracts, catalogue, category } =
-      await registeredContracts(harness);
-    const credential = Buffer.alloc(28, 0xa7);
-    const output = encodeMidgardTxOutput({
-      address: Buffer.concat([Buffer.from([0x68]), credential]),
-      value: { lovelace: 2_000_000n, assets: new Map() },
-    });
-    const certifiedWitnessCount = PROTECTED_OUTPUT_SIGNER_MAX_WITNESSES;
-    const witnesses = Array.from(
-      { length: certifiedWitnessCount },
-      (_unused, index) => decoyWitness(index),
-    );
-    const nativeTx = makeNativeTx({
-      spendInputCbors: [],
-      fee: 7n,
-      outputCbor: output,
-      addrTxWitsPreimageCbor: encodeCbor(witnesses),
-    });
-    const nativeTxId = computeMidgardNativeTxId(nativeTx).toString("hex");
-    const compactCbor = encodeMidgardNativeTxCompact(nativeTx.compact);
-    const witnessSetCompactCbor = witnessSetCompactHex(nativeTx);
-    const sourceCbor = l2TransactionSourceCbor(nativeTx);
-    const store = new Store(undefined);
-    await store.ready();
-    const trie = new Trie(store);
-    await trie.insert(
-      Buffer.from(nativeTxId, "hex"),
-      Buffer.from(sourceCbor, "hex"),
-    );
-    const proof = await trie.prove(Buffer.from(nativeTxId, "hex"));
-    const transactionsRoot = Buffer.from(trie.hash).toString("hex");
-    const txInclusion = {
-      nativeTxId,
-      nativeTx: nativeTxFromCoreCompact(nativeTx.compact),
-      nativeTxCompactCbor: compactCbor.toString("hex"),
-      l2TransactionSourceCbor: sourceCbor,
-      transactionsPhasRoot: transactionsRoot,
-      txMembershipProof: Data.from(proof.toCBOR().toString("hex"), Proof),
-      txMembershipProofCbor: proof.toCBOR().toString("hex"),
-    };
-    const predecessor = await setupFraudulentBlock({
-      funderLucid: harness.funderLucid,
-      emulator: harness.emulator,
-      contracts: harness.contracts,
-      catalogue,
-      fixture: {
-        transactionsRoot,
-        l2TransactionCount: 1n,
-        headerDurationMs: EMULATOR_HEADER_CLOCK_HEADROOM_MS,
-      },
-    });
-    const targetStart = emulatorSuccessorHeaderStart({
-      predecessorEndTime: predecessor.header.endTime,
-      emulator: harness.emulator,
-    });
-    const targetHeader = {
-      ...makeHeader(
-        predecessor.header.operatorVkey,
-        targetStart,
-        await countedTransactionsRoot(transactionsRoot, 1n),
-        1n,
-      ),
-      prevHeaderHash: predecessor.headerHash,
-    };
-    const target = await submitSuccessorBlockTx({
-      lucid: harness.funderLucid,
-      emulator: harness.emulator,
-      contracts: harness.contracts,
-      anchorBlockUnit: predecessor.stateQueueBlockUnit,
-      header: targetHeader,
-      hubOracle: predecessor.hubOracle,
-      scheduler: predecessor.scheduler,
-      activeOperatorNode: predecessor.activeOperatorNode,
-      activeOperatorNodeUnit: predecessor.activeOperatorNodeUnit,
-    });
-    const setup = {
-      fraudulentBlockOutRef: target.successorOutRef,
-      headerHash: target.successorHeaderHash,
-    };
-    if (process.env.MIDGARD_PRINT_FIT === "1")
-      console.info("protected-output-signer-missing:max:block-ready");
-    const evidence = prepareProtectedOutputSignerMissingEvidence({
-      subject: acceptedVerdictSubject(nativeTxId),
-      outputIndex: 0n,
-      canonicalTransactionCbor:
-        "validity" in nativeTx
-          ? encodeMidgardNativeTxCanonical(nativeTx)
-          : encodeMidgardForcedTxCanonical(nativeTx),
-    });
-    expect(evidence.witnessCarriage).toBe("Certified");
-    expect(evidence.validSignerHashes).toEqual([]);
-    coverage.scenario("maximum_supported_evidence");
-    if (process.env.MIDGARD_PRINT_FIT === "1")
-      console.info("protected-output-signer-missing:max:evidence-ready");
-
-    const references: UTxO[] = [];
-    for (const [index, step] of steps.entries()) {
-      references.push(
-        (
-          await publishPlainReferenceScriptUtxo({
-            lucid: harness.funderLucid,
-            script: step.spendingScript,
-            label: `protected-output-signer-missing-${index.toString()}`,
-          })
-        ).utxo,
-      );
-    }
-    const certificateReference = (
-      await publishPlainReferenceScriptUtxo({
-        lucid: harness.funderLucid,
-        script: harness.contracts.fieldPreimageCertificate.mintingScript,
-        label: "protected-output-signer-missing-certificate",
-      })
-    ).utxo;
-    if (process.env.MIDGARD_PRINT_FIT === "1")
-      console.info("protected-output-signer-missing:max:references-ready");
-    const initThread = async () => {
-      const init = await captureEmulatorSubmission(harness.emulator, () =>
-        submitCommittedFieldShapeInit({
-          lucid: harness.proverLucid,
-          blueprint: harness.realBlueprint,
-          network,
-          contracts: contracts as never,
-          category,
-          catalogue: {
-            policyId: harness.contracts.fraudProofCatalogue.policyId,
-            spendingScriptAddress:
-              harness.contracts.fraudProofCatalogue.spendingScriptAddress,
-            root: catalogue.root,
-          },
-          signer: harness.proverSigner,
-          fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
-          witnessReferenceScripts: harness.witnessReferenceScripts,
-        }),
-      );
-      return init;
-    };
-    const cancelInit = await initThread();
-    const cancellation = await captureEmulatorSubmission(harness.emulator, () =>
-      submitProtectedOutputSignerMissingCancel({
-        lucid: harness.proverLucid,
-        contracts,
-        categoryId: category.categoryId,
-        signer: harness.proverSigner,
-        threadOutRef: `${cancelInit.result.txHash}#${cancelInit.result.firstStepOutputIndex.toString()}`,
-        referenceScriptUtxo: references[0]!,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-      }),
-    );
-    expect(cancellation.measurement.l1ByteMargin).toBeGreaterThan(0);
-    coverage.cancelled("step-01");
-
-    const init = await initThread();
-    const [threadUtxo] = await harness.proverLucid.utxosByOutRef([
-      {
-        txHash: init.result.txHash,
-        outputIndex: init.result.firstStepOutputIndex,
-      },
-    ]);
-    if (threadUtxo === undefined) throw new Error("init thread absent");
-    const step01Result = await captureEmulatorSubmission(harness.emulator, () =>
-      submitProtectedOutputSignerMissingStep01Accepted({
-        lucid: harness.proverLucid,
-        blueprint: harness.realBlueprint,
-        network,
-        contracts,
-        signer: harness.proverSigner,
-        evidence,
-        threadUtxo,
-        threadToken: {
-          unit: init.result.computationThreadUnit,
-          fraudulentHeaderHash: init.result.fraudulentHeaderHash,
+  it.each([
+    {
+      shape: "decoy keys",
+      credentialHex: "a7".repeat(28),
+      witness: (index: number) => decoyWitness(index),
+    },
+    {
+      // Every witness carries the protected key, so every one passes the key
+      // hash and pays for an Ed25519 verification that fails: the costliest
+      // field for the scan.
+      shape: "matching keys with forged signatures",
+      credentialHex: signerCredentialHex,
+      witness: (index: number) => forgedWitness(index + 1),
+    },
+  ])(
+    "runs maximum-carriage evidence ($shape) through cancel, restartable scan, mint and leased removal",
+    async ({ shape, credentialHex, witness }) => {
+      const harness = await makeFaultProofEmulatorHarness({
+        contractOptions: {
+          realProtectedOutputSignerMissing: true,
+          alwaysFraudProofCatalogue: true,
         },
-        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-        txInclusion,
-        referenceScriptUtxo: references[0]!,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-      }),
-    );
-    if (process.env.MIDGARD_PRINT_FIT === "1")
-      console.info("protected-output-signer-missing:max:step01-ready");
-    const step02Result = await captureEmulatorSubmission(harness.emulator, () =>
-      submitProtectedOutputSignerMissingStep02({
-        lucid: harness.proverLucid,
-        contracts,
-        categoryId: category.categoryId,
-        signer: harness.proverSigner,
-        threadOutRef: step01Result.result.nextThreadOutRef,
-        evidence,
+        lucidOptions: {
+          evaluator: makeProtectedOutputSignerIsolatedEvaluator(),
+        },
+      });
+      if (process.env.MIDGARD_PRINT_FIT === "1")
+        console.info("protected-output-signer-missing:max:harness-ready");
+      const { steps, contracts, catalogue, category } =
+        await registeredContracts(harness);
+      const nativeTx = nativeTxWith({
+        fee: 7n,
+        credentialHex,
+        witnesses: () =>
+          Array.from(
+            { length: PROTECTED_OUTPUT_SIGNER_MAX_WITNESSES },
+            (_unused, index) => witness(index),
+          ),
+      });
+      const nativeTxId = computeMidgardNativeTxId(nativeTx).toString("hex");
+      const compactCbor = encodeMidgardNativeTxCompact(nativeTx.compact);
+      const witnessSetCompactCbor = witnessSetCompactHex(nativeTx);
+      const sourceCbor = l2TransactionSourceCbor(nativeTx);
+      const store = new Store(undefined);
+      await store.ready();
+      const trie = new Trie(store);
+      await trie.insert(
+        Buffer.from(nativeTxId, "hex"),
+        Buffer.from(sourceCbor, "hex"),
+      );
+      const proof = await trie.prove(Buffer.from(nativeTxId, "hex"));
+      const transactionsRoot = Buffer.from(trie.hash).toString("hex");
+      const txInclusion = {
+        nativeTxId,
+        nativeTx: nativeTxFromCoreCompact(nativeTx.compact),
         nativeTxCompactCbor: compactCbor.toString("hex"),
-        witnessSetCompactCbor,
-        referenceScriptUtxo: references[1]!,
-        certificateReferenceScriptUtxo: certificateReference,
-      }),
-    );
-    if (process.env.MIDGARD_PRINT_FIT === "1")
-      console.info("protected-output-signer-missing:max:step02-ready");
-    const step03Result = await captureEmulatorSubmission(harness.emulator, () =>
-      submitProtectedOutputSignerMissingStep03({
+        l2TransactionSourceCbor: sourceCbor,
+        transactionsPhasRoot: transactionsRoot,
+        txMembershipProof: Data.from(proof.toCBOR().toString("hex"), Proof),
+        txMembershipProofCbor: proof.toCBOR().toString("hex"),
+      };
+      const predecessor = await setupFraudulentBlock({
+        funderLucid: harness.funderLucid,
+        emulator: harness.emulator,
+        contracts: harness.contracts,
+        catalogue,
+        fixture: {
+          transactionsRoot,
+          l2TransactionCount: 1n,
+          headerDurationMs: EMULATOR_HEADER_CLOCK_HEADROOM_MS,
+        },
+      });
+      const targetStart = emulatorSuccessorHeaderStart({
+        predecessorEndTime: predecessor.header.endTime,
+        emulator: harness.emulator,
+      });
+      const targetHeader = {
+        ...makeHeader(
+          predecessor.header.operatorVkey,
+          targetStart,
+          await countedTransactionsRoot(transactionsRoot, 1n),
+          1n,
+        ),
+        prevHeaderHash: predecessor.headerHash,
+      };
+      const target = await submitSuccessorBlockTx({
+        lucid: harness.funderLucid,
+        emulator: harness.emulator,
+        contracts: harness.contracts,
+        anchorBlockUnit: predecessor.stateQueueBlockUnit,
+        header: targetHeader,
+        hubOracle: predecessor.hubOracle,
+        scheduler: predecessor.scheduler,
+        activeOperatorNode: predecessor.activeOperatorNode,
+        activeOperatorNodeUnit: predecessor.activeOperatorNodeUnit,
+      });
+      const setup = {
+        fraudulentBlockOutRef: target.successorOutRef,
+        headerHash: target.successorHeaderHash,
+      };
+      if (process.env.MIDGARD_PRINT_FIT === "1")
+        console.info("protected-output-signer-missing:max:block-ready");
+      const evidence = prepareProtectedOutputSignerMissingEvidence({
+        subject: acceptedVerdictSubject(nativeTxId),
+        outputIndex: 0n,
+        canonicalTransactionCbor:
+          "validity" in nativeTx
+            ? encodeMidgardNativeTxCanonical(nativeTx)
+            : encodeMidgardForcedTxCanonical(nativeTx),
+      });
+      expect(evidence.witnessCarriage).toBe("Certified");
+      expect(evidence.signerPresent).toBe(false);
+      coverage.scenario("maximum_supported_evidence");
+      if (process.env.MIDGARD_PRINT_FIT === "1")
+        console.info("protected-output-signer-missing:max:evidence-ready");
+
+      const references: UTxO[] = [];
+      for (const [index, step] of steps.entries()) {
+        references.push(
+          (
+            await publishPlainReferenceScriptUtxo({
+              lucid: harness.funderLucid,
+              script: step.spendingScript,
+              label: `protected-output-signer-missing-${index.toString()}`,
+            })
+          ).utxo,
+        );
+      }
+      const certificateReference = (
+        await publishPlainReferenceScriptUtxo({
+          lucid: harness.funderLucid,
+          script: harness.contracts.fieldPreimageCertificate.mintingScript,
+          label: "protected-output-signer-missing-certificate",
+        })
+      ).utxo;
+      if (process.env.MIDGARD_PRINT_FIT === "1")
+        console.info("protected-output-signer-missing:max:references-ready");
+      const initThread = async () => {
+        const init = await captureEmulatorSubmission(harness.emulator, () =>
+          submitCommittedFieldShapeInit({
+            lucid: harness.proverLucid,
+            blueprint: harness.realBlueprint,
+            network,
+            contracts: contracts as never,
+            category,
+            catalogue: {
+              policyId: harness.contracts.fraudProofCatalogue.policyId,
+              spendingScriptAddress:
+                harness.contracts.fraudProofCatalogue.spendingScriptAddress,
+              root: catalogue.root,
+            },
+            signer: harness.proverSigner,
+            fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+            witnessReferenceScripts: harness.witnessReferenceScripts,
+          }),
+        );
+        return init;
+      };
+      const cancelInit = await initThread();
+      const cancellation = await captureEmulatorSubmission(
+        harness.emulator,
+        () =>
+          submitProtectedOutputSignerMissingCancel({
+            lucid: harness.proverLucid,
+            contracts,
+            categoryId: category.categoryId,
+            signer: harness.proverSigner,
+            threadOutRef: `${cancelInit.result.txHash}#${cancelInit.result.firstStepOutputIndex.toString()}`,
+            referenceScriptUtxo: references[0]!,
+            witnessReferenceScripts: harness.witnessReferenceScripts,
+          }),
+      );
+      expect(cancellation.measurement.l1ByteMargin).toBeGreaterThan(0);
+      coverage.cancelled("step-01");
+
+      const init = await initThread();
+      const [threadUtxo] = await harness.proverLucid.utxosByOutRef([
+        {
+          txHash: init.result.txHash,
+          outputIndex: init.result.firstStepOutputIndex,
+        },
+      ]);
+      if (threadUtxo === undefined) throw new Error("init thread absent");
+      const step01Result = await captureEmulatorSubmission(
+        harness.emulator,
+        () =>
+          submitProtectedOutputSignerMissingStep01Accepted({
+            lucid: harness.proverLucid,
+            blueprint: harness.realBlueprint,
+            network,
+            contracts,
+            signer: harness.proverSigner,
+            evidence,
+            threadUtxo,
+            threadToken: {
+              unit: init.result.computationThreadUnit,
+              fraudulentHeaderHash: init.result.fraudulentHeaderHash,
+            },
+            stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+            txInclusion,
+            referenceScriptUtxo: references[0]!,
+            witnessReferenceScripts: harness.witnessReferenceScripts,
+          }),
+      );
+      if (process.env.MIDGARD_PRINT_FIT === "1")
+        console.info("protected-output-signer-missing:max:step01-ready");
+      const step02Result = await captureEmulatorSubmission(
+        harness.emulator,
+        () =>
+          submitProtectedOutputSignerMissingStep02({
+            lucid: harness.proverLucid,
+            contracts,
+            categoryId: category.categoryId,
+            signer: harness.proverSigner,
+            threadOutRef: step01Result.result.nextThreadOutRef,
+            evidence,
+            nativeTxCompactCbor: compactCbor.toString("hex"),
+            witnessSetCompactCbor,
+            referenceScriptUtxo: references[1]!,
+            certificateReferenceScriptUtxo: certificateReference,
+          }),
+      );
+      if (process.env.MIDGARD_PRINT_FIT === "1")
+        console.info("protected-output-signer-missing:max:step02-ready");
+      const scanCommon = {
         lucid: harness.proverLucid,
+        family: "protected-output-signer-missing",
         contracts,
         categoryId: category.categoryId,
         signer: harness.proverSigner,
-        threadOutRef: step02Result.result.nextThreadOutRef,
         evidence,
         nativeTxCompactCbor: compactCbor.toString("hex"),
         witnessSetCompactCbor,
         referenceScriptUtxo: references[2]!,
         certificateReferenceScriptUtxo: certificateReference,
-      }),
-    );
-    if (process.env.MIDGARD_PRINT_FIT === "1")
-      console.info("protected-output-signer-missing:max:certificate-ready");
+      };
+      // The opening turn publishes the field's chunks, mints its certificate
+      // and scans the first batch.
+      const openingScan = await captureEmulatorSubmission(
+        harness.emulator,
+        () =>
+          submitSignerWitnessScan({
+            ...scanCommon,
+            threadOutRef: step02Result.result.nextThreadOutRef,
+          }),
+      );
+      expect(openingScan.result.carriageTier).toBe("Certified");
+      expect(openingScan.result.nextCursor).toBe(SIGNER_WITNESS_SCAN_BATCH);
+      if (process.env.MIDGARD_PRINT_FIT === "1")
+        console.info("protected-output-signer-missing:max:certificate-ready");
 
-    // Field certificate: the tier-3 opening names its certificate by slot. A
-    // redeemer pointing the certificate slot at a chunk (and the chunk slot at
-    // the certificate) is refused by the door before any item is read.
-    const witnessPlan = planProtectedOutputSignerWitnessOpening({
-      evidence,
-      nativeTxCompactCbor: compactCbor.toString("hex"),
-      witnessSetCompactCbor,
-      owner: harness.proverSigner.paymentKeyHash,
-    });
-    const checkpointAt = (nextItemIndex: number) =>
-      SDK.missingSignatureFieldWalkCheckpoint({
-        txId: nativeTxId,
-        itemCount: witnessPlan.itemCount,
-        totalLength: witnessPlan.preimage.length,
-        nextItemIndex,
-      });
-    const scanState = {
-      protected: {
-        subject: evidence.subject,
-        transaction_id: evidence.subject.transaction_id,
-        witness_set_hash: evidence.witnessSetHashHex,
-        output_index: 0n,
-        payment_credential: evidence.paymentCredentialHex,
-      },
-      checkpoint_hash: checkpointAt(PROTECTED_OUTPUT_SIGNER_SCAN_BATCH)
-        .checkpointHash,
-      signer_present: false,
-    };
-    const honestReferenceInputs = [
-      ...step03Result.result.carriageUtxos,
-      references[3]!,
-      step03Result.result.certificateUtxo!,
-    ];
-    const honestOpening = (ctx: RedeemerContext) =>
-      faultProofFieldOpening({
-        planned: witnessPlan,
-        referenceInputs: ctx.referenceInputs,
-        certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+      // Field certificate: the tier-3 opening names its certificate by slot. A
+      // redeemer pointing the certificate slot at a chunk (and the chunk slot at
+      // the certificate) is refused before any item is read.
+      const witnessPlan = planSignerWitnessOpening({
+        evidence,
+        nativeTxCompactCbor: compactCbor.toString("hex"),
+        witnessSetCompactCbor,
+        owner: harness.proverSigner.paymentKeyHash,
         label: "protected-output max scan opening",
       });
-    const rawScan = (
-      openingFor: (ctx: RedeemerContext) => SDK.FieldOpening,
-      checkpointCbor: string,
-    ) =>
-      submitProtectedOutputSignerOpeningTransition({
-        lucid: harness.proverLucid,
-        contracts,
-        categoryId: category.categoryId,
-        signer: harness.proverSigner,
-        threadOutRef: step03Result.result.nextThreadOutRef,
-        stepIndex: 3,
-        nextStepIndex: 3,
-        nextDatum: Data.to(
-          {
-            fraud_prover: harness.proverSigner.paymentKeyHash,
-            data: scanState,
-          } as never,
-          ProtectedOutputSignerStep04DatumSchema as never,
-        ),
-        openingFor,
-        checkpointCbor,
-        referenceScriptUtxo: references[3]!,
-        carriageReferenceInputs: honestReferenceInputs,
-        redeemerSchema: ProtectedOutputSignerStep04RedeemerSchema as never,
-      });
-    await expectOnchainRefusal(() =>
-      rawScan(
-        (ctx) => withSwappedCertificateSlot(honestOpening(ctx)),
-        checkpointAt(0).checkpointCbor,
-      ),
-    );
-    coverage.seamMutated("field_certificate");
-    // Checkpoint: a position the thread never committed (one batch ahead)
-    // under the committed digest, then malformed bytes.
-    await expectOnchainRefusal(() =>
-      rawScan(
-        honestOpening,
-        checkpointAt(PROTECTED_OUTPUT_SIGNER_SCAN_BATCH).checkpointCbor,
-      ),
-    );
-    await expectOnchainRefusal(() =>
-      rawScan(honestOpening, checkpointAt(0).checkpointCbor.slice(0, 80)),
-    );
-    coverage.seamMutated("checkpoint");
-
-    const scanResults: Awaited<ReturnType<typeof captureEmulatorSubmission>>[] =
-      [];
-    let scanThreadOutRef = step03Result.result.nextThreadOutRef;
-    for (;;) {
-      const result = await captureEmulatorSubmission(harness.emulator, () =>
-        submitProtectedOutputSignerMissingStep04({
+      const checkpointAt = (nextItemIndex: number) =>
+        SDK.missingSignatureFieldWalkCheckpoint({
+          txId: nativeTxId,
+          itemCount: witnessPlan.itemCount,
+          totalLength: witnessPlan.preimage.length,
+          nextItemIndex,
+        });
+      const honestReferenceInputs = [
+        ...openingScan.result.carriageUtxos,
+        references[2]!,
+        openingScan.result.certificateUtxo!,
+      ];
+      const honestOpening = (ctx: RedeemerContext) =>
+        faultProofFieldOpening({
+          planned: witnessPlan,
+          referenceInputs: ctx.referenceInputs,
+          certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+          label: "protected-output max scan opening",
+        });
+      // The resumed turn from the first batch boundary to the second, with the
+      // caller's opening and checkpoint.
+      const rawScan = (
+        openingFor: (ctx: RedeemerContext) => SDK.FieldOpening,
+        checkpointCbor: string,
+      ) =>
+        submitRawSignerWitnessScanTurn({
           lucid: harness.proverLucid,
+          family: "protected-output-signer-missing",
           contracts,
           categoryId: category.categoryId,
           signer: harness.proverSigner,
-          threadOutRef: scanThreadOutRef,
-          evidence,
-          nativeTxCompactCbor: compactCbor.toString("hex"),
-          witnessSetCompactCbor,
-          referenceScriptUtxo: references[3]!,
-          certificateReferenceScriptUtxo: certificateReference,
-          publishedCarriageUtxos: step03Result.result.carriageUtxos,
-          certificateUtxo: step03Result.result.certificateUtxo,
-        }),
+          threadOutRef: openingScan.result.nextThreadOutRef,
+          terminal: false,
+          nextDatum: Data.to(
+            {
+              fraud_prover: harness.proverSigner.paymentKeyHash,
+              data: {
+                subject: evidence.subject,
+                witness_set_hash: evidence.witnessSetHashHex,
+                payment_credential: evidence.paymentCredentialHex,
+                checkpoint_hash: checkpointAt(2 * SIGNER_WITNESS_SCAN_BATCH)
+                  .checkpointHash,
+              },
+            } as never,
+            SignerWitnessScanDatumSchema as never,
+          ),
+          openingFor,
+          checkpointCbor,
+          referenceScriptUtxo: references[2]!,
+          carriageReferenceInputs: honestReferenceInputs,
+        });
+      await expectOnchainRefusal(() =>
+        rawScan(
+          (ctx) => withSwappedCertificateSlot(honestOpening(ctx)),
+          checkpointAt(SIGNER_WITNESS_SCAN_BATCH).checkpointCbor,
+        ),
       );
-      scanResults.push(result);
+      coverage.seamMutated("field_certificate");
+      // Checkpoint: a position the thread never committed (one batch ahead)
+      // under the committed digest, then malformed bytes.
+      await expectOnchainRefusal(() =>
+        rawScan(
+          honestOpening,
+          checkpointAt(2 * SIGNER_WITNESS_SCAN_BATCH).checkpointCbor,
+        ),
+      );
+      await expectOnchainRefusal(() =>
+        rawScan(
+          honestOpening,
+          checkpointAt(SIGNER_WITNESS_SCAN_BATCH).checkpointCbor.slice(0, 80),
+        ),
+      );
+      coverage.seamMutated("checkpoint");
+
+      const scanResults = [openingScan];
+      let scanThreadOutRef = openingScan.result.nextThreadOutRef;
+      while (!scanResults.at(-1)!.result.terminal) {
+        const result = await captureEmulatorSubmission(harness.emulator, () =>
+          submitSignerWitnessScan({
+            ...scanCommon,
+            threadOutRef: scanThreadOutRef,
+            publishedCarriageUtxos: openingScan.result.carriageUtxos,
+            certificateUtxo: openingScan.result.certificateUtxo,
+          }),
+        );
+        scanResults.push(result);
+        if (process.env.MIDGARD_PRINT_FIT === "1")
+          console.info(
+            `protected-output-signer-missing:max:scan-${scanResults.length.toString()}`,
+          );
+        scanThreadOutRef = result.result.nextThreadOutRef;
+      }
+      // 318 witnesses in batches of 32: nine full batches and one of 30.
+      expect(scanResults.map((result) => result.result.nextCursor)).toEqual([
+        32, 64, 96, 128, 160, 192, 224, 256, 288, 318,
+      ]);
+      // Every resume above started from nothing but the chain's committed digest
+      // and the deterministic frontier: a real interruption at every batch.
+      coverage.resumed();
+      const terminalResult = await captureEmulatorSubmission(
+        harness.emulator,
+        () =>
+          submitSignerWitnessTerminal({
+            lucid: harness.proverLucid,
+            family: "protected-output-signer-missing",
+            contracts,
+            categoryId: category.categoryId,
+            signer: harness.proverSigner,
+            threadOutRef: scanThreadOutRef,
+            evidence,
+            referenceScriptUtxo: references[3]!,
+            witnessReferenceScripts: harness.witnessReferenceScripts,
+          }),
+      );
+      expect(terminalResult.result.fraudProofUnit).toBeTruthy();
+      coverage.reason(REASON, "accepted_invalid");
+      coverage.scenario("wrongful_acceptance_success");
+      // The scan turn is the last transaction each capture submitted; the
+      // opening capture also holds the chunk and certificate transactions.
+      for (const capture of [
+        init,
+        step01Result,
+        step02Result,
+        ...scanResults,
+        terminalResult,
+      ]) {
+        expect(capture.measurement.l1ByteMargin).toBeGreaterThan(0);
+        expect(capture.measurement.executionMemory).toBeGreaterThan(0n);
+        expect(capture.measurement.executionSteps).toBeGreaterThan(0n);
+      }
+      const scanTurns = scanResults.map((result) => result.measurement);
+      console.info(
+        `[protected-output-signer-missing-max-scan] ${JSON.stringify({
+          shape,
+          turns: scanTurns.length,
+          opening: {
+            memory: scanTurns[0]!.executionMemory.toString(),
+            cpu: scanTurns[0]!.executionSteps.toString(),
+            bytes: scanTurns[0]!.completeSignedBytes,
+          },
+          maxResumedMemory: scanTurns
+            .slice(1)
+            .reduce(
+              (max, m) => (m.executionMemory > max ? m.executionMemory : max),
+              0n,
+            )
+            .toString(),
+          maxResumedCpu: scanTurns
+            .slice(1)
+            .reduce(
+              (max, m) => (m.executionSteps > max ? m.executionSteps : max),
+              0n,
+            )
+            .toString(),
+          terminal: {
+            memory: terminalResult.measurement.executionMemory.toString(),
+            cpu: terminalResult.measurement.executionSteps.toString(),
+          },
+        })}`,
+      );
       if (process.env.MIDGARD_PRINT_FIT === "1")
         console.info(
-          `protected-output-signer-missing:max:scan-${scanResults.length.toString()}`,
+          JSON.stringify(
+            {
+              lifecycle: [
+                ["init", init.measurement],
+                ["step01", step01Result.measurement],
+                ["step02", step02Result.measurement],
+                ...scanResults.map((result, index) => [
+                  `scan-${index.toString()}`,
+                  result.measurement,
+                ]),
+                ["terminal", terminalResult.measurement],
+                ["cancel-init", cancelInit.measurement],
+                ["cancel", cancellation.measurement],
+              ],
+            },
+            (_key, value: unknown) =>
+              typeof value === "bigint" ? value.toString() : value,
+          ),
         );
-      scanThreadOutRef = result.result.nextThreadOutRef;
-      if (result.result.terminal) break;
-    }
-    expect(scanResults).toHaveLength(10);
-    // Every resume above started from nothing but the chain's committed digest
-    // and the deterministic frontier: a real interruption at every batch.
-    coverage.resumed();
-    const step05Result = await captureEmulatorSubmission(harness.emulator, () =>
-      submitProtectedOutputSignerMissingStep05({
-        lucid: harness.proverLucid,
-        contracts,
-        categoryId: category.categoryId,
-        signer: harness.proverSigner,
-        threadOutRef: scanThreadOutRef,
-        evidence,
-        referenceScriptUtxo: references[4]!,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-      }),
-    );
-    expect(step05Result.result.fraudProofUnit).toBeTruthy();
-    coverage.reason(REASON, "accepted_invalid");
-    coverage.scenario("wrongful_acceptance_success");
-    for (const capture of [
-      init,
-      step01Result,
-      step02Result,
-      step03Result,
-      ...scanResults,
-      step05Result,
-    ]) {
-      expect(capture.measurement.l1ByteMargin).toBeGreaterThan(0);
-      expect(capture.measurement.executionMemory).toBeGreaterThan(0n);
-      expect(capture.measurement.executionSteps).toBeGreaterThan(0n);
-    }
-    if (process.env.MIDGARD_PRINT_FIT === "1")
-      console.info(
-        JSON.stringify(
-          {
-            lifecycle: [
-              ["init", init.measurement],
-              ["step01", step01Result.measurement],
-              ["step02", step02Result.measurement],
-              ["step03", step03Result.measurement],
-              ...scanResults.map((result, index) => [
-                `step04-${index.toString()}`,
-                result.measurement,
-              ]),
-              ["step05", step05Result.measurement],
-              ["cancel-init", cancelInit.measurement],
-              ["cancel", cancellation.measurement],
-            ],
-          },
-          (_key, value: unknown) =>
-            typeof value === "bigint" ? value.toString() : value,
-        ),
-      );
 
-    const removalReferences = await publishRemovalReferenceScripts({
-      lucid: harness.proverLucid,
-      contracts: harness.contracts,
-    });
-    // A registered family resolves removal through the canonical catalogue:
-    // the manifest's fraudProofProtectedOutputSignerMissing entries carry the
-    // registered chain the harness built.
-    const deploymentInfo = buildRemovalDeploymentInfo(
-      harness.contracts,
-      catalogue,
-      { removalReferenceScripts: removalReferences.published },
-    );
-    const now = BigInt(harness.emulator.now());
-    const removal = await captureEmulatorSubmission(harness.emulator, () =>
-      submitRemoveFraudulentBlock({
+      const removalReferences = await publishRemovalReferenceScripts({
         lucid: harness.proverLucid,
-        blueprint: harness.realBlueprint,
-        deploymentInfo,
-        network,
-        signer: harness.proverSigner,
-        fraudCategory: "protectedOutputSignerMissing",
-        fraudulentHeaderHash: setup.headerHash,
-        awaitConfirmation: true,
-        requireReferenceScripts: true,
-        stateQueueMutationLeaseCoordinator: {
-          acquire: async () => ({
-            token: "protected-output-signer-missing-emulator",
-            source: "emulator",
-            renew: async () => {},
-            release: async () => {},
-            fail: async () => {},
-          }),
-        },
-        validFrom: now > 120_000n ? now - 120_000n : 0n,
-        validTo: now + 300_000n,
-      }),
-    );
-    expect(removal.result.fraudCategoryId).toBe("0000002b");
-    expect(removal.measurement.l1ByteMargin).toBeGreaterThan(0);
-    coverage.scenario("permanent_proof_token_and_descendant_removal");
-    if (process.env.MIDGARD_PRINT_FIT === "1")
-      console.info(
-        JSON.stringify(
-          {
-            auxiliary: step03Result.measurements,
-            removal: removal.measurement,
-          },
-          (_key, value: unknown) =>
-            typeof value === "bigint" ? value.toString() : value,
-        ),
+        contracts: harness.contracts,
+      });
+      // A registered family resolves removal through the canonical catalogue:
+      // the manifest's fraudProofProtectedOutputSignerMissing entries carry the
+      // registered chain the harness built.
+      const deploymentInfo = buildRemovalDeploymentInfo(
+        harness.contracts,
+        catalogue,
+        { removalReferenceScripts: removalReferences.published },
       );
-  }, 900_000);
+      const now = BigInt(harness.emulator.now());
+      const removal = await captureEmulatorSubmission(harness.emulator, () =>
+        submitRemoveFraudulentBlock({
+          lucid: harness.proverLucid,
+          blueprint: harness.realBlueprint,
+          deploymentInfo,
+          network,
+          signer: harness.proverSigner,
+          fraudCategory: "protectedOutputSignerMissing",
+          fraudulentHeaderHash: setup.headerHash,
+          awaitConfirmation: true,
+          requireReferenceScripts: true,
+          stateQueueMutationLeaseCoordinator: {
+            acquire: async () => ({
+              token: "protected-output-signer-missing-emulator",
+              source: "emulator",
+              renew: async () => {},
+              release: async () => {},
+              fail: async () => {},
+            }),
+          },
+          validFrom: now > 120_000n ? now - 120_000n : 0n,
+          validTo: now + 300_000n,
+        }),
+      );
+      expect(removal.result.fraudCategoryId).toBe("0000002b");
+      expect(removal.measurement.l1ByteMargin).toBeGreaterThan(0);
+      coverage.scenario("permanent_proof_token_and_descendant_removal");
+      if (process.env.MIDGARD_PRINT_FIT === "1")
+        console.info(
+          JSON.stringify(
+            {
+              auxiliary: openingScan.measurements,
+              removal: removal.measurement,
+            },
+            (_key, value: unknown) =>
+              typeof value === "bigint" ? value.toString() : value,
+          ),
+        );
+    },
+    900_000,
+  );
 
   it("proves an exact forced ProtectedOutputSignerMissing rejection and refuses its mutations", async () => {
     // The operator rejected a transaction whose protected output IS signed:
@@ -607,7 +657,6 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
     });
     const evidence = evidenceFor(subject, adjudicated);
     expect(evidence.signerPresent).toBe(true);
-    expect(evidence.validSignerHashes).toEqual([signerCredentialHex]);
     const membership = await s.forcedMembership();
     const thread = await s.init();
     // Reason coordinate: the leaf rejects output 0; a claim bound to output 1
@@ -672,19 +721,13 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
         evidence,
         adjudicated,
       );
-      const carriage = await s.step03(
+      const terminal = await scanToTerminal(
+        s,
         credential.nextThreadOutRef,
         evidence,
         adjudicated,
       );
-      const terminal = await scanToTerminal(
-        s,
-        carriage.nextThreadOutRef,
-        evidence,
-        adjudicated,
-        carriage,
-      );
-      const minted = await s.step05(terminal, evidence);
+      const minted = await s.terminal(terminal.threadOutRef, evidence);
       expect(minted.fraudProofUnit).toContain(s.category.categoryId);
     });
     coverage.reason(REASON, "forced_rejection_wrong");
@@ -749,25 +792,26 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       certificatePolicyId: s.contracts.fieldPreimageCertificatePolicyId,
       label: "honest output opening",
     });
-    const credentialDatum = (data: Record<string, unknown>) =>
-      s.datum(ProtectedOutputSignerStep03DatumSchema, {
+    // Step 02 writes the unopened scan state; the shared scan reads only
+    // the subject, witness-set hash and credential from it.
+    const scanStartDatum = (data: Record<string, unknown>) =>
+      s.datum(SignerWitnessScanDatumSchema, {
         subject,
-        transaction_id: subject.transaction_id,
         witness_set_hash: evidence.witnessSetHashHex,
-        output_index: 0n,
         payment_credential: evidence.paymentCredentialHex,
+        checkpoint_hash: "",
         ...data,
       });
-    // Subject coordinate: step 02 re-derives the credential state from the
-    // bound subject and refuses a datum naming another transaction or output.
+    // Subject coordinate: step 02 re-derives the scan state from the bound
+    // subject and output, and refuses a datum naming another transaction or a
+    // credential the bound output does not carry.
     await expectOnchainRefusal(() =>
       s.rawTransition({
         threadOutRef: bound,
         stepIndex: 1,
         nextStepIndex: 2,
-        nextDatum: credentialDatum({
+        nextDatum: scanStartDatum({
           subject: acceptedVerdictSubject("99".repeat(32)),
-          transaction_id: "99".repeat(32),
         }),
         opening: outputOpening,
         carriageReferenceInputs: [s.refs[1]!],
@@ -779,7 +823,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
         threadOutRef: bound,
         stepIndex: 1,
         nextStepIndex: 2,
-        nextDatum: credentialDatum({ output_index: 1n }),
+        nextDatum: scanStartDatum({ payment_credential: "4c".repeat(28) }),
         opening: outputOpening,
         carriageReferenceInputs: [s.refs[1]!],
         redeemerSchema: ProtectedOutputSignerStep02RedeemerSchema,
@@ -801,7 +845,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
         threadOutRef: bound,
         stepIndex: 1,
         nextStepIndex: 2,
-        nextDatum: credentialDatum({}),
+        nextDatum: scanStartDatum({}),
         opening: faultProofFieldOpening({
           planned: foreignPlan,
           referenceInputs: [s.refs[1]!],
@@ -815,39 +859,28 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
     coverage.seamMutated("compact_tx");
     const credential = (await s.step02(bound, evidence, honestTx))
       .nextThreadOutRef;
-    const witnessPlan = planProtectedOutputSignerWitnessOpening({
+    const witnessPlan = planSignerWitnessOpening({
       evidence,
       nativeTxCompactCbor: compactHex(honestTx),
       witnessSetCompactCbor: witnessSetCompactHex(honestTx),
       owner,
+      label: "honest address witnesses",
     });
     expect(witnessPlan.plan.tier).toBe("Inline");
-    const scanDatum = (checkpointHash: string) =>
-      s.datum(ProtectedOutputSignerStep04DatumSchema, {
-        protected: {
-          subject,
-          transaction_id: subject.transaction_id,
-          witness_set_hash: evidence.witnessSetHashHex,
-          output_index: 0n,
-          payment_credential: evidence.paymentCredentialHex,
-        },
-        checkpoint_hash: checkpointHash,
-        signer_present: false,
-      });
-    const startHash = SDK.missingSignatureFieldWalkCheckpoint({
-      txId: s.block.nativeTxId,
-      itemCount: witnessPlan.itemCount,
-      totalLength: witnessPlan.preimage.length,
-      nextItemIndex: 0,
-    }).checkpointHash;
+    // The honest field ends in its first batch, so the opening turn writes
+    // the verdict: the signer behind one decoy is present.
+    const honestVerdict = s.datum(SignerWitnessTerminalDatumSchema, {
+      subject,
+      signer_required: true,
+      signer_present: true,
+    });
     // Witness-set anchor: the genuine compact bytes paired with another
     // transaction's witness set fail the anchored `witness_set_hash`.
     await expectOnchainRefusal(() =>
-      s.rawTransition({
+      s.rawScan({
         threadOutRef: credential,
-        stepIndex: 2,
-        nextStepIndex: 3,
-        nextDatum: scanDatum(startHash),
+        terminal: true,
+        nextDatum: honestVerdict,
         opening: {
           WitnessFieldOpening: {
             native_tx_compact_cbor: compactHex(honestTx),
@@ -857,19 +890,18 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
             },
           },
         },
+        checkpointCbor: null,
         carriageReferenceInputs: [s.refs[2]!],
-        redeemerSchema: ProtectedOutputSignerStep03RedeemerSchema,
       }),
     );
     coverage.seamMutated("witness_set_anchor");
     // Field preimage: a witness collection the transaction did not commit
     // fails the flat commitment under the anchored witness set.
     await expectOnchainRefusal(() =>
-      s.rawTransition({
+      s.rawScan({
         threadOutRef: credential,
-        stepIndex: 2,
-        nextStepIndex: 3,
-        nextDatum: scanDatum(startHash),
+        terminal: true,
+        nextDatum: honestVerdict,
         opening: {
           WitnessFieldOpening: {
             native_tx_compact_cbor: compactHex(honestTx),
@@ -881,21 +913,15 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
             },
           },
         },
+        checkpointCbor: null,
         carriageReferenceInputs: [s.refs[2]!],
-        redeemerSchema: ProtectedOutputSignerStep03RedeemerSchema,
       }),
     );
     coverage.seamMutated("field_preimage");
-    const carriage = await s.step03(credential, evidence, honestTx);
-    const terminal = await scanToTerminal(
-      s,
-      carriage.nextThreadOutRef,
-      evidence,
-      honestTx,
-      carriage,
-    );
+    const terminal = await scanToTerminal(s, credential, evidence, honestTx);
+    expect(terminal.turns).toBe(1);
     // The complete scan found the valid signer; the honest block stands.
-    await expectOnchainRefusal(() => s.rawStep05(terminal));
+    await expectOnchainRefusal(() => s.rawTerminal(terminal.threadOutRef));
     coverage.scenario("honest_accepted_block_refusal");
     coverage.reason(REASON);
 
@@ -905,26 +931,16 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
     const credentialThread = async () =>
       (await s.step02(await boundThread(), evidence, honestTx))
         .nextThreadOutRef;
-    const scanThread = async () =>
-      await s.step03(await credentialThread(), evidence, honestTx);
     await s.cancel(await boundThread(), 1);
     coverage.cancelled("step-02");
     await s.cancel(await credentialThread(), 2);
     coverage.cancelled("step-03");
-    await s.cancel((await scanThread()).nextThreadOutRef, 3);
-    coverage.cancelled("step-04");
-    const terminalCarriage = await scanThread();
     await s.cancel(
-      await scanToTerminal(
-        s,
-        terminalCarriage.nextThreadOutRef,
-        evidence,
-        honestTx,
-        terminalCarriage,
-      ),
-      4,
+      (await scanToTerminal(s, await credentialThread(), evidence, honestTx))
+        .threadOutRef,
+      3,
     );
-    coverage.cancelled("step-05");
+    coverage.cancelled("step-04");
 
     // Adjacent consensus bound: the 319-witness transaction is committed and
     // binds through step 02, but its field 7 has no admissible carriage. The
@@ -953,7 +969,6 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
           overBoundMaterial.compact.transactionWitnessSetHash,
         ).toString("hex"),
         addressWitnessFieldPreimageHex: overBoundPreimage.toString("hex"),
-        validSignerHashes: [],
         signerPresent: false,
         outputCarriage: "Inline",
         witnessCarriage: "Certified",
@@ -976,11 +991,12 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
     );
     expect(overBoundCredential.nextThreadOutRef).toMatch(/^[0-9a-f]{64}#\d+$/u);
     expect(() =>
-      planProtectedOutputSignerWitnessOpening({
+      planSignerWitnessOpening({
         evidence: overBoundEvidence,
         nativeTxCompactCbor: compactHex(overBoundTx),
         witnessSetCompactCbor: witnessSetCompactHex(overBoundTx),
         owner,
+        label: "over-bound address witnesses",
       }),
     ).toThrow(/aggregate bound/u);
     const chunks: Buffer[] = [];
@@ -1086,33 +1102,27 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       adjudicated,
     );
     expect(evidence.signerPresent).toBe(false);
-    expect(evidence.validSignerHashes).toEqual([]);
     const bound = await s.forced01(await s.init(), evidence);
     const credential = await s.step02(
       bound.nextThreadOutRef,
       evidence,
       adjudicated,
     );
-    const carriage = await s.step03(
+    const terminal = await scanToTerminal(
+      s,
       credential.nextThreadOutRef,
       evidence,
       adjudicated,
     );
-    const terminal = await scanToTerminal(
-      s,
-      carriage.nextThreadOutRef,
-      evidence,
-      adjudicated,
-      carriage,
-    );
-    await expectOnchainRefusal(() => s.rawStep05(terminal));
+    await expectOnchainRefusal(() => s.rawTerminal(terminal.threadOutRef));
     coverage.scenario("honest_forced_rejection_refusal");
   }, 900_000);
 
   it("proves forced rejections over an unprotected and a script-locked output through the direct terminal route and refuses the direct exit for a protected key", async () => {
     // Canonical validation authorizes an unprotected output, and a protected
     // script output, with no signer at all: the operator's rejection is
-    // wrong without any witness, and step 02 closes at step 05 directly.
+    // wrong without any witness, and step 02 writes the verdict straight to
+    // the shared terminal.
     const forcedReason = {
       ProtectedOutputSignerMissing: { output_index: 0n },
     } as const;
@@ -1163,12 +1173,12 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       const direct = await captureEmulatorSubmission(s.harness.emulator, () =>
         s.step02(bound.nextThreadOutRef, evidence, adjudicated),
       );
-      expect(direct.result.stage).toBe("step05");
+      expect(direct.result.stage).toBe("terminal");
       expect(direct.measurement.l1ByteMargin).toBeGreaterThan(0);
       console.info(
         `[protected-output-signer-missing-forced-direct-${label}] ${JSON.stringify({ bytes: direct.measurement.completeSignedBytes, memory: direct.measurement.executionMemory.toString(), cpu: direct.measurement.executionSteps.toString() })}`,
       );
-      const minted = await s.step05(direct.result.nextThreadOutRef, evidence);
+      const minted = await s.terminal(direct.result.nextThreadOutRef, evidence);
       expect(minted.fraudProofUnit).toContain(s.category.categoryId);
     }
     coverage.reason(REASON, "forced_rejection_wrong");

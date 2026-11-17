@@ -13,6 +13,7 @@ export * from "./contracts/direct-purpose.js";
 export * from "./contracts/direct-receive.js";
 export * from "./contracts/direct-source.js";
 export * from "./contracts/index.js";
+export * from "./contracts/signer-witness-scan.js";
 export * from "./counted-membership-carriage.js";
 export * from "./da-hash-preimage.js";
 export * from "./direct-all-purposes-scan.js";

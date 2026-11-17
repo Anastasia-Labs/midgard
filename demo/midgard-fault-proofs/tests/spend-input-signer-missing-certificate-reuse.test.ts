@@ -1,9 +1,10 @@
 /**
- * Steps 02, 03 and 04 at Certified-tier openings, each driven turn by turn
- * through the workflow capture boundary. Step 02 certifies the spend-input
- * opening, step 03 the address-witness opening, and every step-04 scan turn
- * reuses the address-witness certificate step 03 left on chain, so each turn
- * after certification captures the step itself and the thread holds exactly
+ * Step 02 and the shared signer-witness scan at Certified-tier openings, each
+ * driven turn by turn through the workflow capture boundary. Step 02
+ * certifies the spend-input opening, the opening scan turn the
+ * address-witness opening, and every resumed scan turn reuses the
+ * address-witness certificate the opening turn left on chain, so each turn
+ * after certification captures the scan itself and the thread holds exactly
  * one certificate per opening.
  */
 import {
@@ -13,11 +14,8 @@ import {
 import { acceptedVerdictSubject } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import {
-  submitSpendInputSignerMissingStep02,
-  submitSpendInputSignerMissingStep03,
-  submitSpendInputSignerMissingStep04,
-} from "../src/spend-input-signer-missing/index.js";
+import { submitSignerWitnessScan } from "../src/signer-witness-scan/index.js";
+import { submitSpendInputSignerMissingStep02 } from "../src/spend-input-signer-missing/index.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
   commitAcceptedBlock,
@@ -43,7 +41,7 @@ import { makeNativeTx } from "./support/emulator/native-tx.js";
 /** Enough repeated spend inputs to carry the input field above RawUtxo. */
 const SPEND_INPUT_COUNT = 800;
 
-describe("spendInputSignerMissing steps 02-04 under the workflow capture boundary", () => {
+describe("spendInputSignerMissing step 02 and the scan under the workflow capture boundary", () => {
   it("reuses each field certificate already on chain, so every turn after certification is the step", async () => {
     const harness = await newHarness();
     const family = await registeredContracts(harness);
@@ -131,45 +129,32 @@ describe("spendInputSignerMissing steps 02-04 under the workflow capture boundar
     expect(step02.prerequisites.length).toBeGreaterThan(0);
     expect(await certificates()).toBe(1n);
 
-    const step03Thread = capturedOutputHolding(step02.step, unit);
-    const step03 = await driveCapturedStep({
-      emulator: harness.emulator,
-      threadOutRef: step03Thread,
-      maxTurns: 6,
-      invoke: async (boundary) =>
-        await submitSpendInputSignerMissingStep03({
-          ...common,
-          threadOutRef: step03Thread,
-          referenceScriptUtxo: references[2]!,
-          publicationBoundary: boundary,
-          certificateBoundary: boundary,
-          preSubmitBoundary: boundary,
-        }),
-    });
-    expect(step03.prerequisites.length).toBeGreaterThan(0);
-    expect(await certificates()).toBe(2n);
-
-    let scanThread = capturedOutputHolding(step03.step, unit);
-    for (const scanTurn of ["initial", "resumed"]) {
+    let scanThread = capturedOutputHolding(step02.step, unit);
+    for (const scanTurn of ["opening", "resumed", "resumed again"]) {
       const threadOutRef = scanThread;
       const scan = await driveCapturedStep({
         emulator: harness.emulator,
         threadOutRef,
-        maxTurns: 3,
+        maxTurns: scanTurn === "opening" ? 6 : 3,
         invoke: async (boundary) =>
-          await submitSpendInputSignerMissingStep04({
+          await submitSignerWitnessScan({
             ...common,
+            family: FAMILY,
             threadOutRef,
-            referenceScriptUtxo: references[3]!,
+            referenceScriptUtxo: references[2]!,
             publicationBoundary: boundary,
             certificateBoundary: boundary,
             preSubmitBoundary: boundary,
           }),
       });
-      expect({ scanTurn, prerequisites: scan.prerequisites.length }).toEqual({
-        scanTurn,
-        prerequisites: 0,
-      });
+      if (scanTurn === "opening") {
+        expect(scan.prerequisites.length).toBeGreaterThan(0);
+        expect(await certificates()).toBe(2n);
+      } else
+        expect({ scanTurn, prerequisites: scan.prerequisites.length }).toEqual({
+          scanTurn,
+          prerequisites: 0,
+        });
       scanThread = capturedOutputHolding(scan.step, unit);
     }
     expect(await certificates()).toBe(2n);

@@ -32,8 +32,7 @@ export const protectedOutputSignerMissingMembers = defineDeploymentFamily(
         token: "V1FpProtectedSignerS03",
       },
       commands: [],
-      validatorTitle:
-        "fraud_proofs/protected_output_signer_missing/step_03.main.spend",
+      validatorTitle: "fraud_proofs/signer_witness_scan/scan.main.spend",
       familyPaths: [["steps", "2"]],
     },
     fraudProofProtectedOutputSignerMissingStep04: {
@@ -43,20 +42,8 @@ export const protectedOutputSignerMissingMembers = defineDeploymentFamily(
         token: "V1FpProtectedSignerS04",
       },
       commands: [],
-      validatorTitle:
-        "fraud_proofs/protected_output_signer_missing/step_04.main.spend",
+      validatorTitle: "fraud_proofs/signer_witness_scan/terminal.main.spend",
       familyPaths: [["steps", "3"]],
-    },
-    fraudProofProtectedOutputSignerMissingStep05: {
-      purpose: "spend",
-      reference: {
-        role: "V1 fraud-proof protected-output-signer-missing step-05",
-        token: "V1FpProtectedSignerS05",
-      },
-      commands: [],
-      validatorTitle:
-        "fraud_proofs/protected_output_signer_missing/step_05.main.spend",
-      familyPaths: [["steps", "4"]],
     },
   },
 );

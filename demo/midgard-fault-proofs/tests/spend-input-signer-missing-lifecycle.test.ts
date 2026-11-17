@@ -15,6 +15,7 @@ import "../src/remove-fraudulent-block.js";
 import "../src/spend-input-signer-missing/field-plans.js";
 import "../src/spend-input-signer-missing/index.js";
 import "../src/spend-input-signer-missing/schemas.js";
+import "../src/signer-witness-scan/index.js";
 import "../src/step-support.js";
 import "../src/testing/complete-lifecycle.js";
 import "../src/transition-trace/witnesses.js";
@@ -33,7 +34,7 @@ import "./support/submit-init-emulator-shared.js";
 import "./spend-input-signer-missing-lifecycle.registered-contracts.js";
 import "./spend-input-signer-missing-lifecycle.commit-forced-block.js";
 import "./spend-input-signer-missing-lifecycle.family-driver.js";
-import "./spend-input-signer-missing-lifecycle.submit-step03-with-foreign-certificate.js";
+import "./spend-input-signer-missing-lifecycle.submit-scan-with-foreign-certificate.js";
 
 import { sign } from "node:crypto";
 
@@ -84,7 +85,7 @@ import {
   signedNativeTx,
   witnessSetCompactHex,
 } from "./spend-input-signer-missing-lifecycle.registered-contracts.js";
-import { submitStep03WithForeignCertificate } from "./spend-input-signer-missing-lifecycle.submit-step03-with-foreign-certificate.js";
+import { submitScanWithForeignCertificate } from "./spend-input-signer-missing-lifecycle.submit-scan-with-foreign-certificate.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
@@ -119,7 +120,9 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
       resolved: prior.resolved,
     });
     expect(evidence.witnessCarriage).toBe("Certified");
-    expect(evidence.checkpoints).toHaveLength(20);
+    // 318 witnesses in 32-witness batches: nine full batches and a last one
+    // of 30.
+    expect(evidence.checkpoints).toHaveLength(10);
     coverage.scenario("maximum_supported_evidence");
 
     const { references, certificateReference } = await publishReferences(
@@ -160,47 +163,43 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
         block.witnessSetCompactCbor,
       ),
     );
-    const step03 = await measured("accepted-step03", () =>
-      run.step03(
-        step02.nextThreadOutRef,
-        evidence,
-        block.compactCbor,
-        block.witnessSetCompactCbor,
-      ),
-    );
     const { scans, threadOutRef } = await run.scanToTerminal(
-      step03.nextThreadOutRef,
+      step02.nextThreadOutRef,
       evidence,
       block.compactCbor,
       block.witnessSetCompactCbor,
     );
-    expect(scans).toHaveLength(20);
+    // The opening turn and nine resumptions, each from nothing but the
+    // checkpoint digest the previous transaction committed and the redeemer's
+    // re-supplied checkpoint bytes.
+    expect(scans).toHaveLength(10);
+    expect(scans.map((scan) => scan.result.nextCursor)).toEqual([
+      32, 64, 96, 128, 160, 192, 224, 256, 288, 318,
+    ]);
     scans.forEach((scan, index) =>
       recordMeasurements(
-        `accepted-step04-${index.toString().padStart(2, "0")}`,
+        `accepted-scan-${index.toString().padStart(2, "0")}`,
         scan,
       ),
     );
-    // Nineteen resumptions from nothing but the checkpoint digest the previous
-    // transaction committed and the redeemer's re-supplied checkpoint bytes.
     coverage.resumed();
-    const step05 = await measured("accepted-step05-proof-mint", () =>
-      run.step05(threadOutRef, evidence),
+    const proof = await measured("accepted-terminal-proof-mint", () =>
+      run.terminal(threadOutRef, evidence),
     );
-    expect(step05.fraudProofUnit).toBeTruthy();
+    expect(proof.fraudProofUnit).toBeTruthy();
     coverage.reason(REASON, "accepted_invalid");
     coverage.scenario("wrongful_acceptance_success");
 
-    // Cancel from every physical step, including the resumed scan position,
-    // on fresh threads over the same block. The chunks the maximum run
-    // published above are reused, so only the cancels themselves are measured.
+    // Cancel from every physical step, at the scan both before its opening
+    // turn and at a resumed position, on fresh threads over the same block.
+    // The chunks the maximum run published above are reused, so only the
+    // cancels themselves are measured.
     for (const cancelTarget of [
       "step01",
       "step02",
-      "step03",
-      "step04-initial",
-      "step04-resumed",
-      "step05",
+      "scan-opening",
+      "scan-resumed",
+      "terminal",
     ] as const) {
       const thread = await run.initThread(block.blockOutRef);
       let outRef = thread.threadOutRef;
@@ -224,30 +223,16 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
           )
         ).nextThreadOutRef;
       }
-      if (
-        cancelTarget === "step04-initial" ||
-        cancelTarget === "step04-resumed" ||
-        cancelTarget === "step05"
-      ) {
-        outRef = (
-          await run.step03(
-            outRef,
-            evidence,
-            block.compactCbor,
-            block.witnessSetCompactCbor,
-          )
-        ).nextThreadOutRef;
-      }
-      if (cancelTarget === "step04-resumed" || cancelTarget === "step05") {
+      if (cancelTarget === "scan-resumed" || cancelTarget === "terminal") {
         for (;;) {
-          const scan = await run.step04(
+          const scan = await run.scan(
             outRef,
             evidence,
             block.compactCbor,
             block.witnessSetCompactCbor,
           );
           outRef = scan.nextThreadOutRef;
-          if (cancelTarget === "step04-resumed" || scan.stage === "step05")
+          if (cancelTarget === "scan-resumed" || scan.stage === "terminal")
             break;
         }
       }
@@ -256,11 +241,9 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
           ? 0
           : cancelTarget === "step02"
             ? 1
-            : cancelTarget === "step03"
-              ? 2
-              : cancelTarget === "step05"
-                ? 4
-                : 3;
+            : cancelTarget === "terminal"
+              ? 3
+              : 2;
       await measured(`cancel-${cancelTarget}`, () =>
         run.cancel(outRef, referenceIndex),
       );
@@ -302,8 +285,8 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
       canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
       resolved: prior.resolved,
     });
-    expect(evidence.signerMissing).toBe(false);
-    expect(evidence.validSignerHashes).toEqual([signerKey.keyHash]);
+    expect(evidence.signerRequired).toBe(true);
+    expect(evidence.signerPresent).toBe(true);
     const { references, certificateReference } = await publishReferences(
       harness,
       family,
@@ -336,27 +319,19 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
         block.witnessSetCompactCbor,
       ),
     );
-    const step03 = await measured("forced-step03", () =>
-      run.step03(
+    const scan = await measured("forced-scan", () =>
+      run.scan(
         step02.nextThreadOutRef,
         evidence,
         block.compactCbor,
         block.witnessSetCompactCbor,
       ),
     );
-    const step04 = await measured("forced-step04", () =>
-      run.step04(
-        step03.nextThreadOutRef,
-        evidence,
-        block.compactCbor,
-        block.witnessSetCompactCbor,
-      ),
+    expect(scan.stage).toBe("terminal");
+    const proof = await measured("forced-terminal-proof-mint", () =>
+      run.terminal(scan.nextThreadOutRef, evidence),
     );
-    expect(step04.stage).toBe("step05");
-    const step05 = await measured("forced-step05-proof-mint", () =>
-      run.step05(step04.nextThreadOutRef, evidence),
-    );
-    expect(step05.fraudProofUnit).toBeTruthy();
+    expect(proof.fraudProofUnit).toBeTruthy();
     coverage.reason(REASON, "forced_rejection_wrong");
     coverage.scenario("wrongful_forced_rejection_success");
     const removal = await run.removal(block.headerHash);
@@ -414,9 +389,9 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
       canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
       resolved: prior.resolved,
     });
-    expect(contradicting.signerMissing).toBe(false);
+    expect(contradicting.signerPresent).toBe(true);
     expect(contradicting.witnessCarriage).toBe("Certified");
-    expect(contradicting.checkpoints).toHaveLength(10);
+    expect(contradicting.checkpoints).toHaveLength(5);
     const honest: SpendInputSignerMissingEvidence = {
       ...contradicting,
       subject: accepted,
@@ -498,7 +473,7 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
     });
     expect(foreignEvidence.witnessCarriage).toBe("Certified");
     await expectRefusedOnChain(() =>
-      submitStep03WithForeignCertificate({
+      submitScanWithForeignCertificate({
         harness,
         family,
         threadOutRef: authenticated.nextThreadOutRef,
@@ -517,25 +492,19 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
       }),
     );
     coverage.seamMutated("field_certificate");
-    const scanning = await run.step03(
+    const { scans, threadOutRef } = await run.scanToTerminal(
       authenticated.nextThreadOutRef,
       honest,
       block.compactCbor,
       block.witnessSetCompactCbor,
     );
-    const { scans, threadOutRef } = await run.scanToTerminal(
-      scanning.nextThreadOutRef,
-      honest,
-      block.compactCbor,
-      block.witnessSetCompactCbor,
-    );
-    // The valid signature sits in the tenth batch: nine real resumptions
-    // before the frontier admits it and the scan terminates.
-    expect(scans).toHaveLength(10);
+    // The valid signature sits in the fifth batch: the opening turn and four
+    // real resumptions before the scan finds it and terminates.
+    expect(scans).toHaveLength(5);
     // The family builder refuses to finalize a terminal that agrees with the
     // block, and the generic finalizer is refused by the validator itself.
-    await expect(run.step05(threadOutRef, honest)).rejects.toThrow(
-      /does not contradict verdict/u,
+    await expect(run.terminal(threadOutRef, honest)).rejects.toThrow(
+      /does not contradict the block/u,
     );
     await expectRefusedOnChain(() => run.finalizeDirect(threadOutRef));
     coverage.scenario("honest_accepted_block_refusal");
@@ -608,10 +577,9 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
       canonicalTransactionCbor: encodeMidgardNativeTxCanonical(nativeTx),
       resolved: prior.resolved,
     });
-    expect(contradicting.signerMissing).toBe(true);
-    // The stranger's signature verifies, so it is a signer — of the wrong
-    // credential; the credential's own witness never verifies.
-    expect(contradicting.validSignerHashes).toEqual([strangerKey.keyHash]);
+    // The stranger's signature verifies, but for the wrong credential; the
+    // credential's own witness never verifies.
+    expect(contradicting.signerPresent).toBe(false);
     const honest: SpendInputSignerMissingEvidence = {
       ...contradicting,
       subject: block.subject,
@@ -679,7 +647,7 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
           ...honest,
           route: "script_credential",
           signerRequired: false,
-          signerMissing: false,
+          signerPresent: false,
         },
         block.compactCbor,
         block.witnessSetCompactCbor,
@@ -692,21 +660,15 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
       block.compactCbor,
       block.witnessSetCompactCbor,
     );
-    const scanning = await run.step03(
+    const scan = await run.scan(
       authenticated.nextThreadOutRef,
       honest,
       block.compactCbor,
       block.witnessSetCompactCbor,
     );
-    const scan = await run.step04(
-      scanning.nextThreadOutRef,
-      honest,
-      block.compactCbor,
-      block.witnessSetCompactCbor,
-    );
-    expect(scan.stage).toBe("step05");
-    await expect(run.step05(scan.nextThreadOutRef, honest)).rejects.toThrow(
-      /does not contradict verdict/u,
+    expect(scan.stage).toBe("terminal");
+    await expect(run.terminal(scan.nextThreadOutRef, honest)).rejects.toThrow(
+      /does not contradict the block/u,
     );
     await expectRefusedOnChain(() => run.finalizeDirect(scan.nextThreadOutRef));
     coverage.scenario("honest_forced_rejection_refusal");
@@ -776,7 +738,7 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
           ...evidence,
           route: "witness_scan",
           signerRequired: true,
-          signerMissing: false,
+          signerPresent: true,
           paymentCredentialHex: scriptHash,
         },
         block.compactCbor,
@@ -791,12 +753,12 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
         block.witnessSetCompactCbor,
       ),
     );
-    expect(step02.stage).toBe("step05");
+    expect(step02.stage).toBe("terminal");
     expect(step02.route).toBe("script_credential");
-    const step05 = await measured("forced-direct-step05-proof-mint", () =>
-      run.step05(step02.nextThreadOutRef, evidence),
+    const proof = await measured("forced-direct-terminal-proof-mint", () =>
+      run.terminal(step02.nextThreadOutRef, evidence),
     );
-    expect(step05.fraudProofUnit).toBeTruthy();
+    expect(proof.fraudProofUnit).toBeTruthy();
     coverage.reason(REASON, "forced_rejection_wrong");
     coverage.scenario("wrongful_forced_rejection_success");
     const removal = await run.removal(block.headerHash);
@@ -809,7 +771,7 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
     // field bound (32,768 bytes, 318 witnesses) is this family's consensus
     // bound, but no lifecycle transaction can present the adjacent 319-witness
     // field: the L2 codec refuses to lay it out and the door refuses its
-    // certified view (`step_04_refuses_an_adjacent_over_bound_witness_field`),
+    // certified view (`scan_refuses_an_adjacent_over_bound_witness_field`),
     // so the suite claims no adjacent bound of its own.
     assertCompleteLifecycleCoverage({
       coverage: coverage.snapshot(),

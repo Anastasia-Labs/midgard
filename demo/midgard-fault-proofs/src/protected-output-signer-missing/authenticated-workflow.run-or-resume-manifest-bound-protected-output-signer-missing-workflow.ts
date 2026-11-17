@@ -124,7 +124,6 @@ export const createManifestBoundProtectedOutputSignerMissingWorkflow = async (
           input.referenceScripts.step02,
           input.referenceScripts.step03,
           input.referenceScripts.step04,
-          input.referenceScripts.step05,
         ],
         witnesses: input.referenceScripts.witnesses,
         fieldPreimageCertificateMint:

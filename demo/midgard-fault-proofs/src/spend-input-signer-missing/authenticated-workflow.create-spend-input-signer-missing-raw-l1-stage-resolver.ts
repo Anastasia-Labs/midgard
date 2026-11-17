@@ -48,11 +48,9 @@ export const createSpendInputSignerMissingRawL1StageResolver =
         ? 1
         : action === "submitStep02"
           ? 2
-          : action === "submitStep03"
+          : action === "submitScan"
             ? 3
-            : action === "submitScan"
-              ? 4
-              : 5;
+            : 4;
     if (stage.kind !== "step" || stage.step !== expectedStep) {
       throw new Error(
         `spendInputSignerMissing ${action} differs from authenticated raw-L1 stage`,

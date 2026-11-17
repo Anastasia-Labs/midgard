@@ -9,7 +9,7 @@ use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/field_grammar_fixture_v1 as grammar
 use midgard/fraud_proofs/field_opening_v1.{
   BodyAnchor, BodyFieldOpening, FieldOpeningV1, opened_certified_field_item,
-  opened_certified_field_item_count,
+  opened_certified_field_item_count, outputs_field_index,
 }
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/components.{
@@ -21,18 +21,18 @@ use midgard/fraud_proofs/native_tx/types.{
 }
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/fraud_proofs/protected_output_signer_missing/rule.{
-  BoundOutputV1, ProtectedCredentialV1, VerdictV1, direct_verdict_v1,
-  outputs_field_index,
+  BoundOutputV1, direct_verdict_v1,
 }
 use midgard/fraud_proofs/protected_output_signer_missing/step_02.{
   Args, Datum, SpendRedeemer, State,
 }
+use midgard/fraud_proofs/signer_witness_scan_v1/state.{VerdictV1, start}
 use midgard/native_tx_field_access_v1.{Inline}
 use midgard/rejection_reason_v1.{ProtectedOutputSignerMissing}
 
 validator main(
-  step_03_hash: ScriptHash,
-  step_05_hash: ScriptHash,
+  scan_hash: ScriptHash,
+  terminal_hash: ScriptHash,
   computation_thread_policy: PolicyId,
   certificate_policy: PolicyId,
   grammar_certificate_policy: PolicyId,
@@ -98,7 +98,7 @@ validator main(
             )
           let expected: Data = direct_verdict_v1(bound)
           and {
-            next_hash == step_05_hash,
+            next_hash == terminal_hash,
             next_data == expected,
           }
         } else {
@@ -122,22 +122,20 @@ validator main(
             (output.address.protected, output.address.payment_credential)
           is {
             (True, PubKeyCredential(payment_credential)) -> {
-              let expected: Data = ProtectedCredentialV1 {
-                subject: bound.subject,
-                transaction_id: bound.subject.transaction_id,
+              let expected: Data = start(
+                bound.subject,
                 witness_set_hash,
-                output_index: bound.output_index,
                 payment_credential,
-              }
+              )
               and {
-                next_hash == step_03_hash,
+                next_hash == scan_hash,
                 next_data == expected,
               }
             }
             _ -> {
               let expected: Data = direct_verdict_v1(bound)
               and {
-                next_hash == step_05_hash,
+                next_hash == terminal_hash,
                 next_data == expected,
               }
             }
@@ -158,7 +156,7 @@ validator main(
 // `BodyAnchor`, decodes the item at the bound coordinate, and classifies it.
 // A protected pub-key output forwards its credential to the witness scan in
 // both directions; an unprotected output, a protected script output, or a
-// coordinate past the authenticated count closes at step 05 directly, and
+// coordinate past the authenticated count closes at the terminal directly, and
 // only for a wrongful forced rejection.
 
 const credential_a = #"30303030303030303030303030303030303030303030303030303030"
@@ -239,13 +237,11 @@ fn bound_state(
 }
 
 fn expected_credential(state: State, payment_credential: ByteArray) -> Data {
-  let value: Data = ProtectedCredentialV1 {
-    subject: state.bound.subject,
-    transaction_id: state.bound.subject.transaction_id,
-    witness_set_hash: state.witness_set_hash,
-    output_index: state.bound.output_index,
+  let value: Data = start(
+    state.bound.subject,
+    state.witness_set_hash,
     payment_credential,
-  }
+  )
   value
 }
 
@@ -269,16 +265,16 @@ fn opening_of(
 }
 
 fn run_step_02_with(
-  step_03_hash: ScriptHash,
-  step_05_hash: ScriptHash,
+  scan_hash: ScriptHash,
+  terminal_hash: ScriptHash,
   state: State,
   opening: FieldOpeningV1,
   coordinate_out_of_range: Bool,
   tx: Transaction,
 ) -> Bool {
   run_step_02_routed(
-    step_03_hash,
-    step_05_hash,
+    scan_hash,
+    terminal_hash,
     state,
     opening,
     coordinate_out_of_range,
@@ -288,8 +284,8 @@ fn run_step_02_with(
 }
 
 fn run_step_02_routed(
-  step_03_hash: ScriptHash,
-  step_05_hash: ScriptHash,
+  scan_hash: ScriptHash,
+  terminal_hash: ScriptHash,
   state: State,
   opening: FieldOpeningV1,
   coordinate_out_of_range: Bool,
@@ -302,8 +298,8 @@ fn run_step_02_routed(
     opening
   }
   main.spend(
-    step_03_hash,
-    step_05_hash,
+    scan_hash,
+    terminal_hash,
     fixture.computation_thread_policy_id,
     fixture.test_certificate_policy_id,
     grammar.test_grammar_certificate_policy_id,
@@ -505,7 +501,7 @@ test protected_output_step_02_refuses_a_substituted_credential() fail {
   )
 }
 
-/// The credential state may only continue at step 03.
+/// The credential state may only continue at the scan.
 test protected_output_step_02_refuses_a_wrong_successor() fail {
   let outputs = [protected_key_output(credential_a)]
   let block = block_with_outputs(outputs)
@@ -722,7 +718,7 @@ test protected_output_step_02_refuses_a_substituted_direct_verdict_subject() fai
   )
 }
 
-/// The direct verdict may only continue at step 05.
+/// The direct verdict may only continue at the terminal.
 test protected_output_step_02_refuses_the_direct_exit_at_the_scan_successor() fail {
   let outputs = [output_with(True, ScriptCredential(credential_a))]
   let block = block_with_outputs(outputs)
@@ -734,7 +730,7 @@ test protected_output_step_02_refuses_the_direct_exit_at_the_scan_successor() fa
   )
 }
 
-/// The credential hand-off may only continue at step 03.
+/// The credential hand-off may only continue at the scan.
 test protected_output_step_02_refuses_the_scan_hand_off_at_the_terminal_successor() fail {
   let outputs = [protected_key_output(credential_a)]
   let block = block_with_outputs(outputs)
@@ -847,14 +843,14 @@ fn prepared(case: CertifiedCase) -> Pair<FieldOpeningV1, Transaction> {
 
 fn run_certified(case: CertifiedCase) -> Bool {
   let Pair(opening, tx) = prepared(case)
-  let Pair(step_03_hash, step_05_hash) = if case.scan {
+  let Pair(scan_hash, terminal_hash) = if case.scan {
     Pair(fixture.next_step_script_hash, scan_successor)
   } else {
     Pair(scan_successor, fixture.next_step_script_hash)
   }
   run_step_02_routed(
-    step_03_hash,
-    step_05_hash,
+    scan_hash,
+    terminal_hash,
     case.state,
     opening,
     case.coordinate_out_of_range,
@@ -1003,8 +999,8 @@ test protected_output_step_02_certified_route_refuses_an_in_progress_certificate
 
 /// A walked step-02 spend, built in full.
 type WalkedCase {
-  step_03_hash: ScriptHash,
-  step_05_hash: ScriptHash,
+  scan_hash: ScriptHash,
+  terminal_hash: ScriptHash,
   state: State,
   opening: FieldOpeningV1,
   coordinate_out_of_range: Bool,
@@ -1060,14 +1056,14 @@ fn walked_limit_case(
   } else {
     direct_verdict(subject)
   }
-  let Pair(step_03_hash, step_05_hash) = if scan {
+  let Pair(scan_hash, terminal_hash) = if scan {
     Pair(fixture.next_step_script_hash, scan_successor)
   } else {
     Pair(scan_successor, fixture.next_step_script_hash)
   }
   WalkedCase {
-    step_03_hash,
-    step_05_hash,
+    scan_hash,
+    terminal_hash,
     state,
     opening,
     coordinate_out_of_range: !scan,
@@ -1083,8 +1079,8 @@ fn walked_limit_case(
 
 fn run_walked(case: WalkedCase) -> Bool {
   run_step_02_routed(
-    case.step_03_hash,
-    case.step_05_hash,
+    case.scan_hash,
+    case.terminal_hash,
     case.state,
     case.opening,
     case.coordinate_out_of_range,

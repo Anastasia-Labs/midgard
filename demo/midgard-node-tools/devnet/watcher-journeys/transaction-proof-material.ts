@@ -108,7 +108,7 @@ export const prepareJourneyTransactionProof = async (input: {
           block: evidence,
           priorLedger,
         });
-      if (!Proofs.spendInputSignerMissingEvidenceCloses(prepared))
+      if (!Proofs.signerWitnessVerdictCloses(prepared))
         throw new Error("Spend-input signer proof does not close");
       return prepared;
     }
@@ -233,7 +233,7 @@ export const prepareJourneyTransactionProof = async (input: {
         outputIndex: 0n,
         canonicalTransactionCbor: Buffer.from(transaction.txCbor, "hex"),
       });
-      if (!Proofs.protectedOutputSignerMissingEvidenceCloses(prepared))
+      if (!Proofs.signerWitnessVerdictCloses(prepared))
         throw new Error("Protected-output proof does not close");
       return prepared;
     }

@@ -1,5 +1,6 @@
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/fraud_proofs/protected_output_signer_missing/rule
+use midgard/fraud_proofs/signer_witness_scan_v1/state
 use midgard/rejection_reason_v1.{
   ProtectedOutputSignerMissing, SpendInputSignerMissing,
 }
@@ -29,22 +30,31 @@ fn forced_subject(output_index: Int) -> substrate.VerdictSubjectV1 {
   }
 }
 
+/// The verdict the shared scan writes once it reached the field's end or a
+/// valid matching signature.
+fn scan_verdict(
+  subject: substrate.VerdictSubjectV1,
+  signer_present: Bool,
+) -> state.VerdictV1 {
+  state.VerdictV1 { subject, signer_required: True, signer_present }
+}
+
 test accepted_missing_signer_closes() {
-  rule.terminal_v1(rule.scan_verdict_v1(accepted_subject(), False))
+  state.terminal_v1(scan_verdict(accepted_subject(), False))
 }
 
 test accepted_present_signer_is_honest() fail {
-  rule.terminal_v1(rule.scan_verdict_v1(accepted_subject(), True))
+  state.terminal_v1(scan_verdict(accepted_subject(), True))
 }
 
 test forced_present_signer_closes() {
   let subject = forced_subject(4)
   expect _ = rule.bind_output_v1(subject, 4)
-  rule.terminal_v1(rule.scan_verdict_v1(subject, True))
+  state.terminal_v1(scan_verdict(subject, True))
 }
 
 test forced_missing_signer_is_honest() fail {
-  rule.terminal_v1(rule.scan_verdict_v1(forced_subject(4), False))
+  state.terminal_v1(scan_verdict(forced_subject(4), False))
 }
 
 test forced_wrong_output_coordinate_is_refused() fail {
@@ -73,7 +83,7 @@ test forced_no_signer_required_closes() {
   and {
     !verdict.signer_required,
     !verdict.signer_present,
-    rule.terminal_v1(verdict),
+    state.terminal_v1(verdict),
   }
 }
 
@@ -87,8 +97,8 @@ test accepted_subject_cannot_take_the_direct_exit() fail {
 /// Even a hand-built `signer_required = False` verdict never closes an
 /// accepted subject: the decisive fault needs a required, absent signer.
 test accepted_unrequired_signer_never_closes() fail {
-  rule.terminal_v1(
-    rule.VerdictV1 {
+  state.terminal_v1(
+    state.VerdictV1 {
       subject: accepted_subject(),
       signer_required: False,
       signer_present: False,
@@ -100,11 +110,11 @@ test accepted_unrequired_signer_never_closes() fail {
 /// closes on the direct verdict.
 test forced_negative_coordinate_closes() {
   let bound = rule.bind_output_v1(forced_subject(-1), -1)
-  rule.terminal_v1(rule.direct_verdict_v1(bound))
+  state.terminal_v1(rule.direct_verdict_v1(bound))
 }
 
 /// An accepted subject at a negative coordinate has no fault to close on.
 test accepted_negative_coordinate_never_closes() fail {
   let bound = rule.bind_output_v1(accepted_subject(), -1)
-  rule.terminal_v1(rule.direct_verdict_v1(bound))
+  state.terminal_v1(rule.direct_verdict_v1(bound))
 }

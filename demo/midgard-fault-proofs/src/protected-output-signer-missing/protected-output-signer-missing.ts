@@ -12,7 +12,6 @@ import {
   forcedVerdictSubject,
   PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE,
   PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
-  terminalVerdictContradiction,
   type VerdictSubject,
   verdictSubjectIsCanonical,
 } from "@al-ft/midgard-sdk";
@@ -20,14 +19,14 @@ import {
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { claimedItem } from "../evidence/claimed-coordinate.js";
 import {
-  scanSignerWitnesses,
-  type SignerWitnessScanCheckpoint,
-} from "../signer-witness-scan/signer-witness-scan.js";
+  type SignerWitnessScanEvidence,
+  signerWitnessVerdictCloses,
+} from "../signer-witness-scan/evidence.js";
+import { scanSignerWitnesses } from "../signer-witness-scan/signer-witness-scan.js";
 
 export const PROTECTED_OUTPUT_SIGNER_MISSING_CATEGORY =
   "protectedOutputSignerMissing" as const;
 export const PROTECTED_OUTPUT_SIGNER_MISSING_ID = "0000002b" as const;
-export const PROTECTED_OUTPUT_SIGNER_SCAN_BATCH = 32;
 export const PROTECTED_OUTPUT_SIGNER_MAX_WITNESSES = 318;
 
 const fail = (message: string): never => {
@@ -45,7 +44,7 @@ export type ProtectedOutputSignerMissingFinding = Readonly<{
  * signer frontier only for a protected pub-key output at a position its
  * cursor visits (`protected_output_authorization`); every other coordinate
  * is authorized with no signer, so a forced rejection citing it is wrong
- * without any witness and step 02 closes at step 05 directly.
+ * without any witness and step 02 writes the terminal verdict directly.
  */
 export type ProtectedOutputSignerMissingRoute =
   | "witness_scan"
@@ -55,25 +54,17 @@ export type ProtectedOutputSignerMissingRoute =
 
 export type ProtectedOutputSignerMissingEvidence =
   ProtectedOutputSignerMissingFinding &
+    SignerWitnessScanEvidence &
     Readonly<{
       canonicalTransactionCborHex: string;
       route: ProtectedOutputSignerMissingRoute;
-      /** `true` exactly on the witness-scan route. */
-      signerRequired: boolean;
       /**
        * Absent only when the coordinate is negative or past the field-2
        * count.
        */
       outputCborHex?: string;
-      /** Present only on the witness-scan route. */
-      paymentCredentialHex?: string;
-      witnessSetHashHex: string;
-      addressWitnessFieldPreimageHex: string;
-      validSignerHashes: readonly string[];
-      signerPresent: boolean;
       outputCarriage: "Inline" | "RawUtxo" | "Certified";
       witnessCarriage: "Inline" | "RawUtxo" | "Certified";
-      checkpoints: readonly SignerWitnessScanCheckpoint[];
     }>;
 
 /** Narrows scan-route evidence to the fields the scan steps consume. */
@@ -211,11 +202,10 @@ export const prepareProtectedOutputSignerMissingEvidence = ({
     // `signer_required = False, signer_present = False` by construction.
     const evidence: ProtectedOutputSignerMissingEvidence = Object.freeze({
       ...common,
-      validSignerHashes: Object.freeze([]),
       signerPresent: false,
       checkpoints: Object.freeze([]),
     });
-    if (!protectedOutputSignerMissingEvidenceCloses(evidence))
+    if (!signerWitnessVerdictCloses(evidence))
       return fail(
         "authenticated signer state agrees with the operator verdict",
       );
@@ -231,31 +221,17 @@ export const prepareProtectedOutputSignerMissingEvidence = ({
     transactionId: subject.transaction_id,
     witnesses: witnessItems.map(decodeMidgardAddressWitnessItem),
     paymentCredentialHex,
-    batch: PROTECTED_OUTPUT_SIGNER_SCAN_BATCH,
   });
   const evidence: ProtectedOutputSignerMissingEvidence = Object.freeze({
     ...common,
     paymentCredentialHex,
-    validSignerHashes: scan.validSignerHashes,
     signerPresent: scan.signerPresent,
     checkpoints: scan.checkpoints,
   });
-  if (!protectedOutputSignerMissingEvidenceCloses(evidence))
+  if (!signerWitnessVerdictCloses(evidence))
     return fail("authenticated signer state agrees with the operator verdict");
   return evidence;
 };
-
-/** Mirrors `rule.terminal_v1`: the decisive fault is a required, absent signer. */
-export const protectedOutputSignerMissingEvidenceCloses = (
-  evidence: Pick<
-    ProtectedOutputSignerMissingEvidence,
-    "subject" | "signerRequired" | "signerPresent"
-  >,
-): boolean =>
-  terminalVerdictContradiction(
-    evidence.subject,
-    evidence.signerRequired && !evidence.signerPresent,
-  );
 
 /** Exhaustive accepted plus exact forced-reason replay over authenticated DA. */
 export const detectProtectedOutputSignerMissingCompleteReplay = (
@@ -273,8 +249,7 @@ export const detectProtectedOutputSignerMissingCompleteReplay = (
         outputIndex,
         canonicalTransactionCbor: transaction,
       });
-      if (protectedOutputSignerMissingEvidenceCloses(evidence))
-        detections.push(evidence);
+      if (signerWitnessVerdictCloses(evidence)) detections.push(evidence);
     } catch (cause) {
       // An accepted coordinate that needs no signer is not a fault; the
       // forced direction never reaches these refusals because the direct

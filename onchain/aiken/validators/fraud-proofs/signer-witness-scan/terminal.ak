@@ -5,18 +5,18 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, finalize}
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
-use midgard/fraud_proofs/protected_output_signer_missing/rule.{
-  VerdictV1, terminal_v1,
-}
-use midgard/fraud_proofs/protected_output_signer_missing/step_05.{
+use midgard/fraud_proofs/signer_witness_scan_v1/state.{VerdictV1, terminal_v1}
+use midgard/fraud_proofs/signer_witness_scan_v1/terminal.{
   Args, Datum, SpendRedeemer,
 }
-use midgard/rejection_reason_v1.{ProtectedOutputSignerMissing}
+use midgard/rejection_reason_v1.{
+  ProtectedOutputSignerMissing, SpendInputSignerMissing,
+}
 
 validator main(
   fraud_proof_policy: PolicyId,
   fraud_proof_address: Address,
-  computation_thread_policy: PolicyId,
+  thread_policy: PolicyId,
 ) {
   spend(
     datum: Option<Datum>,
@@ -27,7 +27,7 @@ validator main(
     when redeemer is {
       ct.Cancel { input_index, computation_thread_mint_redeemer_index } ->
         cancel(
-          computation_thread_policy,
+          thread_policy,
           datum,
           input_index,
           own_ref,
@@ -41,8 +41,8 @@ validator main(
       }) -> {
         let Transaction { inputs, outputs, redeemers, .. } = tx
         expect Some(step_datum) = datum
-        let _own, _name, _prover, prior <- finalize(
-          computation_thread_policy,
+        let _, _, _, state <- finalize(
+          thread_policy,
           fraud_proof_policy,
           fraud_proof_address,
           step_datum,
@@ -54,7 +54,7 @@ validator main(
           outputs,
           redeemers,
         )
-        expect Some(verdict) = prior
+        expect Some(verdict) = state
         terminal_v1(verdict)
       }
     }
@@ -67,10 +67,11 @@ validator main(
 
 // ### Terminal selectors
 //
-// Step 05 reads the polarity nothing upstream branched on: an accepted
-// subject closes only when the scan found no valid signer, a forced
-// wrongful-rejection subject only when it found one, and the exact carried
-// reason is re-checked on the way through `terminal_contradiction_v1`.
+// The terminal reads the polarity nothing upstream branched on: an accepted
+// subject closes only when a required signer was not found, a forced
+// wrongful-rejection subject only when the required signer was found or no
+// signer was required. The carried reason is checked for canonical form here;
+// which reason it is was fixed by the family's step 01.
 
 fn accepted_subject(
   block: fixture.NativeBlockFixtureV1,
@@ -98,7 +99,7 @@ fn forced_subject(
   }
 }
 
-fn run_step_05(block: fixture.NativeBlockFixtureV1, verdict: VerdictV1) -> Bool {
+fn run_terminal(block: fixture.NativeBlockFixtureV1, verdict: VerdictV1) -> Bool {
   main.spend(
     fixture.fraud_proof_policy_id,
     fixture.fraud_proof_token_address(),
@@ -121,11 +122,11 @@ fn run_step_05(block: fixture.NativeBlockFixtureV1, verdict: VerdictV1) -> Bool 
   )
 }
 
-/// Wrongful acceptance closes: the operator accepted a protected output whose
-/// signer the complete scan never found.
-test protected_output_step_05_mints_for_an_accepted_missing_signer() {
+/// Wrongful acceptance closes: the operator accepted a transaction whose
+/// required signer the complete scan never found.
+test terminal_mints_for_an_accepted_missing_signer() {
   let block = fixture.challenged_block_v1()
-  run_step_05(
+  run_terminal(
     block,
     VerdictV1 {
       subject: accepted_subject(block),
@@ -135,10 +136,10 @@ test protected_output_step_05_mints_for_an_accepted_missing_signer() {
   )
 }
 
-/// Honest accepted block: the signer was present, so nothing closes.
-test protected_output_step_05_refuses_an_accepted_present_signer() fail {
+/// Honest accepted transaction: the signer was present, so nothing closes.
+test terminal_refuses_an_accepted_present_signer() fail {
   let block = fixture.challenged_block_v1()
-  run_step_05(
+  run_terminal(
     block,
     VerdictV1 {
       subject: accepted_subject(block),
@@ -149,10 +150,10 @@ test protected_output_step_05_refuses_an_accepted_present_signer() fail {
 }
 
 /// Wrongful forced rejection closes: the operator rejected for a missing
-/// signer the complete scan found.
-test protected_output_step_05_mints_for_a_forced_present_signer() {
+/// signer the scan found.
+test terminal_mints_for_a_forced_present_signer() {
   let block = fixture.challenged_block_v1()
-  run_step_05(
+  run_terminal(
     block,
     VerdictV1 {
       subject: forced_subject(block),
@@ -162,11 +163,27 @@ test protected_output_step_05_mints_for_a_forced_present_signer() {
   )
 }
 
-/// Honest forced rejection: the signer really was missing, so the operator's
-/// verdict stands.
-test protected_output_step_05_refuses_a_forced_missing_signer() fail {
+/// The terminal is reason-agnostic: the other family's canonical forced
+/// subject closes under the same rule.
+test terminal_mints_for_a_forced_present_spend_input_signer() {
   let block = fixture.challenged_block_v1()
-  run_step_05(
+  run_terminal(
+    block,
+    VerdictV1 {
+      subject: substrate.VerdictSubjectV1 {
+        ..forced_subject(block),
+        rejection_reason: Some(SpendInputSignerMissing { input_index: 0 }),
+      },
+      signer_required: True,
+      signer_present: True,
+    },
+  )
+}
+
+/// Honest forced rejection: the signer really was missing.
+test terminal_refuses_a_forced_missing_signer() fail {
+  let block = fixture.challenged_block_v1()
+  run_terminal(
     block,
     VerdictV1 {
       subject: forced_subject(block),
@@ -176,11 +193,10 @@ test protected_output_step_05_refuses_a_forced_missing_signer() fail {
   )
 }
 
-/// A forced subject that lost its reason on the way is not canonical and
-/// cannot close either way.
-test protected_output_step_05_refuses_a_forced_subject_without_a_reason() fail {
+/// A forced subject that lost its reason is not canonical and cannot close.
+test terminal_refuses_a_forced_subject_without_a_reason() fail {
   let block = fixture.challenged_block_v1()
-  run_step_05(
+  run_terminal(
     block,
     VerdictV1 {
       subject: substrate.VerdictSubjectV1 {
@@ -193,10 +209,10 @@ test protected_output_step_05_refuses_a_forced_subject_without_a_reason() fail {
   )
 }
 
-/// An accepted-root subject carrying a reason is likewise non-canonical.
-test protected_output_step_05_refuses_an_accepted_subject_with_a_reason() fail {
+/// An accepted subject carrying a reason is likewise non-canonical.
+test terminal_refuses_an_accepted_subject_with_a_reason() fail {
   let block = fixture.challenged_block_v1()
-  run_step_05(
+  run_terminal(
     block,
     VerdictV1 {
       subject: substrate.VerdictSubjectV1 {
@@ -209,16 +225,10 @@ test protected_output_step_05_refuses_an_accepted_subject_with_a_reason() fail {
   )
 }
 
-// ### Direct terminal route
-//
-// Step 02 may hand the terminal a verdict that needed no scan: canonical
-// validation required no signer at the bound coordinate. That verdict closes
-// only a wrongful forced rejection.
-
-/// Wrongful forced rejection closes on the direct verdict.
-test protected_output_step_05_mints_for_a_forced_unrequired_signer() {
+/// Direct route: no signer required closes a wrongful forced rejection.
+test terminal_mints_for_a_forced_unrequired_signer() {
   let block = fixture.challenged_block_v1()
-  run_step_05(
+  run_terminal(
     block,
     VerdictV1 {
       subject: forced_subject(block),
@@ -228,30 +238,13 @@ test protected_output_step_05_mints_for_a_forced_unrequired_signer() {
   )
 }
 
-/// An accepted subject has no fault where no signer is required, whatever the
-/// carried scan answer says.
-test protected_output_step_05_refuses_an_accepted_unrequired_signer() fail {
+/// An accepted subject has no fault where no signer is required.
+test terminal_refuses_an_accepted_unrequired_signer() fail {
   let block = fixture.challenged_block_v1()
-  run_step_05(
+  run_terminal(
     block,
     VerdictV1 {
       subject: accepted_subject(block),
-      signer_required: False,
-      signer_present: False,
-    },
-  )
-}
-
-/// The direct verdict still needs a canonical forced subject.
-test protected_output_step_05_refuses_an_unrequired_signer_without_a_reason() fail {
-  let block = fixture.challenged_block_v1()
-  run_step_05(
-    block,
-    VerdictV1 {
-      subject: substrate.VerdictSubjectV1 {
-        ..forced_subject(block),
-        rejection_reason: None,
-      },
       signer_required: False,
       signer_present: False,
     },

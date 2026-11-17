@@ -4,29 +4,33 @@ import { type MidgardNativeTxFull } from "@al-ft/midgard-core";
 import { type MidgardForcedTxFull } from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
 
-import {
-  type ProtectedOutputSignerMissingEvidence,
-  submitProtectedOutputSignerMissingStep03,
-} from "../src/protected-output-signer-missing/index.js";
+import { type ProtectedOutputSignerMissingEvidence } from "../src/protected-output-signer-missing/index.js";
 import { makeScenario } from "./protected-output-signer-missing-lifecycle.make-scenario.js";
 
 type Scenario = Awaited<ReturnType<typeof makeScenario>>;
 
+/**
+ * Runs the shared scan from its opening turn to the terminal. The opening
+ * turn publishes (and, for a certified field, certifies) the carriage; every
+ * resumed turn reuses it. Returns the terminal thread and the turn count.
+ */
 export const scanToTerminal = async (
   s: Scenario,
   threadOutRef: string,
   evidence: ProtectedOutputSignerMissingEvidence,
   subject: MidgardNativeTxFull | MidgardForcedTxFull,
-  carriage: Awaited<
-    ReturnType<typeof submitProtectedOutputSignerMissingStep03>
-  >,
 ) => {
-  let cursor = threadOutRef;
-  for (;;) {
-    const result = await s.step04(cursor, evidence, subject, carriage);
+  const opening = await s.scan(threadOutRef, evidence, subject);
+  let cursor = opening.nextThreadOutRef;
+  let turns = 1;
+  let terminal = opening.terminal;
+  while (!terminal) {
+    const result = await s.scan(cursor, evidence, subject, opening);
     cursor = result.nextThreadOutRef;
-    if (result.terminal) return cursor;
+    terminal = result.terminal;
+    turns += 1;
   }
+  return { threadOutRef: cursor, turns };
 };
 
 /** Swaps the certificate slot with a chunk slot in a tier-3 opening. */

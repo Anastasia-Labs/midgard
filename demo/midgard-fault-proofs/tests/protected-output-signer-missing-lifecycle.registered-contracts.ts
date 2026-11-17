@@ -63,13 +63,15 @@ export const AUTHENTICATION_SEAMS = [
   "credential",
 ] as const;
 
-/** The five physical scripts, in chain order; every one carries a cancel arm. */
+/**
+ * The four physical scripts, in chain order (the shared scan and terminal are
+ * steps 03 and 04); every one carries a cancel arm.
+ */
 export const PHYSICAL_STEPS = [
   "step-01",
   "step-02",
   "step-03",
   "step-04",
-  "step-05",
 ] as const;
 
 export const FORCED_ORDER_KEY = {
@@ -127,12 +129,18 @@ export const validWitness = (txId: Buffer): Buffer =>
     signature: sign(null, txId, signerPrivateKey),
   });
 
-/** The right key with a signature that does not verify. */
-export const forgedWitness = (): Buffer =>
-  encodeMidgardAddressWitnessItem({
+/**
+ * The right key with a signature that does not verify; `index` varies the
+ * signature bytes so a field can hold many distinct forgeries.
+ */
+export const forgedWitness = (index = 0): Buffer => {
+  const signature = Buffer.alloc(64, 0xff);
+  if (index !== 0) signature.writeUInt32BE(index, 60);
+  return encodeMidgardAddressWitnessItem({
     verificationKey: signerVerificationKey,
-    signature: Buffer.alloc(64, 0xff),
+    signature,
   });
+};
 
 /** A decoy key nobody holds, with an unverifiable signature. */
 export const decoyWitness = (index: number): Buffer => {

@@ -14,6 +14,7 @@ import {
   buildFaultProofSpendingStep,
   buildSharedFaultProofContracts,
 } from "../shared.js";
+import { buildSignerWitnessScanSteps } from "../signer-witness-scan.js";
 import {
   type BuildFaultProofContractsParams,
   type FraudProofChain,
@@ -22,9 +23,6 @@ import {
 export const PROTECTED_OUTPUT_SIGNER_MISSING_FAULT_PROOF_TITLES = {
   step01: deployedTitle("fraudProofProtectedOutputSignerMissing"),
   step02: deployedTitle("fraudProofProtectedOutputSignerMissingStep02"),
-  step03: deployedTitle("fraudProofProtectedOutputSignerMissingStep03"),
-  step04: deployedTitle("fraudProofProtectedOutputSignerMissingStep04"),
-  step05: deployedTitle("fraudProofProtectedOutputSignerMissingStep05"),
 } as const;
 
 export type ProtectedOutputSignerMissingFaultProofContracts = {
@@ -33,7 +31,6 @@ export type ProtectedOutputSignerMissingFaultProofContracts = {
   readonly fieldPreimageCertificate: MintingValidator;
   readonly protectedOutputSignerMissing: FraudProofChain & {
     readonly steps: readonly [
-      SpendingValidator,
       SpendingValidator,
       SpendingValidator,
       SpendingValidator,
@@ -61,42 +58,20 @@ export const buildProtectedOutputSignerMissingChain = ({
 > =>
   Effect.gen(function* () {
     const context = { blueprint, network };
-    const step05 = yield* buildFaultProofSpendingStep(
-      context,
-      PROTECTED_OUTPUT_SIGNER_MISSING_FAULT_PROOF_TITLES.step05,
-      [
-        fraudProof.policyId,
-        fraudProofTokenAddressData,
-        computationThread.policyId,
-      ],
-      "Failed to build protected-output-signer-missing step 05",
-    );
-    const step04 = yield* buildFaultProofSpendingStep(
-      context,
-      PROTECTED_OUTPUT_SIGNER_MISSING_FAULT_PROOF_TITLES.step04,
-      [
-        step05.spendingScriptHash,
-        computationThread.policyId,
-        fieldPreimageCertificatePolicyId,
-      ],
-      "Failed to build protected-output-signer-missing step 04",
-    );
-    const step03 = yield* buildFaultProofSpendingStep(
-      context,
-      PROTECTED_OUTPUT_SIGNER_MISSING_FAULT_PROOF_TITLES.step03,
-      [
-        step04.spendingScriptHash,
-        computationThread.policyId,
-        fieldPreimageCertificatePolicyId,
-      ],
-      "Failed to build protected-output-signer-missing step 03",
-    );
+    const { scan, terminal } = yield* buildSignerWitnessScanSteps({
+      blueprint,
+      network,
+      computationThread,
+      fraudProof,
+      fraudProofTokenAddressData,
+      fieldPreimageCertificatePolicyId,
+    });
     const step02 = yield* buildFaultProofSpendingStep(
       context,
       PROTECTED_OUTPUT_SIGNER_MISSING_FAULT_PROOF_TITLES.step02,
       [
-        step03.spendingScriptHash,
-        step05.spendingScriptHash,
+        scan.spendingScriptHash,
+        terminal.spendingScriptHash,
         computationThread.policyId,
         fieldPreimageCertificatePolicyId,
         fieldGrammarCertificatePolicyId,
@@ -115,7 +90,7 @@ export const buildProtectedOutputSignerMissingChain = ({
     );
     return {
       firstStep: step01,
-      steps: [step01, step02, step03, step04, step05],
+      steps: [step01, step02, scan, terminal],
     };
   });
 

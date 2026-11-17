@@ -149,11 +149,10 @@ export const spendInputSignerStageFromL1 = (
     case "step":
       if (stage.step === 1) return "step01";
       if (stage.step === 2) return "step02";
-      if (stage.step === 3) return "step03";
-      if (stage.step === 4) return "scanning";
-      if (stage.step === 5) return "step05";
+      if (stage.step === 3) return "scanning";
+      if (stage.step === 4) return "terminal";
       throw new Error(
-        "spendInputSignerMissing L1 stage exceeds five-step topology",
+        "spendInputSignerMissing L1 stage exceeds four-step topology",
       );
     case "proof_token":
       return "proven";

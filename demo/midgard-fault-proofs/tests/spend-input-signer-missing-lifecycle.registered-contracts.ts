@@ -73,8 +73,9 @@ export const MAXIMUM_WITNESSES = 318;
 /**
  * The smallest witness field the honest refusal run needs so that field 7
  * rides tier-3 certified carriage: 160 witnesses encode to 16,483 bytes, past
- * the raw-carriage bound, and the valid signature sits in the last batch so
- * the scan resumes nine times before it terminates.
+ * the raw-carriage bound, and the valid signature sits in the last of five
+ * 32-witness batches, so the scan opens and resumes four times before it
+ * terminates.
  */
 export const HONEST_ACCEPTED_WITNESSES = 160;
 
@@ -91,7 +92,6 @@ export const PHYSICAL_STEPS = [
   "step-02",
   "step-03",
   "step-04",
-  "step-05",
 ] as const;
 
 /**

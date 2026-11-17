@@ -22,12 +22,13 @@ import {
   requireLinearFaultThreadUtxo,
 } from "../src/linear-fault-family.js";
 import { submitLinearFaultContinue } from "../src/linear-fault-submit.js";
-import { planSpendInputSignerWitnessOpening } from "../src/spend-input-signer-missing/field-plans.js";
-import { type SpendInputSignerMissingEvidence } from "../src/spend-input-signer-missing/index.js";
+import { planSignerWitnessOpening } from "../src/signer-witness-scan/field-plans.js";
 import {
-  SpendInputSignerStep03RedeemerSchema,
-  SpendInputSignerStep04DatumSchema,
-} from "../src/spend-input-signer-missing/schemas.js";
+  SignerWitnessScanDatumSchema,
+  SignerWitnessScanRedeemerSchema,
+} from "../src/signer-witness-scan/schemas.js";
+import { SIGNER_WITNESS_SCAN_BATCH } from "../src/signer-witness-scan/signer-witness-scan.js";
+import { type SpendInputSignerMissingEvidence } from "../src/spend-input-signer-missing/index.js";
 import { computationThreadOutputPredicate } from "../src/tx-layout.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
@@ -38,12 +39,13 @@ import {
 } from "./spend-input-signer-missing-lifecycle.registered-contracts.js";
 
 /**
- * Step 03 over `threadOutRef` with a certificate and chunks honestly minted
- * for `foreign`'s witness field, carried under the thread's own compact
- * structure and witness set. Everything the family builder does is done here
- * with the same primitives; only the carriage is another transaction's.
+ * The opening scan turn over `threadOutRef` with a certificate and chunks
+ * honestly minted for `foreign`'s witness field, carried under the thread's
+ * own compact structure and witness set. Everything the shared scan builder
+ * does is done here with the same primitives; only the carriage is another
+ * transaction's.
  */
-export const submitStep03WithForeignCertificate = async ({
+export const submitScanWithForeignCertificate = async ({
   harness,
   family,
   threadOutRef,
@@ -80,17 +82,19 @@ export const submitStep03WithForeignCertificate = async ({
     stepIndex: 2,
     threadOutRef,
   });
-  const own = planSpendInputSignerWitnessOpening({
+  const own = planSignerWitnessOpening({
     evidence,
     nativeTxCompactCbor,
     witnessSetCompactCbor,
     owner: signer.paymentKeyHash,
+    label: "own address witnesses",
   });
-  const planned = planSpendInputSignerWitnessOpening({
+  const planned = planSignerWitnessOpening({
     evidence: foreign.evidence,
     nativeTxCompactCbor: foreign.nativeTxCompactCbor,
     witnessSetCompactCbor: foreign.witnessSetCompactCbor,
     owner: signer.paymentKeyHash,
+    label: "foreign address witnesses",
   });
   expect(planned.plan.tier).toBe("Certified");
   signer.selectWallet(lucid);
@@ -140,34 +144,33 @@ export const submitStep03WithForeignCertificate = async ({
       witness_set: own.witnessSet,
     },
   };
-  const initial = missingSignatureFieldWalkCheckpoint({
+  // The honest field holds its signer in the last batch, so the opening turn
+  // continues at the scan with the first batch boundary's checkpoint.
+  const next = missingSignatureFieldWalkCheckpoint({
     txId: evidence.subject.transaction_id,
     itemCount: own.itemCount,
     totalLength: own.preimage.length,
-    nextItemIndex: 0,
+    nextItemIndex: SIGNER_WITNESS_SCAN_BATCH,
   });
   const nextDatum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
       data: {
-        authenticated: {
-          subject: evidence.subject,
-          transaction_id: evidence.subject.transaction_id,
-          witness_set_hash: evidence.witnessSetHashHex,
-          payment_credential: evidence.paymentCredentialHex,
-        },
-        checkpoint_hash: initial.checkpointHash,
+        subject: evidence.subject,
+        witness_set_hash: evidence.witnessSetHashHex,
+        payment_credential: evidence.paymentCredentialHex,
+        checkpoint_hash: next.checkpointHash,
       },
     } as never,
-    SpendInputSignerStep04DatumSchema as never,
+    SignerWitnessScanDatumSchema as never,
   );
   const outputMatches = computationThreadOutputPredicate({
-    address: contracts.steps[3].spendingScriptAddress,
+    address: contracts.steps[2].spendingScriptAddress,
     datum: nextDatum,
     unit: threadToken.unit,
   });
   const redeemer = ((ctx) => {
-    requireOwnSpendPurpose(ctx, threadUtxo, "foreign-certificate step-03");
+    requireOwnSpendPurpose(ctx, threadUtxo, "foreign-certificate scan");
     return Data.to(
       {
         Continue: [
@@ -175,18 +178,19 @@ export const submitStep03WithForeignCertificate = async ({
             input_index: requireInputIndex(
               ctx,
               threadUtxo,
-              "foreign-certificate step-03",
+              "foreign-certificate scan",
             ),
             output_index: requireUniqueOutputIndex(
               ctx.outputs,
               outputMatches,
-              "foreign-certificate step-03 output",
+              "foreign-certificate scan output",
             ),
             witnesses_opening: opening,
+            checkpoint_cbor: null,
           },
         ],
       } as never,
-      SpendInputSignerStep03RedeemerSchema as never,
+      SignerWitnessScanRedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
   return submitLinearFaultContinue({
@@ -196,8 +200,8 @@ export const submitStep03WithForeignCertificate = async ({
     threadUnit: threadToken.unit,
     stepReference,
     stepScript: contracts.steps[2].spendingScript,
-    stepRole: "foreign-certificate step-03",
-    nextAddress: contracts.steps[3].spendingScriptAddress,
+    stepRole: "foreign-certificate scan",
+    nextAddress: contracts.steps[2].spendingScriptAddress,
     nextDatum,
     redeemer,
     carriageUtxos,

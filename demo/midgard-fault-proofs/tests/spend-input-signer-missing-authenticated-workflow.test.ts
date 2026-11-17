@@ -29,12 +29,11 @@ const references = (): SpendInputSignerMissingReferenceScripts => ({
   step02: utxo("2", 1),
   step03: utxo("3", 2),
   step04: utxo("4", 3),
-  step05: utxo("5", 4),
-  fieldPreimageCertificateMint: utxo("6", 5),
+  fieldPreimageCertificateMint: utxo("6", 4),
   witnesses: {
-    computationThreadMint: utxo("7", 6),
-    fraudProofMint: utxo("8", 7),
-    phasMembershipWithdraw: utxo("9", 8),
+    computationThreadMint: utxo("7", 5),
+    fraudProofMint: utxo("8", 6),
+    phasMembershipWithdraw: utxo("9", 7),
   },
 });
 
@@ -50,11 +49,10 @@ const MANIFEST_IDENTITY: Readonly<Record<string, UTxO>> = Object.freeze({
   fraudProofSpendInputSignerMissingStep02: utxo("2", 1),
   fraudProofSpendInputSignerMissingStep03: utxo("3", 2),
   fraudProofSpendInputSignerMissingStep04: utxo("4", 3),
-  fraudProofSpendInputSignerMissingStep05: utxo("5", 4),
-  fieldPreimageCertificateMint: utxo("6", 5),
-  computationThreadMint: utxo("7", 6),
-  fraudProofMint: utxo("8", 7),
-  phasMembershipWithdraw: utxo("9", 8),
+  fieldPreimageCertificateMint: utxo("6", 4),
+  computationThreadMint: utxo("7", 5),
+  fraudProofMint: utxo("8", 6),
+  phasMembershipWithdraw: utxo("9", 7),
 });
 
 const bindingFrom = (
@@ -130,11 +128,11 @@ describe("spendInputSignerMissing production workflow", () => {
         binding: bindingFrom(MANIFEST_IDENTITY),
         referenceScripts: {
           ...supplied,
-          step05: { ...supplied.step05, outputIndex: 99 },
+          step04: { ...supplied.step04, outputIndex: 99 },
         },
       }),
     ).toThrow(
-      /fraudProofSpendInputSignerMissingStep05 reference UTxO differs from finalized manifest identity/u,
+      /fraudProofSpendInputSignerMissingStep04 reference UTxO differs from finalized manifest identity/u,
     );
   });
 
@@ -147,11 +145,11 @@ describe("spendInputSignerMissing production workflow", () => {
           ...supplied,
           // Right out-ref, wrong payload: only the script-hash check can
           // reject this one.
-          step04: { ...supplied.step04, scriptRef: script("a") },
+          step03: { ...supplied.step03, scriptRef: script("a") },
         },
       }),
     ).toThrow(
-      /fraudProofSpendInputSignerMissingStep04 reference UTxO script differs from finalized manifest identity/u,
+      /fraudProofSpendInputSignerMissingStep03 reference UTxO script differs from finalized manifest identity/u,
     );
   });
 
@@ -167,7 +165,7 @@ describe("spendInputSignerMissing production workflow", () => {
   it("derives scanning and final stages only from authenticated raw L1", async () => {
     let stage = {
       kind: "step" as const,
-      step: 4,
+      step: 3,
       threadOutRef: `${"a".repeat(64)}#0`,
       stateQueueBlockOutRef: `${"b".repeat(64)}#0`,
     };
@@ -186,14 +184,14 @@ describe("spendInputSignerMissing production workflow", () => {
         fraudulentBlockOutRef: `${"b".repeat(64)}#0`,
       }),
     );
-    stage = { ...stage, step: 5 };
+    stage = { ...stage, step: 4 };
     await expect(
-      resolver({ action: "submitStep05", evidence: {} as never }),
+      resolver({ action: "submitTerminal", evidence: {} as never }),
     ).resolves.toEqual(
       expect.objectContaining({ threadOutRef: `${"a".repeat(64)}#0` }),
     );
     await expect(
-      resolver({ action: "submitStep03", evidence: {} as never }),
+      resolver({ action: "submitScan", evidence: {} as never }),
     ).rejects.toThrow(/differs from authenticated raw-L1 stage/u);
   });
 });

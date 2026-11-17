@@ -18,7 +18,10 @@ import {
   type FraudProofWorkflowDeploymentBinding,
   requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding.js";
-import type { ProtectedOutputSignerMissingContracts } from "./contracts.js";
+import {
+  PROTECTED_OUTPUT_SIGNER_MISSING_BLUEPRINT_TITLES,
+  type ProtectedOutputSignerMissingContracts,
+} from "./contracts.js";
 import { type ProtectedOutputSignerMissingEvidence } from "./protected-output-signer-missing.js";
 import {
   type ProtectedOutputSignerJournal,
@@ -37,7 +40,6 @@ export const PROTECTED_OUTPUT_SIGNER_MISSING_MANIFEST_CONTRACTS = Object.freeze(
     step02: "fraudProofProtectedOutputSignerMissingStep02",
     step03: "fraudProofProtectedOutputSignerMissingStep03",
     step04: "fraudProofProtectedOutputSignerMissingStep04",
-    step05: "fraudProofProtectedOutputSignerMissingStep05",
     computationThreadMint: "computationThreadMint",
     fraudProofMint: "fraudProofMint",
     phasMembershipWithdraw: "phasMembershipWithdraw",
@@ -51,7 +53,6 @@ export type ProtectedOutputSignerMissingReferenceScripts = Readonly<{
   step02: UTxO;
   step03: UTxO;
   step04: UTxO;
-  step05: UTxO;
   fieldPreimageCertificateMint: UTxO;
   fieldGrammarCertificateSpend: UTxO;
   witnesses: FaultProofWitnessReferenceScripts & {
@@ -134,11 +135,6 @@ export const bindProtectedOutputSignerMissingReferenceScripts = ({
       contractName: names.step04,
       utxo: referenceScripts.step04,
     }),
-    step05: bindReference({
-      binding,
-      contractName: names.step05,
-      utxo: referenceScripts.step05,
-    }),
     fieldPreimageCertificateMint: bindReference({
       binding,
       contractName: names.fieldPreimageCertificateMint,
@@ -179,9 +175,9 @@ export const createProtectedOutputSignerMissingBoundConfig = (
   };
   const chain = localContracts.protectedOutputSignerMissing;
   const certificate = binding.fieldPreimageCertificate;
-  if (chain === undefined || chain.steps.length !== 5) {
+  if (chain === undefined || chain.steps.length !== 4) {
     throw new Error(
-      "protectedOutputSignerMissing deployment changed its five-step topology",
+      "protectedOutputSignerMissing deployment changed its four-step topology",
     );
   }
   if (certificate === null) {
@@ -201,32 +197,20 @@ export const createProtectedOutputSignerMissingBoundConfig = (
     binding:
       binding as unknown as ProtectedOutputSignerMissingDeploymentBinding,
     contracts: {
-      steps: chain.steps.map((step, index) => ({
-        ...step,
-        blueprintTitle: [
-          "fraud_proofs/protected_output_signer_missing/step_01.main.spend",
-          "fraud_proofs/protected_output_signer_missing/step_02.main.spend",
-          "fraud_proofs/protected_output_signer_missing/step_03.main.spend",
-          "fraud_proofs/protected_output_signer_missing/step_04.main.spend",
-          "fraud_proofs/protected_output_signer_missing/step_05.main.spend",
-        ][index]!,
-        referenceOutRef: [
+      steps: chain.steps.map((step, index) => {
+        const reference = [
           referenceScripts.step01,
           referenceScripts.step02,
           referenceScripts.step03,
           referenceScripts.step04,
-          referenceScripts.step05,
-        ][index]!.txHash.concat(
-          "#",
-          [
-            referenceScripts.step01,
-            referenceScripts.step02,
-            referenceScripts.step03,
-            referenceScripts.step04,
-            referenceScripts.step05,
-          ][index]!.outputIndex.toString(),
-        ),
-      })) as unknown as ProtectedOutputSignerMissingContracts["steps"],
+        ][index]!;
+        return {
+          ...step,
+          blueprintTitle:
+            PROTECTED_OUTPUT_SIGNER_MISSING_BLUEPRINT_TITLES[index]!,
+          referenceOutRef: `${reference.txHash}#${reference.outputIndex.toString()}`,
+        };
+      }) as unknown as ProtectedOutputSignerMissingContracts["steps"],
       computationThread: binding.resolvedContracts.contracts.computationThread,
       fraudProof: binding.resolvedContracts.contracts.fraudProof,
       hubOraclePolicyId: binding.contractEntries.hubOracleMint!.scriptHash,
@@ -282,9 +266,8 @@ export type ProtectedOutputSignerMissingRuntimeLoader = Readonly<{
       | "submitInit"
       | "submitStep01"
       | "submitStep02"
-      | "submitStep03"
       | "submitScan"
-      | "submitStep05"
+      | "submitTerminal"
       | "removeDescendants"
       | "cancel";
     readonly evidence: ProtectedOutputSignerMissingEvidence;
