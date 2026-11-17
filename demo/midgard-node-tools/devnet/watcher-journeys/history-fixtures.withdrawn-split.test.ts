@@ -18,16 +18,11 @@ import {
   retainHistoryTransactions,
   signHistoryTransaction,
 } from "./history-cases.js";
-import {
-  fundedJourneyWithdrawalBody,
-  largestOwnedLedgerEntry,
-  withdrawnInputSplitBody,
-} from "./history-fixtures.js";
+import { withdrawnInputSplitBody } from "./history-fixtures.js";
 import { checkedFixtureBlock } from "./journey-fixture-ledger.test-support.js";
 
 // A fresh devnet's first journey: the ledger owner holds the 10 ADA honest
-// deposit and a 2 ADA output whose reference sorts first. A 2 ADA output
-// cannot fund a withdrawal Order (the drill's run 14 refused exactly that).
+// deposit and a 2 ADA output whose reference sorts first.
 const key = CML.PrivateKey.from_bech32(
   walletFromSeed(generateEmulatorAccount({ lovelace: 1n }).seedPhrase, {
     network: "Custom",
@@ -46,18 +41,6 @@ const predecessor = () =>
     transactions: [],
     utxos: [small, deposit],
   }).then(checkedFixtureBlock);
-
-it("splits the owner's largest output, not whichever sorts first", async () => {
-  const block = await predecessor();
-  expect(ownedHistoryLedgerEntries(block, owner)[0]?.outRef).toEqual(small.key);
-  expect(largestOwnedLedgerEntry(block, owner)?.outRef).toEqual(deposit.key);
-});
-
-it("withdraws the owner's largest output, which can fund an Order", async () => {
-  const block = await predecessor();
-  const body = fundedJourneyWithdrawalBody(block, owner);
-  expect(body.l2_value.get("")?.get("")).toBe(10_000_000n);
-});
 
 it("withdraws the split's own output even when a smaller owned output sorts first", async () => {
   const before = await predecessor();

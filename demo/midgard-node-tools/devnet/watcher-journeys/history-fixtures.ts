@@ -1,7 +1,6 @@
 import {
   decodeMidgardTxOutput,
   encodeMidgardSpendInputItem,
-  encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
 
 import {
@@ -10,10 +9,10 @@ import {
   JOURNEY_HISTORY_TRANSACTION_CATEGORIES,
   ownedHistoryLedgerEntries,
   retainHistoryTransactions,
-  signHistoryTransaction,
 } from "./history-cases.js";
 import {
   journeyLedgerOwnerKey,
+  journeyWithdrawalQuote,
   publishJourneyDeposit,
   publishJourneyWithdrawals,
 } from "./history-event-staging.js";
@@ -22,14 +21,20 @@ import {
   buildJourneyWithdrawalEvent,
   buildJourneyWithdrawnTransaction,
   journeyWithdrawalBody,
+  ownedOutputWithdrawalBody,
 } from "./history-events.js";
-import { buildAtJourneyMinFee } from "./journey-fee.js";
 import {
   createPreparedJourneyFixture,
   createTransactionJourneyFixture,
   decodeJourneyRetainedBlock,
   type JourneyFaultPreparationInput,
 } from "./staging.js";
+import {
+  ownerOutputRequirement,
+  signOwnerSplit,
+  smallestQualifyingOutput,
+  type WithdrawalFundingShape,
+} from "./withdrawal-owner-funding.js";
 
 const ownerKey = (input: JourneyFaultPreparationInput) =>
   journeyLedgerOwnerKey(input.ledgerOwnerSeedPhrase);
@@ -48,16 +53,67 @@ export const fabricatedDepositJourneyFixture = createPreparedJourneyFixture(
   { userEvents: 1 },
 );
 
+/**
+ * The ledger owner's smallest output on `predecessor` that funds a family
+ * of `shape`, with what the family's withdrawn output then holds. The
+ * family's funding before its timer (`ensureWithdrawalOwnerFunding`) tops the
+ * owner up when no output does.
+ */
+const fundingOwnerOutput = async (
+  input: JourneyFaultPreparationInput,
+  predecessor: HistoryPredecessor,
+  shape: WithdrawalFundingShape,
+) => {
+  const key = ownerKey(input);
+  const owner = key.to_public().hash().to_hex();
+  const required = ownerOutputRequirement({
+    shape,
+    quote: journeyWithdrawalQuote({
+      deployment: input.context.deployment,
+      ownerKey: key,
+    }),
+    key,
+    header: predecessor.header,
+  });
+  const requirements = new Map<string, bigint>();
+  const entry = await smallestQualifyingOutput(
+    ownedHistoryLedgerEntries(predecessor, owner),
+    {
+      requiredOf: async (candidate) => {
+        const { total, orderLovelace } = await required(candidate);
+        requirements.set(candidate.outRef.toString("hex"), orderLovelace);
+        return total;
+      },
+    },
+  );
+  if (entry === undefined)
+    throw new Error(
+      `No output of the ledger owner's funds a ${shape}; the family's funding before its timer tops the owner up`,
+    );
+  return {
+    owner,
+    key,
+    entry,
+    orderLovelace: requirements.get(entry.outRef.toString("hex"))!,
+  };
+};
+
 export const createWithdrawalJourneyFixture = (
   category: "fabricatedWithdrawal" | "withdrawalMistag" | "doubleWithdraw",
 ) =>
   createPreparedJourneyFixture(
     category,
     async (input) => {
-      const body = fundedJourneyWithdrawalBody(
+      const { owner, entry } = await fundingOwnerOutput(
+        input,
         input.predecessor,
-        ownerKey(input).to_public().hash().to_hex(),
+        "withdrawal",
       );
+      const body = ownedOutputWithdrawalBody({
+        owner,
+        outRef: entry.outRef,
+        output: decodeMidgardTxOutput(entry.output),
+      });
       // doubleWithdraw publishes both withdrawals before one shared event
       // wait, so its staging fits one of operator-2's shifts.
       const withdrawals = await publishJourneyWithdrawals(
@@ -80,39 +136,8 @@ export const createWithdrawalJourneyFixture = (
     { userEvents: category === "doubleWithdraw" ? 2 : 1 },
   );
 
-/**
- * The owner's output with the most lovelace. The first output by reference can
- * be too small to fund a withdrawal Order: on a fresh devnet it is a 2 ADA
- * output, below the Order's minimum. The withdrawn-input split divides this
- * output so each half can fund an Order, and the withdrawal journeys withdraw
- * it.
- */
-export const largestOwnedLedgerEntry = (
-  predecessor: HistoryPredecessor,
-  owner: string,
-) =>
-  ownedHistoryLedgerEntries(predecessor, owner).reduce<
-    ReturnType<typeof ownedHistoryLedgerEntries>[number] | undefined
-  >((largest, entry) => {
-    if (largest === undefined) return entry;
-    const lovelace = (candidate: typeof entry) =>
-      decodeMidgardTxOutput(candidate.output).value.lovelace;
-    return lovelace(entry) > lovelace(largest) ? entry : largest;
-  }, undefined);
-
-/** The withdrawal of the owner's largest output, which an Order can fund. */
-export const fundedJourneyWithdrawalBody = (
-  predecessor: HistoryPredecessor,
-  owner: string,
-) =>
-  journeyWithdrawalBody({
-    predecessor,
-    owner,
-    outRef: largestOwnedLedgerEntry(predecessor, owner)?.outRef,
-  });
-
-/** The withdrawal of the split transaction's first output, the half it keeps
- * the original's Value in, not whichever owned output sorts first. */
+/** The withdrawal of the split transaction's first output, the one it keeps
+ * the original's assets in, not whichever owned output sorts first. */
 export const withdrawnInputSplitBody = (
   split: HistoryPredecessor,
   owner: string,
@@ -140,52 +165,23 @@ export const createWithdrawnInputJourneyFixture = (
       const split = await input.commitHistoryBlock(
         "withdrawal-ledger",
         async (timed) => {
-          const selected = largestOwnedLedgerEntry(
+          // The first output holds exactly what its withdrawal needs, and the
+          // rest stays with the owner as change for later families.
+          const { key, entry, orderLovelace } = await fundingOwnerOutput(
+            input,
             timed.predecessor,
-            ownerKey(input).to_public().hash().to_hex(),
-          );
-          const entry =
-            selected === undefined
-              ? undefined
-              : [
-                  selected.outRef.toString("hex"),
-                  selected.output.toString("hex"),
-                ];
-          if (entry === undefined)
-            throw new Error(
-              "Withdrawn-input history requires a deposited output",
-            );
-          const output = decodeMidgardTxOutput(Buffer.from(entry[1], "hex"));
-          const half = output.value.lovelace / 2n;
-          const transaction = buildAtJourneyMinFee(
-            timed.predecessor.header,
-            (fee) =>
-              signHistoryTransaction(
-                {
-                  spendInputs: [Buffer.from(entry[0], "hex")],
-                  outputs: [
-                    encodeMidgardTxOutput({
-                      ...output,
-                      value: { ...output.value, lovelace: half },
-                    }),
-                    encodeMidgardTxOutput({
-                      ...output,
-                      value: {
-                        lovelace: output.value.lovelace - half - fee,
-                        assets: new Map(),
-                      },
-                    }),
-                  ],
-                  fee,
-                  networkId: timed.predecessor.header.expectedNetworkId,
-                },
-                ownerKey(input),
-              ),
-            output.value.lovelace - half,
+            "split",
           );
           const block = await retainHistoryTransactions({
             ...timed,
-            transactions: [transaction],
+            transactions: [
+              signOwnerSplit({
+                header: timed.predecessor.header,
+                key,
+                entry,
+                orderLovelace,
+              }),
+            ],
           });
           if (block.replays[0]?.trace.verdict !== "accepted")
             throw new Error("Withdrawal prerequisite split is not valid");

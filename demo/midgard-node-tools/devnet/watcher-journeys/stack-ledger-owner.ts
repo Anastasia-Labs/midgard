@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { mkdir, rename, rm } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
 import {
@@ -319,27 +319,32 @@ export const STACK_ABSORB_WITHIN_MS =
 /** Polls the stack's tail no faster than this while the deposit is pending. */
 const LEDGER_OWNER_POLL_MS = 30_000;
 
+type StackLedgerOwnerSession = Readonly<{
+  context: StackJourneyContext;
+  ledgerAt: LedgerAt;
+  /** Held stopped only if the funding must advance the scheduler itself. */
+  operator2: Pick<OperatorPause, "hold">;
+}>;
+
 /**
- * The drill's own L2 ledger owner funding on an attached stack, run once
- * before any family's timer starts (`fundStackLedgerOwnerBeforeRun`): its
- * deposit of the stack journey's deposit amount is paid by the drill's
+ * The drill's own L2 ledger owner funding on an attached stack: the owner,
+ * our node's ledger, the stack's attested tail, and the funding's ports
+ * (`awaitStackLedgerOwnerFunded`). Its deposit, of the stack journey's
+ * deposit amount unless `deposit` names another, is paid by the drill's
  * funding wallet. Our node absorbs it in its own shift, which may follow
  * operator-2's whole shift, and its committee attests the block within its
  * timeout. The deposit pays the owner's wallet address, which the run's
  * honest transfers spend from and pay back to, and only an output there
  * counts as funded.
  */
-export const fundStackLedgerOwner = async (
-  session: Readonly<{
-    context: StackJourneyContext;
-    ledgerAt: LedgerAt;
-    /** Held stopped only if the funding must advance the scheduler itself. */
-    operator2: Pick<OperatorPause, "hold">;
-  }>,
+export const stackLedgerOwnerFunding = async (
+  session: StackLedgerOwnerSession,
   input: Readonly<{
     /** A family of the run, whose commit allowance every family shares. */
     category: string;
     onStage(name: string): void;
+    /** Another deposit than the run's own, recorded in its own file. */
+    deposit?: Readonly<{ lovelace: bigint; pendingName: string }>;
   }>,
 ) => {
   const { onStage } = input;
@@ -350,7 +355,8 @@ export const fundStackLedgerOwner = async (
   const fingerprint = context.deployment.manifest.manifestId;
   const pendingPath = join(
     context.runDirectory,
-    "work/journeys/ledger-owner-deposit.json",
+    "work/journeys",
+    input.deposit?.pendingName ?? "ledger-owner-deposit.json",
   );
   const ourLedger = nodeLedger(context.stackConfig.endpoint);
   // On an idle stack every block merged: rebuilding the one the root holds
@@ -380,17 +386,16 @@ export const fundStackLedgerOwner = async (
     operator2: session.operator2,
     onStage,
   });
-  return fundStackLedgerOwnerBeforeRun({
+  const readTail = async () =>
+    decodeJourneyRetainedBlock(
+      await da.readAttestedAtOrAfterTail(),
+      session.ledgerAt,
+    );
+  const ports: StackLedgerOwnerFundingPorts = {
     ourLedgerHoldsOutput: () =>
       ourLedgerHoldsLedgerOwnerOutput(ourLedger, owner),
     ownerHoldsOutput: async () =>
-      tailHoldsLedgerOwnerOutput(
-        await decodeJourneyRetainedBlock(
-          await da.readAttestedAtOrAfterTail(),
-          session.ledgerAt,
-        ),
-        owner,
-      ),
+      tailHoldsLedgerOwnerOutput(await readTail(), owner),
     beforeDeposit: (notAfterMs) => gate.beforeFunding(operator2, notAfterMs),
     admitsDeposit: (inclusionTimeMs) =>
       gate.admitsFunding(operator2, inclusionTimeMs),
@@ -422,7 +427,7 @@ export const fundStackLedgerOwner = async (
       const archived = join(
         dirname(pendingPath),
         "archive",
-        `ledger-owner-deposit.${Date.now().toString()}.json`,
+        `${basename(pendingPath, ".json")}.${Date.now().toString()}.json`,
       );
       await mkdir(dirname(archived), { recursive: true });
       await rename(pendingPath, archived);
@@ -439,7 +444,9 @@ export const fundStackLedgerOwner = async (
           {
             l2Address: stackLedgerOwnerDepositAddress(owner),
             l2Datum: null,
-            lovelace: BigInt(context.stackConfig.journey.depositLovelace),
+            lovelace:
+              input.deposit?.lovelace ??
+              BigInt(context.stackConfig.journey.depositLovelace),
             additionalAssets: {},
             referenceScripts: { depositMinting },
           },
@@ -467,5 +474,18 @@ export const fundStackLedgerOwner = async (
     pause: () => delay(LEDGER_OWNER_POLL_MS),
     absorbWithinMs: STACK_ABSORB_WITHIN_MS,
     onStage,
-  });
+  };
+  return { owner, ourLedger, readTail, ports };
 };
+
+/**
+ * The run's funding of the ledger owner, once before any family's timer
+ * starts (`fundStackLedgerOwnerBeforeRun`).
+ */
+export const fundStackLedgerOwner = async (
+  session: StackLedgerOwnerSession,
+  input: Readonly<{ category: string; onStage(name: string): void }>,
+) =>
+  fundStackLedgerOwnerBeforeRun(
+    (await stackLedgerOwnerFunding(session, input)).ports,
+  );

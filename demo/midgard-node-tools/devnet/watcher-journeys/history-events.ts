@@ -19,6 +19,7 @@ export {
   buildJourneyWithdrawalEvent,
   buildJourneyWithdrawnTransaction,
   journeyWithdrawalBody,
+  ownedOutputWithdrawalBody,
 } from "./history-events.build-journey-withdrawn-transaction.js";
 export {
   buildJourneyFabricatedDeposit,

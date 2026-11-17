@@ -73,7 +73,7 @@ import {
 } from "./verified-headers.js";
 
 /** The poll cadence of a family's own waits on the watcher. */
-const POLL_MS = 1000;
+export const DECISION_POLL_MS = 1000;
 
 /** What the check reads and sends through. */
 export type StackVerifiedPredecessorPorts = Readonly<{
@@ -404,7 +404,7 @@ export const checkStackVerifiedPredecessor = async (
         transferLovelace: BigInt(context.stackConfig.journey.transferLovelace),
       }),
     now: () => chain.now(),
-    pause: () => pauseUnlessAborted(POLL_MS, session.signal),
+    pause: () => pauseUnlessAborted(DECISION_POLL_MS, session.signal),
     absorbWithinMs: STACK_ABSORB_WITHIN_MS,
     decisionWithinMs: timing.allowances.automaticDecisionMs,
     onStage: input.onStage,

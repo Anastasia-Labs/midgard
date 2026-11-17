@@ -21,6 +21,8 @@ import { readStackJourneyTimingPaths } from "./stack-context.js";
 import { fundStackLedgerOwner } from "./stack-ledger-owner.js";
 import { verifiedPredecessorBeforeFamily } from "./stack-verified-predecessor.before-family.js";
 import { checkStackVerifiedPredecessor } from "./stack-verified-predecessor.js";
+import { withdrawalFundingShape } from "./withdrawal-owner-funding.js";
+import { withdrawalOwnerTopUpBeforeFamily } from "./withdrawal-owner-top-up.js";
 
 // Devnet mode (the default) runs from MIDGARD_WATCHER_JOURNEY_RUN_DIR and
 // skips without it; stack mode attaches to a running e2e-stack.
@@ -72,26 +74,33 @@ beforeAll(async () => {
 // only once its work has stopped, and the session refuses to start another
 // family before then.
 //
+// A withdrawal family then needs an output of the ledger owner's that funds
+// what it withdraws. An earlier family may have spent or split them, so
+// when none on the tail it builds on does, one deposit of exactly what the
+// family needs tops the owner up and the check waits for it to be absorbed
+// (`withdrawalOwnerTopUpBeforeFamily`).
+//
 // On a stack, the block the family will build on must then be one the
 // stack's watcher verified from its payload. A watcher that restarted after
 // that block merged can no longer verify it, so the check heals it with one
 // honest transfer through our node and waits, within the funding's
 // absorption bound and the family's decision allowance, for the new block to
-// be attested and verified. It does nothing once the session has closed, and
-// nothing for a family resuming its staging.
+// be attested and verified. Neither does anything once the session has
+// closed, nor for a family resuming its staging.
 const familyTitle = (category: string) =>
   `automatically proves '${category}', corrects exact economics, and processes an honest successor`;
 beforeEach(async ({ task }) => {
   await (await session?.catch(() => undefined))?.familyUnwound();
-  if (source?.mode !== "stack") return;
+  if (source === undefined) return;
   const fixture = fixtures.find(
     ({ category }) => familyTitle(category) === task.name,
   );
   if (fixture === undefined) return;
+  const withdraws = withdrawalFundingShape(fixture.category) !== undefined;
+  if (source.mode !== "stack" && !withdraws) return;
   const opened = await openSession();
-  if (opened.mode !== "attached") return;
   const onStage = (name: string) => {
-    console.info(`Verified predecessor: ${name}`);
+    console.info(`Before the family: ${name}`);
   };
   await verifiedPredecessorBeforeFamily({
     familyDirectory: journeyFamilyDirectory(
@@ -100,11 +109,17 @@ beforeEach(async ({ task }) => {
     ),
     isClosed: opened.isClosed,
     close: opened.close,
-    check: () =>
-      checkStackVerifiedPredecessor(opened, {
+    check: async () => {
+      await withdrawalOwnerTopUpBeforeFamily(opened, {
         category: fixture.category,
         onStage,
-      }),
+      });
+      if (opened.mode === "attached")
+        await checkStackVerifiedPredecessor(opened, {
+          category: fixture.category,
+          onStage,
+        });
+    },
     onStage,
   });
 }, 0);

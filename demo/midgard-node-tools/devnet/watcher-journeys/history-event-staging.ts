@@ -274,6 +274,58 @@ type EventDeployment = Pick<
   "operatorLucid" | "contracts" | "references"
 >;
 
+/** The SDK withdrawal request the drill publishes for this owner and body. */
+const journeyWithdrawalConfig = async (input: {
+  deployment: EventDeployment;
+  ownerKey: CML.PrivateKey;
+  body: SDK.WithdrawalBody;
+}): Promise<SDK.SubmitWithdrawalConfig> => {
+  const { deployment, body } = input;
+  const key = input.ownerKey;
+  if (key.to_public().hash().to_hex() !== body.l2_owner)
+    throw new Error("Withdrawal signer does not own the retained output");
+  const reference = deployment.references.get("withdrawalMint");
+  if (reference === undefined)
+    throw new Error("Missing published withdrawal minting reference");
+  return {
+    body,
+    signature: SDK.signWithdrawalBody(key, body),
+    refundAddress: await Effect.runPromise(
+      SDK.addressDataFromBech32(
+        await deployment.operatorLucid.wallet().address(),
+      ),
+    ),
+    referenceScripts: { withdrawalMinting: reference },
+  };
+};
+
+/**
+ * What the SDK requires of a withdrawal of `body`, as the drill would
+ * publish it: the lovelace its Order locks (`quoteUserHistoryFunding`, through
+ * `prepareWithdrawalSubmissionProgram`), and the least lovelace the withdrawn
+ * Value must hold for its payout output (`targetMinimum`). The SDK refuses a
+ * withdrawal whose withdrawn lovelace is below either.
+ */
+export const journeyWithdrawalQuote =
+  (input: { deployment: EventDeployment; ownerKey: CML.PrivateKey }) =>
+  async (body: SDK.WithdrawalBody) => {
+    const prepared = await Effect.runPromise(
+      SDK.prepareWithdrawalSubmissionProgram(
+        input.deployment.operatorLucid,
+        input.deployment.contracts,
+        await journeyWithdrawalConfig({ ...input, body }),
+      ),
+    );
+    const orderLovelace = prepared.request.assets.lovelace ?? 0n;
+    return {
+      orderLovelace,
+      targetMinimum: SDK.eventHistoryWithdrawalFunding(
+        prepared.request.payloadCbor,
+        orderLovelace,
+      ).targetMinimum,
+    };
+  };
+
 /** The exact withdrawal the SDK publishes for this owner, body and ordinal. */
 export const journeyWithdrawalEventRequest = (input: {
   deployment: EventDeployment;
@@ -286,25 +338,11 @@ export const journeyWithdrawalEventRequest = (input: {
     name: `withdrawal-${ordinal}`,
     identity: SDK.withdrawalBodyBytes(body),
     build: async () => {
-      const lucid = deployment.operatorLucid;
-      const key = input.ownerKey;
-      if (key.to_public().hash().to_hex() !== body.l2_owner)
-        throw new Error("Withdrawal signer does not own the retained output");
-      const reference = deployment.references.get("withdrawalMint");
-      if (reference === undefined)
-        throw new Error("Missing published withdrawal minting reference");
       const built = await Effect.runPromise(
         SDK.buildUnsignedWithdrawalTxWithMetadataProgram(
-          lucid,
+          deployment.operatorLucid,
           deployment.contracts,
-          {
-            body,
-            signature: SDK.signWithdrawalBody(key, body),
-            refundAddress: await Effect.runPromise(
-              SDK.addressDataFromBech32(await lucid.wallet().address()),
-            ),
-            referenceScripts: { withdrawalMinting: reference },
-          },
+          await journeyWithdrawalConfig(input),
         ),
       );
       return {

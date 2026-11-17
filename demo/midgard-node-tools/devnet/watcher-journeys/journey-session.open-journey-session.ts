@@ -449,6 +449,7 @@ export const openJourneySession = async (runDirectory: string) => {
       ensureWatcher,
       watcherStarted: () => started !== undefined,
       assertHealthy,
+      isClosed,
       close,
       runFamily,
       familyUnwound,

@@ -3,6 +3,7 @@ import {
   decodeMidgardTxOutput,
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
+  type MidgardTxOutput,
 } from "@al-ft/midgard-core";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { replacePlutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
@@ -137,8 +138,21 @@ export const journeyWithdrawalBody = (input: {
       : [selected.outRef.toString("hex"), selected.output.toString("hex")];
   if (entry === undefined)
     throw new Error("Withdrawal journey has no deposited ledger output");
-  const reference = decodeMidgardSpendInputItem(Buffer.from(entry[0], "hex"));
-  const output = decodeMidgardTxOutput(Buffer.from(entry[1], "hex"));
+  return ownedOutputWithdrawalBody({
+    owner: input.owner,
+    outRef: Buffer.from(entry[0], "hex"),
+    output: decodeMidgardTxOutput(Buffer.from(entry[1], "hex")),
+  });
+};
+
+/** The withdrawal of one owned output, paid to the owner's own key. */
+export const ownedOutputWithdrawalBody = (input: {
+  owner: string;
+  outRef: Uint8Array;
+  output: MidgardTxOutput;
+}): SDK.WithdrawalBody => {
+  const reference = decodeMidgardSpendInputItem(input.outRef);
+  const { output } = input;
   return {
     l2_outref: {
       transactionId: Buffer.from(reference.txId).toString("hex"),
