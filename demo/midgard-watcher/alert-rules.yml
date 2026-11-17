@@ -86,7 +86,7 @@ groups:
           runbook: "docs/operations/alerts.md#midgardwatcherprovercollateralforfeited"
 
       - alert: MidgardWatcherProverCollateralAccountingFailed
-        # The prover reservation could not account for a superseded attempt's
+        # The prover reservation could not account for an attempt's
         # forfeited or returned collateral; the accounting is retried.
         expr: midgard_watcher_active_alerts{code="prover_collateral_accounting_failed"} > 0
         labels:

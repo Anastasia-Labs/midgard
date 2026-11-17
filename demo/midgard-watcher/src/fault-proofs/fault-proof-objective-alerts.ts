@@ -53,11 +53,12 @@ export const watcherProofObjectiveAlertSubject = (
  *   naming the objective, the attempt and the collateral. It clears once a
  *   rollback drops every such landing.
  * - `prover_collateral_accounting_failed`: the reservation could not account
- *   for a superseded attempt's forfeited or returned collateral, so its pool
- *   may disagree with the chain. The attempt is read again later and the
+ *   for an attempt's forfeited or returned collateral, so its pool may
+ *   disagree with the chain. The attempt is read again later and the
  *   accounting retried; the objective goes on. Each failure writes one error
  *   line naming the objective and the failure. It clears once every such
- *   attempt is accounted for, retires or lands as its action's result.
+ *   attempt is accounted for, a later read leaves nothing to account, or the
+ *   attempt retires or lands as its action's result.
  *
  * All clear when the objective settles.
  */

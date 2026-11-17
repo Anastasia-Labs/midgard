@@ -7,6 +7,11 @@ import type {
 } from "./journal.fraud-proof-workflow-journal-event.js";
 import type { FraudProofWorkflowReconcileResult } from "./orchestrator.fraud-proof-family-workflow-adapter.js";
 
+type Stalled = Extract<
+  FraudProofWorkflowJournalEvent,
+  { readonly kind: "stalled" }
+>;
+
 type CollateralForfeited = Extract<
   FraudProofWorkflowJournalEvent,
   { readonly kind: "collateral_forfeited" }
@@ -93,22 +98,30 @@ export const activeCollateralForfeitures = (
 };
 
 const ACCOUNTING_FAILED = "collateral accounting failed for attempt ";
+const ACCOUNTING_MOOT = "collateral accounting no longer needed for attempt ";
 
-/** The diagnostic a superseded attempt's failed forfeiture or reversal
- * records: the read is retried, and the failure is named once. */
+/** The diagnostic an attempt's failed forfeiture or reversal records: the
+ * read is retried, and the failure is named once. */
 export const collateralAccountingFailure = (
   transactionHash: string,
   error: unknown,
-): FraudProofWorkflowJournalEvent => ({
+): Stalled => ({
   kind: "stalled",
   reason: `${ACCOUNTING_FAILED}${transactionHash}: ${formatUnknownError(error)}`,
 });
 
+/** The diagnostic that clears a failed accounting once a read of the attempt
+ * leaves nothing to account. */
+export const collateralAccountingMoot = (transactionHash: string): Stalled => ({
+  kind: "stalled",
+  reason: `${ACCOUNTING_MOOT}${transactionHash}`,
+});
+
 /**
- * The superseded attempts whose collateral accounting failed and has not
- * been done since, by transaction, with the failure. Each clears once the
- * attempt's forfeiture or reversal is recorded, or the attempt retires or
- * lands as its action's result.
+ * The attempts whose collateral accounting failed and has not been done
+ * since, by transaction, with the failure. Each clears once the attempt's
+ * forfeiture or reversal is recorded, a read leaves nothing to account, or
+ * the attempt retires or lands as its action's result.
  */
 export const standingCollateralAccountingFailures = (
   entries: readonly FraudProofWorkflowJournalEntry[],
@@ -124,6 +137,8 @@ export const standingCollateralAccountingFailures = (
           ),
           event.reason,
         );
+      else if (event.reason.startsWith(ACCOUNTING_MOOT))
+        failed.delete(event.reason.slice(ACCOUNTING_MOOT.length));
     } else if (
       event.kind === "collateral_forfeited" ||
       event.kind === "collateral_forfeiture_reversed" ||

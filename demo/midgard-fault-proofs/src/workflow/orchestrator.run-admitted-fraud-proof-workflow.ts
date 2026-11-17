@@ -82,7 +82,7 @@ import { assertWorkflowJournalReconciliation } from "./orchestrator.reconcile-su
 import { reobserveRequiredWorkflowParent } from "./orchestrator.reobserve-required-parent.js";
 import { resolvedByAnotherRecordResult } from "./orchestrator.resolved-by-another-record.js";
 import {
-  restoreWorkflowAttemptCollateral,
+  accountWorkflowAttemptCollateral,
   supersedeDisplacedFundingAttempt,
   supersedeWorkflowFundingAttempt,
 } from "./orchestrator.supersede-funding-attempt.js";
@@ -560,13 +560,17 @@ export const runAdmittedFraudProofWorkflow = async ({
           `reconciliation failed for ${action.actionId}: ${formatUnknownError(cause)}`,
         );
       }
-      await restoreWorkflowAttemptCollateral({
+      // A failed collateral accounting holds nothing: the next observation
+      // reads the attempt again.
+      const unaccounted = await accountWorkflowAttemptCollateral({
         writer,
         assertReconcile,
         entries,
-        transactionHash: intent.txHash,
+        append,
+        intent,
         read: reconciled,
       });
+      if (unaccounted !== undefined) return resumeOnObservation(unaccounted);
       if (reconciled.kind === "unknown") {
         const reason = `reconciliation remains unknown for ${action.actionId}: ${reconciled.reason}`;
         return resumeOnObservation(reason);
@@ -654,7 +658,6 @@ export const runAdmittedFraudProofWorkflow = async ({
         entries: () => entries,
         transactionHash: intent.txHash,
         retirement: reconciled.retirement,
-        ...(reconciled.landedInvalid === true ? { landedInvalid: true } : {}),
       });
       fundingRecovery = await readWorkflowFundingRecovery(journal);
       context = { ...context, entries };

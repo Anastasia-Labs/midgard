@@ -7,15 +7,18 @@
  * drops the landing undoes all of it.
  */
 import { beginWorkflowFundingReservationAction } from "@al-ft/midgard-fault-proofs";
-import type { UTxO } from "@lucid-evolution/lucid";
 import { afterEach, expect, it, vi } from "vitest";
 
+import {
+  forfeitureOf,
+  heldOutRefs,
+  showLanding,
+} from "../support/collateral-landing.js";
 import { setupFaultProofExecution } from "../support/fault-proof-execution-fixture.js";
 import {
   cleanupFundingRecoveryFixtures,
   FixtureProcessStop,
   setupFundingRecoveryFixture,
-  walletAddress,
 } from "../support/fault-proof-funding-fixture.js";
 
 afterEach(async () => {
@@ -23,43 +26,6 @@ afterEach(async () => {
   vi.restoreAllMocks();
   await cleanupFundingRecoveryFixtures();
 });
-
-type Fixture = Awaited<ReturnType<typeof setupFundingRecoveryFixture>>;
-
-const coin = (outRef: string, lovelace: bigint): UTxO => {
-  const [txHash, outputIndex] = outRef.split("#");
-  return {
-    txHash: txHash!,
-    outputIndex: Number(outputIndex),
-    address: walletAddress,
-    assets: { lovelace },
-  };
-};
-
-/** The wallet as the chain shows it: with the attempt's invalid landing, the
- * collateral is spent and its return exists; without it, the reverse. */
-const showLanding = (fixture: Fixture, landed: boolean) => {
-  const collateral = fixture.collateralInput;
-  const back = fixture.collateralReturn!;
-  const [gone, shown] = landed
-    ? [collateral.outRef, coin(back.outRef, BigInt(back.lovelace))]
-    : [back.outRef, coin(collateral.outRef, BigInt(collateral.lovelace))];
-  const kept = fixture.walletUtxos.filter(
-    ({ txHash, outputIndex }) => `${txHash}#${outputIndex}` !== gone,
-  );
-  fixture.walletUtxos.splice(0, fixture.walletUtxos.length, ...kept, shown);
-};
-
-const forfeitureOf = (fixture: Fixture) => ({
-  kind: "collateral_forfeited",
-  actionId: "init",
-  txHash: fixture.transactionHash,
-  collateralOutRefs: [fixture.collateralInput.outRef],
-  collateralReturnOutRef: fixture.collateralReturn!.outRef,
-});
-
-const heldOutRefs = async (fixture: Fixture) =>
-  (await fixture.records())[0]!.activeInputs.map(({ outRef }) => outRef).sort();
 
 it("swaps the collateral for its return in the reservation when the attempt lands failing phase 2, and swaps back when a rollback drops the landing", async () => {
   const fixture = await setupFundingRecoveryFixture(
