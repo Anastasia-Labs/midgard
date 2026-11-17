@@ -34,6 +34,7 @@ export const WATCHER_ALERT_CODES = Object.freeze([
   "validation_trace_replay_stuck",
   "prover_funding_unavailable",
   "prover_collateral_forfeited",
+  "prover_collateral_accounting_failed",
   "unproven_fault_merged",
 ] as const);
 

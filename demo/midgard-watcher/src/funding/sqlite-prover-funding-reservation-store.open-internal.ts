@@ -903,26 +903,28 @@ export const openInternal = async (
         );
         // A rollback dropped the landing: its collateral return no longer
         // exists and the collateral is live again. Only a reservation that
-        // still holds the return gets the collateral back in its place.
+        // still holds the return gets the collateral back in its place. A
+        // coin the reservation already holds again, re-planned after its pool
+        // was released, is back already.
         const back = landing.collateralReturn?.outRef;
-        const held = current.activeInputs.some(({ outRef }) => outRef === back);
+        const holds = (outRef: string | undefined) =>
+          current.activeInputs.some((value) => value.outRef === outRef);
         const collateral = new Set(landing.collateralOutRefs);
-        for (const value of inputs) {
-          if (
-            !collateral.has(value.outRef) ||
-            current.activeInputs.some(({ outRef }) => outRef === value.outRef)
-          )
+        const restored = inputs.filter(({ outRef }) => {
+          if (!collateral.has(outRef))
             throw new Error(
               "restored collateral is not the attempt's own collateral",
             );
-          assertLeaseAvailable(value.outRef, current.reservationId);
-        }
+          return !holds(outRef);
+        });
+        for (const { outRef } of restored)
+          assertLeaseAvailable(outRef, current.reservationId);
         const next = nextRecord({
           current,
-          activeInputs: held
+          activeInputs: holds(back)
             ? [
                 ...current.activeInputs.filter(({ outRef }) => outRef !== back),
-                ...inputs,
+                ...restored,
               ]
             : current.activeInputs,
         });

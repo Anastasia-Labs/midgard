@@ -1,7 +1,10 @@
+import { isWorkflowActuationRevokedError } from "./actuation-permit.create-workflow-reconciliation-permit-controller.js";
 import {
   activeCollateralForfeitures,
+  collateralAccountingFailure,
   collateralForfeitureEvent,
   readShowsForfeitureReversed,
+  standingCollateralAccountingFailures,
 } from "./collateral-forfeiture.js";
 import { isFinalWorkflowCompletion } from "./completion-finality.js";
 import {
@@ -162,6 +165,7 @@ export const reconcileSupersededAttemptRecords = async ({
         event.kind === "submission_intent" && event.txHash === hash,
     );
   const forfeited = activeCollateralForfeitures(entries);
+  const failedAccounting = standingCollateralAccountingFailures(entries);
   const unread: SupersededAttempt[] = [];
   for (const saved of savedAttempts) {
     const hash = saved.transition.transactionHash;
@@ -199,10 +203,24 @@ export const reconcileSupersededAttemptRecords = async ({
     const result = await reconcile(saved);
     // The chain took the collateral of bytes that landed failing phase 2 at
     // the tip; a rollback past that block gives it back.
-    if (!forfeited.has(hash)) {
-      if (result.kind === "not_found" && result.landedInvalid === true)
-        await forfeit?.(saved);
-    } else if (readShowsForfeitureReversed(result)) await restore?.(saved);
+    try {
+      if (!forfeited.has(hash)) {
+        if (result.kind === "not_found" && result.landedInvalid === true)
+          await forfeit?.(saved);
+      } else if (readShowsForfeitureReversed(result)) await restore?.(saved);
+    } catch (error) {
+      // The attempt is read again later and its accounting retried; the
+      // failure is named once, and no repeat holds the objective. A revoked
+      // actuation stops the run as it would anywhere else.
+      reads?.schedule.unresolved(hash, reads.nowMs);
+      if (isWorkflowActuationRevokedError(error)) throw error;
+      if (
+        !failedAccounting.has(hash) &&
+        !entries.some(({ event }) => isFinalWorkflowCompletion(event))
+      )
+        await append(collateralAccountingFailure(hash, error));
+      continue;
+    }
     if (
       result.kind === "confirmed" ||
       result.kind === "conflict" ||

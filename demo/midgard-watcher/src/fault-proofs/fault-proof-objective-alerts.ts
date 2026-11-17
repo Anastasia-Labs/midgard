@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 
-import { activeCollateralForfeitures } from "@al-ft/midgard-fault-proofs";
+import {
+  activeCollateralForfeitures,
+  standingCollateralAccountingFailures,
+} from "@al-ft/midgard-fault-proofs";
 
 import type {
   WatcherAlertCode,
@@ -49,6 +52,12 @@ export const watcherProofObjectiveAlertSubject = (
  *   disagreed with the chain. Each such attempt writes one error line
  *   naming the objective, the attempt and the collateral. It clears once a
  *   rollback drops every such landing.
+ * - `prover_collateral_accounting_failed`: the reservation could not account
+ *   for a superseded attempt's forfeited or returned collateral, so its pool
+ *   may disagree with the chain. The attempt is read again later and the
+ *   accounting retried; the objective goes on. Each failure writes one error
+ *   line naming the objective and the failure. It clears once every such
+ *   attempt is accounted for, retires or lands as its action's result.
  *
  * All clear when the objective settles.
  */
@@ -63,6 +72,8 @@ export const createWatcherFaultProofObjectiveAlerts = ({
   const unfunded = new Set<string>();
   /** Per objective, the attempts whose forfeiture stands. */
   const forfeited = new Map<string, ReadonlySet<string>>();
+  /** Per objective, the failed collateral accountings that stand. */
+  const unaccounted = new Map<string, ReadonlySet<string>>();
   const objectiveOf = ({ category, headerHash }: WatcherProofObjective) =>
     `${category}/${headerHash}`;
   const set = (
@@ -113,12 +124,33 @@ export const createWatcherFaultProofObjectiveAlerts = ({
       else unfunded.delete(objective);
       set("prover_funding_unavailable", job, paused);
     },
-    /** After a run: the forfeitures that stand in the objective's journal. */
+    /** After a run: the forfeitures and failed collateral accountings that
+     * stand in the objective's journal. */
     collateral: (job: WatcherProofObjective): void => {
       const objective = objectiveOf(job);
-      const standing = activeCollateralForfeitures(
-        workflowJournal.readExecution(job)?.entries ?? [],
-      );
+      const entries = workflowJournal.readExecution(job)?.entries ?? [];
+      const failures = standingCollateralAccountingFailures(entries);
+      const named = unaccounted.get(objective) ?? new Set<string>();
+      for (const reason of failures.values()) {
+        if (named.has(reason)) continue;
+        process.stderr.write(
+          `${JSON.stringify({
+            packageName: WATCHER_PACKAGE_NAME,
+            level: "error",
+            reason: "prover_collateral_accounting_failed",
+            detail: `${objective}: ${reason}`,
+          })}\n`,
+        );
+      }
+      if (failures.size === 0) {
+        if (unaccounted.delete(objective))
+          set("prover_collateral_accounting_failed", job, false);
+      } else {
+        unaccounted.set(objective, new Set(failures.values()));
+        if (named.size === 0)
+          set("prover_collateral_accounting_failed", job, true);
+      }
+      const standing = activeCollateralForfeitures(entries);
       const raised = forfeited.get(objective) ?? new Set<string>();
       for (const [txHash, event] of standing) {
         if (raised.has(txHash)) continue;
@@ -149,6 +181,8 @@ export const createWatcherFaultProofObjectiveAlerts = ({
         set("prover_funding_unavailable", objective, false);
       if (forfeited.delete(objectiveOf(objective)))
         set("prover_collateral_forfeited", objective, false);
+      if (unaccounted.delete(objectiveOf(objective)))
+        set("prover_collateral_accounting_failed", objective, false);
     },
     readiness: () => [...late.values()],
   });

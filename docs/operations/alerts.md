@@ -511,6 +511,35 @@ the prover wallet if the loss leaves it short
 **Escalate** always: a script that passed local evaluation and failed on
 chain is a defect in the watcher, its cost model or its protocol parameters.
 
+### MidgardWatcherProverCollateralAccountingFailed
+
+**Meaning.** The watcher could not record, in an objective's prover
+reservation, the collateral that a superseded attempt's phase-2-invalid
+landing took, or give it back after a rollback dropped that landing
+(`prover_collateral_accounting_failed` alert, one subject per objective). The
+reservation's pool may disagree with the chain until it succeeds. The
+objective's journal records the failure once; the watcher reads the attempt
+again later and retries, and the objective goes on meanwhile. The watcher log
+has one error line per failure, naming the objective, the attempt and the
+error. The alert clears once every such attempt is accounted for, retires or
+lands as its action's result; so does the objective settling. It holds
+readiness while it stands.
+
+**First checks.**
+
+```bash
+curl -s "$OPS/v1/status"
+curl -s "$OPS/v1/diagnostics?kind=alert"
+```
+
+The `prover_collateral_accounting_failed` log line names the error. An L1 read
+failure clears on a later retry once the provider answers.
+
+**Action.** Keep the watcher running and preserve its state directory.
+
+**Escalate** when the alert stays active across retries: any other error is a
+defect in the watcher's reservation accounting.
+
 ### MidgardWatcherProofStartedLate
 
 **Meaning.** A fault proof ran after its header's latest safe start

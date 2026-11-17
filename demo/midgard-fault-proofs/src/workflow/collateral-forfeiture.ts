@@ -1,3 +1,4 @@
+import { formatUnknownError } from "@al-ft/midgard-core";
 import { CML } from "@lucid-evolution/lucid";
 
 import type {
@@ -89,6 +90,55 @@ export const activeCollateralForfeitures = (
       active.delete(event.txHash);
   }
   return active;
+};
+
+const ACCOUNTING_FAILED = "collateral accounting failed for attempt ";
+
+/** The diagnostic a superseded attempt's failed forfeiture or reversal
+ * records: the read is retried, and the failure is named once. */
+export const collateralAccountingFailure = (
+  transactionHash: string,
+  error: unknown,
+): FraudProofWorkflowJournalEvent => ({
+  kind: "stalled",
+  reason: `${ACCOUNTING_FAILED}${transactionHash}: ${formatUnknownError(error)}`,
+});
+
+/**
+ * The superseded attempts whose collateral accounting failed and has not
+ * been done since, by transaction, with the failure. Each clears once the
+ * attempt's forfeiture or reversal is recorded, or the attempt retires or
+ * lands as its action's result.
+ */
+export const standingCollateralAccountingFailures = (
+  entries: readonly FraudProofWorkflowJournalEntry[],
+): ReadonlyMap<string, string> => {
+  const failed = new Map<string, string>();
+  for (const { event } of entries) {
+    if (event.kind === "stalled") {
+      if (event.reason.startsWith(ACCOUNTING_FAILED))
+        failed.set(
+          event.reason.slice(
+            ACCOUNTING_FAILED.length,
+            ACCOUNTING_FAILED.length + 64,
+          ),
+          event.reason,
+        );
+    } else if (
+      event.kind === "collateral_forfeited" ||
+      event.kind === "collateral_forfeiture_reversed" ||
+      event.kind === "signed_attempt_retired" ||
+      event.kind === "confirmed"
+    )
+      failed.delete(event.txHash);
+    else if (
+      event.kind === "reconciled" &&
+      event.retirement !== undefined &&
+      event.txHash !== undefined
+    )
+      failed.delete(event.txHash);
+  }
+  return failed;
 };
 
 /**

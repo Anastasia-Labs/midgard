@@ -85,6 +85,16 @@ groups:
           summary: "Watcher {{ $labels.instance }} lost prover collateral to a failed script"
           runbook: "docs/operations/alerts.md#midgardwatcherprovercollateralforfeited"
 
+      - alert: MidgardWatcherProverCollateralAccountingFailed
+        # The prover reservation could not account for a superseded attempt's
+        # forfeited or returned collateral; the accounting is retried.
+        expr: midgard_watcher_active_alerts{code="prover_collateral_accounting_failed"} > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "Watcher {{ $labels.instance }} could not account for prover collateral"
+          runbook: "docs/operations/alerts.md#midgardwatcherprovercollateralaccountingfailed"
+
       - alert: MidgardWatcherProofStartedLate
         # A fault proof runs after its latest safe start; it must land
         # before its header matures.

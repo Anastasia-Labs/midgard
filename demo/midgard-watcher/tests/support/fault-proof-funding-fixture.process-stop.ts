@@ -8,6 +8,7 @@ const FUNDING_CHANGES = [
   "reobserveTransition",
   "markConflict",
   "release",
+  "releaseIdle",
 ] as const;
 
 export type FundingChange = (typeof FUNDING_CHANGES)[number];
