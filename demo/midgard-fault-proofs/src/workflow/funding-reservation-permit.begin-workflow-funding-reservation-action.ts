@@ -21,6 +21,10 @@ import {
   WorkflowFundingReservationUnavailableError,
 } from "./funding-reservation-permit.workflow-funding-reservation-port.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
+import {
+  readWorkflowRuntimeFundingPolicy,
+  type WorkflowRuntimeFundingPolicy,
+} from "./runtime-funding-policy.js";
 
 export const bindWorkflowFundingReservationJournal = <Journal extends object>({
   journal,
@@ -114,6 +118,32 @@ export const assertCurrentFundingCollateralLimit = (
     throw new WorkflowFundingReservationUnavailableError();
 };
 
+/**
+ * Whether the reservation's collateral covers less than the watcher's planner
+ * reserves: the largest of the release floor, an ordinary action's collateral
+ * and a removal's (the slashing penalty's percentage) under the current
+ * policy. A removal's collateral can take several coins, and a confirmation
+ * releases only the coins its transaction named.
+ */
+const collateralBelowReservation = (
+  state: PermitState,
+  policy: WorkflowRuntimeFundingPolicy,
+): boolean => {
+  const funding = readWorkflowRuntimeFundingPolicy(policy);
+  const required = [
+    funding.economics.policy.proverCollateralFloorLovelace,
+    funding.maximumCollateralLovelace,
+    funding.maximumSlashCollateralLovelace,
+  ].reduce((maximum, value) => {
+    const amount = BigInt(value);
+    return amount > maximum ? amount : maximum;
+  }, 0n);
+  const reserved = state.snapshot.activeInputs
+    .filter(({ role }) => role === "collateral")
+    .reduce((sum, { lovelace }) => sum + BigInt(lovelace), 0n);
+  return reserved < required;
+};
+
 export const beginWorkflowFundingReservationAction = async ({
   journal,
   action,
@@ -147,8 +177,9 @@ export const beginWorkflowFundingReservationAction = async ({
       state.snapshot.activeInputs.length === 0 ||
       state.requiresParameterRefresh ||
       // Confirmation releases a transaction's collateral lease, so the next
-      // action selects collateral again (the collateral floor is positive).
-      !state.snapshot.activeInputs.some(({ role }) => role === "collateral") ||
+      // action selects collateral again whenever what remains is short of
+      // what the reservation holds for any action (none at all included).
+      collateralBelowReservation(state, state.policy) ||
       state.snapshot.activeInputs.filter(({ role }) => role === "collateral")
         .length > state.maximumCollateralInputs) &&
     state.port.refreshIdle !== undefined

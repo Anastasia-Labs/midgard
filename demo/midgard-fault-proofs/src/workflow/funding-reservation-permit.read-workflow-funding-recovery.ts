@@ -144,12 +144,21 @@ export const prepareWorkflowFundingReservationTransaction = async ({
   const fundingOutRefs = Object.freeze(
     bodyInputs.filter((outRef) => candidates.includes(outRef)),
   );
-  if (
-    bodyInputs.some((outRef) => collateralCandidates.includes(outRef)) ||
-    collateralOutRefs.some((outRef) => !collateralCandidates.includes(outRef))
-  )
+  // Each breach is named by its out-ref, so a refusal says which side broke.
+  const breaches = [
+    ...bodyInputs
+      .filter((outRef) => collateralCandidates.includes(outRef))
+      .map((outRef) => `reserved collateral ${outRef} is spent as an input`),
+    ...collateralOutRefs
+      .filter((outRef) => !collateralCandidates.includes(outRef))
+      .map(
+        (outRef) =>
+          `collateral ${outRef} is ${candidates.includes(outRef) ? "reserved funding" : "not reserved collateral"}`,
+      ),
+  ];
+  if (breaches.length !== 0)
     throw new Error(
-      "signed transaction changed reserved ordinary/collateral separation",
+      `signed transaction changed reserved ordinary/collateral separation: ${breaches.join("; ")}`,
     );
   await assertRuntimeTransactionBound({
     state,

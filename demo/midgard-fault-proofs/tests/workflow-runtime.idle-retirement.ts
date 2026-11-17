@@ -30,11 +30,13 @@ export const registerIdleFundingRetirementTests = () => {
         async (): Promise<WorkflowFundingReservationSnapshot> =>
           funding.snapshot,
       );
-      // It holds collateral, so only stale inputs trigger the refresh.
+      // It holds the collateral it reserved, so only stale inputs trigger
+      // the refresh.
       const funding = await runtimeFunding("step-one", {
         journal,
         refreshIdle,
         collateral: true,
+        coveringCollateral: true,
       });
       const checkStaleRefresh = async (allowed: boolean) => {
         if (readOnly) return;

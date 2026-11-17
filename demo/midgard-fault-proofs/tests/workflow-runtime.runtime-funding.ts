@@ -49,6 +49,9 @@ export const runtimeFunding = async (
     resolvedReference?: Script;
     useStage?: boolean;
     collateral?: boolean | number;
+    /** Each collateral coin holds the reservation's whole collateral
+     * requirement, as the watcher's planner reserves it, instead of 5 ada. */
+    coveringCollateral?: boolean;
     begin?: boolean;
     recovery?: Parameters<WorkflowFundingReservationPort["prepare"]>[0];
     additionalInputs?: readonly UTxO[];
@@ -97,8 +100,17 @@ export const runtimeFunding = async (
       : options.collateral
         ? 1
         : 0;
+  const reserved = readWorkflowRuntimeFundingPolicy(policy);
+  const collateralLovelace = options.coveringCollateral
+    ? [
+        reserved.maximumCollateralLovelace,
+        reserved.maximumSlashCollateralLovelace,
+      ].reduce((maximum, value) =>
+        BigInt(value) > BigInt(maximum) ? value : maximum,
+      )
+    : "5000000";
   for (let index = 0; index < collateralCount; index++)
-    values.set(`${"76".repeat(32)}#${index}`, 5_000_000n);
+    values.set(`${"76".repeat(32)}#${index}`, BigInt(collateralLovelace));
   const activeInputs = Object.freeze(
     [...values].map(([outRef, lovelace]) =>
       Object.freeze({
