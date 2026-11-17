@@ -6,6 +6,7 @@ import type { ValidationTraceReplayHold } from "../validation-trace-dispute/repl
 import {
   CANONICAL_DECODABILITY_COMPLETE_CANONICAL_REPLAY,
   COMMITTED_FIELD_SHAPE_COMPLETE_CANONICAL_REPLAY,
+  type CompleteCanonicalReplayIsolation,
   createCompleteCanonicalReplayUnion,
   createFabricatedDepositCompleteCanonicalReplay,
   createFabricatedWithdrawalCompleteCanonicalReplay,
@@ -66,12 +67,15 @@ import { INSTALLED_FRAUD_PROOF_CATEGORY_ORDER } from "./installed-categories.js"
  * Every installed category, with live event evidence and per-header replay
  * context. The deployment's slot mapping places each re-executed script's
  * validity range; `onReplayStuck` is told once each time a script
- * re-execution keeps failing the same way.
+ * re-execution keeps failing the same way. With `isolation`, a category
+ * whose replay fails in a way a retry would only repeat has its result
+ * withheld while the others still decide the block.
  */
 export const createCatalogueCompleteCanonicalReplay = (input: {
   readonly lucid: LucidEvolution;
   readonly l1SlotConfig: L1SlotConfig;
   readonly onReplayStuck?: (hold: ValidationTraceReplayHold) => void;
+  readonly isolation?: CompleteCanonicalReplayIsolation;
   readonly network: Network;
   readonly hubOraclePolicyId: string;
   readonly minimumConfirmationDepth: number;
@@ -89,7 +93,7 @@ export const createCatalogueCompleteCanonicalReplay = (input: {
     ...input,
     history: input.history.withdrawal,
   });
-  const replay = createCompleteCanonicalReplayUnion([
+  const members = [
     DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
     NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY,
     INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY,
@@ -151,7 +155,8 @@ export const createCatalogueCompleteCanonicalReplay = (input: {
     SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
     DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY,
     MINT_ITEM_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
-  ]);
+  ];
+  const replay = createCompleteCanonicalReplayUnion(members, input.isolation);
   if (
     replay.launchScope.length !== INSTALLED_FRAUD_PROOF_CATEGORY_ORDER.length ||
     replay.launchScope.some(

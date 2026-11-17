@@ -89,15 +89,40 @@ export const DOUBLE_SPEND_NETWORK_ID_COMPLETE_CANONICAL_REPLAY =
     ...detectNetworkIds(evidence),
   ]);
 
+/** A union member's failure whose result the union withheld. */
+export type CompleteCanonicalReplayMemberFailure = Readonly<{
+  launchScope: readonly FraudProofCatalogueCategoryName[];
+  headerHash: string;
+  error: unknown;
+}>;
+
+/**
+ * How a union keeps one failing member from deciding every block. A member
+ * failure `failsPass` names (one its caller retries, such as a dependency
+ * that did not answer) fails the replay as before. Any other failure, which
+ * a retry of the same block would only repeat, withholds that member's
+ * result: `withheld` is told, and the other members go on. A replay whose
+ * members found nothing while a result was withheld still fails with the
+ * first withheld failure, so it never reads as healthy. `replayed` is told
+ * each member that replayed the block.
+ */
+export type CompleteCanonicalReplayIsolation = Readonly<{
+  failsPass: (error: unknown) => boolean;
+  withheld: (failure: CompleteCanonicalReplayMemberFailure) => void;
+  replayed: (launchScope: readonly FraudProofCatalogueCategoryName[]) => void;
+}>;
+
 /**
  * Builds one closed replay bundle from already-admitted complete family
  * replayers. The application installs this object, rather than a list of
  * detector callbacks, so no caller can omit a family or inject a partial scan
  * after deployment composition. Categories must be disjoint and in the
- * append-only catalogue order.
+ * append-only catalogue order. Without `isolation`, any member failure that
+ * is not a replay prerequisite or a held re-execution fails the replay.
  */
 export const createCompleteCanonicalReplayUnion = (
   members: readonly CompleteCanonicalReplay[],
+  isolation?: CompleteCanonicalReplayIsolation,
 ): CompleteCanonicalReplay => {
   if (members.length === 0) {
     throw new Error("complete replay union must contain at least one member");
@@ -130,6 +155,7 @@ export const createCompleteCanonicalReplayUnion = (
       const detections: CanonicalViolationDetection[] = [];
       const prerequisites: CanonicalReplayPrerequisiteError[] = [];
       const held: ValidationTraceReplayHeldError[] = [];
+      const withheld: unknown[] = [];
       for (const member of members) {
         try {
           const decision = await member.replay(evidence, context);
@@ -141,33 +167,47 @@ export const createCompleteCanonicalReplayUnion = (
               ...(context === undefined ? {} : { context }),
             }),
           );
+          isolation?.replayed(member.launchScope);
         } catch (error) {
           if (isValidationTraceReplayHeldError(error)) {
             held.push(error);
             detections.push(...error.detections);
             continue;
           }
-          if (!(error instanceof CanonicalReplayPrerequisiteError)) throw error;
-          prerequisites.push(error);
-          detections.push(...error.detections);
+          if (error instanceof CanonicalReplayPrerequisiteError) {
+            prerequisites.push(error);
+            detections.push(...error.detections);
+            continue;
+          }
+          if (isolation === undefined || isolation.failsPass(error))
+            throw error;
+          withheld.push(error);
+          isolation.withheld({
+            launchScope: member.launchScope,
+            headerHash: evidence.headerHash,
+            error,
+          });
         }
       }
       for (const prerequisite of prerequisites)
         for (const failure of prerequisite.failures)
           assertReplayPrerequisiteCovered(evidence, failure, detections);
-      if (held.length === 0) return detections;
-      // Held events can only add findings at or after their own order, so
-      // the block is decided without them only by a finding strictly before
-      // every held event.
-      const earliest = Math.min(
-        ...detections.map((detection) =>
-          detectionEventOrder(evidence.reconstruction, detection),
-        ),
-      );
-      const blocking = held.find(
-        ({ heldFromOrder }) => earliest >= heldFromOrder,
-      );
-      if (blocking !== undefined) throw blocking;
+      if (held.length !== 0) {
+        // Held events can only add findings at or after their own order, so
+        // the block is decided without them only by a finding strictly
+        // before every held event.
+        const earliest = Math.min(
+          ...detections.map((detection) =>
+            detectionEventOrder(evidence.reconstruction, detection),
+          ),
+        );
+        const blocking = held.find(
+          ({ heldFromOrder }) => earliest >= heldFromOrder,
+        );
+        if (blocking !== undefined) throw blocking;
+      }
+      // A withheld result may hold the block's only finding.
+      if (withheld.length !== 0 && detections.length === 0) throw withheld[0];
       return detections;
     },
   );

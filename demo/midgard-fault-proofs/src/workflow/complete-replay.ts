@@ -59,6 +59,8 @@ export {
 } from "./complete-replay.admit-complete-canonical-replay-predecessor.js";
 export {
   completeCanonicalReplayDecisionDigest,
+  type CompleteCanonicalReplayIsolation,
+  type CompleteCanonicalReplayMemberFailure,
   createCompleteCanonicalReplayUnion,
   createTransitionTraceCompleteCanonicalReplayFromRetainedHistory,
   createValidationTraceDisputeCompleteCanonicalReplay,
