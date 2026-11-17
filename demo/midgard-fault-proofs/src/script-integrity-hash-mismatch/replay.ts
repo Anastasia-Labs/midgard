@@ -5,16 +5,19 @@
 import * as SDK from "@al-ft/midgard-sdk";
 
 import { directPurposeArtifactFamily } from "../direct-purpose-family/artifact-family.js";
+import {
+  acceptedScriptSources,
+  directPurposeEventKey,
+  type DirectPurposeSourceCoordinate,
+  unlessUnopened,
+} from "../direct-purpose-family/replay-support.js";
 import { prepareDirectScriptMaterial } from "../direct-script-derivation/material.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { claimedReasonReachesPhase } from "../evidence/claimed-coordinate.js";
 import type { CheckedLedger } from "../ledger-at.js";
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
 import { eventSubject } from "../workflow/detection-subject.js";
-import {
-  CanonicalReplayPrerequisiteError,
-  collectReplayFindings,
-} from "../workflow/replay-prerequisite.js";
+import { collectReplayFindings } from "../workflow/replay-prerequisite.js";
 import {
   requireConvictingScriptIntegrityHashMismatchProof,
   scriptIntegrityHashMismatchDetection,
@@ -27,12 +30,8 @@ export const SCRIPT_INTEGRITY_HASH_MISMATCH_VIOLATION_ID =
 /** The script-integrity phase of the first-fault order. */
 const SCRIPT_INTEGRITY_PHASE = 10;
 
-/** The committed source a finding names: an accepted (0) or forced (1)
- * transaction, by its index in the block's committed list. */
-export type ScriptIntegrityHashMismatchCoordinate = Readonly<{
-  sourceKind: 0 | 1;
-  sourceIndex: number;
-}>;
+export type ScriptIntegrityHashMismatchCoordinate =
+  DirectPurposeSourceCoordinate;
 
 /** `<violation>:<source kind>:<source index>`. */
 export const scriptIntegrityHashMismatchDetectionId = (
@@ -52,34 +51,6 @@ const contradictableRejection = (verdict: SDK.OperatorVerdict) =>
       SCRIPT_INTEGRITY_PHASE + 1,
     ));
 
-/** A rejected leaf whose bytes the replay cannot open yields no finding; an
- * unresolved replay prerequisite still surfaces. */
-const unlessUnopened = async <T>(task: () => Promise<T | null>) => {
-  try {
-    return await task();
-  } catch (error) {
-    if (error instanceof CanonicalReplayPrerequisiteError) throw error;
-    return null;
-  }
-};
-
-/** The event a coordinate names; `null` when the block has no such source. */
-export const scriptIntegrityHashMismatchEventKey = (
-  current: TransitionTraceReconstruction,
-  { sourceKind, sourceIndex }: ScriptIntegrityHashMismatchCoordinate,
-): SDK.EventKey | null => {
-  if (sourceKind === 0) {
-    const entry = current.transactions[sourceIndex];
-    return entry === undefined
-      ? null
-      : { L2TransactionEventKey: { tx_id: entry.txId } };
-  }
-  const entry = current.forcedTransactions[sourceIndex];
-  return entry === undefined
-    ? null
-    : { ForcedTransactionEventKey: { tx_order_id: entry.key } };
-};
-
 /** The planned finding at one coordinate, or `null` when it does not
  * convict. */
 export const prepareScriptIntegrityHashMismatchReplay = async ({
@@ -91,7 +62,7 @@ export const prepareScriptIntegrityHashMismatchReplay = async ({
   readonly predecessor?: CheckedLedger;
   readonly coordinate: ScriptIntegrityHashMismatchCoordinate;
 }) => {
-  const eventKey = scriptIntegrityHashMismatchEventKey(current, coordinate);
+  const eventKey = directPurposeEventKey(current, coordinate);
   if (eventKey === null) return null;
   const prepare = async () => {
     const material = await prepareDirectScriptMaterial({
@@ -128,7 +99,7 @@ export const detectScriptIntegrityHashMismatchReplay = async ({
 }) => {
   const current = block.reconstruction;
   const candidates: ScriptIntegrityHashMismatchCoordinate[] = [
-    ...current.transactions.map((_, sourceIndex) => ({
+    ...acceptedScriptSources(current).map(({ sourceIndex }) => ({
       sourceKind: 0 as const,
       sourceIndex,
     })),

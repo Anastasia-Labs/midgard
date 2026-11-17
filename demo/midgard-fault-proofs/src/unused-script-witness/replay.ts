@@ -12,6 +12,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 
 import { directPurposeArtifactFamily } from "../direct-purpose-family/artifact-family.js";
 import {
+  acceptedScriptSources,
   directPurposeEventKey,
   type DirectPurposeSourceCoordinate,
   unlessUnopened,
@@ -126,7 +127,7 @@ export const detectUnusedScriptWitnessReplay = async ({
 }) => {
   const current = block.reconstruction;
   const candidates: UnusedScriptWitnessCoordinate[] = [];
-  for (const [sourceIndex, entry] of current.transactions.entries())
+  for (const { sourceIndex, entry } of acceptedScriptSources(current))
     if (witnessesPresent(entry.fullTransactionCbor, false))
       candidates.push({ sourceKind: 0, sourceIndex });
   for (const [sourceIndex, entry] of current.forcedTransactions.entries()) {

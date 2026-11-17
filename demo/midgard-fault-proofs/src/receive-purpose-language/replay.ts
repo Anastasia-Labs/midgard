@@ -11,6 +11,7 @@ import type * as SDK from "@al-ft/midgard-sdk";
 
 import { directPurposeArtifactFamily } from "../direct-purpose-family/artifact-family.js";
 import {
+  acceptedScriptSources,
   directPurposeEventKey,
   type DirectPurposeSourceCoordinate,
 } from "../direct-purpose-family/replay-support.js";
@@ -91,7 +92,7 @@ export const detectReceivePurposeLanguageReplay = async ({
 }) => {
   const current = block.reconstruction;
   const candidates: ReceivePurposeLanguageCoordinate[] = [];
-  for (const [sourceIndex, entry] of current.transactions.entries())
+  for (const { sourceIndex, entry } of acceptedScriptSources(current))
     if (redeemersPresent(entry.fullTransactionCbor))
       candidates.push({ sourceKind: 0, sourceIndex });
   for (const [sourceIndex, entry] of current.forcedTransactions.entries())

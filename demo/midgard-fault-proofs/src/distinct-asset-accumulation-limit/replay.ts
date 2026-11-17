@@ -5,16 +5,19 @@
 import * as SDK from "@al-ft/midgard-sdk";
 
 import { directPurposeArtifactFamily } from "../direct-purpose-family/artifact-family.js";
+import {
+  acceptedScriptSources,
+  directPurposeEventKey,
+  type DirectPurposeSourceCoordinate,
+  unlessUnopened,
+} from "../direct-purpose-family/replay-support.js";
 import { prepareDirectScriptMaterial } from "../direct-script-derivation/material.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { claimedReasonReachesPhase } from "../evidence/claimed-coordinate.js";
 import type { CheckedLedger } from "../ledger-at.js";
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
 import { eventSubject } from "../workflow/detection-subject.js";
-import {
-  CanonicalReplayPrerequisiteError,
-  collectReplayFindings,
-} from "../workflow/replay-prerequisite.js";
+import { collectReplayFindings } from "../workflow/replay-prerequisite.js";
 import {
   distinctAssetAccumulationLimitDetection,
   distinctAssetAccumulationLimitPaging,
@@ -28,12 +31,8 @@ export const DISTINCT_ASSET_ACCUMULATION_LIMIT_VIOLATION_ID =
  * accumulation-limit arms. */
 const VALUE_PHASE = 12;
 
-/** The committed source a finding names: an accepted (0) or forced (1)
- * transaction, by its index in the block's committed list. */
-export type DistinctAssetAccumulationLimitCoordinate = Readonly<{
-  sourceKind: 0 | 1;
-  sourceIndex: number;
-}>;
+export type DistinctAssetAccumulationLimitCoordinate =
+  DirectPurposeSourceCoordinate;
 
 /** `<violation>:<source kind>:<source index>`. */
 export const distinctAssetAccumulationLimitDetectionId = (
@@ -52,34 +51,6 @@ const contradictableRejection = (verdict: SDK.OperatorVerdict) =>
     VALUE_PHASE,
   );
 
-/** A rejected leaf whose bytes the replay cannot open yields no finding; an
- * unresolved replay prerequisite still surfaces. */
-const unlessUnopened = async <T>(task: () => Promise<T | null>) => {
-  try {
-    return await task();
-  } catch (error) {
-    if (error instanceof CanonicalReplayPrerequisiteError) throw error;
-    return null;
-  }
-};
-
-/** The event a coordinate names; `null` when the block has no such source. */
-export const distinctAssetAccumulationLimitEventKey = (
-  current: TransitionTraceReconstruction,
-  { sourceKind, sourceIndex }: DistinctAssetAccumulationLimitCoordinate,
-): SDK.EventKey | null => {
-  if (sourceKind === 0) {
-    const entry = current.transactions[sourceIndex];
-    return entry === undefined
-      ? null
-      : { L2TransactionEventKey: { tx_id: entry.txId } };
-  }
-  const entry = current.forcedTransactions[sourceIndex];
-  return entry === undefined
-    ? null
-    : { ForcedTransactionEventKey: { tx_order_id: entry.key } };
-};
-
 /** The planned finding at one coordinate, or `null` when it does not
  * convict. */
 export const prepareDistinctAssetAccumulationLimitReplay = async ({
@@ -91,7 +62,7 @@ export const prepareDistinctAssetAccumulationLimitReplay = async ({
   readonly predecessor?: CheckedLedger;
   readonly coordinate: DistinctAssetAccumulationLimitCoordinate;
 }) => {
-  const eventKey = distinctAssetAccumulationLimitEventKey(current, coordinate);
+  const eventKey = directPurposeEventKey(current, coordinate);
   if (eventKey === null) return null;
   const prepare = async () => {
     const material = await prepareDirectScriptMaterial({
@@ -128,7 +99,7 @@ export const detectDistinctAssetAccumulationLimitReplay = async ({
 }) => {
   const current = block.reconstruction;
   const candidates: DistinctAssetAccumulationLimitCoordinate[] = [
-    ...current.transactions.map((_, sourceIndex) => ({
+    ...acceptedScriptSources(current).map(({ sourceIndex }) => ({
       sourceKind: 0 as const,
       sourceIndex,
     })),

@@ -1,6 +1,6 @@
 /** Replay helpers shared by the direct purpose families: which committed
- * sources can carry a script purpose, which recorded reasons name none, and
- * the event a committed source coordinate names. */
+ * sources a replay may open, which can carry a script purpose, which recorded
+ * reasons name none, and the event a committed source coordinate names. */
 import {
   decodeMidgardFieldPreimage,
   decodeMidgardNativeTxFullFromCanonicalCbor,
@@ -9,7 +9,10 @@ import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/
 import * as SDK from "@al-ft/midgard-sdk";
 
 import { claimedReasonReachesPhase } from "../evidence/claimed-coordinate.js";
-import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
+import type {
+  DecodedTransactionEntry,
+  TransitionTraceReconstruction,
+} from "../transition-trace/reconstruct.js";
 import { CanonicalReplayPrerequisiteError } from "../workflow/replay-prerequisite.js";
 
 /** The committed source a finding names: an accepted (0) or forced (1)
@@ -85,14 +88,35 @@ export const unlessUnopened = async <T>(
   }
 };
 
-/** The event a coordinate names; `null` when the block has no such source. */
+/** Whether a replay may open the script material of a committed L2
+ * transaction: only a leaf the operator committed `TxIsValid`. The step
+ * validators open an accepted subject only at validity code 0, so no script
+ * family convicts a leaf committed `TxIsInvalid`; that leaf is
+ * `l2TxMistag`'s fault. */
+export const opensScriptMaterial = (entry: DecodedTransactionEntry): boolean =>
+  entry.validity === "TxIsValid";
+
+/** The committed L2 transactions a script family replays, by index: those
+ * whose script material {@link opensScriptMaterial}. */
+export const acceptedScriptSources = (
+  current: TransitionTraceReconstruction,
+): readonly Readonly<{
+  sourceIndex: number;
+  entry: DecodedTransactionEntry;
+}>[] =>
+  current.transactions.flatMap((entry, sourceIndex) =>
+    opensScriptMaterial(entry) ? [{ sourceIndex, entry }] : [],
+  );
+
+/** The event a coordinate names; `null` when the block has no such source,
+ * or names an L2 transaction whose script material a replay may not open. */
 export const directPurposeEventKey = (
   current: TransitionTraceReconstruction,
   { sourceKind, sourceIndex }: DirectPurposeSourceCoordinate,
 ): SDK.EventKey | null => {
   if (sourceKind === 0) {
     const entry = current.transactions[sourceIndex];
-    return entry === undefined
+    return entry === undefined || !opensScriptMaterial(entry)
       ? null
       : { L2TransactionEventKey: { tx_id: entry.txId } };
   }

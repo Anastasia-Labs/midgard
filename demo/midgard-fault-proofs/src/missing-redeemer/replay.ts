@@ -8,6 +8,7 @@ import type * as SDK from "@al-ft/midgard-sdk";
 
 import { directPurposeArtifactFamily } from "../direct-purpose-family/artifact-family.js";
 import {
+  acceptedScriptSources,
   DIRECT_PURPOSE_NAMES,
   directPurposeEventKey,
   directPurposeFieldPresent,
@@ -90,7 +91,7 @@ export const detectMissingRedeemerReplay = async ({
 }) => {
   const current = block.reconstruction;
   const candidates: MissingRedeemerCoordinate[] = [];
-  for (const [sourceIndex, entry] of current.transactions.entries())
+  for (const { sourceIndex, entry } of acceptedScriptSources(current))
     if (directPurposeFieldPresent(entry.fullTransactionCbor, false))
       candidates.push({ sourceKind: 0, sourceIndex });
   for (const [sourceIndex, entry] of current.forcedTransactions.entries())
