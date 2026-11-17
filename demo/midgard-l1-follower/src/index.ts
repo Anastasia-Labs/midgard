@@ -258,6 +258,7 @@ export {
   type SqlTx,
   type SqlValue,
   type TransactionMode,
+  type TransactionOptions,
   type WriterLease,
 } from "./sql/backend.js";
 export {

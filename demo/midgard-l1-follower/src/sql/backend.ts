@@ -63,11 +63,23 @@ export type WriterLease = {
   release(): Promise<void>;
 };
 
+export type TransactionOptions = Readonly<{
+  /**
+   * Ends the transaction when it fires: the call rejects with the signal's
+   * reason, and a statement still waiting for its answer is given up with
+   * its connection, so a server or network that never answers holds
+   * nothing past the abort. For reads: an abort during a write's `COMMIT`
+   * leaves its outcome unknown, as a dropped connection does.
+   */
+  signal?: AbortSignal;
+}>;
+
 export type SqlBackend = {
   readonly dialect: Dialect;
   transaction<T>(
     mode: TransactionMode,
     run: (tx: SqlTx) => Promise<T>,
+    options?: TransactionOptions,
   ): Promise<T>;
   /** Takes the writer lease, or returns null while another holder has it. */
   acquireWriterLease(): Promise<WriterLease | null>;

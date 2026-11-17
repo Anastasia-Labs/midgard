@@ -8,6 +8,7 @@ import {
   type SqlTx,
   type SqlValue,
   toNumberedPlaceholders,
+  type TransactionOptions,
   type WriterLease,
 } from "./backend.js";
 
@@ -44,6 +45,34 @@ const executor = (client: pg.PoolClient): SqlTx => ({
     await client.query(sql);
   },
 });
+
+/**
+ * A pooled connection, or the signal's reason once it fires: a wait for a
+ * free connection ends at the abort, and a connection that arrives after
+ * it goes straight back to the pool.
+ */
+const connectUnlessAborted = (
+  pool: pg.Pool,
+  signal: AbortSignal | undefined,
+): Promise<pg.PoolClient> => {
+  if (signal === undefined) return pool.connect();
+  signal.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const aborted = () => reject(signal.reason as Error);
+    signal.addEventListener("abort", aborted, { once: true });
+    pool.connect().then(
+      (client) => {
+        signal.removeEventListener("abort", aborted);
+        if (signal.aborted) client.release();
+        else resolve(client);
+      },
+      (error: Error) => {
+        signal.removeEventListener("abort", aborted);
+        reject(error);
+      },
+    );
+  });
+};
 
 export type PostgresConnection =
   /**
@@ -144,12 +173,28 @@ export const openPostgresBackend = (
     transaction: async <T>(
       mode: "write" | "read",
       run: (tx: SqlTx) => Promise<T>,
+      options: TransactionOptions = {},
     ): Promise<T> => {
-      const client = await pool.connect();
+      const { signal } = options;
+      const client = await connectUnlessAborted(pool, signal);
       // While checked out the pool's idle listener is detached, so a dropped
       // connection's 'error' needs one here; the pending query rejects.
       client.on("error", onConnectionError);
       let released = false;
+      /** Hands the connection back to be closed, not reused; once only. */
+      const discard = (reason: Error | true) => {
+        if (released) return;
+        released = true;
+        client.release(reason);
+      };
+      // An abort ends the session: the pool closes a connection released
+      // with an error, and pg destroys the socket of a client with a
+      // statement in flight, so that statement rejects now even when the
+      // server or the network never answers it.
+      const abandon = () => {
+        discard(new Error("the transaction was aborted"));
+      };
+      signal?.addEventListener("abort", abandon, { once: true });
       try {
         await client.query(
           mode === "read"
@@ -160,16 +205,18 @@ export const openPostgresBackend = (
         await client.query("COMMIT");
         return value;
       } catch (error) {
-        try {
-          await client.query("ROLLBACK");
-        } catch (rollbackError) {
-          // A connection that cannot roll back is discarded, not reused.
-          client.release(rollbackError instanceof Error ? rollbackError : true);
-          released = true;
-        }
+        if (!released)
+          try {
+            await client.query("ROLLBACK");
+          } catch (rollbackError) {
+            // A connection that cannot roll back is discarded, not reused.
+            discard(rollbackError instanceof Error ? rollbackError : true);
+          }
+        if (signal?.aborted === true) throw signal.reason;
         if (error instanceof RollbackWith) return error.value as T;
         throw error;
       } finally {
+        signal?.removeEventListener("abort", abandon);
         client.off("error", onConnectionError);
         if (!released) client.release();
       }

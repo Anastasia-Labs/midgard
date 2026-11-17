@@ -6,13 +6,14 @@ import type {
   DatumHash,
   OutRef as LucidOutRef,
   TransactionStatus,
+  TransactionStatusOptions,
   TxHash,
   Unit,
   UTxO,
 } from "@lucid-evolution/lucid";
 
 import { addressCredentials } from "../decode/output.js";
-import type { SqlTx } from "../sql/backend.js";
+import type { SqlTx, TransactionOptions } from "../sql/backend.js";
 import { datumByHashIn } from "../store/datum.js";
 import type { FactStore } from "../store/fact-store.js";
 import { isTrackedOutput } from "../store/qualify.js";
@@ -88,10 +89,13 @@ export class L1FollowerProvider extends LedgerProvider {
    * The live outputs among `outRefs`, in request order. An outref the facts
    * hold is answered from the facts (a spent row is omitted); any other one
    * from the ledger at the node's tip, unless the ledger's output is in the
-   * tracked scope, whose state is the follower's.
+   * tracked scope, whose state is the follower's. `options.signal` ends
+   * the read of the facts (`TransactionOptions`); a ledger read is bounded
+   * by the transport's request bound alone.
    */
   override async getUtxosByOutRef(
     outRefs: Array<LucidOutRef>,
+    options?: TransactionStatusOptions,
   ): Promise<UTxO[]> {
     const wanted = [
       ...new Map(
@@ -107,7 +111,7 @@ export class L1FollowerProvider extends LedgerProvider {
       for (const outRef of wanted)
         rows.push(await reads.outputIn(tx, this.#store.dialect, outRef));
       return rows;
-    });
+    }, options);
     const found = new Map<string, UTxO>();
     const missing: OutRef[] = [];
     stored.forEach((row, index) => {
@@ -134,10 +138,13 @@ export class L1FollowerProvider extends LedgerProvider {
   /**
    * Where a transaction stands: confirmed or failed once the follower
    * applied its block (qualifying txs only, plan §5.2), pending while the
-   * node's mempool holds it, otherwise not found.
+   * node's mempool holds it, otherwise not found. `options.signal` ends the
+   * read of the facts (`TransactionOptions`); the mempool read is bounded
+   * by the transport's request bound alone.
    */
   override async getTransactionStatus(
     txHash: TxHash,
+    options?: TransactionStatusOptions,
   ): Promise<TransactionStatus> {
     const landed = await this.#read(async (tx) => {
       const stored = await reads.txByHashIn(
@@ -152,7 +159,7 @@ export class L1FollowerProvider extends LedgerProvider {
           ? null
           : await reads.pointStatusIn(tx, this.#store.dialect, block);
       return { stored, block, status };
-    });
+    }, options);
     if (landed !== null) {
       if (!landed.stored.isValid)
         return { status: "failed", txHash, reason: "phase_two_failure" };
@@ -260,9 +267,12 @@ export class L1FollowerProvider extends LedgerProvider {
     });
   }
 
-  async #read<T>(run: (tx: SqlTx) => Promise<T>): Promise<T> {
+  async #read<T>(
+    run: (tx: SqlTx) => Promise<T>,
+    options?: TransactionOptions,
+  ): Promise<T> {
     try {
-      return await this.#store.transaction("read", run);
+      return await this.#store.transaction("read", run, options);
     } catch (error) {
       if (error instanceof L1ProviderError) throw error;
       throw new L1ProviderTransientError(

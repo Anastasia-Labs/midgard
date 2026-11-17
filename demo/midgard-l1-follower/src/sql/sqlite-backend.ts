@@ -13,6 +13,7 @@ import {
   type SqlRow,
   type SqlTx,
   type SqlValue,
+  type TransactionOptions,
   type WriterLease,
 } from "./backend.js";
 
@@ -131,8 +132,15 @@ export const openSqliteBackend = (path: string): SqlBackend => {
   const mutex = new Mutex();
   return {
     dialect: sqliteDialect,
-    transaction: <T>(mode: "write" | "read", run: (tx: SqlTx) => Promise<T>) =>
+    // Statements run synchronously here, so a transaction always settles:
+    // the signal is checked only before it begins.
+    transaction: <T>(
+      mode: "write" | "read",
+      run: (tx: SqlTx) => Promise<T>,
+      options?: TransactionOptions,
+    ) =>
       mutex.run(async () => {
+        options?.signal?.throwIfAborted();
         database.exec(mode === "write" ? "BEGIN IMMEDIATE" : "BEGIN");
         try {
           const value = await run(tx);

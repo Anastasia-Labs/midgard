@@ -10,7 +10,7 @@ import {
   RollbackWith,
   type SqlBackend,
   type SqlTx,
-  type TransactionMode,
+  type TransactionOptions as ReadOptions,
   type WriterLease,
 } from "../sql/backend.js";
 import type {
@@ -215,17 +215,15 @@ export type FactStore = Readonly<{
    */
   pinRetained(pin: RetainedPin): Promise<PinResult>;
   checkInvariants(): Promise<InvariantReport>;
-  cursor(): Promise<Cursor | null>;
+  /** A read given `options.signal` ends at its abort (`TransactionOptions`). */
+  cursor(options?: ReadOptions): Promise<Cursor | null>;
   currentView(): Promise<View | null>;
   viewValid(view: View): Promise<boolean>;
   onGeneration(listener: GenerationListener): () => void;
   /** The rewinds and resets after generation `after`, for a reader that missed one (`rewinds-since.ts`). */
   rewindsSince(after: number | null): Promise<RewindsSince | null>;
   /** A transaction on the store's backend, for reads and guarded writes. */
-  transaction<T>(
-    mode: TransactionMode,
-    run: (tx: SqlTx) => Promise<T>,
-  ): Promise<T>;
+  transaction: SqlBackend["transaction"];
   liveUtxos(filter: reads.UtxoFilter, at?: Point): Promise<reads.UtxoRead>;
   output(outRef: OutRef): Promise<StoredOutput | null>;
   spenderOf(outRef: OutRef): Promise<reads.Spender>;
@@ -233,7 +231,7 @@ export type FactStore = Readonly<{
   /** The stored valid tx that spent `outRef`, tracked or not (§5.3 step 3). */
   txSpending(outRef: OutRef): Promise<reads.TxSpending | null>;
   isCanonical(blockHash: Buffer): Promise<boolean>;
-  pointStatus(point: Point): Promise<reads.PointStatus>;
+  pointStatus(point: Point, options?: ReadOptions): Promise<reads.PointStatus>;
   blockByHash(hash: Buffer): Promise<StoredBlock | null>;
   blockAtHeight(height: number): Promise<StoredBlock | null>;
   blockAtOrBeforeSlot(slot: number): Promise<StoredBlock | null>;
@@ -365,8 +363,8 @@ export const createFactStore = (
     broken = integrity(detail);
     return broken;
   };
-  const read = <T>(run: (tx: SqlTx) => Promise<T>): Promise<T> =>
-    backend.transaction("read", run);
+  const read = <T>(run: (tx: SqlTx) => Promise<T>, options?: ReadOptions) =>
+    backend.transaction("read", run, options);
 
   const checkInvariants = (): Promise<InvariantReport> =>
     read((tx) => runInvariantChecks(tx, dialect, registry, "full"));
@@ -553,7 +551,7 @@ export const createFactStore = (
     pinRetained: (pin) =>
       backend.transaction("write", (tx) => pinRetainedIn(tx, dialect, pin)),
     checkInvariants,
-    cursor: () => read((tx) => reads.tipIn(tx, dialect)),
+    cursor: (options) => read((tx) => reads.tipIn(tx, dialect), options),
     currentView: () => read((tx) => currentViewIn(tx, dialect)),
     // FOR SHARE needs a read-write transaction on Postgres.
     viewValid: (view) =>
@@ -563,7 +561,8 @@ export const createFactStore = (
       return () => listeners.delete(listener);
     },
     rewindsSince: (after) => read((tx) => rewindsSinceIn(tx, dialect, after)),
-    transaction: (mode, run) => backend.transaction(mode, run),
+    transaction: (mode, run, options) =>
+      backend.transaction(mode, run, options),
     liveUtxos: (filter, at) =>
       read((tx) => reads.liveUtxosIn(tx, dialect, filter, at)),
     output: (outRef) => read((tx) => reads.outputIn(tx, dialect, outRef)),
@@ -572,8 +571,8 @@ export const createFactStore = (
     txSpending: (outRef) =>
       read((tx) => reads.txSpendingIn(tx, dialect, outRef)),
     isCanonical: (hash) => read((tx) => reads.isCanonicalIn(tx, hash)),
-    pointStatus: (point) =>
-      read((tx) => reads.pointStatusIn(tx, dialect, point)),
+    pointStatus: (point, options) =>
+      read((tx) => reads.pointStatusIn(tx, dialect, point), options),
     blockByHash: (hash) => read((tx) => reads.blockByHashIn(tx, hash)),
     blockAtHeight: (height) => read((tx) => reads.blockAtHeightIn(tx, height)),
     blockAtOrBeforeSlot: (slot) =>
