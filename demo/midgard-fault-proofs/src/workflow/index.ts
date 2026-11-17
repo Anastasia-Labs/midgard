@@ -9,6 +9,7 @@ export * from "./canonical-decodability.js";
 export * from "./catalogue-replay.js";
 export * from "./classification.js";
 export * from "./cli.js";
+export * from "./collateral-forfeiture.js";
 export * from "./committed-field-shape.js";
 export * from "./complete-replay.js";
 export * from "./completed-verification.js";

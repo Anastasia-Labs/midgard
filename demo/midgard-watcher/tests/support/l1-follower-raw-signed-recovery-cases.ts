@@ -36,6 +36,8 @@ const REASON = {
   included: "Exact recorded transaction body is on the canonical chain",
   includedOtherWitnesses:
     "Exact recorded transaction body is on the canonical chain with other witness bytes",
+  landedInvalid:
+    "Exact recorded transaction body landed failing phase 2: its collateral was taken",
   expired:
     "Recorded TTL passed beyond the canonical recovery horizon and the exact transaction is absent",
   expiredAtTip:
@@ -147,17 +149,22 @@ export const describeSignedRecovery = (): void => {
       });
     });
 
-    it("a phase-2-invalid landing is not an inclusion: its collateral spend invalidates", async () => {
+    it("a phase-2-invalid landing of the exact body is not an inclusion: it reads as landed invalid at its block", async () => {
       const s = await setup();
-      const z = s.intent({ collaterals: [s.at(1)] });
-      await s.forward([{ ...z, isValid: false }]);
-      const observed = await s.observe(z);
-      expect(observed).toMatchObject({
-        status: "invalidated_at_tip",
-        reason: REASON.invalidatedAtTip,
-        inputs: [s.input(0), s.input(1)],
+      const z = s.intent({
+        collaterals: [s.at(1)],
+        collateralReturn: { address: T, lovelace: 2_500_000n },
       });
-      expect(observed.inclusionPoint).toBeUndefined();
+      const { point } = await s.forward([{ ...z, isValid: false }]);
+      expect(await s.observe(z)).toEqual({
+        ...signedOf(z),
+        status: "landed_invalid",
+        reason: REASON.landedInvalid,
+        inclusionPoint: point,
+        canonicalPoint: point,
+        releaseFinalPoint: point,
+        inputs: [],
+      });
     });
 
     it("a conflicting spend is invalidated_at_tip until recovery-deep, then invalidated", async () => {
@@ -363,28 +370,22 @@ export const describeSignedRecovery = (): void => {
       expect(await s.observe(z)).toMatchObject({ status: "invalidated" });
     });
 
-    it("its own phase-2-invalid landing invalidates an intent beside an input without history at the tip, then stably once recovery-deep", async () => {
+    it("its own phase-2-invalid landing reads as landed invalid at its block beside an input without history, at the tip and once recovery-deep", async () => {
       const s = await setup();
       const z = s.intent({
         inputs: [SEED.outRef, s.at(0)],
         collaterals: [s.at(1)],
       });
-      await s.forward([{ ...z, isValid: false }]);
-      for (let depth = 1; depth < 5; depth += 1) {
+      const { point } = await s.forward([{ ...z, isValid: false }]);
+      for (let depth = 1; depth <= 5; depth += 1) {
         expect(await s.observe(z)).toMatchObject({
-          status: "invalidated_at_tip",
-          reason: REASON.invalidatedAtTip,
-          inputs: [s.input(0), s.input(1)],
+          status: "landed_invalid",
+          reason: REASON.landedInvalid,
+          inclusionPoint: point,
+          inputs: [],
         });
         await s.empty(1);
       }
-      const observed = await s.observe(z);
-      expect(observed).toMatchObject({
-        status: "invalidated",
-        reason: REASON.invalidated,
-        inputs: [s.input(0), s.input(1)],
-      });
-      expect(observed.inclusionPoint).toBeUndefined();
     });
 
     it("a seed input another transaction spends invalidates the intent; one that lands is included", async () => {

@@ -33,6 +33,7 @@ export const WATCHER_ALERT_CODES = Object.freeze([
   "da_bond_pool_withdrawing",
   "validation_trace_replay_stuck",
   "prover_funding_unavailable",
+  "prover_collateral_forfeited",
   "unproven_fault_merged",
 ] as const);
 
@@ -48,7 +49,10 @@ export type WatcherAlertCode = (typeof WATCHER_ALERT_CODES)[number];
  * retrying, so the alert only tells the operator; the header's outcome
  * clears it. A detected fault whose header merged unproven is history no
  * watcher action changes, and nothing acknowledges it: its durable alert
- * stays listed across restarts but must not hold readiness forever.
+ * stays listed across restarts but must not hold readiness forever. A proof
+ * attempt whose collateral the chain took is spent money no watcher action
+ * recovers, and the workflow goes on with a re-signed attempt: the alert
+ * tells the operator that local evaluation disagreed with the chain.
  */
 export const WATCHER_INFORMATIONAL_ALERT_CODES: ReadonlySet<WatcherAlertCode> =
   new Set<WatcherAlertCode>([
@@ -57,6 +61,7 @@ export const WATCHER_INFORMATIONAL_ALERT_CODES: ReadonlySet<WatcherAlertCode> =
     "chain_rollback",
     "validation_trace_replay_stuck",
     "unproven_fault_merged",
+    "prover_collateral_forfeited",
   ]);
 
 /** The last pooled DA bond readout, as `/v1/status` serves it. */

@@ -372,3 +372,44 @@ export const retireWorkflowFundingSupersededAttempt = async (
     }),
   );
 };
+
+const collateralChange = async (
+  input: JournaledChange & { readonly transactionHash: string },
+  method: "forfeitCollateral" | "restoreCollateral",
+): Promise<void> => {
+  const state = stateForJournal(input.writer.journal);
+  if (state === undefined) {
+    await appendWorkflowJournalEvents(input.writer, input.events);
+    return;
+  }
+  const change = state.port[method]?.bind(state.port);
+  if (change === undefined)
+    throw new Error(
+      "Funding authority cannot account for forfeited collateral",
+    );
+  state.snapshot = parseSnapshot(
+    await commitWithJournal({
+      port: state.port,
+      writer: input.writer,
+      events: input.events,
+      change: async ({ journal }) =>
+        await change({
+          expectedRevision: state.snapshot.revision,
+          transactionHash: input.transactionHash,
+          journal,
+        }),
+    }),
+  );
+};
+
+/** Accounts at the tip for a recorded attempt that landed failing phase 2;
+ * `events` record its `collateral_forfeited`. */
+export const forfeitWorkflowFundingCollateral = async (
+  input: JournaledChange & { readonly transactionHash: string },
+): Promise<void> => await collateralChange(input, "forfeitCollateral");
+
+/** Reverses a forfeiture after a rollback dropped the landing; `events`
+ * record its `collateral_forfeiture_reversed`. */
+export const restoreWorkflowFundingCollateral = async (
+  input: JournaledChange & { readonly transactionHash: string },
+): Promise<void> => await collateralChange(input, "restoreCollateral");

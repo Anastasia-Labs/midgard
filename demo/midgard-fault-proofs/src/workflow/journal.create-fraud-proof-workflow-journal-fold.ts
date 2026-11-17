@@ -1,3 +1,4 @@
+import { collateralForfeitures } from "./journal.collateral-forfeitures.js";
 import {
   type FraudProofWorkflowJournalEntry,
   type FraudProofWorkflowJournalEvent,
@@ -62,6 +63,7 @@ export const createFraudProofWorkflowJournalFold = ({
   const attemptsByAction = new Map<string, number>();
   const broadcastsByTransaction = new Map<string, number>();
   const knownSignedIntentHashes = new Set<string>();
+  const forfeitures = collateralForfeitures();
   let completed = false;
   let previousEvent: FraudProofWorkflowJournalEvent | undefined;
   let length = 0;
@@ -123,6 +125,7 @@ export const createFraudProofWorkflowJournalFold = ({
       );
     }
     const event = entry.event;
+    if (forfeitures.step(event)) return;
     const previous = previousEvent;
     if (event.kind !== "stalled") previousEvent = event;
     const eventRecord = requireRecord(

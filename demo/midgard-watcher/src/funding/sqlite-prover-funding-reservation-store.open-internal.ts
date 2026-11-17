@@ -34,6 +34,7 @@ import {
   makeTransition,
   nextRecord,
   ReservationConflictError,
+  signedCollateralLanding,
   WATCHER_SQLITE_PROVER_FUNDING_RESERVATION_STORE,
   type WatcherSqliteProverFundingReservationStoreRuntime,
 } from "./sqlite-prover-funding-reservation-store.derive-signed-transition.js";
@@ -767,6 +768,31 @@ export const openInternal = async (
     }
   };
 
+  /** The reservation at `expectedRevision` and what a phase-2-invalid
+   * landing of its recorded attempt `transactionHash` takes and creates. */
+  const collateralLandingOf = (
+    plan: WatcherProverFundingReservationPlan,
+    expectedRevision: string,
+    transactionHash: string,
+  ) => {
+    const current = readOne(plan.reservationId);
+    if (current === null || current.revision !== expectedRevision)
+      throw new Error("prover reservation collateral accounting mismatch");
+    assertPlanMatchesRecord(plan, current);
+    const recorded = recordedSubmissions(current.reservationId).find(
+      ({ transition }) => transition.transactionHash === transactionHash,
+    );
+    if (recorded === undefined)
+      throw new Error("forfeited collateral has no signed funding attempt");
+    return {
+      current,
+      landing: signedCollateralLanding(
+        recorded.transition.signedTransactionCborHex,
+        plan.walletAddress,
+      ),
+    };
+  };
+
   const hasSignedHistory = (reservationId: string): boolean =>
     (selectSignedHistory.get(reservationId) as { present: unknown }).present ===
     1;
@@ -815,6 +841,91 @@ export const openInternal = async (
           retirement,
         );
         const next = nextRecord({ current });
+        writeRecord(current.recordDigest, next);
+        rebuildLeases();
+        return next;
+      }, entries);
+    },
+    forfeitCollateral: async ({
+      plan,
+      expectedRevision,
+      transactionHash,
+      journal: entries,
+    }) => {
+      assertPlan(plan);
+      assertJournalIdentity(plan, entries);
+      return transaction(() => {
+        const { current, landing } = collateralLandingOf(
+          plan,
+          expectedRevision,
+          transactionHash,
+        );
+        // The chain took the collateral; its return, a wallet coin the
+        // landing created, takes its place. Nothing changes for a
+        // reservation that no longer held the collateral.
+        const taken = new Set(landing.collateralOutRefs);
+        const kept = current.activeInputs.filter(
+          ({ outRef }) => !taken.has(outRef),
+        );
+        const back = landing.collateralReturn;
+        const holdsReturn =
+          kept.length < current.activeInputs.length &&
+          back !== undefined &&
+          !heldWalletInput(back.outRef) &&
+          (
+            selectLease.get(back.outRef) as
+              | Readonly<{ reservation_id: unknown }>
+              | undefined
+          )?.reservation_id === undefined;
+        const next = nextRecord({
+          current,
+          activeInputs: holdsReturn ? [...kept, back] : kept,
+        });
+        writeRecord(current.recordDigest, next);
+        rebuildLeases();
+        return next;
+      }, entries);
+    },
+    restoreCollateral: async ({
+      plan,
+      expectedRevision,
+      transactionHash,
+      inputs,
+      journal: entries,
+    }) => {
+      assertPlan(plan);
+      assertJournalIdentity(plan, entries);
+      return transaction(() => {
+        const { current, landing } = collateralLandingOf(
+          plan,
+          expectedRevision,
+          transactionHash,
+        );
+        // A rollback dropped the landing: its collateral return no longer
+        // exists and the collateral is live again. Only a reservation that
+        // still holds the return gets the collateral back in its place.
+        const back = landing.collateralReturn?.outRef;
+        const held = current.activeInputs.some(({ outRef }) => outRef === back);
+        const collateral = new Set(landing.collateralOutRefs);
+        for (const value of inputs) {
+          if (
+            !collateral.has(value.outRef) ||
+            current.activeInputs.some(({ outRef }) => outRef === value.outRef)
+          )
+            throw new Error(
+              "restored collateral is not the attempt's own collateral",
+            );
+          assertLeaseAvailable(value.outRef, current.reservationId);
+        }
+        const next = nextRecord({
+          current,
+          activeInputs: held
+            ? [
+                ...current.activeInputs.filter(({ outRef }) => outRef !== back),
+                ...inputs,
+              ]
+            : current.activeInputs,
+        });
         writeRecord(current.recordDigest, next);
         rebuildLeases();
         return next;
@@ -1119,7 +1230,8 @@ export const openInternal = async (
         // mechanism (G5) that released such a coin at inclusion. Its goal
         // still holds: the coin stays in the reservation that used it, so it
         // cannot block that reservation's next action, and a rollback can
-        // re-land the identical bytes because the coin is still held.
+        // re-land the identical bytes because the coin is still held. A
+        // phase-2-invalid landing is accounted apart (`forfeitCollateral`).
         const consumed = new Set(current.pendingTransition.consumedOutRefs);
         // Once its outputs are released (`releaseProducedOutputs`), what
         // this attempt produces funds other proofs, as a confirmed one's does.

@@ -90,6 +90,8 @@ export const setupFundingRecoveryFixture = async (
   protocolMinFeeCoefficient = 44,
   protocolMaxCollateralInputs = 3,
   attemptTtl: bigint | null = 100n,
+  /** With collateral, the attempt returns that coin less 3 ADA at #1. */
+  collateralReturn = false,
 ) => {
   const journalRoot = await createFundingRecoveryDirectory();
   directories.push(journalRoot);
@@ -405,6 +407,7 @@ export const setupFundingRecoveryFixture = async (
     (typeof plan.inputs)[number],
     (typeof plan.inputs)[number],
   ];
+  const returnedLovelace = BigInt(collateralInput.lovelace) - 3_000_000n;
   const [fundingHash, fundingIndex] = funding.outRef.split("#");
   const inputs = CML.TransactionInputList.new();
   inputs.add(
@@ -433,6 +436,13 @@ export const setupFundingRecoveryFixture = async (
       ),
     );
     body.set_collateral_inputs(collateral);
+    if (collateralReturn)
+      body.set_collateral_return(
+        CML.TransactionOutput.new(
+          CML.Address.from_bech32(walletAddress),
+          CML.Value.from_coin(returnedLovelace),
+        ),
+      );
   }
   const { signedTransactionCborHex, transactionHash } =
     signFundingRecoveryFixtureBody(body);
@@ -590,6 +600,11 @@ export const setupFundingRecoveryFixture = async (
     /** The reserved coin the init attempt posts as collateral, when it has
      * any. */
     collateralInput,
+    /** The init attempt's collateral return, when it has one. */
+    collateralReturn:
+      withCollateral && collateralReturn
+        ? { outRef: `${transactionHash}#1`, lovelace: `${returnedLovelace}` }
+        : undefined,
     transactionHash,
     signedTransactionCborHex,
     originalEntries,

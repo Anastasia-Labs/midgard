@@ -1,4 +1,7 @@
-import type { FraudProofWorkflowJournalEntry } from "@al-ft/midgard-fault-proofs";
+import {
+  type FraudProofWorkflowJournalEntry,
+  isCollateralForfeitureEvent,
+} from "@al-ft/midgard-fault-proofs";
 import { isFinal } from "@al-ft/midgard-l1-follower";
 
 import type { WatcherProofRetention } from "../l1-follower/proof-retention.js";
@@ -15,7 +18,11 @@ export const inclusionStands = async (
   retention: WatcherProofRetention | undefined,
   entries: readonly FraudProofWorkflowJournalEntry[],
 ): Promise<boolean> => {
-  const last = entries.at(-1)?.event;
+  // Collateral bookkeeping for an attempt read after the inclusion moves
+  // no step.
+  const last = [...entries]
+    .reverse()
+    .find(({ event }) => !isCollateralForfeitureEvent(event))?.event;
   if (retention === undefined || last?.kind !== "terminal_included")
     return false;
   const depth = await retention.blockDepth(last.terminal.observedAt);

@@ -1,0 +1,227 @@
+/**
+ * A transaction takes its collateral only when it lands failing phase 2,
+ * which means local evaluation disagreed with the chain. The workflow
+ * accounts for it at the tip: the journal records the collateral it took,
+ * the reservation drops that coin and holds the collateral return instead,
+ * and the objective raises `prover_collateral_forfeited`. A rollback that
+ * drops the landing undoes all of it.
+ */
+import type { UTxO } from "@lucid-evolution/lucid";
+import { afterEach, expect, it, vi } from "vitest";
+
+import { setupFaultProofExecution } from "../support/fault-proof-execution-fixture.js";
+import {
+  cleanupFundingRecoveryFixtures,
+  FixtureProcessStop,
+  setupFundingRecoveryFixture,
+  walletAddress,
+} from "../support/fault-proof-funding-fixture.js";
+
+afterEach(async () => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+  await cleanupFundingRecoveryFixtures();
+});
+
+type Fixture = Awaited<ReturnType<typeof setupFundingRecoveryFixture>>;
+
+const coin = (outRef: string, lovelace: bigint): UTxO => {
+  const [txHash, outputIndex] = outRef.split("#");
+  return {
+    txHash: txHash!,
+    outputIndex: Number(outputIndex),
+    address: walletAddress,
+    assets: { lovelace },
+  };
+};
+
+/** The wallet as the chain shows it: with the attempt's invalid landing, the
+ * collateral is spent and its return exists; without it, the reverse. */
+const showLanding = (fixture: Fixture, landed: boolean) => {
+  const collateral = fixture.collateralInput;
+  const back = fixture.collateralReturn!;
+  const [gone, shown] = landed
+    ? [collateral.outRef, coin(back.outRef, BigInt(back.lovelace))]
+    : [back.outRef, coin(collateral.outRef, BigInt(collateral.lovelace))];
+  const kept = fixture.walletUtxos.filter(
+    ({ txHash, outputIndex }) => `${txHash}#${outputIndex}` !== gone,
+  );
+  fixture.walletUtxos.splice(0, fixture.walletUtxos.length, ...kept, shown);
+};
+
+const forfeitureOf = (fixture: Fixture) => ({
+  kind: "collateral_forfeited",
+  actionId: "init",
+  txHash: fixture.transactionHash,
+  collateralOutRefs: [fixture.collateralInput.outRef],
+  collateralReturnOutRef: fixture.collateralReturn!.outRef,
+});
+
+const heldOutRefs = async (fixture: Fixture) =>
+  (await fixture.records())[0]!.activeInputs.map(({ outRef }) => outRef).sort();
+
+it("swaps the collateral for its return in the reservation when the attempt lands failing phase 2, and swaps back when a rollback drops the landing", async () => {
+  const fixture = await setupFundingRecoveryFixture(
+    false,
+    true,
+    false,
+    20n,
+    44,
+    3,
+    100n,
+    true,
+  );
+  const collateral = fixture.collateralInput.outRef;
+  const back = fixture.collateralReturn!;
+  const before = await heldOutRefs(fixture);
+  expect(before).toContain(collateral);
+  expect(before).not.toContain(back.outRef);
+
+  showLanding(fixture, true);
+  fixture.chain.mockResolvedValue({ kind: "not_found", landedInvalid: true });
+  // The process stops once the forfeiture commits, before the attempt is
+  // superseded, so the reservation shows the forfeiture alone.
+  fixture.stopAt("abandonPendingTransition", "before");
+  await expect(fixture.run(await fixture.recover())).rejects.toBeInstanceOf(
+    FixtureProcessStop,
+  );
+  const forfeited = await fixture.journal.load(fixture.initial.workflowId);
+  expect(forfeited.at(-1)!.event).toEqual(forfeitureOf(fixture));
+  const [record] = await fixture.records();
+  expect(record!.pendingTransition?.transactionHash).toBe(
+    fixture.transactionHash,
+  );
+  expect(await heldOutRefs(fixture)).toEqual(
+    [...before.filter((outRef) => outRef !== collateral), back.outRef].sort(),
+  );
+  expect(
+    record!.activeInputs.find(({ outRef }) => outRef === back.outRef),
+  ).toEqual({ outRef: back.outRef, lovelace: back.lovelace, assets: [] });
+
+  // A rollback drops the landing before the restarted process reads the
+  // attempt again: its collateral is unspent, its return gone, and the exact
+  // bytes wait in the mempool.
+  await fixture.restartStore();
+  showLanding(fixture, false);
+  fixture.chain.mockResolvedValue({
+    kind: "pending",
+    txHash: fixture.transactionHash,
+  });
+  await fixture.run(await fixture.recover());
+  const reversed = await fixture.journal.load(fixture.initial.workflowId);
+  expect(reversed.slice(0, forfeited.length)).toEqual(forfeited);
+  expect(reversed.slice(forfeited.length).map(({ event }) => event)).toEqual([
+    {
+      kind: "collateral_forfeiture_reversed",
+      actionId: "init",
+      txHash: fixture.transactionHash,
+    },
+  ]);
+  expect(await heldOutRefs(fixture)).toEqual(before);
+  expect((await fixture.records())[0]!.pendingTransition?.transactionHash).toBe(
+    fixture.transactionHash,
+  );
+  expect(fixture.adapter.submit).not.toHaveBeenCalled();
+});
+
+it("raises prover_collateral_forfeited for an attempt that landed failing phase 2, until a rollback drops the landing", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  const test = await setupFaultProofExecution(false, {
+    collateralReturn: true,
+  });
+  const { fixture } = test;
+  test.getUtxosByOutRef.mockImplementation(async (...args: unknown[]) => {
+    const refs = (
+      args[0] as readonly { txHash: string; outputIndex: number }[]
+    ).map(({ txHash, outputIndex }) => `${txHash}#${outputIndex}`);
+    return fixture.walletUtxos.filter(({ txHash, outputIndex }) =>
+      refs.includes(`${txHash}#${outputIndex}`),
+    );
+  });
+  const objective = `doubleSpend/${test.input.job.headerHash}`;
+  const forfeitureAlerts = () =>
+    test.setAlert.mock.calls
+      .map(
+        ([alert]) =>
+          alert as { code: string; subjectDigest: string; active: boolean },
+      )
+      .filter(({ code }) => code === "prover_collateral_forfeited");
+
+  showLanding(fixture, true);
+  fixture.chain.mockResolvedValue({ kind: "not_found", landedInvalid: true });
+  const logged: string[] = [];
+  const stderr = vi
+    .spyOn(process.stderr, "write")
+    .mockImplementation((line) => logged.push(String(line)) > 0);
+  try {
+    expect(await test.execution.execute(test.input)).toMatchObject({
+      kind: "pending",
+    });
+  } finally {
+    stderr.mockRestore();
+  }
+  const events = (await fixture.journal.load(fixture.initial.workflowId)).map(
+    ({ event }) => event,
+  );
+  expect(events.slice(fixture.originalEntries.length)).toEqual([
+    forfeitureOf(fixture),
+    {
+      kind: "reconciled",
+      actionId: "init",
+      outcome: "not_found",
+      txHash: fixture.transactionHash,
+    },
+  ]);
+  expect(forfeitureAlerts()).toEqual([
+    {
+      code: "prover_collateral_forfeited",
+      subjectDigest: expect.stringMatching(/^[0-9a-f]{64}$/u),
+      active: true,
+      observedAtMs: expect.any(String),
+    },
+  ]);
+  // One error line names the objective, the attempt and its collateral.
+  expect(logged).toHaveLength(1);
+  expect(JSON.parse(logged[0]!)).toMatchObject({
+    level: "error",
+    reason: "prover_collateral_forfeited",
+    detail: expect.stringContaining(objective),
+  });
+  expect(logged[0]).toContain(fixture.transactionHash);
+  expect(logged[0]).toContain(fixture.collateralInput.outRef);
+  // Another run while the landing stands raises nothing again.
+  expect(await test.execution.execute(test.input)).toMatchObject({
+    kind: "pending",
+  });
+  expect(forfeitureAlerts()).toHaveLength(1);
+
+  // A rollback drops the landing; the superseded attempt is absent with every
+  // input live, so the next read of it finds the forfeiture undone.
+  showLanding(fixture, false);
+  fixture.chain.mockResolvedValue({
+    kind: "unknown",
+    reason: "Exact recorded transaction requires live rebroadcast authority",
+    absent: true,
+  });
+  vi.setSystemTime(Date.now() + 15 * 60_000);
+  expect(await test.execution.execute(test.input)).toMatchObject({
+    kind: "pending",
+  });
+  expect(
+    (await fixture.journal.load(fixture.initial.workflowId))
+      .map(({ event }) => event)
+      .slice(events.length),
+  ).toEqual([
+    {
+      kind: "collateral_forfeiture_reversed",
+      actionId: "init",
+      txHash: fixture.transactionHash,
+    },
+  ]);
+  const [raised, cleared] = forfeitureAlerts();
+  expect(cleared).toMatchObject({
+    code: "prover_collateral_forfeited",
+    active: false,
+  });
+  expect(cleared).toHaveProperty("subjectDigest", raised!.subjectDigest);
+});

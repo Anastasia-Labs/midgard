@@ -75,6 +75,16 @@ groups:
           summary: "Watcher {{ $labels.instance }} cannot fund a fault proof"
           runbook: "docs/operations/alerts.md#midgardwatcherproverfundingunavailable"
 
+      - alert: MidgardWatcherProverCollateralForfeited
+        # A proof attempt landed failing phase 2 and the chain took its
+        # collateral: local script evaluation disagreed with the chain.
+        expr: midgard_watcher_active_alerts{code="prover_collateral_forfeited"} > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "Watcher {{ $labels.instance }} lost prover collateral to a failed script"
+          runbook: "docs/operations/alerts.md#midgardwatcherprovercollateralforfeited"
+
       - alert: MidgardWatcherProofStartedLate
         # A fault proof runs after its latest safe start; it must land
         # before its header matures.

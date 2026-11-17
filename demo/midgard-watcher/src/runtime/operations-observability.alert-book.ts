@@ -74,11 +74,14 @@ const MAXIMUM_PER_HEADER_ALERTS = MAXIMUM_PAGE_SIZE * 10;
 
 /**
  * Codes whose inactive record is read back to suppress repeated diagnostics.
- * Stuck replays come and go per header, and their reporter deduplicates.
+ * Stuck replays come and go per header, and forfeited collateral per proof
+ * objective; their reporters deduplicate.
  */
 const DEDUPLICATED_CODES: ReadonlySet<WatcherAlertCode> = new Set(
   [...WATCHER_INFORMATIONAL_ALERT_CODES].filter(
-    (code) => code !== "validation_trace_replay_stuck",
+    (code) =>
+      code !== "validation_trace_replay_stuck" &&
+      code !== "prover_collateral_forfeited",
   ),
 );
 

@@ -100,8 +100,17 @@ export type FraudProofWorkflowReconcileResult =
   | {
       readonly kind: "not_found";
       readonly retirement?: import("./signed-transaction-retirement.js").SignedWorkflowTransactionRetirement;
+      /** The exact attempt landed failing phase 2: the chain took its
+       * collateral. */
+      readonly landedInvalid?: true;
     }
-  | { readonly kind: "unknown"; readonly reason: string }
+  | {
+      readonly kind: "unknown";
+      readonly reason: string;
+      /** The exact attempt is absent from the canonical chain; only what
+       * becomes of it is unknown. */
+      readonly absent?: true;
+    }
   | { readonly kind: "conflict"; readonly reason: string };
 
 export const FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER =

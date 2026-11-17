@@ -215,6 +215,63 @@ export const transactionInputOutRefs = (inputs: {
   return Object.freeze(outRefs.sort());
 };
 
+const walletInput = (
+  outRef: string,
+  output: ReturnType<typeof coreToTxOutput>,
+): WatcherProverFundingReservationInput => {
+  const lovelace = output.assets.lovelace;
+  if (lovelace === undefined || lovelace <= 0n)
+    throw new Error("prover transition wallet output omitted lovelace");
+  return Object.freeze({
+    outRef,
+    lovelace: lovelace.toString(),
+    assets: Object.freeze(
+      Object.entries(output.assets)
+        .filter(([unit]) => unit !== "lovelace")
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([unit, quantity]) =>
+          Object.freeze({ unit, quantity: quantity.toString() }),
+        ),
+    ),
+  });
+};
+
+/** What a phase-2-invalid landing of signed bytes takes and creates: their
+ * collateral inputs, and the collateral return, placed right after the body's
+ * outputs, as a reservation input when it pays `walletAddress`. */
+export const signedCollateralLanding = (
+  signedTransactionCborHex: string,
+  walletAddress: string,
+): Readonly<{
+  collateralOutRefs: readonly string[];
+  collateralReturn: WatcherProverFundingReservationInput | undefined;
+}> => {
+  const transaction = CML.Transaction.from_cbor_hex(signedTransactionCborHex);
+  const body = transaction.body();
+  try {
+    const collateral = body.collateral_inputs();
+    const back = body.collateral_return();
+    const output = back === undefined ? undefined : coreToTxOutput(back);
+    return Object.freeze({
+      collateralOutRefs:
+        collateral === undefined ? [] : transactionInputOutRefs(collateral),
+      collateralReturn:
+        output === undefined || output.address !== walletAddress
+          ? undefined
+          : walletInput(
+              `${CML.hash_transaction(body).to_hex()}#${body
+                .outputs()
+                .len()
+                .toString()}`,
+              output,
+            ),
+    });
+  } finally {
+    body.free();
+    transaction.free();
+  }
+};
+
 export const deriveSignedTransition = ({
   plan,
   activeInputs,
@@ -269,23 +326,8 @@ export const deriveSignedTransition = ({
   for (let index = 0; index < outputs.len(); index += 1) {
     const output = coreToTxOutput(outputs.get(index));
     if (output.address !== plan.walletAddress) continue;
-    const lovelace = output.assets.lovelace;
-    if (lovelace === undefined || lovelace <= 0n) {
-      throw new Error("prover transition wallet output omitted lovelace");
-    }
     producedInputs.push(
-      Object.freeze({
-        outRef: `${transactionHash}#${index.toString()}`,
-        lovelace: lovelace.toString(),
-        assets: Object.freeze(
-          Object.entries(output.assets)
-            .filter(([unit]) => unit !== "lovelace")
-            .sort(([left], [right]) => left.localeCompare(right))
-            .map(([unit, quantity]) =>
-              Object.freeze({ unit, quantity: quantity.toString() }),
-            ),
-        ),
-      }),
+      walletInput(`${transactionHash}#${index.toString()}`, output),
     );
   }
   const derived = Object.freeze({

@@ -7,6 +7,7 @@ import {
   workflowActuationDecisionDigest,
   workflowJournalIsReconciliationOnly,
 } from "./actuation-permit.js";
+import { isCollateralForfeitureEvent } from "./collateral-forfeiture.js";
 import { isFinalWorkflowCompletion } from "./completion-finality.js";
 import {
   appendWorkflowJournalEvents,
@@ -81,6 +82,7 @@ import { assertWorkflowJournalReconciliation } from "./orchestrator.reconcile-su
 import { reobserveRequiredWorkflowParent } from "./orchestrator.reobserve-required-parent.js";
 import { resolvedByAnotherRecordResult } from "./orchestrator.resolved-by-another-record.js";
 import {
+  restoreWorkflowAttemptCollateral,
   supersedeDisplacedFundingAttempt,
   supersedeWorkflowFundingAttempt,
 } from "./orchestrator.supersede-funding-attempt.js";
@@ -346,7 +348,10 @@ export const runAdmittedFraudProofWorkflow = async ({
     // with its own unresolved intent still reconciles before reobservation.
     const latestJournalEvent = [...entries]
       .reverse()
-      .find(({ event }) => event.kind !== "stalled")?.event;
+      .find(
+        ({ event }) =>
+          event.kind !== "stalled" && !isCollateralForfeitureEvent(event),
+      )?.event;
     const unresolvedEvent =
       latestJournalEvent?.kind === "submission_intent" ||
       latestJournalEvent?.kind === "reobserved" ||
@@ -555,6 +560,13 @@ export const runAdmittedFraudProofWorkflow = async ({
           `reconciliation failed for ${action.actionId}: ${formatUnknownError(cause)}`,
         );
       }
+      await restoreWorkflowAttemptCollateral({
+        writer,
+        assertReconcile,
+        entries,
+        transactionHash: intent.txHash,
+        read: reconciled,
+      });
       if (reconciled.kind === "unknown") {
         const reason = `reconciliation remains unknown for ${action.actionId}: ${reconciled.reason}`;
         return resumeOnObservation(reason);
@@ -642,6 +654,7 @@ export const runAdmittedFraudProofWorkflow = async ({
         entries: () => entries,
         transactionHash: intent.txHash,
         retirement: reconciled.retirement,
+        ...(reconciled.landedInvalid === true ? { landedInvalid: true } : {}),
       });
       fundingRecovery = await readWorkflowFundingRecovery(journal);
       context = { ...context, entries };
@@ -736,7 +749,9 @@ export const runAdmittedFraudProofWorkflow = async ({
         .reverse()
         .find(
           ({ event }) =>
-            event.kind !== "stalled" && event.kind !== "signed_attempt_retired",
+            event.kind !== "stalled" &&
+            event.kind !== "signed_attempt_retired" &&
+            !isCollateralForfeitureEvent(event),
         )?.event;
       // An inclusion already recorded is observed again next time rather than
       // recorded at every depth tick, and a final completion only once.

@@ -160,6 +160,27 @@ export type WatcherProverFundingReservationStore = Readonly<{
       readonly retirement: SignedWorkflowTransactionRetirement;
     },
   ): Promise<WatcherProverFundingReservationRecord>;
+  /** Accounts at the tip for recorded attempt `transactionHash` that landed
+   * failing phase 2: the collateral it held leaves the reservation and the
+   * collateral return, when it pays the wallet, comes in. */
+  forfeitCollateral?(
+    input: Journaled & {
+      readonly plan: WatcherProverFundingReservationPlan;
+      readonly expectedRevision: string;
+      readonly transactionHash: string;
+    },
+  ): Promise<WatcherProverFundingReservationRecord>;
+  /** Undoes `forfeitCollateral` once a rollback dropped the landing: when
+   * the reservation still holds the collateral return, it leaves and
+   * `inputs`, the attempt's own collateral live again, come back. */
+  restoreCollateral?(
+    input: Journaled & {
+      readonly plan: WatcherProverFundingReservationPlan;
+      readonly expectedRevision: string;
+      readonly transactionHash: string;
+      readonly inputs: readonly WatcherProverFundingReservationInput[];
+    },
+  ): Promise<WatcherProverFundingReservationRecord>;
   readPendingTransition(input: {
     readonly reservationId: string;
   }): Promise<unknown | null>;

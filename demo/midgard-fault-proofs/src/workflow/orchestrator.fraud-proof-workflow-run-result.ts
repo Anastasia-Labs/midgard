@@ -1,4 +1,5 @@
 import { type CanonicalBlockClassification } from "./classification.js";
+import { isCollateralForfeitureEvent } from "./collateral-forfeiture.js";
 import {
   type FraudProofWorkflowIdentity,
   type FraudProofWorkflowJournalEntry,
@@ -70,7 +71,10 @@ export const repeatsPendingReconciliation = (
 ): boolean => {
   const last = [...entries]
     .reverse()
-    .find(({ event }) => event.kind !== "stalled")?.event;
+    .find(
+      ({ event }) =>
+        event.kind !== "stalled" && !isCollateralForfeitureEvent(event),
+    )?.event;
   return (
     last?.kind === "reconciled" &&
     last.outcome === "pending" &&

@@ -24,10 +24,12 @@ export {
   abandonWorkflowFundingReservationTransaction,
   confirmWorkflowFundingReservationTransaction,
   conflictWorkflowFundingReservationTransaction,
+  forfeitWorkflowFundingCollateral,
   releaseIdleWorkflowFundingReservation,
   releaseUnfundedWorkflowFundingInputs,
   releaseWorkflowFundingReservation,
   reobserveWorkflowFundingReservationTransaction,
+  restoreWorkflowFundingCollateral,
 } from "./funding-reservation-permit.apply-transition.js";
 export {
   beginWorkflowFundingReservationAction,

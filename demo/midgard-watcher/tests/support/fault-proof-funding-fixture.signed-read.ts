@@ -18,7 +18,9 @@ const tip = { ...tipBlock, pointId: computeFraudProofRawL1PointId(tipBlock) };
  * The fixture chain's authenticated answer for one exact signed transaction,
  * written as the answer the workflow should read back. Inclusion at the tip
  * reads as the result; a deep inclusion or a retired absence carries its
- * canonical receipt; a plain absence is impossible at the tip.
+ * canonical receipt; a plain absence is impossible at the tip. A landing
+ * that failed phase 2 is at the tip, or at its receipt's boundary; an
+ * absence with every input live is one the workflow may not rebroadcast.
  */
 export const signedReadObservation = (
   input: Readonly<{
@@ -38,9 +40,20 @@ export const signedReadObservation = (
     inputs: [],
     reason,
   });
+  if (answer.kind === "unknown" && answer.absent === true)
+    return at("rebroadcast");
   if (answer.kind === "unknown" || answer.kind === "conflict")
     return at(answer.kind, answer.reason);
   const { retirement } = answer;
+  if (answer.kind === "not_found" && answer.landedInvalid === true)
+    return retirement === undefined
+      ? { ...at("landed_invalid"), inclusionPoint: tip }
+      : {
+          ...at("landed_invalid"),
+          inclusionPoint: retirement.releaseFinalPoint,
+          canonicalPoint: retirement.canonicalPoint,
+          releaseFinalPoint: retirement.canonicalPoint,
+        };
   if (answer.kind === "not_found")
     return retirement === undefined
       ? at("expired_at_tip")

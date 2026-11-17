@@ -251,9 +251,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
   // observation, which clears or renews the hold. An objective that needs a
   // resubmission after its header matured is held by name the same way.
   const holds = new Map<string, Readonly<{ reason: string; detail: string }>>();
-  const alerts = createWatcherFaultProofObjectiveAlerts(
-    dependencies.operationsSink,
-  );
+  const alerts = createWatcherFaultProofObjectiveAlerts(dependencies);
   const objectiveOf = ({ category, headerHash }: WatcherProofObjective) =>
     `${category}/${headerHash}`;
   const holdOnRefusal = (
@@ -543,6 +541,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
       } finally {
         if (held === undefined) holds.delete(objectiveOf(job));
         alerts.funding(job, holds);
+        alerts.collateral(job);
         settleWatcherFaultProofQuarantine({
           holds,
           job,

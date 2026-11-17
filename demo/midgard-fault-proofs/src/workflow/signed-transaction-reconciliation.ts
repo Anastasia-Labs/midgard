@@ -21,6 +21,9 @@ export type SignedTransactionRecoveryObservation = SignedWorkflowTransaction &
       /** Absent and impossible at the tip, but not yet beyond the horizon. */
       | "expired_at_tip"
       | "invalidated_at_tip"
+      /** The exact body landed failing phase 2 at `inclusionPoint`: the
+       * chain took its collateral, so it can never land valid. */
+      | "landed_invalid"
       | "conflict"
       | "unknown";
     inclusionPoint?: FraudProofRawL1Point;
@@ -133,27 +136,38 @@ export const reconcileSignedWorkflowTransaction = async ({
     throw new Error(
       "Signed recovery observation substituted the durable transaction",
     );
+  // Its collateral is spent, so an attempt that landed failing phase 2 is
+  // impossible at once and the workflow moves on, told that it landed. It is
+  // retired from its own block beyond k, as an inclusion is.
+  const landedInvalid = { kind: "not_found", landedInvalid: true } as const;
   if (
-    observed.status === "included" &&
+    (observed.status === "included" || observed.status === "landed_invalid") &&
     observed.inclusionPoint !== undefined &&
     BigInt(observed.canonicalPoint.blockNo) -
       BigInt(observed.inclusionPoint.blockNo) >
       BigInt(DEPLOYMENT_MANIFEST_L1_FINALITY.automaticRecoveryMaxDepth)
   )
     return {
-      ...pending,
+      ...(observed.status === "included" ? pending : landedInvalid),
       retirement: parseSignedWorkflowTransactionRetirement(
         {
           transactionHash,
           canonicalPoint: observed.canonicalPoint,
           releaseFinalPoint: observed.inclusionPoint,
-          reason: "included",
+          reason: observed.status === "included" ? "included" : "invalidated",
         },
         transactionHash,
       ),
     };
   if (observed.status === "included" && reportInclusion)
     return { kind: "confirmed", txHash: transactionHash };
+  if (observed.status === "landed_invalid")
+    return observed.inclusionPoint === undefined
+      ? {
+          kind: "unknown",
+          reason: "A phase-2-invalid landing was observed without its block",
+        }
+      : landedInvalid;
   if (observed.status === "expired" || observed.status === "invalidated") {
     const blocksAfterBoundary =
       BigInt(observed.canonicalPoint.blockNo) -
@@ -196,6 +210,7 @@ export const reconcileSignedWorkflowTransaction = async ({
     return {
       kind: "unknown",
       reason: "Exact recorded transaction requires live rebroadcast authority",
+      absent: true,
     };
   if (
     observed.status === "rebroadcast" &&

@@ -49,9 +49,12 @@ import {
  * A spend of any input by another transaction makes the intent impossible,
  * whatever the other inputs: it is `invalidated_at_tip` even beside an input
  * without history. It is `invalidated` once a spend is stable, beside an
- * input without history only when a stored transaction made it: another
- * one, or the intent's own phase-2-invalid landing, which consumed its
- * collateral. A spend inferred from the pruning names no spender.
+ * input without history only when another stored transaction made it. A
+ * spend inferred from the pruning names no spender.
+ *
+ * The intent's own landing that failed phase 2 is `landed_invalid` at its
+ * block: the chain took its collateral, so the caller accounts for that and
+ * reads the attempt again to see a rollback drop the landing.
  */
 
 type Observation = Awaited<
@@ -127,6 +130,8 @@ const REASONS = {
     "A recorded input is spent at the canonical tip by another transaction",
   validFrom: "Recorded lower validity bound has not reached the canonical tip",
   mempool: "Recorded transaction remains in the node mempool",
+  landedInvalid:
+    "Exact recorded transaction body landed failing phase 2: its collateral was taken",
 } as const;
 
 /** An input as the follower's facts show it at the view. */
@@ -280,9 +285,7 @@ const observeOnce = async (
   const stored = await store.txByHash(
     Buffer.from(input.transactionHash, "hex"),
   );
-  // A stored tx that failed phase 2 is not an inclusion: its collateral
-  // spend shows below as an invalidating input.
-  if (stored !== null && stored.isValid) {
+  if (stored !== null) {
     atView(view, stored.blockSlot);
     if (!stored.bodyCbor.equals(signed.body))
       return finish("unknown", REASONS.otherBody);
@@ -290,6 +293,9 @@ const observeOnce = async (
     if (block === null || block.slot !== stored.blockSlot)
       throw chainMoved("the including block left the stored chain");
     inclusionPoint = rawPointOf(block);
+    // A landing that failed phase 2 is not an inclusion: the chain took the
+    // collateral and nothing else. Its block is where that was accounted.
+    if (!stored.isValid) return finish("landed_invalid", REASONS.landedInvalid);
     // The body fixes every ledger effect, and the stored tx passed phase 2:
     // other witness bytes are the same inclusion.
     return finish(
@@ -307,9 +313,8 @@ const observeOnce = async (
   let status: Status = "rebroadcast";
   let reason: string = REASONS.rebroadcast;
   let unknown: string | undefined;
-  /** A stored transaction stably spent an input. Its own landing, if
-   * stored, failed phase 2 by now (a valid one is included above), so
-   * whichever it is, the body can never be valid. */
+  /** Another stored transaction stably spent an input (the intent's own
+   * landing returned above), so the body can never be valid. */
   let stablySpentByStored = false;
   for (const label of signed.outRefs) {
     const state = await inputState(reader, label);

@@ -481,6 +481,36 @@ and `remainingSafeStartMs` count the paused objective.
 [MidgardWatcherProofStartedLate](#midgardwatcherproofstartedlate) fires with
 it.
 
+### MidgardWatcherProverCollateralForfeited
+
+**Meaning.** A fault-proof attempt landed on L1 failing phase 2, so the chain
+took the collateral it posted (`prover_collateral_forfeited` alert, one
+subject per objective). The watcher evaluated the scripts locally before it
+submitted, so local evaluation and the chain disagreed. The watcher accounts
+for it at the tip: the objective's journal records the attempt and the
+collateral taken, the reservation drops those coins and holds the collateral
+return instead, and the workflow goes on with a re-signed attempt. The watcher
+log has one error line per such attempt, naming the objective, the attempt
+and the collateral. A rollback that drops the landing undoes all of it and
+clears the alert; so does the objective settling. The alert is informational:
+it does not hold readiness.
+
+**First checks.**
+
+```bash
+curl -s "$OPS/v1/diagnostics?kind=alert"
+```
+
+The `prover_collateral_forfeited` log line names the attempt's transaction;
+look it up on an L1 explorer to see which script failed.
+
+**Action.** Keep the watcher running and preserve its state directory. Top up
+the prover wallet if the loss leaves it short
+([MidgardWatcherProverFundingUnavailable](#midgardwatcherproverfundingunavailable)).
+
+**Escalate** always: a script that passed local evaluation and failed on
+chain is a defect in the watcher, its cost model or its protocol parameters.
+
 ### MidgardWatcherProofStartedLate
 
 **Meaning.** A fault proof ran after its header's latest safe start

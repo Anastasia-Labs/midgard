@@ -1,6 +1,7 @@
 import { formatUnknownError } from "@al-ft/midgard-core";
 
 import { assertWorkflowJournalActuation } from "./actuation-permit.js";
+import { isCollateralForfeitureEvent } from "./collateral-forfeiture.js";
 import { isFinalWorkflowCompletion } from "./completion-finality.js";
 import {
   readWorkflowFundingRecordedSignedTransaction,
@@ -109,7 +110,10 @@ export const adoptLandedSupersededAttempt = async ({
   const latest = [...current]
     .reverse()
     .map(({ event }) => event)
-    .find(({ kind }) => kind !== "stalled");
+    .find(
+      (event) =>
+        event.kind !== "stalled" && !isCollateralForfeitureEvent(event),
+    );
   const unresolved =
     latest === undefined ||
     UNRESOLVED.has(latest.kind) ||

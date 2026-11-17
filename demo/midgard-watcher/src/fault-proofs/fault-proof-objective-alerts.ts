@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 
+import { activeCollateralForfeitures } from "@al-ft/midgard-fault-proofs";
+
 import type {
   WatcherAlertCode,
   WatcherOperationsSink,
@@ -8,6 +10,7 @@ import { WATCHER_PACKAGE_NAME } from "../runtime/scaffold.js";
 import { WATCHER_PROVER_FUNDING_UNAVAILABLE } from "./fault-proof-funding-hold.js";
 import type { WatcherProofObjective } from "./fault-proof-objective-journal.js";
 import type { WatcherFaultProofDeadline } from "./fault-proof-supervisor.validate-job.js";
+import type { WatcherWorkflowJournal } from "./watcher-workflow-journal.js";
 
 /**
  * The readiness reason of an objective whose run started after its latest
@@ -41,14 +44,25 @@ export const watcherProofObjectiveAlertSubject = (
  * - `prover_funding_unavailable`: the objective's last run was paused
  *   because the prover wallet could not fund it. It clears once a run meets
  *   something else.
+ * - `prover_collateral_forfeited`: an attempt of the objective landed
+ *   failing phase 2, so the chain took its collateral: local evaluation
+ *   disagreed with the chain. Each such attempt writes one error line
+ *   naming the objective, the attempt and the collateral. It clears once a
+ *   rollback drops every such landing.
  *
- * Both clear when the objective settles.
+ * All clear when the objective settles.
  */
-export const createWatcherFaultProofObjectiveAlerts = (
-  sink: Pick<WatcherOperationsSink, "setAlert">,
-) => {
+export const createWatcherFaultProofObjectiveAlerts = ({
+  operationsSink: sink,
+  workflowJournal,
+}: {
+  readonly operationsSink: Pick<WatcherOperationsSink, "setAlert">;
+  readonly workflowJournal: Pick<WatcherWorkflowJournal, "readExecution">;
+}) => {
   const late = new Map<string, Readonly<{ reason: string; detail: string }>>();
   const unfunded = new Set<string>();
+  /** Per objective, the attempts whose forfeiture stands. */
+  const forfeited = new Map<string, ReadonlySet<string>>();
   const objectiveOf = ({ category, headerHash }: WatcherProofObjective) =>
     `${category}/${headerHash}`;
   const set = (
@@ -99,6 +113,32 @@ export const createWatcherFaultProofObjectiveAlerts = (
       else unfunded.delete(objective);
       set("prover_funding_unavailable", job, paused);
     },
+    /** After a run: the forfeitures that stand in the objective's journal. */
+    collateral: (job: WatcherProofObjective): void => {
+      const objective = objectiveOf(job);
+      const standing = activeCollateralForfeitures(
+        workflowJournal.readExecution(job)?.entries ?? [],
+      );
+      const raised = forfeited.get(objective) ?? new Set<string>();
+      for (const [txHash, event] of standing) {
+        if (raised.has(txHash)) continue;
+        process.stderr.write(
+          `${JSON.stringify({
+            packageName: WATCHER_PACKAGE_NAME,
+            level: "error",
+            reason: "prover_collateral_forfeited",
+            detail: `${objective}: attempt ${txHash} landed failing phase 2; the chain took collateral ${event.collateralOutRefs.join(", ")}`,
+          })}\n`,
+        );
+      }
+      if (standing.size === 0) {
+        if (forfeited.delete(objective))
+          set("prover_collateral_forfeited", job, false);
+        return;
+      }
+      forfeited.set(objective, new Set(standing.keys()));
+      if (raised.size === 0) set("prover_collateral_forfeited", job, true);
+    },
     /** The objective's correction was included or another record resolved
      * it: the race against maturity is over. */
     finished,
@@ -107,6 +147,8 @@ export const createWatcherFaultProofObjectiveAlerts = (
       finished(objective);
       if (unfunded.delete(objectiveOf(objective)))
         set("prover_funding_unavailable", objective, false);
+      if (forfeited.delete(objectiveOf(objective)))
+        set("prover_collateral_forfeited", objective, false);
     },
     readiness: () => [...late.values()],
   });

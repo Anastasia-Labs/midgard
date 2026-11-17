@@ -215,3 +215,56 @@ it("reports a superseded attempt's shallow inclusion as its result only when ask
     retirement: { reason: "included" },
   });
 });
+
+it("supersedes an attempt that landed failing phase 2 at once, as a landing, and retires it from its block beyond k", async () => {
+  const base = observation("landed_invalid");
+  const landed = (blockNo: string) => {
+    const point = { ...base.releaseFinalPoint, blockNo };
+    return {
+      ...base,
+      releaseFinalPoint: base.canonicalPoint,
+      inclusionPoint: {
+        ...point,
+        pointId: computeFraudProofRawL1PointId(point),
+      },
+    };
+  };
+  // Its collateral is gone, so the exact bytes can never land valid: the
+  // workflow moves on at the tip, told that this attempt took its collateral.
+  await expect(
+    reconcileSignedWorkflowTransaction({
+      ...signed,
+      observe: async () => landed("2000"),
+      reportInclusion: true,
+    }),
+  ).resolves.toEqual({ kind: "not_found", landedInvalid: true });
+  const deep = landed("50");
+  await expect(
+    reconcileSignedWorkflowTransaction({
+      ...signed,
+      observe: async () => deep,
+    }),
+  ).resolves.toEqual({
+    kind: "not_found",
+    landedInvalid: true,
+    retirement: expect.objectContaining({
+      transactionHash: signed.transactionHash,
+      reason: "invalidated",
+      canonicalPoint: deep.canonicalPoint,
+      releaseFinalPoint: deep.inclusionPoint,
+    }),
+  });
+});
+
+it("reads an absent attempt with every input live as unknown but absent when it may not rebroadcast", async () => {
+  await expect(
+    reconcileSignedWorkflowTransaction({
+      ...signed,
+      observe: async () => observation("rebroadcast"),
+    }),
+  ).resolves.toEqual({
+    kind: "unknown",
+    reason: "Exact recorded transaction requires live rebroadcast authority",
+    absent: true,
+  });
+});

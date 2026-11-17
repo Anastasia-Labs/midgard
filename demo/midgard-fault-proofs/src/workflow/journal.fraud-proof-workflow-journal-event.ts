@@ -72,6 +72,24 @@ export type FraudProofWorkflowJournalEvent =
       readonly txHash: string;
     }
   | {
+      /** The exact signed attempt `txHash` of `actionId` landed failing
+       * phase 2 at the tip: the chain took `collateralOutRefs` and created
+       * `collateralReturnOutRef`, when the attempt has one. Bookkeeping: it
+       * moves no submission. */
+      readonly kind: "collateral_forfeited";
+      readonly actionId: string;
+      readonly txHash: string;
+      readonly collateralOutRefs: readonly string[];
+      readonly collateralReturnOutRef?: string;
+    }
+  | {
+      /** A rollback dropped the landing `collateral_forfeited` recorded for
+       * `txHash`. Bookkeeping, like the forfeiture. */
+      readonly kind: "collateral_forfeiture_reversed";
+      readonly actionId: string;
+      readonly txHash: string;
+    }
+  | {
       /** Current chain state requires this previously submitted action again. */
       readonly kind: "reobserved";
       readonly actionId: string;

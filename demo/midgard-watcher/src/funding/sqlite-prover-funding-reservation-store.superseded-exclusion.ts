@@ -21,6 +21,32 @@ export const signedOrdinaryInputs = (
     CML.Transaction.from_cbor_hex(signedTransactionCborHex).body().inputs(),
   );
 
+/** The recorded attempt whose body created `outRef`, if any. A collateral
+ * return, which the ledger places right after the body's outputs, leads to
+ * no parent: a phase-2-invalid landing created it, which spent nothing of
+ * the body. */
+const bodyParent = (
+  outRef: string,
+  recorded: ReadonlyMap<string, WorkflowFundingPreparedTransition>,
+): WorkflowFundingPreparedTransition | undefined => {
+  const separator = outRef.indexOf("#");
+  const parent = recorded.get(outRef.slice(0, separator));
+  if (parent === undefined) return undefined;
+  const transaction = CML.Transaction.from_cbor_hex(
+    parent.signedTransactionCborHex,
+  );
+  const body = transaction.body();
+  try {
+    return body.collateral_return() !== undefined &&
+      Number(outRef.slice(separator + 1)) === body.outputs().len()
+      ? undefined
+      : parent;
+  } finally {
+    body.free();
+    transaction.free();
+  }
+};
+
 const shareAnInput = (
   left: readonly string[],
   right: readonly string[],
@@ -58,7 +84,7 @@ const lineage = (
       ...next.consumedOutRefs,
     ]) {
       exclusion.add(outRef);
-      const parent = recorded.get(outRef.slice(0, outRef.indexOf("#")));
+      const parent = bodyParent(outRef, recorded);
       if (parent !== undefined) pending.push(parent);
     }
   }
@@ -205,6 +231,10 @@ export const landedSupersededAttemptOfAction = ({
   while (pending.length !== 0) {
     const outRef = pending.pop()!;
     const parentHash = outRef.slice(0, outRef.indexOf("#"));
+    // Only a body output shows its attempt landed valid; a collateral
+    // return shows the opposite.
+    if (recorded.has(parentHash) && bodyParent(outRef, recorded) === undefined)
+      continue;
     if (visited.has(parentHash)) continue;
     visited.add(parentHash);
     if (sameAction.has(parentHash)) return parentHash;

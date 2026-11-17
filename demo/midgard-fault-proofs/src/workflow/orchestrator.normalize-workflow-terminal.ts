@@ -1,3 +1,4 @@
+import { isCollateralForfeitureEvent } from "./collateral-forfeiture.js";
 import {
   FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
   type FraudProofWorkflowIdentity,
@@ -285,7 +286,12 @@ export const lastActionEvent = (
   [...entries]
     .reverse()
     .map((entry) => entry.event)
-    .find((event) => "actionId" in event && event.actionId === actionId);
+    .find(
+      (event) =>
+        "actionId" in event &&
+        event.actionId === actionId &&
+        !isCollateralForfeitureEvent(event),
+    );
 
 export const lastKnownTxHash = (
   entries: readonly FraudProofWorkflowJournalEntry[],
@@ -305,7 +311,11 @@ export const lastKnownTxHash = (
   for (let index = entries.length - 1; index >= latestIntentIndex; index -= 1) {
     const entry = entries[index]!;
     const event = entry.event;
-    if (!("actionId" in event) || event.actionId !== actionId) {
+    if (
+      !("actionId" in event) ||
+      event.actionId !== actionId ||
+      isCollateralForfeitureEvent(event)
+    ) {
       continue;
     }
     if ("txHash" in event && event.txHash !== undefined) {

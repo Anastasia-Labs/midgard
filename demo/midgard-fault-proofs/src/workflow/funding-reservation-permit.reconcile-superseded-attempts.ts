@@ -1,5 +1,14 @@
+import {
+  activeCollateralForfeitures,
+  collateralForfeitureEvent,
+  readShowsForfeitureReversed,
+} from "./collateral-forfeiture.js";
 import { isFinalWorkflowCompletion } from "./completion-finality.js";
-import { retireWorkflowFundingSupersededAttempt } from "./funding-reservation-permit.apply-transition.js";
+import {
+  forfeitWorkflowFundingCollateral,
+  restoreWorkflowFundingCollateral,
+  retireWorkflowFundingSupersededAttempt,
+} from "./funding-reservation-permit.apply-transition.js";
 import { readWorkflowFundingSupersededAttempts } from "./funding-reservation-permit.read-workflow-funding-recovery.js";
 import type { WorkflowJournalWriter } from "./funding-reservation-permit.workflow-journal-writer.js";
 import type {
@@ -86,6 +95,34 @@ export const reconcileWorkflowFundingSupersededAttempts = async ({
           },
         ],
       }),
+    forfeit: async ({ actionId, transition }) => {
+      const event = collateralForfeitureEvent({
+        actionId,
+        transactionHash: transition.transactionHash,
+        signedTransactionCborHex: transition.signedTransactionCborHex,
+      });
+      // The ledger runs no script without collateral, so bytes without any
+      // cannot fail phase 2.
+      if (event.collateralOutRefs.length === 0)
+        throw new Error("a phase-2-invalid landing names no collateral");
+      await forfeitWorkflowFundingCollateral({
+        writer,
+        transactionHash: transition.transactionHash,
+        events: [event],
+      });
+    },
+    restore: async ({ actionId, transition }) =>
+      await restoreWorkflowFundingCollateral({
+        writer,
+        transactionHash: transition.transactionHash,
+        events: [
+          {
+            kind: "collateral_forfeiture_reversed",
+            actionId,
+            txHash: transition.transactionHash,
+          },
+        ],
+      }),
   });
 
 export const reconcileSupersededAttemptRecords = async ({
@@ -94,6 +131,8 @@ export const reconcileSupersededAttemptRecords = async ({
   append,
   reconcile,
   retire,
+  forfeit,
+  restore,
   reads,
 }: {
   readonly savedAttempts: readonly SupersededAttempt[];
@@ -107,6 +146,10 @@ export const reconcileSupersededAttemptRecords = async ({
     hash: string,
     retirement: import("./signed-transaction-retirement.js").SignedWorkflowTransactionRetirement,
   ) => Promise<void>;
+  /** Accounts at the tip for an attempt that landed failing phase 2. */
+  readonly forfeit?: (saved: SupersededAttempt) => Promise<void>;
+  /** Undoes that accounting once a rollback dropped the landing. */
+  readonly restore?: (saved: SupersededAttempt) => Promise<void>;
   /** Bounds the L1 reads of one pass; without it every attempt is read. */
   readonly reads?: Readonly<{
     schedule: SupersededAttemptReadSchedule;
@@ -118,6 +161,7 @@ export const reconcileSupersededAttemptRecords = async ({
       ({ event }) =>
         event.kind === "submission_intent" && event.txHash === hash,
     );
+  const forfeited = activeCollateralForfeitures(entries);
   const unread: SupersededAttempt[] = [];
   for (const saved of savedAttempts) {
     const hash = saved.transition.transactionHash;
@@ -153,6 +197,12 @@ export const reconcileSupersededAttemptRecords = async ({
     const hash = saved.transition.transactionHash;
     if (due !== null && !due.includes(hash)) continue;
     const result = await reconcile(saved);
+    // The chain took the collateral of bytes that landed failing phase 2 at
+    // the tip; a rollback past that block gives it back.
+    if (!forfeited.has(hash)) {
+      if (result.kind === "not_found" && result.landedInvalid === true)
+        await forfeit?.(saved);
+    } else if (readShowsForfeitureReversed(result)) await restore?.(saved);
     if (
       result.kind === "confirmed" ||
       result.kind === "conflict" ||

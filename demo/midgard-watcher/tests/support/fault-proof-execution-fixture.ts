@@ -27,12 +27,28 @@ import {
 
 export const setupFaultProofExecution = async (
   newReservation = false,
-  { installedRunner = true }: { readonly installedRunner?: boolean } = {},
+  {
+    installedRunner = true,
+    collateralReturn = false,
+  }: {
+    readonly installedRunner?: boolean;
+    /** The pending attempt posts collateral with a collateral return. */
+    readonly collateralReturn?: boolean;
+  } = {},
 ) => {
   // A new reservation's journal root holds no decision. The store shares
   // only an unsigned reservation with it: signed funding for the same target
   // without its decision would hold the objective.
-  const fixture = await setupFundingRecoveryFixture(newReservation);
+  const fixture = await setupFundingRecoveryFixture(
+    newReservation,
+    collateralReturn,
+    false,
+    20n,
+    44,
+    3,
+    100n,
+    collateralReturn,
+  );
   const controller = createWorkflowActuationPermitController({
     decision: fixture.fresh,
     rollbackGeneration: "2",

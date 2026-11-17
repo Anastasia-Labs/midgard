@@ -94,6 +94,22 @@ export interface WorkflowFundingReservationPort {
     readonly retirement: SignedWorkflowTransactionRetirement;
     readonly journal: readonly FraudProofWorkflowJournalEntry[];
   }): Promise<unknown>;
+  /** Account at the tip for a recorded attempt that landed failing phase 2:
+   * the chain took its collateral, so the reservation stops holding those
+   * coins and holds the collateral return instead. */
+  forfeitCollateral?(input: {
+    readonly expectedRevision: string;
+    readonly transactionHash: string;
+    readonly journal: readonly FraudProofWorkflowJournalEntry[];
+  }): Promise<unknown>;
+  /** Undo `forfeitCollateral` after a rollback dropped the landing: the
+   * collateral return leaves the reservation and the collateral, live again,
+   * comes back. */
+  restoreCollateral?(input: {
+    readonly expectedRevision: string;
+    readonly transactionHash: string;
+    readonly journal: readonly FraudProofWorkflowJournalEntry[];
+  }): Promise<unknown>;
   /** Re-select a recorded attempt for reconciliation after canonical
    * re-observation. Null means another unresolved attempt currently owns the
    * required inputs, and nothing changed. */

@@ -11,6 +11,10 @@ import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import { type UTxO } from "@lucid-evolution/lucid";
 
 import { type VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
+import {
+  collateralForfeiturePort,
+  reservationInput,
+} from "./prover-funding-authority.collateral-forfeiture.js";
 import { resolveOwnThreadCustody } from "./prover-funding-authority.resolve-own-thread-custody.js";
 import {
   readRecord,
@@ -154,22 +158,12 @@ export const createWatcherProverFundingAuthority = async (input: {
         candidates.map(({ outRef }) => outRef),
       );
       const inputs = resolved.map((utxo) => {
-        const outRef = `${utxo.txHash}#${utxo.outputIndex}`;
-        if (!recorded.has(outRef) || utxo.address !== plan.walletAddress)
+        const value = reservationInput(utxo);
+        if (!recorded.has(value.outRef) || utxo.address !== plan.walletAddress)
           throw new Error(
             "reobserved funding source substituted a wallet input",
           );
-        return {
-          outRef,
-          lovelace: (utxo.assets.lovelace ?? 0n).toString(),
-          assets: Object.entries(utxo.assets)
-            .filter(([unit]) => unit !== "lovelace")
-            .map(([unit, quantity]) => ({
-              unit,
-              quantity: quantity.toString(),
-            }))
-            .sort((a, b) => a.unit.localeCompare(b.unit)),
-        };
+        return value;
       });
       // A chain query is asynchronous: reject a revoked generation before the
       // durable reservation changes, just as the submission path does.
@@ -242,6 +236,7 @@ export const createWatcherProverFundingAuthority = async (input: {
         rollbackGeneration: input.rollbackGeneration,
       });
     },
+    ...collateralForfeiturePort({ input, plan }),
     readSupersededAttempts: async () =>
       (await input.store.readSupersededAttempts?.(reserved)) ?? [],
     releaseIdle: async ({ expectedRevision }: { expectedRevision: string }) => {
