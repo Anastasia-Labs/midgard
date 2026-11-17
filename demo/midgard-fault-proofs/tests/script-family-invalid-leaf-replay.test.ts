@@ -1,8 +1,11 @@
-/** The script families beside `l2TxMistag` over a block whose only leaf the
- * operator committed `TxIsInvalid` while carrying a Plutus mint policy, its
- * witness and a redeemer: every field a script family reads is present, but
- * the step validators open an accepted subject only at validity code 0, so
- * no script family may open the leaf. The block is decided as `l2TxMistag`. */
+/** The script families over a block whose only leaf the operator committed
+ * `TxIsInvalid` while carrying a Plutus mint policy, its witness and a
+ * redeemer: every field a script family reads is present, but the step
+ * validators open an accepted subject only at validity code 0, so no script
+ * family may open the leaf. A journaled artifact naming the leaf is re-planned
+ * to nothing. The installed catalogue's decision on the same leaf
+ * (`l2TxMistag`) is in
+ * `invalid-tagged-normal-leaf.catalogue-classification.test.ts`. */
 import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
   encodeMidgardMintPolicyItem,
@@ -23,20 +26,6 @@ import { prepareReceivePurposeLanguageReplay } from "../src/receive-purpose-lang
 import { prepareScriptIntegrityHashMismatchReplay } from "../src/script-integrity-hash-mismatch/replay.js";
 import { prepareUnusedRedeemerReplay } from "../src/unused-redeemer/replay.js";
 import { prepareUnusedScriptWitnessReplay } from "../src/unused-script-witness/replay.js";
-import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
-import {
-  createCompleteCanonicalReplayUnion,
-  DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY,
-  EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY,
-  EXECUTION_SOURCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
-  L2_TX_MISTAG_COMPLETE_CANONICAL_REPLAY,
-  MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY,
-  MISSING_SCRIPT_SOURCE_COMPLETE_CANONICAL_REPLAY,
-  RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY,
-  SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
-  UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY,
-  UNUSED_SCRIPT_WITNESS_COMPLETE_CANONICAL_REPLAY,
-} from "../src/workflow/complete-replay.js";
 import {
   authenticatedHeaderObservation,
   buildFixtureTransaction,
@@ -84,42 +73,7 @@ const invalidScriptLeafEvidence = async () => {
   });
 };
 
-// Catalogue order, as the installed catalogue replay runs them.
-const MEMBERS = [
-  L2_TX_MISTAG_COMPLETE_CANONICAL_REPLAY,
-  EXECUTION_SOURCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
-  RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY,
-  UNUSED_SCRIPT_WITNESS_COMPLETE_CANONICAL_REPLAY,
-  MISSING_SCRIPT_SOURCE_COMPLETE_CANONICAL_REPLAY,
-  MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY,
-  UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY,
-  EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY,
-  SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
-  DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY,
-];
-
-describe("script families beside a leaf committed TxIsInvalid", () => {
-  it("decides the block as l2TxMistag", async () => {
-    const evidence = await invalidScriptLeafEvidence();
-    const replay = await createCompleteCanonicalReplayUnion(MEMBERS).replay(
-      evidence,
-      {},
-    );
-    expect(replay.detections.map((detection) => detection.violationId)).toEqual(
-      ["l2-tx-mistag"],
-    );
-    await expect(
-      classifyCanonicalBlockViolations({
-        evidence,
-        detections: replay.detections,
-      }),
-    ).resolves.toMatchObject({
-      decision: "fault_detected",
-      category: "l2TxMistag",
-    });
-  });
-
-  // A journaled artifact naming the leaf is re-planned to nothing.
+describe("script families over a leaf committed TxIsInvalid", () => {
   it.each([
     [
       "executionSourceScriptDecoding",

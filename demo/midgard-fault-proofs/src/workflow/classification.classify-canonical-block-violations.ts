@@ -215,8 +215,47 @@ const compareDetections = (
 };
 
 /**
- * The detection `classifyCanonicalBlockViolations` orders first among
- * `detections` from one block, or undefined when there are none.
+ * The families whose proofs open a normal leaf whatever its committed
+ * validity tag. A normal leaf is the operator's acceptance verdict, so a leaf
+ * committed `TxIsInvalid` is itself the fault, and `l2TxMistag` proves it
+ * (`l2-tx-mistag/step-01.ak` accepts any code but 0). `daHashPreimage` binds
+ * the leaf at either tag (`da-hash-preimage/rule.ak`). `transitionTrace`
+ * findings are of the trace's structure, and its semantic replay stops before
+ * a leaf committed invalid. Every other family's step validator opens an
+ * accepted subject only at validity code 0, so its finding at such a leaf can
+ * never be proven.
+ */
+const OPENS_INVALID_TAGGED_NORMAL_LEAF: ReadonlySet<FraudProofCatalogueCategoryName> =
+  new Set(["l2TxMistag", "daHashPreimage", "transitionTrace"]);
+
+/**
+ * Whether the classifier may select `detection`: a finding about normal
+ * leaves is admitted only when every leaf it names was committed
+ * `TxIsValid`, unless its family proves invalid-tagged normal leaves. The
+ * installed catalogue always holds `l2TxMistag`, which finds every such leaf
+ * at the same event, so dropping the others never loses the leaf's fault. An
+ * unregistered finding is kept, so it still surfaces as a gap.
+ */
+const admitsDetection = (
+  reconstruction: CanonicalBlockEvidence["reconstruction"],
+  detection: CanonicalViolationDetection,
+): boolean => {
+  if (detection.frontier !== "accepted") return true;
+  const rule = classificationByViolationId.get(detection.violationId);
+  if (rule === undefined || OPENS_INVALID_TAGGED_NORMAL_LEAF.has(rule.category))
+    return true;
+  return detection.subjectEventKeyCbors.every((eventKeyCbor) => {
+    const source = reconstruction.sourceEventsByFingerprint.get(eventKeyCbor);
+    // An unknown event is left for the event order to refuse.
+    return (
+      source?.phase !== "L2Transaction" || source.entry.validity === "TxIsValid"
+    );
+  });
+};
+
+/**
+ * The detection `classifyCanonicalBlockViolations` orders first among the
+ * admitted `detections` from one block, or undefined when none is admitted.
  */
 export const firstCanonicalViolationDetection = <
   Detection extends CanonicalViolationDetection,
@@ -226,18 +265,33 @@ export const firstCanonicalViolationDetection = <
 ): Detection | undefined => {
   const orderOf = (detection: CanonicalViolationDetection): EventOrder =>
     detectionEventOrder(evidence.reconstruction, detection);
-  return detections.reduce<Detection | undefined>(
-    (first, detection) =>
-      first === undefined || compareDetections(orderOf, detection, first) < 0
-        ? detection
-        : first,
-    undefined,
+  return detections
+    .filter((detection) => admitsDetection(evidence.reconstruction, detection))
+    .reduce<
+      Detection | undefined
+    >((first, detection) => (first === undefined || compareDetections(orderOf, detection, first) < 0 ? detection : first), undefined);
+};
+
+/**
+ * Whether `classifyCanonicalBlockViolations` decides `fault_detected` on
+ * `detections` from one block, rather than `unprovable_gap` or
+ * `no_fault_detected`: the first admitted detection is registered exactly
+ * when a registered finding exists at the earliest admitted event.
+ */
+export const selectsProvableFault = (
+  evidence: CanonicalBlockEvidence,
+  detections: readonly CanonicalViolationDetection[],
+): boolean => {
+  const first = firstCanonicalViolationDetection(evidence, detections);
+  return (
+    first !== undefined && classificationByViolationId.has(first.violationId)
   );
 };
 
 /**
  * Classifies detections from one authenticated committed block.
  *
+ * Only admitted detections are classified (see `admitsDetection`).
  * An empty detection set yields only `no_fault_detected`; it is not sufficient
  * to claim a complete replay or a verified block. Any unknown mapping is
  * surfaced as `unprovable_gap`; it is never coerced to a generic family and
@@ -283,6 +337,7 @@ export const classifyCanonicalBlockViolations = async ({
       );
       return detection;
     })
+    .filter((detection) => admitsDetection(evidence.reconstruction, detection))
     .sort((left, right) => compareDetections(orderOf, left, right));
   if (ordered.length === 0) {
     return {
