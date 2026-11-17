@@ -238,7 +238,7 @@ describe("the committee node's view of the port's pool snapshot", () => {
   });
 
   it("bounds the sync wait by polls plus twice the ideal confirmation time", () => {
-    // The devnet: 2 s polls, depth 3, 1 s slots, f = 0.05.
+    // Preprod cadence: 2 s polls, depth 3, 1 s slots, f = 0.05.
     expect(
       daBondPoolCommitteeSyncBoundMs({
         pollIntervalMs: 2_000,
@@ -279,7 +279,7 @@ describe("the committee node's view of the port's pool snapshot", () => {
   });
 
   it("watches the submitters after a stop for a node poll plus the finality lag", () => {
-    // The devnet: 2 s polls, depth 3, 1 s slots, f = 0.05.
+    // Preprod cadence: 2 s polls, depth 3, 1 s slots, f = 0.05.
     const cadence = {
       pollIntervalMs: 2_000,
       confirmationDepth: 3,
