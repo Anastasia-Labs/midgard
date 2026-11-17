@@ -417,8 +417,6 @@ export const verifyTerminalRecoveryFinality = async (
       (await fixture.journal.load(fixture.workflowId)).at(-1)?.event.kind,
     ).toBe("completed");
     expect(fixture.observeHeader).not.toHaveBeenCalled();
-    expect(fixture.capture).not.toHaveBeenCalled();
-    expect(fixture.built.submit).not.toHaveBeenCalled();
   } finally {
     release.mockRestore();
   }

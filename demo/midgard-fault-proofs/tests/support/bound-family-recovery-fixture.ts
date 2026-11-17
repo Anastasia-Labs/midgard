@@ -226,6 +226,8 @@ export const runRegisteredFamilyReconciliation = async (
         computationThread: {},
         fraudProof: {},
       },
+      // The queue a decision-digest family removes the faulty header from.
+      stateQueuePolicyId: "77".repeat(28),
     },
     contractEntries: { hubOracleMint: { scriptHash: "66".repeat(28) } },
     definition: {

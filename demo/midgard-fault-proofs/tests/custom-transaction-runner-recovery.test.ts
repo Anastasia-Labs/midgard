@@ -298,47 +298,26 @@ const recovery = async (
 
 afterEach(() => vi.restoreAllMocks());
 
-it.each(categories)(
-  "%s reconciles the exact signed intent after acknowledgement loss without a live target",
-  async (category) => {
-    const fixture = await recovery(category);
-    const result = await fixture.run();
-    expect(result.kind).toBe("pending");
-    expect(fixture.reconcile).toHaveBeenCalledOnce();
-    expect(fixture.forbidden).not.toHaveBeenCalled();
-    const entries = await fixture.store.load(fixture.workflowId);
-    expect(
-      entries.filter(({ event }) => event.kind === "submission_intent"),
-    ).toHaveLength(1);
-    expect(
-      entries.some(
-        ({ event }) =>
-          event.kind === "confirmed" && event.txHash === transactionHash,
-      ),
-    ).toBe(true);
-  },
-);
-it.each(categories)(
-  "%s refuses another action under saved-decision reconciliation authority",
-  async (category) => {
-    const fixture = await recovery(category, true);
-    const result = await fixture.run();
-    expect(result).toMatchObject({
-      kind: "pending",
-      reason: "Canonical workflow requires fresh submission authority",
-    });
-    expect(fixture.forbidden).not.toHaveBeenCalled();
-  },
-);
-it.each(categories)(
-  "%s revokes recovery on native rollback before observing or reconciling",
-  async (category) => {
-    const fixture = await recovery(category);
-    fixture.controller.revoke("native_chain_rollback");
-    await expect(fixture.run()).rejects.toThrow("revoked");
-    expect(fixture.reconcile).not.toHaveBeenCalled();
-  },
-);
+// Each family's own runner reconciles in central-family-recovery.test.ts.
+// This case pins the runner alone: the stand-in record's reconcile receives
+// the exact signed transaction the funding recovery retained.
+it("the runner reconciles the exact signed intent after acknowledgement loss without a live target", async () => {
+  const fixture = await recovery("mintDeclaredAssetLimit");
+  const result = await fixture.run();
+  expect(result.kind).toBe("pending");
+  expect(fixture.reconcile).toHaveBeenCalledOnce();
+  expect(fixture.forbidden).not.toHaveBeenCalled();
+  const entries = await fixture.store.load(fixture.workflowId);
+  expect(
+    entries.filter(({ event }) => event.kind === "submission_intent"),
+  ).toHaveLength(1);
+  expect(
+    entries.some(
+      ({ event }) =>
+        event.kind === "confirmed" && event.txHash === transactionHash,
+    ),
+  ).toBe(true);
+});
 it.each(categories)(
   "%s refuses an old family artifact without fabricating a generic envelope",
   async (category) => {

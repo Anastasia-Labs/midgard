@@ -309,7 +309,6 @@
     "tests/script-integrity-hash-mismatch-replay-union.test.ts": 1.2,
     "tests/script-integrity-hash-missing-authenticated.test.ts": 1.4,
     "tests/script-integrity-hash-missing-lifecycle.test.ts": 11.6,
-    "tests/script-integrity-hash-missing-recovery.test.ts": 1.3,
     "tests/script-integrity-hash-missing.test.ts": 1,
     "tests/shared-redeemer-item-lifecycle.test.ts": 7.3,
     "tests/signed-transaction-reconciliation.test.ts": 1,

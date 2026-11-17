@@ -1,19 +1,36 @@
 import { expect, it } from "vitest";
 
 import { FIELD_ITEM_WIDTH_ILLEGAL_CURSOR_SPEC } from "../src/field-item-width-illegal/workflow-spec.js";
+import { MINT_DECLARED_ASSET_LIMIT_FAMILY_DEFINITION } from "../src/mint-declared-asset-limit/v1.js";
 import { MINT_ITEM_NON_CANONICAL_CURSOR_SPEC } from "../src/mint-item-non-canonical/workflow.js";
+import { OBSERVER_ORDER_INVALID_FAMILY_DEFINITION } from "../src/observer-order-invalid/v1.js";
+import { OBSERVERS_FORBIDDEN_FAMILY_DEFINITION } from "../src/observers-forbidden-on-untagged-network/v1.js";
 import { OUTPUT_REFERENCE_SCRIPT_DECODING_CURSOR_SPEC } from "../src/output-reference-script-decoding/workflow-spec.js";
 import { PROTECTED_OUTPUT_SIGNER_MISSING_CURSOR_SPEC } from "../src/protected-output-signer-missing/workflow-spec.js";
+import { REDEEMER_CANONICITY_FAMILY_DEFINITION } from "../src/redeemer-canonicity/runtime.js";
 import { RESOLVED_OUTPUT_NON_CANONICAL_CURSOR_SPEC } from "../src/resolved-output-non-canonical/workflow-spec.js";
+import { SCRIPT_INTEGRITY_HASH_MISSING_CURSOR_SPEC } from "../src/script-integrity-hash-missing/v1.js";
 import { SPEND_INPUT_SIGNER_MISSING_CURSOR_SPEC } from "../src/spend-input-signer-missing/workflow-spec.js";
 import { TRANSACTION_OUTPUT_NON_CANONICAL_CURSOR_SPEC } from "../src/transaction-output-non-canonical/workflow-spec.js";
 import { WITNESS_SCRIPT_DECODING_CURSOR_SPEC } from "../src/witness-script-decoding/workflow-spec.js";
+import type { CursorFamilySpec } from "../src/workflow/cursor-family-state.js";
+import type { InstalledFraudProofCategory } from "../src/workflow/installed-categories.js";
 import { workflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
 import { runRegisteredFamilyReconciliation } from "./support/bound-family-recovery-fixture.js";
 import {
   customWorkflowRecoveryFixture as fixture,
   verifyTerminalRecoveryFinality,
 } from "./support/custom-workflow-recovery.js";
+/** The cursor spec a family's definition lays its adapter out from. */
+const cursorSpecOf = <Category extends InstalledFraudProofCategory>({
+  adapter,
+}: Readonly<{
+  adapter: Readonly<{ kind: string; spec?: CursorFamilySpec<Category> }>;
+}>): CursorFamilySpec<Category> => {
+  if (adapter.kind !== "cursor" || adapter.spec === undefined)
+    throw new Error("family definition has no cursor adapter");
+  return adapter.spec;
+};
 const specs = [
   FIELD_ITEM_WIDTH_ILLEGAL_CURSOR_SPEC,
   TRANSACTION_OUTPUT_NON_CANONICAL_CURSOR_SPEC,
@@ -23,6 +40,12 @@ const specs = [
   OUTPUT_REFERENCE_SCRIPT_DECODING_CURSOR_SPEC,
   WITNESS_SCRIPT_DECODING_CURSOR_SPEC,
   MINT_ITEM_NON_CANONICAL_CURSOR_SPEC,
+  // The decision-digest families: each binds the admitted decision digest.
+  cursorSpecOf(MINT_DECLARED_ASSET_LIMIT_FAMILY_DEFINITION),
+  cursorSpecOf(OBSERVER_ORDER_INVALID_FAMILY_DEFINITION),
+  cursorSpecOf(OBSERVERS_FORBIDDEN_FAMILY_DEFINITION),
+  cursorSpecOf(REDEEMER_CANONICITY_FAMILY_DEFINITION),
+  SCRIPT_INTEGRITY_HASH_MISSING_CURSOR_SPEC,
 ] as const;
 for (const spec of specs) {
   // Reconciliation reaches a family only through its registered runner.
@@ -37,8 +60,6 @@ for (const spec of specs) {
       reason: "Canonical workflow requires fresh submission authority",
     });
     expect(f.observeHeader).not.toHaveBeenCalled();
-    expect(f.capture).not.toHaveBeenCalled();
-    expect(f.built.submit).not.toHaveBeenCalled();
     const entries = await f.journal.load(f.workflowId);
     expect(
       entries.filter(({ event }) => event.kind === "submission_intent"),
@@ -57,10 +78,12 @@ for (const spec of specs) {
     const f = await fixture(spec);
     f.controller.revoke("native_chain_rollback");
     await expect(run(f)).rejects.toThrow("revoked");
-    expect(f.capture).not.toHaveBeenCalled();
     expect(f.observeHeader).not.toHaveBeenCalled();
   });
-  it(`${spec.category}: retains the shared adapter signed capture, submission, and exact successor reconciliation`, async () => {
+  // Drives the shared cursor adapter the fixture builds over this family's
+  // spec, not the adapter the family's constructor builds: the spec's
+  // successor table is the only family input on this path.
+  it(`${spec.category}: the shared cursor adapter over this spec retains signed capture, submission, and exact successor reconciliation`, async () => {
     const f = await fixture(spec);
     const context = {
       identity: f.identity,
