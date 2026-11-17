@@ -20,13 +20,13 @@ import {
   type BridgeApplication,
   type BridgeDependencies,
   exactInstalledScope,
-  failureHoldsTarget,
   FAULT_TARGET_CHANGED,
   MAXIMUM_CLASSIFICATION_CONCURRENCY,
   observationPreservesTarget,
   preservesObservationAuthority,
   revokeDroppedTarget,
   selectedTarget,
+  unclassifiedTargetIndex,
   WATCHER_FAULT_DECISION_BRIDGE_SCHEMA_VERSION,
   type WatcherFaultDecisionBridge,
   type WatcherFaultDecisionBridgeResult,
@@ -360,13 +360,13 @@ export const createBridge = (input: {
       ),
     );
     if (classificationFailed) throw classificationFailure;
-    if (failureHoldsTarget(candidate, target, failedIndex)) throw headerFailure;
-    for (
-      let index = deferredFromIndex;
-      index < classifications.length;
-      index += 1
-    ) {
-      classifications[index] = null;
+    if (unclassifiedTargetIndex(candidate, target, failedIndex) >= 0)
+      throw headerFailure;
+    classifications.fill(null, deferredFromIndex);
+    const held = unclassifiedTargetIndex(candidate, target, deferredFromIndex);
+    if (held >= 0) {
+      assertRetainedTargetAuthority();
+      classifications[held] = reusedTargetDecision = targetDecision;
     }
     await holds.settle(candidate, classifications);
     const decisions: HeaderDecision[] = [];

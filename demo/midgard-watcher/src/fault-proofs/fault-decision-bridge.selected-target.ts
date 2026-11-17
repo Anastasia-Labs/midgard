@@ -455,23 +455,22 @@ export const observationPreservesTarget = (
   );
 };
 
-/**
- * Whether a classification failure at `failedIndex` sits at or before a target
- * the candidate keeps. The pass then fails before anything moves, so the
- * target keeps its permit, rollback generation and retained replay context;
- * under an Idle lock it is already the first fault, so the prefix holds
- * nothing else to select.
- */
-export const failureHoldsTarget = (
+/** The index of a kept target the pass leaves unclassified, else -1: a failure
+ * or deferral stopped at or before it, so the pass must not move it (a failure
+ * fails the pass; a deferral reuses its retained decision and permit). */
+export const unclassifiedTargetIndex = (
   candidate: WatcherAuthenticatedStateQueueObservation,
   target: WatcherFaultDecisionTarget | null,
-  failedIndex: number,
-): boolean =>
-  target !== null &&
-  observationPreservesTarget(candidate, target) &&
-  candidate.finalizedHeaders.findIndex(
-    ({ headerHash }) => headerHash === target.headerHash,
-  ) >= failedIndex;
+  unclassifiedFromIndex: number,
+): number => {
+  const index =
+    target === null || !observationPreservesTarget(candidate, target)
+      ? -1
+      : candidate.finalizedHeaders.findIndex(
+          ({ headerHash }) => headerHash === target.headerHash,
+        );
+  return index >= unclassifiedFromIndex ? index : -1;
+};
 
 /** Native admission authenticates continuity; reuse additionally refuses a
  * regressed point, changed source authority, or a substituted same-height seal. */
