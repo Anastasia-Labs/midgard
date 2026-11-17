@@ -71,9 +71,11 @@ export const watcherFaultDetectorFailedAlertSubject = (
     .digest("hex");
 
 /**
- * Codes kept one subject per header, cleared by the header's outcome, and
- * by the fault decision bridge once the header leaves the observed queue
- * (fault-proofs/per-header-alert.ts).
+ * Codes kept one subject per header, cleared by the fault decision bridge
+ * once the header leaves the observed queue (fault-proofs/per-header-alert.ts),
+ * and by the header's outcome: here, except `da_fetch_failure`, which the
+ * outcome settles through the DA fetchers' binding (`settle`), as it stands
+ * while some fetcher still names the header.
  */
 const PER_HEADER_CODES = Object.freeze([
   ["da_fetch_failure", watcherDaFetchAlertSubject],
@@ -116,7 +118,8 @@ const DEDUPLICATED_CODES: ReadonlySet<WatcherAlertCode> = new Set(
   ),
 );
 
-/** Outcomes after which a header's DA fetch is no longer outstanding. */
+/** Outcomes that settle a header: its per-header alerts are no longer
+ * outstanding for it. */
 const SETTLED_OUTCOMES: ReadonlySet<WatcherVerificationDiagnostic["outcome"]> =
   new Set<WatcherVerificationDiagnostic["outcome"]>([
     "verified",
@@ -128,6 +131,10 @@ const SETTLED_OUTCOMES: ReadonlySet<WatcherVerificationDiagnostic["outcome"]> =
     "unverified_removed",
     "unverified_past_horizon",
   ]);
+
+export const watcherOutcomeSettlesHeader = (
+  outcome: WatcherVerificationDiagnostic["outcome"],
+): boolean => SETTLED_OUTCOMES.has(outcome);
 
 /**
  * The latest record per alert subject. An inactive alert is dropped unless
@@ -185,16 +192,18 @@ export const createWatcherAlertBook = (input: {
       subjectDigest: string,
     ): boolean | undefined => latest.get(`${code}:${subjectDigest}`)?.active,
     /**
-     * Clears a header's DA fetch failure, stuck replay and failed detector
-     * once the header has an outcome.
+     * Clears a header's stuck replay and failed detector once the header has
+     * an outcome; its DA fetch failure is settled by its fetchers' binding.
      */
     settleHeader: (
       headerHash: string | undefined,
       outcome: WatcherVerificationDiagnostic["outcome"],
       observedAtMs: string,
     ): void => {
-      if (headerHash === undefined || !SETTLED_OUTCOMES.has(outcome)) return;
+      if (headerHash === undefined || !watcherOutcomeSettlesHeader(outcome))
+        return;
       for (const [code, subjectOf] of PER_HEADER_CODES) {
+        if (code === "da_fetch_failure") continue;
         const subjectDigest = subjectOf(headerHash);
         if (latest.get(`${code}:${subjectDigest}`)?.active === true)
           set({ code, subjectDigest, active: false, observedAtMs });

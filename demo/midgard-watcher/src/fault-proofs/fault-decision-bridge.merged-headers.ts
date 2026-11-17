@@ -41,6 +41,7 @@ export const unverifiedMergedRecorder = (
     | "readRecords"
     | "unprovenFaultMerges"
     | "perHeaderAlerts"
+    | "daFetchAlert"
   >,
 ) => {
   const recorded = new Set<string>();

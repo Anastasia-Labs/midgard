@@ -18,7 +18,6 @@ import type {
   WatcherStateQueueHeaderObservation,
 } from "../indexers/authenticated-state-queue-observation.js";
 import { isWatcherL1TransientFailure } from "../l1/transient-failure.js";
-import { watcherDaFetchAlertSubject } from "../runtime/operations-observability.alert-book.js";
 import { WATCHER_PACKAGE_NAME } from "../runtime/scaffold.js";
 import { isWatcherRetainedDaTransportUnavailable } from "../storage/retained-da-transport-unavailable.js";
 import {
@@ -173,7 +172,7 @@ type MissInput = Readonly<{
 export const classificationMissRecorder = (
   dependencies: Pick<
     BridgeDependencies,
-    "operationsSink" | "nowMs" | "monotonicNowMs" | "warn"
+    "daFetchAlert" | "nowMs" | "monotonicNowMs" | "warn"
   >,
 ) => {
   const pastHorizon = new Set<string>();
@@ -196,15 +195,12 @@ export const classificationMissRecorder = (
   >();
   /**
    * The missing payload is now accounted for by this header's own record, so
-   * its failed fetch stops holding readiness; the deferral stays visible.
+   * its failed fetch stops holding readiness, unless a DA fetcher still names
+   * the missing header: then its alert stands until none does. The deferral
+   * stays visible.
    */
   const accountFor = (missingHeaderHash: string): void =>
-    dependencies.operationsSink?.setAlert({
-      code: "da_fetch_failure",
-      subjectDigest: watcherDaFetchAlertSubject(missingHeaderHash),
-      active: false,
-      observedAtMs: nowMs().toString(),
-    });
+    dependencies.daFetchAlert?.settle(missingHeaderHash);
   const holdOnReadiness = (
     headerHash: string,
     hold: Readonly<{ reason: string; detail: string }>,

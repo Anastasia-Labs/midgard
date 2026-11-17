@@ -52,6 +52,7 @@ export const createWatcherFaultDecisionBridge = async (input: {
   readonly operationsSink?: WatcherOperationsSink;
   /** The per-header alerts raised outside the bridge, every one of them. */
   readonly perHeaderAlerts: NonNullable<BridgeDependencies["perHeaderAlerts"]>;
+  readonly daFetchAlert: NonNullable<BridgeDependencies["daFetchAlert"]>;
   readonly pendingAvailabilityHeaders?: BridgeDependencies["pendingAvailabilityHeaders"];
   readonly nowMs?: () => bigint;
   /** Defaults to one JSON line on stderr per warning. */
@@ -113,6 +114,7 @@ export const createWatcherFaultDecisionBridge = async (input: {
         ? {}
         : { operationsSink: input.operationsSink }),
       perHeaderAlerts: input.perHeaderAlerts,
+      daFetchAlert: input.daFetchAlert,
       ...(input.nowMs === undefined ? {} : { nowMs: input.nowMs }),
       warn: input.warn ?? writeWarning,
       supersede: input.supervisor.supersedeDecision,

@@ -5,9 +5,13 @@ import {
 } from "@al-ft/midgard-core/l1-slot-config";
 import { RetainedDaPayloadUnavailableError } from "@al-ft/midgard-fault-proofs";
 import type { Header as HeaderType } from "@al-ft/midgard-sdk";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { watcherDaFetchAlertSubject } from "../../src/runtime/operations-observability.alert-book.js";
+import {
+  closeDaFetchAlerts,
+  daFetchAlert,
+} from "./fault-decision-bridge.da-fetch-alert.js";
 import { harness } from "./fault-decision-bridge.harness.js";
 import {
   headerFixture,
@@ -47,6 +51,8 @@ const failedFetch = (
     active: true,
     observedAtMs: "1",
   });
+
+afterEach(closeDaFetchAlerts);
 
 describe("fault decision bridge past the challengeability horizon", () => {
   it("keeps a catch-up missing payload actionable through its commit-time horizon", async () => {
@@ -99,6 +105,7 @@ describe("fault decision bridge past the challengeability horizon", () => {
         [faulty!.headerHash]: "doubleSpend",
       },
       operationsSink: observability.sink,
+      daFetchAlert: daFetchAlert(observability),
       nowMs: () => PAST,
       warn,
       classifyOverride: (fresh) => {
@@ -285,6 +292,7 @@ describe("fault decision bridge past the challengeability horizon", () => {
         current,
         categoryByHeader: { [live!.headerHash]: "transitionTrace" },
         operationsSink: observability.sink,
+        daFetchAlert: daFetchAlert(observability),
         mergedHeaders: async () => new Map(),
         resolvePredecessorOverride: async () => predecessor,
         nowMs: () => PAST,

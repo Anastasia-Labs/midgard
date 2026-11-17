@@ -336,7 +336,12 @@ clears every one of them for each header that is no longer queued. For
 the watcher may still fetch it: availability while it holds the header
 pending at release depth, and the replayed ledger until its checkpoint passes
 the header (a merged one) or moves twice with no replay asking for it again
-(one removed or rolled back).
+(one removed or rolled back). The same holds for every other clear of
+`da_fetch_failure`: the header's own outcome, and a later header deferring on
+the header's missing payload, whose own `pending_da` record keeps the wait
+visible without holding readiness. Either clears the alert at once when no
+DA fetcher names the header, and otherwise once none does, even while the
+header is still queued. A failed fetch after that clear stands again.
 `unproven_fault_merged` is also one subject per header, but it never clears
 ([MidgardWatcherUnprovenFaultMerged](#midgardwatcherunprovenfaultmerged)).
 `da_fetch_failure` and `validation_trace_replay_stuck` have no rule of their

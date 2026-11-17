@@ -95,11 +95,19 @@ export type WatcherRetainedDaOperationsBinding = Readonly<{
   close(): void;
   /**
    * Clears the `da_fetch_failure` alert of every header a fetch failed for
-   * that no registered fetcher may still fetch and that is released or not
-   * in the observed queue, a rollback included (`perHeaderAlert`). The
-   * fault decision bridge calls it with the headers of every observation.
+   * that no registered fetcher may still fetch and that is released, not in
+   * the observed queue (a rollback included, `perHeaderAlert`) or settled.
+   * The fault decision bridge calls it with the headers of every observation.
    */
   reconcile: PerHeaderAlert["reconcile"];
+  /**
+   * Settles `headerHash`: a record of the fault decision bridge accounts for
+   * its standing failed fetch, so the alert clears, at once unless a
+   * registered fetcher still names the header, else once none does. The only
+   * clear of a header's `da_fetch_failure` besides `reconcile` and a served
+   * fetch.
+   */
+  settle(headerHash: string): void;
 }>;
 
 /**
@@ -127,6 +135,15 @@ export const bindWatcherRetainedDaOperations = (input: {
     fetchers: new Set<() => Iterable<string>>(),
   });
   operationsByDeploymentIdentity.set(input.deploymentIdentity, operations);
+  const fetchable = (): Set<string> => {
+    const named = new Set<string>();
+    for (const mayStillFetch of operations.fetchers)
+      for (const headerHash of mayStillFetch()) named.add(headerHash);
+    return named;
+  };
+  // Raised headers settled while a fetcher still named them, cleared once
+  // none does; a later failure of one after its clear stands again.
+  const settled = new Set<string>();
   let closed = false;
   return Object.freeze({
     close: () => {
@@ -140,13 +157,20 @@ export const bindWatcherRetainedDaOperations = (input: {
       }
     },
     reconcile: (queued, released) => {
-      const fetchable = new Set<string>();
-      for (const mayStillFetch of operations.fetchers)
-        for (const headerHash of mayStillFetch()) fetchable.add(headerHash);
+      const named = fetchable();
       operations.daFetchAlert.reconcile(
-        new Set([...queued, ...fetchable]),
-        new Map([...released].filter(([hash]) => !fetchable.has(hash))),
+        new Set([
+          ...[...queued].filter((hash) => !settled.has(hash)),
+          ...named,
+        ]),
+        new Map([...released].filter(([hash]) => !named.has(hash))),
       );
+      for (const hash of settled)
+        if (!operations.daFetchAlert.raised(hash)) settled.delete(hash);
+    },
+    settle: (headerHash) => {
+      if (fetchable().has(headerHash)) settled.add(headerHash);
+      else operations.daFetchAlert.set(headerHash, false);
     },
   });
 };

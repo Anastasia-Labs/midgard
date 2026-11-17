@@ -51,6 +51,7 @@ export const harness = (input: {
   readonly supersede?: BridgeDependencies["supersede"];
   readonly driveProvenRemoval?: BridgeDependencies["driveProvenRemoval"];
   readonly perHeaderAlerts?: BridgeDependencies["perHeaderAlerts"];
+  readonly daFetchAlert?: BridgeDependencies["daFetchAlert"];
 }) => {
   const admitted = new WeakSet<object>([input.current]);
   // Production admits only the objects the classifier returned in this
@@ -125,6 +126,9 @@ export const harness = (input: {
       ...(input.perHeaderAlerts === undefined
         ? {}
         : { perHeaderAlerts: input.perHeaderAlerts }),
+      ...(input.daFetchAlert === undefined
+        ? {}
+        : { daFetchAlert: input.daFetchAlert }),
       retainDecisionAuthorities: (digest) =>
         retainedDecisionAuthorities.push(digest),
       assertObservation: (candidate) => {

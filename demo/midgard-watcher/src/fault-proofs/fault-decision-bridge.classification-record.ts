@@ -10,6 +10,7 @@ import type {
   WatcherReleasedHeaderProof,
   WatcherStateQueueRemovalKind,
 } from "../indexers/authenticated-state-queue-observation.js";
+import { watcherOutcomeSettlesHeader } from "../runtime/operations-observability.alert-book.js";
 import type { WatcherVerificationDiagnostic } from "../runtime/operations-observability.js";
 import type { BridgeDependencies } from "./fault-decision-bridge.selected-target.js";
 import type { WatcherPersistedFaultDecisionRecord } from "./fault-decision-journal.js";
@@ -119,7 +120,7 @@ const verificationOutcome = (
 export const verificationRecorder = (
   dependencies: Pick<
     BridgeDependencies,
-    "operationsSink" | "nowMs" | "monotonicNowMs"
+    "operationsSink" | "daFetchAlert" | "nowMs" | "monotonicNowMs"
   >,
   headerHash: string,
 ) => {
@@ -139,7 +140,7 @@ export const verificationRecorder = (
       | "removalTransactionHash"
       | "removalKind"
     > = {},
-  ): void =>
+  ): void => {
     dependencies.operationsSink?.recordVerification({
       subjectDigest,
       headerHash,
@@ -150,6 +151,9 @@ export const verificationRecorder = (
       elapsedMs: Math.ceil(monotonicNowMs() - startedMonotonicMs).toString(),
       outcome,
     });
+    if (watcherOutcomeSettlesHeader(outcome))
+      dependencies.daFetchAlert?.settle(headerHash);
+  };
   return Object.freeze({
     start: (): void => {
       startedAtMs = nowMs().toString();

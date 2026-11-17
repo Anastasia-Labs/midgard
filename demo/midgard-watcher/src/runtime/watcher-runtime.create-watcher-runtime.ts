@@ -371,6 +371,7 @@ export const startWatcherRuntime = async (
       walletLeases: fundingRuntime.store.store,
       operationsSink,
       perHeaderAlerts: [...perHeaderAlerts, retainedDaOperationsBinding],
+      daFetchAlert: retainedDaOperationsBinding,
       pendingAvailabilityHeaders: activeAvailability.pendingAvailabilityHeaders,
     });
     faultDecisionBridge = activeBridge;

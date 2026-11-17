@@ -7,10 +7,14 @@ import {
   VALIDATION_TRACE_REPLAY_STUCK,
   ValidationTraceReplayHeldError,
 } from "@al-ft/midgard-fault-proofs";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WATCHER_REPLAY_HOLD_MAXIMUM_AGE_MS } from "../../src/fault-proofs/fault-decision-bridge.classification-miss.js";
 import { watcherDaFetchAlertSubject } from "../../src/runtime/operations-observability.alert-book.js";
+import {
+  closeDaFetchAlerts,
+  daFetchAlert,
+} from "./fault-decision-bridge.da-fetch-alert.js";
 import { harness } from "./fault-decision-bridge.harness.js";
 import {
   headerFixture,
@@ -36,6 +40,8 @@ const nodeLost = () =>
   new FraudProofL1UnavailableError(
     "Ogmios session closed: Connection with the node lost",
   );
+
+afterEach(closeDaFetchAlerts);
 
 describe("fault decision bridge deferral on a transient", () => {
   it("waits out an unavailable L1 source, warns once and targets the fault exactly once", async () => {
@@ -182,6 +188,7 @@ describe("fault decision bridge deferral on a transient", () => {
       current,
       categoryByHeader: { [head!.headerHash]: "transitionTrace" },
       operationsSink: observability.sink,
+      daFetchAlert: daFetchAlert(observability),
       mergedHeaders: async () => new Map(),
       nowMs: IN_WINDOW,
       warn,

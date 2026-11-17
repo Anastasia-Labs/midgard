@@ -164,6 +164,9 @@ export type BridgeDependencies = Readonly<{
    * `validation_trace_replay_stuck`, `da_fetch_failure`), each reconciled with
    * every observation as the `proof_family_coverage_gap` alert is. */
   perHeaderAlerts?: readonly Pick<PerHeaderAlert, "reconcile">[];
+  /** The `da_fetch_failure` alert, settled for the header a record accounts
+   * for (`WatcherRetainedDaOperationsBinding`), never cleared directly. */
+  daFetchAlert?: Readonly<{ settle(headerHash: string): void }>;
   /**
    * Operator warning, once per header released on L1 unverified, skipped
    * past its challengeability horizon or deferred.

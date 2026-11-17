@@ -46,20 +46,15 @@ describe("watcher alert book", () => {
     expect(WATCHER_DA_FETCH_ALERT_MAXIMUM_AGE_MS).toBe(180_000);
   });
 
-  it("clears a header's DA fetch failure once the header has a terminal outcome", () => {
+  it("leaves a header's DA fetch failure standing on its outcome, for its fetchers' binding to settle", () => {
     const { alerts } = book();
     alerts.set(daFetch(HEADER, true, "100"));
-    alerts.set(daFetch(OTHER, true, "100"));
-    alerts.settleHeader(HEADER, "pending_da", "150");
-    alerts.settleHeader(HEADER, "failed", "150");
-    expect(alerts.active()).toHaveLength(2);
     alerts.settleHeader(HEADER, "unverified_merged", "200");
     expect(alerts.active()).toEqual([
       expect.objectContaining({
-        subjectDigest: watcherDaFetchAlertSubject(OTHER),
+        subjectDigest: watcherDaFetchAlertSubject(HEADER),
       }),
     ]);
-    expect(alerts.holdsReadiness(200n)).toBe(true);
   });
 
   it("stops holding readiness for a failure that is never repeated, and renews one that is", () => {
@@ -198,12 +193,12 @@ describe("watcher alert book", () => {
         observedAtMs: "2",
       });
     stuck(true);
-    alerts.set(daFetch(HEADER, true, "1"));
     alerts.settleHeader(HEADER, "verified", "2");
     expect(alerts.active()).toEqual([]);
     const recorded = appended.length;
-    // The header leaves the queue after its outcome cleared both alerts.
+    // The header leaves the queue after its outcome cleared the alert.
     stuck(false);
+    // A fetch for the header succeeds with no failure standing.
     alerts.set(daFetch(HEADER, false, "3"));
     // A fetch for another header succeeds with no failure standing.
     alerts.set(daFetch(OTHER, false, "3"));
