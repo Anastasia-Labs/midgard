@@ -32,8 +32,12 @@ export const devnetJourneyMode = (session: JourneySession): JourneyRunMode => {
   return {
     captureWorkflowBaseline: (category) =>
       captureJourneyWorkflowBaseline(watcherConfig.storage.path, category),
-    readTiming: (category, options) =>
-      readJourneyTiming(context.runDirectory, category, options),
+    // A devnet stages on the family's clock, so its limit holds the staging.
+    readTiming: (fixture, options) =>
+      readJourneyTiming(context.runDirectory, fixture.category, {
+        ...options,
+        fixtureStaging: fixture,
+      }),
     stageFixture: async (fixture, { directory, onStage }) => {
       const fixtureStage: JourneyFixtureStage = {
         context,

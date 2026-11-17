@@ -7,6 +7,7 @@ import {
   REGISTRATION_DURATION_MS,
   USER_EVENT_TX_TTL_MS,
 } from "@al-ft/midgard-sdk";
+import { protectedPredecessorHoldMs } from "midgard-watcher/tests/support/history-predecessor-hold";
 import { describe, expect, it } from "vitest";
 
 import { DEPLOYMENT_PARAMETERS } from "../../src/devnet-stack/node-env.js";
@@ -97,13 +98,48 @@ describe("journey timing", () => {
       genericJourneyTiming({ ...preprod, actionDepth: 15 })
         .transactionAllowanceMs - 150_000,
     ).toBe(baseline / 2);
-    const staged = genericJourneyTiming({
-      ...preprod,
-      fixtureStagingAllowanceMs: 123_000,
-    });
-    expect(staged.journeyTimeoutMs).toBe(
-      genericJourneyTiming(preprod).journeyTimeoutMs + 123_000,
+  });
+
+  it("budgets a devnet family's staging from its staged plan and the deployment profile", () => {
+    const { event_wait_ms } =
+      DEPLOYMENT_PROFILES["local-devnet-testing"].timing;
+    const protectionMs = Number(
+      DEPLOYMENT_PARAMETERS.MIDGARD_EVENT_HISTORY_PROTECTION_DURATION_MS,
     );
+    const timing = (plan?: { historyBlocks?: number; userEvents?: number }) =>
+      genericJourneyTiming({
+        ...preprod,
+        actionDepth: 1,
+        ...(plan === undefined
+          ? {}
+          : {
+              fixtureStaging: {
+                ...plan,
+                eventWaitMs: event_wait_ms,
+                eventHistoryProtectionMs: protectionMs,
+              },
+            }),
+      });
+    const unstaged = timing();
+    expect(unstaged.allowances.fixtureStagingMs).toBe(0);
+    // Each block is its commit and its attestation's init and apply.
+    const blockMs = 3 * unstaged.transactionAllowanceMs;
+    // The fault alone.
+    expect(timing({}).journeyTimeoutMs - unstaged.journeyTimeoutMs).toBe(
+      blockMs,
+    );
+    // A history block and two user events: each event's validity, the
+    // second's hold for the first to leave its history protection, and one
+    // event wait.
+    const staged = timing({ historyBlocks: 1, userEvents: 2 });
+    expect(staged.journeyTimeoutMs - unstaged.journeyTimeoutMs).toBe(
+      2 * blockMs +
+        2 * USER_EVENT_TX_TTL_MS +
+        protectedPredecessorHoldMs(protectionMs) +
+        event_wait_ms,
+    );
+    expect(() => timing({ historyBlocks: -1 })).toThrow(/blocks/u);
+    expect(() => timing({ userEvents: 0.5 })).toThrow(/user events/u);
   });
 
   it.each([
@@ -114,7 +150,6 @@ describe("journey timing", () => {
     { slotLengthSeconds: Number.POSITIVE_INFINITY },
     { confirmationDepth: 0 },
     { confirmationDepth: 1.5 },
-    { fixtureStagingAllowanceMs: -1 },
   ])("rejects invalid cadence or allowance %j", (invalid) => {
     expect(() => genericJourneyTiming({ ...preprod, ...invalid })).toThrow(
       "Invalid journey cadence",

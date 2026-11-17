@@ -20,6 +20,25 @@ import { stackJourneyTimeoutMs } from "./journey-timing.stack-limit.js";
 import { stackDaExpectation } from "./stack-da-publication.js";
 import { readStackShelleyGenesisText } from "./stack-genesis.js";
 
+type FinalizedManifest = ReturnType<typeof verifyFinalizedDeploymentManifest>;
+
+/**
+ * Each event history's protection, from the recipes the deployment's
+ * event-history contracts are read from.
+ */
+const eventHistoryProtectionMs = ({ contracts }: FinalizedManifest) => {
+  const protectionMs = (role: "depositMint" | "withdrawalMint") =>
+    Number(
+      parseDeploymentManifestEventHistoryRecipe(
+        contracts[role]?.eventHistoryRecipe,
+      ).protectionDurationMs,
+    );
+  return {
+    deposit: protectionMs("depositMint"),
+    withdrawal: protectionMs("withdrawalMint"),
+  };
+};
+
 /** A journey's cadence: its network's Shelley genesis and its finalized manifest. */
 const journeyCadence = (
   genesisBytes: string,
@@ -50,7 +69,19 @@ const journeyCadence = (
     activeSlotsCoeff: genesis.activeSlotsCoeff,
     confirmationDepth,
     actionDepth: options.actionDepth,
-    fixtureStagingAllowanceMs: options.fixtureStagingAllowanceMs,
+    ...(options.fixtureStaging === undefined
+      ? {}
+      : {
+          fixtureStaging: {
+            historyBlocks: options.fixtureStaging.historyBlocks,
+            userEvents: options.fixtureStaging.userEvents,
+            eventWaitMs: manifest.deploymentProfile.timing.event_wait_ms,
+            // The longer, as a family's own staging plan takes it.
+            eventHistoryProtectionMs: Math.max(
+              ...Object.values(eventHistoryProtectionMs(manifest)),
+            ),
+          },
+        }),
     disputeTiming: manifest.deploymentProfile.timing,
     deploymentProfile: manifest.deploymentProfile,
   };
@@ -105,22 +136,11 @@ export const readStackJourneyTimeoutMs = async (
     readStackJourneyTiming(stack, fixture.category, options),
     readFile(stack.manifestPath, "utf8"),
   ]);
-  const { deploymentProfile, contracts } = verifyFinalizedDeploymentManifest(
-    JSON.parse(manifestBytes),
-  );
-  // The same recipes the stack's event-history contracts are read from.
-  const protectionMs = (role: "depositMint" | "withdrawalMint") =>
-    Number(
-      parseDeploymentManifestEventHistoryRecipe(
-        contracts[role]?.eventHistoryRecipe,
-      ).protectionDurationMs,
-    );
+  const manifest = verifyFinalizedDeploymentManifest(JSON.parse(manifestBytes));
+  const { deploymentProfile } = manifest;
   const coverMs = fixture.stackShiftCoverMs({
     timing,
-    eventHistoryProtectionMs: {
-      deposit: protectionMs("depositMint"),
-      withdrawal: protectionMs("withdrawalMint"),
-    },
+    eventHistoryProtectionMs: eventHistoryProtectionMs(manifest),
     profile: deploymentProfile.timing,
   });
   return stackJourneyTimeoutMs(

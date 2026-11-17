@@ -132,13 +132,16 @@ beforeEach(async ({ task }) => {
 // journal's progress ends it, by the watcher's own rule, however many
 // transactions it takes, so the family's limit pauses while it waits and
 // then resumes with the replay of the blocks that arrived meanwhile
-// (`journeyFamilyDeadline`). On a stack it also waits for operator-2's
-// shift to hold the family's staging shift cover C: at worst the rest of one
-// of its shifts, our node's whole shift, and C of the next; a family whose
-// payload the committee refuses also waits out two attestation timeouts for
-// its block to age out. The stack's limit has no replay term, so its pause
-// adds nothing. The run's last family
-// also resumes operator-2's node and waits for it to report ready. When a
+// (`journeyFamilyDeadline`). On a devnet, staging runs on the family's
+// clock, so its limit holds the family's staging from its plan: its blocks
+// committed and attested, and its user events (`fixtureStagingMs`). On a
+// stack it also waits for operator-2's shift to hold the family's staging
+// shift cover C: at worst the rest of one of its shifts, our node's whole
+// shift, and C of the next; a family whose payload the committee refuses
+// also waits out two attestation timeouts for its block to age out. The
+// stack's limit has no replay term, so its pause adds nothing. The run's
+// last family also resumes operator-2's node and waits for it to report
+// ready. When a
 // family's limit passes, its signal aborts: the family's waits stop, and the
 // session closes once its work has stopped, starting operator-2 again only
 // then. The family's own limit is the only one; Vitest sets none.
@@ -160,10 +163,11 @@ for (const [index, fixture] of fixtures.entries()) {
   const limit =
     runDirectory !== undefined
       ? await (async () => {
+          // A devnet stages on the family's clock: its limit holds it.
           const execution = await readJourneyExecutionTiming(
             runDirectory,
             fixture.category,
-            options,
+            { ...options, fixtureStaging: fixture },
           );
           return {
             limitMs: execution.journeyTimeoutMs,

@@ -88,7 +88,7 @@ export const runJourney = async (
         journalDigest: journalJsonDigest(entries),
       })),
     });
-    const timing = await mode.readTiming(category, {
+    const timing = await mode.readTiming(execution.fixture, {
       authenticatedConfirmationDepth: releaseFinality.policy.confirmationDepth,
       actionDepth: JOURNEY_ACTION_DEPTH,
     });

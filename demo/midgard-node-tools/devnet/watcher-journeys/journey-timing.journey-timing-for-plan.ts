@@ -52,8 +52,19 @@ export interface JourneyCadence {
    * which is the pre-inclusion-gating behavior.
    */
   actionDepth?: number;
-  /** Separate preparation budget; retained fixture retries need no fresh preparation. */
-  fixtureStagingAllowanceMs?: number;
+  /**
+   * The family's staging, when it runs on the family's clock with no other
+   * term covering it (a devnet's): what it commits and publishes, and the
+   * deployment's event wait and event-history protection. A stack's limit
+   * covers staging with its shift cover instead (`stackJourneyTimeoutMs`).
+   */
+  fixtureStaging?: Readonly<{
+    historyBlocks?: number;
+    userEvents?: number;
+    eventWaitMs: number;
+    /** The longer of the deposit and withdrawal histories' protection. */
+    eventHistoryProtectionMs: number;
+  }>;
   /**
    * The deployment profile's dispute clocks; a plan that waits out an
    * undefended case needs them.
@@ -179,7 +190,7 @@ export const journeyTimingForPlan = (
     activeSlotsCoeff,
     confirmationDepth,
     actionDepth = confirmationDepth,
-    fixtureStagingAllowanceMs = 0,
+    fixtureStaging,
     disputeTiming,
   }: JourneyCadence,
 ) => {
@@ -192,12 +203,10 @@ export const journeyTimingForPlan = (
     !Number.isSafeInteger(confirmationDepth) ||
     confirmationDepth < 1 ||
     !Number.isSafeInteger(actionDepth) ||
-    actionDepth < 1 ||
     actionDepth > confirmationDepth ||
-    !Number.isSafeInteger(fixtureStagingAllowanceMs) ||
-    fixtureStagingAllowanceMs < 0
+    actionDepth < 1
   ) {
-    throw new Error("Invalid journey cadence or staging allowance");
+    throw new Error("Invalid journey cadence");
   }
   const idealDepthMs = (depth: number) =>
     (depth * slotLengthSeconds * 1000) / activeSlotsCoeff;
@@ -209,15 +218,38 @@ export const journeyTimingForPlan = (
   const confirmationAllowancePerTransactionMs = Math.ceil(
     2 * expectedConfirmationPerTransactionMs,
   );
+  const transactionBuildMs = 120_000;
+  const transactionRpcMs = 30_000;
+  const transactionAllowanceMs =
+    confirmationAllowancePerTransactionMs +
+    transactionBuildMs +
+    transactionRpcMs;
   const allowances = Object.freeze({
-    transactionBuildMs: 120_000,
-    transactionRpcMs: 30_000,
+    transactionBuildMs,
+    transactionRpcMs,
     authorityStartupMs: 30_000,
     watcherStartupMs: 600_000,
     automaticDecisionMs: 900_000,
     healthySuccessorObservationMs: 1_800_000,
     successorRegistrationMs: Number(REGISTRATION_DURATION_MS),
-    fixtureStagingMs: fixtureStagingAllowanceMs,
+    /**
+     * The family's staging, from its plan (`stackStagingShiftWorkMs`, the
+     * same work a stack's shift holds): its history blocks and fault, each
+     * committed and attested, and its user events. Zero when the limit
+     * covers staging otherwise.
+     */
+    fixtureStagingMs:
+      fixtureStaging === undefined
+        ? 0
+        : stackStagingShiftWorkMs(
+            { transactionAllowanceMs },
+            1 + (fixtureStaging.historyBlocks ?? 0),
+            {
+              count: fixtureStaging.userEvents ?? 0,
+              eventWaitMs: fixtureStaging.eventWaitMs,
+              protectionMs: fixtureStaging.eventHistoryProtectionMs,
+            },
+          ),
     /**
      * The one release-finality wait in a journey: the native recorder
      * authenticates the included terminal's transactions at the release depth
@@ -236,10 +268,6 @@ export const journeyTimingForPlan = (
      */
     undefendedCaseMs: undefendedCaseWaitMs(plan, disputeTiming),
   });
-  const transactionAllowanceMs =
-    confirmationAllowancePerTransactionMs +
-    allowances.transactionBuildMs +
-    allowances.transactionRpcMs;
   // The correction, with any undefended case it waits out, is not budgeted
   // here: the progress gate ends it, and the family's limit pauses for it.
   const journeyTimeoutMs =
@@ -287,10 +315,12 @@ export type JourneyTiming = ReturnType<typeof journeyTimingForPlan>;
  * later event's build may first hold until the event before it leaves its
  * history protection; and then the one event wait. None of its events is
  * built before `floorMs` into the shift (`stackUserEventFloorOffsetMs`); its
- * history blocks, committed before its events, run meanwhile.
+ * history blocks, committed before its events, run meanwhile. A devnet's
+ * staging is the same work, with no floor, on the family's own clock
+ * (`fixtureStagingMs`).
  */
 export const stackStagingShiftWorkMs = (
-  timing: Pick<JourneyTiming, "transactionAllowanceMs">,
+  timing: Readonly<{ transactionAllowanceMs: number }>,
   blocks: number,
   events: Readonly<{
     count: number;
@@ -304,7 +334,7 @@ export const stackStagingShiftWorkMs = (
     eventWaitMs: 0,
     protectionMs: 0,
   },
-) => {
+): number => {
   if (!Number.isSafeInteger(blocks) || blocks < 1)
     throw new Error(
       `Stack staging commits at least one whole block, not ${blocks.toString()} blocks`,
@@ -413,5 +443,10 @@ export interface ReadJourneyTimingOptions {
   authenticatedConfirmationDepth?: number;
   /** Depth the journey watcher acts at; the manifest depth when omitted. */
   actionDepth?: number;
-  fixtureStagingAllowanceMs?: number;
+  /**
+   * The family's staged plan, budgeted in its limit (`fixtureStagingMs`)
+   * with the manifest's event wait and event-history protection. Only a
+   * devnet passes it: a stack's limit covers staging with its shift cover.
+   */
+  fixtureStaging?: Readonly<{ historyBlocks?: number; userEvents?: number }>;
 }

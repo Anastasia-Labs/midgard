@@ -51,8 +51,9 @@ export type JourneyRunMode = Readonly<{
   captureWorkflowBaseline(
     category: FraudProofCatalogueCategoryName,
   ): Promise<ReadonlyMap<string, readonly FraudProofWorkflowJournalEntry[]>>;
+  /** The family's timing plan, with its staging where its limit holds it. */
   readTiming(
-    category: string,
+    fixture: JourneyFixture,
     options: ReadJourneyTimingOptions,
   ): Promise<JourneyTiming>;
   stageFixture(

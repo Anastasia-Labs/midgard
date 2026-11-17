@@ -68,13 +68,13 @@ export const attachedJourneyMode = (
     ).payloadEnvelopeCbor;
   return {
     captureWorkflowBaseline: session.captureWorkflowBaseline,
-    readTiming: (category, options) =>
+    readTiming: (fixture, options) =>
       readStackJourneyTiming(
         {
           nodeConfigPath: context.layout.node.nodeConfigPath,
           manifestPath: context.layout.manifestPath,
         },
-        category,
+        fixture.category,
         options,
       ),
     stageFixture: async (fixture, { directory, onStage }) => {
