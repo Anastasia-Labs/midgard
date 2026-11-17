@@ -12,7 +12,6 @@ import "./merge.merge-action-with-l1-control-plane-held.js";
 import "./merge.merge-action.js";
 export {
   mergeAction,
-  type MergeActionOptions,
   mergeFiber,
   MergeIntentJournalUnavailable,
 } from "./merge.merge-action.js";

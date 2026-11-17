@@ -252,13 +252,23 @@ const openMergeLifecycle = async () => {
     await expectDeposits(tail.headerHash!, DepositsDB.Status.Projected);
     return tail.headerHash!;
   };
-  // A forced merge through `lucid`, retried past the merge-submit due work a
-  // first attempt may register while the local ledger catches up.
+  // A merge attempt through `lucid` over a queue of any length, retried past
+  // the merge-submit due work a first attempt may register while the local
+  // ledger catches up.
   const mergeUntilSubmitted = async (
     lucid: unknown = lucidService,
   ): Promise<Either.Either<MergeActionResult, unknown>> => {
+    const mergeConfig = {
+      ...h.production.nodeConfig,
+      MIN_QUEUE_LENGTH_FOR_MERGING: 1,
+    };
     for (let round = 1; round <= 3; round += 1) {
-      const result = await run(Effect.either(mergeAction(true)), lucid);
+      const result = await run(
+        Effect.either(
+          mergeAction().pipe(Effect.provideService(NodeConfig, mergeConfig)),
+        ),
+        lucid,
+      );
       if (
         Either.isLeft(result) ||
         result.right.status !== "skipped_oldest_block_local_ledger_not_ready"
@@ -292,7 +302,7 @@ const openMergeLifecycle = async () => {
     return { ...lucidService, api };
   };
 
-  // A forced merge of the oldest block whose L1 confirmation wait gives up:
+  // A merge of the oldest block whose L1 confirmation wait gives up:
   // the submitted merge stays in the emulator's mempool and the attempt
   // fails unconfirmed, with nothing folded. The merge then leaves the
   // mempool (the emulator, unlike a real provider, hides a pending

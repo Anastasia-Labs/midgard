@@ -42,7 +42,6 @@ import {
 } from "./merge.idle-backoff.js";
 import { mergeActionWithL1ControlPlaneHeld } from "./merge.merge-action-with-l1-control-plane-held.js";
 import {
-  MERGE_L1_CONTROL_PLANE_MAX_HOLD_MS,
   type MergeActionResult,
   SCHEDULED_MERGE_CONTROL_PLANE_WAIT_MS,
   type SubmittedMerge,
@@ -81,18 +80,10 @@ const requireMergeIntentJournal = Effect.gen(function* () {
   );
 });
 
-export type MergeActionOptions = {
-  /**
-   * Merge only if the oldest queued block is this header; otherwise skip with
-   * `skipped_merge_candidate_changed` without building a transaction.
-   */
-  readonly expectedHeaderHash?: string;
-};
-
 /**
  * The single entry point for a merge attempt; the scheduled merge fiber runs
- * it. `force` takes the L1 control plane without the scheduled wait and
- * bypasses the queue-length threshold.
+ * it. It waits up to `SCHEDULED_MERGE_CONTROL_PLANE_WAIT_MS` for the L1
+ * control plane and skips if the plane stays busy.
  *
  * It runs under the process-wide L1 control plane, so merges in one process
  * are serialized, and the state-queue mutation lease taken inside
@@ -116,36 +107,17 @@ export type MergeActionOptions = {
  * what keeps the chain safe: a second merge of the same header spends the
  * queue inputs the first spent, so it fails at L1 either way.
  */
-export const mergeAction = (
-  force: boolean = false,
-  { expectedHeaderHash }: MergeActionOptions = {},
-) =>
+export const mergeAction = () =>
   Effect.gen(function* () {
     const globals = yield* Globals;
     yield* Ref.set(globals.HEARTBEAT_MERGE, Date.now());
     yield* requireMergeIntentJournal;
-    if (!force) {
-      const landingPending = yield* mergeLandingPendingSkip(globals);
-      if (landingPending !== undefined) return landingPending;
-    }
+    const landingPending = yield* mergeLandingPendingSkip(globals);
+    if (landingPending !== undefined) return landingPending;
     const submitted = yield* Ref.make(Option.none<SubmittedMerge>());
     const onSubmitted = (merge: SubmittedMerge) =>
       Ref.set(submitted, Option.some(merge));
-    const attempt = force
-      ? withL1ControlPlane(
-          globals,
-          {
-            scope: "state_queue_merge",
-            maxHoldMs: MERGE_L1_CONTROL_PLANE_MAX_HOLD_MS,
-          },
-          mergeActionWithL1ControlPlaneHeld(
-            true,
-            expectedHeaderHash,
-            onSubmitted,
-          ),
-        )
-      : scheduledMergeAttempt(globals, expectedHeaderHash, onSubmitted);
-    const held = yield* attempt.pipe(
+    const held = yield* scheduledMergeAttempt(globals, onSubmitted).pipe(
       Effect.catchIf(
         (error): error is L1ControlPlaneTimeoutError =>
           error instanceof L1ControlPlaneTimeoutError,
@@ -323,17 +295,12 @@ const refreshQueueGlobalsAfterMerge = (
 
 const scheduledMergeAttempt = (
   globals: Globals,
-  expectedHeaderHash: string | undefined,
   onSubmitted: (merge: SubmittedMerge) => Effect.Effect<void>,
 ) =>
   Effect.gen(function* () {
     const attempt = yield* withScheduledMergeControlPlaneWait({
       globals,
-      effect: mergeActionWithL1ControlPlaneHeld(
-        false,
-        expectedHeaderHash,
-        onSubmitted,
-      ),
+      effect: mergeActionWithL1ControlPlaneHeld(onSubmitted),
     });
     if (Option.isSome(attempt)) {
       return attempt.value;

@@ -104,7 +104,6 @@ export const getStateQueueHandler = Effect.gen(function* () {
     { concurrency: "unbounded" },
   );
   const mergeReadiness = planMergePreflight({
-    force: false,
     queueLength: headers.length,
     minQueueLength:
       nodeConfig.MIN_QUEUE_LENGTH_FOR_MERGING ??

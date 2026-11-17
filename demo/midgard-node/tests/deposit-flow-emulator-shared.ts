@@ -863,7 +863,6 @@ export const runMergeUntilMerged = async ({
   globals,
   maxAttempts = 3,
   production,
-  force = true,
   nodeConfig: nodeConfigOverride,
 }: {
   readonly fixture: EmulatorFixture;
@@ -871,14 +870,16 @@ export const runMergeUntilMerged = async ({
   readonly globals: Globals;
   readonly maxAttempts?: number;
   readonly production?: ProductionHistoryFixtureRuntime;
-  /** `false` runs the scheduled fiber's path: queue-length and local-work gating apply. */
-  readonly force?: boolean;
+  /**
+   * The merge's config, which keeps its own queue-length threshold. Without
+   * one, the fixture's config merges a queue of any length.
+   */
   readonly nodeConfig?: Awaited<ReturnType<typeof makeNodeConfigForFixture>>;
 }) => {
-  const nodeConfig =
-    nodeConfigOverride ??
-    production?.nodeConfig ??
-    (await makeNodeConfigForFixture(fixture));
+  const nodeConfig = nodeConfigOverride ?? {
+    ...(production?.nodeConfig ?? (await makeNodeConfigForFixture(fixture))),
+    MIN_QUEUE_LENGTH_FOR_MERGING: 1,
+  };
   let lastResult: MergeActionResult | undefined;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
@@ -886,7 +887,7 @@ export const runMergeUntilMerged = async ({
       if (production === undefined)
         await Effect.runPromise(attachUnownedNativeOwner(globals));
       lastResult = await runWithoutFollower(
-        mergeAction(force).pipe(
+        mergeAction().pipe(
           withEmulatorChain(lucidService.api),
           (program) =>
             production === undefined

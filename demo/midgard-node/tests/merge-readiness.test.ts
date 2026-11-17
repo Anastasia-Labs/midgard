@@ -24,7 +24,6 @@ import {
 } from "../src/transactions/state-queue/merge-readiness.js";
 
 const baseInput = {
-  force: false,
   queueLength: 1,
   minQueueLength: 8,
   unresolvedSubmittedBlockTxHash: "",
@@ -237,31 +236,6 @@ describe("merge readiness planner", () => {
       validFromUnixTime: 280,
       readyAfterUnixTime: 300,
       nowUnixTime: 250,
-    });
-  });
-
-  it("keeps semantic oldest-block readiness independent from force batching", () => {
-    expect(
-      planMergePreflight({
-        ...baseInput,
-        force: true,
-      }),
-    ).toMatchObject({
-      status: "ready",
-      bypassQueueLengthGuard: true,
-    });
-    expect(
-      classifyOldestQueuedBlockCandidateReadiness({
-        provenFraud: null,
-        firstBlockOutRef: `${"aa".repeat(32)}#0`,
-        headerHash: "11".repeat(28),
-        currentDaAvailability: PUBLISHED,
-        validFromUnixTime: 280,
-        readyAfterUnixTime: 300,
-        nowUnixTime: 250,
-      }),
-    ).toMatchObject({
-      status: "skipped_oldest_block_not_mature",
     });
   });
 

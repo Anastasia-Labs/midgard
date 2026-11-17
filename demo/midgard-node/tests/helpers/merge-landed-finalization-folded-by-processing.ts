@@ -58,8 +58,6 @@ export const assertLandedMergeFoldedByProcessing = async (
   };
   await m.h.synchronize();
   await unchanged();
-  expect(Either.isRight(await m.run(Effect.either(mergeAction(true))))).toBe(
-    true,
-  );
+  expect(Either.isRight(await m.run(Effect.either(mergeAction())))).toBe(true);
   await unchanged();
 };

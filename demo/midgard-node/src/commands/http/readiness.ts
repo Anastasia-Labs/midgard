@@ -381,7 +381,6 @@ export const getReadinessHandler = Effect.gen(function* () {
     );
   }
   const mergeReadiness = planMergePreflight({
-    force: false,
     queueLength: stateQueueBlocksInQueue,
     minQueueLength:
       nodeConfig.MIN_QUEUE_LENGTH_FOR_MERGING ??

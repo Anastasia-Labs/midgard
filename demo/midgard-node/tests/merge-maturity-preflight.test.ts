@@ -221,7 +221,6 @@ type MergeRunOptions = {
   readonly journal?: "view" | "none";
   readonly fixture?: boolean;
   readonly recomputing?: boolean;
-  readonly expectedHeaderHash?: string;
   /** The process's globals, kept across runs; fresh ones by default. */
   readonly globals?: Globals;
 };
@@ -234,16 +233,12 @@ const JournalWithView = Layer.succeed(IntentJournal, {
   openPlan: Effect.succeed(TEST_PLAN),
 });
 
-const mergeActionProgram = (
-  force: boolean,
-  {
-    journal = "view",
-    fixture = false,
-    recomputing = false,
-    expectedHeaderHash,
-    globals,
-  }: MergeRunOptions = {},
-) => {
+const mergeActionProgram = ({
+  journal = "view",
+  fixture = false,
+  recomputing = false,
+  globals,
+}: MergeRunOptions = {}) => {
   const lucidService = lucidServiceStub({
     api: {
       unixTimeToSlot: (unixTime: number) => Math.floor(unixTime / 1_000),
@@ -267,7 +262,7 @@ const mergeActionProgram = (
         epoch: "1",
         recomputing: true,
       }));
-    const merge = mergeAction(force, { expectedHeaderHash });
+    const merge = mergeAction();
     return yield* fixture
       ? merge.pipe(Effect.provideService(FollowerWriteFixture, true))
       : merge;
@@ -284,8 +279,8 @@ const mergeActionProgram = (
   ) as Effect.Effect<MergeActionResult, unknown, never>;
 };
 
-const runMergeAction = (force: boolean, options: MergeRunOptions = {}) =>
-  Effect.runPromise(mergeActionProgram(force, options));
+const runMergeAction = (options: MergeRunOptions = {}) =>
+  Effect.runPromise(mergeActionProgram(options));
 
 /** A builder that reports the follower write permit it ran under and merges. */
 const recordPermitAndMerge = (seen: (FollowerWritePermit | null)[]) =>
@@ -338,20 +333,14 @@ const resetMergeMocks = () => {
 describe("merge maturity semantic preflight", () => {
   beforeEach(resetMergeMocks);
 
-  it("skips not-mature automatic and forced merges before taking the mutation lease", async () => {
+  it("skips not-mature merges before taking the mutation lease", async () => {
     fetchCanonicalMergeCandidateReadinessMock.mockImplementation(() =>
       Effect.succeed(makeCandidate("skipped_oldest_block_not_mature")),
     );
 
-    const automatic = await runMergeAction(false);
-    const forced = await runMergeAction(true);
+    const result = await runMergeAction();
 
-    expect(automatic).toMatchObject({
-      status: "skipped_oldest_block_not_mature",
-      readyAfterUnixTime: 1_700_000_030_000,
-      nowUnixTime: 1_700_000_029_000,
-    });
-    expect(forced).toMatchObject({
+    expect(result).toMatchObject({
       status: "skipped_oldest_block_not_mature",
       readyAfterUnixTime: 1_700_000_030_000,
       nowUnixTime: 1_700_000_029_000,
@@ -368,7 +357,7 @@ describe("merge maturity semantic preflight", () => {
       Effect.succeed(makeCandidate("skipped_oldest_block_unattested")),
     );
 
-    const result = await runMergeAction(false);
+    const result = await runMergeAction();
 
     expect(result).toMatchObject({
       status: "skipped_oldest_block_unattested",
@@ -388,7 +377,7 @@ describe("merge maturity semantic preflight", () => {
         Effect.succeed(makeCandidate("ready", "b")),
       );
 
-    const result = await runMergeAction(false);
+    const result = await runMergeAction();
 
     expect(result).toMatchObject({
       status: "skipped_merge_candidate_changed",
@@ -410,7 +399,7 @@ describe("merge maturity semantic preflight", () => {
         Effect.succeed(makeSnapshot(1, reason)),
     );
 
-    const result = await runMergeAction(false);
+    const result = await runMergeAction();
 
     expect(result).toMatchObject({
       status: "no_queued_block",
@@ -433,7 +422,7 @@ describe("merge maturity semantic preflight", () => {
       }),
     );
 
-    const result = await runMergeAction(false);
+    const result = await runMergeAction();
 
     expect(result).toMatchObject({
       status: "skipped_oldest_block_local_ledger_not_ready",
@@ -465,7 +454,7 @@ describe("merge intent journal guard", () => {
 
   it("refuses a merge before any L1 work when no intent journal can record it", async () => {
     const outcome = await Effect.runPromise(
-      Effect.either(mergeActionProgram(true, { journal: "none" })),
+      Effect.either(mergeActionProgram({ journal: "none" })),
     );
 
     const refusal = Either.isLeft(outcome) ? outcome.left : undefined;
@@ -484,22 +473,20 @@ describe("merge intent journal guard", () => {
     );
 
     expect(
-      await runMergeAction(true, { journal: "none", fixture: true }),
+      await runMergeAction({ journal: "none", fixture: true }),
     ).toMatchObject({ status: "merged" });
   });
 
-  it("runs forced and scheduled merges under a journal view, with no follower write permit, while the driver recomputes", async () => {
+  it("runs a merge under a journal view, with no follower write permit, while the driver recomputes", async () => {
     const seen: (FollowerWritePermit | null)[] = [];
     buildAndSubmitMergeTxMock.mockImplementation(() =>
       recordPermitAndMerge(seen),
     );
 
-    const forced = await runMergeAction(true, { recomputing: true });
-    const scheduled = await runMergeAction(false, { recomputing: true });
+    const result = await runMergeAction({ recomputing: true });
 
-    expect(forced).toMatchObject({ status: "merged", trigger: "manual" });
-    expect(scheduled).toMatchObject({ status: "merged" });
-    expect(seen).toEqual([null, null]);
+    expect(result).toMatchObject({ status: "merged", trigger: "threshold" });
+    expect(seen).toEqual([null]);
   });
 
   it("hands the builder a pre-submit check of the state-queue lease alone", async () => {
@@ -516,7 +503,7 @@ describe("merge intent journal guard", () => {
         return recordPermitAndMerge([]);
       },
     );
-    await runMergeAction(true, { recomputing: true });
+    await runMergeAction({ recomputing: true });
     expect(assertSubmitAuthority).toBeDefined();
     /** The check as the builder runs it: its failure. */
     const failure = () =>
@@ -553,7 +540,7 @@ describe("merge intent journal guard", () => {
         ),
     );
 
-    expect(await runMergeAction(true)).toMatchObject({
+    expect(await runMergeAction()).toMatchObject({
       status: "merged",
       postMergeSnapshot: { reason: "post_merge" },
     });
@@ -630,7 +617,7 @@ describe("merge intent journal guard", () => {
       return {
         tick: () =>
           Effect.runPromise(
-            Effect.either(mergeActionProgram(false, { globals })).pipe(
+            Effect.either(mergeActionProgram({ globals })).pipe(
               Effect.provide(recordWarnings),
             ),
           ),
@@ -767,16 +754,14 @@ describe("merge intent journal guard", () => {
           txHash: submittedTx,
         }),
       );
-    const runPastHold = async (force: boolean) => {
+    const runPastHold = async () => {
       vi.useFakeTimers();
       // Production uses perf_hooks; Vitest replaces only global performance.
       const monotonicClock = vi
         .spyOn(performance, "now")
         .mockImplementation(() => globalThis.performance.now());
       try {
-        const outcome = Effect.runPromise(
-          Effect.either(mergeActionProgram(force)),
-        );
+        const outcome = Effect.runPromise(Effect.either(mergeActionProgram()));
         await vi.advanceTimersByTimeAsync(200_000);
         return await outcome;
       } finally {
@@ -785,27 +770,21 @@ describe("merge intent journal guard", () => {
       }
     };
 
-    it.each([
-      [true, "manual"],
-      [false, "threshold"],
-    ] as const)(
-      "reports a merge submitted before the timeout as merged once it lands (force=%s)",
-      async (force, trigger) => {
-        buildAndSubmitMergeTxMock.mockImplementation(slowConfirmation);
-        const outcome = await runPastHold(force);
-        expect(Either.isRight(outcome) && outcome.right).toMatchObject({
-          status: "merged",
-          headerHash: submittedHeader,
-          txHash: submittedTx,
-          trigger,
-          postMergeSnapshot: { reason: "post_merge" },
-        });
-      },
-    );
+    it("reports a merge submitted before the timeout as merged once it lands", async () => {
+      buildAndSubmitMergeTxMock.mockImplementation(slowConfirmation);
+      const outcome = await runPastHold();
+      expect(Either.isRight(outcome) && outcome.right).toMatchObject({
+        status: "merged",
+        headerHash: submittedHeader,
+        txHash: submittedTx,
+        trigger: "threshold",
+        postMergeSnapshot: { reason: "post_merge" },
+      });
+    });
 
     it("still reports the timeout when no merge was submitted", async () => {
       buildAndSubmitMergeTxMock.mockImplementation(() => Effect.never);
-      const outcome = await runPastHold(true);
+      const outcome = await runPastHold();
       expect(Either.isLeft(outcome) && outcome.left).toBeInstanceOf(
         L1ControlPlaneTimeoutError,
       );
@@ -822,49 +801,11 @@ describe("merge intent journal guard", () => {
     );
 
     const outcome = await Effect.runPromise(
-      Effect.either(mergeActionProgram(true)),
+      Effect.either(mergeActionProgram()),
     );
 
     expect(Either.isLeft(outcome) && outcome.left).toEqual(
       new Error("submit refused by the ledger"),
     );
-  });
-
-  it("merges a targeted header only while it is the oldest queued block", async () => {
-    const seen: (FollowerWritePermit | null)[] = [];
-    buildAndSubmitMergeTxMock.mockImplementation(() =>
-      recordPermitAndMerge(seen),
-    );
-    const oldest = makeCandidate("ready").readiness.headerHash;
-
-    const other = await runMergeAction(true, {
-      expectedHeaderHash: "bb".repeat(28),
-    });
-    expect(other).toMatchObject({
-      status: "skipped_merge_candidate_changed",
-      headerHash: oldest,
-      reason: `expected_header=${"bb".repeat(28)},oldest_candidate=${oldest}`,
-    });
-    expect(tryWithLeaseMock).not.toHaveBeenCalled();
-    expect(buildAndSubmitMergeTxMock).not.toHaveBeenCalled();
-
-    fetchCanonicalMergeCandidateReadinessMock.mockImplementation(() =>
-      Effect.succeed(noCandidate),
-    );
-    expect(
-      await runMergeAction(true, { expectedHeaderHash: oldest }),
-    ).toMatchObject({
-      status: "skipped_merge_candidate_changed",
-      reason: `expected_header=${oldest},oldest_candidate=${noCandidate.reason}`,
-    });
-    expect(buildAndSubmitMergeTxMock).not.toHaveBeenCalled();
-
-    fetchCanonicalMergeCandidateReadinessMock.mockImplementation(() =>
-      Effect.succeed(makeCandidate("ready")),
-    );
-    expect(
-      await runMergeAction(true, { expectedHeaderHash: oldest }),
-    ).toMatchObject({ status: "merged" });
-    expect(seen).toEqual([null]);
   });
 });

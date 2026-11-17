@@ -53,8 +53,6 @@ import {
  * landing the caller awaits after the hold.
  */
 export const mergeActionWithL1ControlPlaneHeld = (
-  force: boolean,
-  expectedHeaderHash: string | undefined,
   onSubmitted: (submitted: SubmittedMerge) => Effect.Effect<void>,
 ): Effect.Effect<
   MergeActionResult | SubmittedMerge,
@@ -117,30 +115,6 @@ export const mergeActionWithL1ControlPlaneHeld = (
       fetchConfig,
       contracts,
     );
-    if (
-      expectedHeaderHash !== undefined &&
-      (preLeaseCandidate.status !== "candidate" ||
-        preLeaseCandidate.readiness.headerHash !== expectedHeaderHash)
-    ) {
-      // A targeted merge may only fold the block it names. The leased
-      // candidate-identity recheck below then binds the merged block to this
-      // pre-lease candidate.
-      const reason = `expected_header=${expectedHeaderHash},oldest_candidate=${
-        preLeaseCandidate.status === "candidate"
-          ? preLeaseCandidate.readiness.headerHash
-          : preLeaseCandidate.reason
-      }`;
-      yield* Effect.logInfo(
-        `🔸 Skipping targeted merge because the oldest block is not the target (${reason}).`,
-      );
-      return {
-        status: "skipped_merge_candidate_changed",
-        reason,
-        ...(preLeaseCandidate.status === "candidate"
-          ? { headerHash: preLeaseCandidate.readiness.headerHash }
-          : {}),
-      } satisfies MergeActionResult;
-    }
     if (
       preLeaseCandidate.status === "candidate" &&
       preLeaseCandidate.readiness.status !== "ready"
@@ -260,7 +234,6 @@ export const mergeActionWithL1ControlPlaneHeld = (
           );
           const queueLength = preMergeSnapshot.blockCount;
           const preflight = planMergePreflight({
-            force,
             queueLength,
             minQueueLength,
             unresolvedSubmittedBlockTxHash: unconfirmedSubmittedBlockTxHash,
@@ -285,9 +258,8 @@ export const mergeActionWithL1ControlPlaneHeld = (
               } satisfies MergeActionResult;
             }
           }
-          const trigger: MergeTrigger = force
-            ? "manual"
-            : preflight.status === "tail_eligible_final_merge"
+          const trigger: MergeTrigger =
+            preflight.status === "tail_eligible_final_merge"
               ? "final_tail_auto_merge"
               : "threshold";
           yield* lucid.switchToOperatorsMergingWallet;

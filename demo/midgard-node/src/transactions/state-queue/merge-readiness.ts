@@ -36,7 +36,6 @@ export type MergeReadinessStatus =
   | "skipped_own_merge_in_flight";
 
 export type MergePreflightInput = {
-  readonly force: boolean;
   readonly queueLength: number;
   readonly minQueueLength: number;
   readonly unresolvedSubmittedBlockTxHash: string;
@@ -92,15 +91,6 @@ export const planMergePreflight = (
       queueLength: input.queueLength,
       minQueueLength: input.minQueueLength,
       bypassQueueLengthGuard: false,
-    };
-  }
-  if (input.force) {
-    return {
-      status: "ready",
-      reason: "force=true",
-      queueLength: input.queueLength,
-      minQueueLength: input.minQueueLength,
-      bypassQueueLengthGuard: true,
     };
   }
   if (input.queueLength >= input.minQueueLength) {

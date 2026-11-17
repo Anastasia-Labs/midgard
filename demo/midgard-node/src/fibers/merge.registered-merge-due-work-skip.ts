@@ -34,7 +34,7 @@ export type MergeActionResult =
       readonly postMergeSnapshot: StateQueueSnapshot;
       readonly headerHash: string;
       readonly txHash: string;
-      readonly trigger: "threshold" | "manual" | "final_tail_auto_merge";
+      readonly trigger: "threshold" | "final_tail_auto_merge";
     }
   | {
       readonly status:
@@ -225,8 +225,8 @@ export const changedCandidateResult = ({
 };
 
 /**
- * Runs one merge attempt, optionally bypassing the queue-length guard for
- * explicit recovery/administrative flows.
+ * Why a merge ran: the queue reached its length threshold, or a mature final
+ * tail below it with no pending local work.
  */
 export type MergeTrigger = Extract<
   MergeActionResult,

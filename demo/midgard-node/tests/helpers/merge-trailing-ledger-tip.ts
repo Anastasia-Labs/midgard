@@ -89,7 +89,7 @@ export const assertMergeWaitsForLedgerTip = async (
     }
   };
   try {
-    const deferred = await m.run(Effect.either(mergeAction(true)), trailing);
+    const deferred = await m.run(Effect.either(mergeAction()), trailing);
     expect(Either.isRight(deferred) && deferred.right).toMatchObject({
       status: "skipped_oldest_block_local_ledger_not_ready",
       headerHash: block,
@@ -108,10 +108,7 @@ export const assertMergeWaitsForLedgerTip = async (
     });
 
     // Wall time is now past the due slot; the ledger tip is not.
-    const stillTrailing = await m.run(
-      Effect.either(mergeAction(true)),
-      trailing,
-    );
+    const stillTrailing = await m.run(Effect.either(mergeAction()), trailing);
     expect(Either.isRight(stillTrailing) && stillTrailing.right).toMatchObject({
       status: "skipped_oldest_block_local_ledger_not_ready",
       reason: expect.stringContaining("merge_due_work_not_due"),

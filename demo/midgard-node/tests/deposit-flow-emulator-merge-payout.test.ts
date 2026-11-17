@@ -319,7 +319,6 @@ describe("deposit flow emulator", { concurrent: false }, () => {
       for (const index of [0, 1]) {
         const merged = await runMergeUntilMerged({
           ...harness,
-          force: false,
           nodeConfig,
         });
         if (merged.status !== "merged") throw new Error("unreachable");
@@ -337,7 +336,6 @@ describe("deposit flow emulator", { concurrent: false }, () => {
 
       const tail = await runMergeUntilMerged({
         ...harness,
-        force: false,
         nodeConfig,
       });
       if (tail.status !== "merged") throw new Error("unreachable");

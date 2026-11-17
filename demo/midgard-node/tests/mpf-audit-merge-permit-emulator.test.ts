@@ -587,7 +587,7 @@ it("audits the native MPF root at the committed tip, and merges only under an in
 
     // A standalone process runs no L1 follower, so no intent journal can
     // record its merge: it refuses before any L1 work.
-    const standalone = await run(Effect.either(mergeAction(true)), {
+    const standalone = await run(Effect.either(mergeAction()), {
       globals: await makeGlobalsService(),
     });
     expect(Either.isLeft(standalone) && standalone.left).toBeInstanceOf(
@@ -598,20 +598,26 @@ it("audits the native MPF root at the committed tip, and merges only under an in
       PendingBlockFinalizationsDB.OwnBlockStatus.Applied,
     );
 
-    // The running node's merge, journaled; the synchronize after it folds
-    // the block by landed-block processing.
+    // The running node's merge, journaled, over a queue of any length; the
+    // synchronize after it folds the block by landed-block processing.
     const mergeOnNode = () =>
       run(
-        mergeAction(true).pipe(
+        mergeAction().pipe(
           Effect.provideService(IntentJournal, production.journal),
         ),
+        {
+          nodeConfig: {
+            ...production.nodeConfig,
+            MIN_QUEUE_LENGTH_FOR_MERGING: 1,
+          },
+        },
       );
     expect(
       await untilMergeSubmitted(mergeOnNode, (result) => result.status),
     ).toMatchObject({
       status: "merged",
       headerHash: first.headerHash,
-      trigger: "manual",
+      trigger: "threshold",
     });
     expect(await ownStatus(first.headerHash)).toBe(
       PendingBlockFinalizationsDB.OwnBlockStatus.Folded,
