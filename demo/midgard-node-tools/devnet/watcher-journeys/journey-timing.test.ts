@@ -331,13 +331,17 @@ describe("fixed native backlog replay allowance", () => {
 });
 
 const actualTimingRun = process.env.MIDGARD_WATCHER_JOURNEY_TIMING_RUN_DIR;
+// Every family shares the generic plan; the validation-trace dispute's also
+// holds its undefended case's wait, which it reads from the deployment's
+// dispute clocks.
 it.skipIf(actualTimingRun === undefined)(
-  "plans from the actual read-only node tip before suite startup",
+  "plans from the actual read-only node tip and deployment before suite startup",
   async () => {
     const plan = await readJourneyExecutionTiming(
       actualTimingRun!,
-      "transitionTrace",
+      "validationTraceDispute",
     );
+    expect(plan.allowances.undefendedCaseMs).toBeGreaterThan(0);
     expect(plan.capturedTip.blockNo).toBeGreaterThan(0);
     expect(plan.capturedTip.blockHash).toMatch(/^[0-9a-f]{64}$/);
     expect(plan.healthyReplay.initialBacklogBlocks).toBe(

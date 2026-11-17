@@ -57,7 +57,9 @@ export const fabricatedDepositJourneyFixture = createPreparedJourneyFixture(
  * The ledger owner's smallest output on `predecessor` that funds a family
  * of `shape`, with what the family's withdrawn output then holds. The
  * family's funding before its timer (`ensureWithdrawalOwnerFunding`) tops the
- * owner up when no output does.
+ * owner up when no output on the run's tail does; before a devnet's first
+ * block there is no tail, and nothing but the first deposit trace's own
+ * deposit funds the owner.
  */
 const fundingOwnerOutput = async (
   input: JourneyFaultPreparationInput,
@@ -88,7 +90,7 @@ const fundingOwnerOutput = async (
   );
   if (entry === undefined)
     throw new Error(
-      `No output of the ledger owner's funds a ${shape}; the family's funding before its timer tops the owner up`,
+      `No output of the ledger owner's on the family's predecessor funds a ${shape}. A devnet's first family has no tail to top up before its timer, so only the first deposit trace's own deposit funds the owner; any later family's funding before its timer tops the owner up and checks the result`,
     );
   return {
     owner,

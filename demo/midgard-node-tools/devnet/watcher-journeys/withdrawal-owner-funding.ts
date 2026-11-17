@@ -355,14 +355,18 @@ export type WithdrawalOwnerFundingPorts = Readonly<{
  * does. An earlier family that spent or split the owner's outputs therefore
  * never starves a later one, whatever their order. Whichever way the owner
  * is found funded, no top-up record outlives it. Before the run's first
- * block there is no tail: the deposit trace that commits it funds the owner.
+ * block there is no tail and nothing is topped up: only the deposit trace
+ * that commits that block funds the owner, unchecked until the family looks
+ * for its output.
  */
 export const ensureWithdrawalOwnerFunding = async (
   ports: WithdrawalOwnerFundingPorts,
 ): Promise<"no-tail" | "funded" | "topped-up"> => {
   const tail = await ports.readTail();
   if (tail === undefined) {
-    ports.onStage("no tail yet: the run's first deposit trace funds the owner");
+    ports.onStage(
+      "no tail yet, so no top-up: only the run's first deposit trace funds the owner",
+    );
     return "no-tail";
   }
   const requirement = await ports.requirement(tail);

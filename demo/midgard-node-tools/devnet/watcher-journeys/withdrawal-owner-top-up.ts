@@ -177,8 +177,8 @@ const devnetTopUp = async (
  * ledger owner up when no output of the owner's on the tail the family
  * builds on meets what the family needs (`ensureWithdrawalOwnerFunding`).
  * A devnet tops up through an honest deposit trace on its head; before the
- * run's first block it has no head, and the first family's deposit trace
- * funds the owner. A stack deposits to the owner's wallet address and waits
+ * run's first block it has no head and tops nothing up, and only the first
+ * family's deposit trace funds the owner. A stack deposits to the owner's wallet address and waits
  * for our node to absorb it and its committee to attest the block, as the
  * run's own funding does. A family that withdraws nothing needs nothing.
  */
