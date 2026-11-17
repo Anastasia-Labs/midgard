@@ -74,19 +74,20 @@ beforeAll(async () => {
 // only once its work has stopped, and the session refuses to start another
 // family before then.
 //
-// A withdrawal family then needs an output of the ledger owner's that funds
-// what it withdraws. An earlier family may have spent or split them, so
-// when none on the tail it builds on does, one deposit of exactly what the
-// family needs tops the owner up and the check waits for it to be absorbed
-// (`withdrawalOwnerTopUpBeforeFamily`).
-//
 // On a stack, the block the family will build on must then be one the
 // stack's watcher verified from its payload. A watcher that restarted after
 // that block merged can no longer verify it, so the check heals it with one
 // honest transfer through our node and waits, within the funding's
 // absorption bound and the family's decision allowance, for the new block to
-// be attested and verified. Neither does anything once the session has
-// closed, nor for a family resuming its staging.
+// be attested and verified.
+//
+// A withdrawal family then needs an output of the ledger owner's that funds
+// what it withdraws. An earlier family, or the heal's transfer, may have
+// spent or split them, so when none on the tail it builds on does, one
+// deposit of exactly what the family needs tops the owner up and the check
+// waits for it to be absorbed (`withdrawalOwnerTopUpBeforeFamily`). It runs
+// last, so no transfer moves the output it found. Neither does anything once
+// the session has closed, nor for a family resuming its staging.
 const familyTitle = (category: string) =>
   `automatically proves '${category}', corrects exact economics, and processes an honest successor`;
 beforeEach(async ({ task }) => {
@@ -109,17 +110,18 @@ beforeEach(async ({ task }) => {
     ),
     isClosed: opened.isClosed,
     close: opened.close,
-    check: async () => {
-      await withdrawalOwnerTopUpBeforeFamily(opened, {
-        category: fixture.category,
-        onStage,
-      });
+    checkPredecessor: async () => {
       if (opened.mode === "attached")
         await checkStackVerifiedPredecessor(opened, {
           category: fixture.category,
           onStage,
         });
     },
+    checkFunding: () =>
+      withdrawalOwnerTopUpBeforeFamily(opened, {
+        category: fixture.category,
+        onStage,
+      }),
     onStage,
   });
 }, 0);

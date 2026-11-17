@@ -68,17 +68,24 @@ const stagingResumes = async (familyDirectory: string) => {
 };
 
 /**
- * The check before one family. A closed session, as after a failed family,
- * does nothing. A family resuming its staging keeps its fixed predecessor,
- * whose staged fault tail would read as faulty. A refusal closes the
- * shared session, so no later family sends anything.
+ * The checks before one family, in order: the verified-predecessor check,
+ * whose heal is a transfer that moves the ledger owner's outputs, then the
+ * withdrawal funding check, so the output a withdrawal family needs is found
+ * after the last transfer before the family, never split by one after it.
+ * A closed session, as after a failed family, does nothing. A family
+ * resuming its staging keeps its fixed predecessor, whose staged fault tail
+ * would read as faulty. A refusal closes the shared session, so no later
+ * family sends anything.
  */
 export const verifiedPredecessorBeforeFamily = async (
   input: Readonly<{
     familyDirectory: string;
     isClosed(): boolean;
     close(): Promise<void>;
-    check(): Promise<unknown>;
+    /** The verified-predecessor check, healing the tail if it must. */
+    checkPredecessor(): Promise<unknown>;
+    /** The withdrawal family's funding check, topping the owner up. */
+    checkFunding(): Promise<unknown>;
     onStage(name: string): void;
   }>,
 ): Promise<"checked" | "staging-resumed" | "session-closed"> => {
@@ -88,7 +95,8 @@ export const verifiedPredecessorBeforeFamily = async (
     return "staging-resumed";
   }
   try {
-    await input.check();
+    await input.checkPredecessor();
+    await input.checkFunding();
   } catch (cause) {
     // A close that fails is reported again by the suite's own close.
     await input.close().catch(() => undefined);

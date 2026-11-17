@@ -1,3 +1,7 @@
+import { randomUUID } from "node:crypto";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import {
   decodeMidgardTxOutput,
   encodeMidgardTxOutput,
@@ -16,6 +20,7 @@ import { expect, it } from "vitest";
 
 import { checkedFixtureBlock } from "./journey-fixture-ledger.test-support.js";
 import type { StackLedgerOwnerDeposit } from "./stack-ledger-owner.js";
+import { verifiedPredecessorBeforeFamily } from "./stack-verified-predecessor.before-family.js";
 import {
   ensureWithdrawalOwnerFunding,
   type OwnedOutput,
@@ -34,6 +39,8 @@ const ownerAddress = Buffer.concat([
   Buffer.from([0x60]),
   Buffer.from(owner, "hex"),
 ]);
+const lovelaceOf = (entry: OwnedOutput) =>
+  decodeMidgardTxOutput(entry.output).value.lovelace;
 const ownedOutput = (lovelace: bigint) =>
   encodeMidgardTxOutput({
     address: ownerAddress,
@@ -55,6 +62,9 @@ const DUE_AFTER_MS = 300_000;
 const LANDS_AFTER_MS = 60_000;
 const ABSORB_WITHIN_MS = 1_800_000;
 const POLL_MS = 30_000;
+// The heal's transfer and its fee.
+const HEAL_TRANSFER = 1_000_000n;
+const HEAL_FEE = 200_000n;
 
 /**
  * An attached stack whose ledger owner holds `outputs`, on one clock that
@@ -75,6 +85,19 @@ const stack = async (initial: readonly OwnedOutput[]) => {
     absorbed: boolean;
   })[] = [];
   const state = { stopsAfterLanding: false };
+  const fund = () => ensureWithdrawalOwnerFunding(ports);
+  const withdraw = async () => {
+    const requirement = await ports.requirement(await readTail());
+    const ascending = [...outputs].sort((left, right) =>
+      Number(lovelaceOf(left) - lovelaceOf(right)),
+    );
+    for (const entry of ascending)
+      if (lovelaceOf(entry) >= (await requirement.requiredOf(entry))) {
+        outputs = outputs.filter((output) => output !== entry);
+        return;
+      }
+    throw new Error("no output of the owner's funds the family");
+  };
   const advance = (ms: number) => {
     clock += ms;
     for (const deposit of deposits)
@@ -174,26 +197,36 @@ const stack = async (initial: readonly OwnedOutput[]) => {
     spendDeposits: () => {
       outputs = outputs.filter((output) => initial.includes(output));
     },
+    /** A withdrawal family's funding check. */
+    fund,
+    /** A withdrawal family's withdrawal, of its smallest funding output. */
+    withdraw,
     /** One withdrawal family: its funding, then its withdrawal. */
     family: async () => {
-      const outcome = await ensureWithdrawalOwnerFunding(ports);
-      const tail = await readTail();
-      const requirement = await ports.requirement(tail);
-      const ascending = [...outputs].sort((left, right) =>
-        Number(
-          decodeMidgardTxOutput(left.output).value.lovelace -
-            decodeMidgardTxOutput(right.output).value.lovelace,
-        ),
+      const outcome = await fund();
+      await withdraw();
+      return outcome;
+    },
+    /**
+     * The verified-predecessor heal: the owner's transfer to itself, which
+     * spends its largest output and splits it into the transfer and change.
+     */
+    heal: async () => {
+      const [largest] = [...outputs].sort((left, right) =>
+        Number(lovelaceOf(right) - lovelaceOf(left)),
       );
-      for (const entry of ascending)
-        if (
-          decodeMidgardTxOutput(entry.output).value.lovelace >=
-          (await requirement.requiredOf(entry))
-        ) {
-          outputs = outputs.filter((output) => output !== entry);
-          return outcome;
-        }
-      throw new Error("no output of the owner's funds the family");
+      const healed = deposits.length + outputs.length;
+      outputs = [
+        ...outputs.filter((output) => output !== largest),
+        {
+          outRef: outRefCbor(0xe0 + healed, 0n),
+          output: ownedOutput(HEAL_TRANSFER),
+        },
+        {
+          outRef: outRefCbor(0xe0 + healed, 1n),
+          output: ownedOutput(lovelaceOf(largest!) - HEAL_TRANSFER - HEAL_FEE),
+        },
+      ];
     },
   };
 };
@@ -234,4 +267,20 @@ it("deposits again, setting the record aside, when a landed top-up is still reco
   expect(run.deposits).toHaveLength(2);
   expect(run.archived).toEqual([run.deposits[0]!.txHash]);
   expect(run.record()).toBeUndefined();
+});
+
+it("finds the output a withdrawal family needs after the heal's transfer has moved the owner's outputs", async () => {
+  const run = await stack(drained);
+  await expect(
+    verifiedPredecessorBeforeFamily({
+      familyDirectory: join(tmpdir(), `no-family-${randomUUID()}`),
+      isClosed: () => false,
+      close: () => Promise.resolve(),
+      checkPredecessor: run.heal,
+      checkFunding: run.fund,
+      onStage: () => undefined,
+    }),
+  ).resolves.toBe("checked");
+  await run.withdraw();
+  expect(run.deposits).toHaveLength(1);
 });

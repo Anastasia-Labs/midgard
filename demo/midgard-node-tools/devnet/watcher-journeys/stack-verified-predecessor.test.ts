@@ -351,7 +351,7 @@ describe("the check before each family", () => {
       await writeFile(join(directory, name), JSON.stringify(contents));
     }
     let closed = false;
-    const calls = { checks: 0, closes: 0 };
+    const calls = { checks: 0, fundings: 0, closes: 0 };
     const run = (options: { sessionClosed?: boolean; fails?: boolean } = {}) =>
       verifiedPredecessorBeforeFamily({
         familyDirectory: directory,
@@ -361,11 +361,15 @@ describe("the check before each family", () => {
           closed = true;
           return Promise.resolve();
         },
-        check: () => {
+        checkPredecessor: () => {
           calls.checks += 1;
           return options.fails === true
             ? Promise.reject(new Error("refused"))
             : Promise.resolve();
+        },
+        checkFunding: () => {
+          calls.fundings += 1;
+          return Promise.resolve();
         },
         onStage: () => {},
       });
@@ -441,6 +445,7 @@ describe("the check before each family", () => {
     const { run, calls } = await family();
     await expect(run({ fails: true })).rejects.toThrow("refused");
     expect(calls.closes).toBe(1);
+    expect(calls.fundings).toBe(0);
     await expect(run()).resolves.toBe("session-closed");
     expect(calls.checks).toBe(1);
   });
