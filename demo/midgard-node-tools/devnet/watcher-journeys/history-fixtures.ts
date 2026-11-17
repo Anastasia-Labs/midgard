@@ -1,10 +1,12 @@
 import {
   decodeMidgardTxOutput,
+  encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
 
 import {
   buildJourneyHistoryTransaction,
+  type HistoryPredecessor,
   JOURNEY_HISTORY_TRANSACTION_CATEGORIES,
   ownedHistoryLedgerEntries,
   retainHistoryTransactions,
@@ -78,6 +80,45 @@ export const createWithdrawalJourneyFixture = (
     { userEvents: category === "doubleWithdraw" ? 2 : 1 },
   );
 
+/**
+ * The owned output the withdrawn-input split divides: the one with the most
+ * lovelace, so each half can fund a withdrawal Order whatever else the owner
+ * holds. The first output by reference can be too small: on a fresh devnet it
+ * is a 2 ADA output, below the Order's minimum.
+ */
+export const withdrawnInputSplitSource = (
+  predecessor: HistoryPredecessor,
+  owner: string,
+) =>
+  ownedHistoryLedgerEntries(predecessor, owner).reduce<
+    ReturnType<typeof ownedHistoryLedgerEntries>[number] | undefined
+  >((largest, entry) => {
+    if (largest === undefined) return entry;
+    const lovelace = (candidate: typeof entry) =>
+      decodeMidgardTxOutput(candidate.output).value.lovelace;
+    return lovelace(entry) > lovelace(largest) ? entry : largest;
+  }, undefined);
+
+/** The withdrawal of the split transaction's first output, the half it keeps
+ * the original's Value in, not whichever owned output sorts first. */
+export const withdrawnInputSplitBody = (
+  split: HistoryPredecessor,
+  owner: string,
+) => {
+  const transactions = split.payload.block_body.transactions;
+  const [transaction] = transactions;
+  if (transaction === undefined || transactions.length !== 1)
+    throw new Error("Withdrawn-input split block must hold exactly the split");
+  return journeyWithdrawalBody({
+    predecessor: split,
+    owner,
+    outRef: encodeMidgardSpendInputItem({
+      txId: Buffer.from(transaction[0], "hex"),
+      outputIndex: 0,
+    }),
+  });
+};
+
 export const createWithdrawnInputJourneyFixture = (
   category: "withdrawnInput" | "withdrawnReferenceInput",
 ) =>
@@ -87,10 +128,10 @@ export const createWithdrawnInputJourneyFixture = (
       const split = await input.commitHistoryBlock(
         "withdrawal-ledger",
         async (timed) => {
-          const selected = ownedHistoryLedgerEntries(
+          const selected = withdrawnInputSplitSource(
             timed.predecessor,
             ownerKey(input).to_public().hash().to_hex(),
-          )[0];
+          );
           const entry =
             selected === undefined
               ? undefined
@@ -144,10 +185,10 @@ export const createWithdrawnInputJourneyFixture = (
         input.ledgerAt,
       );
       const preparation = { ...input, predecessor };
-      const body = journeyWithdrawalBody({
+      const body = withdrawnInputSplitBody(
         predecessor,
-        owner: ownerKey(input).to_public().hash().to_hex(),
-      });
+        ownerKey(input).to_public().hash().to_hex(),
+      );
       const [withdrawal] = await publishJourneyWithdrawals(
         preparation,
         body,

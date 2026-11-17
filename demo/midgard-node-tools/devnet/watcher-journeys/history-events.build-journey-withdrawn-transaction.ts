@@ -122,8 +122,15 @@ export const buildJourneyWithdrawalEvent = async (
 export const journeyWithdrawalBody = (input: {
   predecessor: HistoryPredecessor;
   owner: string;
+  /** The owned output to withdraw; the owner's first output when absent. */
+  outRef?: Buffer;
 }): SDK.WithdrawalBody => {
-  const selected = ownedHistoryLedgerEntries(input.predecessor, input.owner)[0];
+  const owned = ownedHistoryLedgerEntries(input.predecessor, input.owner);
+  const { outRef } = input;
+  const selected =
+    outRef === undefined
+      ? owned[0]
+      : owned.find((entry) => entry.outRef.equals(outRef));
   const entry =
     selected === undefined
       ? undefined
