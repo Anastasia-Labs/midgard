@@ -270,7 +270,8 @@ export const nodeL1AccessOver = (
     },
     viewPoint,
     // `signal` ends the store reads and the polling between them; the
-    // ledger tip read is bounded by the transport's request bound.
+    // ledger tip read takes no signal, and the transport bounds each
+    // request of it, not its wait behind other ledger reads.
     synchronizedViewPoint: async (options) => {
       const deadline = Date.now() + VIEW_SYNC_TIMEOUT_MS;
       const tip = await ledgerTip();

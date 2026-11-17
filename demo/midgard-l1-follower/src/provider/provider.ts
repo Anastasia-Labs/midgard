@@ -90,8 +90,8 @@ export class L1FollowerProvider extends LedgerProvider {
    * hold is answered from the facts (a spent row is omitted); any other one
    * from the ledger at the node's tip, unless the ledger's output is in the
    * tracked scope, whose state is the follower's. `options.signal` ends
-   * the read of the facts (`TransactionOptions`); a ledger read is bounded
-   * by the transport's request bound alone.
+   * the read of the facts (`TransactionOptions`); a ledger read takes no
+   * signal, and the transport bounds each of its requests, not the read.
    */
   override async getUtxosByOutRef(
     outRefs: Array<LucidOutRef>,
@@ -139,8 +139,8 @@ export class L1FollowerProvider extends LedgerProvider {
    * Where a transaction stands: confirmed or failed once the follower
    * applied its block (qualifying txs only, plan §5.2), pending while the
    * node's mempool holds it, otherwise not found. `options.signal` ends the
-   * read of the facts (`TransactionOptions`); the mempool read is bounded
-   * by the transport's request bound alone.
+   * read of the facts (`TransactionOptions`); the mempool read takes no
+   * signal, and the transport bounds each step of it, not the whole.
    */
   override async getTransactionStatus(
     txHash: TxHash,

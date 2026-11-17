@@ -110,19 +110,16 @@ const withReadDeadline = <A, E>(
  * How many reads of one kind may be in flight at once: the read being made,
  * and one earlier read that outlived its abort.
  *
- * A read misses its deadline before the next is asked for; it is then
- * aborted, and the next call gives it one whole deadline more before it
- * reads beside it (`boundedReads`). So a read is left in flight beside a
- * newer one only when it outlives its abort by a deadline. None of the
- * node's sources do: the follower's store reads end at the abort, and every
- * other read ends at its source's own bound (the node transport's request
- * bound, Kupmios' and Blockfrost's request timeouts), under twice the read
- * deadline the waits use. One read of a kind is then all there is in
- * flight, and the second place is for a source that breaks that: one read
- * it never ends costs one call its deadline, after which the reads go on
- * beside it. A second such read stops new reads of the kind until one of
- * the two settles, which holds what a source that never answers can pile
- * up to two reads.
+ * A policy, not a derived bound: tolerate one read that outlives its
+ * abort. A read that misses its deadline is aborted, and the next call
+ * gives it one whole deadline more before it reads beside it
+ * (`boundedReads`). The follower's store reads end at their abort; a read
+ * from any other source settles in the end, but nothing bounds when: the
+ * node transport bounds each request, not a read that waits behind other
+ * requests or makes several. Such a read costs one call its deadline, after
+ * which the reads go on beside it. A second read that outlives its abort
+ * stops new reads of the kind until one of the two settles, so a source
+ * that never answers holds at most two reads of a kind.
  */
 export const READS_IN_FLIGHT_PER_KIND = 2;
 
