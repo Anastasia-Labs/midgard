@@ -3,6 +3,7 @@ import {
   decodeMidgardTxOutput,
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
+  MIDGARD_MAX_OUTPUT_INDEX,
   type MidgardTxOutput,
 } from "@al-ft/midgard-core";
 import { TX_HASH_BYTE_LENGTH } from "@al-ft/midgard-core/out-ref";
@@ -272,9 +273,11 @@ export const ownerOutputRequirement =
 
 /**
  * The requirement of a family of `shape`. The top-up is sized for a fresh
- * output of the owner's at `topUpAddress` holding no assets, its reference
- * at index 0: an actual deposit's reference index can only widen it, which
- * the check after a top-up catches.
+ * output of the owner's at `topUpAddress` holding no assets, at the widest
+ * reference its spend-input encoding allows: a 32-byte transaction id and
+ * the highest output index, whose Data encoding in the withdrawal body is
+ * the widest. Whatever reference the deposit's output gets, its requirement
+ * is no more than the top-up.
  */
 export const withdrawalOwnerRequirement = async (
   input: Readonly<{
@@ -290,7 +293,10 @@ export const withdrawalOwnerRequirement = async (
   const requiredOf = async (entry: OwnedOutput) =>
     (await required(entry)).total;
   const template: OwnedOutput = {
-    outRef: splitFirstOutRef(Buffer.alloc(TX_HASH_BYTE_LENGTH)),
+    outRef: encodeMidgardSpendInputItem({
+      txId: Buffer.alloc(TX_HASH_BYTE_LENGTH),
+      outputIndex: MIDGARD_MAX_OUTPUT_INDEX,
+    }),
     output: encodeMidgardTxOutput({
       address: input.topUpAddress,
       value: { lovelace: 0n, assets: new Map() },

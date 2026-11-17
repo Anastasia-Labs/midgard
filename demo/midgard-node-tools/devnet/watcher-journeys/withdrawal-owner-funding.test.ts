@@ -2,6 +2,7 @@ import {
   decodeMidgardTxOutput,
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
+  MIDGARD_MAX_OUTPUT_INDEX,
 } from "@al-ft/midgard-core";
 import {
   buildCanonicalBlockFixture,
@@ -257,3 +258,29 @@ it("sizes a withdrawal at exactly what the quote requires of it", async () => {
   expect(await at(least)).toBe(least);
   expect(await at(least - 1n)).toBeGreaterThan(least - 1n);
 });
+
+it.each<WithdrawalFundingShape>(["withdrawal", "split"])(
+  "sizes a %s family's top-up to fund its deposit at any output reference the encoding allows",
+  async (shape) => {
+    const tail = await predecessorWith(2_000_000n);
+    const requirement = await withdrawalOwnerRequirement({
+      shape,
+      quote,
+      key,
+      header: tail.header,
+      topUpAddress: ownerAddress,
+    });
+    // The output index's Data encoding widens at 24 and 256; the
+    // transaction id is always 32 bytes.
+    for (const outputIndex of [0, 23, 24, 255, 256, MIDGARD_MAX_OUTPUT_INDEX])
+      expect(
+        await requirement.requiredOf({
+          outRef: encodeMidgardSpendInputItem({
+            txId: Buffer.alloc(32, 0xff),
+            outputIndex,
+          }),
+          output: ownedOutput(requirement.topUpLovelace),
+        }),
+      ).toBeLessThanOrEqual(requirement.topUpLovelace);
+  },
+);
