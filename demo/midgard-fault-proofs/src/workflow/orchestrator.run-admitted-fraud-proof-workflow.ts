@@ -565,8 +565,7 @@ export const runAdmittedFraudProofWorkflow = async ({
           `reconciliation failed for ${action.actionId}: ${formatUnknownError(cause)}`,
         );
       }
-      if (!workflowJournalIsReconciliationOnly(journal))
-        reconciled = notFoundIfNeverResent(entries, intent.txHash, reconciled);
+      reconciled = notFoundIfNeverResent(entries, intent.txHash, reconciled);
       await accountWorkflowAttemptCollateral({
         writer,
         assertReconcile,

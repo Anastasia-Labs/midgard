@@ -7,6 +7,8 @@
  * bound reads that way for as long as its inputs stay live.
  */
 import {
+  createWorkflowActuationPermitController,
+  FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED,
   FraudProofL1UnavailableError,
   type FraudProofWorkflowJournalEvent,
   reconcileSignedWorkflowTransaction,
@@ -25,7 +27,12 @@ afterEach(async () => {
   await cleanupFundingRecoveryFixtures();
 });
 
-it("never sends again an attempt whose phase-2-invalid landing a rollback removed, and supersedes it at once although it has no upper validity bound", async () => {
+type Fixture = Awaited<ReturnType<typeof setupFundingRecoveryFixture>>;
+
+const setup = async (): Promise<{
+  readonly fixture: Fixture;
+  readonly sent: string[];
+}> => {
   const fixture = await setupFundingRecoveryFixture(
     false,
     true,
@@ -62,10 +69,18 @@ it("never sends again an attempt whose phase-2-invalid landing a rollback remove
           : { authorizeResubmission }),
       }),
   );
-  const events = async (): Promise<FraudProofWorkflowJournalEvent[]> =>
+  return { fixture, sent };
+};
+
+const eventsOf =
+  (fixture: Fixture) => async (): Promise<FraudProofWorkflowJournalEvent[]> =>
     (await fixture.journal.load(fixture.initial.workflowId)).map(
       ({ event }) => event,
     );
+
+it("never sends again an attempt whose phase-2-invalid landing a rollback removed, and supersedes it at once although it has no upper validity bound", async () => {
+  const { fixture, sent } = await setup();
+  const events = eventsOf(fixture);
 
   fixture.chain.mockResolvedValue({ kind: "not_found", landedInvalid: true });
   fixture.stopAt("abandonPendingTransition", "before");
@@ -130,4 +145,84 @@ it("never sends again an attempt whose phase-2-invalid landing a rollback remove
       ),
     ),
   ).not.toEqual([]);
+});
+
+it("supersedes such an attempt of a historical objective and releases its funding, sending nothing", async () => {
+  const { fixture, sent } = await setup();
+  const events = eventsOf(fixture);
+  // The objective is historical: its header no longer holds the execution
+  // slot, so the run holds reconciliation-only authority throughout.
+  const historical = async () => {
+    const controller = createWorkflowActuationPermitController({
+      decision: fixture.fresh,
+      rollbackGeneration: "2",
+    });
+    controller.restrictToReconciliation(
+      "another header owns the execution slot",
+    );
+    return fixture.bind(
+      fixture.fresh,
+      await fixture.createPermit(fixture.fresh, "2", controller),
+    );
+  };
+
+  fixture.chain.mockResolvedValue({ kind: "not_found", landedInvalid: true });
+  fixture.stopAt("abandonPendingTransition", "before");
+  await expect(fixture.run(await historical())).rejects.toBeInstanceOf(
+    FixtureProcessStop,
+  );
+  const forfeited = await events();
+  expect(forfeited.at(-1)).toMatchObject({
+    kind: "collateral_forfeited",
+    txHash: fixture.transactionHash,
+  });
+  await fixture.restartStore();
+
+  // The rollback: absent, every input live, no upper bound ever ends it.
+  fixture.useUnspentPendingInputs();
+  fixture.chain.mockResolvedValue({
+    kind: "unknown",
+    reason: "absent",
+    absent: true,
+  });
+  vi.mocked(fixture.adapter.observe).mockResolvedValue({
+    kind: "action_required",
+    action: { actionId: "init", input: { actionKind: "proof.init" } },
+  });
+  const later = () => new Date(Date.now() + 60_000);
+
+  // Repeated observations reach the same end.
+  for (let observation = 0; observation < 2; observation++) {
+    await fixture.restartStore();
+    await expect(fixture.run(await historical(), later)).resolves.toMatchObject(
+      {
+        kind: "pending",
+        reason: FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED,
+      },
+    );
+  }
+  expect(sent).toEqual([]);
+  const settled = await events();
+  expect(settled.slice(forfeited.length)).toEqual([
+    {
+      kind: "collateral_forfeiture_reversed",
+      actionId: "init",
+      txHash: fixture.transactionHash,
+    },
+    {
+      kind: "reconciled",
+      actionId: "init",
+      outcome: "not_found",
+      txHash: fixture.transactionHash,
+    },
+  ]);
+  expect(settled.some(({ kind }) => kind === "rebroadcast_intent")).toBe(false);
+  // The attempt's coins are no longer held: the reservation is idle.
+  expect((await fixture.records())[0]).toMatchObject({
+    state: "active",
+    activeInputs: [],
+    pendingTransition: null,
+  });
+  expect(fixture.adapter.preflight).not.toHaveBeenCalled();
+  expect(fixture.adapter.submit).not.toHaveBeenCalled();
 });
