@@ -4,6 +4,7 @@ import type {
   FraudProofCatalogueCategoryName,
 } from "@al-ft/midgard-sdk";
 
+import { MAX_COMPUTATION_THREAD_STEPS } from "./computation-thread-steps.js";
 import {
   confirmRemoval,
   type RemovalConfirmation,
@@ -170,7 +171,7 @@ export const createFraudProofFamilyRawL1ObservationPort = <
   if (
     authority.authorityVersion !== FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY ||
     definition.computationThread.steps.length === 0 ||
-    definition.computationThread.steps.length > 17
+    definition.computationThread.steps.length > MAX_COMPUTATION_THREAD_STEPS
   ) {
     throw new Error(
       `${definition.category} raw L1 observation authority is incomplete`,
