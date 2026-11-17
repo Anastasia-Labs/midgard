@@ -29,7 +29,7 @@ import type {
  * the open branches of its two tries, whatever the size of
  * `confirmed_ledger` (`confirmed-ledger-roots.ts`); 1,000,000 entries ran
  * with the whole process under 740 MB resident
- * (`tests/confirmed-ledger-root.bounded.compiled.test.ts`). Node
+ * (`tests/confirmed-ledger-root.bounded.bench.ts`). Node
  * ignores the limit when the process itself runs with
  * `--max-old-space-size`; the thread then shares the process's heap bound.
  */

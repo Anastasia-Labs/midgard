@@ -58,6 +58,8 @@
     "bench:submit-check": "export NODE_ENV='emulator' && vitest run --config vitest.bench.config.ts tests/benchmarks/submit-check-cost.bench.ts --disableConsoleIntercept",
     "bench:submit-main-thread": "export NODE_ENV='emulator' && vitest run --config vitest.bench.config.ts tests/benchmarks/submit-main-thread.bench.ts --disableConsoleIntercept",
     "bench:admission-writer": "export NODE_ENV='emulator' && vitest run --config vitest.bench.config.ts tests/benchmarks/admission-writer-main-thread.bench.ts --disableConsoleIntercept",
+    "bench:confirmed-ledger:root": "vitest run --config vitest.bench.config.ts tests/confirmed-ledger-root.bounded.bench.ts --disableConsoleIntercept",
+    "bench:confirmed-ledger:verification": "vitest run --config vitest.bench.config.ts tests/confirmed-ledger-verification.paged-at-size.bench.ts --disableConsoleIntercept",
     "load:submit-ingress": "node scripts/submit-ingress-load.mjs",
     "stress:valid": "node scripts/throughput-valid-stress.mjs",
     "bench:l2:valid": "STRESS_CLIENT_SELF_CHECK_REQUIRED=true node scripts/throughput-valid-stress.mjs",

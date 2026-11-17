@@ -77,7 +77,7 @@ export const CONFIRMED_LEDGER_VERIFICATION_SOURCE =
  * How long after a run the next runs regardless of the frontier: ten
  * minutes. A run's roots in the built worker measured about 295 s at
  * 1,000,000 entries, about 30 s per 100,000, with the whole process under
- * 740 MB resident (`tests/confirmed-ledger-root.bounded.compiled.test.ts`).
+ * 740 MB resident (`tests/confirmed-ledger-root.bounded.bench.ts`).
  * The interval bounds only an idle node's re-check: a frontier move starts
  * the next run as soon as one ends, so a node folding steadily keeps one
  * worker busy for about 30 s per 100,000 entries in each run. A run longer

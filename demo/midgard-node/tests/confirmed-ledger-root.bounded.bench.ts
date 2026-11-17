@@ -5,7 +5,12 @@
  * `confirmed_ledger` with a delta of 2,000 changes: the entries go to it a
  * page at a time, as the verification reads them, and their leaves come
  * back to be fed in path order. Its roots are the ones the same pass in
- * this thread derives.
+ * this thread derives. It takes about 300 s, so it is not in the default
+ * suite (`confirmed-ledger-root.worker-heap.compiled.test.ts` holds the
+ * worker's heap flat at 100,000 entries there); it needs `dist`:
+ *
+ *   pnpm --dir demo --filter midgard-node run build
+ *   pnpm --dir demo --filter midgard-node run bench:confirmed-ledger:root
  */
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
