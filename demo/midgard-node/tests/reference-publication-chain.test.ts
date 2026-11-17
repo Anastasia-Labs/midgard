@@ -319,6 +319,40 @@ it("resolves a rejected parent and descendants without mistaking provider errors
   }
 });
 
+it("confirms a publication whose own confirmation lands between the reads of one observation", async () => {
+  // One observation reads the role outputs, then the inputs. A transaction
+  // that confirms in between shows its inputs spent by itself and its outputs
+  // not yet read: that is not a conflict (drill run5 recorded such a false
+  // rejection, and a rejection is terminal).
+  const f = await fixture(3);
+  const transactions = await f.build();
+  const journal = await PublicationJournal.open(f.path);
+  try {
+    for (const tx of transactions) await journal.prepare(tx);
+    const observed = new Set<string>();
+    const chain = new ReferencePublicationChain(
+      journal,
+      {
+        ...f.backend,
+        observe: async (tx) => {
+          const first = !observed.has(tx.hash);
+          observed.add(tx.hash);
+          return first && tx.hash === transactions[0]!.hash
+            ? { slot: 0, confirmed: false, conflictingInputs: tx.inputs }
+            : { slot: 0, confirmed: true };
+        },
+      },
+      f.schedule,
+    );
+    await chain.resume();
+    expect([...journal.records.values()].map(({ outcome }) => outcome)).toEqual(
+      ["confirmed", "confirmed", "confirmed"],
+    );
+  } finally {
+    await journal.close();
+  }
+});
+
 it("uses existing builders and exact pending predecessor outputs in the complete publication scheduler", async () => {
   const f = await fixture();
   const result = await publishReferenceChain({

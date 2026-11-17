@@ -50,7 +50,12 @@ export class ReferencePublicationChain {
       )
         continue;
       const tx = record.transaction;
-      const observation = await this.backend.observe(tx);
+      let observation = await this.backend.observe(tx);
+      // One observation reads the outputs before the inputs, so a transaction
+      // that confirms in between shows only its inputs spent. A conflict is
+      // what a fresh observation still shows; a rejection is terminal.
+      if (!observation.confirmed && observation.conflictingInputs?.length)
+        observation = await this.backend.observe(tx);
       if (observation.confirmed) {
         if (record.outcome !== "confirmed")
           await this.journal.outcome(tx.hash, "confirmed");
