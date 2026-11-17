@@ -2,10 +2,7 @@ import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import {
-  workflowActuationAuthorizingDecisionDigest,
-  workflowJournalIsReconciliationOnly,
-} from "./actuation-permit.js";
+import { workflowActuationAuthorizingDecisionDigest } from "./actuation-permit.js";
 import {
   encodeWorkflowArtifact,
   requireWorkflowArtifactMatches,
@@ -28,7 +25,6 @@ import {
   createFraudProofWorkflowRegistry,
   type FraudProofFamilyWorkflowAdapter,
   type FraudProofWorkflowTerminalVerifier,
-  resumeRecordedFraudProofWorkflow,
   runFraudProofWorkflowFromRetainedDa,
 } from "./orchestrator.js";
 import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy.js";
@@ -104,7 +100,10 @@ export const withManifestBoundFamilyRecovery = <
 ): ManifestBoundFamilyWorkflowWithRecovery<Installation, Surface> =>
   Object.freeze({ ...installation, ...assemble(installation) });
 
-/** Same adapter and lifecycle for fresh public-DA replay and exact saved-intent recovery. */
+/**
+ * Fresh public-DA replay through the family adapter. A recorded workflow
+ * resumes under reconciliation-only authority in the runtime, never here.
+ */
 export const executeManifestBoundFamilyRecovery = async <
   Category extends FraudProofCatalogueCategoryName,
 >({
@@ -141,16 +140,6 @@ export const executeManifestBoundFamilyRecovery = async <
     );
   if (adapter.category !== category || l1.category !== category)
     throw new Error(`${category} recovery adapter changed deployment category`);
-  if (workflowJournalIsReconciliationOnly(journal))
-    return await resumeRecordedFraudProofWorkflow({
-      deploymentFingerprint: binding.deploymentFingerprint,
-      category,
-      headerHash,
-      journal,
-      adapter,
-      terminalVerifier,
-      releaseFinalityAuthority,
-    });
   return await runFraudProofWorkflowFromRetainedDa({
     deploymentFingerprint: binding.deploymentFingerprint,
     observation: await observeFraudProofWorkflowHeader(l1, { headerHash }),

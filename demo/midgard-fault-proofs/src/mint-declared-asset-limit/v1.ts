@@ -3,10 +3,7 @@ import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import {
-  workflowActuationAuthorizingDecisionDigest,
-  workflowJournalIsReconciliationOnly,
-} from "../workflow/actuation-permit.js";
+import { workflowActuationAuthorizingDecisionDigest } from "../workflow/actuation-permit.js";
 import { MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import {
   CURSOR_FAMILY_TRANSACTION_PORT,
@@ -32,7 +29,6 @@ import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-
 import {
   createFraudProofWorkflowRegistry,
   type FraudProofWorkflowRunResult,
-  resumeRecordedFraudProofWorkflow,
   runFraudProofWorkflowFromRetainedDa,
 } from "../workflow/orchestrator.js";
 import type { FraudProofRawL1FamilyStage } from "../workflow/raw-l1-family-derivation.js";
@@ -455,16 +451,6 @@ export const executeManifestBoundMintDeclaredAssetLimitWorkflow = async ({
     workflow.decisionDigest
   )
     throw new Error("mintDeclaredAssetLimit journal changed decision digest");
-  if (workflowJournalIsReconciliationOnly(journal))
-    return await resumeRecordedFraudProofWorkflow({
-      deploymentFingerprint: workflow.binding.deploymentFingerprint,
-      category: CATEGORY,
-      headerHash: workflow.binding.definition.headerHash,
-      journal,
-      adapter: workflow.adapter,
-      terminalVerifier: workflow.terminalVerifier,
-      releaseFinalityAuthority: workflow.releaseFinalityAuthority,
-    });
   const observation = await observeFraudProofWorkflowHeader(workflow.l1, {
     headerHash: workflow.binding.definition.headerHash,
   });

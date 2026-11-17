@@ -46,7 +46,6 @@ import * as submitters from "../src/field-preimage-length-mismatch/submit-lucid.
 import { DaLibp2pRetainedDaSource } from "../src/transition-trace/fetch.js";
 import { WorkflowActionChangedError } from "../src/workflow/action-changed.js";
 import {
-  bindWorkflowActuationJournal,
   bindWorkflowActuationRecoveryIdentity,
   createWorkflowActuationPermitController,
   createWorkflowReconciliationPermitController,
@@ -75,6 +74,7 @@ import {
   type JournalJsonObject,
   normalizeJournalJson,
 } from "../src/workflow/journal.js";
+import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.js";
 import type { FraudProofRawL1FamilyStage } from "../src/workflow/raw-l1-family-derivation.js";
 import { FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY } from "../src/workflow/release-finality-policy.js";
 import {
@@ -443,14 +443,6 @@ it.each([
         originalDecision: decision,
       });
     }
-    const journal = bindWorkflowActuationJournal({
-      journal: new DirectoryFraudProofWorkflowJournalStore(directory),
-      permit: controller.permit,
-      decisionDigest: freshDecision.decisionDigest,
-      deploymentFingerprint,
-      category,
-      headerHash,
-    });
     // This checks shared recovery wiring with scripted L1 observations, not native receipt validation.
     const restarted = createFieldPreimageLengthRecoveryAdapter(
       fixture.workflow,
@@ -470,54 +462,55 @@ it.each([
         verifyForWorkflow: async () => releaseFinality,
       },
     };
-    if (mode !== "reconciliation-only") {
+    if (mode !== "reconciliation-only")
       fixture.observeHeader.mockResolvedValue(
         authenticatedHeaderObservation(nativeFixture, {
           confirmationDepth: 31,
         }),
       );
-      const close = vi.fn(async () => undefined);
-      const runner = createManifestBoundWorkflowRunner({
-        record: defineFamilyApplication({
-          category,
-          roster: {},
-          requires: [],
-          // The record binds the authorizing decision out of the loaded
-          // infrastructure; the wrong-decision mode binds the stale one.
-          bindConfig: ({ infrastructure }) => ({
-            decisionDigest:
-              mode === "wrong authorizing decision"
-                ? decision.decisionDigest
-                : infrastructure.decisionDigest!,
-          }),
-          constructWorkflow: async (config) => ({
-            ...workflow,
-            decisionDigest: config.decisionDigest,
-          }),
-          execute: executeManifestBoundFieldPreimageLengthWorkflow,
-          bindsDecisionDigest: false,
+    const close = vi.fn(async () => undefined);
+    const runner = createManifestBoundWorkflowRunner({
+      record: defineFamilyApplication({
+        category,
+        roster: {},
+        requires: [],
+        // The record binds the authorizing decision out of the loaded
+        // infrastructure; the wrong-decision mode binds the stale one.
+        bindConfig: ({ infrastructure }) => ({
+          decisionDigest:
+            mode === "wrong authorizing decision"
+              ? decision.decisionDigest
+              : infrastructure.decisionDigest!,
         }),
-        loadRuntime: async ({ invocation }) => {
-          if (
-            !("decisionDigest" in invocation) ||
-            typeof invocation.decisionDigest !== "string"
-          )
-            throw new Error(
-              "expected execution invocation with its fresh decision",
-            );
-          return {
-            schemaVersion: WORKFLOW_RUNTIME_CONFIG,
-            infrastructure: familyCommonInfrastructureForTest({
-              headerHash: invocation.headerHash,
-              decisionDigest: invocation.decisionDigest,
-            }),
-            resolveReferenceScript: emptyRosterReferenceScriptResolver,
-            retainedDaSources: [publicSource],
-            close,
-          };
-        },
-      });
-      const run = runner.runOrResume({
+        constructWorkflow: async (config) => ({
+          ...workflow,
+          decisionDigest: config.decisionDigest,
+        }),
+        execute: executeManifestBoundFieldPreimageLengthWorkflow,
+        bindsDecisionDigest: false,
+      }),
+      loadRuntime: async ({ invocation }) => {
+        if (
+          !("decisionDigest" in invocation) ||
+          typeof invocation.decisionDigest !== "string"
+        )
+          throw new Error(
+            "expected execution invocation with its fresh decision",
+          );
+        return {
+          schemaVersion: WORKFLOW_RUNTIME_CONFIG,
+          infrastructure: familyCommonInfrastructureForTest({
+            headerHash: invocation.headerHash,
+            decisionDigest: invocation.decisionDigest,
+          }),
+          resolveReferenceScript: emptyRosterReferenceScriptResolver,
+          retainedDaSources: [publicSource],
+          close,
+        };
+      },
+    });
+    const resume = async () =>
+      (await runner.runOrResume({
         mode: "resume",
         category,
         deploymentFingerprint,
@@ -534,7 +527,9 @@ it.each([
           }),
         journal: new DirectoryFraudProofWorkflowJournalStore(directory),
         runtimeConfigPath: "/fixture/field-runtime.json",
-      });
+      })) as FraudProofWorkflowRunResult;
+    if (mode !== "reconciliation-only") {
+      const run = resume();
       if (mode === "wrong authorizing decision") {
         await expect(run).rejects.toThrow(
           "journal actuation permit changed decision digest",
@@ -566,20 +561,16 @@ it.each([
       expect(close).toHaveBeenCalledOnce();
       return;
     }
-    const result = await executeManifestBoundFieldPreimageLengthWorkflow({
-      workflow,
-      sources: [],
-      journal,
-    });
+    const result = await resume();
     expect(result.kind).toBe("terminal_included");
     expect(fixture.observeHeader).not.toHaveBeenCalled();
     expect(
-      (await journal.load(workflowId)).filter(
+      (await store.load(workflowId)).filter(
         ({ event }) => event.kind === "submission_intent",
       ),
     ).toHaveLength(2);
     expect(
-      (await journal.load(workflowId)).some(
+      (await store.load(workflowId)).some(
         ({ event }) => event.kind === "completed",
       ),
     ).toBe(false);
@@ -590,15 +581,7 @@ it.each([
         observedAt: { ...terminal.observedAt, confirmationDepth: 2162 },
       },
     };
-    expect(
-      (
-        await executeManifestBoundFieldPreimageLengthWorkflow({
-          workflow,
-          sources: [],
-          journal,
-        })
-      ).kind,
-    ).toBe("completed");
+    expect((await resume()).kind).toBe("completed");
     expect(fixture.observeHeader).not.toHaveBeenCalled();
   } finally {
     await rm(directory, { recursive: true, force: true });

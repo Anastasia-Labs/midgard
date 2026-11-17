@@ -5,14 +5,7 @@ import { CML } from "@lucid-evolution/lucid";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
-import { executeManifestBoundMintDeclaredAssetLimitWorkflow } from "../src/mint-declared-asset-limit/v1.js";
-import { executeManifestBoundObserverOrderInvalidWorkflow } from "../src/observer-order-invalid/v1.js";
-import { executeManifestBoundObserversForbiddenWorkflow } from "../src/observers-forbidden-on-untagged-network/v1.js";
-import { executeManifestBoundRedeemerCanonicityWorkflow } from "../src/redeemer-canonicity/runtime.js";
-import {
-  bindWorkflowActuationJournal,
-  createWorkflowReconciliationPermitController,
-} from "../src/workflow/actuation-permit.js";
+import { createWorkflowReconciliationPermitController } from "../src/workflow/actuation-permit.js";
 import { COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
 import { createCursorFamilyWorkflowAdapter } from "../src/workflow/cursor-family-adapter.js";
 import { CURSOR_FAMILY_TRANSACTION_PORT } from "../src/workflow/cursor-family-adapter.js";
@@ -41,6 +34,7 @@ import {
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
+  type FraudProofFamilyWorkflowAdapter,
 } from "../src/workflow/orchestrator.js";
 import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../src/workflow/raw-l1-publication-observation.js";
 import {
@@ -55,6 +49,7 @@ import {
   buildFixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
+import { reconcileThroughRunner } from "./support/reconcile-through-runner.js";
 import { terminalVerifierOf } from "./support/terminal-verifier.js";
 
 const hash = (byte: string) => byte.repeat(32);
@@ -65,29 +60,6 @@ const categories = [
   "redeemerCanonicity",
 ] as const;
 type Category = (typeof categories)[number];
-const executors = {
-  mintDeclaredAssetLimit: executeManifestBoundMintDeclaredAssetLimitWorkflow,
-  observersForbiddenOnUntaggedNetwork:
-    executeManifestBoundObserversForbiddenWorkflow,
-  observerOrderInvalid: executeManifestBoundObserverOrderInvalidWorkflow,
-  redeemerCanonicity: executeManifestBoundRedeemerCanonicityWorkflow,
-};
-const execute = (
-  category: Category,
-  input: {
-    workflow: unknown;
-    journal: MemoryFraudProofWorkflowJournalStore;
-    sources: readonly [];
-  },
-) =>
-  executors[category](
-    input as Parameters<
-      typeof executeManifestBoundMintDeclaredAssetLimitWorkflow
-    >[0] &
-      Parameters<typeof executeManifestBoundObserversForbiddenWorkflow>[0] &
-      Parameters<typeof executeManifestBoundObserverOrderInvalidWorkflow>[0] &
-      Parameters<typeof executeManifestBoundRedeemerCanonicityWorkflow>[0],
-  );
 const headerHash = "11".repeat(28);
 const deploymentFingerprint = hash("22");
 const key = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 0x33));
@@ -128,7 +100,8 @@ const releaseFinality = {
 };
 
 // Local saved-decision/journal fixture. This test exercises the real opaque
-// read-only permit and orchestrator; it does not claim native L1 evidence.
+// read-only permit, runner and orchestrator; it does not claim native L1
+// evidence.
 const recovery = async (
   category: Category,
   needsAnotherAction = false,
@@ -257,19 +230,8 @@ const recovery = async (
     rollbackGeneration: "0",
     entries: await store.load(workflowId),
   });
-  const journal = bindWorkflowActuationJournal({
-    journal: store,
-    permit: controller.permit,
-    decisionDigest: decision.decisionDigest,
-    deploymentFingerprint,
-    category,
-    headerHash,
-  });
   const forbidden = vi.fn(async (): Promise<never> => {
     throw new Error("read-only recovery entered construction or submission");
-  });
-  const observeHeader = vi.fn(async (): Promise<never> => {
-    throw new Error("removed target cannot be fetched");
   });
   const reconcile = vi.fn(
     async (input: {
@@ -295,64 +257,43 @@ const recovery = async (
       producedInputs: [],
     },
   });
-  const workflow = {
-    binding: {
-      deploymentFingerprint,
-      definition: { headerHash },
-    },
-    l1: {
-      portVersion: FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
-      category,
-      observeHeader,
-      observe: forbidden,
-      transactionConfirmed: forbidden,
-      publications: {
-        observerVersion: FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
-        observeExact: forbidden,
-      },
-    },
-    decisionDigest: decision.decisionDigest,
-    transactions: {
-      portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
-      category,
-      prepare: forbidden,
-      capture: forbidden,
-    },
-    adapter: {
-      adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER,
-      category,
-      safety: FRAUD_PROOF_WORKFLOW_SAFETY,
-      prepare: forbidden,
-      preflight: forbidden,
-      submit: forbidden,
-      reconcile,
-      observe: async () =>
-        needsAnotherAction
-          ? ({
-              kind: "action_required",
-              action: { actionId: "new-action", input: {} },
-            } as const)
-          : ({
-              kind: "pending",
-              reason: "awaiting canonical terminal evidence",
-            } as const),
-    },
-    terminalVerifier: terminalVerifierOf(forbidden),
-    releaseFinalityAuthority: {
-      authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
-      verifyForWorkflow: async () => releaseFinality,
-    },
-  };
-  return {
-    journal,
-    decision,
-    workflow,
-    workflowId,
-    controller,
-    forbidden,
-    observeHeader,
+  const adapter: FraudProofFamilyWorkflowAdapter = {
+    adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER,
+    category,
+    safety: FRAUD_PROOF_WORKFLOW_SAFETY,
+    prepare: forbidden,
+    preflight: forbidden,
+    submit: forbidden,
     reconcile,
+    observe: async () =>
+      needsAnotherAction
+        ? ({
+            kind: "action_required",
+            action: { actionId: "new-action", input: {} },
+          } as const)
+        : ({
+            kind: "pending",
+            reason: "awaiting canonical terminal evidence",
+          } as const),
   };
+  const run = () =>
+    reconcileThroughRunner({
+      category,
+      deploymentFingerprint,
+      headerHash,
+      decisionDigest: decision.decisionDigest,
+      permit: controller.permit,
+      store,
+      surface: {
+        adapter,
+        terminalVerifier: terminalVerifierOf(forbidden),
+        releaseFinalityAuthority: {
+          authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
+          verifyForWorkflow: async () => releaseFinality,
+        },
+      },
+    });
+  return { store, run, workflowId, controller, forbidden, reconcile };
 };
 
 afterEach(() => vi.restoreAllMocks());
@@ -361,12 +302,11 @@ it.each(categories)(
   "%s reconciles the exact signed intent after acknowledgement loss without a live target",
   async (category) => {
     const fixture = await recovery(category);
-    const result = await execute(category, { ...fixture, sources: [] });
+    const result = await fixture.run();
     expect(result.kind).toBe("pending");
     expect(fixture.reconcile).toHaveBeenCalledOnce();
-    expect(fixture.observeHeader).not.toHaveBeenCalled();
     expect(fixture.forbidden).not.toHaveBeenCalled();
-    const entries = await fixture.journal.load(fixture.workflowId);
+    const entries = await fixture.store.load(fixture.workflowId);
     expect(
       entries.filter(({ event }) => event.kind === "submission_intent"),
     ).toHaveLength(1);
@@ -382,13 +322,12 @@ it.each(categories)(
   "%s refuses another action under saved-decision reconciliation authority",
   async (category) => {
     const fixture = await recovery(category, true);
-    const result = await execute(category, { ...fixture, sources: [] });
+    const result = await fixture.run();
     expect(result).toMatchObject({
       kind: "pending",
       reason: "Canonical workflow requires fresh submission authority",
     });
     expect(fixture.forbidden).not.toHaveBeenCalled();
-    expect(fixture.observeHeader).not.toHaveBeenCalled();
   },
 );
 it.each(categories)(
@@ -396,11 +335,8 @@ it.each(categories)(
   async (category) => {
     const fixture = await recovery(category);
     fixture.controller.revoke("native_chain_rollback");
-    await expect(
-      execute(category, { ...fixture, sources: [] }),
-    ).rejects.toThrow("revoked");
+    await expect(fixture.run()).rejects.toThrow("revoked");
     expect(fixture.reconcile).not.toHaveBeenCalled();
-    expect(fixture.observeHeader).not.toHaveBeenCalled();
   },
 );
 it.each(categories)(

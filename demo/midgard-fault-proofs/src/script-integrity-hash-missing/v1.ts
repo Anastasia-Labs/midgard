@@ -3,10 +3,7 @@ import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import {
-  workflowActuationAuthorizingDecisionDigest,
-  workflowJournalIsReconciliationOnly,
-} from "../workflow/actuation-permit.js";
+import { workflowActuationAuthorizingDecisionDigest } from "../workflow/actuation-permit.js";
 import { SCRIPT_INTEGRITY_HASH_MISSING_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import { type CursorFamilyTransactionPort } from "../workflow/cursor-family-adapter.js";
 import { STATE_QUEUE_REMOVAL_REFERENCE_SCRIPTS } from "../workflow/cursor-family-runtime.js";
@@ -26,7 +23,6 @@ import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-
 import {
   createFraudProofWorkflowRegistry,
   type FraudProofWorkflowRunResult,
-  resumeRecordedFraudProofWorkflow,
   runFraudProofWorkflowFromRetainedDa,
 } from "../workflow/orchestrator.js";
 import {
@@ -238,16 +234,6 @@ export const executeManifestBoundScriptIntegrityHashMissingWorkflow = async ({
     throw new Error(
       "scriptIntegrityHashMissing journal actuation permit changed decision digest",
     );
-  if (workflowJournalIsReconciliationOnly(journal))
-    return await resumeRecordedFraudProofWorkflow({
-      deploymentFingerprint: workflow.binding.deploymentFingerprint,
-      category: "scriptIntegrityHashMissing",
-      headerHash: workflow.binding.definition.headerHash,
-      journal,
-      adapter: workflow.adapter,
-      terminalVerifier: workflow.terminalVerifier,
-      releaseFinalityAuthority: workflow.releaseFinalityAuthority,
-    });
   const observation = await observeFraudProofWorkflowHeader(workflow.l1, {
     headerHash: workflow.binding.definition.headerHash,
   });

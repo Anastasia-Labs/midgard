@@ -1,15 +1,8 @@
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { expect, it, vi } from "vitest";
 
-import {
-  bindWorkflowActuationJournal,
-  createWorkflowReconciliationPermitController,
-} from "../src/workflow/actuation-permit.js";
-import {
-  COMPLETE_CANONICAL_REPLAY,
-  FIELD_ITEM_WIDTH_ILLEGAL_COMPLETE_CANONICAL_REPLAY,
-} from "../src/workflow/complete-replay.js";
-import { FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT } from "../src/workflow/family-l1-observation.js";
+import { createWorkflowReconciliationPermitController } from "../src/workflow/actuation-permit.js";
+import { COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
 import {
   HEADER_CLASSIFIER,
   HEADER_DECISION,
@@ -25,20 +18,18 @@ import {
   MemoryFraudProofWorkflowJournalStore,
   normalizeJournalJson,
 } from "../src/workflow/journal.js";
-import {
-  createCanonicalFamilyArtifactPort,
-  executeManifestBoundFamilyRecovery,
-} from "../src/workflow/manifest-bound-family-recovery.js";
+import { createCanonicalFamilyArtifactPort } from "../src/workflow/manifest-bound-family-recovery.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
+  type FraudProofFamilyWorkflowAdapter,
 } from "../src/workflow/orchestrator.js";
-import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../src/workflow/raw-l1-publication-observation.js";
 import {
   computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
 } from "../src/workflow/release-finality-policy.js";
+import { reconcileThroughRunner } from "./support/reconcile-through-runner.js";
 import { terminalVerifierOf } from "./support/terminal-verifier.js";
 
 const hash = (byte: string) => byte.repeat(32);
@@ -56,7 +47,8 @@ const releaseFinality = {
 };
 
 // Local saved-decision/journal fixture. This test exercises the real opaque
-// read-only permit and orchestrator; it does not claim native L1 evidence.
+// read-only permit, runner and orchestrator; it does not claim native L1
+// evidence.
 const recovery = async (needsAnotherAction = false) => {
   const unsealed: Omit<HeaderFaultDecision, "decisionDigest"> = {
     schemaVersion: HEADER_DECISION,
@@ -150,85 +142,58 @@ const recovery = async (needsAnotherAction = false) => {
     rollbackGeneration: "0",
     entries: await store.load(workflowId),
   });
-  const journal = bindWorkflowActuationJournal({
-    journal: store,
-    permit: controller.permit,
-    decisionDigest: decision.decisionDigest,
-    deploymentFingerprint,
-    category,
-    headerHash,
-  });
   const forbidden = vi.fn(async (): Promise<never> => {
     throw new Error("read-only recovery entered construction or submission");
-  });
-  const observeHeader = vi.fn(async (): Promise<never> => {
-    throw new Error("removed target cannot be fetched");
   });
   const reconcile = vi.fn(async (input: { txHash?: string }) => {
     expect(input.txHash).toBe(transactionHash);
     return { kind: "confirmed", txHash: transactionHash } as const;
   });
-  const workflow: Parameters<typeof executeManifestBoundFamilyRecovery>[0] = {
-    sources: [],
-    journal,
-    replayer: FIELD_ITEM_WIDTH_ILLEGAL_COMPLETE_CANONICAL_REPLAY,
-    binding: {
-      deploymentFingerprint,
-      definition: { headerHash, category },
-    } as Parameters<typeof executeManifestBoundFamilyRecovery>[0]["binding"],
-    l1: {
-      portVersion: FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
-      category,
-      observeHeader,
-      observe: forbidden,
-      transactionConfirmed: forbidden,
-      publications: {
-        observerVersion: FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
-        observeExact: forbidden,
-      },
-    },
-    decisionDigest: decision.decisionDigest,
-    adapter: {
-      adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER,
-      category,
-      safety: FRAUD_PROOF_WORKFLOW_SAFETY,
-      prepare: forbidden,
-      preflight: forbidden,
-      submit: forbidden,
-      reconcile,
-      observe: async () =>
-        needsAnotherAction
-          ? ({
-              kind: "action_required",
-              action: { actionId: "new-action", input: {} },
-            } as const)
-          : ({
-              kind: "pending",
-              reason: "awaiting canonical terminal evidence",
-            } as const),
-    },
-    terminalVerifier: terminalVerifierOf(forbidden),
-    releaseFinalityAuthority: {
-      authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
-      verifyForWorkflow: async () => releaseFinality,
-    },
-  };
-  return {
-    journal,
-    workflow,
-    workflowId,
-    controller,
-    forbidden,
-    observeHeader,
+  const adapter: FraudProofFamilyWorkflowAdapter = {
+    adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER,
+    category,
+    safety: FRAUD_PROOF_WORKFLOW_SAFETY,
+    prepare: forbidden,
+    preflight: forbidden,
+    submit: forbidden,
     reconcile,
+    observe: async () =>
+      needsAnotherAction
+        ? ({
+            kind: "action_required",
+            action: { actionId: "new-action", input: {} },
+          } as const)
+        : ({
+            kind: "pending",
+            reason: "awaiting canonical terminal evidence",
+          } as const),
   };
+  const run = (surface: { adapter?: FraudProofFamilyWorkflowAdapter } = {}) =>
+    reconcileThroughRunner({
+      category,
+      deploymentFingerprint,
+      headerHash,
+      decisionDigest: decision.decisionDigest,
+      permit: controller.permit,
+      store,
+      surface: {
+        adapter,
+        terminalVerifier: terminalVerifierOf(forbidden),
+        releaseFinalityAuthority: {
+          authorityVersion: FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
+          verifyForWorkflow: async () => releaseFinality,
+        },
+        ...surface,
+      },
+    });
+  return { store, adapter, run, workflowId, controller, forbidden, reconcile };
 };
 
 it.each([false, true])(
   "reconciles the exact saved intent without a live header or new action (%s)",
   async (needsAnotherAction) => {
     const fixture = await recovery(needsAnotherAction);
-    const result = await executeManifestBoundFamilyRecovery(fixture.workflow);
+    const result = await fixture.run();
     expect(result).toMatchObject({
       kind: "pending",
       reason: needsAnotherAction
@@ -236,9 +201,8 @@ it.each([false, true])(
         : "awaiting canonical terminal evidence",
     });
     expect(fixture.reconcile).toHaveBeenCalledTimes(1);
-    expect(fixture.observeHeader).not.toHaveBeenCalled();
     expect(fixture.forbidden).not.toHaveBeenCalled();
-    const entries = await fixture.journal.load(fixture.workflowId);
+    const entries = await fixture.store.load(fixture.workflowId);
     expect(entries.some(({ event }) => event.kind === "stalled")).toBe(false);
     expect(
       entries.filter(({ event }) => event.kind === "submission_intent"),
@@ -255,35 +219,16 @@ it.each([false, true])(
 it("refuses reconciliation after actual rollback revokes the permit", async () => {
   const fixture = await recovery();
   fixture.controller.revoke("native_chain_rollback");
-  await expect(
-    executeManifestBoundFamilyRecovery(fixture.workflow),
-  ).rejects.toThrow("revoked");
+  await expect(fixture.run()).rejects.toThrow("revoked");
   expect(fixture.reconcile).not.toHaveBeenCalled();
-  expect(fixture.observeHeader).not.toHaveBeenCalled();
-});
-
-it("refuses a different decision before opening a removed target", async () => {
-  const fixture = await recovery();
-  await expect(
-    executeManifestBoundFamilyRecovery({
-      ...fixture.workflow,
-      decisionDigest: hash("ef"),
-    }),
-  ).rejects.toThrow("changed decision digest");
-  expect(fixture.reconcile).not.toHaveBeenCalled();
-  expect(fixture.observeHeader).not.toHaveBeenCalled();
 });
 
 it("refuses a foreign adapter before reconciling the recorded transaction", async () => {
   const fixture = await recovery();
   await expect(
-    executeManifestBoundFamilyRecovery({
-      ...fixture.workflow,
-      adapter: { ...fixture.workflow.adapter, category: "doubleSpend" },
-    }),
-  ).rejects.toThrow("changed deployment category");
+    fixture.run({ adapter: { ...fixture.adapter, category: "doubleSpend" } }),
+  ).rejects.toThrow("adapter doubleSpend is outside launch scope");
   expect(fixture.reconcile).not.toHaveBeenCalled();
-  expect(fixture.observeHeader).not.toHaveBeenCalled();
 });
 
 it("re-admits exact typed material after restart without deserializing saved JSON", async () => {

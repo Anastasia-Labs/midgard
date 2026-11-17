@@ -1,8 +1,5 @@
 import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import {
-  workflowActuationAuthorizingDecisionDigest,
-  workflowJournalIsReconciliationOnly,
-} from "../workflow/actuation-permit.js";
+import { workflowActuationAuthorizingDecisionDigest } from "../workflow/actuation-permit.js";
 import { REDEEMER_CANONICITY_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import { type FraudProofWorkflowJournalStore } from "../workflow/journal.js";
@@ -10,7 +7,6 @@ import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-
 import {
   createFraudProofWorkflowRegistry,
   type FraudProofWorkflowRunResult,
-  resumeRecordedFraudProofWorkflow,
   runFraudProofWorkflowFromRetainedDa,
 } from "../workflow/orchestrator.js";
 import {
@@ -62,16 +58,6 @@ export const executeManifestBoundRedeemerCanonicityWorkflow = async ({
     workflow.decisionDigest
   )
     throw new Error("redeemerCanonicity journal changed decision digest");
-  if (workflowJournalIsReconciliationOnly(journal))
-    return await resumeRecordedFraudProofWorkflow({
-      deploymentFingerprint: workflow.binding.deploymentFingerprint,
-      category: "redeemerCanonicity",
-      headerHash: workflow.binding.definition.headerHash,
-      journal,
-      adapter: workflow.adapter,
-      terminalVerifier: workflow.terminalVerifier,
-      releaseFinalityAuthority: workflow.releaseFinalityAuthority,
-    });
   const observation = await observeFraudProofWorkflowHeader(workflow.l1, {
     headerHash: workflow.binding.definition.headerHash,
   });
