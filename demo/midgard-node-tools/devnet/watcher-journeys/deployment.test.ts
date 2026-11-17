@@ -30,6 +30,7 @@ import {
   writeJourneyFile,
 } from "./artifacts.js";
 import { verifyJourneyConfiguration } from "./configuration.js";
+import { deploymentL1Origin } from "./deployment-l1-origin.js";
 import { journeyLucid } from "./journey-lucid.js";
 import { readOgmiosTipSlot } from "./ledger-tip.js";
 import { createLiveWorkflowChain } from "./live-chain.js";
@@ -106,11 +107,12 @@ it.skipIf(runDirectory === undefined)(
     await verifyJourneyConfiguration({ runDirectory, ogmiosUrl });
     // The node's own snapshot source: the devnet node's ledger, over the
     // transport sidecar.
-    const nodeTransport = sharedL1NodeTransport({
+    const nodeConnection = {
       binaryPath: join(runDirectory, "work/midgard-l1-node-transport"),
       socketPath: join(runDirectory, "cardano/ipc/node.socket"),
       networkMagic: genesis.networkMagic,
-    });
+    };
+    const nodeTransport = sharedL1NodeTransport(nodeConnection);
     const parameters = await cardanoProtocolParametersIdentityFromLedger(() =>
       nodeTransport.query({ query: "protocol_params" }),
     );
@@ -389,6 +391,8 @@ it.skipIf(runDirectory === undefined)(
         synchronizePublicationIndexer(ogmiosUrl, kupoUrl),
       publicationMaxTargetsPerBatch: 8,
       resume,
+      l1Origin: (nonceTxHash) =>
+        deploymentL1Origin({ node: nodeConnection, nonceTxHash }),
       onPrepared: async (context) => {
         await writeJourneyArtifact(
           join(runDirectory, "work/deployment-prepared.json"),

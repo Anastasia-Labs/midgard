@@ -15,6 +15,7 @@ import {
   verifyFinalizedDeploymentManifest,
   verifyReferenceScriptPublicationAuthority,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import type { L1Origin } from "@al-ft/midgard-core/l1-origin";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -76,6 +77,7 @@ export const publishWorkflowDeploymentOnChain = async ({
   onPrepared = () => {},
   onInitialization = () => {},
   resume,
+  l1Origin,
 }: Readonly<{
   network: "Custom" | "Preprod";
   accounts: Readonly<
@@ -94,6 +96,12 @@ export const publishWorkflowDeploymentOnChain = async ({
   publicationMaxTargetsPerBatch?: number;
   eventHistoryProtectionDurationMs?: bigint;
   resume?: PublishedWorkflowDeploymentResume;
+  /**
+   * The manifest's `l1Origin` for the hub-oracle nonce tx, read from the
+   * chain the deployment ran on. Without it the manifest records none, as
+   * an emulator deployment, which no node follows, needs none.
+   */
+  l1Origin?: (nonceTxHash: string) => Promise<L1Origin>;
   onPrepared?: (
     context: Pick<PublishedWorkflowDeploymentResume, "nonce" | "authPolicy">,
   ) => void | Promise<void>;
@@ -402,6 +410,9 @@ export const publishWorkflowDeploymentOnChain = async ({
     hubOracleOneShotTxHash: nonce.txHash,
     hubOracleOneShotOutputIndex: nonce.outputIndex,
     hubOracleOneShotStatus: "consumed_by_init",
+    ...(l1Origin === undefined
+      ? {}
+      : { l1Origin: await l1Origin(nonce.txHash) }),
     steps: {
       initProtocol: { status: "complete", txHash: initTxHash },
       availabilityRegistration: { status: "complete" },
