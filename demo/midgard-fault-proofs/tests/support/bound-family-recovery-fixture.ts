@@ -209,7 +209,15 @@ const scriptDecodeReferences = (): Readonly<Record<string, UTxO>> => {
  */
 export const runRegisteredFamilyReconciliation = async (
   input: RecoveryFixture,
-  { rollbackGeneration = "0" }: Readonly<{ rollbackGeneration?: string }> = {},
+  {
+    rollbackGeneration = "0",
+    decisionDigest = input.decision.decisionDigest,
+  }: Readonly<{
+    rollbackGeneration?: string;
+    /** The decision the invocation, and the infrastructure loaded for it,
+     * claim; the fixture's permit admitted `input.decision`. */
+    decisionDigest?: string;
+  }> = {},
 ): Promise<FraudProofWorkflowRunResult> => {
   const { binding } = input.workflow;
   const { category, headerHash } = binding.definition;
@@ -243,7 +251,6 @@ export const runRegisteredFamilyReconciliation = async (
         : { fieldGrammarCertificateSpend: grammar.reference }),
     };
     const { deploymentFingerprint } = binding;
-    const { decisionDigest } = input.decision;
     const runner = WORKFLOW_RUNNER_FACTORIES[category](async () => ({
       schemaVersion: WORKFLOW_RUNTIME_CONFIG,
       infrastructure: familyCommonInfrastructureForTest(
@@ -282,7 +289,8 @@ export const runRegisteredFamilyReconciliation = async (
           category,
           actuationPermit: input.controller.permit,
           deploymentFingerprint,
-          decisionDigest,
+          // Funding is reserved under the decision the permit admitted.
+          decisionDigest: input.decision.decisionDigest,
           rollbackGeneration,
         }),
       // A fresh view of the saved journal: each run binds its own.

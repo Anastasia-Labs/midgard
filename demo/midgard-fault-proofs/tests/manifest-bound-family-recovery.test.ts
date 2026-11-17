@@ -1,6 +1,7 @@
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { expect, it, vi } from "vitest";
 
+import { FIELD_ITEM_WIDTH_ILLEGAL_CURSOR_SPEC } from "../src/field-item-width-illegal/workflow-spec.js";
 import { createWorkflowReconciliationPermitController } from "../src/workflow/actuation-permit.js";
 import { COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
 import {
@@ -29,6 +30,8 @@ import {
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
 } from "../src/workflow/release-finality-policy.js";
+import { runRegisteredFamilyReconciliation } from "./support/bound-family-recovery-fixture.js";
+import { customWorkflowRecoveryFixture } from "./support/custom-workflow-recovery.js";
 import { reconcileThroughRunner } from "./support/reconcile-through-runner.js";
 import { terminalVerifierOf } from "./support/terminal-verifier.js";
 
@@ -221,6 +224,28 @@ it("refuses reconciliation after actual rollback revokes the permit", async () =
   fixture.controller.revoke("native_chain_rollback");
   await expect(fixture.run()).rejects.toThrow("revoked");
   expect(fixture.reconcile).not.toHaveBeenCalled();
+});
+
+it("refuses a different decision before opening a removed target", async () => {
+  // The family's registered runner, resumed under a decision other than the
+  // one its reconciliation permit admitted.
+  const fixture = await customWorkflowRecoveryFixture(
+    FIELD_ITEM_WIDTH_ILLEGAL_CURSOR_SPEC,
+  );
+  fixture.advance();
+  const recorded = await fixture.store.load(fixture.workflowId);
+  const refusal = await runRegisteredFamilyReconciliation(fixture, {
+    decisionDigest: hash("ef"),
+  }).then(
+    () => undefined,
+    (error: unknown) => error,
+  );
+  // Nothing was reconciled: the saved journal is exactly as recorded.
+  expect(await fixture.store.load(fixture.workflowId)).toEqual(recorded);
+  expect(refusal).toBeInstanceOf(Error);
+  expect((refusal as Error).message).toBe(
+    "production workflow actuation permit identity mismatch at runner_start",
+  );
 });
 
 it("refuses a foreign adapter before reconciling the recorded transaction", async () => {
