@@ -75,9 +75,10 @@ export * from "./release-finality-policy.js";
 export * from "./replay-requirements.js";
 export * from "./runtime.js";
 export * from "./runtime-funding-policy.js";
-export type {
-  SignedTransactionRecoveryObservation,
-  SignedWorkflowTransaction,
+export {
+  reconcileSignedWorkflowTransaction,
+  type SignedTransactionRecoveryObservation,
+  type SignedWorkflowTransaction,
 } from "./signed-transaction-reconciliation.js";
 export {
   parseSignedWorkflowTransactionRetirement,

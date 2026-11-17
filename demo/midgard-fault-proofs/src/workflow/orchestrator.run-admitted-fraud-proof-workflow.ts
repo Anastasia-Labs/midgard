@@ -7,7 +7,10 @@ import {
   workflowActuationDecisionDigest,
   workflowJournalIsReconciliationOnly,
 } from "./actuation-permit.js";
-import { isCollateralForfeitureEvent } from "./collateral-forfeiture.js";
+import {
+  isCollateralForfeitureEvent,
+  recordsPhaseTwoInvalidLanding,
+} from "./collateral-forfeiture.js";
 import { isFinalWorkflowCompletion } from "./completion-finality.js";
 import {
   appendWorkflowJournalEvents,
@@ -469,7 +472,8 @@ export const runAdmittedFraudProofWorkflow = async ({
             : {
                 signedTransactionCborHex:
                   fundingRecovery.transition.signedTransactionCborHex,
-                ...(workflowJournalIsReconciliationOnly(journal)
+                ...(workflowJournalIsReconciliationOnly(journal) ||
+                recordsPhaseTwoInvalidLanding(entries, intent.txHash)
                   ? {}
                   : {
                       authorizeResubmission: async (transaction: {

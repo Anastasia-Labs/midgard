@@ -97,6 +97,18 @@ export const activeCollateralForfeitures = (
   return active;
 };
 
+/** Whether the journal records these bytes as landed failing phase 2, the
+ * forfeiture standing or reversed since. Such bytes are never sent again: a
+ * rollback that removes the landing does not make them worth resending. */
+export const recordsPhaseTwoInvalidLanding = (
+  entries: readonly FraudProofWorkflowJournalEntry[],
+  transactionHash: string,
+): boolean =>
+  entries.some(
+    ({ event }) =>
+      event.kind === "collateral_forfeited" && event.txHash === transactionHash,
+  );
+
 const ACCOUNTING_FAILED = "collateral accounting failed for attempt ";
 const ACCOUNTING_MOOT = "collateral accounting no longer needed for attempt ";
 
