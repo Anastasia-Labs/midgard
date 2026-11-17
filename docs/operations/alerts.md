@@ -255,6 +255,29 @@ change up.
 **Escalate** any `E_MERGE_` code, and failures that continue once the merge
 wallet holds funds and the provider answers.
 
+### MidgardTxExpiring
+
+**Meaning.** More than one L1 transaction the node submitted expired
+unconfirmed within 30 minutes (`midgard_tx_expired` keeps rising): the
+observed L1 tip passed the transaction's upper validity bound while every one
+of its inputs was still unspent, so it can never land. The operation that
+built it rebuilds from fresh chain state (a one-shot operation once, a fiber
+on its next tick); a rebuild that expires too means L1 is not including the
+node's transactions within their validity windows.
+
+**First checks.** The node log: `Transaction expired` names each transaction,
+its bound and the tip slot; `rebuilding from fresh chain state` and
+`rebuild(s) allowed are used up` show the one-shot operations. Read
+`/readyz` for the `l1Follower` tip, and the L1 node's own block production:
+long gaps between blocks are the usual cause.
+
+**Action.** Restore L1 block production or the provider the node reads its
+tip from. A one-shot command that gave up (`TxExpiredError`) is safe to run
+again: it re-reads the chain and skips what already landed.
+
+**Escalate** when transactions keep expiring while L1 produces blocks
+normally.
+
 ### MidgardSettlementJobsStuck
 
 **Meaning.** One or more settlement jobs reached the retry cap of consecutive

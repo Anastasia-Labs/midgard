@@ -152,6 +152,14 @@ const emulatorSubmitSlotSnapshot = (
   return undefined;
 };
 
+/** The clock `submitRecoverySleep` advances: the emulator's, else the wall clock. */
+export const submitRecoveryNow = (lucid: LucidEvolution): (() => number) => {
+  const emulatorProvider = emulatorTimeProvider(lucid);
+  return emulatorProvider === null
+    ? () => Date.now()
+    : () => emulatorProvider.now();
+};
+
 export const submitRecoverySleep = (
   lucid: LucidEvolution,
 ): ((milliseconds: number) => Effect.Effect<void, never>) => {

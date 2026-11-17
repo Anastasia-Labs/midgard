@@ -13,6 +13,7 @@ const knownTags: ReadonlySet<string> = new Set([
   "ValidationWorkerError",
   "TxSubmitError",
   "TxConfirmError",
+  "TxExpiredError",
   "StateQueueError",
   "RequestError",
   "HttpBodyError",

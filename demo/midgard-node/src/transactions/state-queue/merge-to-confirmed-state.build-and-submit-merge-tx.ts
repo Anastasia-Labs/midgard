@@ -24,6 +24,7 @@ import {
   fetchFirstBlockTxs,
   signSubmitTransaction,
   TxConfirmError,
+  TxExpiredError,
   TxSignError,
   TxSubmitError,
 } from "../utils.js";
@@ -83,6 +84,7 @@ export const buildAndSubmitMergeTx = (
   | DatabaseError
   | TxSubmitError
   | TxConfirmError
+  | TxExpiredError
   | TxSignError,
   Database | Globals | NodeConfig | IntentJournal
 > =>

@@ -16,6 +16,7 @@ import { observedLedgerTip } from "./ledger-tip-lower-bound.js";
 import {
   handleSignSubmit,
   TxConfirmError,
+  TxExpiredError,
   TxSignError,
   TxSubmitError,
 } from "./utils.js";
@@ -50,6 +51,7 @@ type ReservePayoutSubmitError =
   | SDK.StateQueueError
   | TxSubmitError
   | TxConfirmError
+  | TxExpiredError
   | TxSignError;
 
 /** The automatic worker checkpoints a signed body before transporting it.

@@ -23,6 +23,7 @@ import {
 import {
   handleSignSubmit,
   TxConfirmError,
+  TxExpiredError,
   TxSignError,
   TxSubmitError,
 } from "./utils.js";
@@ -86,7 +87,10 @@ export type PhasMembershipRegistrationOptions = {
     lucid: LucidEvolution,
     built: SDK.BuiltPhasMembershipRewardRegistrationTx,
     plan: IntentPlan,
-  ) => Effect.Effect<string, TxConfirmError | TxSignError | TxSubmitError>;
+  ) => Effect.Effect<
+    string,
+    TxConfirmError | TxExpiredError | TxSignError | TxSubmitError
+  >;
   readonly inspectRegistrationTx?: (
     built: SDK.BuiltPhasMembershipRewardRegistrationTx,
     expected: { readonly rewardAddress: string; readonly scriptHash: string },
@@ -264,7 +268,7 @@ const defaultSubmitRegistrationTx = (
   plan: IntentPlan,
 ): Effect.Effect<
   string,
-  TxConfirmError | TxSignError | TxSubmitError,
+  TxConfirmError | TxExpiredError | TxSignError | TxSubmitError,
   IntentJournal
 > =>
   handleSignSubmit(
@@ -285,6 +289,7 @@ export const ensurePhasMembershipRewardAccountRegisteredProgram = (
   | SDK.LucidError
   | SDK.UnspecifiedNetworkError
   | TxConfirmError
+  | TxExpiredError
   | TxSignError
   | TxSubmitError,
   IntentJournal

@@ -29,7 +29,12 @@ import {
   fetchUnattestedHeaders,
   isDaBondPoolAttestationSkip,
 } from "./da-attestation.fetch-unattested-headers.js";
-import { TxConfirmError, TxSignError, TxSubmitError } from "./utils.js";
+import {
+  TxConfirmError,
+  TxExpiredError,
+  TxSignError,
+  TxSubmitError,
+} from "./utils.js";
 
 export const attestStateQueueOnceProgram = (
   options: AttestStateQueueOnceOptions = {},
@@ -43,6 +48,7 @@ export const attestStateQueueOnceProgram = (
   | SDK.StateQueueError
   | DatabaseError
   | TxConfirmError
+  | TxExpiredError
   | TxSignError
   | TxSubmitError,
   | Lucid

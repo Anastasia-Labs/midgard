@@ -44,6 +44,7 @@ import {
 import {
   handleSignSubmit,
   TxConfirmError,
+  TxExpiredError,
   TxSignError,
   TxSubmitError,
 } from "./utils.js";
@@ -77,6 +78,7 @@ type OperatorWalletScriptRefStripError =
   | SDK.LucidError
   | WalletViewUnavailable
   | TxConfirmError
+  | TxExpiredError
   | TxSignError
   | TxSubmitError;
 

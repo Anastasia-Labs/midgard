@@ -26,7 +26,12 @@ import {
   localDaSignatureWitnesses,
 } from "./da-attestation.fetch-unattested-headers.js";
 import { observedLedgerTip } from "./ledger-tip-lower-bound.js";
-import { TxConfirmError, TxSignError, TxSubmitError } from "./utils.js";
+import {
+  TxConfirmError,
+  TxExpiredError,
+  TxSignError,
+  TxSubmitError,
+} from "./utils.js";
 
 /** One step of a header's DA attestation, journaled against the header. */
 const attestIntent = (
@@ -70,6 +75,7 @@ export const attestHeader = ({
   | SDK.DaAttestationBuildError
   | SDK.StateQueueError
   | TxConfirmError
+  | TxExpiredError
   | TxSignError
   | TxSubmitError,
   IntentJournal

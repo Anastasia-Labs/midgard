@@ -18,7 +18,12 @@ import {
   toActivationResult,
 } from "./register-active-operator.fetch-hub-oracle-ref-input.js";
 import { operatorLifecycleProgram } from "./register-active-operator.operator-lifecycle-program.js";
-import { TxConfirmError, TxSignError, TxSubmitError } from "./utils.js";
+import {
+  TxConfirmError,
+  TxExpiredError,
+  TxSignError,
+  TxSubmitError,
+} from "./utils.js";
 
 export const registerAndActivateOperatorProgram = (
   lucid: LucidEvolution,
@@ -33,6 +38,7 @@ export const registerAndActivateOperatorProgram = (
   | OperatorFundingShortfall
   | OperatorWalletInputsEmpty
   | TxConfirmError
+  | TxExpiredError
   | TxSignError
   | TxSubmitError,
   IntentJournal
@@ -66,6 +72,7 @@ export const registerOperatorProgram = (
   | OperatorFundingShortfall
   | OperatorWalletInputsEmpty
   | TxConfirmError
+  | TxExpiredError
   | TxSignError
   | TxSubmitError,
   IntentJournal
@@ -96,6 +103,7 @@ export const activateOperatorProgram = (
   | OperatorFundingShortfall
   | OperatorWalletInputsEmpty
   | TxConfirmError
+  | TxExpiredError
   | TxSignError
   | TxSubmitError,
   IntentJournal
@@ -133,6 +141,7 @@ export const activateRegisteredOperatorProgram = (
   | OperatorFundingShortfall
   | OperatorWalletInputsEmpty
   | TxConfirmError
+  | TxExpiredError
   | TxSignError
   | TxSubmitError,
   IntentJournal
@@ -165,6 +174,7 @@ export const deregisterOperatorProgram = (
   | OperatorFundingShortfall
   | OperatorWalletInputsEmpty
   | TxConfirmError
+  | TxExpiredError
   | TxSignError
   | TxSubmitError,
   IntentJournal

@@ -95,6 +95,18 @@ groups:
           summary: "Node {{ $labels.instance }} has failed merge attempts for 10 minutes"
           runbook: "docs/operations/alerts.md#midgardmergefailures"
 
+      - alert: MidgardTxExpiring
+        # Submitted L1 transactions keep expiring unconfirmed: the tip passed
+        # their upper validity bound with every input unspent. One expiry
+        # that the rebuild clears does not page; a rebuild that expires too
+        # does.
+        expr: increase(midgard_tx_expired_total[30m]) > 1
+        labels:
+          severity: warning
+        annotations:
+          summary: "Node {{ $labels.instance }} has had more than one L1 transaction expire unconfirmed in 30 minutes"
+          runbook: "docs/operations/alerts.md#midgardtxexpiring"
+
       - alert: MidgardWalletBalanceLow
         # A role wallet's plain-ADA balance is below what that role needs;
         # the node exports the requirement beside the balance, so the

@@ -46,7 +46,12 @@ import {
   awaitWalletViewUtxos,
   buildReferenceScriptDeploymentPlan,
 } from "./reference-scripts.wallet-view-utxos.js";
-import { TxConfirmError, TxSignError, TxSubmitError } from "./utils.js";
+import {
+  TxConfirmError,
+  TxExpiredError,
+  TxSignError,
+  TxSubmitError,
+} from "./utils.js";
 
 /**
  * How often a publication pass interrupted by a transient provider failure
@@ -192,6 +197,7 @@ export const ensureReferenceScriptTargetsProgram = (
   | SDK.StateQueueError
   | SDK.LucidError
   | TxConfirmError
+  | TxExpiredError
   | TxSignError
   | TxSubmitError,
   IntentJournal
@@ -323,6 +329,7 @@ export const deployReferenceScriptCommandProgram = (
   | SDK.StateQueueError
   | SDK.LucidError
   | TxConfirmError
+  | TxExpiredError
   | TxSignError
   | TxSubmitError,
   IntentJournal
@@ -422,6 +429,7 @@ export const ensureNodeRuntimeReferenceScriptsProgram = (
   | SDK.StateQueueError
   | SDK.LucidError
   | TxConfirmError
+  | TxExpiredError
   | TxSignError
   | TxSubmitError,
   IntentJournal

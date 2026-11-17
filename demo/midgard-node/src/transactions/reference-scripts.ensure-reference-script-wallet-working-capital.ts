@@ -39,6 +39,7 @@ import {
 import {
   handleSignSubmit,
   TxConfirmError,
+  TxExpiredError,
   TxSignError,
   TxSubmitError,
 } from "./utils.js";
@@ -104,6 +105,7 @@ export const ensureReferenceScriptWalletWorkingCapital = (
   | SDK.StateQueueError
   | SDK.LucidError
   | TxConfirmError
+  | TxExpiredError
   | TxSignError
   | TxSubmitError,
   IntentJournal

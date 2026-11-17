@@ -13,6 +13,7 @@ import "./utils.pre-submit-validity-check.js";
 import "./utils.submit-signed-tx-with-recovery.js";
 import "./utils.await-submitted-transaction-confirmation.js";
 import "./utils.fetch-first-block-txs.js";
+import "./utils.tx-expiry.js";
 export {
   awaitExactTransactionConfirmation,
   BeforeSignedTransactionSubmission,
@@ -52,3 +53,12 @@ export {
   type SubmitRecoveryOptions,
 } from "./utils.submit-recovery-options.js";
 export { submitSignedTxWithRecovery } from "./utils.submit-signed-tx-with-recovery.js";
+export {
+  readTxExpiry,
+  rebuildOnTxExpiry,
+  type SignedTxExpiryFacts,
+  signedTxExpiryFacts,
+  txExpiredCounter,
+  TxExpiredError,
+  type TxExpiryRead,
+} from "./utils.tx-expiry.js";

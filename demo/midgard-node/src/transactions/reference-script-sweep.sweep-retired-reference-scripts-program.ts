@@ -33,6 +33,7 @@ import {
 import {
   handleSignSubmit,
   TxConfirmError,
+  TxExpiredError,
   TxSignError,
   TxSubmitError,
 } from "./utils.js";
@@ -66,6 +67,7 @@ type ReferenceScriptSweepError =
   | SDK.StateQueueError
   | SDK.LucidError
   | TxConfirmError
+  | TxExpiredError
   | TxSignError
   | TxSubmitError;
 

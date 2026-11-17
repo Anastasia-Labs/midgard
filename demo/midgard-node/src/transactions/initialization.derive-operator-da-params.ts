@@ -18,7 +18,12 @@ import {
   validatedPackedSet,
 } from "./initialization.atomic-protocol-init-reference-scripts-from-publications.js";
 import { ensureNodeRuntimeReferenceScriptsProgram } from "./reference-scripts.js";
-import { TxConfirmError, TxSignError, TxSubmitError } from "./utils.js";
+import {
+  TxConfirmError,
+  TxExpiredError,
+  TxSignError,
+  TxSubmitError,
+} from "./utils.js";
 
 /**
  * Builds the `DaParamsDatum` this node writes at protocol initialization.
@@ -177,6 +182,7 @@ export const ensureAtomicProtocolInitReferenceScriptsProgram = (
   | SDK.StateQueueError
   | SDK.LucidError
   | TxConfirmError
+  | TxExpiredError
   | TxSignError
   | TxSubmitError,
   IntentJournal

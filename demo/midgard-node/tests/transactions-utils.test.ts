@@ -6,4 +6,5 @@ import "./transactions-utils.parse-outside-validity-interval-details.js";
 import "./transactions-utils.validity-window-submit-recovery.js";
 import "./transactions-utils.fake-sign-builder.js";
 import "./transactions-utils.sign-submit-wrapper-recovery-options.js";
+import "./transactions-utils.confirmation-outcomes.js";
 import "./transactions-utils.durable-signed-intent-handoff.js";

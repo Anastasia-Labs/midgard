@@ -40,11 +40,15 @@ const fixture = (datumMode: "none" | "inline" | "hash" = "none") => {
   if (datumMode === "inline") visible[0]!.datum = "00";
   if (datumMode === "hash") visible[0]!.datumHash = datumHash;
   const utxosByOutRef = vi.fn(async () => visible.slice(0, 2));
-  const awaitTxConfirmation = vi.fn(async () => ({ txHash }));
+  const transactionStatus = vi.fn(async () => ({
+    status: "confirmed" as const,
+    txHash,
+    confirmation: { txHash },
+  }));
   const overrideUTxOs = vi.fn();
   const lucid = {
     config: () => ({ provider: undefined }),
-    awaitTxConfirmation,
+    transactionStatus,
     utxosByOutRef,
     // Even an already populated wallet override cannot satisfy provider readiness.
     wallet: () => ({ getUtxos: async () => visible, overrideUTxOs }),
@@ -73,7 +77,7 @@ const fixture = (datumMode: "none" | "inline" | "hash" = "none") => {
   return {
     visible,
     utxosByOutRef,
-    awaitTxConfirmation,
+    transactionStatus,
     overrideUTxOs,
     txHash,
     run,
@@ -128,7 +132,7 @@ describe("required transaction output visibility", () => {
     expect(f.overrideUTxOs).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     expect(await result).toMatchObject({ _tag: "Right", right: f.txHash });
-    expect(f.awaitTxConfirmation).toHaveBeenCalledTimes(1);
+    expect(f.transactionStatus).toHaveBeenCalledTimes(1);
   });
 
   it.each(["inline", "hash"] as const)(

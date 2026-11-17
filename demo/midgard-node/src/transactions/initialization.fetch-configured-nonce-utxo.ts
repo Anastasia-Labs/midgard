@@ -27,6 +27,7 @@ import {
 import {
   handleSignSubmit,
   TxConfirmError,
+  TxExpiredError,
   TxSignError,
   TxSubmitError,
 } from "./utils.js";
@@ -104,7 +105,11 @@ export const completeAndSubmit = (
   ) => Effect.Effect<void, SDK.LucidError>,
 ): Effect.Effect<
   string,
-  SDK.LucidError | TxConfirmError | TxSignError | TxSubmitError,
+  | SDK.LucidError
+  | TxConfirmError
+  | TxExpiredError
+  | TxSignError
+  | TxSubmitError,
   IntentJournal
 > =>
   Effect.gen(function* () {

@@ -24,6 +24,7 @@ import { observedLedgerTip } from "./transactions/ledger-tip-lower-bound.js";
 import {
   handleSignSubmit,
   TxConfirmError,
+  TxExpiredError,
   TxSignError,
 } from "./transactions/utils.js";
 import { readSelectedWalletViewInputs } from "./transactions/utils.wallet-view.js";
@@ -106,6 +107,7 @@ export const submitGenesisDeposits: Effect.Effect<
   | GenesisDepositError
   | TxSubmitError
   | TxConfirmError
+  | TxExpiredError
   | TxSignError,
   MidgardContracts | Lucid | NodeConfig | IntentJournal
 > = Effect.gen(function* () {

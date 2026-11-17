@@ -32,6 +32,7 @@ import {
 } from "../transactions/state-queue/merge-to-confirmed-state.js";
 import {
   TxConfirmError,
+  TxExpiredError,
   TxSignError,
   TxSubmitError,
 } from "../transactions/utils.js";
@@ -66,6 +67,7 @@ export const mergeActionWithL1ControlPlaneHeld = (
   | SDK.CborSerializationError
   | DatabaseError
   | TxConfirmError
+  | TxExpiredError
   | TxSubmitError
   | TxSignError,
   Lucid | MidgardContracts | Database | Globals | NodeConfig | IntentJournal

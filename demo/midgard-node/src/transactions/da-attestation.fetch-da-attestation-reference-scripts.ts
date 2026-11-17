@@ -19,6 +19,7 @@ import {
 import {
   handleSignSubmit,
   TxConfirmError,
+  TxExpiredError,
   TxSignError,
   TxSubmitError,
 } from "./utils.js";
@@ -107,7 +108,7 @@ export const submitCompletedTx = (
   intent: SubmissionIntent,
 ): Effect.Effect<
   string,
-  TxConfirmError | TxSignError | TxSubmitError,
+  TxConfirmError | TxExpiredError | TxSignError | TxSubmitError,
   IntentJournal
 > => handleSignSubmit(lucid, tx, intent);
 
