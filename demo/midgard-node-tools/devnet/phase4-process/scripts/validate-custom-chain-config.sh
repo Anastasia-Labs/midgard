@@ -12,13 +12,15 @@ config=$2
 [ -f "$shelley_genesis" ] || die "Shelley genesis is missing: $shelley_genesis"
 [ -f "$config" ] || die "node config is missing: $config"
 
-# Consensus parameters come from the verified Preprod profile. Snapshot recovery
-# must respect this chain; it may not extend consensus horizons for convenience.
+# Consensus parameters come from the verified Preprod profile with the isolated
+# chain's overlay applied, as generate.sh applies it. Snapshot recovery must
+# respect this chain; it may not extend consensus horizons for convenience.
 profile="$script_dir/../../preprod/configuration.json"
-expected_slot_length=$(jq -er '.consensus.slotLength' "$profile")
-expected_active_slots_coeff=$(jq -er '.consensus.activeSlotsCoeff' "$profile")
-expected_security_param=$(jq -er '.consensus.securityParam' "$profile")
-expected_epoch_length=$(jq -er '.consensus.epochLength' "$profile")
+consensus=$(jq -ec '.consensus + .isolatedChain.consensus' "$profile")
+expected_slot_length=$(printf '%s' "$consensus" | jq -er '.slotLength')
+expected_active_slots_coeff=$(printf '%s' "$consensus" | jq -er '.activeSlotsCoeff')
+expected_security_param=$(printf '%s' "$consensus" | jq -er '.securityParam')
+expected_epoch_length=$(printf '%s' "$consensus" | jq -er '.epochLength')
 
 slot_length=$(jq -er '.slotLength | select(type == "number" and . == floor)' "$shelley_genesis") \
   || die "Shelley slotLength must be an integer"

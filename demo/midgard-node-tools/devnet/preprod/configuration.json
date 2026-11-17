@@ -22,9 +22,10 @@
     "updateQuorum": 5
   },
   "isolatedChain": {
-    "reason": "Applied over consensus for the isolated single-pool chain only. Its one operational certificate is never reissued, and Preprod's 36-hour KES period would stop its block production 93 days after genesis; 60-day periods let the key forge for ten years.",
+    "reason": "Applied over consensus for the isolated single-pool chain only. Its one operational certificate is never reissued, and Preprod's 36-hour KES period would stop its block production 93 days after genesis; 60-day periods let the key forge for ten years. An active-slot coefficient of 1/4 gives a 4 s mean block gap instead of Preprod's 20 s, so local runs wait less for blocks; every deployment profile still assumes f = 0.05, a chain-growth bound that faster blocks satisfy.",
     "consensus": {
-      "slotsPerKESPeriod": 5184000
+      "slotsPerKESPeriod": 5184000,
+      "activeSlotsCoeff": 0.25
     }
   },
   "protocolParameters": {

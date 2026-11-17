@@ -4,6 +4,19 @@ import { join } from "node:path";
 
 import preprod from "../preprod/configuration.json" with { type: "json" };
 
+const gcd = (a: bigint, b: bigint): bigint => (b === 0n ? a : gcd(b, a % b));
+
+/** A plain decimal such as 0.25 in Ogmios's reduced-ratio spelling, "1/4". */
+const ogmiosRatio = (decimal: number): string => {
+  const match = /^(\d+)(?:\.(\d+))?$/.exec(String(decimal));
+  assert(match, `Not a plain decimal: ${String(decimal)}`);
+  const fraction = match[2] ?? "";
+  const numerator = BigInt(match[1] + fraction);
+  const denominator = 10n ** BigInt(fraction.length);
+  const divisor = gcd(numerator, denominator);
+  return `${numerator / divisor}/${denominator / divisor}`;
+};
+
 /** Compare the running ledger, including every cost-model entry, before spending. */
 export async function verifyJourneyConfiguration(input: {
   runDirectory: string;
@@ -63,10 +76,10 @@ export async function verifyJourneyConfiguration(input: {
   const expectedGenesis = {
     startTime: genesis.systemStart,
     networkMagic: genesis.networkMagic,
-    slotLength: { milliseconds: preprod.consensus.slotLength * 1000 },
-    activeSlotsCoefficient: "1/20",
-    epochLength: preprod.consensus.epochLength,
-    securityParameter: preprod.consensus.securityParam,
+    slotLength: { milliseconds: consensus.slotLength * 1000 },
+    activeSlotsCoefficient: ogmiosRatio(consensus.activeSlotsCoeff),
+    epochLength: consensus.epochLength,
+    securityParameter: consensus.securityParam,
     slotsPerKesPeriod: consensus.slotsPerKESPeriod,
     maxKesEvolutions: consensus.maxKESEvolutions,
     maxLovelaceSupply: preprod.consensus.maxLovelaceSupply,

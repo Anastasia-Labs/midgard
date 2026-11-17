@@ -11,7 +11,7 @@ const validator = join(root, "scripts/validate-custom-chain-config.sh");
 
 const validGenesis = (override = {}) => ({
   slotLength: 1,
-  activeSlotsCoeff: 0.05,
+  activeSlotsCoeff: 0.25,
   securityParam: 2160,
   epochLength: 432000,
   protocolParams: { protocolVersion: { major: 11, minor: 0 } },
@@ -77,9 +77,14 @@ test("custom Conway config rejects the former five-minute forecast horizon", () 
 for (const [label, override, expectedError] of [
   ["two-second slots", { slotLength: 2 }, /slotLength must be 1; found 2/],
   [
+    "Preprod's own active-slot coefficient instead of the isolated overlay",
+    { activeSlotsCoeff: 0.05 },
+    /activeSlotsCoeff must be 0.25; found 0.05/,
+  ],
+  [
     "artificial deterministic block production",
     { activeSlotsCoeff: 1 },
-    /activeSlotsCoeff must be 0.05; found 1/,
+    /activeSlotsCoeff must be 0.25; found 1/,
   ],
 ]) {
   test(`custom Conway config rejects ${label}`, () => {
