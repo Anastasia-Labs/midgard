@@ -39,6 +39,7 @@ import {
   SDK,
 } from "./deposit-flow-emulator-shared.js";
 import { dropPendingEmulatorTransaction } from "./helpers/emulator-rollback.js";
+import { assertRefusedMergeFoldsNothing } from "./helpers/merge-confirmation-refused.js";
 import { assertLandedMergeFoldedByProcessing } from "./helpers/merge-landed-finalization-folded-by-processing.js";
 import { assertMergeWaitsForLedgerTip } from "./helpers/merge-trailing-ledger-tip.js";
 import { openProductionLifecycle } from "./helpers/production-lifecycle.js";
@@ -264,18 +265,26 @@ const openMergeLifecycle = async () => {
     }
     throw new Error("Merge did not submit after three rounds");
   };
-  // The Lucid service with its L1 client's confirmation wait replaced.
+  // The Lucid service with its L1 client's confirmation wait replaced, and
+  // its status read too when `transactionStatus` is given.
   const withConfirmationWait = (
     awaitTx: (
       txHash: string,
       land: LucidEvolution["awaitTx"],
     ) => Promise<boolean>,
+    transactionStatus?: (
+      txHash: string,
+      read: LucidEvolution["transactionStatus"],
+    ) => ReturnType<LucidEvolution["transactionStatus"]>,
   ) => {
     const api = new Proxy(lucidService.api, {
       get(target, property) {
         if (property === "awaitTx")
           return (txHash: string) =>
             awaitTx(txHash, target.awaitTx.bind(target));
+        if (property === "transactionStatus" && transactionStatus !== undefined)
+          return (txHash: string) =>
+            transactionStatus(txHash, target.transactionStatus.bind(target));
         const value = Reflect.get(target, property, target);
         return typeof value === "function" ? value.bind(target) : value;
       },
@@ -285,8 +294,10 @@ const openMergeLifecycle = async () => {
 
   // A merge of the oldest block that the node stops waiting on: the node
   // stops while the submitted merge awaits its L1 confirmation, so the
-  // attempt ends unconfirmed with nothing folded. (A bounded transaction's
-  // wait does not end on its own before its bound is settled.) The merge
+  // attempt ends unconfirmed with nothing folded. The stop is an
+  // interruption: the merge carries no upper validity bound, so its wait
+  // ends on its own only at the confirmation budget or on a status answer,
+  // and in this harness the status read sees the merge land first. The merge
   // then leaves the mempool (the emulator, unlike a real provider, hides a
   // pending transaction's inputs), so L1 has not taken it; the signed merge
   // is returned to hand to L1 again.
@@ -427,6 +438,15 @@ it("folds a merge that lands after the node stopped awaiting its confirmation, a
     await expectFinalizedOnce(m, block);
     await m.h.synchronize();
     await expectFinalizedOnce(m, block);
+  } finally {
+    await m.close();
+  }
+});
+
+it("fails a merge whose transaction L1 reports failed as a merge that did not confirm, and folds nothing", async () => {
+  const m = await openMergeLifecycle();
+  try {
+    await assertRefusedMergeFoldsNothing(m);
   } finally {
     await m.close();
   }
