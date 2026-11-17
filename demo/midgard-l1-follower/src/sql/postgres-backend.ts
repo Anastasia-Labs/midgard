@@ -242,6 +242,9 @@ export const openPostgresBackend = (
         discard(new Error("the transaction was aborted"));
       };
       signal?.addEventListener("abort", abandon, { once: true });
+      // An abort between the connection's arrival and here fired with no
+      // listener to hear it.
+      if (signal?.aborted === true) abandon();
       try {
         await client.query(
           mode === "read"
