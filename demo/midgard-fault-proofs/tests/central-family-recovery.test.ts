@@ -16,7 +16,10 @@ import { WITNESS_SCRIPT_DECODING_CURSOR_SPEC } from "../src/witness-script-decod
 import type { CursorFamilySpec } from "../src/workflow/cursor-family-state.js";
 import type { InstalledFraudProofCategory } from "../src/workflow/installed-categories.js";
 import { workflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
-import { runRegisteredFamilyReconciliation } from "./support/bound-family-recovery-fixture.js";
+import {
+  prepareRegisteredFamilyReconciliation,
+  runRegisteredFamilyReconciliation,
+} from "./support/bound-family-recovery-fixture.js";
 import {
   customWorkflowRecoveryFixture as fixture,
   verifyTerminalRecoveryFinality,
@@ -76,8 +79,16 @@ for (const spec of specs) {
   });
   it(`${spec.category}: rollback revokes readonly recovery before observation`, async () => {
     const f = await fixture(spec);
+    f.advance();
+    // The invocation is ready before the rollback lands, so the runner is
+    // the one that refuses it.
+    const resume = prepareRegisteredFamilyReconciliation(f);
+    const recorded = await f.store.load(f.workflowId);
     f.controller.revoke("native_chain_rollback");
-    await expect(run(f)).rejects.toThrow("revoked");
+    await expect(resume()).rejects.toThrow(
+      "production workflow actuation revoked before runner_start: native_chain_rollback",
+    );
+    expect(await f.store.load(f.workflowId)).toEqual(recorded);
     expect(f.observeHeader).not.toHaveBeenCalled();
   });
   // Drives the shared cursor adapter the fixture builds over this family's

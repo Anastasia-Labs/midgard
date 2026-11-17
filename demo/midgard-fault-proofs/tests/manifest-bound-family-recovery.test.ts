@@ -32,7 +32,7 @@ import {
 } from "../src/workflow/release-finality-policy.js";
 import { runRegisteredFamilyReconciliation } from "./support/bound-family-recovery-fixture.js";
 import { customWorkflowRecoveryFixture } from "./support/custom-workflow-recovery.js";
-import { reconcileThroughRunner } from "./support/reconcile-through-runner.js";
+import { prepareReconcileThroughRunner } from "./support/reconcile-through-runner.js";
 import { terminalVerifierOf } from "./support/terminal-verifier.js";
 
 const hash = (byte: string) => byte.repeat(32);
@@ -171,8 +171,10 @@ const recovery = async (needsAnotherAction = false) => {
             reason: "awaiting canonical terminal evidence",
           } as const),
   };
-  const run = (surface: { adapter?: FraudProofFamilyWorkflowAdapter } = {}) =>
-    reconcileThroughRunner({
+  const prepare = (
+    surface: { adapter?: FraudProofFamilyWorkflowAdapter } = {},
+  ) =>
+    prepareReconcileThroughRunner({
       category,
       deploymentFingerprint,
       headerHash,
@@ -189,7 +191,18 @@ const recovery = async (needsAnotherAction = false) => {
         ...surface,
       },
     });
-  return { store, adapter, run, workflowId, controller, forbidden, reconcile };
+  const run = (surface: { adapter?: FraudProofFamilyWorkflowAdapter } = {}) =>
+    prepare(surface)();
+  return {
+    store,
+    adapter,
+    prepare,
+    run,
+    workflowId,
+    controller,
+    forbidden,
+    reconcile,
+  };
 };
 
 it.each([false, true])(
@@ -221,8 +234,15 @@ it.each([false, true])(
 
 it("refuses reconciliation after actual rollback revokes the permit", async () => {
   const fixture = await recovery();
+  // The invocation is ready before the rollback lands, so the runner is the
+  // one that refuses it.
+  const resume = fixture.prepare();
+  const recorded = await fixture.store.load(fixture.workflowId);
   fixture.controller.revoke("native_chain_rollback");
-  await expect(fixture.run()).rejects.toThrow("revoked");
+  await expect(resume()).rejects.toThrow(
+    "production workflow actuation revoked before runner_start: native_chain_rollback",
+  );
+  expect(await fixture.store.load(fixture.workflowId)).toEqual(recorded);
   expect(fixture.reconcile).not.toHaveBeenCalled();
 });
 

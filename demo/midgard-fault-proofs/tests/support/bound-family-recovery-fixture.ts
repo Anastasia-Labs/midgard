@@ -207,7 +207,7 @@ const scriptDecodeReferences = (): Readonly<Record<string, UTxO>> => {
  * Only the manifest binding, the reference-script UTxOs and the L1
  * observation port are stood in for.
  */
-export const runRegisteredFamilyReconciliation = async (
+export const prepareRegisteredFamilyReconciliation = (
   input: RecoveryFixture,
   {
     rollbackGeneration = "0",
@@ -218,90 +218,103 @@ export const runRegisteredFamilyReconciliation = async (
      * claim; the fixture's permit admitted `input.decision`. */
     decisionDigest?: string;
   }> = {},
-): Promise<FraudProofWorkflowRunResult> => {
+): (() => Promise<FraudProofWorkflowRunResult>) => {
   const { binding } = input.workflow;
   const { category, headerHash } = binding.definition;
-  const stepCount = familyStepContractNames(
-    FAMILY_APPLICATION_REGISTRY[category].definition!,
-  ).length;
-  const { grammar, restore } = standInFamilyDeployment(input.workflow, {
-    // The chain the family's constructor lays its contracts out from.
-    resolvedContracts: {
-      contracts: {
-        [category]: {
-          steps: Array.from({ length: stepCount }, () => ({})),
-        },
-        computationThread: {},
-        fraudProof: {},
-      },
-      // The queue a decision-digest family removes the faulty header from.
-      stateQueuePolicyId: "77".repeat(28),
-    },
-    contractEntries: { hubOracleMint: { scriptHash: "66".repeat(28) } },
-    definition: {
-      ...binding.definition,
-      stateQueue: { policyId: "77".repeat(28) },
-    },
-  });
-  try {
-    const published: Readonly<Record<string, UTxO>> = {
-      ...scriptDecodeReferences(),
-      ...(grammar === undefined
-        ? {}
-        : { fieldGrammarCertificateSpend: grammar.reference }),
-    };
-    const { deploymentFingerprint } = binding;
-    const runner = WORKFLOW_RUNNER_FACTORIES[category](async () => ({
-      schemaVersion: WORKFLOW_RUNTIME_CONFIG,
-      infrastructure: familyCommonInfrastructureForTest(
-        { headerHash, decisionDigest },
-        {
-          signer: signer as never,
-          stateQueueMutationLeaseCoordinator: input.workflow
-            .stateQueueMutationLeaseCoordinator as never,
-        },
-      ),
-      resolveReferenceScript: async ({ contractName }) =>
-        published[contractName] ?? reference,
-      // Reconciliation reads no retained DA.
-      retainedDaSources: [
-        new DaLibp2pRetainedDaSource({
-          deploymentFingerprint,
-          peers: [{ peerId: "12D3KooWreconciliationOnly" }],
-          transport: {
-            request: async () => {
-              throw new Error("reconciliation fetched retained DA");
-            },
-          },
-        }),
-      ],
-      close: async () => undefined,
-    }));
-    return (await runner.runOrResume({
-      mode: "resume",
+  const { deploymentFingerprint } = binding;
+  // Reserved now, as the host does before it invokes the runner: a permit
+  // revoked after this point is refused by the runner itself.
+  const fundingReservationPermit =
+    unsafeCreateWorkflowFundingReservationPermitForTest({
       category,
-      deploymentFingerprint,
-      headerHash,
-      decisionDigest,
       actuationPermit: input.controller.permit,
-      fundingReservationPermit:
-        unsafeCreateWorkflowFundingReservationPermitForTest({
-          category,
-          actuationPermit: input.controller.permit,
-          deploymentFingerprint,
-          // Funding is reserved under the decision the permit admitted.
-          decisionDigest: input.decision.decisionDigest,
-          rollbackGeneration,
-        }),
-      // A fresh view of the saved journal: each run binds its own.
-      journal: {
-        load: async (workflowId: string) => await input.store.load(workflowId),
-        append: async (...entry: Parameters<typeof input.store.append>) =>
-          await input.store.append(...entry),
+      deploymentFingerprint,
+      // Funding is reserved under the decision the permit admitted.
+      decisionDigest: input.decision.decisionDigest,
+      rollbackGeneration,
+    });
+  return async () => {
+    const stepCount = familyStepContractNames(
+      FAMILY_APPLICATION_REGISTRY[category].definition!,
+    ).length;
+    const { grammar, restore } = standInFamilyDeployment(input.workflow, {
+      // The chain the family's constructor lays its contracts out from.
+      resolvedContracts: {
+        contracts: {
+          [category]: {
+            steps: Array.from({ length: stepCount }, () => ({})),
+          },
+          computationThread: {},
+          fraudProof: {},
+        },
+        // The queue a decision-digest family removes the faulty header from.
+        stateQueuePolicyId: "77".repeat(28),
       },
-      runtimeConfigPath: "/fixture/reconciliation-runtime.json",
-    })) as FraudProofWorkflowRunResult;
-  } finally {
-    restore();
-  }
+      contractEntries: { hubOracleMint: { scriptHash: "66".repeat(28) } },
+      definition: {
+        ...binding.definition,
+        stateQueue: { policyId: "77".repeat(28) },
+      },
+    });
+    try {
+      const published: Readonly<Record<string, UTxO>> = {
+        ...scriptDecodeReferences(),
+        ...(grammar === undefined
+          ? {}
+          : { fieldGrammarCertificateSpend: grammar.reference }),
+      };
+      const runner = WORKFLOW_RUNNER_FACTORIES[category](async () => ({
+        schemaVersion: WORKFLOW_RUNTIME_CONFIG,
+        infrastructure: familyCommonInfrastructureForTest(
+          { headerHash, decisionDigest },
+          {
+            signer: signer as never,
+            stateQueueMutationLeaseCoordinator: input.workflow
+              .stateQueueMutationLeaseCoordinator as never,
+          },
+        ),
+        resolveReferenceScript: async ({ contractName }) =>
+          published[contractName] ?? reference,
+        // Reconciliation reads no retained DA.
+        retainedDaSources: [
+          new DaLibp2pRetainedDaSource({
+            deploymentFingerprint,
+            peers: [{ peerId: "12D3KooWreconciliationOnly" }],
+            transport: {
+              request: async () => {
+                throw new Error("reconciliation fetched retained DA");
+              },
+            },
+          }),
+        ],
+        close: async () => undefined,
+      }));
+      return (await runner.runOrResume({
+        mode: "resume",
+        category,
+        deploymentFingerprint,
+        headerHash,
+        decisionDigest,
+        actuationPermit: input.controller.permit,
+        fundingReservationPermit,
+        // A fresh view of the saved journal: each run binds its own.
+        journal: {
+          load: async (workflowId: string) =>
+            await input.store.load(workflowId),
+          append: async (...entry: Parameters<typeof input.store.append>) =>
+            await input.store.append(...entry),
+        },
+        runtimeConfigPath: "/fixture/reconciliation-runtime.json",
+      })) as FraudProofWorkflowRunResult;
+    } finally {
+      restore();
+    }
+  };
 };
+
+/** Prepares and at once runs a registered family's reconciliation. */
+export const runRegisteredFamilyReconciliation = async (
+  input: RecoveryFixture,
+  options?: Parameters<typeof prepareRegisteredFamilyReconciliation>[1],
+): Promise<FraudProofWorkflowRunResult> =>
+  await prepareRegisteredFamilyReconciliation(input, options)();

@@ -26,7 +26,7 @@ import {
  * record supplies the family's recovery surface; fresh execution and retained
  * DA are refused.
  */
-export const reconcileThroughRunner = async ({
+export const prepareReconcileThroughRunner = ({
   category,
   deploymentFingerprint,
   headerHash,
@@ -46,7 +46,17 @@ export const reconcileThroughRunner = async ({
     terminalVerifier: FraudProofWorkflowTerminalVerifier;
     releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
   }>;
-}>): Promise<FraudProofWorkflowRunResult> => {
+}>): (() => Promise<FraudProofWorkflowRunResult>) => {
+  // Reserved now, as the host does before it invokes the runner: a permit
+  // revoked after this point is refused by the runner itself.
+  const fundingReservationPermit =
+    unsafeCreateWorkflowFundingReservationPermitForTest({
+      category,
+      actuationPermit: permit,
+      deploymentFingerprint,
+      decisionDigest,
+      rollbackGeneration: "0",
+    });
   const runner = createManifestBoundWorkflowRunner({
     record: defineFamilyApplication({
       category,
@@ -88,27 +98,27 @@ export const reconcileThroughRunner = async ({
       close: async () => undefined,
     }),
   });
-  return (await runner.runOrResume({
-    mode: "resume",
-    category,
-    deploymentFingerprint,
-    headerHash,
-    decisionDigest,
-    actuationPermit: permit,
-    fundingReservationPermit:
-      unsafeCreateWorkflowFundingReservationPermitForTest({
-        category,
-        actuationPermit: permit,
-        deploymentFingerprint,
-        decisionDigest,
-        rollbackGeneration: "0",
-      }),
-    // A fresh view of the saved journal: each run binds its own.
-    journal: {
-      load: async (workflowId: string) => await store.load(workflowId),
-      append: async (...entry: Parameters<typeof store.append>) =>
-        await store.append(...entry),
-    },
-    runtimeConfigPath: "/fixture/reconciliation-runtime.json",
-  })) as FraudProofWorkflowRunResult;
+  return async () =>
+    (await runner.runOrResume({
+      mode: "resume",
+      category,
+      deploymentFingerprint,
+      headerHash,
+      decisionDigest,
+      actuationPermit: permit,
+      fundingReservationPermit,
+      // A fresh view of the saved journal: each run binds its own.
+      journal: {
+        load: async (workflowId: string) => await store.load(workflowId),
+        append: async (...entry: Parameters<typeof store.append>) =>
+          await store.append(...entry),
+      },
+      runtimeConfigPath: "/fixture/reconciliation-runtime.json",
+    })) as FraudProofWorkflowRunResult;
 };
+
+/** Prepares and at once runs a saved workflow's reconciliation. */
+export const reconcileThroughRunner = async (
+  ...input: Parameters<typeof prepareReconcileThroughRunner>
+): Promise<FraudProofWorkflowRunResult> =>
+  await prepareReconcileThroughRunner(...input)();
