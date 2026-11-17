@@ -15,7 +15,7 @@ import {
 import * as MigrationRunner from "../../src/database/migrations/runner.js";
 import { splitSqlStatements } from "../../src/database/migrations/runner.js";
 import { ownBlockStatusSql } from "../../src/database/pendingBlockFinalizations.status-sql.js";
-import { Frontier, insertRow } from "../../src/landed-blocks/store.js";
+import { frontierTableName, insertRow } from "../../src/landed-blocks/store.js";
 import { BatchSql } from "../../src/services/database.js";
 import { landedRow } from "../landed-blocks-rebase.fixture.js";
 import { testDatabaseName } from "../test-env.js";
@@ -103,13 +103,15 @@ export const insertJob = (headerHash: string, status: "running" | "failed") =>
 
 /**
  * Every journal's commit anchor on the follower's chain and its base the
- * landed frontier, so only its commit can make it dead.
+ * landed frontier, so only its commit can make it dead. The frontier row is
+ * written as a node at version 36 wrote it: the table had no generation yet.
  */
 export const anchorAndBaseOnChain = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   yield* sql`INSERT INTO l1_blocks (slot, hash, height, parent_hash, qualifying_tx_count)
     VALUES (${ANCHOR.slot}, ${ANCHOR.hash}, ${ANCHOR.height}, NULL, 0)`;
-  yield* Frontier.upsert({ headerHash: BASE, utxosRoot: ZERO_ROOT });
+  yield* sql`INSERT INTO ${sql(frontierTableName)} (id, header_hash, utxos_root)
+    VALUES (true, ${Buffer.from(BASE, "hex")}, ${ZERO_ROOT})`;
 });
 
 /** A landed row the working ledger took in; a removed row always is. */
