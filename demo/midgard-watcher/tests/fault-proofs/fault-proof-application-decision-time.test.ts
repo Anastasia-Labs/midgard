@@ -373,9 +373,9 @@ describe("watcher decision-time predecessor ledger", () => {
     typeof unsafeCreateWatcherFaultProofApplicationForTest
   >;
 
-  beforeAll(() => {
-    deps = dependencies();
-    application = unsafeCreateWatcherFaultProofApplicationForTest(
+  /** Starts the application, as each watcher process does. */
+  const start = () =>
+    unsafeCreateWatcherFaultProofApplicationForTest(
       {
         l1: testFaultProofL1(),
         watcherConfig: admittedWatcherConfig(),
@@ -388,6 +388,10 @@ describe("watcher decision-time predecessor ledger", () => {
         MIDGARD_WATCHER_PROVER_KEY: "word ".repeat(24).trim(),
       },
     );
+
+  beforeAll(() => {
+    deps = dependencies();
+    application = start();
   });
 
   afterAll(async () => {
@@ -560,6 +564,28 @@ describe("watcher decision-time predecessor ledger", () => {
       await expect(applyRecordFor(category)).rejects.toThrow(
         `${category} application requires replayContext, which the host did not supply`,
       );
+    },
+  );
+
+  it.each(REPLAY_CONTEXT_FAMILIES)(
+    "hands a restarted %s runner its replay context once recovery classifies the header again",
+    async (category) => {
+      const decided = issue(category, PREDECESSOR_CONTEXT);
+      await expect(classify(decided)).resolves.toBe(decided);
+      await expect(applyRecordFor(category)).resolves.toBeDefined();
+      // The context lived in the stopped process's memory only.
+      await application.close();
+      application = start();
+      await expect(applyRecordFor(category)).rejects.toThrow(
+        `${category} application requires replayContext, which the host did not supply`,
+      );
+      // Recovery classifies every queued header of a fresh process again,
+      // and the same header and evidence seal the same decision digest.
+      const reclassified = issue(category, PREDECESSOR_CONTEXT);
+      expect(reclassified.decisionDigest).toBe(decided.decisionDigest);
+      await expect(classify(reclassified)).resolves.toBe(reclassified);
+      await expect(applyRecordFor(category)).resolves.toBeDefined();
+      application.retainDecisionAuthorities(null);
     },
   );
 

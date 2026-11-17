@@ -145,6 +145,34 @@ describe("fault decision bridge durable evidence", () => {
     ]);
   });
 
+  it("classifies a journaled transitionTrace fault again on a fresh process's recovery and dispatches that decision", async () => {
+    const current = observation([headerFixture("01")]);
+    const [header] = current.finalizedHeaders;
+    const journaled = decision(header!.headerHash, "transitionTrace");
+    // A restarted watcher: the journal holds the decision, the process holds
+    // no target, no admitted decision and no replay context.
+    const h = harness({
+      current,
+      categoryByHeader: { [header!.headerHash]: "transitionTrace" },
+      records: [record(journaled, 0)],
+    });
+    await h.bridge.prepareForRecovery(current);
+    expect(await h.bridge.recoverExisting()).toBe(1);
+    // Recovery runs the classifier, which installs the replay context, before
+    // the supervisor is asked to progress the fault.
+    expect(h.application.classifyHeader).toHaveBeenCalledTimes(1);
+    const [classified] = h.application.classifyHeader.mock.results;
+    const fresh = (await classified!.value) as HeaderDecision;
+    expect(fresh.decisionDigest).toBe(journaled.decisionDigest);
+    expect(h.retainedDecisionAuthorities.at(-1)).toBe(fresh.decisionDigest);
+    // The journal answers an equal digest with the record it already holds.
+    expect(h.appended).toHaveLength(1);
+    expect(h.appended[0]).toBe(fresh);
+    expect(h.progressRequests).toHaveLength(1);
+    expect(h.progressRequests[0]!.fault?.decision).toBe(fresh);
+    expect(h.progressRequests[0]!.fault?.decision).not.toBe(journaled);
+  });
+
   it("supersedes a journaled withdrawalMistag with a fresh doubleWithdraw and dispatches it", async () => {
     const current = observation([headerFixture("01")]);
     const [header] = current.finalizedHeaders;
