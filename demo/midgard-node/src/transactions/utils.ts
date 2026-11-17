@@ -54,7 +54,6 @@ export {
 } from "./utils.submit-recovery-options.js";
 export { submitSignedTxWithRecovery } from "./utils.submit-signed-tx-with-recovery.js";
 export {
-  readTxExpiry,
   rebuildOnTxExpiry,
   type SignedTxExpiryFacts,
   signedTxExpiryFacts,

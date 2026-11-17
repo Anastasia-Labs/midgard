@@ -81,8 +81,9 @@ type OperatorLifecycleError =
  * Registers and/or activates the operator. A step whose transaction expired
  * unconfirmed runs the lifecycle again (bounded by `rebuildOnTxExpiry`): the
  * rerun re-reads the operator directory, skips the steps that landed and
- * rebuilds the rest. The expired transaction's inputs were all unspent once
- * the tip passed its bound, so it can never land beside the rebuild.
+ * rebuilds the rest. Each rebuilt step spends the same directory anchor the
+ * expired transaction spent, so even a rollback deeper than the depth its
+ * expiry was settled at lets at most one of the two land.
  */
 export const operatorLifecycleProgram = (
   lucid: LucidEvolution,

@@ -357,6 +357,11 @@ export const buildAtomicProtocolInitTxProgram = (
  * reward accounts and returns that deployment's initialization transaction.
  * An attempt (or a reward-account registration) that expired unconfirmed
  * runs the program once more from fresh chain state (`rebuildOnTxExpiry`).
+ * The init rebuild spends the same nonce. The wallet-only transactions
+ * before it (reference-script publication, reward-account registration) may
+ * pick other coins when rebuilt, so a rollback deeper than the confirmation
+ * depth their expiry was settled at could land both: a duplicate
+ * publication, whose ADA the reference-script sweep recovers.
  */
 export const program = (
   runStatePath: string = defaultDeploymentRunStatePath(),

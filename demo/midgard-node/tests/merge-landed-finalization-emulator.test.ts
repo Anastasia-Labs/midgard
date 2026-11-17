@@ -1,12 +1,11 @@
 import "./helpers/follower-emulator-installed.js";
 
-import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { SqlClient } from "@effect/sql";
 import {
   type LucidEvolution,
   type TxSignBuilder,
 } from "@lucid-evolution/lucid";
-import { Effect, Either, Option } from "effect";
+import { Cause, Effect, Either, Option, Runtime } from "effect";
 import { expect, it, vi } from "vitest";
 
 import {
@@ -44,11 +43,7 @@ import { assertLandedMergeFoldedByProcessing } from "./helpers/merge-landed-fina
 import { assertMergeWaitsForLedgerTip } from "./helpers/merge-trailing-ledger-tip.js";
 import { openProductionLifecycle } from "./helpers/production-lifecycle.js";
 
-// `giveUpConfirmation` makes a merge's L1 confirmation wait give up at its
-// first refusal instead of retrying, so a test can leave a submitted merge
-// unconfirmed.
 const mergeHooks = vi.hoisted(() => ({
-  giveUpConfirmation: false,
   /** Slots the L1 clock runs ahead of the emulator's ledger tip. */
   l1ClockLeadSlots: 0,
 }));
@@ -64,28 +59,10 @@ vi.mock("../src/l1-heads.js", async (importOriginal) => {
     );
   return { ...actual, l1NowUnixTimeMs };
 });
-vi.mock(
-  "../src/transactions/state-queue/merge-to-confirmed-state.capture-merge-local-ledger-gate.js",
-  async (importOriginal) => {
-    const actual =
-      await importOriginal<
-        typeof import("../src/transactions/state-queue/merge-to-confirmed-state.capture-merge-local-ledger-gate.js")
-      >();
-    const mergeSubmitRecoveryOptions: typeof actual.mergeSubmitRecoveryOptions =
-      (...args) => ({
-        ...actual.mergeSubmitRecoveryOptions(...args),
-        ...(mergeHooks.giveUpConfirmation
-          ? { confirmationRetries: 0, confirmationPollIntervalMs: 100 }
-          : {}),
-      });
-    return { ...actual, mergeSubmitRecoveryOptions };
-  },
-);
 
 const Status = PendingBlockFinalizationsDB.OwnBlockStatus;
 
 const openMergeLifecycle = async () => {
-  mergeHooks.giveUpConfirmation = false;
   const initial = await openProductionLifecycle();
   let h: Awaited<ReturnType<typeof initial.restartRuntime>> = initial;
   const { fixture, lucidService } = initial;
@@ -96,6 +73,7 @@ const openMergeLifecycle = async () => {
   const run = <A, E>(
     effect: Effect.Effect<A, E, any>,
     lucid: unknown = lucidService,
+    signal?: AbortSignal,
   ): Promise<A> =>
     Effect.runPromise(
       effect.pipe(
@@ -115,6 +93,7 @@ const openMergeLifecycle = async () => {
         // never goes out unjournaled.
         Effect.provideService(IntentJournal, h.production.journal),
       ) as Effect.Effect<A, E, never>,
+      { signal },
     );
   const sqlRun = <A>(
     statement: (sql: SqlClient.SqlClient) => Effect.Effect<A, unknown, any>,
@@ -254,9 +233,10 @@ const openMergeLifecycle = async () => {
   };
   // A merge attempt through `lucid` over a queue of any length, retried past
   // the merge-submit due work a first attempt may register while the local
-  // ledger catches up.
+  // ledger catches up. `stop` interrupts it, as the node stopping would.
   const mergeUntilSubmitted = async (
     lucid: unknown = lucidService,
+    stop?: AbortSignal,
   ): Promise<Either.Either<MergeActionResult, unknown>> => {
     const mergeConfig = {
       ...h.production.nodeConfig,
@@ -268,6 +248,7 @@ const openMergeLifecycle = async () => {
           mergeAction().pipe(Effect.provideService(NodeConfig, mergeConfig)),
         ),
         lucid,
+        stop,
       );
       if (
         Either.isLeft(result) ||
@@ -302,17 +283,22 @@ const openMergeLifecycle = async () => {
     return { ...lucidService, api };
   };
 
-  // A merge of the oldest block whose L1 confirmation wait gives up:
-  // the submitted merge stays in the emulator's mempool and the attempt
-  // fails unconfirmed, with nothing folded. The merge then leaves the
-  // mempool (the emulator, unlike a real provider, hides a pending
-  // transaction's inputs), so L1 has not taken it; the signed merge is
-  // returned to hand to L1 again.
+  // A merge of the oldest block that the node stops waiting on: the node
+  // stops while the submitted merge awaits its L1 confirmation, so the
+  // attempt ends unconfirmed with nothing folded. (A bounded transaction's
+  // wait does not end on its own before its bound is settled.) The merge
+  // then leaves the mempool (the emulator, unlike a real provider, hides a
+  // pending transaction's inputs), so L1 has not taken it; the signed merge
+  // is returned to hand to L1 again.
   const abandonMergeConfirmation = async (headerHash: string) => {
     let heldTxHash: string | undefined;
     let heldTxCbor: string | undefined;
-    const refusingLucid = withConfirmationWait(async (txHash) => {
-      heldTxHash = txHash;
+    const stop = new AbortController();
+    const stoppingLucid = withConfirmationWait(async (txHash) => {
+      if (heldTxCbor !== undefined) {
+        heldTxHash = txHash;
+        stop.abort();
+      }
       return false;
     });
     const submitThrough = fixture.emulator.submitTx;
@@ -320,20 +306,21 @@ const openMergeLifecycle = async () => {
       heldTxCbor = signedCbor;
       return submitThrough.call(fixture.emulator, signedCbor);
     };
-    mergeHooks.giveUpConfirmation = true;
-    let abandoned: Either.Either<MergeActionResult, unknown>;
+    let abandoned: unknown;
     try {
-      abandoned = await mergeUntilSubmitted(refusingLucid);
+      abandoned = await mergeUntilSubmitted(stoppingLucid, stop.signal).then(
+        () => "returned",
+        (error: unknown) => error,
+      );
     } finally {
-      mergeHooks.giveUpConfirmation = false;
       fixture.emulator.submitTx = submitThrough;
     }
     expect(heldTxHash).toBeDefined();
     expect(heldTxCbor).toBeDefined();
     expect(
-      Either.isLeft(abandoned) &&
-        formatUnknownError(abandoned.left, { includeCause: true }),
-    ).toContain("failed to confirm the merge tx");
+      Runtime.isFiberFailure(abandoned) &&
+        Cause.isInterruptedOnly(abandoned[Runtime.FiberFailureCauseId]),
+    ).toBe(true);
     expect(await ownStatus(headerHash)).toBe(Status.Applied);
     await expectDeposits(headerHash, DepositsDB.Status.Projected);
     dropPendingEmulatorTransaction(fixture.emulator, heldTxHash!);
@@ -367,7 +354,6 @@ const openMergeLifecycle = async () => {
       try {
         await h.close();
       } finally {
-        mergeHooks.giveUpConfirmation = false;
         mergeHooks.l1ClockLeadSlots = 0;
         vi.useRealTimers();
       }
@@ -414,15 +400,15 @@ it("leaves a confirmed merge's fold to landed-block processing, which folds it e
   }
 });
 
-it("folds a merge that lands after its confirmation wait gave up, across a restart, and never before it lands", async () => {
+it("folds a merge that lands after the node stopped awaiting its confirmation, across a restart, and never before it lands", async () => {
   const m = await openMergeLifecycle();
   const { fixture } = m;
   try {
     const block = await m.commitDepositBlock(12_000_000n);
     expect(await m.queuedBlocks()).toBe(1);
 
-    // The confirmation wait gives up; the signed merge is kept to hand to L1
-    // again below.
+    // The node stops while the merge awaits confirmation; the signed merge is
+    // kept to hand to L1 again below.
     const held = await m.abandonMergeConfirmation(block);
     // Not landed: L1 still queues the block, and no driver run folds it.
     expect(await m.queuedBlocks()).toBe(1);

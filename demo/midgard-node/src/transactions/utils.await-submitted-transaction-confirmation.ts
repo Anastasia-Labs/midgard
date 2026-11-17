@@ -1,15 +1,12 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import {
-  isEmulatorProvider,
-  LucidEvolution,
-  TxSignBuilder,
-} from "@lucid-evolution/lucid";
-import { Effect, Metric } from "effect";
+import { LucidEvolution, TxSignBuilder } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 
 import type {
   IntentJournal,
   SubmissionIntent,
 } from "../services/intent-journal.js";
+import { awaitConfirmedOrExpired } from "./utils.await-confirmed-or-expired.js";
 import {
   awaitRequiredOutputVisibility,
   NoInlineSubmitDefer,
@@ -32,17 +29,10 @@ import {
   type SignSubmitLostRace,
   type SignSubmitNoConfirmationResult,
   type SubmitRecoveryInlineOptions,
-  submitRecoveryNow,
   type SubmitRecoveryOptions,
-  submitRecoverySleep,
 } from "./utils.submit-recovery-options.js";
 import { submitSignedTxWithRecovery } from "./utils.submit-signed-tx-with-recovery.js";
-import {
-  readTxExpiry,
-  signedTxExpiryFacts,
-  txExpiredCounter,
-  TxExpiredError,
-} from "./utils.tx-expiry.js";
+import type { TxExpiredError } from "./utils.tx-expiry.js";
 import { signOverWalletView } from "./utils.wallet-view.js";
 
 /**
@@ -135,15 +125,20 @@ export function handleSignSubmit(
 
 /**
  * Waits for the exact submitted transaction to confirm, then for its
- * required outputs to read back. Each poll reads the transaction's status;
- * a transaction with an upper validity bound is also read for expiry
- * (`readTxExpiry`), and fails with {@link TxExpiredError} once the tip
- * reached its bound with every input unspent, so the caller can rebuild
- * (`rebuildOnTxExpiry`). Before that the wait goes on. Past the budget
- * (`confirmationTimeoutMs` for each of the `confirmationRetries + 1`
- * attempts) an unsettled transaction fails with {@link TxConfirmError}. On
- * the Lucid emulator each poll first produces the block a pending
- * transaction needs, and the wait runs on the emulator's clock.
+ * required outputs to read back. Each poll reads the transaction's status.
+ * A transaction with an upper validity bound is waited on until that bound
+ * is settled, however long the chain takes to reach it: it confirms, or its
+ * bound lies the deployment's confirmation depth under the tip
+ * (`watchTxExpiry`) and it fails with {@link TxExpiredError} when every input
+ * is still unspent, so the caller can rebuild (`rebuildOnTxExpiry`), or with
+ * {@link TxConfirmError} when another transaction spent one. Only an
+ * unbounded transaction ends at the fixed budget (`confirmationTimeoutMs`
+ * for each of the `confirmationRetries + 1` attempts) with
+ * {@link TxConfirmError}. Every provider read is bounded by
+ * `confirmationTimeoutMs`, the deadline each status read had under the
+ * retired Lucid wait. On the Lucid emulator each poll first produces the
+ * block a pending transaction needs, and the wait runs on the emulator's
+ * clock.
  */
 export const awaitSubmittedTransactionConfirmation = (
   lucid: LucidEvolution,
@@ -182,12 +177,11 @@ export const awaitSubmittedTransactionConfirmation = (
       );
     }
     yield* Effect.logInfo(`⏳ Confirming Transaction...`);
-    yield* awaitConfirmedOrExpired(
-      lucid,
-      submission,
-      confirmationTimeoutMs * (confirmationRetries + 1),
-      confirmationPollIntervalMs,
-    );
+    yield* awaitConfirmedOrExpired(lucid, submission, {
+      budgetMs: confirmationTimeoutMs * (confirmationRetries + 1),
+      readDeadlineMs: confirmationTimeoutMs,
+      pollIntervalMs: confirmationPollIntervalMs,
+    });
     yield* awaitRequiredOutputVisibility(
       lucid,
       submission,
@@ -200,70 +194,6 @@ export const awaitSubmittedTransactionConfirmation = (
     );
     yield* Effect.logInfo(`🎉 Transaction confirmed: ${txHash}`);
     return txHash;
-  });
-
-const awaitConfirmedOrExpired = (
-  lucid: LucidEvolution,
-  submission: SignSubmitContext,
-  budgetMs: number,
-  pollIntervalMs: number,
-): Effect.Effect<void, TxConfirmError | TxExpiredError> =>
-  Effect.gen(function* () {
-    const { txHash } = submission;
-    const now = submitRecoveryNow(lucid);
-    const sleep = submitRecoverySleep(lucid);
-    const emulator = isEmulatorProvider(lucid.config().provider);
-    const expiry = signedTxExpiryFacts(submission.signedTxCbor);
-    const deadline = now() + budgetMs;
-    let lastReadError: unknown;
-    for (;;) {
-      if (emulator)
-        yield* Effect.tryPromise(() =>
-          lucid.awaitTx(txHash, pollIntervalMs),
-        ).pipe(Effect.ignore);
-      const status = yield* Effect.either(
-        Effect.tryPromise(() => lucid.transactionStatus(txHash)),
-      );
-      if (status._tag === "Left") lastReadError = status.left.cause;
-      else if (status.right.status === "confirmed") return;
-      else if (status.right.status === "failed")
-        return yield* Effect.fail(
-          new TxConfirmError({
-            message: "Failed to confirm transaction",
-            txHash,
-            cause: new Error(`Transaction ${txHash} failed.`, {
-              cause: status.right.reason,
-            }),
-          }),
-        );
-      if (expiry !== undefined) {
-        const read = yield* readTxExpiry(lucid, expiry);
-        if (read.kind === "expired") {
-          yield* Metric.increment(txExpiredCounter);
-          return yield* Effect.fail(
-            new TxExpiredError({
-              message: `Transaction expired: the L1 tip (slot ${read.tipSlot.toString()}) reached its upper validity bound (slot ${expiry.invalidHereafterSlot.toString()}) with every input unspent`,
-              txHash,
-              invalidHereafterSlot: expiry.invalidHereafterSlot,
-              tipSlot: read.tipSlot,
-              cause: undefined,
-            }),
-          );
-        }
-      }
-      const remainingMs = deadline - now();
-      if (remainingMs <= 0)
-        return yield* Effect.fail(
-          new TxConfirmError({
-            message: "Failed to confirm transaction",
-            txHash,
-            cause: new Error(`Timed out waiting for transaction ${txHash}.`, {
-              cause: lastReadError,
-            }),
-          }),
-        );
-      yield* sleep(Math.min(pollIntervalMs, remainingMs));
-    }
   });
 
 /**

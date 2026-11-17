@@ -1,6 +1,6 @@
 import { type SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import { LucidEvolution } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { Clock, Effect } from "effect";
 
 import { accessSubmitSlotSnapshot } from "../l1-provider-view.js";
 import {
@@ -152,12 +152,14 @@ const emulatorSubmitSlotSnapshot = (
   return undefined;
 };
 
-/** The clock `submitRecoverySleep` advances: the emulator's, else the wall clock. */
-export const submitRecoveryNow = (lucid: LucidEvolution): (() => number) => {
+/** The clock `submitRecoverySleep` advances: the emulator's, else Effect's. */
+export const submitRecoveryNow = (
+  lucid: LucidEvolution,
+): Effect.Effect<number> => {
   const emulatorProvider = emulatorTimeProvider(lucid);
   return emulatorProvider === null
-    ? () => Date.now()
-    : () => emulatorProvider.now();
+    ? Clock.currentTimeMillis
+    : Effect.sync(() => emulatorProvider.now());
 };
 
 export const submitRecoverySleep = (
