@@ -135,4 +135,59 @@ describe("fault decision bridge on the per-header alerts raised outside it", () 
       binding.close();
     }
   });
+
+  it("keeps the failed DA fetch alert of a header merged at the tip while availability still holds it pending, and clears it once availability drops it", async () => {
+    const observability = operations();
+    // Availability's pending set, read at release depth: the merge has not
+    // reached it, so the merged header is still pending there.
+    const pending = new Set<string>();
+    const binding = bindWatcherRetainedDaOperations({
+      deploymentIdentity: AUTHORITY.result,
+      sink: observability.sink,
+      pendingHeaders: () => pending,
+    });
+    const fake = transportFactory();
+    fake.request.mockRejectedValue(new Error("public DA peer did not answer"));
+    const runtime = await createWatcherRetainedDaRuntime({
+      watcherConfig: admittedConfig(),
+      deploymentIdentity: AUTHORITY.result,
+      unsafeTransportFactoryForTest: fake.factory,
+    });
+    try {
+      const {
+        before,
+        after,
+        kept,
+        dropped: merged,
+        failure,
+        h,
+      } = rolledBackQueue(observability, binding);
+      pending.add(kept).add(merged);
+      const fetchFails = async () =>
+        expect(
+          (await runtime.sources[0]!.fetchPayloadByHeaderHash(merged)).ok,
+        ).toBe(false);
+      await fetchFails();
+      await expect(h.bridge.reconcileAndDispatch(before)).rejects.toBe(failure);
+
+      // Gone from the tip queue, still pending: each pass keeps the alert.
+      for (let pass = 0; pass < 2; pass += 1) {
+        await fetchFails();
+        await expect(h.bridge.reconcileAndDispatch(after)).rejects.toBe(
+          failure,
+        );
+        expect(active(observability, "da_fetch_failure")).toEqual([
+          watcherDaFetchAlertSubject(merged),
+        ]);
+      }
+
+      // The merge reached release depth: availability no longer holds it.
+      pending.delete(merged);
+      await expect(h.bridge.reconcileAndDispatch(after)).rejects.toBe(failure);
+      expect(active(observability, "da_fetch_failure")).toEqual([]);
+    } finally {
+      await runtime.close();
+      binding.close();
+    }
+  });
 });

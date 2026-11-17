@@ -111,9 +111,9 @@ export const unverifiedMergedRecorder = (
         const proof = released.get(header.headerHash);
         if (proof !== undefined) await record(observation, header, proof);
       }
-      coverageGaps.reconcile(observation, released);
+      coverageGaps.reconcile(queued, released);
       for (const alert of dependencies.perHeaderAlerts ?? [])
-        alert.reconcile(observation, released);
+        alert.reconcile(queued, released);
     },
     /** The header's latest classification decision in this process. */
     decided: (headerHash: string, decision: HeaderDecision): void => {

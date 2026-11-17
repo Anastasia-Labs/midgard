@@ -73,9 +73,9 @@ export type WatcherRetainedDaOperationsBinding = Readonly<{
   close(): void;
   /**
    * Clears the `da_fetch_failure` alert of every header a fetch failed for
-   * that is released or no longer in the observed queue, a rollback
-   * included (`perHeaderAlert`). The fault decision bridge calls it with
-   * every observation.
+   * that is released, or neither in the observed queue nor pending for
+   * availability, a rollback included (`perHeaderAlert`). The fault
+   * decision bridge calls it with the headers of every observation.
    */
   reconcile: PerHeaderAlert["reconcile"];
 }>;
@@ -89,6 +89,13 @@ export type WatcherRetainedDaOperationsBinding = Readonly<{
 export const bindWatcherRetainedDaOperations = (input: {
   readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
   readonly sink: WatcherOperationsSink;
+  /**
+   * The headers availability still holds pending at release depth. The
+   * watcher still fetches their DA after they leave the tip's queue (merged
+   * or removed there, not yet at release depth), so their alerts stand
+   * until availability drops them too.
+   */
+  readonly pendingHeaders?: () => Iterable<string>;
 }): WatcherRetainedDaOperationsBinding => {
   assertVerifiedWatcherDeploymentIdentity(input.deploymentIdentity);
   if (operationsByDeploymentIdentity.has(input.deploymentIdentity)) {
@@ -116,7 +123,11 @@ export const bindWatcherRetainedDaOperations = (input: {
         operationsByDeploymentIdentity.delete(input.deploymentIdentity);
       }
     },
-    reconcile: operations.daFetchAlert.reconcile,
+    reconcile: (queued, released) =>
+      operations.daFetchAlert.reconcile(
+        new Set([...queued, ...(input.pendingHeaders?.() ?? [])]),
+        released,
+      ),
   });
 };
 

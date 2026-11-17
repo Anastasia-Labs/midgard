@@ -168,6 +168,7 @@ export const startWatcherRuntime = async (
     retainedDaOperationsBinding = bindWatcherRetainedDaOperations({
       deploymentIdentity,
       sink: operationsSink,
+      pendingHeaders: () => availability?.status().pendingHeaders ?? [],
     });
     const releaseFinality =
       watcherDeploymentReleaseFinalityPolicy(deploymentIdentity).policy;

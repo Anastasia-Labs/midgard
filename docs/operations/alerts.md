@@ -331,7 +331,10 @@ header keeps failing the same way), `fault_detector_failed` and
 `proof_family_coverage_gap`. Each clears by itself, with no restart or operator
 action, when the header gets its own outcome or leaves the observed state
 queue, including when an L1 rollback drops the header: each decision pass
-clears every one of them for each header that is no longer queued.
+clears every one of them for each header that is no longer queued. For
+`da_fetch_failure`, a header still counts as queued while availability holds
+it pending at release depth: the watcher still fetches its DA after a merge
+or removal at the tip, until that reaches release depth.
 `unproven_fault_merged` is also one subject per header, but it never clears
 ([MidgardWatcherUnprovenFaultMerged](#midgardwatcherunprovenfaultmerged)).
 `da_fetch_failure` and `validation_trace_replay_stuck` have no rule of their
