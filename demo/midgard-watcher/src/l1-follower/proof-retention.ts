@@ -1,11 +1,11 @@
-import type {
-  Cursor,
-  FactStore,
-  PinResult,
-  SqlTx,
-} from "@al-ft/midgard-l1-follower";
+import type { Cursor, PinResult, SqlTx } from "@al-ft/midgard-l1-follower";
 
 import { recordsUnitHistory, stateQueueNodeUnitPattern } from "./projection.js";
+import {
+  followerBlockDepth,
+  type WatcherBlockDepth,
+  type WatcherProofRetentionStore,
+} from "./proof-retention.block-depth.js";
 import { eventRowStateIn } from "./proof-retention.events.js";
 import { headerPrunedIn, unitPrunedIn } from "./pruned-keys.js";
 import {
@@ -148,6 +148,8 @@ export type WatcherProofRetention = Readonly<{
   ): Promise<WatcherProofEventHoldResult>;
   /** Every held target, header order. */
   pinned(): Promise<readonly WatcherProofRetentionTarget[]>;
+  /** A block's depth on the follower's chain (`followerBlockDepth`). */
+  blockDepth: WatcherBlockDepth["blockDepth"];
   /** The pins and holds pruning beat, as one status-only degradation. */
   degradations(): readonly WatcherL1Degradation[];
   /** The event holds pruning beat, as one readiness reason (`L1_PROOF_EVENT_PRUNED`). */
@@ -232,10 +234,7 @@ const unpruned = (cursor: Cursor): boolean =>
  * header's own).
  */
 export const createWatcherProofRetention = (
-  store: Pick<
-    FactStore,
-    "transaction" | "pinRetained" | "securityParameter" | "dialect"
-  >,
+  store: WatcherProofRetentionStore,
   options: Readonly<{
     unitHistoryPolicies: ReadonlySet<string>;
     stateQueuePolicyId: string;
@@ -262,6 +261,7 @@ export const createWatcherProofRetention = (
       )
     ).length > 0;
   return Object.freeze({
+    ...followerBlockDepth(store),
     securityParameter: store.securityParameter,
     pin: async ({ category, headerHash }) => {
       const header = headerBytes(headerHash);

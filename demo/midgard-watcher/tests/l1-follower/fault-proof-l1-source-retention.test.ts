@@ -124,6 +124,21 @@ describe("fault-proof L1 source: unit hold results", () => {
     expect(retention.degradations()).toEqual([]);
   });
 
+  it("over the follower's own retention: a block's depth, until a rollback replaces it", async () => {
+    const fx = await fixture();
+    const retention = createWatcherProofRetention(fx.store, {
+      unitHistoryPolicies: watcherUnitHistoryPolicies(D),
+      stateQueuePolicyId: D.stateQueueMint,
+    });
+    expect(await retention.blockDepth(fx.points.p5)).toBe(1);
+    expect(await retention.blockDepth(fx.points.p4)).toBe(2);
+    await fx.forward([]);
+    expect(await retention.blockDepth(fx.points.p5)).toBe(2);
+    await fx.backward(2);
+    expect(await retention.blockDepth(fx.points.p5)).toBeNull();
+    expect(await retention.blockDepth(fx.points.p4)).toBe(1);
+  });
+
   it("over the follower's own retention, after a prune: a pinned header's state-queue node unit holds and its capture reads", async () => {
     const fx = await fixture();
     const retention = createWatcherProofRetention(fx.store, {

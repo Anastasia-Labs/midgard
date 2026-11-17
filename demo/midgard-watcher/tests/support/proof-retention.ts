@@ -2,7 +2,8 @@ import type { WatcherProofRetention } from "../../src/l1-follower/proof-retentio
 
 /**
  * A retention with no follower store behind it: supervisor tests that read
- * no L1 history. Its k is the mainnet and preprod security parameter.
+ * no L1 history. Its k is the mainnet and preprod security parameter. It
+ * holds no block, so an included correction is always observed again.
  */
 export const storelessProofRetention: WatcherProofRetention = Object.freeze({
   securityParameter: 2_160,
@@ -11,6 +12,7 @@ export const storelessProofRetention: WatcherProofRetention = Object.freeze({
   holdUnits: async () => ({ kind: "held" }) as const,
   holdEvents: async () => ({ kind: "held" }) as const,
   pinned: async () => [],
+  blockDepth: async () => null,
   degradations: () => [],
   readiness: () => [],
 });

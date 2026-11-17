@@ -34,6 +34,7 @@ import {
   watcherProofJobPending,
   watcherProofMarkerMatches,
 } from "./fault-proof-objective-table.js";
+import { inclusionStands } from "./fault-proof-progress-authority.inclusion.js";
 import { createProgressSupersede } from "./fault-proof-progress-authority.supersede.js";
 import type {
   WatcherFaultProofProgressAuthority,
@@ -561,6 +562,9 @@ export const createWatcherFaultProofProgressAuthority = (input: {
           );
           if (header === undefined)
             input.onObjectiveDeparted?.(objective.decision);
+          if (await inclusionStands(input.retention, objective.entries))
+            continue;
+          if (epoch !== startedEpoch) return [];
           if (objective.historical?.generation !== request.rollbackGeneration) {
             const controller = createWorkflowReconciliationPermitController({
               decision: objective.decision,

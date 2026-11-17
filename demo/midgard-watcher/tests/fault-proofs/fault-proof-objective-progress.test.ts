@@ -65,6 +65,7 @@ import { registerFaultProofResubmissionVisibilityTest } from "./fault-proof-obje
 import { registerLateMultiStepTests } from "./fault-proof-objective-progress.late-multi-step.js";
 import { registerLateStartTests } from "./fault-proof-objective-progress.late-start.js";
 import { registerPrepareStopTests } from "./fault-proof-objective-progress.prepare-stop.js";
+import { registerTerminalStandingTests } from "./fault-proof-objective-progress.terminal-standing.js";
 const finishControl = vi.hoisted(() => ({
   beforeFinish: async (): Promise<void> => undefined,
   beforeRegister: async (): Promise<void> => undefined,
@@ -1145,6 +1146,7 @@ describe("proof objective progress with durable funding and journals", () => {
   registerFaultProofResubmissionVisibilityTest(setup);
   registerLateStartTests(setup);
   registerLateMultiStepTests(setup);
+  registerTerminalStandingTests(setup);
   it("does not spin or repeat funding admission for identical pending observations", async () => {
     const test = await setup();
     const supervisor = test.createSupervisor();

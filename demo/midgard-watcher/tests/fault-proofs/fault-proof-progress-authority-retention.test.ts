@@ -95,6 +95,7 @@ const recordingRetention = (securityParameter: number) => {
     holdUnits: async () => ({ kind: "held" }),
     holdEvents: async () => ({ kind: "held" }),
     pinned: async () => pinned,
+    blockDepth: async () => null,
     degradations: () => [],
     readiness: () => [],
   };
