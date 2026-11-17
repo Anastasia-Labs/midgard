@@ -64,10 +64,10 @@ const HEADER_REQUEST_DECODERS: Readonly<
 });
 
 /**
- * The `da_fetch_failure` subject of one request: its header, so any later
- * outcome for that header (a successful fetch of any kind, a decision, a
- * merge, a removal) clears it. A request that names no header keeps its own
- * payload digest.
+ * The `da_fetch_failure` subject of one request: its header, so a later
+ * successful fetch for that header clears it, and the header's outcome
+ * settles it once no registered DA fetcher still names the header. A request
+ * that names no header keeps its own payload digest.
  */
 export const watcherDaFetchSubjectDigest = (
   args: Pick<RetainedDaLibp2pRequest, "protocol" | "payload">,
