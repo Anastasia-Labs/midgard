@@ -26,9 +26,9 @@ import { unprovenMergeRecorder } from "./fault-decision-bridge.unproven-merges.j
  * recorded for the merge. The same release and decision events drive the
  * `proof_family_coverage_gap` alert (`coverageGapRecorder`) and, for a
  * detected fault that merged, the `unproven_fault_merged` alert
- * (`unprovenMergeRecorder`). Each observation also clears the
- * `fault_detector_failed` alert of every header that left the queue
- * (`faultDetectorAlert`), as it does the coverage-gap alert.
+ * (`unprovenMergeRecorder`). Each observation also clears every other
+ * per-header alert of each header that left the queue (`perHeaderAlerts`),
+ * as it does the coverage-gap alert.
  */
 export const unverifiedMergedRecorder = (
   dependencies: Pick<
@@ -40,7 +40,7 @@ export const unverifiedMergedRecorder = (
     | "warn"
     | "readRecords"
     | "unprovenFaultMerges"
-    | "faultDetectorAlert"
+    | "perHeaderAlerts"
   >,
 ) => {
   const recorded = new Set<string>();
@@ -112,7 +112,8 @@ export const unverifiedMergedRecorder = (
         if (proof !== undefined) await record(observation, header, proof);
       }
       coverageGaps.reconcile(observation, released);
-      dependencies.faultDetectorAlert?.reconcile(observation, released);
+      for (const alert of dependencies.perHeaderAlerts ?? [])
+        alert.reconcile(observation, released);
     },
     /** The header's latest classification decision in this process. */
     decided: (headerHash: string, decision: HeaderDecision): void => {

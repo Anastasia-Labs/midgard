@@ -24,7 +24,6 @@ import type { WatcherOperationsSink } from "../runtime/operations-observability.
 import { watcherSameCanonicalJson } from "../storage/durable-store.js";
 import type { WatcherClassificationWarning } from "./fault-decision-bridge.classification-miss.js";
 import { type WatcherPersistedFaultDecisionRecord } from "./fault-decision-journal.js";
-import type { WatcherFaultDetectorAlert } from "./fault-detector-isolation.js";
 import {
   WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
   type WatcherFaultProofApplication,
@@ -36,6 +35,7 @@ import type {
   WatcherFaultProofProgressRequest,
 } from "./fault-proof-progress-authority.js";
 import { type WatcherFaultProofDeadline } from "./fault-proof-supervisor.js";
+import type { PerHeaderAlert } from "./per-header-alert.js";
 import type { WatcherUnprovenFaultMerges } from "./watcher-unproven-fault-merges.js";
 
 export const WATCHER_FAULT_DECISION_BRIDGE_SCHEMA_VERSION =
@@ -160,9 +160,10 @@ export type BridgeDependencies = Readonly<{
     header: WatcherStateQueueHeaderObservation,
   ): Promise<WatcherStateQueueHeaderObservation | undefined>;
   operationsSink?: WatcherOperationsSink;
-  /** The `fault_detector_failed` alert, reconciled with each observation as
-   * the `proof_family_coverage_gap` alert is. */
-  faultDetectorAlert?: Pick<WatcherFaultDetectorAlert, "reconcile">;
+  /** The per-header alerts raised outside the bridge (`fault_detector_failed`,
+   * `validation_trace_replay_stuck`, `da_fetch_failure`), each reconciled with
+   * every observation as the `proof_family_coverage_gap` alert is. */
+  perHeaderAlerts?: readonly Pick<PerHeaderAlert, "reconcile">[];
   /**
    * Operator warning, once per header released on L1 unverified, skipped
    * past its challengeability horizon or deferred.

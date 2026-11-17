@@ -22,7 +22,6 @@ import {
 import { type WatcherConfig } from "../runtime/config.js";
 import { assertVerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
 import { watcherDaFetchAlertSubject } from "../runtime/operations-observability.alert-book.js";
-import type { WatcherOperationsSink } from "../runtime/operations-observability.js";
 import type { WatcherPublicDaRequest } from "./public-da-client.js";
 import {
   createWatcherPublicDaLibp2pTransport,
@@ -33,10 +32,11 @@ import {
   type AdmittedPeer,
   type AdmittedRuntimeOptions,
   l1AvailabilitySourceByDeploymentIdentity,
-  operationsSinkByDeploymentIdentity,
+  operationsByDeploymentIdentity,
   RetainedDaRequestPermits,
   type RetainedDaTransportScope,
   WATCHER_RETAINED_DA_RUNTIME,
+  type WatcherRetainedDaOperations,
   type WatcherRetainedDaRuntime,
 } from "./retained-da-runtime.retained-da-request-permits.js";
 
@@ -72,17 +72,25 @@ const HEADER_REQUEST_DECODERS: Readonly<
 export const watcherDaFetchSubjectDigest = (
   args: Pick<RetainedDaLibp2pRequest, "protocol" | "payload">,
 ): string => {
+  const headerHash = daFetchHeaderHash(args);
+  return headerHash === undefined
+    ? createHash("sha256").update(args.payload).digest("hex")
+    : watcherDaFetchAlertSubject(headerHash);
+};
+
+/** The header a request names, or `undefined` for one this watcher could
+ * not decode. */
+const daFetchHeaderHash = (
+  args: Pick<RetainedDaLibp2pRequest, "protocol" | "payload">,
+): string | undefined => {
   const decode = HEADER_REQUEST_DECODERS[args.protocol];
-  if (decode !== undefined) {
-    try {
-      return watcherDaFetchAlertSubject(
-        decode(args.payload).headerHash.toString("hex"),
-      );
-    } catch {
-      // A request this watcher could not decode is still reported.
-    }
+  if (decode === undefined) return undefined;
+  try {
+    return decode(args.payload).headerHash.toString("hex");
+  } catch {
+    // A request this watcher could not decode is still reported.
+    return undefined;
   }
-  return createHash("sha256").update(args.payload).digest("hex");
 };
 
 class WatcherRetainedDaLibp2pTransport implements RetainedDaLibp2pTransport {
@@ -93,7 +101,7 @@ class WatcherRetainedDaLibp2pTransport implements RetainedDaLibp2pTransport {
     peers: readonly AdmittedPeer[],
     private readonly transport: WatcherPublicDaLibp2pTransport,
     private readonly configuredTimeoutMs: number,
-    private readonly operationsSink: WatcherOperationsSink | undefined,
+    private readonly operations: WatcherRetainedDaOperations | undefined,
     private readonly admission: NonNullable<
       WatcherPublicDaRequest["admission"]
     >,
@@ -130,6 +138,19 @@ class WatcherRetainedDaLibp2pTransport implements RetainedDaLibp2pTransport {
       ),
     );
     const subjectDigest = watcherDaFetchSubjectDigest(args);
+    // A request naming a header raises and clears that header's alert, which
+    // the fault decision bridge clears once the header leaves the queue.
+    const headerHash = daFetchHeaderHash(args);
+    const daFetchFailed = (active: boolean, observedAtMs: string): void => {
+      if (headerHash === undefined)
+        this.operations?.sink.setAlert({
+          code: "da_fetch_failure",
+          subjectDigest,
+          active,
+          observedAtMs,
+        });
+      else this.operations?.daFetchAlert.set(headerHash, active);
+    };
     const startedAtMs = Date.now().toString();
     const startedMonotonicMs = performance.now();
     const signal = AbortSignal.any([
@@ -157,24 +178,19 @@ class WatcherRetainedDaLibp2pTransport implements RetainedDaLibp2pTransport {
       });
       signal.throwIfAborted();
       const completedAtMs = Date.now().toString();
-      this.operationsSink?.recordDaFetch({
+      this.operations?.sink.recordDaFetch({
         subjectDigest,
         startedAtMs,
         completedAtMs,
         elapsedMs: Math.ceil(performance.now() - startedMonotonicMs).toString(),
         outcome: "succeeded",
       });
-      this.operationsSink?.setAlert({
-        code: "da_fetch_failure",
-        subjectDigest,
-        active: false,
-        observedAtMs: completedAtMs,
-      });
+      daFetchFailed(false, completedAtMs);
       return response;
     } catch (error) {
       const completedAtMs = Date.now().toString();
       try {
-        this.operationsSink?.recordDaFetch({
+        this.operations?.sink.recordDaFetch({
           subjectDigest,
           startedAtMs,
           completedAtMs,
@@ -186,12 +202,7 @@ class WatcherRetainedDaLibp2pTransport implements RetainedDaLibp2pTransport {
               ? "timed_out"
               : "failed",
         });
-        this.operationsSink?.setAlert({
-          code: "da_fetch_failure",
-          subjectDigest,
-          active: true,
-          observedAtMs: completedAtMs,
-        });
+        daFetchFailed(true, completedAtMs);
       } catch (diagnosticError) {
         throw new AggregateError(
           [error, diagnosticError],
@@ -293,7 +304,7 @@ export const createRuntimeFromAdmittedConfig = async (
       config.da.peers,
       transport,
       config.da.requestTimeoutMs,
-      operationsSinkByDeploymentIdentity.get(options.deploymentIdentity),
+      operationsByDeploymentIdentity.get(options.deploymentIdentity),
       Object.freeze({
         watcherConfig: config,
         deploymentIdentity: options.deploymentIdentity,

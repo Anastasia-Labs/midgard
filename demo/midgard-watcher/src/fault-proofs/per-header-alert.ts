@@ -11,7 +11,9 @@ import type {
  * An alert kept one subject per state-queue header, with the headers this
  * process raised it for. `reconcile` clears it for every such header that is
  * released (merged or removed) or no longer in the observed queue, a rollback
- * included, so no header that left the queue keeps it until a restart.
+ * included, so no header that left the queue keeps it until a restart. Every
+ * per-header alert is raised through one, and the fault decision bridge
+ * reconciles each with every observation (`perHeaderAlerts`).
  */
 export const perHeaderAlert = (input: {
   readonly code: WatcherAlertCode;
@@ -47,3 +49,5 @@ export const perHeaderAlert = (input: {
     },
   });
 };
+
+export type PerHeaderAlert = ReturnType<typeof perHeaderAlert>;

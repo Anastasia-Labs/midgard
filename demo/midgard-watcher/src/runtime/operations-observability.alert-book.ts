@@ -70,7 +70,11 @@ export const watcherFaultDetectorFailedAlertSubject = (
     .update(headerHash.toLowerCase())
     .digest("hex");
 
-/** Codes kept one subject per header, cleared by the header's outcome. */
+/**
+ * Codes kept one subject per header, cleared by the header's outcome, and
+ * by the fault decision bridge once the header leaves the observed queue
+ * (fault-proofs/per-header-alert.ts).
+ */
 const PER_HEADER_CODES = Object.freeze([
   ["da_fetch_failure", watcherDaFetchAlertSubject],
   [
@@ -80,12 +84,13 @@ const PER_HEADER_CODES = Object.freeze([
   ["fault_detector_failed", watcherFaultDetectorFailedAlertSubject],
 ] as const);
 
+const isPerHeaderCode = (code: WatcherAlertCode): boolean =>
+  PER_HEADER_CODES.some(([perHeader]) => perHeader === code);
+
 /**
  * Codes whose repeated raise of a subject already active is not recorded
- * again, nor a clear of a subject not active: a detector failing on a header
- * on every pass until the header is decided adds one record, not one per
- * pass, and a header that leaves the queue after its outcome cleared the
- * alert adds no second clear.
+ * again: a detector failing on a header on every pass until the header is
+ * decided adds one record, not one per pass.
  */
 const RAISED_ONCE_CODES: ReadonlySet<WatcherAlertCode> = new Set([
   "fault_detector_failed",
@@ -148,16 +153,20 @@ export const createWatcherAlertBook = (input: {
     hash32(value.subjectDigest, "operational alert subject digest");
     natural(value.observedAtMs, "operational alert observation time");
     const key = `${value.code}:${value.subjectDigest}`;
+    const standing = latest.get(key)?.active === true;
+    // A per-header clear of a subject not active records nothing: a header
+    // that leaves the queue after its outcome cleared its alert, or a fetch
+    // that succeeds with no failure standing, adds no clear.
     if (
-      RAISED_ONCE_CODES.has(value.code) &&
-      (latest.get(key)?.active === true) === value.active
+      (RAISED_ONCE_CODES.has(value.code) && standing && value.active) ||
+      (!value.active && !standing && isPerHeaderCode(value.code))
     )
       return;
     const record = input.append({ kind: "alert", ...value });
     latest.delete(key);
     if (value.active || DEDUPLICATED_CODES.has(value.code))
       latest.set(key, record);
-    if (!PER_HEADER_CODES.some(([code]) => code === value.code)) return;
+    if (!isPerHeaderCode(value.code)) return;
     const subjects = [...latest.keys()].filter((entry) =>
       entry.startsWith(`${value.code}:`),
     );

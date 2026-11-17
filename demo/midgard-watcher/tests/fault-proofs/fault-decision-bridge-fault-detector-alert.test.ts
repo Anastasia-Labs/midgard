@@ -46,7 +46,7 @@ const rolledBackQueue = () => {
     current: before,
     categoryByHeader: { [kept!]: "doubleSpend", [dropped!]: "doubleSpend" },
     operationsSink: observability.sink,
-    faultDetectorAlert: alert,
+    perHeaderAlerts: [alert],
     classifyOverride: (fresh) => {
       if (!decides) throw failure;
       return { ...fresh, decision: "healthy" as const };

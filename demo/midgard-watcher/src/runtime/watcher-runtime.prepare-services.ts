@@ -8,8 +8,8 @@ import {
   type WatcherFaultProofStartupReadiness,
 } from "../fault-proofs/fault-proof-application.js";
 import type { WatcherReplayedLedger } from "../fault-proofs/replayed-ledger.js";
+import { createWatcherValidationTraceReplayStuckAlert } from "../fault-proofs/validation-trace-replay-stuck-alert.js";
 import { type WatcherFollowerRuntime } from "../l1-follower/follower-runtime.js";
-import { watcherValidationTraceReplayStuckAlertSubject } from "./operations-observability.alert-book.js";
 import { type WatcherOperationsSink } from "./operations-observability.watcher-operations-metrics.js";
 import { type WatcherProcessConfig } from "./process-config.js";
 import {
@@ -69,9 +69,11 @@ export const prepareWatcherRuntimeWorkflows = async (
     operationsSink,
   } = options;
   await untilFollowerReady(follower, startup);
-  // Raised by the application's detector isolation; the fault decision
-  // bridge clears it once a header leaves the queue.
+  // Raised by the application's detector isolation and its replay holds; the
+  // fault decision bridge clears each once a header leaves the queue.
   const faultDetectorAlert = createWatcherFaultDetectorAlert(operationsSink);
+  const replayStuckAlert =
+    createWatcherValidationTraceReplayStuckAlert(operationsSink);
   return await startup("workflow_readiness", async ({ retryL1Read }) => {
     const faultProofApplication = createWatcherFaultProofApplication({
       watcherConfig: input.config.watcherConfig,
@@ -80,15 +82,7 @@ export const prepareWatcherRuntimeWorkflows = async (
       deploymentAuthority,
       infrastructure: input.config.faultProofInfrastructure,
       fundingProfileOverlay,
-      onValidationTraceReplayStuck: (hold) =>
-        operationsSink.setAlert({
-          code: "validation_trace_replay_stuck",
-          subjectDigest: watcherValidationTraceReplayStuckAlertSubject(
-            hold.headerHash,
-          ),
-          active: true,
-          observedAtMs: Date.now().toString(),
-        }),
+      onValidationTraceReplayStuck: replayStuckAlert.stuck,
       faultDetectorAlert,
     });
     onAllocated(faultProofApplication);
@@ -110,6 +104,10 @@ export const prepareWatcherRuntimeWorkflows = async (
         ),
       );
     }
-    return { faultProofApplication, faultProofReadiness, faultDetectorAlert };
+    return {
+      faultProofApplication,
+      faultProofReadiness,
+      perHeaderAlerts: [faultDetectorAlert, replayStuckAlert],
+    };
   });
 };

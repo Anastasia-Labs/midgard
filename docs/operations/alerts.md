@@ -324,6 +324,20 @@ commits, merges, settlements or Defends in the node log.
 
 ## Watcher alerts
 
+Some alerts in the watcher's `GET /v1/status` (`activeAlerts`) are kept one
+subject per state-queue header: `da_fetch_failure` (a retained-DA fetch for the
+header failed), `validation_trace_replay_stuck` (a script re-execution in the
+header keeps failing the same way), `fault_detector_failed` and
+`proof_family_coverage_gap`. Each clears by itself, with no restart or operator
+action, when the header gets its own outcome or leaves the observed state
+queue, including when an L1 rollback drops the header: each decision pass
+clears every one of them for each header that is no longer queued.
+`unproven_fault_merged` is also one subject per header, but it never clears
+([MidgardWatcherUnprovenFaultMerged](#midgardwatcherunprovenfaultmerged)).
+`da_fetch_failure` and `validation_trace_replay_stuck` have no rule of their
+own: a `da_fetch_failure` holds readiness for 180 seconds after its latest
+failed fetch, and `validation_trace_replay_stuck` never holds readiness.
+
 ### MidgardWatcherReplayRootMismatch
 
 **Meaning.** The watcher's replayed ledger does not open the root of the L1
@@ -608,8 +622,8 @@ another header, by the same family or any other, does not clear it. It clears
 by itself, with no restart or operator action, when the header gets its own
 outcome (decided, proven, removed, merged or past its horizon) or leaves the
 observed queue, including when an L1 rollback drops the header: each decision
-pass clears it for every header that is no longer queued, as it does the
-`proof_family_coverage_gap` alert. A failure the decision pass retries or
+pass clears it for every header that is no longer queued, as it does every
+other per-header alert ([Watcher alerts](#watcher-alerts)). A failure the decision pass retries or
 defers (an L1 source or the retained DA not answering, a held script
 re-execution, a local replay fault, a store connection dropping) never raises
 it. Each withheld result writes one error line with `reason`

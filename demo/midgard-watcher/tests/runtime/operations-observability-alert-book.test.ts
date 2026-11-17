@@ -188,6 +188,28 @@ describe("watcher alert book", () => {
     ).toBeUndefined();
   });
 
+  it("records no clear of a per-header subject that is not standing", () => {
+    const { alerts, appended } = book();
+    const stuck = (active: boolean) =>
+      alerts.set({
+        code: "validation_trace_replay_stuck",
+        subjectDigest: watcherValidationTraceReplayStuckAlertSubject(HEADER),
+        active,
+        observedAtMs: "2",
+      });
+    stuck(true);
+    alerts.set(daFetch(HEADER, true, "1"));
+    alerts.settleHeader(HEADER, "verified", "2");
+    expect(alerts.active()).toEqual([]);
+    const recorded = appended.length;
+    // The header leaves the queue after its outcome cleared both alerts.
+    stuck(false);
+    alerts.set(daFetch(HEADER, false, "3"));
+    // A fetch for another header succeeds with no failure standing.
+    alerts.set(daFetch(OTHER, false, "3"));
+    expect(appended).toHaveLength(recorded);
+  });
+
   it("bounds the stuck script replays it keeps, evicting the oldest first", () => {
     const { alerts } = book();
     const hashes = Array.from({ length: 1_001 }, (_, index) =>

@@ -50,7 +50,7 @@ export const harness = (input: {
   /** The supervisor's supersede; omitted, a disagreement fails the pass. */
   readonly supersede?: BridgeDependencies["supersede"];
   readonly driveProvenRemoval?: BridgeDependencies["driveProvenRemoval"];
-  readonly faultDetectorAlert?: BridgeDependencies["faultDetectorAlert"];
+  readonly perHeaderAlerts?: BridgeDependencies["perHeaderAlerts"];
 }) => {
   const admitted = new WeakSet<object>([input.current]);
   // Production admits only the objects the classifier returned in this
@@ -122,9 +122,9 @@ export const harness = (input: {
       ...(input.driveProvenRemoval === undefined
         ? {}
         : { driveProvenRemoval: input.driveProvenRemoval }),
-      ...(input.faultDetectorAlert === undefined
+      ...(input.perHeaderAlerts === undefined
         ? {}
-        : { faultDetectorAlert: input.faultDetectorAlert }),
+        : { perHeaderAlerts: input.perHeaderAlerts }),
       retainDecisionAuthorities: (digest) =>
         retainedDecisionAuthorities.push(digest),
       assertObservation: (candidate) => {

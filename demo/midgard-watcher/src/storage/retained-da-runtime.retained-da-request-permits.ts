@@ -4,11 +4,16 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 
 import { assertWatcherL1AvailabilityPayloadSource } from "../availability/published-payload.js";
+import {
+  type PerHeaderAlert,
+  perHeaderAlert,
+} from "../fault-proofs/per-header-alert.js";
 import { type WatcherConfig } from "../runtime/config.js";
 import {
   assertVerifiedWatcherDeploymentIdentity,
   type VerifiedWatcherDeploymentIdentity,
 } from "../runtime/deployment-identity.js";
+import { watcherDaFetchAlertSubject } from "../runtime/operations-observability.alert-book.js";
 import type { WatcherOperationsSink } from "../runtime/operations-observability.js";
 import {
   WatcherPublicDaLibp2pTransport,
@@ -18,9 +23,15 @@ import {
 export const WATCHER_RETAINED_DA_RUNTIME =
   "midgard-watcher-production-retained-da-runtime-v1" as const;
 
-export const operationsSinkByDeploymentIdentity = new WeakMap<
+/** The diagnostics sink of a deployment, and its `da_fetch_failure` alert. */
+export type WatcherRetainedDaOperations = Readonly<{
+  sink: WatcherOperationsSink;
+  daFetchAlert: PerHeaderAlert;
+}>;
+
+export const operationsByDeploymentIdentity = new WeakMap<
   VerifiedWatcherDeploymentIdentity,
-  WatcherOperationsSink
+  WatcherRetainedDaOperations
 >();
 
 export const l1AvailabilitySourceByDeploymentIdentity = new WeakMap<
@@ -60,6 +71,13 @@ export const bindWatcherL1AvailabilityPayloadSource = (input: {
 
 export type WatcherRetainedDaOperationsBinding = Readonly<{
   close(): void;
+  /**
+   * Clears the `da_fetch_failure` alert of every header a fetch failed for
+   * that is released or no longer in the observed queue, a rollback
+   * included (`perHeaderAlert`). The fault decision bridge calls it with
+   * every observation.
+   */
+  reconcile: PerHeaderAlert["reconcile"];
 }>;
 
 /**
@@ -73,22 +91,32 @@ export const bindWatcherRetainedDaOperations = (input: {
   readonly sink: WatcherOperationsSink;
 }): WatcherRetainedDaOperationsBinding => {
   assertVerifiedWatcherDeploymentIdentity(input.deploymentIdentity);
-  if (operationsSinkByDeploymentIdentity.has(input.deploymentIdentity)) {
+  if (operationsByDeploymentIdentity.has(input.deploymentIdentity)) {
     throw new Error("production retained-DA operations sink is already bound");
   }
-  operationsSinkByDeploymentIdentity.set(input.deploymentIdentity, input.sink);
+  const operations: WatcherRetainedDaOperations = Object.freeze({
+    sink: input.sink,
+    daFetchAlert: perHeaderAlert({
+      code: "da_fetch_failure",
+      subjectOf: watcherDaFetchAlertSubject,
+      operationsSink: input.sink,
+      observedAtMs: () => Date.now().toString(),
+    }),
+  });
+  operationsByDeploymentIdentity.set(input.deploymentIdentity, operations);
   let closed = false;
   return Object.freeze({
     close: () => {
       if (closed) return;
       closed = true;
       if (
-        operationsSinkByDeploymentIdentity.get(input.deploymentIdentity) ===
-        input.sink
+        operationsByDeploymentIdentity.get(input.deploymentIdentity) ===
+        operations
       ) {
-        operationsSinkByDeploymentIdentity.delete(input.deploymentIdentity);
+        operationsByDeploymentIdentity.delete(input.deploymentIdentity);
       }
     },
+    reconcile: operations.daFetchAlert.reconcile,
   });
 };
 
