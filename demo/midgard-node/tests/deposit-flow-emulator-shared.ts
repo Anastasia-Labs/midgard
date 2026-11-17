@@ -807,6 +807,7 @@ export const runCommitWorkerUntilSubmitted = async ({
   nodeConfig,
   production,
   alignScheduler = true,
+  workerLedgerReads,
 }: {
   readonly fixture: EmulatorFixture;
   readonly lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>;
@@ -815,6 +816,10 @@ export const runCommitWorkerUntilSubmitted = async ({
   readonly nodeConfig?: NodeConfigDep;
   readonly production?: OwnedCommitFixture;
   readonly alignScheduler?: boolean;
+  /** Told each attempt's own full reads of `confirmed_ledger`
+   * (`confirmed_ledger_full_scan_total`): the follower's sync and the
+   * verification run before the count starts. */
+  readonly workerLedgerReads?: (reads: number) => void;
 }): Promise<
   Extract<
     CommitWorkerOutput,
@@ -834,14 +839,24 @@ export const runCommitWorkerUntilSubmitted = async ({
     // an owned fixture's synchronize drives the follower itself.
     if (production === undefined)
       await runNodeDatabaseEffect(ingestEmulatorEventsUnowned(fixture));
+    const config = nodeConfig ?? (await makeNodeConfigForFixture(fixture));
+    const verified = await runNodeDatabaseEffect(verifiedFrontierNow);
+    const readsBefore = await Effect.runPromise(
+      Metric.value(confirmedLedgerFullScanCounter),
+    );
     const output = await runCommitWorker(
       fixture.contracts,
       lucidService,
       latestBlock,
-      nodeConfig ?? (await makeNodeConfigForFixture(fixture)),
+      config,
       fixtureDeploymentIdentity(fixture),
       production,
+      verified,
     );
+    const readsAfter = await Effect.runPromise(
+      Metric.value(confirmedLedgerFullScanCounter),
+    );
+    workerLedgerReads?.(readsAfter.count - readsBefore.count);
     if (output?.type === "SubmittedAwaitingConfirmationOutput") {
       return output;
     }

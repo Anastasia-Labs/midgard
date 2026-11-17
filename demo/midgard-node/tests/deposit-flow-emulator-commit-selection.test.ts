@@ -242,9 +242,9 @@ describe("deposit flow emulator", { concurrent: false }, () => {
         // tx-order ingestion barrier.
         await advanceEmulatorPastUnixTime(fixture, eventTime.getTime() + 1_000);
         vi.setSystemTime(new Date(fixture.emulator.now()));
-        const scanBefore = await Effect.runPromise(
-          Metric.value(confirmedLedgerFullScanCounter),
-        );
+        // The attempts' own reads, apart from the follower's sync and the
+        // verification before each.
+        const workerReads: number[] = [];
         const stateful = await runCommitWorkerUntilSubmitted({
           fixture,
           lucidService,
@@ -254,11 +254,10 @@ describe("deposit flow emulator", { concurrent: false }, () => {
           ),
           nodeConfig,
           production: owned,
+          workerLedgerReads: (reads) => workerReads.push(reads),
         });
-        const scanAfter = await Effect.runPromise(
-          Metric.value(confirmedLedgerFullScanCounter),
-        );
-        expect(scanAfter.count - scanBefore.count).toBeGreaterThan(0n);
+        // The submitting attempt hydrates its base: one full read.
+        expect(workerReads.at(-1)).toBe(1);
         expect(stateful.mempoolTxsCount).toBe(1);
 
         const active = await runNodeDatabaseEffect(
