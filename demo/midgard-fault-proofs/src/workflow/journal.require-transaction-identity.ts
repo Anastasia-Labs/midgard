@@ -1,4 +1,8 @@
 import {
+  requireExactKeys,
+  requireRecord,
+} from "./journal.fraud-proof-workflow-journal-event.js";
+import {
   computeFraudProofWorkflowId,
   type FraudProofWorkflowIdentity,
   normalizeFraudProofWorkflowIdentity,
@@ -22,3 +26,32 @@ export const expectedWorkflowIdentityMatches = (
   computeFraudProofWorkflowId(
     normalizeFraudProofWorkflowIdentity(expectedIdentity),
   ) === workflowId;
+
+/** A journal entry's identity target: a state-queue header or a settlement
+ * claim, each with exactly its own keys. */
+export const requireJournalTarget = (
+  value: unknown,
+  sequence: number,
+): void => {
+  const target = requireRecord(
+    value,
+    `journal entry ${sequence.toString()} identity target`,
+  );
+  if (target.kind === "state_queue_header") {
+    requireExactKeys(
+      target,
+      ["kind", "headerHash"],
+      `journal entry ${sequence.toString()} state-queue target`,
+    );
+  } else if (target.kind === "settlement_claim") {
+    requireExactKeys(
+      target,
+      ["kind", "claimId"],
+      `journal entry ${sequence.toString()} settlement target`,
+    );
+  } else {
+    throw new Error(
+      `journal entry ${sequence.toString()} has an unknown target kind`,
+    );
+  }
+};

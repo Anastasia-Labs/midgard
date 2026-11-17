@@ -18,6 +18,7 @@ import {
 } from "./journal.fraud-proof-workflow-terminal.js";
 import {
   expectedWorkflowIdentityMatches,
+  requireJournalTarget,
   requireOutRef,
   requireTxHash,
 } from "./journal.require-transaction-identity.js";
@@ -89,27 +90,7 @@ export const createFraudProofWorkflowJournalFold = ({
       ["decisionDigest"],
       `journal entry ${sequence.toString()} identity`,
     );
-    const target = requireRecord(
-      entry.identity.target,
-      `journal entry ${sequence.toString()} identity target`,
-    );
-    if (target.kind === "state_queue_header") {
-      requireExactKeys(
-        target,
-        ["kind", "headerHash"],
-        `journal entry ${sequence.toString()} state-queue target`,
-      );
-    } else if (target.kind === "settlement_claim") {
-      requireExactKeys(
-        target,
-        ["kind", "claimId"],
-        `journal entry ${sequence.toString()} settlement target`,
-      );
-    } else {
-      throw new Error(
-        `journal entry ${sequence.toString()} has an unknown target kind`,
-      );
-    }
+    requireJournalTarget(entry.identity.target, sequence);
     if (entry.schemaVersion !== FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION) {
       throw new Error(`journal entry ${sequence.toString()} has wrong schema`);
     }
