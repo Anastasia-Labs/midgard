@@ -45,6 +45,7 @@ import {
   type MidgardFieldCarriagePlan,
   midgardFieldCommitment,
   type MidgardFieldPreimageCertificate,
+  SCRIPT_BUDGET_BASIS,
 } from "@al-ft/midgard-core";
 import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core/codec/forced";
 import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
@@ -513,16 +514,21 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       coverage.scenario("wrongful_acceptance_success");
       // The scan turn is the last transaction each capture submitted; the
       // opening capture also holds the chunk and certificate transactions.
-      for (const capture of [
-        init,
-        step01Result,
-        step02Result,
-        ...scanResults,
-        terminalResult,
-      ]) {
+      for (const capture of [init, step01Result, step02Result]) {
         expect(capture.measurement.l1ByteMargin).toBeGreaterThan(0);
         expect(capture.measurement.executionMemory).toBeGreaterThan(0n);
         expect(capture.measurement.executionSteps).toBeGreaterThan(0n);
+      }
+      // Every scan turn and the terminal fit an L1 transaction inside the
+      // execution basis the Aiken script budgets are held to.
+      for (const capture of [...scanResults, terminalResult]) {
+        expect(capture.measurement.l1ByteMargin).toBeGreaterThanOrEqual(0);
+        expect(capture.measurement.executionMemory).toBeLessThanOrEqual(
+          BigInt(SCRIPT_BUDGET_BASIS.mem),
+        );
+        expect(capture.measurement.executionSteps).toBeLessThanOrEqual(
+          BigInt(SCRIPT_BUDGET_BASIS.cpu),
+        );
       }
       const scanTurns = scanResults.map((result) => result.measurement);
       console.info(

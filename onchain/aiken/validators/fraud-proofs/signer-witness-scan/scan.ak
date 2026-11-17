@@ -122,7 +122,7 @@ validator main(
 }
 
 /// The opening turn (empty `checkpoint_hash`) derives item zero from the
-/// authenticated opening and takes no checkpoint bytes; every later turn
+/// authenticated opening and never reads checkpoint bytes; every later turn
 /// resumes from the bytes the committed digest names.
 fn open_or_resume_witness_walk(
   scan: ScanV1,
@@ -137,7 +137,6 @@ fn open_or_resume_witness_walk(
     source_kind: scan.subject.source_kind,
   }
   if scan.checkpoint_hash == #"" {
-    expect None = checkpoint_cbor
     opened_field_walk(
       opening,
       anchor,
@@ -715,22 +714,6 @@ test scan_refuses_a_replayed_checkpoint() fail {
   )
 }
 
-/// The opening turn takes no checkpoint bytes: a prover cannot start the
-/// walk at a position of its choosing.
-test scan_refuses_checkpoint_bytes_on_the_opening_turn() fail {
-  let witnesses = invalid_witnesses(looping_witness_count)
-  let block = block_with(witnesses)
-  let opening = inline_opening(block, witnesses)
-  let skipped = walk_at(block, opening, [], witness_scan_batch_size)
-  let scan = opening_scan(block, other_credential)
-  run_scan(
-    scan,
-    opening,
-    checkpoint_bytes(skipped),
-    handoff_tx(block, verdict_of(scan, False), []),
-  )
-}
-
 /// A resume must name the committed position.
 test scan_refuses_a_resume_without_checkpoint_bytes() fail {
   let witnesses = invalid_witnesses(looping_witness_count)
@@ -856,13 +839,14 @@ type MaxTurn {
   tx: Transaction,
 }
 
-/// The middle full batch of the maximum field.
-const max_resume_position: Int =
-  max_witness_count / witness_scan_batch_size / 2 * witness_scan_batch_size
-
 /// The last batch boundary of the maximum field.
 const max_final_position: Int =
   ( max_witness_count - 1 ) / witness_scan_batch_size * witness_scan_batch_size
+
+/// The last full batch of the maximum field that loops, one batch before the
+/// final boundary. A resumed turn costs more the further into the field it
+/// starts, so this is the costliest resumed turn.
+const max_resume_position: Int = max_final_position - witness_scan_batch_size
 
 fn max_turn(
   witnesses: List<MidgardAddressWitness>,

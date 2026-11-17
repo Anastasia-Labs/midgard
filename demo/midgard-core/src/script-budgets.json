@@ -3791,33 +3791,35 @@
       "test": "fraud_proofs/signer_witness_scan/scan/scan_max_open_turn_honest",
       "minusControl": "scan_max_open_turn_honest_control",
       "ceiling": {
-        "mem": 8143280,
-        "cpu": 4075675035
+        "mem": 8141900,
+        "cpu": 4075167141
       }
     },
     "fraud_proofs/signer_witness_scan/scan/scan_max_resume_turn_honest - scan_max_resume_turn_honest_control": {
       "test": "fraud_proofs/signer_witness_scan/scan/scan_max_resume_turn_honest",
       "minusControl": "scan_max_resume_turn_honest_control",
       "ceiling": {
-        "mem": 8849997,
-        "cpu": 4292504150
-      }
+        "mem": 9442250,
+        "cpu": 4418140751
+      },
+      "raisedBecause": "The resumed-turn bench moved from the middle batch (position 128) to the last full batch that loops (position 256), the costliest resumed turn at the 318-witness maximum."
     },
     "fraud_proofs/signer_witness_scan/scan/scan_max_open_turn_adversarial - scan_max_open_turn_adversarial_control": {
       "test": "fraud_proofs/signer_witness_scan/scan/scan_max_open_turn_adversarial",
       "minusControl": "scan_max_open_turn_adversarial_control",
       "ceiling": {
-        "mem": 8236943,
-        "cpu": 5836431467
+        "mem": 8235564,
+        "cpu": 5835923573
       }
     },
     "fraud_proofs/signer_witness_scan/scan/scan_max_resume_turn_adversarial - scan_max_resume_turn_adversarial_control": {
       "test": "fraud_proofs/signer_witness_scan/scan/scan_max_resume_turn_adversarial",
       "minusControl": "scan_max_resume_turn_adversarial_control",
       "ceiling": {
-        "mem": 8943661,
-        "cpu": 6053260582
-      }
+        "mem": 9535913,
+        "cpu": 6178897183
+      },
+      "raisedBecause": "The resumed-turn bench moved from the middle batch (position 128) to the last full batch that loops (position 256), the costliest resumed turn at the 318-witness maximum."
     },
     "fraud_proofs/signer_witness_scan/scan/scan_max_final_turn_finds_the_last_signer - scan_max_final_turn_finds_the_last_signer_control": {
       "test": "fraud_proofs/signer_witness_scan/scan/scan_max_final_turn_finds_the_last_signer",
