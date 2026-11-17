@@ -56,10 +56,10 @@ const preprod = {
 describe("an attached stack's per-family time limit", () => {
   const profile = DEPLOYMENT_PROFILES["preprod-rehearsal"].timing;
   // The refusal-only families end at the committee's refusal, never at a
-  // proof; transitionTrace has its own audited plan.
+  // proof.
   it.each(["daHashPreimage", "canonicalDecodability", "l2TxMistag"])(
     "gives %s its computed budget, one of our node's shifts, twice its own staging cover and its age-out at rehearsal cadence",
-    (category) => {
+    async (category) => {
       const timing = journeyTimingForCategory(category, {
         ...preprod,
         actionDepth: 1,
@@ -80,14 +80,23 @@ describe("an attached stack's per-family time limit", () => {
           2 * coverMs +
           2 * profile.da_attestation_timeout_ms,
       );
-      // A refused fault ages out one attestation timeout after its block,
-      // and its removal lands within one more
+      // The worst run of it: operator-2's shift ends just short of the
+      // staging, so it waits out our node's whole shift; the staging then
+      // runs to its refused block, which ages out one attestation timeout
+      // after it, and its removal lands within one more
       // (stack-da-publication.ts, refusal).
-      expect(
-        profile.operator_shift_ms +
-          2 * coverMs +
-          2 * profile.da_attestation_timeout_ms,
-      ).toBeLessThanOrEqual(limitMs);
+      const startMs = 100_000_000;
+      const waitMs = await shiftWaitMs(
+        {
+          appointment: { operator: OPERATOR_2, startTime: BigInt(startMs) },
+          nowMs: startMs + profile.operator_shift_ms - coverMs + 1,
+        },
+        coverMs,
+        profile.operator_shift_ms,
+      );
+      expect(limitMs - timing.journeyTimeoutMs).toBeGreaterThanOrEqual(
+        waitMs + coverMs + 2 * profile.da_attestation_timeout_ms,
+      );
     },
   );
 
