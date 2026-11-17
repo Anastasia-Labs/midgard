@@ -6,9 +6,9 @@
  * again over its journal and reservation store and finishes the record it
  * began: it leaves exactly the outputs an uninterrupted run leaves, so no
  * record action is taken twice. A wallet that cannot pay for the next record
- * action pauses the objective with the typed underfunded reason, which says
- * it funds from plain-ADA coins only, and a top-up resumes it to conviction,
- * a coin holding a token left unspent. A Walk the ledger rejects on every
+ * action pauses the objective with the typed funding-shortfall reason naming
+ * that record action, which says it funds from plain-ADA coins only, and a
+ * top-up resumes it to conviction, a coin holding a token left unspent. A Walk the ledger rejects on every
  * one of its bounded attempts holds the objective instead of refitting it
  * forever.
  */
@@ -52,12 +52,10 @@ vi.mock("../src/workflow/family-l1-observation.js", async (load) => {
 });
 
 import { SCRIPT_DECODE_WALK_SUBMIT_ATTEMPTS } from "../src/script-decode/record.js";
+import { WORKFLOW_FUNDING_SHORTFALL } from "../src/workflow/funding-reservation-permit.js";
+import { SCRIPT_DECODE_RECORD_HELD } from "../src/workflow/script-decode-prerequisite.port.js";
 import {
-  SCRIPT_DECODE_RECORD_HELD,
-  SCRIPT_DECODE_RECORD_UNDERFUNDED,
-} from "../src/workflow/script-decode-prerequisite.port.js";
-import {
-  drainProver,
+  drainProverToOneCoin,
   sendTokenCoin,
   topUpProver,
 } from "./support/installed-prover-wallet.js";
@@ -90,6 +88,12 @@ const POLL_CAP = 5_000;
  */
 const RECOVERY_POLL_CAP = 100;
 const RECOVERY_TURN_CAP = 10;
+
+/** Whether `reason` pauses a record action until the wallet is funded. */
+const pausesRecordAction = (reason: string | undefined): reason is string =>
+  reason?.startsWith(
+    `${WORKFLOW_FUNDING_SHORTFALL}: the prover wallet cannot fund script-decode-`,
+  ) === true;
 
 type Harness = InstalledTurnContext["harness"];
 
@@ -156,19 +160,19 @@ describe("script-decode record recovery in the installed watcher application", (
     const run = await runInstalled(SCENARIO, hooks, {
       beforeTurns: ({ harness, clock }) => {
         clock.state.crashAfterPolls = POLL_CAP;
-        // Once the record has begun, the wallet runs low while the runner
-        // waits for a confirmation.
+        // Once the record has begun, the operator leaves one plain coin
+        // below the collateral line while the runner waits for a
+        // confirmation.
         clock.state.onPoll = async () => {
           if (drained || (await stagingOutputsOf(harness)).length === 0) return;
           drained = true;
-          await drainProver(harness, 1_500_000n);
+          await drainProverToOneCoin(harness, 1_500_000n);
         };
       },
       afterTurn: async ({ harness, result }) => {
         if (!drained || toppedUp) return;
         const { reason } = result;
-        if (reason?.startsWith(SCRIPT_DECODE_RECORD_UNDERFUNDED) !== true)
-          return;
+        if (!pausesRecordAction(reason)) return;
         // Paused, not wedged: it pauses again on each observation until
         // the wallet is funded.
         pausedReasons.push(reason);
@@ -198,17 +202,14 @@ describe("script-decode record recovery in the installed watcher application", (
           if (drained || (await stagingOutputsOf(context.harness)).length === 0)
             return;
           drained = true;
-          await drainProver(context.harness, 1_500_000n);
+          await drainProverToOneCoin(context.harness, 1_500_000n);
           // The wallet's ada now sits in a coin that also holds a token.
           tokenCoin = await sendTokenCoin(context.harness, 5_000n * ADA);
         };
       },
       afterTurn: async ({ harness, result }) => {
         if (!drained || toppedUp) return;
-        if (
-          result.reason?.startsWith(SCRIPT_DECODE_RECORD_UNDERFUNDED) !== true
-        )
-          return;
+        if (!pausesRecordAction(result.reason)) return;
         pausedReasons.push(result.reason);
         await topUpProver(harness, 5_000n * ADA);
         toppedUp = true;
