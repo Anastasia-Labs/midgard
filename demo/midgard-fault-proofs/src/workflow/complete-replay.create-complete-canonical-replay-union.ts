@@ -25,7 +25,10 @@ import {
 } from "../validation-trace-dispute/replay-hold.js";
 import { detectValueConservationFaults } from "../value-not-preserved/replay.js";
 import { detectWithdrawalMistagReplay } from "../withdrawal-mistag/replay.js";
-import { type CanonicalViolationDetection } from "./classification.js";
+import {
+  type CanonicalViolationDetection,
+  selectsProvableFault,
+} from "./classification.js";
 import {
   canonicalizeReplayJson,
   completeCanonicalReplayPredecessorLedger,
@@ -102,14 +105,14 @@ export type CompleteCanonicalReplayMemberFailure = Readonly<{
  * that did not answer) fails the replay as before. Any other failure, which
  * a retry of the same block would only repeat, withholds that member's
  * result: `withheld` is told, and the other members go on. A replay whose
- * members found nothing while a result was withheld still fails with the
- * first withheld failure, so it never reads as healthy. `replayed` is told
- * each member that replayed the block.
+ * other members' findings decide no provable fault (none at all, or only an
+ * unprovable gap first) while a result was withheld still fails with the
+ * first withheld failure, so it never reads as healthy or as a gap the
+ * withheld member might have proven.
  */
 export type CompleteCanonicalReplayIsolation = Readonly<{
   failsPass: (error: unknown) => boolean;
   withheld: (failure: CompleteCanonicalReplayMemberFailure) => void;
-  replayed: (launchScope: readonly FraudProofCatalogueCategoryName[]) => void;
 }>;
 
 /**
@@ -167,7 +170,6 @@ export const createCompleteCanonicalReplayUnion = (
               ...(context === undefined ? {} : { context }),
             }),
           );
-          isolation?.replayed(member.launchScope);
         } catch (error) {
           if (isValidationTraceReplayHeldError(error)) {
             held.push(error);
@@ -206,8 +208,9 @@ export const createCompleteCanonicalReplayUnion = (
         );
         if (blocking !== undefined) throw blocking;
       }
-      // A withheld result may hold the block's only finding.
-      if (withheld.length !== 0 && detections.length === 0) throw withheld[0];
+      // A withheld result may hold the block's only provable finding.
+      if (withheld.length !== 0 && !selectsProvableFault(evidence, detections))
+        throw withheld[0];
       return detections;
     },
   );

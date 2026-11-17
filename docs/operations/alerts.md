@@ -593,6 +593,43 @@ latency, retained-DA reachability).
 
 **Escalate** `deadline_unsafe` at once.
 
+### MidgardWatcherFaultDetectorFailed
+
+**Meaning.** A fault-proof family's replay of a committed block failed in a
+way a retry would only repeat, and the header it failed on is still not
+decided. The watcher withholds that family's result and decides the header
+from the other families. When they find a provable fault the header is decided
+in the same pass, and the `fault_detector_failed` alert (one subject per
+header, informational: it does not hold readiness) is raised and cleared
+together. It stays active when nothing else decides the header: the header is
+recorded `failed` and the bridge proves nothing after it until the follower
+moves or rewinds, so a later faulty block can merge unproven. A later replay of
+another header, by the same family or any other, does not clear it; the
+header's own outcome (decided, proven, removed, merged or past its horizon)
+does. A failure the decision pass retries or defers (an L1 source or the
+retained DA not answering, a held script re-execution, a local replay fault, a
+store connection dropping) never raises it. Each withheld result writes one
+error line with `reason` `fault_detector_failed`, naming the `family`, the
+`headerHash` and the error `detail`, whether or not the alert stays active.
+
+**First checks.**
+
+```bash
+curl -s "$OPS/v1/diagnostics?kind=alert"
+curl -s "$OPS/v1/diagnostics?kind=verification"
+```
+
+The watcher log's `fault_detector_failed` lines name the family and the error;
+the verification record with outcome `failed` names the header.
+
+**Action.** Keep the watcher running and preserve its state directory. A
+restart replays the header with the same detector and fails the same way.
+
+**Escalate** every occurrence at once to the protocol developers with the
+header hash, the family and the error detail: a detector that cannot replay a
+committed block is a watcher defect, and while the alert stands no later
+header is proven.
+
 ### MidgardWatcherProofFamilyCoverageGap
 
 **Meaning.** The watcher classified a committed block as unprovable: its

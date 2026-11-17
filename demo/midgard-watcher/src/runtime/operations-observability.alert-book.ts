@@ -57,15 +57,17 @@ export const watcherUnprovenFaultMergedAlertSubject = (
     .update(headerHash.toLowerCase())
     .digest("hex");
 
-/** One `fault_detector_failed` subject per fault-proof family; its
- * reporter clears it when the family next replays a block
- * (fault-proofs/fault-detector-isolation.ts). */
+/**
+ * One `fault_detector_failed` subject per state-queue header, whatever
+ * detector failed on it, so it stands until the header is decided
+ * (fault-proofs/fault-detector-isolation.ts).
+ */
 export const watcherFaultDetectorFailedAlertSubject = (
-  family: string,
+  headerHash: string,
 ): string =>
   createHash("sha256")
-    .update("midgard-watcher-fault-detector-failed-alert-v1\u0000")
-    .update(family)
+    .update("midgard-watcher-fault-detector-failed-alert-v2\u0000")
+    .update(headerHash.toLowerCase())
     .digest("hex");
 
 /** Codes kept one subject per header, cleared by the header's outcome. */
@@ -75,7 +77,17 @@ const PER_HEADER_CODES = Object.freeze([
     "validation_trace_replay_stuck",
     watcherValidationTraceReplayStuckAlertSubject,
   ],
+  ["fault_detector_failed", watcherFaultDetectorFailedAlertSubject],
 ] as const);
+
+/**
+ * Codes whose repeated raise of a subject already active is not recorded
+ * again: a detector failing on a header on every pass until the header is
+ * decided adds one record, not one per pass.
+ */
+const RAISED_ONCE_CODES: ReadonlySet<WatcherAlertCode> = new Set([
+  "fault_detector_failed",
+]);
 
 /** A failed DA fetch stops holding readiness once this old, by default. */
 export const WATCHER_DA_FETCH_ALERT_MAXIMUM_AGE_MS = 180_000;
@@ -85,13 +97,14 @@ const MAXIMUM_PER_HEADER_ALERTS = MAXIMUM_PAGE_SIZE * 10;
 
 /**
  * Codes whose inactive record is read back to suppress repeated diagnostics.
- * Stuck replays come and go per header, and forfeited collateral per proof
- * objective; their reporters deduplicate.
+ * Stuck replays and failed detectors come and go per header, and forfeited
+ * collateral per proof objective; the book or their reporters deduplicate.
  */
 const DEDUPLICATED_CODES: ReadonlySet<WatcherAlertCode> = new Set(
   [...WATCHER_INFORMATIONAL_ALERT_CODES].filter(
     (code) =>
       code !== "validation_trace_replay_stuck" &&
+      code !== "fault_detector_failed" &&
       code !== "prover_collateral_forfeited",
   ),
 );
@@ -132,8 +145,14 @@ export const createWatcherAlertBook = (input: {
     }
     hash32(value.subjectDigest, "operational alert subject digest");
     natural(value.observedAtMs, "operational alert observation time");
-    const record = input.append({ kind: "alert", ...value });
     const key = `${value.code}:${value.subjectDigest}`;
+    if (
+      value.active &&
+      RAISED_ONCE_CODES.has(value.code) &&
+      latest.get(key)?.active === true
+    )
+      return;
+    const record = input.append({ kind: "alert", ...value });
     latest.delete(key);
     if (value.active || DEDUPLICATED_CODES.has(value.code))
       latest.set(key, record);
@@ -156,8 +175,8 @@ export const createWatcherAlertBook = (input: {
       subjectDigest: string,
     ): boolean | undefined => latest.get(`${code}:${subjectDigest}`)?.active,
     /**
-     * Clears a header's DA fetch failure and stuck replay once the header has
-     * an outcome.
+     * Clears a header's DA fetch failure, stuck replay and failed detector
+     * once the header has an outcome.
      */
     settleHeader: (
       headerHash: string | undefined,

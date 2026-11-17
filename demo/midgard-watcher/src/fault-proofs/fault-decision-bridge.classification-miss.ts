@@ -131,6 +131,24 @@ const caseOpenWindowEndMs = (
   }
 };
 
+/**
+ * The classification failures `handle` defers or settles on their own terms,
+ * rather than failing the header: a replay held on a local fault, an L1
+ * source or this watcher's DA node that did not answer, a local replay fault,
+ * a held script re-execution, and a retained-DA payload that was not served.
+ * Every other failure fails the header. A fault detector failing with one of
+ * these fails its decision pass rather than being withheld
+ * (fault-detector-isolation.ts).
+ */
+export const isClassificationMissHandled = (error: unknown): boolean =>
+  error instanceof WatcherReplayLocalFaultWaiting ||
+  isWatcherL1TransientFailure(error) ||
+  isFraudProofL1WaitError(error) ||
+  isReplayLocalFault(error) ||
+  isValidationTraceReplayHeldError(error) ||
+  isWatcherRetainedDaTransportUnavailable(error) ||
+  isRetainedDaPayloadUnavailableError(error);
+
 const MAXIMUM_WARNED_HEADERS = 4_096;
 
 /**
@@ -199,6 +217,7 @@ export const classificationMissRecorder = (
   const handle = (input: MissInput): WatcherClassificationMiss => {
     const { error, subjectDigest, verification } = input;
     const header = input.observation.finalizedHeaders[input.index]!;
+    if (!isClassificationMissHandled(error)) return "fail";
     if (error instanceof WatcherReplayLocalFaultWaiting) return "defer";
     // The follower, the node or a provider did not answer, or moved while a
     // snapshot was read (see `isWatcherL1TransientFailure`); or this

@@ -113,6 +113,18 @@ groups:
           summary: "Watcher {{ $labels.instance }} fault-proof deadline is at risk ({{ $labels.reason }})"
           runbook: "docs/operations/alerts.md#midgardwatcherproofdeadline"
 
+      - alert: MidgardWatcherFaultDetectorFailed
+        # A fault-proof family could not replay a committed block, and no
+        # other family decides it; no later header is proven meanwhile. A
+        # header the other families decide clears it in the same pass.
+        expr: midgard_watcher_active_alerts{code="fault_detector_failed"} > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Watcher {{ $labels.instance }} cannot decide a block: a fault detector fails on it"
+          runbook: "docs/operations/alerts.md#midgardwatcherfaultdetectorfailed"
+
       - alert: MidgardWatcherProofFamilyCoverageGap
         # A committed block's finding that no installed fault-proof family
         # proves; the watcher keeps deciding the later blocks.
