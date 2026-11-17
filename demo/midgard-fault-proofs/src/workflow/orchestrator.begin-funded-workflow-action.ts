@@ -3,7 +3,7 @@ import {
   beginWorkflowFundingReservationAction,
   WorkflowFundingShortfallError,
 } from "./funding-reservation-permit.js";
-import { isFraudProofL1WaitError } from "./l1-source.js";
+import { isCallerOwnedWorkflowFailure } from "./orchestrator.caller-owned-failure.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
   FraudProofWorkflowAction,
@@ -45,7 +45,7 @@ export const beginFundedWorkflowAction = async ({
     } catch (naming) {
       if (
         naming instanceof WorkflowActionChangedError ||
-        isFraudProofL1WaitError(naming)
+        isCallerOwnedWorkflowFailure(naming)
       )
         throw naming;
     }

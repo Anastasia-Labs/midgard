@@ -14,6 +14,7 @@ import type {
   FraudProofWorkflowJournalEntry,
   FraudProofWorkflowJournalEvent,
 } from "./journal.js";
+import { isCallerOwnedWorkflowFailure } from "./orchestrator.caller-owned-failure.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
   FraudProofWorkflowAdapterContext,
@@ -167,6 +168,7 @@ export const adoptLandedSupersededAttempt = async ({
     } catch (cause) {
       // The observer's own L1 errors read as unknown and hold below; what
       // throws here is the permit, the store or the recorded bytes.
+      if (isCallerOwnedWorkflowFailure(cause)) throw cause;
       return await stalled(
         `reading result ${result.txHash} of ${intent.actionId} failed: ${formatUnknownError(cause)}`,
       );

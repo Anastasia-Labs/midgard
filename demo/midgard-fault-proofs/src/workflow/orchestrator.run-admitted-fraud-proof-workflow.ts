@@ -44,12 +44,10 @@ import {
   normalizeJournalJson,
   validateFraudProofWorkflowJournal,
 } from "./journal.js";
-import {
-  FraudProofL1CheckpointChangedError,
-  isFraudProofL1WaitError,
-} from "./l1-source.js";
+import { FraudProofL1CheckpointChangedError } from "./l1-source.js";
 import { adoptLandedSupersededAttempt } from "./orchestrator.adopt-landed-superseded-attempt.js";
 import { beginFundedWorkflowAction } from "./orchestrator.begin-funded-workflow-action.js";
+import { isCallerOwnedWorkflowFailure } from "./orchestrator.caller-owned-failure.js";
 import {
   FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
   type FraudProofFamilyWorkflowAdapter,
@@ -560,7 +558,7 @@ export const runAdmittedFraudProofWorkflow = async ({
           return resumeOnObservation(
             `reconciliation awaits a stable boundary for ${action.actionId}: ${cause.message}`,
           );
-        if (isFraudProofL1WaitError(cause)) throw cause;
+        if (isCallerOwnedWorkflowFailure(cause)) throw cause;
         return await stalled(
           `reconciliation failed for ${action.actionId}: ${formatUnknownError(cause)}`,
         );
@@ -740,7 +738,7 @@ export const runAdmittedFraudProofWorkflow = async ({
           checkpoint: "before_terminal_verify",
         });
       } catch (cause) {
-        if (isFraudProofL1WaitError(cause)) throw cause;
+        if (isCallerOwnedWorkflowFailure(cause)) throw cause;
         return await stalled(
           `terminal verification failed: ${formatUnknownError(cause)}`,
         );
@@ -852,7 +850,7 @@ export const runAdmittedFraudProofWorkflow = async ({
         cause instanceof WorkflowFundingReservationUnavailableError
       )
         return resumeOnObservation(cause.message);
-      if (isFraudProofL1WaitError(cause)) throw cause;
+      if (isCallerOwnedWorkflowFailure(cause)) throw cause;
       return await stalled(
         `preflight failed for ${action.actionId}: ${formatUnknownError(cause)}`,
         adapterPreflightFailed ? "preflight" : undefined,
@@ -890,7 +888,7 @@ export const runAdmittedFraudProofWorkflow = async ({
         await releaseUnfundedWorkflowFundingInputs({ journal, cause });
       if (cause instanceof WorkflowFundingReservationUnavailableError)
         return resumeOnObservation(cause.message);
-      if (isFraudProofL1WaitError(cause)) throw cause;
+      if (isCallerOwnedWorkflowFailure(cause)) throw cause;
       const reclaimHold = threadReclaimFundingHold(action, cause);
       if (reclaimHold !== undefined) return resumeOnObservation(reclaimHold);
       return await stalled(

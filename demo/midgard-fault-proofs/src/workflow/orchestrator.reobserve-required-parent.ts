@@ -10,10 +10,8 @@ import type {
   FraudProofWorkflowJournalEvent,
   FraudProofWorkflowJournalStore,
 } from "./journal.js";
-import {
-  FraudProofL1CheckpointChangedError,
-  isFraudProofL1WaitError,
-} from "./l1-source.js";
+import { FraudProofL1CheckpointChangedError } from "./l1-source.js";
+import { isCallerOwnedWorkflowFailure } from "./orchestrator.caller-owned-failure.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
   FraudProofWorkflowAdapterContext,
@@ -85,7 +83,7 @@ const readSubmissionOnChain = async ({
       return resumeOnObservation(
         `reconciliation awaits a stable boundary for ${submission.actionId}: ${cause.message}`,
       );
-    if (isFraudProofL1WaitError(cause)) throw cause;
+    if (isCallerOwnedWorkflowFailure(cause)) throw cause;
     return await stalled(
       `reconciliation failed for ${submission.actionId}: ${formatUnknownError(cause)}`,
     );
