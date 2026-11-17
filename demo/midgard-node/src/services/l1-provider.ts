@@ -279,6 +279,16 @@ export const nodeL1AccessOver = (
         await new Promise((resolve) => setTimeout(resolve, VIEW_SYNC_POLL_MS));
       }
     },
+    // A point the stored chain does not hold is off it, except one below
+    // the retained window, which the store cannot tell from a pruned one
+    // (`point_beyond_retention`).
+    pointOnChain: async (point) =>
+      (
+        await store.pointStatus({
+          slot: point.slot,
+          hash: Buffer.from(point.id, "hex"),
+        })
+      ).kind !== "point_not_canonical",
     protocolParametersCbor: () =>
       transportCall(() => transport.query({ query: "protocol_params" })),
     transportReadiness: () => transport.readiness,

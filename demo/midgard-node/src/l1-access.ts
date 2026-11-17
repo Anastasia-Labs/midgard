@@ -78,6 +78,12 @@ export type L1AccessAdapter = Readonly<{
    * tip read first; reads made after it are answered at that point or later.
    */
   synchronizedViewPoint: () => Promise<L1ViewPoint>;
+  /**
+   * Whether `point`, a view point this access answered, still lies on its
+   * chain: false once a rollback dropped it, whatever the slot of the new
+   * tip. Absent where the adapter cannot tell.
+   */
+  pointOnChain?: (point: L1ViewPoint) => Promise<boolean>;
   /** One submit-slot snapshot: bounds a new tx's validity interval. */
   submitSlotSnapshot: () => Promise<SubmitSlotSnapshot>;
   /** The ledger's protocol parameters as CBOR, where the adapter has them. */

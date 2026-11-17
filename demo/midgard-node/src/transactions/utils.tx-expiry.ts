@@ -9,7 +9,11 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { CML, type LucidEvolution, type OutRef } from "@lucid-evolution/lucid";
 import { Data, Effect, Metric } from "effect";
 
-import { providerViewPoint } from "../l1-provider-view.js";
+import type { L1ViewPoint } from "../l1-access.js";
+import {
+  providerPointOnChain,
+  providerViewPoint,
+} from "../l1-provider-view.js";
 import { RETRY_ATTEMPTS } from "./utils.parse-structured-outside-validity-interval-details.js";
 
 /**
@@ -84,7 +88,7 @@ const outRefKey = (ref: OutRef) => `${ref.txHash}#${ref.outputIndex}`;
  * Bounds one provider read by `deadlineMs`: a read that does not answer in
  * time fails like one that errored.
  */
-export const withReadDeadline = <A, E>(
+const withReadDeadline = <A, E>(
   read: Effect.Effect<A, E>,
   deadlineMs: number,
   what: string,
@@ -98,6 +102,47 @@ export const withReadDeadline = <A, E>(
   );
 
 /**
+ * One kind of provider read, made one at a time, each call bounded by its
+ * `deadlineMs` (`withReadDeadline`). A read that misses its deadline is
+ * aborted (its `signal` fires, as when the caller is interrupted), so a
+ * provider that honours the signal stops it. If it has still not settled
+ * when the next call comes, that call first waits for it, within its own
+ * deadline, and only then starts a read of its own: an answer is only ever
+ * taken from a read the same call started, and a provider that never
+ * answers holds one read of the kind, not one per call.
+ */
+export const oneReadAtATime = (what: string) => {
+  let unsettled: Promise<void> | undefined;
+  return <A>(
+    read: (signal: AbortSignal) => Promise<A>,
+    deadlineMs: number,
+  ): Effect.Effect<A, unknown> =>
+    withReadDeadline(
+      Effect.gen(function* () {
+        const earlier = unsettled;
+        if (earlier !== undefined) yield* Effect.promise(() => earlier);
+        return yield* Effect.tryPromise({
+          try: (signal) => {
+            const answer = read(signal);
+            const settled = answer.then(
+              () => undefined,
+              () => undefined,
+            );
+            unsettled = settled;
+            void settled.then(() => {
+              if (unsettled === settled) unsettled = undefined;
+            });
+            return answer;
+          },
+          catch: (cause) => cause,
+        });
+      }),
+      deadlineMs,
+      what,
+    );
+};
+
+/**
  * Watches whether a bounded transaction expired, one read per call. A tip at
  * or past the bound (`invalid_hereafter`) proves only that the chain as now
  * observed cannot include it: a short rollback onto a fork whose block before
@@ -106,12 +151,22 @@ export const withReadDeadline = <A, E>(
  * treats as safe elsewhere (`DEPLOYMENT_MANIFEST_L1_FINALITY`, as
  * `settlementDepthParameters` reads it), decided with `isSafe`. The tip
  * carries no block height, so the depth of the first block past the bound
- * is counted as the distinct tips observed at or past it, each at a higher
- * slot than the last: a block a poll missed is not counted, which only makes
- * the wait longer, and a tip that moves back (a rollback) starts the count
- * again. Each read's tip is read first and the
- * inputs after it, so they are answered at that tip or later. Every read has
- * its own deadline, `readDeadlineMs`.
+ * is counted as the distinct tips observed at or past it: a block a poll
+ * missed is not counted, which only makes the wait longer.
+ *
+ * A rollback onto a fork starts the count again at the fork's tip, told by
+ * the tip's identity, not by its slot moving back: a new tip at the same or
+ * a lower slot than the last one is on a fork, and so is one at a higher
+ * slot when the access says the last tip is no longer on its chain
+ * (`providerPointOnChain`). An access that cannot say (the `kupmios` and
+ * `blockfrost` tool adapters) misses a fork whose tip is at a higher slot
+ * than the tip it replaced. A tip before the bound starts the count again
+ * too.
+ *
+ * Each read's tip is read first and the inputs after it, so they are
+ * answered at that tip or later. Every read has its own deadline,
+ * `readDeadlineMs`, and each kind of read is made one at a time
+ * (`oneReadAtATime`).
  */
 export const watchTxExpiry = (
   lucid: LucidEvolution,
@@ -119,37 +174,55 @@ export const watchTxExpiry = (
   depthParameters: Pick<DepthParameters, "confirmationDepth">,
   readDeadlineMs: number,
 ): Effect.Effect<TxExpiryRead> => {
+  const pointOnChain = providerPointOnChain(lucid);
+  const tipReads = oneReadAtATime("the L1 tip");
+  const ancestryReads = oneReadAtATime("the ancestry read of the last L1 tip");
+  const inputReads = oneReadAtATime("the inputs read");
   let boundDepth = 0;
-  let lastTipSlot: number | undefined;
+  let lastTip: L1ViewPoint | undefined;
   return Effect.gen(function* () {
     const view = yield* Effect.either(
-      withReadDeadline(providerViewPoint(lucid), readDeadlineMs, "the L1 tip"),
+      // The access's tip read takes no signal: it is tracked until it settles.
+      tipReads(
+        () => Effect.runPromise(providerViewPoint(lucid)),
+        readDeadlineMs,
+      ),
     );
     if (view._tag === "Left")
       return {
         kind: "undecided",
-        reason: `the L1 tip could not be read: ${view.left.message}`,
+        reason: `the L1 tip could not be read: ${formatUnknownError(view.left)}`,
       } as const;
-    const tipSlot = view.right.slot;
-    if (lastTipSlot !== undefined && tipSlot < lastTipSlot) boundDepth = 0;
-    const newTip = lastTipSlot === undefined || tipSlot > lastTipSlot;
-    lastTipSlot = tipSlot;
+    const tip = view.right;
+    const tipSlot = tip.slot;
     if (tipSlot < facts.invalidHereafterSlot) {
       boundDepth = 0;
+      lastTip = tip;
       return { kind: "open", tipSlot } as const;
     }
+    const previous = lastTip;
+    const newTip = previous === undefined || tip.id !== previous.id;
+    if (previous !== undefined && newTip && boundDepth > 0) {
+      let forked = tipSlot <= previous.slot;
+      if (!forked && pointOnChain !== undefined) {
+        const onChain = yield* Effect.either(
+          ancestryReads(() => pointOnChain(previous), readDeadlineMs),
+        );
+        if (onChain._tag === "Left")
+          return {
+            kind: "undecided",
+            reason: `whether the last L1 tip is still on the chain could not be read: ${formatUnknownError(onChain.left)}`,
+          } as const;
+        forked = !onChain.right;
+      }
+      if (forked) boundDepth = 0;
+    }
     if (newTip) boundDepth += 1;
+    lastTip = tip;
     if (!isSafe(boundDepth, depthParameters))
       return { kind: "settling", tipSlot, boundDepth } as const;
     const unspent = yield* Effect.either(
-      withReadDeadline(
-        Effect.tryPromise({
-          try: () => lucid.utxosByOutRef([...facts.inputs]),
-          catch: (cause) => cause,
-        }),
-        readDeadlineMs,
-        "the inputs read",
-      ),
+      inputReads(() => lucid.utxosByOutRef([...facts.inputs]), readDeadlineMs),
     );
     if (unspent._tag === "Left")
       return {

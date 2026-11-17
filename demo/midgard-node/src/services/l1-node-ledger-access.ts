@@ -119,6 +119,10 @@ export const nodeLedgerAccessOver = (
     pointStatus: (point) => provider.pointStatus(point),
     viewPoint: async () => viewOf(await provider.pinnedTip()),
     synchronizedViewPoint: async () => viewOf(await provider.repin()),
+    // A point too old to acquire is immutable, so on the chain.
+    pointOnChain: async (point) =>
+      (await provider.pointStatus({ slot: point.slot, hash: point.id })) !==
+      "not_on_chain",
     submitSlotSnapshot: async () => {
       const config = await readSlotConfig();
       const tip = await readTip();

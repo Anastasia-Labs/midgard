@@ -51,6 +51,16 @@ export const providerViewPoint = (
   );
 };
 
+/**
+ * Whether a view point the client's access answered still lies on its
+ * chain; `undefined` where the access cannot tell (no ancestry read) and
+ * for an emulator client, whose chain never rolls back.
+ */
+export const providerPointOnChain = (
+  api: LucidEvolution,
+): ((point: L1ViewPoint) => Promise<boolean>) | undefined =>
+  l1AccessOf(api)?.pointOnChain;
+
 /** One line of submit-slot evidence for logs and readiness. */
 export const submitSlotEvidence = (snapshot: SubmitSlotSnapshot): string =>
   [

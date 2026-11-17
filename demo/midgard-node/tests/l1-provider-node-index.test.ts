@@ -203,3 +203,31 @@ describe("the node's L1 reader and the node's index", () => {
     expect(scans).toEqual([]);
   });
 });
+
+describe("the node's L1 reader and a rollback", () => {
+  it("says a tip it answered is off its chain once a rollback onto a fork at a higher slot dropped it, and its ancestors still on it", async () => {
+    const connectionString = await databases.create();
+    const reader = openReader(
+      connectionString,
+      scanRefusingTransport().transport,
+    );
+    const listen = openListenStore(connectionString);
+    expect((await listen.start()).kind).toBe("ready");
+    expect((await listen.initialize(SIM_ORIGIN)).kind).toBe("initialized");
+    const chain = new SimChain(simUniverse(), SIM_ORIGIN);
+    await applied(listen, chain.forward([]).event);
+    const ancestor = await reader.viewPoint();
+    await applied(listen, chain.forward([]).event);
+    const dropped = await reader.viewPoint();
+    const { result } = await applyChainSyncEvent(listen, chain.backward(1));
+    expect(result.kind).toBe("rewound");
+    await applied(listen, chain.forward([]).event);
+    await applied(listen, chain.forward([]).event);
+    const forkTip = await reader.viewPoint();
+    expect(forkTip.slot).toBeGreaterThan(dropped.slot);
+
+    expect(await reader.pointOnChain?.(dropped)).toBe(false);
+    expect(await reader.pointOnChain?.(ancestor)).toBe(true);
+    expect(await reader.pointOnChain?.(forkTip)).toBe(true);
+  });
+});

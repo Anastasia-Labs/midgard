@@ -8,4 +8,5 @@ import "./transactions-utils.fake-sign-builder.js";
 import "./transactions-utils.sign-submit-wrapper-recovery-options.js";
 import "./transactions-utils.confirmation-outcomes.js";
 import "./transactions-utils.confirmation-bound.js";
+import "./transactions-utils.confirmation-read-deadline.js";
 import "./transactions-utils.durable-signed-intent-handoff.js";

@@ -1,7 +1,9 @@
 /**
  * The confirmation half of the submitted-transaction wait: polls the exact
  * transaction's status until it confirms, and settles a bounded
- * transaction's expiry on the way (`watchTxExpiry`).
+ * transaction's expiry on the way (`watchTxExpiry`). Each kind of read is
+ * made one at a time and aborted when it misses its deadline
+ * (`oneReadAtATime`).
  */
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { isEmulatorProvider, LucidEvolution } from "@lucid-evolution/lucid";
@@ -16,11 +18,11 @@ import {
   submitRecoverySleep,
 } from "./utils.submit-recovery-options.js";
 import {
+  oneReadAtATime,
   signedTxExpiryFacts,
   txExpiredCounter,
   TxExpiredError,
   watchTxExpiry,
-  withReadDeadline,
 } from "./utils.tx-expiry.js";
 
 /**
@@ -56,15 +58,14 @@ export const awaitConfirmedOrExpired = (
     const deadline = (yield* now) + budgetMs;
     let budgetPassedLogged = false;
     let lastReadError: unknown;
+    const statusReads = oneReadAtATime(
+      `the status read of transaction ${txHash}`,
+    );
     const readStatus = (deadlineMs: number) =>
       Effect.either(
-        withReadDeadline(
-          Effect.tryPromise({
-            try: () => lucid.transactionStatus(txHash),
-            catch: (cause) => cause,
-          }),
+        statusReads(
+          (signal) => lucid.transactionStatus(txHash, { signal }),
           deadlineMs,
-          `the status read of transaction ${txHash}`,
         ),
       );
     for (;;) {

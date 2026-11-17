@@ -101,6 +101,7 @@ describe("sign/submit wrapper recovery options", () => {
       expect(transactionStatus).toHaveBeenCalledTimes(3);
       expect(transactionStatus).toHaveBeenCalledWith(
         "tx-transient-confirmation-provider",
+        { signal: expect.any(AbortSignal) },
       );
     } finally {
       vi.useRealTimers();
