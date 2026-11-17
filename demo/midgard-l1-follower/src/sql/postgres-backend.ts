@@ -1,3 +1,4 @@
+import { DEFAULT_REQUEST_TIMEOUT_MS } from "@al-ft/l1-node-transport";
 import pg from "pg";
 
 import {
@@ -74,13 +75,19 @@ const connectUnlessAborted = (
   });
 };
 
-export type PostgresConnection =
+export type PostgresConnection = (
+  | {
+      /**
+       * A pool the caller owns; `close()` leaves it open. The caller
+       * attaches the pool's `'error'` listener.
+       */
+      pool: pg.Pool;
+    }
   /**
-   * A pool the caller owns; `close()` leaves it open. The caller attaches
-   * the pool's `'error'` listener.
+   * A connection string; the backend owns and closes its pool. Its
+   * connections send TCP keepalives, so one whose peer vanished without a
+   * word fails, on the operating system's keepalive timing.
    */
-  | { pool: pg.Pool }
-  /** A connection string; the backend owns and closes its pool. */
   | {
       connectionString: string;
       maxConnections?: number;
@@ -90,7 +97,28 @@ export type PostgresConnection =
        * and the next query opens a new connection or fails like any other.
        */
       onConnectionError?: (error: Error) => void;
-    };
+    }
+) & {
+  /**
+   * Bound on a read transaction given no abort signal (ms): past it the
+   * read ends as an abort ends it (`TransactionOptions`), so a connection
+   * that never answers holds no pooled connection longer. The local node
+   * transport's request bound by default: a store read is one request to
+   * the follower's other local dependency.
+   */
+  readDeadlineMs?: number;
+};
+
+/** A signal that fires `ms` from now, and a way to stop its timer. */
+const readDeadline = (ms: number) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort(
+      new Error(`the read had no answer within ${String(ms)} ms`),
+    );
+  }, ms);
+  return { signal: controller.signal, clear: () => clearTimeout(timer) };
+};
 
 /**
  * The writer lease key, as a SQL expression: one per database and schema.
@@ -153,6 +181,10 @@ export const openPostgresBackend = (
   connection: PostgresConnection,
 ): SqlBackend => {
   const owned = !("pool" in connection);
+  const readDeadlineMs =
+    connection.readDeadlineMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+  if (!Number.isSafeInteger(readDeadlineMs) || readDeadlineMs < 1)
+    throw new RangeError("readDeadlineMs must be a positive integer");
   const onConnectionError =
     "pool" in connection
       ? () => undefined
@@ -163,6 +195,7 @@ export const openPostgresBackend = (
     pool = new pg.Pool({
       connectionString: connection.connectionString,
       max: connection.maxConnections ?? 4,
+      keepAlive: true,
     });
     // pg re-emits an idle client's error on its pool; with no listener it
     // is an uncaught exception that exits the process.
@@ -175,8 +208,22 @@ export const openPostgresBackend = (
       run: (tx: SqlTx) => Promise<T>,
       options: TransactionOptions = {},
     ): Promise<T> => {
-      const { signal } = options;
-      const client = await connectUnlessAborted(pool, signal);
+      // A write is not bounded so: one the server is still applying is
+      // progress, and one cut short at its `COMMIT` has an unknown
+      // outcome. TCP keepalive, on the operating system's timing, ends one
+      // whose peer vanished.
+      const deadline =
+        options.signal === undefined && mode === "read"
+          ? readDeadline(readDeadlineMs)
+          : undefined;
+      const signal = options.signal ?? deadline?.signal;
+      let client: pg.PoolClient;
+      try {
+        client = await connectUnlessAborted(pool, signal);
+      } catch (error) {
+        deadline?.clear();
+        throw error;
+      }
       // While checked out the pool's idle listener is detached, so a dropped
       // connection's 'error' needs one here; the pending query rejects.
       client.on("error", onConnectionError);
@@ -216,6 +263,7 @@ export const openPostgresBackend = (
         if (error instanceof RollbackWith) return error.value as T;
         throw error;
       } finally {
+        deadline?.clear();
         signal?.removeEventListener("abort", abandon);
         client.off("error", onConnectionError);
         if (!released) client.release();

@@ -69,7 +69,8 @@ export type TransactionOptions = Readonly<{
    * reason, and a statement still waiting for its answer is given up with
    * its connection, so a server or network that never answers holds
    * nothing past the abort. For reads: an abort during a write's `COMMIT`
-   * leaves its outcome unknown, as a dropped connection does.
+   * leaves its outcome unknown, as a dropped connection does. On Postgres
+   * a read given no signal ends at the backend's `readDeadlineMs`.
    */
   signal?: AbortSignal;
 }>;

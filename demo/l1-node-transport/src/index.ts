@@ -63,6 +63,7 @@ export {
 } from "./stream.js";
 export {
   closeSharedL1NodeTransports,
+  DEFAULT_REQUEST_TIMEOUT_MS,
   L1NodeTransport,
   sharedL1NodeTransport,
 } from "./transport.js";

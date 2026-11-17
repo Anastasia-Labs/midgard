@@ -31,7 +31,8 @@ import {
   transportFailureOf,
 } from "./transport-failed.js";
 
-const DEFAULT_REQUEST_TIMEOUT_MS = 120_000;
+/** A request's bound when `requestTimeoutMs` is absent. */
+export const DEFAULT_REQUEST_TIMEOUT_MS = 120_000;
 const DEFAULT_HELLO_TIMEOUT_MS = 30_000;
 const STABLE_RUN_MS = 30_000;
 

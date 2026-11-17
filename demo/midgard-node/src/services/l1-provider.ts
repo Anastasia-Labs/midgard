@@ -165,14 +165,17 @@ export type NodeL1AccessOverInput = Readonly<{
   /** The ledger-tip staleness bound for submit-slot snapshots (ms). */
   nodeBehindMaxMs: number;
   nowMs?: () => number;
+  /**
+   * Bound on one request (ms): a transport request, and a store read given
+   * no abort signal of its own. The transport's default when absent.
+   */
+  requestTimeoutMs?: number;
 }>;
 
 export type OpenNodeL1AccessInput = Omit<NodeL1AccessOverInput, "endpoint"> &
   Readonly<{
     nativeLedger: NativeLedgerSettings;
     network: NativeLedgerNetwork;
-    /** Bound on one transport request (ms); the transport's default when absent. */
-    requestTimeoutMs?: number;
   }>;
 
 /**
@@ -217,6 +220,9 @@ export const nodeL1AccessOver = (
     connection: {
       connectionString: input.connectionString,
       maxConnections: 2,
+      ...(input.requestTimeoutMs === undefined
+        ? {}
+        : { readDeadlineMs: input.requestTimeoutMs }),
     },
   });
   const provider = new L1FollowerProvider({ store, transport });
