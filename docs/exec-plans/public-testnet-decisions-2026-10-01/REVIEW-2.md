@@ -92,7 +92,8 @@ history checks also passed (1 collected), including capacity tamper, wrong key,
 identity substitution, original/capacity row swap, historical-authority write
 refusal and monotonic cap retention. These tests exercise production funding
 and durable lifecycle boundaries; they do not prove L1 inclusion of a complete
-installed proof/slash transaction.
+installed proof/slash transaction. The capacity-recovery test was since deleted,
+when one reserved coin pool replaced the capacity table. <!-- doc-links:historical -->
 
 ## Additional paths found during this pass
 
