@@ -48,6 +48,15 @@ const classificationByViolationId = new Map<
  * The watcher proves the out-of-range index, which needs no ledger proof. Both
  * slash the same block. An absent input with no same-block producer has no
  * NoIdx finding, so it stays with the ledger-absence family.
+ *
+ * Decision of 2026-11-17, by the precedent of 0009 and 0010: `withdrawnInput`
+ * ranks ahead of `nonExistentInput`, and `withdrawnReferenceInput` ahead of
+ * `noReferenceInput`. The owner may overrule it.
+ * A valid withdrawal of the same block removes the output before the
+ * transaction's event, so the ledger-absence family also finds the input
+ * absent at the same event. The watcher proves the withdrawal. Both slash the
+ * same block. An input absent for any other reason has no withdrawn finding,
+ * so it stays with the ledger-absence family.
  */
 const OWNER_RULED_PROMOTIONS: readonly Readonly<{
   promoted: FraudProofCatalogueCategoryName;
@@ -56,6 +65,8 @@ const OWNER_RULED_PROMOTIONS: readonly Readonly<{
   { promoted: "doubleWithdraw", before: "withdrawalMistag" },
   { promoted: "nonExistentInputNoIndex", before: "nonExistentInput" },
   { promoted: "referenceInputNoIdx", before: "noReferenceInput" },
+  { promoted: "withdrawnInput", before: "nonExistentInput" },
+  { promoted: "withdrawnReferenceInput", before: "noReferenceInput" },
 ];
 
 const FRAUD_PROOF_CLASSIFICATION_FAMILY_PRECEDENCE: readonly FraudProofCatalogueCategoryName[] =
