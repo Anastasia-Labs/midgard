@@ -564,9 +564,9 @@ export const runAdmittedFraudProofWorkflow = async ({
           `reconciliation failed for ${action.actionId}: ${formatUnknownError(cause)}`,
         );
       }
-      // A failed collateral accounting holds nothing: the next observation
-      // reads the attempt again.
-      const unaccounted = await accountWorkflowAttemptCollateral({
+      // A failed collateral accounting is named and holds nothing, not even
+      // the attempt's replacement: later reads of the attempt retry it.
+      await accountWorkflowAttemptCollateral({
         writer,
         assertReconcile,
         entries,
@@ -574,7 +574,6 @@ export const runAdmittedFraudProofWorkflow = async ({
         intent,
         read: reconciled,
       });
-      if (unaccounted !== undefined) return resumeOnObservation(unaccounted);
       if (reconciled.kind === "unknown") {
         const reason = `reconciliation remains unknown for ${action.actionId}: ${reconciled.reason}`;
         return resumeOnObservation(reason);

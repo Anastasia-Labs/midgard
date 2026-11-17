@@ -1,6 +1,7 @@
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import {
   assertWorkflowActuationPermitIdentity,
+  isSqliteBusyError,
   requireRunnableHeaderFault,
   revokeWorkflowActuationPermit,
   type WorkflowActuationPermit,
@@ -53,10 +54,7 @@ import {
   isWatcherProofDecisionMissingError,
   type WatcherDecisionHold,
 } from "./watcher-decision-hold.js";
-import {
-  createWatcherJournalBusyHold,
-  isWatcherSqliteBusyError,
-} from "./watcher-journal-busy.js";
+import { createWatcherJournalBusyHold } from "./watcher-journal-busy.js";
 import {
   isWatcherJournalCapacityError,
   isWatcherJournalIntegrityError,
@@ -289,7 +287,7 @@ export const createSupervisor = (input: {
       isWatcherProofDecisionMissingError(error)
     )
       return normalized;
-    if (isWatcherSqliteBusyError(error)) {
+    if (isSqliteBusyError(error)) {
       if (phase === "accepting") busy.hold(normalized);
       return normalized;
     }
@@ -337,7 +335,7 @@ export const createSupervisor = (input: {
       await input.journalBusyRequeue
         ?.releaseUnusedFunding()
         .catch((error: unknown) => {
-          if (isWatcherSqliteBusyError(error)) throw error;
+          if (isSqliteBusyError(error)) throw error;
           // As at startup, a refused or unopened journal keeps them reserved.
           if (
             !isWatcherJournalIntegrityError(error) &&
@@ -974,7 +972,7 @@ export const createSupervisor = (input: {
         } catch (error) {
           if (input.dependencies.isActuationRevokedError(error)) return;
           const failure = block(error, null);
-          if (busy.reason() !== null && isWatcherSqliteBusyError(error)) return;
+          if (busy.reason() !== null && isSqliteBusyError(error)) return;
           throw failure;
         }
       });

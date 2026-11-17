@@ -3,6 +3,14 @@
  * nothing: the journal names it once, the next run reads the attempt again
  * and retries, and a read that leaves nothing to account clears it.
  */
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+
+import {
+  FraudProofL1CheckpointChangedError,
+  FraudProofL1RefusedError,
+  FraudProofL1UnavailableError,
+} from "@al-ft/midgard-fault-proofs";
 import { afterEach, expect, it, vi } from "vitest";
 
 import {
@@ -24,8 +32,11 @@ afterEach(async () => {
 
 /** The attempt lands failing phase 2 and the process stops once the
  * forfeiture commits, before the attempt is superseded. A rollback then drops
- * the landing, and the provider cannot answer for the collateral. */
-const forfeitPendingAttemptUnreadably = async (fixture: Fixture) => {
+ * the landing, and reading the collateral fails with `failure`. */
+const forfeitPendingAttemptUnreadably = async (
+  fixture: Fixture,
+  failure: Error = new Error("L1 provider did not answer"),
+) => {
   const collateral = fixture.collateralInput.outRef;
   const before = await heldOutRefs(fixture);
   showLanding(fixture, true);
@@ -43,8 +54,7 @@ const forfeitPendingAttemptUnreadably = async (fixture: Fixture) => {
   showLanding(fixture, false);
   const readable = fixture.resolveInputs.getMockImplementation()!;
   fixture.resolveInputs.mockImplementation(async (refs) => {
-    if (refs.includes(collateral))
-      throw new Error("L1 provider did not answer");
+    if (refs.includes(collateral)) throw failure;
     return await readable(refs);
   });
   return {
@@ -86,9 +96,10 @@ it("retries a failed reversal of the pending attempt's forfeiture on the next ru
     kind: "pending",
     txHash: fixture.transactionHash,
   });
+  // The attempt is still pending: the run waits on it, not on the failure.
   await expect(fixture.run(journal)).resolves.toMatchObject({
     kind: "pending",
-    resumeOnObservation: true,
+    reason: "transaction for init is pending",
   });
   const failed = await events();
   expect(failed.slice(forfeited.length)).toEqual([accountingFailed(fixture)]);
@@ -149,6 +160,81 @@ it("clears a failed reversal once a read shows the attempt landed failing phase 
       kind: "reconciled",
       actionId: "init",
       outcome: "not_found",
+      txHash: fixture.transactionHash,
+    },
+  ]);
+});
+
+const withCollateralReturn = () =>
+  setupFundingRecoveryFixture(false, true, false, 20n, 44, 3, 100n, true);
+
+it.each([
+  ["the L1 source cannot answer", new FraudProofL1UnavailableError("down")],
+  [
+    "the L1 source refuses the read",
+    new FraudProofL1RefusedError("pruned", "x"),
+  ],
+  [
+    "the chain moved under the read",
+    new FraudProofL1CheckpointChangedError("moved"),
+  ],
+])(
+  "hands the run's caller a reversal that failed because %s, naming no accounting failure",
+  async (_, failure) => {
+    const fixture = await withCollateralReturn();
+    const { forfeited, journal, readable, events } =
+      await forfeitPendingAttemptUnreadably(fixture, failure);
+    fixture.chain.mockResolvedValue({
+      kind: "pending",
+      txHash: fixture.transactionHash,
+    });
+    await expect(fixture.run(journal)).rejects.toBe(failure);
+    expect(await events()).toEqual(forfeited);
+
+    readable();
+    await fixture.run(journal);
+    expect((await events()).slice(forfeited.length)).toEqual([
+      {
+        kind: "collateral_forfeiture_reversed",
+        actionId: "init",
+        txHash: fixture.transactionHash,
+      },
+    ]);
+  },
+);
+
+it("hands the run's caller a reversal that met a busy database, after a failure it already named", async () => {
+  const fixture = await withCollateralReturn();
+  const { forfeited, journal, readable, events } =
+    await forfeitPendingAttemptUnreadably(fixture);
+  fixture.chain.mockResolvedValue({
+    kind: "pending",
+    txHash: fixture.transactionHash,
+  });
+  await fixture.run(journal);
+  const failed = await events();
+  expect(failed.slice(forfeited.length)).toEqual([accountingFailed(fixture)]);
+
+  // Another connection holds the write lock past the busy timeout.
+  readable();
+  const holder = new DatabaseSync(join(fixture.journalRoot, "watcher.sqlite"));
+  holder.exec("BEGIN IMMEDIATE");
+  try {
+    await expect(fixture.run(journal)).rejects.toMatchObject({
+      code: "ERR_SQLITE_ERROR",
+      errcode: 5,
+    });
+  } finally {
+    holder.exec("ROLLBACK");
+    holder.close();
+  }
+  expect(await events()).toEqual(failed);
+
+  await fixture.run(journal);
+  expect((await events()).slice(failed.length)).toEqual([
+    {
+      kind: "collateral_forfeiture_reversed",
+      actionId: "init",
       txHash: fixture.transactionHash,
     },
   ]);

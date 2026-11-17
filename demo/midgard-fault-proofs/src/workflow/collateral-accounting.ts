@@ -11,7 +11,12 @@ import type {
   FraudProofWorkflowJournalEntry,
   FraudProofWorkflowJournalEvent,
 } from "./journal.js";
+import {
+  FraudProofL1CheckpointChangedError,
+  isFraudProofL1WaitError,
+} from "./l1-source.js";
 import type { FraudProofWorkflowReconcileResult } from "./orchestrator.fraud-proof-family-workflow-adapter.js";
+import { isSqliteBusyError } from "./sqlite-busy.js";
 
 /**
  * The collateral accounting that one read of an attempt calls for, done in
@@ -22,8 +27,10 @@ import type { FraudProofWorkflowReconcileResult } from "./orchestrator.fraud-pro
  *
  * A failed step holds nothing: the journal names it once, `retryLater` runs,
  * and the failure is returned so the caller reads the attempt again later.
- * A revoked actuation still stops the run. A read that answers and leaves
- * nothing to account clears a failure that stands.
+ * A failure the run handles the same way wherever it meets it is thrown
+ * on instead: a revoked actuation, an L1 source that cannot answer or
+ * refuses, a chain that moved under the read, a busy database. A read that
+ * answers and leaves nothing to account clears a failure that stands.
  */
 export const accountAttemptCollateral = async ({
   entries,
@@ -66,7 +73,13 @@ export const accountAttemptCollateral = async ({
     return undefined;
   } catch (error) {
     retryLater?.();
-    if (isWorkflowActuationRevokedError(error)) throw error;
+    if (
+      isWorkflowActuationRevokedError(error) ||
+      isFraudProofL1WaitError(error) ||
+      error instanceof FraudProofL1CheckpointChangedError ||
+      isSqliteBusyError(error)
+    )
+      throw error;
     const failure = collateralAccountingFailure(transactionHash, error);
     if (!standing.has(transactionHash) && open) await append(failure);
     return failure.reason;

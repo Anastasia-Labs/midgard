@@ -4,6 +4,7 @@ import {
   FraudProofL1UnavailableError,
   type FraudProofWorkflowJournalEntry,
   type FraudProofWorkflowTerminal,
+  isSqliteBusyError,
   isWorkflowActuationRevokedError,
   type WorkflowActuationPermit,
   type WorkflowActuationRevokedError,
@@ -47,7 +48,6 @@ import type {
 } from "./fault-proof-supervisor.js";
 import { isWatcherPreflightStalledResult } from "./preflight-stall-retry.js";
 import { isWatcherProofDecisionMissingError } from "./watcher-decision-hold.js";
-import { isWatcherSqliteBusyError } from "./watcher-journal-busy.js";
 import type { WatcherWorkflowJournal } from "./watcher-workflow-journal.js";
 
 /** Chosen by the supervisor after reloading and validating the durable journal. */
@@ -484,7 +484,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
         // holds on a busy database and requeues it (journal_busy).
         if (
           isWatcherProofDecisionMissingError(error) ||
-          isWatcherSqliteBusyError(error)
+          isSqliteBusyError(error)
         ) {
           record("reconciling");
           throw error;

@@ -533,8 +533,11 @@ curl -s "$OPS/v1/status"
 curl -s "$OPS/v1/diagnostics?kind=alert"
 ```
 
-The `prover_collateral_accounting_failed` log line names the error. An L1 read
-failure clears on a later retry once the provider answers.
+The `prover_collateral_accounting_failed` log line names the error. A provider
+or L1 source that did not answer, a chain that moved under the read and a busy
+database never raise this alert: the watcher retries those as it retries any
+other read. Any other L1 read failure clears on a later retry once the provider
+answers.
 
 **Action.** Keep the watcher running and preserve its state directory.
 

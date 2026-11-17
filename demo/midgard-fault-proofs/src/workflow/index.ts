@@ -84,6 +84,7 @@ export {
   parseSignedWorkflowTransactionRetirement,
   type SignedWorkflowTransactionRetirement,
 } from "./signed-transaction-retirement.js";
+export * from "./sqlite-busy.js";
 export * from "./superseded-attempt-read-schedule.js";
 export * from "./transaction-boundary.js";
 export * from "./withdrawn-input.js";
