@@ -39,6 +39,7 @@ import type {
   WatcherFaultProofProgressAuthority,
   WatcherFaultProofProgressContext,
 } from "./fault-proof-progress-authority.types.js";
+import { watcherFaultProofDeadline } from "./fault-proof-supervisor.validate-job.js";
 import {
   isWatcherProofDecisionMissingError,
   type WatcherDecisionHold,
@@ -555,7 +556,10 @@ export const createWatcherFaultProofProgressAuthority = (input: {
             }
             continue;
           }
-          if (!queued(request.observation, objective.decision))
+          const header = request.observation.finalizedHeaders.find(
+            ({ headerHash }) => headerHash === objective.decision.headerHash,
+          );
+          if (header === undefined)
             input.onObjectiveDeparted?.(objective.decision);
           if (objective.historical?.generation !== request.rollbackGeneration) {
             const controller = createWorkflowReconciliationPermitController({
@@ -573,7 +577,11 @@ export const createWatcherFaultProofProgressAuthority = (input: {
             observationRevision,
             decision: objective.decision,
             actuationPermit: objective.historical.permit,
-            deadline: null,
+            // A queued header binds its objective to the header's maturity
+            // whether or not a fault names it (after a restart, none may):
+            // the same deadline the fault carried, from the same node.
+            deadline:
+              header === undefined ? null : watcherFaultProofDeadline(header),
             rollbackGeneration: request.rollbackGeneration,
           });
         }

@@ -9,13 +9,20 @@ import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import { WORKFLOW_FUNDING_SHORTFALL } from "@al-ft/midgard-fault-proofs";
 import { expect, it, vi } from "vitest";
 
+import { watcherFaultProofDeadline } from "../../src/fault-proofs/fault-proof-supervisor.js";
 import { WatcherFaultProofL1RefusedError } from "../../src/l1-follower/fault-proof-l1-source.chain.js";
 import {
   createWatcherOperationsObservability,
   type WatcherOperationsSink,
 } from "../../src/runtime/operations-observability.js";
 import { deploymentIdentity } from "../support/fault-proof-funding-fixture.js";
+import { progressObservation } from "../support/fault-proof-progress-observation.js";
 import type { setup } from "./fault-proof-objective-progress.test.js";
+
+/** The deadline the queued header in `observation` binds. */
+const observationDeadline = (
+  observation: ReturnType<typeof progressObservation>,
+) => watcherFaultProofDeadline(observation.finalizedHeaders[0]!);
 
 const LATEST_SAFE_START_OFFSET_MS =
   MIDGARD_RETENTION_WINDOW.maturityMs -
@@ -245,6 +252,77 @@ export const registerLateStartTests = (setupScenario: typeof setup): void => {
     } finally {
       stderr.mockRestore();
       vi.useRealTimers();
+    }
+  });
+
+  it("keeps a recovered signed objective's deadline after a restart when no fault names it, while its header is queued", async () => {
+    const stderr = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    try {
+      const forward: { sink?: WatcherOperationsSink } = {};
+      const test = await setupScenario(
+        BigInt(Date.now() - LATEST_SAFE_START_OFFSET_MS - 60_000),
+        true,
+        false,
+        {
+          recordProofStep: (step) => forward.sink?.recordProofStep(step),
+          setAlert: (alert) => forward.sink?.setAlert(alert),
+        },
+      );
+      // Its signed step stays in flight throughout.
+      test.fixture.chain.mockImplementation(async (txHash: string) => ({
+        kind: "pending",
+        txHash,
+      }));
+      const first = test.createSupervisor();
+      await test.request(first, 2).accepted;
+      await test.idle(first);
+      await first.close();
+
+      // Restarted, the decision selects nothing (say, another target holds
+      // the correction lock): the queued header still binds this objective.
+      await test.fixture.restartStore();
+      const supervisor = test.createSupervisor();
+      const operations = createWatcherOperationsObservability({
+        deploymentFingerprint: deploymentIdentity.manifestId,
+        supervisor,
+        launchScopeStatus: () => ({
+          installedCategoryCount: 1,
+          requiredCategoryCount: 1,
+        }),
+        retainedDaTransportStatus: () => ({ state: "idle", failure: null }),
+        durableProofQueueStatus: () => supervisor.durableQueueStatus(),
+        l1Readiness: test.readiness,
+      });
+      forward.sink = operations.sink;
+      const observation = progressObservation({
+        deploymentFingerprint: deploymentIdentity.manifestId,
+        header: test.fixture.fixture,
+        revision: 3,
+      });
+      await supervisor.requestProgress({
+        observation,
+        rollbackGeneration: "3",
+      });
+      await test.idle(supervisor);
+      expect(test.runOrResume).toHaveBeenCalledTimes(2);
+      expect(supervisor.status()).toMatchObject({
+        unfinishedObjectiveCount: 1,
+        deadlineHealth: "unsafe",
+        earliestDeadlineJob: {
+          headerHash: test.fixture.fresh.headerHash,
+          deadline: { ...observationDeadline(observation) },
+        },
+      });
+      expect(
+        operations.api.status().activeAlerts.map(({ code }) => code),
+      ).toEqual(["maturity_deadline_risk"]);
+      expect(test.readiness().map(({ reason }) => reason)).toEqual([
+        "fault_proof_started_late",
+      ]);
+    } finally {
+      stderr.mockRestore();
     }
   });
 
