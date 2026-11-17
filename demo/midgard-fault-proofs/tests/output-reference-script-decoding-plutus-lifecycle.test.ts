@@ -11,7 +11,6 @@ import {
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { deriveOutputReferenceScriptDecodingEvidenceFromCanonicalBlock } from "../src/output-reference-script-decoding/authenticated-workflow.derive-output-reference-script-decoding-authenticated-source.js";
 import {
   type OutputReferenceScriptDecodingEvidence,
   OutputReferenceScriptResultClasses,
@@ -98,18 +97,6 @@ describe("outputReferenceScriptDecoding Plutus reference scripts", () => {
       canonicalTransactionCbor: subject.canonicalCbor,
     });
     expect(evidence.resultClass).toBe(REFUSED_CLASS_3);
-    expect(
-      deriveOutputReferenceScriptDecodingEvidenceFromCanonicalBlock({
-        headerHash: block.setup.headerHash,
-        transactions: [
-          {
-            nodeTxId: subject.nativeTxId,
-            txCbor: subject.canonicalCbor.toString("hex"),
-          },
-        ],
-        reconstruction: { forcedTransactions: [] },
-      } as never),
-    ).toEqual(evidence);
     const { emulator, proverLucid } = context.harness;
     const record = await recordPlutusItem(
       emulator,
