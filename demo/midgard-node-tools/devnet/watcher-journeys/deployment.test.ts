@@ -23,6 +23,7 @@ import {
 } from "midgard-node/tests/helpers/reference-publication-chain";
 import { afterAll, expect, it } from "vitest";
 
+import preprod from "../preprod/configuration.json" with { type: "json" };
 import {
   readJourneyArtifact,
   writeJourneyArtifact,
@@ -62,9 +63,10 @@ it.skipIf(runDirectory === undefined)(
     );
     expect(genesis.networkMagic).toBe(424242);
     expect(genesis.networkId).toBe("Testnet");
+    // generate.sh applies the isolated chain's consensus over Preprod's.
     expect(genesis).toMatchObject({
       slotLength: 1,
-      activeSlotsCoeff: 0.05,
+      activeSlotsCoeff: preprod.isolatedChain.consensus.activeSlotsCoeff,
       epochLength: 432000,
       securityParam: 2160,
     });
