@@ -206,20 +206,33 @@ const convict = async ({
   return { bound, minted };
 };
 
+/** Leaves the terminal route does not apply to. */
+const HONEST_LEAVES: readonly {
+  readonly leaf: string;
+  readonly reason: RejectionReason | null;
+  readonly check: RegExp;
+}[] = [
+  {
+    leaf: "a rejection with another reason",
+    reason: { InputNotFound: { source_kind: 0n, input_index: 0n } },
+    check:
+      /^expect Some\(MintItemMalformed \{ \.\. \}\) = subject\.rejection_reason/u,
+  },
+  {
+    leaf: "an accepted leaf",
+    reason: null,
+    check: /^Validator returned false$/u,
+  },
+];
+
 describe("mintItemNonCanonical forced MintItemMalformed rejection", () => {
   it("convicts a forced rejection with MintItemMalformed", async () => {
     await convict(await forcedThread({ reason: MINT_ITEM_MALFORMED }));
   }, 600_000);
 
-  it.each<{ readonly leaf: string; readonly reason: RejectionReason | null }>([
-    {
-      leaf: "a rejection with another reason",
-      reason: { InputNotFound: { source_kind: 0n, input_index: 0n } },
-    },
-    { leaf: "an accepted leaf", reason: null },
-  ])(
+  it.each(HONEST_LEAVES)(
     "refuses on chain the terminal route for $leaf",
-    async ({ reason }) => {
+    async ({ reason, check }) => {
       const thread = await forcedThread({ reason });
       await expectOnchainRefusal(
         () =>
@@ -230,7 +243,7 @@ describe("mintItemNonCanonical forced MintItemMalformed rejection", () => {
           }),
         {
           refusedBy: "fraud_proofs/mint_item_non_canonical/step_01",
-          check: /^Validator returned false$/u,
+          check,
         },
       );
     },
