@@ -319,40 +319,6 @@ it("resolves a rejected parent and descendants without mistaking provider errors
   }
 });
 
-it("confirms a publication whose own confirmation lands between the reads of one observation", async () => {
-  // One observation reads the role outputs, then the inputs. A transaction
-  // that confirms in between shows its inputs spent by itself and its outputs
-  // not yet read: that is not a conflict (drill run5 recorded such a false
-  // rejection, and a rejection is terminal).
-  const f = await fixture(3);
-  const transactions = await f.build();
-  const journal = await PublicationJournal.open(f.path);
-  try {
-    for (const tx of transactions) await journal.prepare(tx);
-    const observed = new Set<string>();
-    const chain = new ReferencePublicationChain(
-      journal,
-      {
-        ...f.backend,
-        observe: async (tx) => {
-          const first = !observed.has(tx.hash);
-          observed.add(tx.hash);
-          return first && tx.hash === transactions[0]!.hash
-            ? { slot: 0, confirmed: false, conflictingInputs: tx.inputs }
-            : { slot: 0, confirmed: true };
-        },
-      },
-      f.schedule,
-    );
-    await chain.resume();
-    expect([...journal.records.values()].map(({ outcome }) => outcome)).toEqual(
-      ["confirmed", "confirmed", "confirmed"],
-    );
-  } finally {
-    await journal.close();
-  }
-});
-
 it("uses existing builders and exact pending predecessor outputs in the complete publication scheduler", async () => {
   const f = await fixture();
   const result = await publishReferenceChain({
@@ -387,6 +353,78 @@ it("uses existing builders and exact pending predecessor outputs in the complete
   );
   expect(restarted.metrics.resubmissions).toBe(0);
 });
+
+it.each(
+  [false, true].flatMap((chainOnlyStatus) =>
+    [0, 1, 2, 3].map((blockAfterRead) => ({ chainOnlyStatus, blockAfterRead })),
+  ),
+)(
+  "confirms a publication whose block lands after read $blockAfterRead of one observation (chain-only status $chainOnlyStatus)",
+  async ({ chainOnlyStatus, blockAfterRead }) => {
+    // One observation reads the root inputs, the role outputs and the status.
+    // The chain indexes a block's spends and outputs together, so a block
+    // landing at any point of the observation must never read as a conflict.
+    // A chain-only status (Kupo's) reports a mempool transaction not found.
+    const f = await fixture(1);
+    const { emulator, lucid } = f;
+    let submitted = false;
+    let reads: number | undefined;
+    let landedDuringObservation = false;
+    const land = () => {
+      emulator.awaitBlock(1);
+      reads = undefined;
+      landedDuringObservation = true;
+    };
+    const afterRead = () => {
+      if (reads === undefined) return;
+      reads += 1;
+      if (reads === blockAfterRead) land();
+    };
+    const submitTx = emulator.submitTx.bind(emulator);
+    emulator.submitTx = async (cbor) => {
+      const hash = await submitTx(cbor);
+      submitted = true;
+      return hash;
+    };
+    const utxosByOutRef = lucid.utxosByOutRef;
+    lucid.utxosByOutRef = async (outRefs) => {
+      const utxos = await utxosByOutRef(outRefs);
+      afterRead();
+      return utxos;
+    };
+    const transactionStatus = lucid.transactionStatus;
+    lucid.transactionStatus = async (txHash, options) => {
+      const status = await transactionStatus(txHash, options);
+      afterRead();
+      return chainOnlyStatus && status.status === "pending"
+        ? { status: "not_found", txHash }
+        : status;
+    };
+    const result = await publishReferenceChain({
+      lucid,
+      targets: f.targets,
+      authPolicy: f.authPolicy,
+      journalPath: f.path,
+      maxTargetsPerBatch: 1,
+      schedule: f.schedule,
+      publicationLimit: () => 15_872,
+      // Every observation starts by synchronizing; the first one after the
+      // submission is the observation the block lands in.
+      synchronize: async () => {
+        if (submitted && !landedDuringObservation) {
+          reads = 0;
+          if (blockAfterRead === 0) land();
+        }
+        return emulator.slot;
+      },
+      wait: async () => emulator.awaitBlock(1),
+      now: Date.now,
+    });
+    expect(landedDuringObservation).toBe(true);
+    expect(result.metrics.rejectedTransactions).toBe(0);
+    expect(result.transactions).toHaveLength(1);
+  },
+);
 
 it("sizes the authority from workload and throughput with bounded confirmation allowance", () => {
   const schedule = DEFAULT_PUBLICATION_SCHEDULE;

@@ -48,6 +48,17 @@ export const publishReferenceChain = async (
     wait: params.wait,
     observe: async (tx) => {
       const slot = await params.synchronize();
+      // The chain indexes a block's spends and outputs together. Reading the
+      // root inputs first means a transaction that confirms at any point of
+      // this observation shows either its inputs unspent or its outputs:
+      // spent inputs with no outputs and no status is a real conflict.
+      const rootInputs = tx.inputs.filter(
+        ({ txHash }) =>
+          !journal.records.has(txHash) ||
+          journal.records.get(txHash)!.outcome === "confirmed",
+      );
+      const visibleInputs =
+        rootInputs.length === 0 ? [] : await lucid.utxosByOutRef(rootInputs);
       const outputs = await lucid.utxosByOutRef(
         tx.roles.map(({ outputIndex }) => ({ txHash: tx.hash, outputIndex })),
       );
@@ -67,15 +78,6 @@ export const publishReferenceChain = async (
       const transactionStatus = confirmed
         ? undefined
         : await lucid.transactionStatus(tx.hash);
-      const rootInputs = tx.inputs.filter(
-        ({ txHash }) =>
-          !journal.records.has(txHash) ||
-          journal.records.get(txHash)!.outcome === "confirmed",
-      );
-      const visibleInputs =
-        confirmed || rootInputs.length === 0
-          ? []
-          : await lucid.utxosByOutRef(rootInputs);
       const conflictingInputs =
         confirmed || transactionStatus?.status !== "not_found"
           ? []
