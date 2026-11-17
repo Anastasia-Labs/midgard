@@ -436,13 +436,13 @@ export const startWatcherRuntime = async (
       },
     );
     decisionDriver = activeDriver;
-    unsubscribeL1 = [
+    unsubscribeL1.push(
       activeFollower.onChange(refreshFollowerReadiness),
       recheckFundingDecisionHolds(
         fundingRuntime.factory,
         activeFollower.onChange,
       ),
-    ];
+    );
     readinessTimer = setInterval(
       refreshFollowerReadiness,
       L1_READINESS_REFRESH_MS,
