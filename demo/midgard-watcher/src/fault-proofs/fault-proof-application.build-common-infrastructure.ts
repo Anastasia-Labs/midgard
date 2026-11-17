@@ -47,6 +47,34 @@ export const watcherFaultProofSourceId = ({
   ].join("/");
 
 /**
+ * Pins, for each loading invocation, the replay context its decision held
+ * when its load started. A withdrawal (shutdown, rollback, another target)
+ * clears the live contexts for every later run, never for a run already
+ * loading: that run's revoked permit is what stops it, at its next
+ * checkpoint, as it stops a run already loaded.
+ */
+export const replayContextsPinnedAtLoadStart = (
+  live: ReadonlyMap<string, CompleteCanonicalReplayContext>,
+) => {
+  const started = new WeakMap<object, CompleteCanonicalReplayContext>();
+  return Object.freeze({
+    /** Pins the context before the wrapped loader's first await. */
+    loader:
+      (load: WorkflowRuntimeLoader): WorkflowRuntimeLoader =>
+      async (request) => {
+        const { decisionDigest } =
+          request.invocation as Partial<WorkflowAdapterRunnerInput>;
+        const context =
+          decisionDigest === undefined ? undefined : live.get(decisionDigest);
+        if (context !== undefined) started.set(request.invocation, context);
+        return await load(request);
+      },
+    started: (invocation: object): CompleteCanonicalReplayContext | undefined =>
+      started.get(invocation),
+  });
+};
+
+/**
  * The watcher's one loader body for an acting invocation. On top of the
  * deployment binding it reads the prover wallet, selects the (possibly
  * funding-restricted) signer and hands over the optional
@@ -60,7 +88,7 @@ export const buildCommonInfrastructure = async ({
   invocation,
   infrastructure,
   deploymentIdentity,
-  replayContexts,
+  replayContext,
   l1,
   dependencies,
   environment,
@@ -70,7 +98,8 @@ export const buildCommonInfrastructure = async ({
   readonly l1: WatcherFaultProofL1;
   readonly infrastructure: WatcherFaultProofInfrastructureAuthority;
   readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
-  readonly replayContexts: ReadonlyMap<string, CompleteCanonicalReplayContext>;
+  /** The context the invocation's decision held when its load started. */
+  readonly replayContext: CompleteCanonicalReplayContext | undefined;
   readonly dependencies: WatcherFaultProofApplicationDependencies;
   readonly environment: NodeJS.ProcessEnv;
 }): Promise<WatcherWorkflowInfrastructure> => {
@@ -95,10 +124,6 @@ export const buildCommonInfrastructure = async ({
   });
   const executionInvocation = invocation as Partial<WorkflowAdapterRunnerInput>;
   const decisionDigest = executionInvocation.decisionDigest;
-  const replayContext =
-    decisionDigest === undefined
-      ? undefined
-      : replayContexts.get(decisionDigest);
   const signer =
     executionInvocation.fundingReservationPermit === undefined
       ? resolvedSigner

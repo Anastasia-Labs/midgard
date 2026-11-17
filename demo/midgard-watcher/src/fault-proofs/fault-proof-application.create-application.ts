@@ -47,6 +47,7 @@ import {
   admittedApplications,
   type ApplicationConstruction,
   buildCommonInfrastructure,
+  replayContextsPinnedAtLoadStart,
   type WatcherFaultProofApplicationWithLoaderForTest,
   watcherFaultProofSourceId,
 } from "./fault-proof-application.build-common-infrastructure.js";
@@ -130,22 +131,25 @@ export function createApplication({
   const retainedDaOwner =
     createWatcherRetainedDaRuntimeOwner(retainedDaOptions);
   const loaderOptions = { ...retainedDaOptions, runtimeOwner: retainedDaOwner };
+  const pinnedReplayContexts = replayContextsPinnedAtLoadStart(replayContexts);
   /** One loader for all installed families; the record does the rest. */
-  const loadRuntime = createWatcherWorkflowRuntimeLoader({
-    ...loaderOptions,
-    watcherConfig,
-    buildInfrastructure: async ({ watcherConfig, invocation }) =>
-      await buildCommonInfrastructure({
-        watcherConfig,
-        invocation,
-        infrastructure,
-        deploymentIdentity,
-        replayContexts,
-        l1,
-        dependencies,
-        environment: environmentSnapshot,
-      }),
-  });
+  const loadRuntime = pinnedReplayContexts.loader(
+    createWatcherWorkflowRuntimeLoader({
+      ...loaderOptions,
+      watcherConfig,
+      buildInfrastructure: async ({ watcherConfig, invocation }) =>
+        await buildCommonInfrastructure({
+          watcherConfig,
+          invocation,
+          infrastructure,
+          deploymentIdentity,
+          replayContext: pinnedReplayContexts.started(invocation),
+          l1,
+          dependencies,
+          environment: environmentSnapshot,
+        }),
+    }),
+  );
   const runners: WatcherFaultProofApplication["runners"] = Object.freeze(
     Object.fromEntries(
       WATCHER_INSTALLED_WORKFLOW_CATEGORIES.map(

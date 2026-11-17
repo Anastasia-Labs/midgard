@@ -418,11 +418,14 @@ describe("watcher decision-time predecessor ledger", () => {
    * What the family's runner would see: the watcher loads the runtime for
    * the decision and applies the family's real record, whose `requires`
    * gate is the only thing under test, so construction is stubbed.
+   * `whileLoading` runs once the runner has started the load and before the
+   * load has finished, as a shutdown or rollback would.
    */
   const applyRecordFor = async <
     Category extends WatcherInstalledWorkflowCategory,
   >(
     category: Category,
+    whileLoading?: () => void,
   ) => {
     const execution = {
       mode: "run",
@@ -436,10 +439,12 @@ describe("watcher decision-time predecessor ledger", () => {
         permitVersion: "midgard-production-workflow-actuation-permit-v1",
       }),
     } as unknown as WorkflowAdapterRunnerInput;
-    const loaded = await application.unsafeLoadRuntimeForTest({
+    const loading = application.unsafeLoadRuntimeForTest({
       runtimeConfigPath: FORWARDED_RUNTIME_CONFIG_PATH,
       invocation: execution,
     });
+    whileLoading?.();
+    const loaded = await loading;
     const resolvedBefore = vi.mocked(deps.resolveReferenceScript).mock.calls
       .length;
     const entry = FAMILY_APPLICATION_REGISTRY[category];
@@ -535,6 +540,26 @@ describe("watcher decision-time predecessor ledger", () => {
         expect(call).toEqual([]);
       }
       application.retainDecisionAuthorities(null);
+    },
+  );
+
+  it.each(REPLAY_CONTEXT_FAMILIES)(
+    "keeps a %s run's replay context when its decision's authority is withdrawn while the runtime loads",
+    async (category) => {
+      const decision = issue(category, PREDECESSOR_CONTEXT);
+      await expect(classify(decision)).resolves.toBe(decision);
+      // Shutdown and rollback withdraw every decision's authority at once.
+      // The run already started keeps the context it started with: its
+      // revoked permit, not a missing context, is what stops it.
+      await expect(
+        applyRecordFor(category, () =>
+          application.retainDecisionAuthorities(null),
+        ),
+      ).resolves.toBeDefined();
+      // A run started after the withdrawal is handed no context.
+      await expect(applyRecordFor(category)).rejects.toThrow(
+        `${category} application requires replayContext, which the host did not supply`,
+      );
     },
   );
 
