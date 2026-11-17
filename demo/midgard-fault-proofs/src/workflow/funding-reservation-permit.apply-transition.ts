@@ -377,11 +377,13 @@ const collateralChange = async (
   input: JournaledChange & { readonly transactionHash: string },
   method: "forfeitCollateral" | "restoreCollateral",
 ): Promise<void> => {
+  // Only a bound reservation reads the attempt's signed bytes, so no caller
+  // accounts collateral without one.
   const state = stateForJournal(input.writer.journal);
-  if (state === undefined) {
-    await appendWorkflowJournalEvents(input.writer, input.events);
-    return;
-  }
+  if (state === undefined)
+    throw new Error(
+      "collateral accounting has no funding reservation permit bound",
+    );
   const change = state.port[method]?.bind(state.port);
   if (change === undefined)
     throw new Error(
