@@ -17,6 +17,7 @@ import {
   type ReadJourneyTimingOptions,
 } from "./journey-timing.journey-timing-for-plan.js";
 import { stackJourneyTimeoutMs } from "./journey-timing.stack-limit.js";
+import { stackDaExpectation } from "./stack-da-publication.js";
 import { readStackShelleyGenesisText } from "./stack-genesis.js";
 
 /** A journey's cadence: its network's Shelley genesis and its finalized manifest. */
@@ -91,9 +92,9 @@ export const readStackJourneyTiming = async (
 /**
  * A family's whole time limit on an attached stack (`stackJourneyTimeoutMs`):
  * its stack timing, operator-2's shift in the stack's deployment profile,
- * and twice the family's own staging shift cover, computed as its staging
- * computes it from the same manifest. Safe at Vitest module load, like
- * `readJourneyCadence`.
+ * twice the family's own staging shift cover, computed as its staging
+ * computes it from the same manifest, and a refused family's age-out. Safe
+ * at Vitest module load, like `readJourneyCadence`.
  */
 export const readStackJourneyTimeoutMs = async (
   stack: Readonly<{ nodeConfigPath: string; manifestPath: string }>,
@@ -122,10 +123,15 @@ export const readStackJourneyTimeoutMs = async (
     },
     profile: deploymentProfile.timing,
   });
-  return stackJourneyTimeoutMs(timing, deploymentProfile.timing, coverMs);
+  return stackJourneyTimeoutMs(
+    timing,
+    deploymentProfile.timing,
+    coverMs,
+    stackDaExpectation(fixture.category),
+  );
 };
 
-/** The audited plan for transitionTrace; the finite generic plan for every other family. */
+/** The family's plan (`journeyTimingForCategory`) at the run's cadence. */
 export const readJourneyTiming = async (
   runDirectory: string,
   category: string,
@@ -135,11 +141,6 @@ export const readJourneyTiming = async (
     category,
     await readJourneyCadence(runDirectory, options),
   );
-
-export const readTransitionTraceJourneyTiming = async (
-  runDirectory: string,
-  options: ReadJourneyTimingOptions = {},
-) => readJourneyTiming(runDirectory, "transitionTrace", options);
 
 export interface JourneyTimingTip {
   blockNo: number;
@@ -252,7 +253,6 @@ const readJourneyTimingTip = async (
 export const journeyExecutionTiming = (
   timing: JourneyTiming,
   capturedTip: JourneyTimingTip,
-  capturedAtMonotonicMs: number,
 ) => {
   const beforeReplayAllowanceMs =
     timing.journeyTimeoutMs - timing.allowances.healthySuccessorObservationMs;
@@ -266,9 +266,7 @@ export const journeyExecutionTiming = (
   const journeyTimeoutMs = beforeReplayAllowanceMs + healthyReplay.timeoutMs;
   if (
     !Number.isSafeInteger(journeyTimeoutMs) ||
-    journeyTimeoutMs > MAX_TIMER_MS ||
-    !Number.isFinite(capturedAtMonotonicMs) ||
-    capturedAtMonotonicMs < 0
+    journeyTimeoutMs > MAX_TIMER_MS
   )
     throw new Error(
       "Journey execution timing exceeds the supported timer range",
@@ -276,14 +274,10 @@ export const journeyExecutionTiming = (
   return Object.freeze({
     ...timing,
     capturedTip: Object.freeze({ ...capturedTip }),
-    capturedAtMonotonicMs,
     healthyReplay,
     journeyTimeoutMs,
-    deadlineMonotonicMs: capturedAtMonotonicMs + journeyTimeoutMs,
   });
 };
-
-export const transitionTraceJourneyExecutionTiming = journeyExecutionTiming;
 
 /** Suite-load planning opens only a bounded read-only RPC and reads public configuration. */
 export const readJourneyExecutionTiming = async (
@@ -293,10 +287,5 @@ export const readJourneyExecutionTiming = async (
 ) => {
   const timing = await readJourneyTiming(runDirectory, category, options);
   const capturedTip = await readJourneyTimingTip(runDirectory);
-  return journeyExecutionTiming(timing, capturedTip, performance.now());
+  return journeyExecutionTiming(timing, capturedTip);
 };
-
-export const readTransitionTraceJourneyExecutionTiming = async (
-  runDirectory: string,
-  options: ReadJourneyTimingOptions = {},
-) => readJourneyExecutionTiming(runDirectory, "transitionTrace", options);

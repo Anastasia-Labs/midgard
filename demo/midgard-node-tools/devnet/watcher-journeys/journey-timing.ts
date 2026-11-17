@@ -1,6 +1,5 @@
 import "node:fs/promises";
 import "node:path";
-import "@al-ft/midgard-core";
 import "@al-ft/midgard-core/deployment-manifest-identity";
 import "@al-ft/midgard-sdk";
 import "./journey-timing.journey-timing-for-plan.js";
@@ -17,13 +16,9 @@ export {
   journeyTimingForPlan,
   type JourneyTimingPlan,
   type ReadJourneyTimingOptions,
-  requireHealthyReplayFitsDeadline,
   stackStagingShiftCover,
   stackStagingShiftWorkMs,
-  TRANSITION_TRACE_JOURNEY_PLAN,
-  transitionTraceJourneyTiming,
   VALIDATION_TRACE_DISPUTE_JOURNEY_PLAN,
-  verifyTransitionTraceJourneyOutputPlan,
 } from "./journey-timing.journey-timing-for-plan.js";
 export {
   journeyExecutionTiming,
@@ -33,9 +28,6 @@ export {
   readJourneyTiming,
   readStackJourneyTimeoutMs,
   readStackJourneyTiming,
-  readTransitionTraceJourneyExecutionTiming,
-  readTransitionTraceJourneyTiming,
-  transitionTraceJourneyExecutionTiming,
 } from "./journey-timing.read-journey-timing-tip.js";
 export {
   stackJourneyTimeoutMs,

@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, it } from "vitest";
 import { journeyFamilyDirectory } from "./artifacts.js";
 import { selectJourneyFixtures } from "./catalogue.js";
 import { selectJourneyDeploymentSource } from "./deployment-source.js";
+import { journeyFamilyDeadline } from "./journey-family-deadline.js";
 import { runAutonomousWatcherJourney } from "./journey-runner.js";
 import {
   type AttachedJourneySession,
@@ -109,14 +110,21 @@ beforeEach(async ({ task }) => {
 }, 0);
 
 // Every family is budgeted from the actual cadence and the depth its actions
-// wait for: the audited transitionTrace plan or the finite generic plan, plus
-// the single release-finality window of the finalized evidence stamp. On a
-// stack it also waits for operator-2's shift to hold the family's staging
-// shift cover C: at worst the rest of one of its shifts, our node's whole
-// shift, and C of the next. The run's last family also resumes operator-2's
-// node and waits for it to report ready. When a family's limit passes,
-// Vitest aborts its signal: the family's waits stop, and the session closes
-// once its work has stopped, starting operator-2 again only then.
+// wait for: the generic plan, plus the single release-finality window of the
+// finalized evidence stamp. The correction is not budgeted: the workflow
+// journal's progress ends it, by the watcher's own rule, however many
+// transactions it takes, so the family's limit pauses while it waits and
+// then resumes with the replay of the blocks that arrived meanwhile
+// (`journeyFamilyDeadline`). On a stack it also waits for operator-2's
+// shift to hold the family's staging shift cover C: at worst the rest of one
+// of its shifts, our node's whole shift, and C of the next; a family whose
+// payload the committee refuses also waits out two attestation timeouts for
+// its block to age out. The stack's limit has no replay term, so its pause
+// adds nothing. The run's last family
+// also resumes operator-2's node and waits for it to report ready. When a
+// family's limit passes, its signal aborts: the family's waits stop, and the
+// session closes once its work has stopped, starting operator-2 again only
+// then. The family's own limit is the only one; Vitest sets none.
 const options = { actionDepth: JOURNEY_ACTION_DEPTH };
 const stackTimeoutsMs =
   stackTimingPaths !== undefined
@@ -132,39 +140,51 @@ const stackTimeoutsMs =
 // All families share wallets and chain state. The package config admits one fork,
 // and this sequential suite leaves deployment and service ownership with the runner.
 for (const [index, fixture] of fixtures.entries()) {
-  const timeoutMs =
+  const limit =
     runDirectory !== undefined
-      ? (
-          await readJourneyExecutionTiming(
+      ? await (async () => {
+          const execution = await readJourneyExecutionTiming(
             runDirectory,
             fixture.category,
             options,
-          )
-        ).journeyTimeoutMs
+          );
+          return {
+            limitMs: execution.journeyTimeoutMs,
+            replayUtilization: execution.healthyReplay.replayUtilization,
+          };
+        })()
       : // A stack's limit; with no deployment selected the case is skipped.
-        stackTimeoutsMs?.[index];
+        stackTimeoutsMs === undefined
+        ? undefined
+        : { limitMs: stackTimeoutsMs[index]!, replayUtilization: 0 };
   it.skipIf(source === undefined)(
     familyTitle(fixture.category),
     async ({ signal }) => {
-      const activeSession = await openSession();
-      const last = fixture === fixtures.at(-1);
-      await runAutonomousWatcherJourney(
-        activeSession.mode === "devnet"
-          ? runDirectory!
-          : activeSession.context.runDirectory,
-        fixture,
-        {
-          session: activeSession,
-          waitForAnchors: last,
-          limit: signal,
-          // Operator-2's node stays held through every family's fault phase;
-          // the completed run starts it again and proves it live.
-          ...(activeSession.mode === "attached" && last
-            ? { afterJourney: () => activeSession.operator2.resume() }
-            : {}),
-        },
-      );
+      const deadline = journeyFamilyDeadline(limit!);
+      try {
+        const activeSession = await openSession();
+        const last = fixture === fixtures.at(-1);
+        await runAutonomousWatcherJourney(
+          activeSession.mode === "devnet"
+            ? runDirectory!
+            : activeSession.context.runDirectory,
+          fixture,
+          {
+            session: activeSession,
+            waitForAnchors: last,
+            limit: AbortSignal.any([signal, deadline.signal]),
+            excludingLimit: deadline.excluding,
+            // Operator-2's node stays held through every family's fault phase;
+            // the completed run starts it again and proves it live.
+            ...(activeSession.mode === "attached" && last
+              ? { afterJourney: () => activeSession.operator2.resume() }
+              : {}),
+          },
+        );
+      } finally {
+        deadline.dispose();
+      }
     },
-    timeoutMs,
+    0,
   );
 }

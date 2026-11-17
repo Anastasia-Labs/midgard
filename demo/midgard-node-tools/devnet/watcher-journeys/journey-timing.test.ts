@@ -14,16 +14,12 @@ import {
   GENERIC_JOURNEY_PLAN,
   genericJourneyTiming,
   healthyJourneyReplayTiming,
+  journeyExecutionTiming,
   journeyTimingForCategory,
-  readTransitionTraceJourneyExecutionTiming,
-  readTransitionTraceJourneyTiming,
-  requireHealthyReplayFitsDeadline,
+  readJourneyExecutionTiming,
+  readJourneyTiming,
   stackStagingShiftCover,
   stackStagingShiftWorkMs,
-  TRANSITION_TRACE_JOURNEY_PLAN,
-  transitionTraceJourneyExecutionTiming,
-  transitionTraceJourneyTiming,
-  verifyTransitionTraceJourneyOutputPlan,
 } from "./journey-timing.js";
 
 const preprod = {
@@ -34,51 +30,24 @@ const preprod = {
 /** The selected deployment profile's registration window, in the budget. */
 const registrationMs = Number(REGISTRATION_DURATION_MS);
 
-describe("single-deposit transition-trace journey timing", () => {
-  it("counts the finite proof path and confirms its actual output fold shape", () => {
-    // Published fixture: enterprise key address, 10 ADA, no assets or inline datum.
-    const output = Buffer.from(
-      `a200581d60${"11".repeat(28)}01821a00989680a0`,
-      "hex",
-    );
-    const plan = verifyTransitionTraceJourneyOutputPlan(output);
-    expect(plan).toBe(TRANSITION_TRACE_JOURNEY_PLAN);
-    expect(plan.checkpointPhases).toEqual([6, 0, 2, 7, 10, 8, 3, 9, 4, 5]);
-    expect(
-      Math.ceil(plan.scanPrimitiveSteps / plan.scanStepsPerTransaction),
-    ).toBe(1);
-    expect(
-      Math.ceil(plan.valuePrimitiveSteps / plan.valueStepsPerTransaction),
-    ).toBe(1);
-    const initAndRoute = 2;
-    const checkpoints = plan.checkpointPhases.length - 1;
-    const terminalAndRemoval = 2;
-    expect(
-      initAndRoute +
-        plan.proofPreimagePublications +
-        plan.outputPreimagePublications +
-        checkpoints +
-        terminalAndRemoval,
-    ).toBe(15);
-    expect(plan.dependentTransactions).toBe(15);
-  });
+/** Every allowance in a journey's limit but its successor's transactions. */
+const fixedAllowancesMs = (
+  allowances: ReturnType<typeof genericJourneyTiming>["allowances"],
+) =>
+  allowances.authorityStartupMs +
+  allowances.watcherStartupMs +
+  allowances.automaticDecisionMs +
+  allowances.healthySuccessorObservationMs +
+  allowances.successorRegistrationMs +
+  allowances.fixtureStagingMs +
+  allowances.finalizedEvidenceStampMs;
 
-  it("refuses output shape drift instead of silently retaining the old count", () => {
-    const smallerValue = Buffer.from(
-      `a200581d60${"11".repeat(28)}018201a0`,
-      "hex",
-    );
-    expect(() => verifyTransitionTraceJourneyOutputPlan(smallerValue)).toThrow(
-      "audited journey timing plan",
-    );
-  });
-
-  it("budgets actual block cadence and keeps the whole journey beyond correction", () => {
-    const timing = transitionTraceJourneyTiming(preprod);
-    expect(timing.expectedConfirmationMs).toBe(150 * 60_000);
-    expect(timing.confirmationAllowanceMs).toBe(300 * 60_000);
-    expect(timing.correctionTimeoutMs).toBe(20_250_000);
-    expect(timing.journeyTimeoutMs).toBe(30_210_000 + registrationMs);
+describe("journey timing", () => {
+  it("budgets actual block cadence for every stage but the correction", () => {
+    const timing = genericJourneyTiming(preprod);
+    // Two finality windows plus build and RPC for one dependent transaction.
+    expect(timing.transactionAllowanceMs).toBe(1_350_000);
+    expect(timing.journeyTimeoutMs).toBe(9_960_000 + registrationMs);
     expect(timing.plan.successorTransactions).toBe(4);
     expect(timing.allowances.successorRegistrationMs).toBe(registrationMs);
     expect(timing.cadence.confirmationDepth).toBe(30);
@@ -88,62 +57,52 @@ describe("single-deposit transition-trace journey timing", () => {
   });
 
   it("budgets action stages from the action depth and the stamp from finality", () => {
-    const inclusion = transitionTraceJourneyTiming({
+    const inclusion = genericJourneyTiming({
       ...preprod,
       actionDepth: 1,
     });
-    const finality = transitionTraceJourneyTiming(preprod);
+    const finality = genericJourneyTiming(preprod);
     expect(inclusion.cadence.actionDepth).toBe(1);
     expect(inclusion.cadence.confirmationDepth).toBe(30);
     // One block at f=0.05 and one-second slots: twenty seconds per inclusion.
-    expect(inclusion.expectedConfirmationMs).toBe(15 * 20_000);
     expect(inclusion.transactionAllowanceMs).toBe(40_000 + 120_000 + 30_000);
-    expect(inclusion.correctionTimeoutMs).toBe(15 * 190_000);
     // The single release-finality window is unchanged by the action depth.
     expect(inclusion.allowances.finalizedEvidenceStampMs).toBe(1_230_000);
     expect(inclusion.allowances).toEqual(finality.allowances);
     expect(inclusion.journeyTimeoutMs).toBeLessThan(finality.journeyTimeoutMs);
-    expect(
-      inclusion.journeyTimeoutMs -
-        inclusion.allowances.finalizedEvidenceStampMs,
-    ).toBeGreaterThan(0);
   });
 
   it("refuses an action depth outside the release finality window", () => {
     for (const actionDepth of [0, 1.5, 31, Number.NaN])
-      expect(() =>
-        transitionTraceJourneyTiming({ ...preprod, actionDepth }),
-      ).toThrow("Invalid journey cadence");
+      expect(() => genericJourneyTiming({ ...preprod, actionDepth })).toThrow(
+        "Invalid journey cadence",
+      );
   });
 
   it("scales with slot duration, block probability, and finality independently", () => {
-    const baseline =
-      transitionTraceJourneyTiming(preprod).confirmationAllowanceMs;
+    // A transaction's confirmation allowance: all of it but build and RPC.
+    const confirmationMs = (cadence: typeof preprod & object) =>
+      genericJourneyTiming(cadence).transactionAllowanceMs - 150_000;
+    const baseline = confirmationMs(preprod);
+    expect(confirmationMs({ ...preprod, slotLengthSeconds: 2 })).toBe(
+      2 * baseline,
+    );
+    expect(confirmationMs({ ...preprod, activeSlotsCoeff: 0.1 })).toBe(
+      baseline / 2,
+    );
+    expect(confirmationMs({ ...preprod, confirmationDepth: 60 })).toBe(
+      2 * baseline,
+    );
     expect(
-      transitionTraceJourneyTiming({ ...preprod, slotLengthSeconds: 2 })
-        .confirmationAllowanceMs,
-    ).toBe(2 * baseline);
-    expect(
-      transitionTraceJourneyTiming({ ...preprod, activeSlotsCoeff: 0.1 })
-        .confirmationAllowanceMs,
+      genericJourneyTiming({ ...preprod, actionDepth: 15 })
+        .transactionAllowanceMs - 150_000,
     ).toBe(baseline / 2);
-    expect(
-      transitionTraceJourneyTiming({ ...preprod, confirmationDepth: 60 })
-        .confirmationAllowanceMs,
-    ).toBe(2 * baseline);
-    expect(
-      transitionTraceJourneyTiming({ ...preprod, actionDepth: 15 })
-        .confirmationAllowanceMs,
-    ).toBe(baseline / 2);
-    const staged = transitionTraceJourneyTiming({
+    const staged = genericJourneyTiming({
       ...preprod,
       fixtureStagingAllowanceMs: 123_000,
     });
     expect(staged.journeyTimeoutMs).toBe(
-      transitionTraceJourneyTiming(preprod).journeyTimeoutMs + 123_000,
-    );
-    expect(staged.correctionTimeoutMs).toBe(
-      transitionTraceJourneyTiming(preprod).correctionTimeoutMs,
+      genericJourneyTiming(preprod).journeyTimeoutMs + 123_000,
     );
   });
 
@@ -157,14 +116,14 @@ describe("single-deposit transition-trace journey timing", () => {
     { confirmationDepth: 1.5 },
     { fixtureStagingAllowanceMs: -1 },
   ])("rejects invalid cadence or allowance %j", (invalid) => {
-    expect(() =>
-      transitionTraceJourneyTiming({ ...preprod, ...invalid }),
-    ).toThrow("Invalid journey cadence");
+    expect(() => genericJourneyTiming({ ...preprod, ...invalid })).toThrow(
+      "Invalid journey cadence",
+    );
   });
 
   it("rejects timer overflow instead of turning a long deadline into an immediate one", () => {
     expect(() =>
-      transitionTraceJourneyTiming({ ...preprod, activeSlotsCoeff: 0.000001 }),
+      genericJourneyTiming({ ...preprod, activeSlotsCoeff: 0.000001 }),
     ).toThrow("supported timer range");
   });
 
@@ -182,46 +141,59 @@ describe("single-deposit transition-trace journey timing", () => {
         JSON.stringify({ l1Finality: { confirmationDepth: 30 } }),
       );
       await expect(
-        readTransitionTraceJourneyTiming(directory),
+        readJourneyTiming(directory, "transitionTrace"),
       ).rejects.toThrow();
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
     await expect(
-      readTransitionTraceJourneyTiming("relative-run"),
+      readJourneyTiming("relative-run", "transitionTrace"),
     ).rejects.toThrow("must be absolute");
   });
 });
 
-describe("generic journey timing for families without an audited plan", () => {
-  it("budgets the same cadence formula over the finite generic transaction bound", () => {
-    const timing = genericJourneyTiming(preprod);
-    const audited = transitionTraceJourneyTiming(preprod);
-    expect(timing.plan).toBe(GENERIC_JOURNEY_PLAN);
-    expect(GENERIC_JOURNEY_PLAN.dependentTransactions).toBeGreaterThan(
-      TRANSITION_TRACE_JOURNEY_PLAN.dependentTransactions,
-    );
-    // Two finality windows plus build and RPC for one dependent transaction.
-    expect(timing.transactionAllowanceMs).toBe(1_350_000);
-    expect(timing.transactionAllowanceMs).toBe(audited.transactionAllowanceMs);
-    expect(timing.correctionTimeoutMs).toBe(32 * 1_350_000);
-    expect(timing.journeyTimeoutMs).toBe(53_160_000 + registrationMs);
-    expect(timing.journeyTimeoutMs).toBeGreaterThan(audited.journeyTimeoutMs);
-    expect(timing.allowances).toEqual(audited.allowances);
-  });
+/**
+ * No family's limit counts its proof's transactions, at Preprod's cadence
+ * or the fast devnet's: every limit is its successor's transactions and the
+ * fixed allowances, the same for every family, however long its proof.
+ */
+describe.each([0.05, 0.25])(
+  "every family's plan at active slot coefficient %s",
+  (activeSlotsCoeff) => {
+    const cadence = {
+      ...preprod,
+      activeSlotsCoeff,
+      actionDepth: 1,
+      disputeTiming: DEPLOYMENT_PROFILES["preprod-rehearsal"].timing,
+    };
 
-  it("keeps the audited plan for transitionTrace and uses the generic plan elsewhere", () => {
-    expect(journeyTimingForCategory("transitionTrace", preprod).plan).toBe(
-      TRANSITION_TRACE_JOURNEY_PLAN,
-    );
-    expect(journeyTimingForCategory("zeroInput", preprod)).toEqual(
-      genericJourneyTiming(preprod),
-    );
-    expect(
-      journeyTimingForCategory("executionNativeScriptInvalid", preprod).plan,
-    ).toBe(GENERIC_JOURNEY_PLAN);
-  });
-});
+    it("leaves the correction out of the limit", () => {
+      const timing = genericJourneyTiming(cadence);
+      expect(timing.plan).toBe(GENERIC_JOURNEY_PLAN);
+      expect(timing.journeyTimeoutMs).toBe(
+        GENERIC_JOURNEY_PLAN.successorTransactions *
+          timing.transactionAllowanceMs +
+          fixedAllowancesMs(timing.allowances),
+      );
+    });
+
+    it("gives every family the generic plan, and an undefended case's wait no share of the limit", () => {
+      const generic = genericJourneyTiming(cadence);
+      for (const category of [
+        "transitionTrace",
+        "zeroInput",
+        "executionNativeScriptInvalid",
+      ])
+        expect(journeyTimingForCategory(category, cadence)).toEqual(generic);
+      const dispute = journeyTimingForCategory(
+        "validationTraceDispute",
+        cadence,
+      );
+      expect(dispute.allowances.undefendedCaseMs).toBeGreaterThan(0);
+      expect(dispute.journeyTimeoutMs).toBe(generic.journeyTimeoutMs);
+    });
+  },
+);
 
 describe("fixed native backlog replay allowance", () => {
   const workload = {
@@ -247,16 +219,12 @@ describe("fixed native backlog replay allowance", () => {
   });
 
   it("includes new blocks during the full proof and successor window before replay", () => {
-    const timing = transitionTraceJourneyTiming(preprod);
-    const outer = transitionTraceJourneyExecutionTiming(
-      timing,
-      {
-        blockNo: 1700,
-        slot: 34_000,
-        blockHash: "11".repeat(32),
-      },
-      1000,
-    );
+    const timing = genericJourneyTiming(preprod);
+    const outer = journeyExecutionTiming(timing, {
+      blockNo: 1700,
+      slot: 34_000,
+      blockHash: "11".repeat(32),
+    });
     expect(outer.healthyReplay.beforeReplayAllowanceMs).toBe(
       timing.journeyTimeoutMs - timing.allowances.healthySuccessorObservationMs,
     );
@@ -265,7 +233,6 @@ describe("fixed native backlog replay allowance", () => {
       outer.healthyReplay.beforeReplayAllowanceMs +
         outer.healthyReplay.timeoutMs,
     );
-    expect(outer.deadlineMonotonicMs).toBe(1000 + outer.journeyTimeoutMs);
     const runtime = healthyJourneyReplayTiming({
       ...workload,
       tipBlockNo: workload.tipBlockNo + outer.healthyReplay.blocksBeforeReplay,
@@ -273,24 +240,6 @@ describe("fixed native backlog replay allowance", () => {
     expect(runtime.timeoutMs).toBeLessThanOrEqual(
       outer.healthyReplay.timeoutMs,
     );
-    expect(
-      requireHealthyReplayFitsDeadline({
-        deadlineMonotonicMs: outer.deadlineMonotonicMs,
-        nowMonotonicMs: 1000 + outer.healthyReplay.beforeReplayAllowanceMs,
-        timeoutMs: runtime.timeoutMs,
-      }),
-    ).toBeGreaterThanOrEqual(runtime.timeoutMs);
-  });
-
-  it("refuses a fixed outer deadline that no longer contains the captured workload", () => {
-    const timeoutMs = healthyJourneyReplayTiming(workload).timeoutMs;
-    expect(() =>
-      requireHealthyReplayFitsDeadline({
-        deadlineMonotonicMs: timeoutMs,
-        nowMonotonicMs: 1,
-        timeoutMs,
-      }),
-    ).toThrow("fixed outer deadline");
   });
 
   it("plans the local devnet's four-second cadence at half utilization or less", () => {
@@ -350,22 +299,18 @@ const actualTimingRun = process.env.MIDGARD_WATCHER_JOURNEY_TIMING_RUN_DIR;
 it.skipIf(actualTimingRun === undefined)(
   "plans from the actual read-only node tip before suite startup",
   async () => {
-    const plan = await readTransitionTraceJourneyExecutionTiming(
+    const plan = await readJourneyExecutionTiming(
       actualTimingRun!,
+      "transitionTrace",
     );
     expect(plan.capturedTip.blockNo).toBeGreaterThan(0);
     expect(plan.capturedTip.blockHash).toMatch(/^[0-9a-f]{64}$/);
     expect(plan.healthyReplay.initialBacklogBlocks).toBe(
       plan.capturedTip.blockNo + 1,
     );
-    expect(plan.deadlineMonotonicMs - plan.capturedAtMonotonicMs).toBeCloseTo(
-      plan.journeyTimeoutMs,
-      3,
-    );
     console.info("Actual read-only journey timing preflight", {
       tip: plan.capturedTip,
       cadence: plan.cadence,
-      correctionTimeoutMs: plan.correctionTimeoutMs,
       healthyReplay: plan.healthyReplay,
       journeyTimeoutMs: plan.journeyTimeoutMs,
     });

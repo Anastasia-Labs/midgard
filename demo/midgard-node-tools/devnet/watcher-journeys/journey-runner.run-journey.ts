@@ -32,13 +32,16 @@ import { createJourneyVerifiedHeaders } from "./verified-headers.js";
 /**
  * One shared service lifecycle for a family's acceptance journey. Every
  * stage, wait and staging step checks the family's `signal` and stops with
- * its reason once it aborts.
+ * its reason once it aborts. The correction runs inside `excludingLimit`:
+ * the journal's progress ends it, so the family's time limit pauses for it
+ * (`journeyFamilyDeadline`).
  */
 export const runJourney = async (
   runDirectory: string,
   execution: JourneyExecution,
   session: JourneySession | AttachedJourneySession,
   signal: AbortSignal,
+  excludingLimit: <T>(work: () => Promise<T>) => Promise<T> = (work) => work(),
 ) => {
   const { context } = session;
   if (context.runDirectory !== runDirectory)
@@ -179,28 +182,29 @@ export const runJourney = async (
       },
       timing.allowances.automaticDecisionMs,
     );
-    const completion = await verifyJourneyCorrection({
-      workflowBaseline,
-      actionDepth: JOURNEY_ACTION_DEPTH,
-      correctionTimeoutMs: timing.correctionTimeoutMs,
-      ...journeyProgressClock({ timing, transactions: mode.transactions }),
-      resumeAllowanceMs: timing.allowances.automaticDecisionMs,
-      reconciliationAllowanceMs: timing.allowances.finalizedEvidenceStampMs,
-      context,
-      transactions: mode.transactions,
-      watcherStore: mode.watcherStore,
-      watcherStatus: async () =>
-        (await operations("/v1/status")) as JourneyWatcherStartStatus,
-      proverAddress: mode.proverAddress,
-      directory,
-      category: fixture.category,
-      headerHash: staged.current.headerHash,
-      predecessorHeaderHash: staged.predecessor.headerHash,
-      operatorVkey: staged.current.header.operatorVkey,
-      requireLive,
-      poll,
-      stage,
-    });
+    const completion = await excludingLimit(() =>
+      verifyJourneyCorrection({
+        workflowBaseline,
+        actionDepth: JOURNEY_ACTION_DEPTH,
+        ...journeyProgressClock({ timing, transactions: mode.transactions }),
+        resumeAllowanceMs: timing.allowances.automaticDecisionMs,
+        reconciliationAllowanceMs: timing.allowances.finalizedEvidenceStampMs,
+        context,
+        transactions: mode.transactions,
+        watcherStore: mode.watcherStore,
+        watcherStatus: async () =>
+          (await operations("/v1/status")) as JourneyWatcherStartStatus,
+        proverAddress: mode.proverAddress,
+        directory,
+        category: fixture.category,
+        headerHash: staged.current.headerHash,
+        predecessorHeaderHash: staged.predecessor.headerHash,
+        operatorVkey: staged.current.header.operatorVkey,
+        requireLive,
+        poll,
+        stage,
+      }),
+    );
     if (
       staged.target.kind === "corrected" &&
       staged.target.removalTxHash !== completion.correction.removalTxHash

@@ -64,6 +64,10 @@ export {
   FRAUD_PROOF_THREAD_RECLAIM_UNFUNDED,
   type FraudProofThreadReclaim,
 } from "./own-thread-reclaim.js";
+export {
+  journaledProgress,
+  WORKFLOW_CONTINUATION_QUIET_BOUND_MS,
+} from "./pending-continuation.js";
 export * from "./proof-chunk-prerequisite.js";
 export * from "./raw-datum-preimage-prerequisite.js";
 export * from "./raw-l1-family-derivation.js";

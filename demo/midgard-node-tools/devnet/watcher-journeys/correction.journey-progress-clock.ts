@@ -83,28 +83,22 @@ const undefendedCaseDeadline = ({
 };
 
 /**
- * The journey's progress clock for a family's timing: one transaction's
- * allowance between durable journal records, and, for a plan that waits out
- * an undefended case, that case's defense deadline (from the deployment's
- * own C + L_d) during which the journal may stay silent.
+ * The journey's progress clock for a family's timing: the watcher's own
+ * quiet bound between journaled milestones (`verifyJourneyCorrection`),
+ * and, for a plan that waits out an undefended case, that case's defense
+ * deadline (from the deployment's own C + L_d) during which the journal may
+ * stay silent.
  */
 export const journeyProgressClock = ({
   timing,
   transactions,
 }: {
-  timing: Readonly<{
-    transactionAllowanceMs: number;
-    allowances: Readonly<{ undefendedCaseMs: number }>;
-  }>;
+  timing: Readonly<{ allowances: Readonly<{ undefendedCaseMs: number }> }>;
   transactions: JourneyTransactions;
-}): Readonly<{
-  progressAllowanceMs: number;
-  counterpartyWait?: JourneyCounterpartyWait;
-}> =>
+}): Readonly<{ counterpartyWait?: JourneyCounterpartyWait }> =>
   timing.allowances.undefendedCaseMs === 0
-    ? { progressAllowanceMs: timing.transactionAllowanceMs }
+    ? {}
     : {
-        progressAllowanceMs: timing.transactionAllowanceMs,
         counterpartyWait: undefendedCaseDeadline({
           defenseWindowMs: timing.allowances.undefendedCaseMs,
           transactions,

@@ -6,6 +6,7 @@ import {
 import { describe, expect, it } from "vitest";
 
 import { JOURNEY_FIXTURE_CANDIDATES } from "./catalogue.js";
+import type { JourneyCategory } from "./fixture.js";
 import {
   journeyTimingForCategory,
   stackJourneyTimeoutMs,
@@ -18,6 +19,10 @@ import {
   OPERATOR_READINESS_READ_TIMEOUT_MS,
   OPERATOR_RESUME_POLL_INTERVAL_MS,
 } from "./operator-pause.js";
+import {
+  STACK_DA_REFUSED_CATEGORIES,
+  stackDaExpectation,
+} from "./stack-da-publication.js";
 import { stackTraceShiftWorkMs } from "./stack-trace-staging.js";
 
 /** A twin stack's event-history protection, as its manifest carries it. */
@@ -53,19 +58,27 @@ describe("an attached stack's per-family time limit", () => {
   // The refusal-only families end at the committee's refusal, never at a
   // proof; transitionTrace has its own audited plan.
   it.each(["daHashPreimage", "canonicalDecodability", "l2TxMistag"])(
-    "gives %s its computed budget, one of our node's shifts and twice its own staging cover at rehearsal cadence",
+    "gives %s its computed budget, one of our node's shifts, twice its own staging cover and its age-out at rehearsal cadence",
     (category) => {
       const timing = journeyTimingForCategory(category, {
         ...preprod,
         actionDepth: 1,
       });
       const coverMs = fixtureCoverMs(category, { timing, profile });
-      const limitMs = stackJourneyTimeoutMs(timing, profile, coverMs);
+      const limitMs = stackJourneyTimeoutMs(
+        timing,
+        profile,
+        coverMs,
+        "refusal",
+      );
       // At worst the rest of operator-2's shift, our node's whole shift and
       // the staging's own cover, on top of everything the family's plan
-      // waits for.
+      // waits for, and the refused block's two attestation timeouts.
       expect(limitMs).toBe(
-        timing.journeyTimeoutMs + profile.operator_shift_ms + 2 * coverMs,
+        timing.journeyTimeoutMs +
+          profile.operator_shift_ms +
+          2 * coverMs +
+          2 * profile.da_attestation_timeout_ms,
       );
       // A refused fault ages out one attestation timeout after its block,
       // and its removal lands within one more
@@ -105,7 +118,14 @@ describe("an attached stack's per-family time limit", () => {
         operatorShiftMs: testing.timing.operator_shift_ms,
       }),
     );
-    expect(stackJourneyTimeoutMs(traceTiming, testing.timing, coverMs)).toBe(
+    expect(
+      stackJourneyTimeoutMs(
+        traceTiming,
+        testing.timing,
+        coverMs,
+        "attestation",
+      ),
+    ).toBe(
       traceTiming.journeyTimeoutMs +
         testing.timing.operator_shift_ms +
         2 * coverMs,
@@ -131,7 +151,7 @@ describe("an attached stack's per-family time limit", () => {
   // only past its defense deadline, the side clock C plus the longest move
   // validity range L_d after the case starts (validation-case-v1), and the
   // watcher journals nothing while it waits.
-  it("gives validationTraceDispute its computed budget plus the undefended case's defense window at rehearsal cadence", () => {
+  it("leaves validationTraceDispute's undefended case out of its limit, which pauses for the correction", () => {
     const cadence = { ...preprod, actionDepth: 1 };
     const generic = journeyTimingForCategory("zeroInput", cadence);
     const timing = journeyTimingForCategory("validationTraceDispute", {
@@ -143,21 +163,18 @@ describe("an attached stack's per-family time limit", () => {
     // One day and two minutes on the rehearsal profile.
     expect(defenseWindowMs).toBe(86_520_000);
     // The window the progress gate holds the journal's silence open for,
-    // from the case's start; the Close then gets one transaction allowance.
+    // from the case's start; the Close then gets the watcher's quiet bound.
+    // The family's limit does not run during the correction, so the window
+    // takes no share of it.
     expect(timing.allowances.undefendedCaseMs).toBe(defenseWindowMs);
     expect(timing.transactionAllowanceMs).toBe(generic.transactionAllowanceMs);
-    expect(timing.correctionTimeoutMs).toBe(
-      generic.correctionTimeoutMs + defenseWindowMs,
-    );
+    expect(timing.journeyTimeoutMs).toBe(generic.journeyTimeoutMs);
     const coverMs = fixtureCoverMs("validationTraceDispute", {
       timing,
       profile,
     });
-    expect(stackJourneyTimeoutMs(timing, profile, coverMs)).toBe(
-      generic.journeyTimeoutMs +
-        defenseWindowMs +
-        profile.operator_shift_ms +
-        2 * coverMs,
+    expect(stackJourneyTimeoutMs(timing, profile, coverMs, "attestation")).toBe(
+      generic.journeyTimeoutMs + profile.operator_shift_ms + 2 * coverMs,
     );
     // Every other family has no such window.
     expect(generic.allowances.undefendedCaseMs).toBe(0);
@@ -178,6 +195,7 @@ describe("an attached stack's per-family time limit", () => {
         { journeyTimeoutMs: 2_147_483_647 - profile.operator_shift_ms },
         profile,
         1,
+        "attestation",
       ),
     ).toThrow(/timer range/u);
   });
@@ -185,10 +203,63 @@ describe("an attached stack's per-family time limit", () => {
   it("refuses a staging cover one shift cannot hold", () => {
     for (const coverMs of [0, profile.operator_shift_ms + 1, 0.5])
       expect(() =>
-        stackJourneyTimeoutMs({ journeyTimeoutMs: 1 }, profile, coverMs),
+        stackJourneyTimeoutMs(
+          { journeyTimeoutMs: 1 },
+          profile,
+          coverMs,
+          "attestation",
+        ),
       ).toThrow(/does not fit one/u);
   });
 });
+
+describe.each([0.05, 0.25])(
+  "a refused family's age-out on an attached stack at active slot coefficient %s",
+  (activeSlotsCoeff) => {
+    const profile = DEPLOYMENT_PROFILES["preprod-rehearsal"].timing;
+    const cadence = { ...preprod, activeSlotsCoeff, actionDepth: 1 };
+    const limitOf = (category: JourneyCategory) => {
+      const timing = journeyTimingForCategory(category, cadence);
+      const coverMs = fixtureCoverMs(category, { timing, profile });
+      return {
+        timing,
+        coverMs,
+        limitMs: stackJourneyTimeoutMs(
+          timing,
+          profile,
+          coverMs,
+          stackDaExpectation(category),
+        ),
+      };
+    };
+
+    // Staging waits out the refused block's attestation deadline, one
+    // attestation timeout after its block (publishStackDaPayload), and the
+    // runner then waits up to one more for its timeout removal
+    // (awaitStackDaAgedOut): neither is a correction, so the limit runs
+    // through both.
+    it.each([...STACK_DA_REFUSED_CATEGORIES])(
+      "holds %s through the wait to its attestation deadline and its age-out after it",
+      (category) => {
+        const { timing, coverMs, limitMs } = limitOf(category);
+        expect(limitMs).toBe(
+          timing.journeyTimeoutMs +
+            profile.operator_shift_ms +
+            2 * coverMs +
+            2 * profile.da_attestation_timeout_ms,
+        );
+      },
+    );
+
+    it("gives an attested family no age-out", () => {
+      expect(stackDaExpectation("zeroInput")).toBe("attestation");
+      const { timing, coverMs, limitMs } = limitOf("zeroInput");
+      expect(limitMs).toBe(
+        timing.journeyTimeoutMs + profile.operator_shift_ms + 2 * coverMs,
+      );
+    });
+  },
+);
 
 describe("a family the deployment's profile leaves out of its catalogue", () => {
   // The Preprod testing profile, as an attached twin stack's finalized
@@ -312,7 +383,12 @@ describe("an attached stack's limit against operator-2's worst shift wait", () =
     // The remainder, our node's shift, and the first millisecond of
     // operator-2's next shift.
     expect(waitMs).toBe(coverMs - 1 + shiftMs + 1);
-    const limitMs = stackJourneyTimeoutMs(timing, testing.timing, coverMs);
+    const limitMs = stackJourneyTimeoutMs(
+      timing,
+      testing.timing,
+      coverMs,
+      "attestation",
+    );
     // The family's own budget, then the wait, then the staging's own shift.
     expect(limitMs - timing.journeyTimeoutMs).toBeGreaterThanOrEqual(
       waitMs + coverMs,
@@ -332,7 +408,7 @@ describe("an attached stack's limit against operator-2's worst shift wait", () =
     );
     expect(waitMs).toBe(shiftMs + 1);
     expect(
-      stackJourneyTimeoutMs(timing, testing.timing, coverMs) -
+      stackJourneyTimeoutMs(timing, testing.timing, coverMs, "attestation") -
         timing.journeyTimeoutMs,
     ).toBeGreaterThanOrEqual(waitMs + coverMs);
   });

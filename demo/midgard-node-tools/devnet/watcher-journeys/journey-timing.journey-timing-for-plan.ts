@@ -1,8 +1,4 @@
 import {
-  buildMidgardLedgerOutputScanTrace,
-  buildMidgardLedgerOutputValueTrace,
-} from "@al-ft/midgard-core";
-import {
   REGISTRATION_DURATION_MS,
   USER_EVENT_TX_TTL_MS,
 } from "@al-ft/midgard-sdk";
@@ -10,43 +6,23 @@ import { protectedPredecessorHoldMs } from "midgard-watcher/tests/support/histor
 
 import { stackUserEventFloorOffsetMs } from "./stack-user-event-floor.js";
 
-/** Only the single lovelace-only deposit used by transitionTrace is audited here. */
-export const TRANSITION_TRACE_JOURNEY_PLAN = Object.freeze({
-  category: "transitionTrace",
-  depositOutputs: 1,
-  outputBytes: 41,
-  scanPrimitiveSteps: 3,
-  scanStepsPerTransaction: 4,
-  valuePrimitiveSteps: 2,
-  valueStepsPerTransaction: 4,
-  proofPreimagePublications: 1,
-  outputPreimagePublications: 1,
-  checkpointPhases: Object.freeze([6, 0, 2, 7, 10, 8, 3, 9, 4, 5]),
-  // Init, proof preimage, route, output preimage, nine checkpoints, final, remove.
-  dependentTransactions: 15,
-  // Registration, activation, appointment, and honest commitment; retained runs may skip earlier actions.
-  successorTransactions: 4,
-});
-
 /**
- * Finite bound for every automatic family without an audited plan. The largest
- * installed automatic proof chain (executionNativeScriptInvalid's per-purpose
- * routes: 20 to 30 dependent transactions from init through the terminal,
- * plus the removal) stays under this bound; a family that needs more must
- * publish an audited plan like transitionTrace instead of widening the bound.
- * The correction stage additionally fails as soon as the workflow journal
- * stops making durable progress for one transaction allowance, so this bound
- * only caps a family that keeps progressing.
+ * Every automatic family's plan. A family's proof chain takes as many
+ * dependent transactions as its data needs (scan steps loop over the data,
+ * per-purpose routes vary), so no plan counts them: the correction ends only
+ * when the workflow journal stops making progress by the watcher's own rule
+ * (`verifyJourneyCorrection`), and the family's time limit does not run
+ * while it waits (`journeyFamilyDeadline`). The plan budgets the rest of the
+ * journey.
  */
 export const GENERIC_JOURNEY_PLAN = Object.freeze({
   category: "generic",
-  dependentTransactions: 32,
   // Registration, activation, appointment, and honest commitment.
   successorTransactions: 4,
 });
 
 /**
- * validationTraceDispute: the generic transaction bound, plus the one wait no
+ * validationTraceDispute: the generic plan, plus the one wait no
  * transaction of ours ends. Operator-2's node is stopped through the fault
  * phase, so nobody defends the case the watcher opens. The case validator
  * lets the watcher close it Convicted only past its defense deadline, the
@@ -56,39 +32,13 @@ export const GENERIC_JOURNEY_PLAN = Object.freeze({
  */
 export const VALIDATION_TRACE_DISPUTE_JOURNEY_PLAN = Object.freeze({
   category: "validationTraceDispute",
-  dependentTransactions: GENERIC_JOURNEY_PLAN.dependentTransactions,
   successorTransactions: GENERIC_JOURNEY_PLAN.successorTransactions,
   awaitsUndefendedCase: true,
 });
 
 export type JourneyTimingPlan =
-  | typeof TRANSITION_TRACE_JOURNEY_PLAN
   | typeof GENERIC_JOURNEY_PLAN
   | typeof VALIDATION_TRACE_DISPUTE_JOURNEY_PLAN;
-
-/** Refuse to reuse the audited plan if the actual projected output has drifted. */
-export const verifyTransitionTraceJourneyOutputPlan = (
-  outputCbor: Uint8Array,
-) => {
-  const scan = buildMidgardLedgerOutputScanTrace(outputCbor);
-  const value = buildMidgardLedgerOutputValueTrace({
-    assets: scan.steps.flatMap((step) =>
-      step.asset === null ? [] : [step.asset],
-    ),
-    lovelace: scan.terminal.lovelace,
-  });
-  const plan = TRANSITION_TRACE_JOURNEY_PLAN;
-  if (
-    outputCbor.length !== plan.outputBytes ||
-    scan.steps.length !== plan.scanPrimitiveSteps ||
-    value.steps.length !== plan.valuePrimitiveSteps
-  ) {
-    throw new Error(
-      "Transition-trace output differs from its audited journey timing plan",
-    );
-  }
-  return plan;
-};
 
 export interface JourneyCadence {
   slotLengthSeconds: number;
@@ -222,26 +172,6 @@ export const healthyJourneyReplayTiming = (input: {
   });
 };
 
-export const requireHealthyReplayFitsDeadline = (input: {
-  deadlineMonotonicMs: number;
-  nowMonotonicMs: number;
-  timeoutMs: number;
-}) => {
-  const remainingMs = Math.floor(
-    input.deadlineMonotonicMs - input.nowMonotonicMs,
-  );
-  if (
-    !Number.isFinite(remainingMs) ||
-    !Number.isSafeInteger(input.timeoutMs) ||
-    input.timeoutMs <= 0 ||
-    remainingMs < input.timeoutMs
-  )
-    throw new Error(
-      `Healthy replay requires ${input.timeoutMs}ms but the fixed outer deadline has ${remainingMs}ms remaining`,
-    );
-  return remainingMs;
-};
-
 export const journeyTimingForPlan = (
   plan: JourneyTimingPlan,
   {
@@ -274,8 +204,8 @@ export const journeyTimingForPlan = (
   // An action waits for inclusion at the action depth, not for release finality.
   const expectedConfirmationPerTransactionMs = idealDepthMs(actionDepth);
   // Two times the ideal cadence mean is a finite allowance, not an inclusion
-  // guarantee. Node outages or sustained underproduction still terminate at
-  // the outer deadline.
+  // guarantee. Node outages or sustained underproduction still end at the
+  // family's limit (`journeyFamilyDeadline`).
   const confirmationAllowancePerTransactionMs = Math.ceil(
     2 * expectedConfirmationPerTransactionMs,
   );
@@ -301,7 +231,8 @@ export const journeyTimingForPlan = (
     /**
      * An undefended case's defense window, C + L_d; zero for every other
      * plan. The progress gate holds the journal's silence open from the
-     * case's start to that deadline (`journeyProgressClock`).
+     * case's start to that deadline (`journeyProgressClock`); the family's
+     * limit does not run meanwhile.
      */
     undefendedCaseMs: undefendedCaseWaitMs(plan, disputeTiming),
   });
@@ -309,11 +240,9 @@ export const journeyTimingForPlan = (
     confirmationAllowancePerTransactionMs +
     allowances.transactionBuildMs +
     allowances.transactionRpcMs;
-  const correctionTimeoutMs =
-    plan.dependentTransactions * transactionAllowanceMs +
-    allowances.undefendedCaseMs;
+  // The correction, with any undefended case it waits out, is not budgeted
+  // here: the progress gate ends it, and the family's limit pauses for it.
   const journeyTimeoutMs =
-    correctionTimeoutMs +
     plan.successorTransactions * transactionAllowanceMs +
     allowances.authorityStartupMs +
     allowances.watcherStartupMs +
@@ -337,13 +266,8 @@ export const journeyTimingForPlan = (
       confirmationDepth,
       actionDepth,
     },
-    expectedConfirmationMs:
-      plan.dependentTransactions * expectedConfirmationPerTransactionMs,
-    confirmationAllowanceMs:
-      plan.dependentTransactions * confirmationAllowancePerTransactionMs,
-    /** Build, submit, and confirm one dependent transaction; also the progress allowance. */
+    /** Build, submit, and confirm one dependent transaction. */
     transactionAllowanceMs,
-    correctionTimeoutMs,
     journeyTimeoutMs,
     allowances,
   };
@@ -451,15 +375,12 @@ export const stackStagingShiftCover = (
   return coverMs;
 };
 
-export const transitionTraceJourneyTiming = (cadence: JourneyCadence) =>
-  journeyTimingForPlan(TRANSITION_TRACE_JOURNEY_PLAN, cadence);
-
 export const genericJourneyTiming = (cadence: JourneyCadence) =>
   journeyTimingForPlan(GENERIC_JOURNEY_PLAN, cadence);
 
 /**
- * The audited plan for transitionTrace, the undefended-case plan for
- * validationTraceDispute, and the finite generic plan for every other family.
+ * The undefended-case plan for validationTraceDispute and the generic plan
+ * for every other family.
  * Refuses, naming the family and profile, a family the deployment's profile
  * leaves out of its catalogue: its watcher never proves it, so a journey
  * would stage the fault on L1 and only then fail.
@@ -473,11 +394,9 @@ export const journeyTimingForCategory = (
     throw new Error(
       `${category} is not installed on deployment profile ${profile.name}: the profile leaves it out of its fraud-proof catalogue, so the drill cannot run it on this deployment`,
     );
-  return category === TRANSITION_TRACE_JOURNEY_PLAN.category
-    ? transitionTraceJourneyTiming(cadence)
-    : category === VALIDATION_TRACE_DISPUTE_JOURNEY_PLAN.category
-      ? journeyTimingForPlan(VALIDATION_TRACE_DISPUTE_JOURNEY_PLAN, cadence)
-      : genericJourneyTiming(cadence);
+  return category === VALIDATION_TRACE_DISPUTE_JOURNEY_PLAN.category
+    ? journeyTimingForPlan(VALIDATION_TRACE_DISPUTE_JOURNEY_PLAN, cadence)
+    : genericJourneyTiming(cadence);
 };
 
 export const object = (

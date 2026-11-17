@@ -1,14 +1,5 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
 import { DEPLOYMENT_PROFILES } from "@al-ft/midgard-core/deployment-profile";
-import {
-  computeFraudProofWorkflowId,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-  type FraudProofWorkflowJournalEntry,
-} from "@al-ft/midgard-fault-proofs";
+import { WORKFLOW_CONTINUATION_QUIET_BOUND_MS } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -17,99 +8,15 @@ import {
   toUnit,
   utxoToCore,
 } from "@lucid-evolution/lucid";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { journeyProgressClock, verifyJourneyCorrection } from "./correction.js";
-import { journeyTimingForCategory } from "./journey-timing.js";
-
-const identity = {
-  schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  deploymentFingerprint: "12".repeat(32),
-  category: "validationTraceDispute",
-  target: { kind: "state_queue_header", headerHash: "34".repeat(28) },
-} as const;
-
-const entry = (
-  sequence: number,
-  event: FraudProofWorkflowJournalEntry["event"],
-): FraudProofWorkflowJournalEntry => ({
-  schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-  workflowId: computeFraudProofWorkflowId(identity),
+import {
+  entry,
   identity,
-  sequence,
-  recordedAt: "2026-11-10T05:00:00.000Z",
-  event,
-});
-
-type CorrectionInput = Parameters<typeof verifyJourneyCorrection>[0];
-
-/**
- * Drive the journey's correction gate through `observations`, each the
- * watcher's journal as read at a wall-clock instant, starting (or resuming
- * on `retained`) at `startAt`; the whole-correction cap ends the run. The
- * error names how many observations the gate read before it failed.
- */
-const pollCorrectionProgress = async ({
-  retained,
-  observations,
-  startAt,
-  gate,
-}: {
-  retained: readonly FraudProofWorkflowJournalEntry[];
-  observations: readonly {
-    at: number;
-    records: readonly FraudProofWorkflowJournalEntry[];
-  }[];
-  startAt: number;
-  gate: Pick<
-    CorrectionInput,
-    "correctionTimeoutMs" | "progressAllowanceMs" | "counterpartyWait"
-  >;
-}) => {
-  const directory = await mkdtemp(join(tmpdir(), "journey-progress-clock-"));
-  const now = vi.spyOn(Date, "now").mockReturnValue(startAt);
-  let served: readonly FraudProofWorkflowJournalEntry[] = [];
-  let read = 0;
-  try {
-    await verifyJourneyCorrection({
-      context: { deployment: {}, provider: {} } as CorrectionInput["context"],
-      transactions: {} as CorrectionInput["transactions"],
-      watcherStore: {
-        readWorkflowRows: async (_category, headerHash) =>
-          new Map([[headerHash!, served]]),
-      },
-      proverAddress: "addr_test1unused",
-      directory,
-      category: identity.category,
-      headerHash: identity.target.headerHash,
-      predecessorHeaderHash: "78".repeat(28),
-      workflowBaseline: retained,
-      actionDepth: 1,
-      operatorVkey: "90".repeat(28),
-      requireLive: () => undefined,
-      stage: async (_name, action) => await action(),
-      ...gate,
-      poll: async (_name, action, timeoutMs) => {
-        expect(timeoutMs).toBe(gate.correctionTimeoutMs);
-        for (const observation of observations) {
-          now.mockReturnValue(observation.at);
-          served = observation.records;
-          read += 1;
-          expect(await action()).toBeUndefined();
-        }
-        throw new Error("whole correction timeout");
-      },
-    });
-  } catch (error) {
-    throw new Error(
-      `at observation ${read.toString()} of ${observations.length.toString()}: ${(error as Error).message}`,
-    );
-  } finally {
-    now.mockRestore();
-    await rm(directory, { recursive: true, force: true });
-  }
-};
-
+  pollCorrectionProgress,
+} from "./correction.journey-progress-clock.test-support.js";
+import { journeyProgressClock } from "./correction.js";
+import { journeyTimingForCategory } from "./journey-timing.js";
 /**
  * validationTraceDispute's undefended case: the watcher's workflow opens a
  * case (Init, Open, VerifySource) that nobody defends, then journals nothing
@@ -126,7 +33,7 @@ describe("the progress clock over an undefended validation-trace case", () => {
     actionDepth: 1,
     disputeTiming: DEPLOYMENT_PROFILES["preprod-rehearsal"].timing,
   });
-  const transactionAllowanceMs = timing.transactionAllowanceMs;
+  const quietBoundMs = WORKFLOW_CONTINUATION_QUIET_BOUND_MS;
   const defenseWindowMs = timing.allowances.undefendedCaseMs;
   /** The case's `started_at`, chain time. */
   const startedAt = 1_800_000_000_000;
@@ -251,12 +158,9 @@ describe("the progress clock over an undefended validation-trace case", () => {
     ]),
   ];
   // The gate exactly as the runner builds it from the family's timing.
-  const gate = () => ({
-    correctionTimeoutMs: timing.correctionTimeoutMs,
-    ...journeyProgressClock({ timing, transactions }),
-  });
+  const gate = () => journeyProgressClock({ timing, transactions });
 
-  it("catches a stall before the case opens after one transaction allowance", async () => {
+  it("catches a stall before the case opens after the watcher's quiet bound", async () => {
     // Open landed; VerifySource, which creates the case, never does.
     const openedAt = startedAt - 300_000;
     await expect(
@@ -264,14 +168,14 @@ describe("the progress clock over an undefended validation-trace case", () => {
         retained: [],
         observations: [
           { at: openedAt, records: opened },
-          { at: openedAt + transactionAllowanceMs, records: opened },
-          { at: openedAt + transactionAllowanceMs + 1, records: opened },
+          { at: openedAt + quietBoundMs, records: opened },
+          { at: openedAt + quietBoundMs + 1, records: opened },
         ],
         startAt: openedAt - 60_000,
         gate: gate(),
       }),
     ).rejects.toThrow(
-      `at observation 3 of 3: Workflow made no durable progress for ${transactionAllowanceMs.toString()} ms`,
+      `at observation 3 of 3: Workflow made no journaled progress for ${quietBoundMs.toString()} ms (5 milestones, last action validation-trace-open:${initHash}#0)`,
     );
   });
 
@@ -284,16 +188,16 @@ describe("the progress clock over an undefended validation-trace case", () => {
         retained: [],
         observations: [
           { at: confirmedAt, records: caseOpen },
-          { at: confirmedAt + transactionAllowanceMs + 1, records: caseOpen },
+          { at: confirmedAt + quietBoundMs + 1, records: caseOpen },
           { at: startedAt + defenseWindowMs / 2, records: caseOpen },
-          { at: deadline + transactionAllowanceMs, records: caseOpen },
-          { at: deadline + transactionAllowanceMs + 1, records: caseOpen },
+          { at: deadline + quietBoundMs, records: caseOpen },
+          { at: deadline + quietBoundMs + 1, records: caseOpen },
         ],
         startAt: confirmedAt - 60_000,
         gate: gate(),
       }),
     ).rejects.toThrow(
-      `at observation 5 of 5: Workflow made no durable progress within ${transactionAllowanceMs.toString()} ms of its counterparty wait's deadline ${deadline.toString()}`,
+      `at observation 5 of 5: Workflow made no journaled progress within ${quietBoundMs.toString()} ms of its counterparty wait's deadline ${deadline.toString()}`,
     );
   });
 
@@ -304,16 +208,16 @@ describe("the progress clock over an undefended validation-trace case", () => {
         retained: caseOpen,
         observations: [
           { at: resumedAt, records: caseOpen },
-          // Past the fifteen-minute catch-up a resumed attempt first gets.
-          { at: resumedAt + 900_001, records: caseOpen },
-          { at: deadline + transactionAllowanceMs, records: caseOpen },
-          { at: deadline + transactionAllowanceMs + 1, records: caseOpen },
+          // Past the watcher's quiet bound, still inside the defense window.
+          { at: deadline - 1, records: caseOpen },
+          { at: deadline + quietBoundMs, records: caseOpen },
+          { at: deadline + quietBoundMs + 1, records: caseOpen },
         ],
         startAt: resumedAt,
         gate: gate(),
       }),
     ).rejects.toThrow(
-      `at observation 4 of 4: Workflow made no durable progress within ${transactionAllowanceMs.toString()} ms of its counterparty wait's deadline ${deadline.toString()}`,
+      `at observation 4 of 4: Workflow made no journaled progress within ${quietBoundMs.toString()} ms of its counterparty wait's deadline ${deadline.toString()}`,
     );
   });
 });

@@ -1,8 +1,10 @@
 import { join } from "node:path";
 
-import type {
-  FraudProofWorkflowJournalEntry,
-  FraudProofWorkflowTerminal,
+import {
+  type FraudProofWorkflowJournalEntry,
+  type FraudProofWorkflowTerminal,
+  journaledProgress,
+  WORKFLOW_CONTINUATION_QUIET_BOUND_MS,
 } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -23,7 +25,6 @@ import {
 import {
   JOURNEY_WORKFLOW_STALL_ALLOWANCE_MS,
   journeyIntentRecovery,
-  journeyWorkflowProgressCount,
   type JourneyWorkflowStore,
   journeyWorkflowUpdates,
   readJourneyWorkflowEntries,
@@ -140,8 +141,6 @@ export const verifyJourneyCorrection = async ({
   predecessorHeaderHash,
   workflowBaseline,
   actionDepth,
-  correctionTimeoutMs = 1_800_000,
-  progressAllowanceMs,
   resumeAllowanceMs,
   counterpartyWait,
   reconciliationAllowanceMs,
@@ -170,29 +169,25 @@ export const verifyJourneyCorrection = async ({
   workflowBaseline: readonly FraudProofWorkflowJournalEntry[];
   /** Depth the watcher acts at; the completed terminal must be this deep. */
   actionDepth: number;
-  /** Hard cap on the whole correction: the family's audited or generic plan. */
-  correctionTimeoutMs?: number;
-  /**
-   * Fails the correction as soon as the workflow journal makes no durable
-   * progress for this long; one transaction's build, submit, and confirmation
-   * allowance. A multi-step family legitimately runs past any fixed wall
-   * clock, so progress, not elapsed time, is the health signal.
-   */
-  progressAllowanceMs?: number;
   /**
    * A retained workflow's allowance to re-observe its target before the
-   * transaction clock applies: the journey's automatic-decision allowance.
-   * Without it, the transaction clock applies from the start.
+   * watcher's quiet bound starts: the journey's automatic-decision
+   * allowance. Without it, the quiet bound applies from the start.
    */
   resumeAllowanceMs?: number;
   /**
    * The family's legitimate silent wait on its counterparty, when its
    * journal shows one: the journal may then stay silent until that wait's
-   * deadline plus `progressAllowanceMs` for the move the deadline enables.
-   * Before the wait begins and after it ends, the transaction clock applies.
+   * deadline plus the watcher's quiet bound for the move the deadline
+   * enables. Before the wait begins and after it ends, the quiet bound
+   * applies.
    */
   counterpartyWait?: JourneyCounterpartyWait;
-  /** Existing release-depth window for resolving an outstanding signed intent. */
+  /**
+   * Existing release-depth window for resolving an outstanding signed
+   * intent; while one is pending, the longer of it and the quiet bound
+   * applies.
+   */
   reconciliationAllowanceMs?: number;
   stallAllowanceMs?: number;
   operatorVkey: string;
@@ -213,7 +208,15 @@ export const verifyJourneyCorrection = async ({
   const { deployment, provider } = context;
   let reported = workflowBaseline.length - 1;
   let reportedStall: string | undefined;
-  let progressCount = journeyWorkflowProgressCount(workflowBaseline);
+  // The correction is judged by the watcher's own continuation rule
+  // (`continuePendingWorkflow`): the workflow fails once its journal reaches
+  // no new milestone (`journaledProgress`) for the watcher's quiet bound.
+  // A family may take any number of transactions; one that keeps
+  // resubmitting or abandoning the same action reaches no milestone, so the
+  // quiet bound ends it. The clock starts here, after the harness launched
+  // the watcher and saw its decision, as each watcher session's quiet clock
+  // starts at that session's start.
+  let progress = journaledProgress({ entries: workflowBaseline });
   let progressAt = Date.now();
   let awaitingResumeProgress = workflowBaseline.length > 0;
   const completion = await poll(
@@ -235,35 +238,39 @@ export const verifyJourneyCorrection = async ({
         });
         if (passed !== undefined) throw new Error(passed);
       }
-      const recovery = journeyIntentRecovery(records);
-      const progress = recovery.progressCount;
-      if (progress !== progressCount) {
-        progressCount = progress;
+      const journaled = journaledProgress({ entries: records });
+      if (journaled > progress) {
+        progress = journaled;
         progressAt = Date.now();
         awaitingResumeProgress = false;
       }
-      const normalAllowanceMs = awaitingResumeProgress
-        ? (resumeAllowanceMs ?? progressAllowanceMs)
-        : progressAllowanceMs;
-      const pendingIntent = [...recovery.latest.values()].some(
-        ({ outcome }) => outcome === "pending",
-      );
+      const quietBoundMs =
+        awaitingResumeProgress && resumeAllowanceMs !== undefined
+          ? resumeAllowanceMs + WORKFLOW_CONTINUATION_QUIET_BOUND_MS
+          : WORKFLOW_CONTINUATION_QUIET_BOUND_MS;
+      const pendingIntent = [
+        ...journeyIntentRecovery(records).latest.values(),
+      ].some(({ outcome }) => outcome === "pending");
       const allowanceMs =
         pendingIntent && reconciliationAllowanceMs !== undefined
-          ? Math.max(normalAllowanceMs ?? 0, reconciliationAllowanceMs)
-          : normalAllowanceMs;
-      if (allowanceMs !== undefined && Date.now() - progressAt > allowanceMs) {
-        const waitDeadline =
-          progressAllowanceMs === undefined
-            ? undefined
-            : await counterpartyWait?.(records);
+          ? Math.max(quietBoundMs, reconciliationAllowanceMs)
+          : quietBoundMs;
+      if (Date.now() - progressAt > allowanceMs) {
+        const lastAction = [...records]
+          .reverse()
+          .find(({ event }) => "actionId" in event)?.event;
+        const last =
+          lastAction !== undefined && "actionId" in lastAction
+            ? `last action ${lastAction.actionId}`
+            : "no action journaled";
+        const waitDeadline = await counterpartyWait?.(records);
         if (waitDeadline === undefined)
           throw new Error(
-            `Workflow made no durable progress for ${allowanceMs.toString()} ms (${progressCount.toString()} progress records)`,
+            `Workflow made no journaled progress for ${allowanceMs.toString()} ms (${progress.toString()} milestones, ${last})`,
           );
-        if (Date.now() > waitDeadline + progressAllowanceMs!)
+        if (Date.now() > waitDeadline + WORKFLOW_CONTINUATION_QUIET_BOUND_MS)
           throw new Error(
-            `Workflow made no durable progress within ${progressAllowanceMs!.toString()} ms of its counterparty wait's deadline ${waitDeadline.toString()} (${progressCount.toString()} progress records)`,
+            `Workflow made no journaled progress within ${WORKFLOW_CONTINUATION_QUIET_BOUND_MS.toString()} ms of its counterparty wait's deadline ${waitDeadline.toString()} (${progress.toString()} milestones, ${last})`,
           );
       }
       for (const { sequence, event } of journeyWorkflowUpdates(
@@ -311,7 +318,9 @@ export const verifyJourneyCorrection = async ({
       );
       return terminal.terminal;
     },
-    correctionTimeoutMs,
+    // Only the journal's progress ends a correction; the family's own time
+    // limit does not run while it waits (`journeyFamilyDeadline`).
+    Number.POSITIVE_INFINITY,
   );
   const { contracts } = deployment;
   const headerUnit = (hash: string) =>

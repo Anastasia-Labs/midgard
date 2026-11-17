@@ -13,7 +13,6 @@ import {
 import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";
 import type { JourneyFixture } from "./fixture.js";
 import { journeyDaSignerConfig, journeyNetwork } from "./journey-network.js";
-import { verifyTransitionTraceJourneyOutputPlan } from "./journey-timing.js";
 import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
 import { isStackJourneyContext } from "./stack-da-publication.js";
 import {
@@ -118,9 +117,8 @@ export const createTransitionTraceJourneyFixture = ({
       staged.current.header.depositCount !== 1n
     )
       throw new Error(
-        "Transition-trace fixture differs from its single-output timing plan",
+        "Transition-trace fixture differs from its single-deposit, single-output shape",
       );
-    verifyTransitionTraceJourneyOutputPlan(insertion.outputCbor);
     await writeJourneyArtifact(checkpointPath, staged.checkpoint);
     await retain(staged.predecessor, staged.commits[0]!);
     await retain(staged.current, staged.commits[1]!);

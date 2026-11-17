@@ -277,10 +277,7 @@ export const journeyIntentRecovery = (
     string,
     { txHash: string; outcome: "pending" | "confirmed" | "not_found" }
   >();
-  const abandoned = new Set<string>();
-  let progressCount = 0;
   for (const { event } of records) {
-    if (event.kind !== "reconciled") progressCount += 1;
     if (event.kind === "submission_intent") {
       latest.set(event.actionId, { txHash: event.txHash, outcome: "pending" });
     } else if (event.kind === "reconciled" || event.kind === "confirmed") {
@@ -290,22 +287,10 @@ export const journeyIntentRecovery = (
       // confirmed event; keep its recovery allowance until that handoff ends.
       if (event.kind === "confirmed") intent.outcome = "confirmed";
       else if (event.outcome !== "confirmed") intent.outcome = event.outcome;
-      if (event.kind === "reconciled" && event.outcome === "not_found") {
-        const key = `${event.actionId}:${event.txHash}`;
-        if (!abandoned.has(key)) {
-          abandoned.add(key);
-          progressCount += 1;
-        }
-      }
     }
   }
-  return { latest, progressCount };
+  return { latest };
 };
-
-/** Pending observations do not advance the clock; exact abandonment does once. */
-export const journeyWorkflowProgressCount = (
-  records: readonly FraudProofWorkflowJournalEntry[],
-) => journeyIntentRecovery(records).progressCount;
 
 /**
  * A retained failure is history. A new stall fails the current attempt unless

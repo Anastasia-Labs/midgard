@@ -95,7 +95,7 @@ const held = status({
   ],
 });
 
-const hardTimeout = new Error("whole correction timeout");
+const observationsEnded = new Error("observations ended");
 
 /** The proof wait over these observations, each one poll; counts status reads. */
 const proofWait = async (
@@ -126,8 +126,6 @@ const proofWait = async (
       predecessorHeaderHash: "78".repeat(28),
       workflowBaseline: started,
       actionDepth: 1,
-      correctionTimeoutMs: 2_850_000,
-      progressAllowanceMs: 190_000,
       operatorVkey: "90".repeat(28),
       requireLive: () => undefined,
       stage: async (_name, action) => await action(),
@@ -137,7 +135,7 @@ const proofWait = async (
           load.serve(observation.records);
           expect(await action()).toBeUndefined();
         }
-        throw hardTimeout;
+        throw observationsEnded;
       },
     });
   } finally {
@@ -168,7 +166,7 @@ describe("the proof wait and the watcher's latest safe start", () => {
         { records: started, watcher: status({ activeJob: job }) },
         { records: started, watcher: status({ activeJob: job }) },
       ]),
-    ).rejects.toBe(hardTimeout);
+    ).rejects.toBe(observationsEnded);
   });
 
   it("keeps waiting once the workflow has signed a step, which the watcher still reconciles", async () => {
@@ -177,7 +175,7 @@ describe("the proof wait and the watcher's latest safe start", () => {
         { records: signed, watcher: held },
         { records: signed, watcher: status({}) },
       ]),
-    ).rejects.toBe(hardTimeout);
+    ).rejects.toBe(observationsEnded);
   });
 
   it("keeps waiting while a restarted watcher answers its startup status", async () => {
@@ -192,7 +190,7 @@ describe("the proof wait and the watcher's latest safe start", () => {
         { records: started, watcher: startup },
         { records: started, watcher: startup },
       ]),
-    ).rejects.toBe(hardTimeout);
+    ).rejects.toBe(observationsEnded);
   });
 
   it("ignores another header's hold and a safe start that has not passed", async () => {
@@ -223,6 +221,6 @@ describe("the proof wait and the watcher's latest safe start", () => {
           }),
         },
       ]),
-    ).rejects.toBe(hardTimeout);
+    ).rejects.toBe(observationsEnded);
   });
 });

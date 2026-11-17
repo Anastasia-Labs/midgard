@@ -3,6 +3,7 @@ import {
   MAX_TIMER_MS,
 } from "./journey-timing.journey-timing-for-plan.js";
 import { OPERATOR_RESUME_WAIT_MS } from "./operator-pause.js";
+import type { StackDaExpectation } from "./stack-da-publication.js";
 
 /**
  * What a family's staging shift cover is computed from on an attached
@@ -27,14 +28,24 @@ export type StackShiftCoverInput = Readonly<{
  * holds it. The drill stages only in operator-2's shift, which must hold the
  * family's staging shift cover C (`awaitOperatorShift`). At worst operator-2
  * still holds a shift with just under C left: it waits that out, then our
- * node's whole shift S, then holds C of its next shift. That is S + 2C. A
- * refusal-only family's age-out (two attestation timeouts) fits in the
- * budget it replaces.
+ * node's whole shift S, then holds C of its next shift. That is S + 2C.
+ *
+ * A family whose payload the committee refuses (`STACK_DA_REFUSED_CATEGORIES`)
+ * also waits twice for the profile's attestation timeout A, neither of them a
+ * correction: its staging waits until the refused block's attestation
+ * deadline, A after the block (`publishStackDaPayload`), and the runner then
+ * waits up to A more for the block's timeout removal (`awaitStackDaAgedOut`,
+ * the "refused fault aged out" stage of `journey-runner.attached-mode.ts`).
+ * Its limit adds 2A.
  */
 export const stackJourneyTimeoutMs = (
   timing: Pick<JourneyTiming, "journeyTimeoutMs">,
-  profile: Readonly<{ operator_shift_ms: number }>,
+  profile: Readonly<{
+    operator_shift_ms: number;
+    da_attestation_timeout_ms: number;
+  }>,
   stagingCoverMs: number,
+  daExpectation: StackDaExpectation,
 ) => {
   if (
     !Number.isSafeInteger(stagingCoverMs) ||
@@ -44,8 +55,13 @@ export const stackJourneyTimeoutMs = (
     throw new Error(
       `A staging shift cover of ${stagingCoverMs.toString()} ms does not fit one ${profile.operator_shift_ms.toString()} ms shift`,
     );
+  const ageOutMs =
+    daExpectation === "refusal" ? 2 * profile.da_attestation_timeout_ms : 0;
   const limitMs =
-    timing.journeyTimeoutMs + profile.operator_shift_ms + 2 * stagingCoverMs;
+    timing.journeyTimeoutMs +
+    profile.operator_shift_ms +
+    2 * stagingCoverMs +
+    ageOutMs;
   if (!Number.isSafeInteger(limitMs) || limitMs > MAX_TIMER_MS)
     throw new Error(
       `A stack journey limit of ${limitMs.toString()} ms exceeds the supported timer range`,

@@ -11,6 +11,7 @@ import {
   type FraudProofWorkflowJournalEntry,
   type FraudProofWorkflowTerminal,
   journalJsonDigest,
+  WORKFLOW_CONTINUATION_QUIET_BOUND_MS,
 } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import { expect, it, vi } from "vitest";
@@ -20,7 +21,6 @@ import {
   finalizePendingJourneyEvidence,
   JOURNEY_WORKFLOW_STALL_ALLOWANCE_MS,
   journeyAnchoredEvidence,
-  journeyWorkflowProgressCount,
   journeyWorkflowUpdates,
   verifyJourneyComputationThreadAbsent,
   verifyJourneyCorrection,
@@ -220,34 +220,12 @@ it("rejects a changed or truncated pre-launch journal prefix", () => {
   ).toThrow();
 });
 
-it("counts durable workflow progress without the per-block observations", () => {
-  const observation = entry(5, {
-    kind: "reconciled",
-    actionId: "init:cd#0",
-    txHash: "56".repeat(32),
-    outcome: "pending",
-  });
-  const stall = entry(6, { kind: "stalled", reason: "preflight failed" });
-  expect(journeyWorkflowProgressCount([])).toBe(0);
-  expect(journeyWorkflowProgressCount([observation, observation])).toBe(0);
-  expect(
-    journeyWorkflowProgressCount([
-      entry(7, {
-        kind: "reconciled",
-        actionId: "unknown-intent",
-        txHash: "78".repeat(32),
-        outcome: "not_found",
-      }),
-    ]),
-  ).toBe(0);
-  expect(journeyWorkflowProgressCount([observation, stall, observation])).toBe(
-    1,
-  );
-});
-
 it("allows the watcher's whole preflight retry budget before failing a stall", () => {
   expect(JOURNEY_WORKFLOW_STALL_ALLOWANCE_MS).toBe(31 * 60_000);
 });
+
+/** The watcher's quiet bound, `WORKFLOW_CONTINUATION_QUIET_BOUND_MS`. */
+const quietBoundMs = WORKFLOW_CONTINUATION_QUIET_BOUND_MS;
 
 const pollCorrectionProgress = async (
   retained: readonly FraudProofWorkflowJournalEntry[],
@@ -262,7 +240,7 @@ const pollCorrectionProgress = async (
   const directory = await mkdtemp(join(tmpdir(), "journey-progress-"));
   const load = workflowLoad();
   const now = vi.spyOn(Date, "now").mockReturnValue(0);
-  const hardTimeout = new Error("whole correction timeout");
+  const ended = new Error("observations ended");
   type Input = Parameters<typeof verifyJourneyCorrection>[0];
   try {
     await verifyJourneyCorrection({
@@ -279,21 +257,20 @@ const pollCorrectionProgress = async (
       predecessorHeaderHash: "78".repeat(28),
       workflowBaseline: retained,
       actionDepth: 1,
-      correctionTimeoutMs: 4_560_000,
-      progressAllowanceMs: 190_000,
       resumeAllowanceMs,
       reconciliationAllowanceMs,
       operatorVkey: "90".repeat(28),
       requireLive: () => undefined,
       stage: async (_name, action) => await action(),
       poll: async (_name, action, timeoutMs) => {
-        expect(timeoutMs).toBe(4_560_000);
+        // Only the journal's progress ends a correction.
+        expect(timeoutMs).toBe(Number.POSITIVE_INFINITY);
         for (const observation of observations) {
           now.mockReturnValue(observation.at);
           load.serve(observation.records);
           expect(await action()).toBeUndefined();
         }
-        throw hardTimeout;
+        throw ended;
       },
     });
   } finally {
@@ -304,125 +281,76 @@ const pollCorrectionProgress = async (
   }
 };
 
-it.each(["started", "submission_intent"] as const)(
-  "allows retained %s catch-up, then enforces the transaction progress clock",
-  async (kind) => {
-    const retained = [
-      entry(
-        0,
-        kind === "started"
-          ? { kind }
-          : {
-              kind,
-              actionId: "init",
-              actionInput: {},
-              attempt: 1,
-              txHash: "ab".repeat(32),
-            },
-      ),
-    ];
-    const observed = [
-      ...retained,
-      entry(1, {
-        kind: "reconciled",
-        actionId: "init",
-        txHash: "ab".repeat(32),
-        outcome: "pending",
-      }),
-    ];
-    const progressed = [
-      ...observed,
-      entry(2, {
-        kind: "submitted",
-        actionId: "init",
-        attempt: 1,
-        txHash: "ab".repeat(32),
-      }),
-    ];
-    await expect(
-      pollCorrectionProgress(retained, [
-        { at: 190_001, records: retained },
-        { at: 900_000, records: observed },
-        { at: 900_001, records: progressed },
-        { at: 1_090_001, records: progressed },
-        { at: 1_090_002, records: progressed },
-      ]),
-    ).rejects.toThrow("no durable progress for 190000 ms");
-  },
-);
+const retainedIntent = [
+  entry(0, { kind: "started" }),
+  entry(1, {
+    kind: "submission_intent",
+    actionId: "init",
+    actionInput: {},
+    attempt: 1,
+    txHash: "ab".repeat(32),
+  }),
+];
+const reobserved = [
+  ...retainedIntent,
+  entry(2, {
+    kind: "reconciled",
+    actionId: "init",
+    txHash: "ab".repeat(32),
+    outcome: "pending",
+  }),
+];
 
-it("bounds retained catch-up at fifteen minutes despite reconciled observations", async () => {
-  const retained = [entry(0, { kind: "started" })];
-  const observed = [
-    ...retained,
-    entry(1, {
-      kind: "reconciled",
-      actionId: "init",
-      txHash: "ab".repeat(32),
-      outcome: "pending",
-    }),
+it("allows retained catch-up for the decision allowance plus the quiet bound, then enforces the quiet bound", async () => {
+  const progressed = [
+    ...reobserved,
+    entry(3, { kind: "confirmed", actionId: "init", txHash: "ab".repeat(32) }),
   ];
+  const caughtUpAt = 900_000 + quietBoundMs;
   await expect(
-    pollCorrectionProgress(retained, [
-      { at: 190_001, records: observed },
-      { at: 900_001, records: observed },
+    pollCorrectionProgress(retainedIntent, [
+      { at: caughtUpAt, records: reobserved },
+      { at: caughtUpAt + 1, records: progressed },
+      { at: caughtUpAt + 1 + quietBoundMs, records: progressed },
+      { at: caughtUpAt + 2 + quietBoundMs, records: progressed },
     ]),
-  ).rejects.toThrow("no durable progress for 900000 ms");
+  ).rejects.toThrow(
+    `no journaled progress for ${quietBoundMs.toString()} ms (3 milestones, last action init)`,
+  );
 });
 
-it("bounds retained catch-up by the journey's own decision allowance", async () => {
-  const retained = [entry(0, { kind: "started" })];
-  const observed = [
-    ...retained,
-    entry(1, {
-      kind: "reconciled",
-      actionId: "init",
-      txHash: "ab".repeat(32),
-      outcome: "pending",
-    }),
-  ];
+it("bounds retained catch-up by the journey's own decision allowance despite reconciled observations", async () => {
+  const caughtUpAt = 1_200_000 + quietBoundMs;
   await expect(
     pollCorrectionProgress(
-      retained,
+      retainedIntent,
       [
-        { at: 900_001, records: observed },
-        { at: 1_200_001, records: observed },
+        { at: 900_001, records: reobserved },
+        { at: caughtUpAt, records: reobserved },
+        { at: caughtUpAt + 1, records: reobserved },
       ],
       undefined,
       1_200_000,
     ),
-  ).rejects.toThrow("no durable progress for 1200000 ms");
+  ).rejects.toThrow(`no journaled progress for ${caughtUpAt.toString()} ms`);
 });
 
-it("keeps the initial transaction progress allowance for a fresh workflow", async () => {
-  await expect(
-    pollCorrectionProgress([], [{ at: 190_001, records: [] }]),
-  ).rejects.toThrow("no durable progress for 190000 ms");
-});
-
-it("retains the whole correction hard cap while waiting for resumed progress", async () => {
-  const retained = [entry(0, { kind: "started" })];
-  await expect(
-    pollCorrectionProgress(retained, [{ at: 190_001, records: retained }]),
-  ).rejects.toThrow("whole correction timeout");
-  const pending = [
-    ...retained,
-    entry(1, {
-      kind: "submission_intent",
-      actionId: "init",
-      actionInput: {},
-      attempt: 1,
-      txHash: "ab".repeat(32),
-    }),
-  ];
+it("applies the watcher's quiet bound to a fresh workflow", async () => {
   await expect(
     pollCorrectionProgress(
-      pending,
-      [{ at: 1_000_000, records: pending }],
-      1_230_000,
+      [],
+      [
+        { at: quietBoundMs, records: [] },
+        { at: quietBoundMs + 1, records: [] },
+      ],
     ),
-  ).rejects.toThrow("whole correction timeout");
+  ).rejects.toThrow(
+    `no journaled progress for ${quietBoundMs.toString()} ms (0 milestones, no action journaled)`,
+  );
 });
+
+// A release-depth window longer than the quiet bound, as at a slower cadence.
+const reconciliationAllowanceMs = quietBoundMs + 600_000;
 
 it("bounds pending signed-intent reconciliation without resetting on repeated observations", async () => {
   const txHash = "ab".repeat(32);
@@ -460,16 +388,18 @@ it("bounds pending signed-intent reconciliation without resetting on repeated ob
       [],
       [
         { at: 1, records: submitted },
-        { at: 190_002, records: observed },
-        { at: 1_230_001, records: observedAgain },
-        { at: 1_230_002, records: observedAgain },
+        { at: quietBoundMs + 2, records: observed },
+        { at: reconciliationAllowanceMs + 1, records: observedAgain },
+        { at: reconciliationAllowanceMs + 2, records: observedAgain },
       ],
-      1_230_000,
+      reconciliationAllowanceMs,
     ),
-  ).rejects.toThrow("no durable progress for 1230000 ms");
+  ).rejects.toThrow(
+    `no journaled progress for ${reconciliationAllowanceMs.toString()} ms`,
+  );
 });
 
-it("grants one ordinary replacement budget after abandonment without extending it for duplicate resolutions", async () => {
+it("does not count abandoning and re-resolving the same action as progress", async () => {
   const txHash = "ab".repeat(32);
   const submitted = [
     entry(0, { kind: "started" }),
@@ -500,20 +430,20 @@ it("grants one ordinary replacement budget after abandonment without extending i
       outcome: "not_found",
     }),
   ];
-  expect(journeyWorkflowProgressCount(abandoned)).toBe(4);
-  expect(journeyWorkflowProgressCount(duplicate)).toBe(4);
   await expect(
     pollCorrectionProgress(
       [],
       [
         { at: 1, records: submitted },
         { at: 600_000, records: abandoned },
-        { at: 790_000, records: duplicate },
-        { at: 790_001, records: duplicate },
+        { at: quietBoundMs + 1, records: duplicate },
+        { at: quietBoundMs + 2, records: duplicate },
       ],
-      1_230_000,
+      reconciliationAllowanceMs,
     ),
-  ).rejects.toThrow("no durable progress for 190000 ms");
+  ).rejects.toThrow(
+    `no journaled progress for ${quietBoundMs.toString()} ms (2 milestones, last action init:old#0)`,
+  );
 });
 
 it("keeps the reconciliation allowance through inclusion until the funding confirmation handoff ends", async () => {
@@ -542,19 +472,21 @@ it("keeps the reconciliation allowance through inclusion until the funding confi
     ...included,
     entry(4, { kind: "confirmed", actionId: "init", txHash }),
   ];
+  const confirmedAt = 600_001 + reconciliationAllowanceMs;
   await expect(
     pollCorrectionProgress(
       [],
       [
         { at: 1, records: submitted },
         { at: 600_000, records: included },
-        { at: 600_001, records: confirmed },
-        { at: 790_001, records: confirmed },
-        { at: 790_002, records: confirmed },
+        { at: 600_000 + reconciliationAllowanceMs, records: included },
+        { at: confirmedAt, records: confirmed },
+        { at: confirmedAt + quietBoundMs, records: confirmed },
+        { at: confirmedAt + quietBoundMs + 1, records: confirmed },
       ],
-      1_230_000,
+      reconciliationAllowanceMs,
     ),
-  ).rejects.toThrow("no durable progress for 190000 ms");
+  ).rejects.toThrow(`no journaled progress for ${quietBoundMs.toString()} ms`);
 });
 
 const terminal: FraudProofWorkflowTerminal = {

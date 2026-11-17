@@ -38,7 +38,7 @@ const eventOf = (entry: unknown): JournalEvent | undefined =>
  * for nothing: resubmitting an action whose last attempt never landed is not
  * progress. Absent entries are none.
  */
-const journaledProgress = (result: object): number => {
+export const journaledProgress = (result: object): number => {
   if (!("entries" in result) || !Array.isArray(result.entries)) return -1;
   const milestones = new Set<string>();
   result.entries.forEach((entry: unknown, index) => {

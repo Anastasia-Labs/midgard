@@ -11,7 +11,8 @@ import {
  * as one family of its session (`runFamily`): a failure, or the end of the
  * family's time limit `limit`, stops the family's work and closes the
  * session before this returns. `afterJourney` runs inside the family's run,
- * once its journey has passed.
+ * once its journey has passed. `excludingLimit` runs the family's
+ * correction with its time limit paused (`journeyFamilyDeadline`).
  */
 export const runAutonomousWatcherJourney = async (
   runDirectory: string,
@@ -20,6 +21,7 @@ export const runAutonomousWatcherJourney = async (
     waitForAnchors?: boolean;
     session?: JourneySession | AttachedJourneySession;
     limit?: AbortSignal;
+    excludingLimit?<T>(work: () => Promise<T>): Promise<T>;
     afterJourney?(): Promise<unknown>;
   } = {},
 ) => {
@@ -35,6 +37,7 @@ export const runAutonomousWatcherJourney = async (
         },
         session,
         signal,
+        options.excludingLimit,
       );
       await options.afterJourney?.();
     }, options.limit);
