@@ -257,19 +257,26 @@ wallet holds funds and the provider answers.
 
 ### MidgardTxExpiring
 
-**Meaning.** More than one L1 transaction the node submitted expired
-unconfirmed within 30 minutes (`midgard_tx_expired` keeps rising): the
-observed L1 tip passed the transaction's upper validity bound while every one
-of its inputs was still unspent, so it can never land. The operation that
-built it rebuilds from fresh chain state (a one-shot operation once, a fiber
-on its next tick); a rebuild that expires too means L1 is not including the
-node's transactions within their validity windows.
+**Meaning.** At least two L1 transactions the `listen` process submitted
+expired unconfirmed within 30 minutes (`midgard_tx_expired` keeps rising):
+the transaction's upper validity bound lies the deployment's confirmation
+depth under the observed L1 tip while every one of its inputs is still
+unspent, so it did not land. The operation that built it rebuilds from fresh
+chain state on its next tick; a rebuild that expires too means L1 is not
+including the node's transactions within their validity windows. One expiry
+alone does not fire the alert. After a restart the counter's first expiry is
+not seen, so the alert fires one expiry later.
+
+Only the `listen` process is scraped. The one-shot commands (operator
+register, activate, retire, recover-bond, force-retire, slash-duplicate and
+strike, and protocol initialization) rebuild an expired transaction once too,
+but their expiries reach only that command's log, never this alert.
 
 **First checks.** The node log: `Transaction expired` names each transaction,
-its bound and the tip slot; `rebuilding from fresh chain state` and
-`rebuild(s) allowed are used up` show the one-shot operations. Read
-`/readyz` for the `l1Follower` tip, and the L1 node's own block production:
-long gaps between blocks are the usual cause.
+its bound and the tip slot. For a one-shot command, its own output shows
+`rebuilding from fresh chain state`, or `rebuild(s) allowed are used up` when
+it gave up. Read `/readyz` for the `l1Follower` tip, and the L1 node's own
+block production: long gaps between blocks are the usual cause.
 
 **Action.** Restore L1 block production or the provider the node reads its
 tip from. A one-shot command that gave up (`TxExpiredError`) is safe to run

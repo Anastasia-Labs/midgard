@@ -96,15 +96,21 @@ groups:
           runbook: "docs/operations/alerts.md#midgardmergefailures"
 
       - alert: MidgardTxExpiring
-        # Submitted L1 transactions keep expiring unconfirmed: the tip passed
-        # their upper validity bound with every input unspent. One expiry
-        # that the rebuild clears does not page; a rebuild that expires too
-        # does.
-        expr: increase(midgard_tx_expired_total[30m]) > 1
+        # Submitted L1 transactions keep expiring unconfirmed: their upper
+        # validity bound lies the confirmation depth under the tip with every
+        # input unspent. One expiry that the rebuild clears does not page; a
+        # rebuild that expires too does. increase() extrapolates to the
+        # window's edges, so a single increment reads a little above 1
+        # (about 1800/1785 = 1.008 over a fully sampled window, never 2):
+        # `> 1` would page on one expiry, `>= 2` needs a second. The counter
+        # appears on its first expiry, which increase() cannot see, so after
+        # a restart the alert needs one expiry more. Only `listen` is
+        # scraped: expiries in one-shot commands only reach the log.
+        expr: increase(midgard_tx_expired_total[30m]) >= 2
         labels:
           severity: warning
         annotations:
-          summary: "Node {{ $labels.instance }} has had more than one L1 transaction expire unconfirmed in 30 minutes"
+          summary: "Node {{ $labels.instance }} has had at least two L1 transactions expire unconfirmed in 30 minutes"
           runbook: "docs/operations/alerts.md#midgardtxexpiring"
 
       - alert: MidgardWalletBalanceLow
