@@ -18,6 +18,7 @@ export {
 export {
   bindWatcherL1AvailabilityPayloadSource,
   bindWatcherRetainedDaOperations,
+  registerWatcherDaFetcher,
   WATCHER_RETAINED_DA_RUNTIME,
   type WatcherRetainedDaOperationsBinding,
   type WatcherRetainedDaRuntime,

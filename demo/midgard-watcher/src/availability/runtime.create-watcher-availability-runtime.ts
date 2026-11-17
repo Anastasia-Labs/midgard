@@ -142,6 +142,7 @@ export const createWatcherAvailabilityRuntime = async (input: {
   const publicDa = await createWatcherRetainedDaRuntime({
     watcherConfig: input.config.watcherConfig,
     deploymentIdentity: input.identity,
+    mayStillFetch: () => pending,
   });
   let journal: ReturnType<typeof openAvailabilityOperationJournal>;
   try {

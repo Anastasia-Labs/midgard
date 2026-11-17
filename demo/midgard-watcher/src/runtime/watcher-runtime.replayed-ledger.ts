@@ -14,6 +14,7 @@ import type { WatcherFollowerRuntime } from "../l1-follower/follower-runtime.js"
 import { createWatcherReplayRetention } from "../l1-follower/replay-retention.js";
 import { createWatcherFollowerReplaySource } from "../l1-follower/replay-source.js";
 import { createWatcherFollowerUserEvents } from "../l1-follower/user-events.js";
+import { registerWatcherDaFetcher } from "../storage/retained-da-runtime.js";
 import type { VerifiedWatcherDeploymentAuthority } from "./deployment-authority.js";
 import {
   readWatcherUserEventScriptBinding,
@@ -88,7 +89,19 @@ export const createWatcherRuntimeReplayHost = (
           watcherReplayAvailabilityAuthority(deploymentIdentity),
         refusals,
       });
-      return { userEvents, keeper, refusals, close: () => source.close() };
+      const unregister = registerWatcherDaFetcher(
+        deploymentIdentity,
+        keeper.mayStillFetch,
+      );
+      return {
+        userEvents,
+        keeper,
+        refusals,
+        close: () => {
+          unregister();
+          source.close();
+        },
+      };
     },
   };
 };

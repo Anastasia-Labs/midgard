@@ -332,14 +332,19 @@ header keeps failing the same way), `fault_detector_failed` and
 action, when the header gets its own outcome or leaves the observed state
 queue, including when an L1 rollback drops the header: each decision pass
 clears every one of them for each header that is no longer queued. For
-`da_fetch_failure`, a header still counts as queued while availability holds
-it pending at release depth: the watcher still fetches its DA after a merge
-or removal at the tip, until that reaches release depth.
+`da_fetch_failure`, a header still counts as queued while any DA fetcher of
+the watcher may still fetch it: availability while it holds the header
+pending at release depth, and the replayed ledger until its checkpoint passes
+the header (a merged one) or moves twice with no replay asking for it again
+(one removed or rolled back).
 `unproven_fault_merged` is also one subject per header, but it never clears
 ([MidgardWatcherUnprovenFaultMerged](#midgardwatcherunprovenfaultmerged)).
 `da_fetch_failure` and `validation_trace_replay_stuck` have no rule of their
-own: a `da_fetch_failure` holds readiness for 180 seconds after its latest
-failed fetch, and `validation_trace_replay_stuck` never holds readiness.
+own: an active `da_fetch_failure` holds readiness until 180 seconds after its
+latest failed fetch, whether its header is queued, pending for availability
+or merged ahead of the replay checkpoint, and `validation_trace_replay_stuck`
+never holds readiness. A failed fetch the replay checkpoint needs also holds
+readiness as `replayed_ledger_source_pending` for as long as it fails.
 
 ### MidgardWatcherReplayRootMismatch
 

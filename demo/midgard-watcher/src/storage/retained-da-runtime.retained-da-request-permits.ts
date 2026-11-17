@@ -23,10 +23,14 @@ import {
 export const WATCHER_RETAINED_DA_RUNTIME =
   "midgard-watcher-production-retained-da-runtime-v1" as const;
 
-/** The diagnostics sink of a deployment, and its `da_fetch_failure` alert. */
+/**
+ * The diagnostics sink of a deployment, its `da_fetch_failure` alert, and
+ * the readers its DA fetchers registered (`registerWatcherDaFetcher`).
+ */
 export type WatcherRetainedDaOperations = Readonly<{
   sink: WatcherOperationsSink;
   daFetchAlert: PerHeaderAlert;
+  fetchers: Set<() => Iterable<string>>;
 }>;
 
 export const operationsByDeploymentIdentity = new WeakMap<
@@ -69,13 +73,31 @@ export const bindWatcherL1AvailabilityPayloadSource = (input: {
   };
 };
 
+/**
+ * Registers what a fetcher of the deployment's retained DA by header may
+ * still fetch: `mayStillFetch` reads the headers whose DA it may fetch
+ * again, the queued ones aside. A failed fetch's `da_fetch_failure` stands
+ * while some fetcher still names its header. Every such fetcher registers
+ * one for its lifetime; the returned function unregisters it. Without a
+ * bound diagnostics sink nothing raises the alert, and nothing is kept.
+ */
+export const registerWatcherDaFetcher = (
+  deploymentIdentity: VerifiedWatcherDeploymentIdentity,
+  mayStillFetch: () => Iterable<string>,
+): (() => void) => {
+  const fetchers =
+    operationsByDeploymentIdentity.get(deploymentIdentity)?.fetchers;
+  fetchers?.add(mayStillFetch);
+  return () => fetchers?.delete(mayStillFetch);
+};
+
 export type WatcherRetainedDaOperationsBinding = Readonly<{
   close(): void;
   /**
    * Clears the `da_fetch_failure` alert of every header a fetch failed for
-   * that is released, or neither in the observed queue nor pending for
-   * availability, a rollback included (`perHeaderAlert`). The fault
-   * decision bridge calls it with the headers of every observation.
+   * that no registered fetcher may still fetch and that is released or not
+   * in the observed queue, a rollback included (`perHeaderAlert`). The
+   * fault decision bridge calls it with the headers of every observation.
    */
   reconcile: PerHeaderAlert["reconcile"];
 }>;
@@ -89,13 +111,6 @@ export type WatcherRetainedDaOperationsBinding = Readonly<{
 export const bindWatcherRetainedDaOperations = (input: {
   readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
   readonly sink: WatcherOperationsSink;
-  /**
-   * The headers availability still holds pending at release depth. The
-   * watcher still fetches their DA after they leave the tip's queue (merged
-   * or removed there, not yet at release depth), so their alerts stand
-   * until availability drops them too.
-   */
-  readonly pendingHeaders?: () => Iterable<string>;
 }): WatcherRetainedDaOperationsBinding => {
   assertVerifiedWatcherDeploymentIdentity(input.deploymentIdentity);
   if (operationsByDeploymentIdentity.has(input.deploymentIdentity)) {
@@ -109,6 +124,7 @@ export const bindWatcherRetainedDaOperations = (input: {
       operationsSink: input.sink,
       observedAtMs: () => Date.now().toString(),
     }),
+    fetchers: new Set<() => Iterable<string>>(),
   });
   operationsByDeploymentIdentity.set(input.deploymentIdentity, operations);
   let closed = false;
@@ -123,11 +139,15 @@ export const bindWatcherRetainedDaOperations = (input: {
         operationsByDeploymentIdentity.delete(input.deploymentIdentity);
       }
     },
-    reconcile: (queued, released) =>
+    reconcile: (queued, released) => {
+      const fetchable = new Set<string>();
+      for (const mayStillFetch of operations.fetchers)
+        for (const headerHash of mayStillFetch()) fetchable.add(headerHash);
       operations.daFetchAlert.reconcile(
-        new Set([...queued, ...(input.pendingHeaders?.() ?? [])]),
-        released,
-      ),
+        new Set([...queued, ...fetchable]),
+        new Map([...released].filter(([hash]) => !fetchable.has(hash))),
+      );
+    },
   });
 };
 

@@ -13,6 +13,7 @@ import {
 } from "./public-da-libp2p-transport.js";
 import {
   admitRuntimeOptions,
+  registerWatcherDaFetcher,
   RetainedDaRequestPermits,
   runtimeOwnerIdentities,
   type WatcherRetainedDaRuntime,
@@ -152,14 +153,33 @@ export type WatcherWorkflowInfrastructureBuilder = (input: {
   readonly invocation: WorkflowAdapterReadinessInput;
 }) => Promise<WatcherWorkflowInfrastructure>;
 
+/**
+ * A runtime its caller fetches through for as long as it keeps it open.
+ * `mayStillFetch` is that caller's `registerWatcherDaFetcher` reader,
+ * registered until the runtime closes.
+ */
 export const createWatcherRetainedDaRuntime = async (
-  options: WatcherRetainedDaRuntimeOptions,
+  options: WatcherRetainedDaRuntimeOptions & {
+    readonly mayStillFetch?: () => Iterable<string>;
+  },
 ): Promise<WatcherRetainedDaRuntime> => {
-  const { watcherConfig, ...runtimeOptions } = options;
-  return await createRuntimeFromAdmittedConfig(
+  const { watcherConfig, mayStillFetch, ...runtimeOptions } = options;
+  const runtime = await createRuntimeFromAdmittedConfig(
     admitRuntimeOptions(runtimeOptions),
     watcherConfig,
   );
+  if (mayStillFetch === undefined) return runtime;
+  const unregister = registerWatcherDaFetcher(
+    options.deploymentIdentity,
+    mayStillFetch,
+  );
+  return Object.freeze({
+    ...runtime,
+    close: async () => {
+      unregister();
+      await runtime.close();
+    },
+  });
 };
 
 /**

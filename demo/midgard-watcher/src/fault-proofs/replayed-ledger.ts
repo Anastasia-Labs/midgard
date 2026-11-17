@@ -43,6 +43,9 @@ export type WatcherReplayedLedger = Readonly<{
     observation: WatcherAuthenticatedStateQueueObservation,
     sources: readonly RetainedDaPayloadSource[],
   ): Promise<readonly WatcherDecisionReadiness[]>;
+  /** The headers a replay asked a payload for that the checkpoint has not
+   * passed (`registerWatcherDaFetcher`). */
+  mayStillFetch(): Iterable<string>;
 }>;
 
 /**
@@ -117,6 +120,26 @@ export const createWatcherReplayedLedger = (
   // asks past the peers that served them.
   const releases: RetainedPayloadReleases = new Map();
   const localFaults = replayLocalFaultHolds(input.nowMs);
+  // The headers a replay asked a payload for that the checkpoint has not
+  // passed, with the parent a served payload names and the checkpoint move
+  // they were last asked at. A move passes the new head and the asked
+  // ancestors linked below it; a header no replay asked for since the move
+  // before (a removed or rolled-back one) is dropped then too.
+  const asked = new Map<string, { move: number; parent?: string }>();
+  let moves = 0;
+  let checkpointHead: string | undefined;
+  const pass = (head: string) => {
+    if (head === checkpointHead) return;
+    checkpointHead = head;
+    for (let cursor: string | undefined = head; cursor !== undefined; ) {
+      const entry = asked.get(cursor);
+      asked.delete(cursor);
+      cursor = entry?.parent;
+    }
+    moves += 1;
+    for (const [headerHash, { move }] of asked)
+      if (move < moves - 1) asked.delete(headerHash);
+  };
   const source = (
     sources: readonly RetainedDaPayloadSource[],
     retries?: number,
@@ -133,13 +156,21 @@ export const createWatcherReplayedLedger = (
       },
     });
     return {
-      payloadAt: retained.payloadAt,
+      payloadAt: async (headerHash: string) => {
+        asked.set(headerHash, { move: moves });
+        const payload = await retained.payloadAt(headerHash);
+        const parent = payload?.block_body.header.prevHeaderHash;
+        if (parent !== undefined)
+          asked.set(headerHash, { move: moves, parent });
+        return payload;
+      },
       materialFor: input.follower.materialFor,
       l1SlotConfig: input.l1SlotConfig,
       binding: retained.binding,
     };
   };
   return {
+    mayStillFetch: () => asked.keys(),
     ledgerAt: (sources, retries) => {
       const operationSource = source(sources, retries);
       return async (headerHash) => {
@@ -206,6 +237,7 @@ export const createWatcherReplayedLedger = (
           ];
         localFaults.progressed(head.headerHash);
         refusals?.progressed();
+        pass(head.headerHash);
         input.follower.checkpointDurable(confirmed.state.endTime);
         return [];
       } catch (error) {
