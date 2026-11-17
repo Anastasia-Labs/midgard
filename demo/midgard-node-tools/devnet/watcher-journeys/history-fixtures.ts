@@ -54,10 +54,10 @@ export const createWithdrawalJourneyFixture = (
   createPreparedJourneyFixture(
     category,
     async (input) => {
-      const body = journeyWithdrawalBody({
-        predecessor: input.predecessor,
-        owner: ownerKey(input).to_public().hash().to_hex(),
-      });
+      const body = fundedJourneyWithdrawalBody(
+        input.predecessor,
+        ownerKey(input).to_public().hash().to_hex(),
+      );
       // doubleWithdraw publishes both withdrawals before one shared event
       // wait, so its staging fits one of operator-2's shifts.
       const withdrawals = await publishJourneyWithdrawals(
@@ -81,12 +81,13 @@ export const createWithdrawalJourneyFixture = (
   );
 
 /**
- * The owned output the withdrawn-input split divides: the one with the most
- * lovelace, so each half can fund a withdrawal Order whatever else the owner
- * holds. The first output by reference can be too small: on a fresh devnet it
- * is a 2 ADA output, below the Order's minimum.
+ * The owner's output with the most lovelace. The first output by reference can
+ * be too small to fund a withdrawal Order: on a fresh devnet it is a 2 ADA
+ * output, below the Order's minimum. The withdrawn-input split divides this
+ * output so each half can fund an Order, and the withdrawal journeys withdraw
+ * it.
  */
-export const withdrawnInputSplitSource = (
+export const largestOwnedLedgerEntry = (
   predecessor: HistoryPredecessor,
   owner: string,
 ) =>
@@ -98,6 +99,17 @@ export const withdrawnInputSplitSource = (
       decodeMidgardTxOutput(candidate.output).value.lovelace;
     return lovelace(entry) > lovelace(largest) ? entry : largest;
   }, undefined);
+
+/** The withdrawal of the owner's largest output, which an Order can fund. */
+export const fundedJourneyWithdrawalBody = (
+  predecessor: HistoryPredecessor,
+  owner: string,
+) =>
+  journeyWithdrawalBody({
+    predecessor,
+    owner,
+    outRef: largestOwnedLedgerEntry(predecessor, owner)?.outRef,
+  });
 
 /** The withdrawal of the split transaction's first output, the half it keeps
  * the original's Value in, not whichever owned output sorts first. */
@@ -128,7 +140,7 @@ export const createWithdrawnInputJourneyFixture = (
       const split = await input.commitHistoryBlock(
         "withdrawal-ledger",
         async (timed) => {
-          const selected = withdrawnInputSplitSource(
+          const selected = largestOwnedLedgerEntry(
             timed.predecessor,
             ownerKey(input).to_public().hash().to_hex(),
           );

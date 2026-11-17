@@ -19,8 +19,9 @@ import {
   signHistoryTransaction,
 } from "./history-cases.js";
 import {
+  fundedJourneyWithdrawalBody,
+  largestOwnedLedgerEntry,
   withdrawnInputSplitBody,
-  withdrawnInputSplitSource,
 } from "./history-fixtures.js";
 import { checkedFixtureBlock } from "./journey-fixture-ledger.test-support.js";
 
@@ -49,7 +50,13 @@ const predecessor = () =>
 it("splits the owner's largest output, not whichever sorts first", async () => {
   const block = await predecessor();
   expect(ownedHistoryLedgerEntries(block, owner)[0]?.outRef).toEqual(small.key);
-  expect(withdrawnInputSplitSource(block, owner)?.outRef).toEqual(deposit.key);
+  expect(largestOwnedLedgerEntry(block, owner)?.outRef).toEqual(deposit.key);
+});
+
+it("withdraws the owner's largest output, which can fund an Order", async () => {
+  const block = await predecessor();
+  const body = fundedJourneyWithdrawalBody(block, owner);
+  expect(body.l2_value.get("")?.get("")).toBe(10_000_000n);
 });
 
 it("withdraws the split's own output even when a smaller owned output sorts first", async () => {
