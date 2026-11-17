@@ -116,3 +116,5 @@ export const createWatcherStartupProgress =
       clearInterval(timer);
     }
   };
+
+export type WatcherStartup = ReturnType<typeof createWatcherStartupProgress>;

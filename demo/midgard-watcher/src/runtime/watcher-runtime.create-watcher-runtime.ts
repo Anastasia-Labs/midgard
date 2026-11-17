@@ -58,7 +58,7 @@ import {
 import { refusePermanently } from "./permanent-refusal.js";
 import { type WatcherProcessConfig } from "./process-config.js";
 import { type WatcherStartupOperations } from "./startup-operations.js";
-import { type createWatcherStartupProgress } from "./startup-progress.js";
+import { type WatcherStartup } from "./startup-progress.js";
 import {
   openWatcherProverFundingRuntime,
   recheckFundingDecisionHolds,
@@ -79,8 +79,6 @@ import {
 } from "./watcher-runtime.prepare-authority.js";
 import { prepareWatcherRuntimeWorkflows } from "./watcher-runtime.prepare-services.js";
 import { createWatcherRuntimeReplayHost } from "./watcher-runtime.replayed-ledger.js";
-
-type WatcherStartup = ReturnType<typeof createWatcherStartupProgress>;
 
 /** How often the cached L1 readiness is refreshed without a follower change. */
 const L1_READINESS_REFRESH_MS = 5_000;
