@@ -5,6 +5,7 @@ import type { WatcherOperationsSink } from "../runtime/operations-observability.
 import { WATCHER_PACKAGE_NAME } from "../runtime/scaffold.js";
 import { isDecisionFailureTransient } from "../runtime/watcher-runtime.decision-failure.js";
 import { isClassificationMissHandled } from "./fault-decision-bridge.classification-miss.js";
+import { perHeaderAlert } from "./per-header-alert.js";
 
 /**
  * Whether a fault detector's failure fails the whole decision pass: one the
@@ -20,30 +21,41 @@ export const failsDecisionPass = (error: unknown): boolean =>
 /** The operator's `fault_detector_failed` alert, one subject per header. */
 export type WatcherFaultDetectorAlert = Readonly<{
   failed: (headerHash: string) => void;
+  /**
+   * Clears the alert of every header it was raised for that is released or
+   * no longer in `observation`'s queue, a rollback included
+   * (`perHeaderAlert`). The fault decision bridge calls it on every pass,
+   * beside the `proof_family_coverage_gap` alert's reconcile.
+   */
+  reconcile: ReturnType<typeof perHeaderAlert>["reconcile"];
 }>;
 
 /**
  * Raises the `fault_detector_failed` alert of the header a detector's result
- * was withheld on. It stands until the header is decided: the header's
- * settled outcome clears it (operations-observability.alert-book.ts), and no
- * replay of another header does. The alert is informational: the header is
- * still decided from the other families, and a header nothing else decides
+ * was withheld on. It stands until the header is decided or leaves the
+ * queue: the header's settled outcome clears it
+ * (operations-observability.alert-book.ts), and so does `reconcile` once the
+ * header is released or a rollback drops it from the observed queue. No
+ * replay of another header clears it. The alert is informational: the header
+ * is still decided from the other families, and a header nothing else decides
  * still fails its pass as before. A raise of a header already standing is not
  * recorded again.
  */
 export const createWatcherFaultDetectorAlert = (
   operationsSink: Pick<WatcherOperationsSink, "setAlert">,
   nowMs: () => number = Date.now,
-): WatcherFaultDetectorAlert =>
-  Object.freeze({
-    failed: (headerHash) =>
-      operationsSink.setAlert({
-        code: "fault_detector_failed",
-        subjectDigest: watcherFaultDetectorFailedAlertSubject(headerHash),
-        active: true,
-        observedAtMs: nowMs().toString(),
-      }),
+): WatcherFaultDetectorAlert => {
+  const alert = perHeaderAlert({
+    code: "fault_detector_failed",
+    subjectOf: watcherFaultDetectorFailedAlertSubject,
+    operationsSink,
+    observedAtMs: () => nowMs().toString(),
   });
+  return Object.freeze({
+    failed: (headerHash) => alert.set(headerHash, true),
+    reconcile: alert.reconcile,
+  });
+};
 
 /**
  * The watcher's isolation of one failing fault detector from the others in

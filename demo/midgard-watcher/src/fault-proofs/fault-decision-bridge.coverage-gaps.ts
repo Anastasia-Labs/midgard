@@ -1,11 +1,8 @@
 import type { HeaderDecision } from "@al-ft/midgard-fault-proofs";
 
-import type {
-  WatcherAuthenticatedStateQueueObservation,
-  WatcherReleasedHeaderProof,
-} from "../indexers/authenticated-state-queue-observation.js";
 import { watcherProofFamilyCoverageGapAlertSubject } from "../runtime/operations-observability.alert-book.js";
 import type { BridgeDependencies } from "./fault-decision-bridge.selected-target.js";
+import { perHeaderAlert } from "./per-header-alert.js";
 
 /** Whether a decision names a finding no installed family can prove. */
 const coverageGap = (decision: HeaderDecision): boolean =>
@@ -27,34 +24,19 @@ export const coverageGapRecorder = (
   dependencies: Pick<BridgeDependencies, "operationsSink" | "nowMs">,
 ) => {
   const nowMs = dependencies.nowMs ?? (() => BigInt(Date.now()));
-  const raised = new Set<string>();
-  const set = (headerHash: string, active: boolean): void => {
-    dependencies.operationsSink?.setAlert({
-      code: "proof_family_coverage_gap",
-      subjectDigest: watcherProofFamilyCoverageGapAlertSubject(headerHash),
-      active,
-      observedAtMs: nowMs().toString(),
-    });
-    if (active) raised.add(headerHash);
-    else raised.delete(headerHash);
-  };
+  const alert = perHeaderAlert({
+    code: "proof_family_coverage_gap",
+    subjectOf: watcherProofFamilyCoverageGapAlertSubject,
+    operationsSink: dependencies.operationsSink,
+    observedAtMs: () => nowMs().toString(),
+  });
   return Object.freeze({
     /** Raises or clears the header's alert from its fresh decision. */
     decided: (headerHash: string, decision: HeaderDecision): void => {
       const gap = coverageGap(decision);
-      if (gap !== raised.has(headerHash)) set(headerHash, gap);
+      if (gap !== alert.raised(headerHash)) alert.set(headerHash, gap);
     },
     /** Clears every raised header that is released or no longer queued. */
-    reconcile: (
-      observation: WatcherAuthenticatedStateQueueObservation,
-      released: ReadonlyMap<string, WatcherReleasedHeaderProof>,
-    ): void => {
-      const queued = new Set(
-        observation.finalizedHeaders.map(({ headerHash }) => headerHash),
-      );
-      for (const headerHash of [...raised])
-        if (!queued.has(headerHash) || released.has(headerHash))
-          set(headerHash, false);
-    },
+    reconcile: alert.reconcile,
   });
 };

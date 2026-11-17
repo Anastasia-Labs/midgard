@@ -69,6 +69,9 @@ export const prepareWatcherRuntimeWorkflows = async (
     operationsSink,
   } = options;
   await untilFollowerReady(follower, startup);
+  // Raised by the application's detector isolation; the fault decision
+  // bridge clears it once a header leaves the queue.
+  const faultDetectorAlert = createWatcherFaultDetectorAlert(operationsSink);
   return await startup("workflow_readiness", async ({ retryL1Read }) => {
     const faultProofApplication = createWatcherFaultProofApplication({
       watcherConfig: input.config.watcherConfig,
@@ -86,7 +89,7 @@ export const prepareWatcherRuntimeWorkflows = async (
           active: true,
           observedAtMs: Date.now().toString(),
         }),
-      faultDetectorAlert: createWatcherFaultDetectorAlert(operationsSink),
+      faultDetectorAlert,
     });
     onAllocated(faultProofApplication);
     assertWatcherFaultProofLaunchScope(
@@ -107,6 +110,6 @@ export const prepareWatcherRuntimeWorkflows = async (
         ),
       );
     }
-    return { faultProofApplication, faultProofReadiness };
+    return { faultProofApplication, faultProofReadiness, faultDetectorAlert };
   });
 };

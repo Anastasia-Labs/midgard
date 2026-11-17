@@ -24,6 +24,7 @@ import type { WatcherOperationsSink } from "../runtime/operations-observability.
 import { watcherSameCanonicalJson } from "../storage/durable-store.js";
 import type { WatcherClassificationWarning } from "./fault-decision-bridge.classification-miss.js";
 import { type WatcherPersistedFaultDecisionRecord } from "./fault-decision-journal.js";
+import type { WatcherFaultDetectorAlert } from "./fault-detector-isolation.js";
 import {
   WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
   type WatcherFaultProofApplication,
@@ -159,6 +160,9 @@ export type BridgeDependencies = Readonly<{
     header: WatcherStateQueueHeaderObservation,
   ): Promise<WatcherStateQueueHeaderObservation | undefined>;
   operationsSink?: WatcherOperationsSink;
+  /** The `fault_detector_failed` alert, reconciled with each observation as
+   * the `proof_family_coverage_gap` alert is. */
+  faultDetectorAlert?: Pick<WatcherFaultDetectorAlert, "reconcile">;
   /**
    * Operator warning, once per header released on L1 unverified, skipped
    * past its challengeability horizon or deferred.

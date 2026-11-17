@@ -50,6 +50,10 @@ export const createWatcherFaultDecisionBridge = async (input: {
   /** The prover wallet's coins funding reservations lease or removals hold. */
   readonly walletLeases: WatcherWalletLeases;
   readonly operationsSink?: WatcherOperationsSink;
+  /** The alert the fault-proof application's detector isolation raises. */
+  readonly faultDetectorAlert: NonNullable<
+    BridgeDependencies["faultDetectorAlert"]
+  >;
   readonly pendingAvailabilityHeaders?: BridgeDependencies["pendingAvailabilityHeaders"];
   readonly nowMs?: () => bigint;
   /** Defaults to one JSON line on stderr per warning. */
@@ -110,6 +114,7 @@ export const createWatcherFaultDecisionBridge = async (input: {
       ...(input.operationsSink === undefined
         ? {}
         : { operationsSink: input.operationsSink }),
+      faultDetectorAlert: input.faultDetectorAlert,
       ...(input.nowMs === undefined ? {} : { nowMs: input.nowMs }),
       warn: input.warn ?? writeWarning,
       supersede: input.supervisor.supersedeDecision,

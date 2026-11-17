@@ -244,8 +244,7 @@ export const startWatcherRuntime = async (
     const replay = replayHost.bind(activeFollower);
     userEvents = replay.userEvents;
     unsubscribeL1.push(replay.close);
-
-    const { faultProofApplication, faultProofReadiness } =
+    const { faultProofApplication, faultProofReadiness, faultDetectorAlert } =
       await prepareWatcherRuntimeWorkflows(input, {
         deploymentAuthority,
         deploymentIdentity,
@@ -373,6 +372,7 @@ export const startWatcherRuntime = async (
       maximumClassificationConcurrency: 16,
       walletLeases: fundingRuntime.store.store,
       operationsSink,
+      faultDetectorAlert,
       pendingAvailabilityHeaders: activeAvailability.pendingAvailabilityHeaders,
     });
     faultDecisionBridge = activeBridge;

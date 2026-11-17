@@ -59,8 +59,8 @@ export const watcherUnprovenFaultMergedAlertSubject = (
 
 /**
  * One `fault_detector_failed` subject per state-queue header, whatever
- * detector failed on it, so it stands until the header is decided
- * (fault-proofs/fault-detector-isolation.ts).
+ * detector failed on it, so it stands until the header is decided or leaves
+ * the queue (fault-proofs/fault-detector-isolation.ts).
  */
 export const watcherFaultDetectorFailedAlertSubject = (
   headerHash: string,
@@ -82,8 +82,10 @@ const PER_HEADER_CODES = Object.freeze([
 
 /**
  * Codes whose repeated raise of a subject already active is not recorded
- * again: a detector failing on a header on every pass until the header is
- * decided adds one record, not one per pass.
+ * again, nor a clear of a subject not active: a detector failing on a header
+ * on every pass until the header is decided adds one record, not one per
+ * pass, and a header that leaves the queue after its outcome cleared the
+ * alert adds no second clear.
  */
 const RAISED_ONCE_CODES: ReadonlySet<WatcherAlertCode> = new Set([
   "fault_detector_failed",
@@ -147,9 +149,8 @@ export const createWatcherAlertBook = (input: {
     natural(value.observedAtMs, "operational alert observation time");
     const key = `${value.code}:${value.subjectDigest}`;
     if (
-      value.active &&
       RAISED_ONCE_CODES.has(value.code) &&
-      latest.get(key)?.active === true
+      (latest.get(key)?.active === true) === value.active
     )
       return;
     const record = input.append({ kind: "alert", ...value });

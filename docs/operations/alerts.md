@@ -604,13 +604,17 @@ header, informational: it does not hold readiness) is raised and cleared
 together. It stays active when nothing else decides the header: the header is
 recorded `failed` and the bridge proves nothing after it until the follower
 moves or rewinds, so a later faulty block can merge unproven. A later replay of
-another header, by the same family or any other, does not clear it; the
-header's own outcome (decided, proven, removed, merged or past its horizon)
-does. A failure the decision pass retries or defers (an L1 source or the
-retained DA not answering, a held script re-execution, a local replay fault, a
-store connection dropping) never raises it. Each withheld result writes one
-error line with `reason` `fault_detector_failed`, naming the `family`, the
-`headerHash` and the error `detail`, whether or not the alert stays active.
+another header, by the same family or any other, does not clear it. It clears
+by itself, with no restart or operator action, when the header gets its own
+outcome (decided, proven, removed, merged or past its horizon) or leaves the
+observed queue, including when an L1 rollback drops the header: each decision
+pass clears it for every header that is no longer queued, as it does the
+`proof_family_coverage_gap` alert. A failure the decision pass retries or
+defers (an L1 source or the retained DA not answering, a held script
+re-execution, a local replay fault, a store connection dropping) never raises
+it. Each withheld result writes one error line with `reason`
+`fault_detector_failed`, naming the `family`, the `headerHash` and the error
+`detail`, whether or not the alert stays active.
 
 **First checks.**
 
