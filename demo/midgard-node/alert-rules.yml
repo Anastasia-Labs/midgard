@@ -105,7 +105,10 @@ groups:
         # `> 1` would page on one expiry, `>= 2` needs a second. The counter
         # appears on its first expiry, which increase() cannot see, so after
         # a restart the alert needs one expiry more. Only `listen` is
-        # scraped: expiries in one-shot commands only reach the log.
+        # scraped: expiries in one-shot commands only reach the log. In
+        # `listen` it mainly counts startup and operator-verb transactions:
+        # the operator watchdog's strikes and force-retires end at their
+        # 180 s control-plane hold first (`control_plane_hold_timeout`).
         expr: increase(midgard_tx_expired_total[30m]) >= 2
         labels:
           severity: warning

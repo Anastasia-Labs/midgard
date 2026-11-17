@@ -261,11 +261,20 @@ wallet holds funds and the provider answers.
 expired unconfirmed within 30 minutes (`midgard_tx_expired` keeps rising):
 the transaction's upper validity bound lies the deployment's confirmation
 depth under the observed L1 tip while every one of its inputs is still
-unspent, so it did not land. The operation that built it rebuilds from fresh
-chain state on its next tick; a rebuild that expires too means L1 is not
+unspent, so it did not land. In `listen` it mainly counts startup and
+operator-verb transactions; the operation that built one rebuilds it from
+fresh chain state at once, and a rebuild that expires too means L1 is not
 including the node's transactions within their validity windows. One expiry
 alone does not fire the alert. After a restart the counter's first expiry is
 not seen, so the alert fires one expiry later.
+
+The operator watchdog's strikes and force-retires are not counted here. They
+are waited on inside a 180 s L1 control-plane hold, which ends before their
+bound can lie the confirmation depth under the tip. An unconfirmed one shows
+as the watchdog skip `control_plane_hold_timeout` instead, and after three in
+a row as the readiness reason `l1_control_plane_hold_timeouts:operator_watchdog`.
+The next watchdog tick rebuilds it from the current operator set, spending the
+same scheduler or operator node, so at most one of the two lands.
 
 Only the `listen` process is scraped. The one-shot commands (operator
 register, activate, retire, recover-bond, force-retire, slash-duplicate and
