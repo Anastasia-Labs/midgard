@@ -50,6 +50,7 @@ import {
   type WatcherRetainedDaRuntimeOptions,
   type WatcherRetainedDaTransportStatus,
 } from "../storage/retained-da-runtime.js";
+import type { WatcherFaultDetectorAlert } from "./fault-detector-isolation.js";
 import type { WatcherReplayedLedger } from "./replayed-ledger.js";
 
 export const WATCHER_FAULT_PROOF_APPLICATION =
@@ -162,6 +163,9 @@ export type WatcherFaultProofApplicationOptions = Readonly<{
   /** Told each time a classifier's script re-execution keeps failing the
    * same way; the runtime raises the operator's alert from it. */
   onValidationTraceReplayStuck?: (hold: ValidationTraceReplayHold) => void;
+  /** Raised for a fault-proof family whose replay result a classification
+   * withheld; the runtime backs it with the operator's alert. */
+  faultDetectorAlert?: WatcherFaultDetectorAlert;
 }>;
 
 export type WatcherFaultProofApplicationConstructionOptions = Omit<

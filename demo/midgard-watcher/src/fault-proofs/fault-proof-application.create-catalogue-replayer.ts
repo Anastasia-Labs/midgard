@@ -18,6 +18,10 @@ import {
   type VerifiedWatcherDeploymentIdentity,
   watcherDeploymentProtocolScriptAuthority,
 } from "../runtime/deployment-identity.js";
+import {
+  type WatcherFaultDetectorAlert,
+  watcherFaultDetectorIsolation,
+} from "./fault-detector-isolation.js";
 import { watcherManifestL1SlotConfig } from "./fault-proof-application.bind-watcher-deployment-authority.js";
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "./fault-proof-application.production-dependencies.js";
 
@@ -25,7 +29,9 @@ import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "./fault-proof-application
  * The classifier's replay of every installed category, bound to the loaded
  * deployment: the fabricated-event histories and the slot mapping come from
  * its manifest. `onReplayStuck` is told each time a script re-execution keeps
- * failing the same way.
+ * failing the same way. A category whose replay fails in a way a retry would
+ * only repeat has its result withheld (`watcherFaultDetectorIsolation`), and
+ * `faultDetectorAlert` is raised for it.
  */
 export const createWatcherCatalogueReplayer = async (input: {
   readonly manifestJson: string;
@@ -37,6 +43,7 @@ export const createWatcherCatalogueReplayer = async (input: {
   readonly network: Network;
   readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
   readonly onReplayStuck?: (hold: ValidationTraceReplayHold) => void;
+  readonly faultDetectorAlert?: WatcherFaultDetectorAlert;
 }) => {
   const bind = (
     category: "fabricatedDeposit" | "fabricatedWithdrawal",
@@ -89,6 +96,7 @@ export const createWatcherCatalogueReplayer = async (input: {
     ...(input.onReplayStuck === undefined
       ? {}
       : { onReplayStuck: input.onReplayStuck }),
+    isolation: watcherFaultDetectorIsolation(input.faultDetectorAlert),
     network: input.network,
     hubOraclePolicyId: watcherDeploymentProtocolScriptAuthority(
       input.deploymentIdentity,

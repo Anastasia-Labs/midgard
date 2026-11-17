@@ -57,6 +57,17 @@ export const watcherUnprovenFaultMergedAlertSubject = (
     .update(headerHash.toLowerCase())
     .digest("hex");
 
+/** One `fault_detector_failed` subject per fault-proof family; its
+ * reporter clears it when the family next replays a block
+ * (fault-proofs/fault-detector-isolation.ts). */
+export const watcherFaultDetectorFailedAlertSubject = (
+  family: string,
+): string =>
+  createHash("sha256")
+    .update("midgard-watcher-fault-detector-failed-alert-v1\u0000")
+    .update(family)
+    .digest("hex");
+
 /** Codes kept one subject per header, cleared by the header's outcome. */
 const PER_HEADER_CODES = Object.freeze([
   ["da_fetch_failure", watcherDaFetchAlertSubject],

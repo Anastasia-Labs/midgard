@@ -33,6 +33,9 @@ export const createWatcherFaultProofApplication = (
         : {
             onValidationTraceReplayStuck: options.onValidationTraceReplayStuck,
           }),
+      ...(options.faultDetectorAlert === undefined
+        ? {}
+        : { faultDetectorAlert: options.faultDetectorAlert }),
     }),
     dependencies: productionDependencies,
     environment: process.env,

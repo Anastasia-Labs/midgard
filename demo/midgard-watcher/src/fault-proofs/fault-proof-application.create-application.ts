@@ -243,6 +243,9 @@ export function createApplication({
         ...(options.onValidationTraceReplayStuck === undefined
           ? {}
           : { onReplayStuck: options.onValidationTraceReplayStuck }),
+        ...(options.faultDetectorAlert === undefined
+          ? {}
+          : { faultDetectorAlert: options.faultDetectorAlert }),
       });
       return await createHeaderClassifier({
         transitionTraceEventAuthority,

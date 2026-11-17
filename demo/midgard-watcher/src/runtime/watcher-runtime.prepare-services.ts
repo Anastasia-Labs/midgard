@@ -1,3 +1,4 @@
+import { createWatcherFaultDetectorAlert } from "../fault-proofs/fault-detector-isolation.js";
 import {
   createWatcherFaultProofApplication,
   WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
@@ -85,6 +86,7 @@ export const prepareWatcherRuntimeWorkflows = async (
           active: true,
           observedAtMs: Date.now().toString(),
         }),
+      faultDetectorAlert: createWatcherFaultDetectorAlert(operationsSink),
     });
     onAllocated(faultProofApplication);
     assertWatcherFaultProofLaunchScope(

@@ -36,6 +36,7 @@ export const WATCHER_ALERT_CODES = Object.freeze([
   "prover_collateral_forfeited",
   "prover_collateral_accounting_failed",
   "unproven_fault_merged",
+  "fault_detector_failed",
 ] as const);
 
 export type WatcherAlertCode = (typeof WATCHER_ALERT_CODES)[number];
@@ -53,7 +54,10 @@ export type WatcherAlertCode = (typeof WATCHER_ALERT_CODES)[number];
  * stays listed across restarts but must not hold readiness forever. A proof
  * attempt whose collateral the chain took is spent money no watcher action
  * recovers, and the workflow goes on with a re-signed attempt: the alert
- * tells the operator that local evaluation disagreed with the chain.
+ * tells the operator that local evaluation disagreed with the chain. A
+ * fault detector whose result a decision pass withheld left the header to
+ * the other families, and a header none of them decides still fails its
+ * pass: the alert names the family for the operator.
  */
 export const WATCHER_INFORMATIONAL_ALERT_CODES: ReadonlySet<WatcherAlertCode> =
   new Set<WatcherAlertCode>([
@@ -63,6 +67,7 @@ export const WATCHER_INFORMATIONAL_ALERT_CODES: ReadonlySet<WatcherAlertCode> =
     "validation_trace_replay_stuck",
     "unproven_fault_merged",
     "prover_collateral_forfeited",
+    "fault_detector_failed",
   ]);
 
 /** The last pooled DA bond readout, as `/v1/status` serves it. */

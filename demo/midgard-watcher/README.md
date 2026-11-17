@@ -113,6 +113,16 @@ See [launch readiness](../../docs/public_testnet_readiness.md) and the
 [challenger runbook](../../docs/fault-proofs/challenger-runbook.md) for acceptance
 and operating boundaries.
 
+A fault-proof family whose replay of a block fails in a way a retry would only
+repeat does not stop the other families. The decision pass withholds that
+family's result and decides the header from the rest, writes one error line
+(`reason` `fault_detector_failed`, with `family`, `headerHash` and `detail`),
+and raises the informational `fault_detector_failed` alert, one subject per
+family, which clears when that family next replays a block. A header no other
+family decides still fails its pass. A failure the pass already retries or
+defers (an L1 source or the retained DA not answering, a held script
+re-execution, a local replay fault) still fails the pass as before.
+
 Non-tail removal, which peels the successor commitments stacked on a
 fraudulent block, is coordinated locally: the workflow orchestrator retries a
 lost peel against a fresh authenticated L1 view until the removal confirms. The
