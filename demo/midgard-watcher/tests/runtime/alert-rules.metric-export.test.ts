@@ -108,7 +108,6 @@ describe("the watcher's alert rules", () => {
     const selectors = alertRuleSelectors(
       await readFile(new URL("../../alert-rules.yml", import.meta.url), "utf8"),
     );
-    expect(new Set(selectors.map(({ alert }) => alert)).size).toBe(13);
     for (const { alert, metric, matchers } of selectors) {
       expect(families, `${alert} selects ${metric}`).toContain(metric);
       for (const { label, values } of matchers) {

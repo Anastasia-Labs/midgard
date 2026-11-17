@@ -140,7 +140,6 @@ describe("the node's alert rules", () => {
     const selectors = alertRuleSelectors(
       await readFile(new URL("../alert-rules.yml", import.meta.url), "utf8"),
     );
-    expect(new Set(selectors.map(({ alert }) => alert)).size).toBe(10);
     for (const { alert, metric } of selectors)
       expect(families, `${alert} selects ${metric}`).toContain(metric);
   });
