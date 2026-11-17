@@ -30,7 +30,10 @@ import {
  * `canonicalPoint` is the follower's tip. `releaseFinalPoint` is the tip
  * until an expiry or a spend needs a stable boundary; then it is the
  * highest stored block at least `recoveryDepth` deep (the exact block, or,
- * when the pruning removed it, the nearest kept block below it).
+ * when the pruning removed it, the nearest kept block below it). While the
+ * chain above the follower's origin is shorter than `recoveryDepth`, no
+ * block is that deep: nothing is stable, an expiry is `expired_at_tip`, a
+ * spend `invalidated_at_tip`, and `releaseFinalPoint` stays the tip.
  *
  * An input is classified from the follower's facts, never assumed:
  * - its exact creation comes from the stored creating body; without one
@@ -243,15 +246,20 @@ const observeOnce = async (
   const canonicalPoint = tipPointOf(view);
   const reader: Reader = { store, rawReads, view, canonicalPoint };
   let releaseFinalPoint = canonicalPoint;
-  let releaseFinalRead = false;
-  const releaseFinal = async (): Promise<FraudProofRawL1Point> => {
-    if (!releaseFinalRead) {
-      releaseFinalPoint = rawPointOf(
-        await blockAtLeastDepth(store, view, recoveryDepth),
-      );
-      releaseFinalRead = true;
+  /** The stable boundary, read once; `null` while none is recovery-deep. */
+  let stableBoundary: FraudProofRawL1Point | null | undefined;
+  const releaseFinal = async (): Promise<FraudProofRawL1Point | null> => {
+    if (stableBoundary === undefined) {
+      const block = await blockAtLeastDepth(store, view, recoveryDepth);
+      stableBoundary = block === null ? null : rawPointOf(block);
+      if (stableBoundary !== null) releaseFinalPoint = stableBoundary;
     }
-    return releaseFinalPoint;
+    return stableBoundary;
+  };
+  /** Whether `slot` lies at or below the stable boundary. */
+  const stableAt = async (slot: bigint): Promise<boolean> => {
+    const boundary = await releaseFinal();
+    return boundary !== null && BigInt(boundary.slot) >= slot;
   };
   let inclusionPoint: FraudProofRawL1Point | undefined;
   const inputs: Readonly<{ outRef: string; outputCbor: string }>[] = [];
@@ -293,7 +301,7 @@ const observeOnce = async (
   }
   const tipSlot = BigInt(view.point.slot);
   if (signed.expiresAtSlot !== undefined && tipSlot >= signed.expiresAtSlot)
-    return BigInt((await releaseFinal()).slot) >= signed.expiresAtSlot
+    return (await stableAt(signed.expiresAtSlot))
       ? finish("expired", REASONS.expired)
       : finish("expired_at_tip", REASONS.expiredAtTip);
   let status: Status = "rebroadcast";
@@ -312,7 +320,7 @@ const observeOnce = async (
     if (state.outputCbor !== undefined)
       inputs.push({ outRef: label, outputCbor: state.outputCbor });
     if (state.kind !== "spent") continue;
-    const stable = state.atOrBelowSlot <= Number((await releaseFinal()).slot);
+    const stable = await stableAt(BigInt(state.atOrBelowSlot));
     if (stable) {
       status = "invalidated";
       reason = REASONS.invalidated;

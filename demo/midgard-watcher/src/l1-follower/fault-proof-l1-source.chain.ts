@@ -117,17 +117,19 @@ const DEEP_BLOCK_WALK_LIMIT = 64;
  * The highest stored block at least `minimum` deep under the view. The
  * exact block when stored; when the pruning removed it, the first block
  * the pruning kept below it (a checkpoint, the origin, or a block a
- * retained fact references): deeper, so no less final.
+ * retained fact references): deeper, so no less final. `null` while that
+ * depth lies below the follower's origin: no block the follower stored is
+ * `minimum` deep yet.
  */
 export const blockAtLeastDepth = async (
   store: FactStore,
   view: View,
   minimum: number,
-): Promise<StoredBlock> => {
+): Promise<StoredBlock | null> => {
   const height = view.height - minimum + 1;
   const exact = await store.blockAtHeight(height);
   if (exact !== null) return exact;
-  if (await belowOrigin(store, height)) throw notDeepEnough(minimum);
+  if (await belowOrigin(store, height)) return null;
   const cursor = await store.cursor();
   let slot = cursor?.prunedThroughSlot ?? view.point.slot;
   for (let step = 0; step < DEEP_BLOCK_WALK_LIMIT; step += 1) {

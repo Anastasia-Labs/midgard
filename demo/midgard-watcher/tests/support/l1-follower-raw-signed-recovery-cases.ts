@@ -200,12 +200,24 @@ export const describeSignedRecovery = (): void => {
       });
     });
 
-    it("a passed TTL on a chain not yet recovery-deep is unavailable", async () => {
+    it("on a chain not yet recovery-deep, a passed TTL is expired_at_tip and a spend is invalidated_at_tip", async () => {
       const s = await setup(0);
       const z = s.intent({ invalidAfter: Number(s.tipPoint().slot) });
-      await expect(s.observe(z)).rejects.toBeInstanceOf(
-        FraudProofL1UnavailableError,
-      );
+      expect(await s.observe(z)).toMatchObject({
+        status: "expired_at_tip",
+        reason: REASON.expiredAtTip,
+        canonicalPoint: s.tipPoint(),
+        releaseFinalPoint: s.tipPoint(),
+      });
+      await s.forward([s.intent()]);
+      const spent = s.intent({ referenceInputs: [s.at(3)] });
+      expect(await s.observe(spent)).toMatchObject({
+        status: "invalidated_at_tip",
+        reason: REASON.invalidatedAtTip,
+        canonicalPoint: s.tipPoint(),
+        releaseFinalPoint: s.tipPoint(),
+        inputs: [s.input(0), s.input(3)],
+      });
     });
 
     it("a spend the pruning removed is not stable at a retained depth of k; unpruned and deep, it is invalidated", async () => {
