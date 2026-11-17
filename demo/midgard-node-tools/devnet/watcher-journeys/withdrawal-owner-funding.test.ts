@@ -108,6 +108,7 @@ const runFamilies = async (
           ];
         return Promise.resolve();
       },
+      settle: () => Promise.resolve(),
       onStage: () => undefined,
     });
     outcomes.push(outcome);
@@ -215,6 +216,7 @@ it("tops up nothing while an owned output already funds the family", async () =>
       toppedUp = true;
       return Promise.resolve();
     },
+    settle: () => Promise.resolve(),
     onStage: () => undefined,
   });
   expect(outcome).toBe("funded");

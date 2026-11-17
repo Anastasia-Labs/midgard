@@ -337,6 +337,8 @@ export type WithdrawalOwnerFundingPorts = Readonly<{
   requirement(tail: HistoryPredecessor): Promise<OwnerFundingRequirement>;
   /** Deposit exactly `requirement.topUpLovelace` and wait until it is absorbed. */
   topUp(requirement: OwnerFundingRequirement): Promise<void>;
+  /** The owner is funded: set aside any top-up still recorded as pending. */
+  settle(requirement: OwnerFundingRequirement): Promise<void>;
   onStage(name: string): void;
 }>;
 
@@ -345,7 +347,8 @@ export type WithdrawalOwnerFundingPorts = Readonly<{
  * owner's on the tail meets the family's requirement, one deposit of exactly
  * the requirement tops it up, and the new tail must then hold one that
  * does. An earlier family that spent or split the owner's outputs therefore
- * never starves a later one, whatever their order. Before the run's first
+ * never starves a later one, whatever their order. Whichever way the owner
+ * is found funded, no top-up record outlives it. Before the run's first
  * block there is no tail: the deposit trace that commits it funds the owner.
  */
 export const ensureWithdrawalOwnerFunding = async (
@@ -359,8 +362,10 @@ export const ensureWithdrawalOwnerFunding = async (
   const requirement = await ports.requirement(tail);
   if (
     (await qualifyingOwnedOutput(tail, ports.owner, requirement)) !== undefined
-  )
+  ) {
+    await ports.settle(requirement);
     return "funded";
+  }
   ports.onStage(
     `topping up the ledger owner with ${requirement.topUpLovelace.toString()} lovelace for a ${requirement.shape}`,
   );
@@ -373,5 +378,6 @@ export const ensureWithdrawalOwnerFunding = async (
     throw new Error(
       `The ledger owner's top-up of ${requirement.topUpLovelace.toString()} lovelace left no output that funds a ${requirement.shape}`,
     );
+  await ports.settle(requirement);
   return "topped-up";
 };

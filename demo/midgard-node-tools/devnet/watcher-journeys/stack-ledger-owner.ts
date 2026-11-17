@@ -151,12 +151,13 @@ const submitAdmittedDeposit = async (
  * then waits for our node to absorb it and its committee to attest that
  * block, which the families' blocks extend. When our node already holds
  * one, nothing is deposited and only the attestation is awaited. A deposit
- * an earlier run recorded is awaited while it can still land, set aside and
- * replaced once its validity passed without it landing, and forgotten once
- * absorbed. A deposit this run made that expires unlanded fails the run,
- * keeping its record for the next. Before its deposit, it waits no longer
- * than the funding's own bound from its start; for the deposit to land, no
- * longer than the deadline its absorption is held to.
+ * an earlier run recorded is awaited while it can still land and, landed,
+ * until its absorption deadline; it is set aside and replaced once either
+ * passed, and forgotten once absorbed. A deposit this run made that expires
+ * unlanded fails the run, keeping its record for the next. Before its
+ * deposit, it waits no longer than the funding's own bound from its start;
+ * for the deposit to land, no longer than the deadline its absorption is
+ * held to.
  */
 export const awaitStackLedgerOwnerFunded = async (
   ports: StackLedgerOwnerFundingPorts,
@@ -176,12 +177,16 @@ export const awaitStackLedgerOwnerFunded = async (
       ours = true;
     }
     const status = await ports.depositStatus(pending);
-    if (status === "landed") break;
-    if (status === "expired") {
+    const deadline = absorbDeadlineMs(ports, pending.inclusionTime);
+    if (status === "landed" && (ours || ports.now() <= deadline)) break;
+    if (status !== "pending") {
       if (ours)
         throw new Error(
           `The ledger owner's deposit ${pending.txHash} expired without landing (valid to ${pending.validTo.toString()})`,
         );
+      // An earlier record that expired unlanded, or landed but is past its
+      // absorption deadline (absorbed and spent since, or never absorbed):
+      // resolved either way, and never awaited again.
       await ports.archivePendingDeposit();
       pending = undefined;
       continue;
@@ -190,7 +195,6 @@ export const awaitStackLedgerOwnerFunded = async (
     // deposit's validity end shows it pending for ever. Healthy, it shows it
     // landed or expired well before this deadline, which falls an event
     // wait and the absorption bound after that end.
-    const deadline = absorbDeadlineMs(ports, pending.inclusionTime);
     if (ports.now() > deadline)
       throw new Error(
         `The ledger owner's deposit ${pending.txHash} neither landed nor expired on L1, as the stack's Kupo shows it, by ${deadline.toString()}, the deadline for its absorption`,

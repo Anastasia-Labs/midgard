@@ -29,25 +29,44 @@ import type {
 } from "./journey-session.js";
 import { readJourneyTiming } from "./journey-timing.js";
 import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
-import {
-  awaitStackLedgerOwnerFunded,
-  stackLedgerOwnerFunding,
-} from "./stack-ledger-owner.js";
+import { stackLedgerOwnerFunding } from "./stack-ledger-owner.js";
 import { DECISION_POLL_MS } from "./stack-verified-predecessor.js";
 import { decodeJourneyRetainedBlock } from "./staging.decode-journey-retained-block.js";
 import { createJourneyVerifiedHeaders } from "./verified-headers.js";
 import {
   ensureWithdrawalOwnerFunding,
   type OwnerFundingRequirement,
-  qualifyingOwnedOutput,
   withdrawalFundingShape,
   withdrawalOwnerRequirement,
 } from "./withdrawal-owner-funding.js";
+import { stackWithdrawalOwnerFundingPorts } from "./withdrawal-owner-top-up.stack.js";
 
 type DevnetHead = Readonly<{
   deploymentFingerprint: string;
   block: JourneySuccessor;
 }>;
+
+const devnetTopUpDirectory = (session: JourneySession, category: string) =>
+  join(session.context.runDirectory, "work/journeys/owner-top-up", category);
+
+/**
+ * Reads a devnet top-up's checkpoint when it can still resume on `head`,
+ * removing its records otherwise: a top-up that completed but stopped before
+ * removing them, or one stopped before its trace began.
+ */
+const resumableDevnetTopUp = async (directory: string, head: DevnetHead) => {
+  const checkpointPath = join(directory, "honest-deposit.json");
+  const checkpoint = existsSync(checkpointPath)
+    ? await readJourneyArtifact<PublishedDepositTraceCheckpoint>(checkpointPath)
+    : undefined;
+  if (
+    checkpoint !== undefined &&
+    checkpoint.predecessor.header.prevHeaderHash === head.block.headerHash
+  )
+    return checkpoint;
+  await rm(directory, { recursive: true, force: true });
+  return undefined;
+};
 
 /**
  * A devnet's top-up of its ledger owner: one deposit of exactly the
@@ -73,23 +92,9 @@ const devnetTopUp = async (
   const { deployment, accounts } = context;
   const { onStage } = input;
   const headPath = join(context.runDirectory, "work/journeys/head.json");
-  const directory = join(
-    context.runDirectory,
-    "work/journeys/owner-top-up",
-    input.category,
-  );
+  const directory = devnetTopUpDirectory(session, input.category);
   const checkpointPath = join(directory, "honest-deposit.json");
-  const extendsHead = (checkpoint: PublishedDepositTraceCheckpoint) =>
-    checkpoint.predecessor.header.prevHeaderHash ===
-    input.head.block.headerHash;
-  let resume = existsSync(checkpointPath)
-    ? await readJourneyArtifact<PublishedDepositTraceCheckpoint>(checkpointPath)
-    : undefined;
-  // A top-up that completed but stopped before removing its records.
-  if (resume !== undefined && !extendsHead(resume)) {
-    await rm(directory, { recursive: true, force: true });
-    resume = undefined;
-  }
+  const resume = await resumableDevnetTopUp(directory, input.head);
   await mkdir(directory, { recursive: true });
   if (resume === undefined) {
     const depositMinting = deployment.references.get("depositMint");
@@ -127,7 +132,10 @@ const devnetTopUp = async (
     finalityDepth: JOURNEY_ACTION_DEPTH,
     liveTail: { ledgerAt },
   });
-  if (!extendsHead(trace.checkpoint))
+  if (
+    trace.checkpoint.predecessor.header.prevHeaderHash !==
+    input.head.block.headerHash
+  )
     throw new Error(
       `The ledger owner's top-up extended a tail other than the run's head ${input.head.block.headerHash}`,
     );
@@ -186,54 +194,42 @@ export const withdrawalOwnerTopUpBeforeFamily = async (
     const key = journeyLedgerOwnerKey(
       session.context.accounts.ledgerOwner.seedPhrase,
     );
-    const funding = await stackLedgerOwnerFunding(session, input);
-    return ensureWithdrawalOwnerFunding({
-      owner: funding.owner.keyHash,
-      readTail: funding.readTail,
-      requirement: (tail) =>
-        withdrawalOwnerRequirement({
-          shape,
-          quote: journeyWithdrawalQuote({ deployment, ownerKey: key }),
-          key,
-          header: tail.header,
-          topUpAddress: midgardAddressFromText(funding.owner.address),
-        }),
-      // The run's own funding, with a deposit of the top-up's amount and
-      // its own record, waiting for an output that funds the family.
-      topUp: async (requirement) => {
-        const topUp = await stackLedgerOwnerFunding(session, {
-          ...input,
-          deposit: {
-            lovelace: requirement.topUpLovelace,
-            pendingName: "ledger-owner-top-up.json",
-          },
-        });
-        const { owner, ourLedger } = topUp;
-        await awaitStackLedgerOwnerFunded({
-          ...topUp.ports,
-          ourLedgerHoldsOutput: async () => {
-            for (const utxo of await ourLedger.utxos(owner.address))
-              if (
-                utxo.assets.lovelace !== undefined &&
-                utxo.assets.lovelace >=
-                  (await requirement.requiredOf({
-                    outRef: utxo.outrefCbor,
-                    output: utxo.outputCbor,
-                  }))
-              )
-                return true;
-            return false;
-          },
-          ownerHoldsOutput: async () =>
-            (await qualifyingOwnedOutput(
-              await topUp.readTail(),
-              owner.keyHash,
-              requirement,
-            )) !== undefined,
-        });
-      },
-      onStage,
-    });
+    const { owner, ourLedger, readTail } = await stackLedgerOwnerFunding(
+      session,
+      input,
+    );
+    return ensureWithdrawalOwnerFunding(
+      stackWithdrawalOwnerFundingPorts({
+        owner: owner.keyHash,
+        readTail,
+        readOurOutputs: async () =>
+          (await ourLedger.utxos(owner.address)).map((utxo) => ({
+            outRef: utxo.outrefCbor,
+            output: utxo.outputCbor,
+          })),
+        requirement: (tail) =>
+          withdrawalOwnerRequirement({
+            shape,
+            quote: journeyWithdrawalQuote({ deployment, ownerKey: key }),
+            key,
+            header: tail.header,
+            topUpAddress: midgardAddressFromText(owner.address),
+          }),
+        // The run's own funding, with a deposit of the top-up's amount in
+        // the family's own record.
+        fundingPorts: async (lovelace) =>
+          (
+            await stackLedgerOwnerFunding(session, {
+              ...input,
+              deposit: {
+                lovelace,
+                pendingName: `ledger-owner-top-up.${input.category}.json`,
+              },
+            })
+          ).ports,
+        onStage,
+      }),
+    );
   }
   const key = journeyLedgerOwnerKey(
     session.context.accounts.operator.seedPhrase,
@@ -281,6 +277,14 @@ export const withdrawalOwnerTopUpBeforeFamily = async (
         requirement,
         onStage,
       });
+    },
+    settle: async () => {
+      const head = await readHead();
+      if (head !== undefined)
+        await resumableDevnetTopUp(
+          devnetTopUpDirectory(session, input.category),
+          head,
+        );
     },
     onStage,
   });
