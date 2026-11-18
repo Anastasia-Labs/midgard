@@ -1359,6 +1359,7 @@ jobs:
             watcher-journeys/history-event-cases.test.ts \
             watcher-journeys/history-event-fresh-tip.test.ts \
             watcher-journeys/history-events.test.ts \
+            watcher-journeys/history-fixtures.withdrawn-split.test.ts \
             watcher-journeys/honest-successor.fault-attestation.test.ts \
             watcher-journeys/honest-successor.observables.test.ts \
             watcher-journeys/honest-successor.test.ts \
