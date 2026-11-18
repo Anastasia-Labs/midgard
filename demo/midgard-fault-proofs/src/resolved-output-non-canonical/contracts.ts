@@ -3,13 +3,7 @@ import {
   parseFaultProofBlueprint,
   type SpendingValidator,
 } from "@al-ft/midgard-sdk";
-import {
-  type Data,
-  type Network,
-  type Script,
-  validatorToAddress,
-  validatorToScriptHash,
-} from "@lucid-evolution/lucid";
+import { type Data, type Network, type Script } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
@@ -134,54 +128,4 @@ export const applyResolvedOutputNonCanonicalScripts = ({
     adapt(steps[4], 4),
     adapt(steps[5], 5),
   ];
-};
-
-const h = (value: string, bytes: number, label: string): void => {
-  if (!new RegExp(`^[0-9a-f]{${(bytes * 2).toString()}}$`, "u").test(value))
-    throw new Error(`resolvedOutputNonCanonical: invalid ${label}`);
-};
-
-export const loadResolvedOutputNonCanonicalManifest = (
-  manifest: ResolvedOutputNonCanonicalManifest,
-): ResolvedOutputNonCanonicalManifest => {
-  if (
-    manifest.schemaVersion !==
-      "resolved-output-non-canonical-production-manifest-v1" ||
-    manifest.category !== RESOLVED_OUTPUT_NON_CANONICAL_CATEGORY ||
-    manifest.categoryId !== RESOLVED_OUTPUT_NON_CANONICAL_ID
-  )
-    throw new Error("resolvedOutputNonCanonical: wrong manifest identity");
-  manifest.steps.forEach((step, i) => {
-    if (
-      step.blueprintTitle !== RESOLVED_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES[i]
-    )
-      throw new Error(
-        `resolvedOutputNonCanonical: step ${(i + 1).toString()} title mismatch`,
-      );
-    if (validatorToScriptHash(step.spendingScript) !== step.spendingScriptHash)
-      throw new Error(
-        `resolvedOutputNonCanonical: step ${(i + 1).toString()} hash mismatch`,
-      );
-    if (
-      validatorToAddress(manifest.network, step.spendingScript) !==
-      step.spendingScriptAddress
-    )
-      throw new Error(
-        `resolvedOutputNonCanonical: step ${(i + 1).toString()} address mismatch`,
-      );
-    if (!/^[0-9a-f]{64}#[0-9]+$/u.test(step.referenceOutRef))
-      throw new Error(
-        `resolvedOutputNonCanonical: step ${(i + 1).toString()} reference out-ref mismatch`,
-      );
-  });
-  if (manifest.firstStepHash !== manifest.steps[0].spendingScriptHash)
-    throw new Error(
-      "resolvedOutputNonCanonical: first-step hash is not step 01",
-    );
-  h(manifest.computationThreadPolicyId, 28, "computation-thread policy");
-  h(manifest.fraudProofPolicyId, 28, "fraud-proof policy");
-  h(manifest.hubOraclePolicyId, 28, "hub oracle");
-  h(manifest.fieldPreimageCertificatePolicyId, 28, "certificate policy");
-  h(manifest.stateQueuePolicyId, 28, "state-queue policy");
-  return Object.freeze(manifest);
 };

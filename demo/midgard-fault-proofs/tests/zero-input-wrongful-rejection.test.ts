@@ -19,7 +19,6 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   classifyZeroInputFinding,
   prepareZeroInputEvidence,
-  ZERO_INPUT_CATEGORY,
   ZERO_INPUT_CATEGORY_ID,
   ZERO_INPUT_FIELD_INDEX,
   zeroInputEvidenceCloses,
@@ -57,7 +56,6 @@ const evidence = (subject: typeof accepted, count: number) => {
 
 describe("zeroInput direction-complete V1 semantics", () => {
   it("preserves the existing category and field identity", () => {
-    expect(ZERO_INPUT_CATEGORY).toBe("zeroInput");
     expect(ZERO_INPUT_CATEGORY_ID).toBe("00000005");
     expect(ZERO_INPUT_FIELD_INDEX).toBe(0);
   });

@@ -108,9 +108,6 @@ const prepareObserverOrderWorkflowArtifact = async (
     : await prepareObserverOrderInvalidForcedArtifact(evidence);
 };
 
-export const OBSERVER_ORDER_INVALID_WORKFLOW =
-  "midgard-observer-order-invalid-production-workflow-v1" as const;
-
 export type ObserverOrderInvalidRemovalReferenceScripts = Readonly<{
   correctionLockSpend: UTxO;
   stateQueueSpend: UTxO;
@@ -396,8 +393,6 @@ const currentAction = async ({
     return { stage: "step_04", threadOutRef: stage.threadOutRef };
   throw new Error("observerOrderInvalid observed an impossible step");
 };
-
-export type ObserverOrderInvalidWorkflowRunResult = FraudProofWorkflowRunResult;
 
 export const executeManifestBoundObserverOrderInvalidWorkflow = async ({
   workflow,

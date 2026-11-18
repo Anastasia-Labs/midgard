@@ -12,9 +12,6 @@ import {
   parseSubmitStep01TxInclusion,
 } from "../step-support.js";
 
-export const NATIVE_INDEX_ARTIFACT_HELPER =
-  "midgard-production-native-index-artifact-helper-v1" as const;
-
 export const HEX_28 = /^[0-9a-f]{56}$/u;
 export const HEX_32 = /^[0-9a-f]{64}$/u;
 export const EVEN_HEX = /^(?:[0-9a-f]{2})+$/u;

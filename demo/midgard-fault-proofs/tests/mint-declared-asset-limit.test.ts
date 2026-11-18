@@ -14,7 +14,6 @@ import { describe, expect, it } from "vitest";
 import {
   admitMintDeclaredAssetLimitArtifact,
   buildMintDeclaredAssetLimitArtifact,
-  mintDeclaredAssetLimitArtifactDigest,
 } from "../src/mint-declared-asset-limit/artifact.js";
 import {
   applyMintDeclaredAssetLimitScripts,
@@ -375,9 +374,6 @@ describe("mintDeclaredAssetLimit V1 semantics", () => {
     });
     const admitted = admitMintDeclaredAssetLimitArtifact(artifact);
     expect(admitted.evidence).toEqual(prepared);
-    expect(mintDeclaredAssetLimitArtifactDigest(artifact)).toMatch(
-      /^[0-9a-f]{64}$/u,
-    );
     expect(() =>
       admitMintDeclaredAssetLimitArtifact({
         ...artifact,

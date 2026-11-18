@@ -2,11 +2,6 @@ import type { Script } from "@lucid-evolution/lucid";
 
 export const MIN_FEE_CATEGORY_LABEL = "min-fee";
 
-export const MIN_FEE_BLUEPRINT_TITLES = {
-  step01: "fraud_proofs/min_fee/step_01.main.spend",
-  step02: "fraud_proofs/min_fee/step_02.main.spend",
-} as const;
-
 export type MinFeeStepContract = {
   readonly spendingScript: Script;
   readonly spendingScriptHash: string;

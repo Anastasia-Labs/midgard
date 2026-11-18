@@ -12,7 +12,6 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-export const ZERO_INPUT_CATEGORY = "zeroInput" as const;
 export const ZERO_INPUT_CATEGORY_ID = "00000005" as const;
 export const ZERO_INPUT_FIELD_INDEX = 0 as const;
 export const ZERO_INPUT_REASON = "EmptyInputs" as const;

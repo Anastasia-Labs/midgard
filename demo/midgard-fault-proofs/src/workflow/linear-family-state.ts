@@ -3,7 +3,6 @@ import {
   type EvidenceProvenance,
 } from "@al-ft/midgard-sdk";
 
-import type { FraudProofWorkflowTerminal } from "./journal.js";
 import {
   LINEAR_FAMILY_SPEC,
   type LinearFamilyCategory,
@@ -418,8 +417,3 @@ export const reconcileLinearFamilyAction = async ({
       : `${category} chain state changed without the intended transaction`,
   };
 };
-
-export type LinearFamilyObservedTerminal = Readonly<{
-  kind: "completed";
-  terminal: FraudProofWorkflowTerminal;
-}>;

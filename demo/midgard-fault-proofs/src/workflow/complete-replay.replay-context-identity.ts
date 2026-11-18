@@ -105,22 +105,6 @@ export const replayContextIdentity = ({
   });
 };
 
-export const predecessorRecord = (
-  value: unknown,
-  label: string,
-): Readonly<Record<string, unknown>> => {
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    Array.isArray(value) ||
-    Object.getPrototypeOf(value) !== Object.prototype ||
-    Reflect.ownKeys(value).length !== Object.keys(value).length
-  ) {
-    throw new Error(`${label} must be a plain string-keyed object`);
-  }
-  return value as Readonly<Record<string, unknown>>;
-};
-
 /**
  * The ledger behind an admitted predecessor authority, bound to the challenged
  * header's `prev_header_hash` and `prev_utxos_root`.

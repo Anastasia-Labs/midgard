@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 import { midgardFieldCommitment } from "@al-ft/midgard-core";
 import type { VerdictSubject } from "@al-ft/midgard-sdk";
 import { ProofThreadForcedSourcePayloadSchema } from "@al-ft/midgard-sdk";
@@ -252,16 +250,3 @@ export const admitMintDeclaredAssetLimitArtifact = (
 
 export const MintDeclaredAssetLimitForcedSourcePayloadSchema =
   ProofThreadForcedSourcePayloadSchema;
-
-export const mintDeclaredAssetLimitArtifactDigest = (
-  artifact: MintDeclaredAssetLimitArtifact,
-): string =>
-  createHash("sha256")
-    .update(
-      JSON.stringify(
-        Object.fromEntries(
-          Object.entries(artifact).sort(([a], [b]) => a.localeCompare(b)),
-        ),
-      ),
-    )
-    .digest("hex");

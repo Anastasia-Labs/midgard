@@ -13,7 +13,6 @@ import { describe, expect, it } from "vitest";
 import {
   admitObserversForbiddenArtifact,
   buildObserversForbiddenArtifact,
-  observersForbiddenArtifactDigest,
 } from "../src/observers-forbidden-on-untagged-network/artifact.js";
 import {
   applyObserversForbiddenScripts,
@@ -24,7 +23,6 @@ import {
   MIDGARD_ABSENT_SCRIPT_INTEGRITY_HASH,
   MIDGARD_UNTAGGED_NETWORK_ID,
   OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY,
-  OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY_ID,
   observersForbiddenEvidenceCloses,
   observersForbiddenFaultHolds,
   prepareObserversForbiddenEvidence,
@@ -69,9 +67,6 @@ describe("observersForbiddenOnUntaggedNetwork V1 semantics", () => {
   it("freezes the authoritative family identity, network scalar, and absent hash", () => {
     expect(OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY).toBe(
       "observersForbiddenOnUntaggedNetwork",
-    );
-    expect(OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY_ID).toBe(
-      "00000024",
     );
     expect(MIDGARD_UNTAGGED_NETWORK_ID).toBe(255);
     expect(MIDGARD_ABSENT_SCRIPT_INTEGRITY_HASH).toBe(
@@ -256,9 +251,6 @@ describe("observersForbiddenOnUntaggedNetwork V1 semantics", () => {
     expect(artifact.scriptIntegrityHash).toBe(PRESENT_HASH);
     expect(admitObserversForbiddenArtifact(artifact).evidence).toEqual(
       prepared,
-    );
-    expect(observersForbiddenArtifactDigest(artifact)).toMatch(
-      /^[0-9a-f]{64}$/u,
     );
     expect(() =>
       admitObserversForbiddenArtifact({

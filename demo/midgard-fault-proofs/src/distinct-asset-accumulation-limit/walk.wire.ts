@@ -150,5 +150,3 @@ export const distinctAssetWire = ({
         ),
   };
 };
-
-export type DistinctAssetWire = ReturnType<typeof distinctAssetWire>;

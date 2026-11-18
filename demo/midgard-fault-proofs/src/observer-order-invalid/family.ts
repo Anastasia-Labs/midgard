@@ -15,7 +15,6 @@ import {
 import { Data } from "@lucid-evolution/lucid";
 
 export const OBSERVER_ORDER_INVALID_CATEGORY = "observerOrderInvalid" as const;
-export const OBSERVER_ORDER_INVALID_CATEGORY_ID = "00000025" as const;
 export const OBSERVER_ORDER_INVALID_FIELD_INDEX = 3 as const;
 export const OBSERVER_ORDER_INVALID_ITEM_BUDGET = 24 as const;
 

@@ -279,21 +279,6 @@ export const prepareSpendInputSignerMissingEvidence = ({
   return evidence;
 };
 
-export const spendInputSignerMissingEvidenceIdentity = (
-  evidence: SpendInputSignerMissingEvidence,
-): string =>
-  [
-    evidence.subject.transaction_id,
-    evidence.subject.direction.toString(),
-    evidence.inputIndex.toString(),
-    evidence.route,
-    evidence.priorRoot,
-    evidence.resolved?.transactionId ?? "",
-    evidence.resolved?.outputIndex.toString() ?? "",
-    evidence.paymentCredentialHex ?? "",
-    evidence.witnessSetHashHex,
-  ].join(":");
-
 const outRefKey = (transactionId: string, outputIndex: number): string =>
   `${transactionId}#${outputIndex.toString()}`;
 

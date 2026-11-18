@@ -27,9 +27,6 @@ import type { ReplayPrerequisiteFailure } from "../workflow/replay-prerequisite.
 
 export const FIELD_ITEM_WIDTH_ILLEGAL_CATEGORY =
   "fieldItemWidthIllegal" as const;
-export const FIELD_ITEM_WIDTH_ILLEGAL_PROPOSED_ID = "00000021" as const;
-export const FIELD_ITEM_WIDTH_ILLEGAL_OUTPUTS_FIELD = 2;
-export const FIELD_ITEM_WIDTH_ILLEGAL_MINT_FIELD = 5;
 export const FIELD_ITEM_WIDTH_ILLEGAL_MAX_OUTPUT_BYTES = 16_384;
 
 const fail = (message: string): never => {

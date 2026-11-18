@@ -42,8 +42,6 @@ export {
 
 export const OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY =
   "outputReferenceScriptDecoding" as const;
-export const OUTPUT_REFERENCE_SCRIPT_DECODING_ID = "0000002a" as const;
-export const OUTPUT_REFERENCE_SCRIPT_DECODING_FIELD_INDEX = 2 as const;
 export const OUTPUT_REFERENCE_SCRIPT_DECODING_MAX_OUTPUT_BYTES = 16_384;
 export const OUTPUT_REFERENCE_SCRIPT_MALFORMED_VIOLATION_ID =
   "output-reference-script-malformed" as const;

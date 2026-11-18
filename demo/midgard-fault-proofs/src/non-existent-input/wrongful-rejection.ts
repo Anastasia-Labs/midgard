@@ -2,7 +2,6 @@ import * as SDK from "@al-ft/midgard-sdk";
 
 import type { InputExistenceKind } from "../input-existence/kind.js";
 import {
-  type InputExistenceForcedSource,
   inputExistenceWrongfulRejection,
   type PreparedInputExistenceWrongfulRejection,
 } from "../input-existence/wrongful-rejection.js";
@@ -19,7 +18,6 @@ export const NON_EXISTENT_INPUT_KIND = {
   sourceKind: 0n,
   fieldIndex: 0,
 } as const satisfies InputExistenceKind;
-export type NonExistentInputForcedSource = InputExistenceForcedSource;
 export type PreparedNonExistentInputWrongfulRejection =
   PreparedInputExistenceWrongfulRejection;
 export const {

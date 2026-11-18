@@ -10,7 +10,6 @@ import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   buildMidgardBoundedItem,
   buildMidgardBoundedItemChunkProof,
-  computeHash32,
   encodeMidgardNativeScript,
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
   MidgardNativeScriptDecodingDirections,
@@ -29,7 +28,6 @@ import {
   nativeScriptDecodingFrameData,
   NativeScriptDecodingOutOfDomainFaces,
   nativeScriptDecodingOutpointKey,
-  nativeScriptDecodingOutpointKeyHash,
   nativeScriptDecodingScanAccusationOf,
   nativeScriptDecodingScanArgsEvidence,
   nativeScriptDecodingSubjectFieldIndex,
@@ -61,9 +59,6 @@ describe("native-script-decoding evidence v1", () => {
     });
     expect(key.length).toBe(38);
     expect(key.toString("hex")).toBe(`825820${TX_ID_HEX}190102`);
-    expect(nativeScriptDecodingOutpointKeyHash(key)).toBe(
-      computeHash32(key).toString("hex"),
-    );
     expect(() =>
       nativeScriptDecodingOutpointKey({
         txIdHex: "abcd",

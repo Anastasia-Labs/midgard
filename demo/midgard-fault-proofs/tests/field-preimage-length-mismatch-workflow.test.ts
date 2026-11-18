@@ -1,10 +1,7 @@
 import { encodeMidgardNativeTxProofFieldLengths } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
-import {
-  FIELD_PREIMAGE_LENGTH_PHYSICAL_SCRIPTS,
-  prepareFieldPreimageLengthWorkflow,
-} from "../src/field-preimage-length-mismatch/workflow.js";
+import { prepareFieldPreimageLengthWorkflow } from "../src/field-preimage-length-mismatch/workflow.js";
 
 const prepared = prepareFieldPreimageLengthWorkflow({
   headerHash: "11".repeat(28),
@@ -19,17 +16,6 @@ const prepared = prepareFieldPreimageLengthWorkflow({
 });
 
 describe("field-preimage-length proof preparation", () => {
-  it("pins the ordered four-script deployment topology", () => {
-    expect(
-      FIELD_PREIMAGE_LENGTH_PHYSICAL_SCRIPTS.map(({ role }) => role),
-    ).toEqual([
-      "firstStep",
-      "acceptedAuthenticator",
-      "forcedAuthenticator",
-      "terminal",
-    ]);
-  });
-
   it("selects deterministic carriage and refuses the adjacent over-bound", () => {
     expect(prepared.carriage).toBe("Inline");
     for (const direction of [

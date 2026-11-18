@@ -54,11 +54,6 @@ import {
   type PreparedMissingSignatureWrongfulRejection,
 } from "./wrongful-rejection.js";
 
-export type MissingSignatureForcedPosition =
-  | "step01"
-  | "forcedStep"
-  | "forcedSigner"
-  | "forcedWitness";
 export type SubmitMissingSignatureForcedParams = Readonly<{
   lucid: LucidEvolution;
   contracts: MissingSignatureContracts;

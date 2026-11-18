@@ -4,19 +4,8 @@ import {
   SIGNER_WITNESS_SCAN_TITLES,
   type SpendingValidator,
 } from "@al-ft/midgard-sdk";
-import {
-  type Data,
-  type Network,
-  type Script,
-  validatorToAddress,
-  validatorToScriptHash,
-} from "@lucid-evolution/lucid";
+import { type Data, type Network, type Script } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-
-import {
-  SPEND_INPUT_SIGNER_MISSING_CATEGORY,
-  SPEND_INPUT_SIGNER_MISSING_ID,
-} from "./spend-input-signer-missing.js";
 
 export const SPEND_INPUT_SIGNER_MISSING_BLUEPRINT_TITLES = [
   "fraud_proofs/spend_input_signer_missing/step_01.main.spend",
@@ -53,21 +42,6 @@ export type SpendInputSignerMissingContracts = Readonly<{
   stateQueuePolicyId: string;
   fieldPreimageCertificatePolicyId: string;
   fieldPreimageCertificateMintingScript: Script;
-}>;
-
-export type SpendInputSignerMissingManifest = Readonly<{
-  schemaVersion: "spend-input-signer-missing-production-manifest-v1";
-  category: typeof SPEND_INPUT_SIGNER_MISSING_CATEGORY;
-  categoryId: typeof SPEND_INPUT_SIGNER_MISSING_ID;
-  network: Network;
-  steps: SpendInputSignerMissingContracts["steps"];
-  firstStepHash: string;
-  computationThreadPolicyId: string;
-  fraudProofPolicyId: string;
-  fraudProofAddress: string;
-  hubOraclePolicyId: string;
-  fieldPreimageCertificatePolicyId: string;
-  stateQueuePolicyId: string;
 }>;
 
 export type SpendInputSignerMissingBlueprint = Readonly<{
@@ -121,56 +95,4 @@ export const applySpendInputSignerMissingScripts = ({
     adapt(steps[2], 2),
     adapt(steps[3], 3),
   ];
-};
-
-const requireHash = (value: string, label: string): void => {
-  if (!/^[0-9a-f]{56}$/u.test(value))
-    throw new Error(`${SPEND_INPUT_SIGNER_MISSING_CATEGORY}: invalid ${label}`);
-};
-
-export const loadSpendInputSignerMissingManifest = (
-  manifest: SpendInputSignerMissingManifest,
-): SpendInputSignerMissingManifest => {
-  if (
-    manifest.schemaVersion !==
-      "spend-input-signer-missing-production-manifest-v1" ||
-    manifest.category !== SPEND_INPUT_SIGNER_MISSING_CATEGORY ||
-    manifest.categoryId !== SPEND_INPUT_SIGNER_MISSING_ID
-  )
-    throw new Error(
-      `${SPEND_INPUT_SIGNER_MISSING_CATEGORY}: wrong manifest identity`,
-    );
-  manifest.steps.forEach((step, index) => {
-    if (
-      step.blueprintTitle !== SPEND_INPUT_SIGNER_MISSING_BLUEPRINT_TITLES[index]
-    )
-      throw new Error(
-        `${SPEND_INPUT_SIGNER_MISSING_CATEGORY}: physical step order changed`,
-      );
-    if (validatorToScriptHash(step.spendingScript) !== step.spendingScriptHash)
-      throw new Error(
-        `${SPEND_INPUT_SIGNER_MISSING_CATEGORY}: applied step hash mismatch`,
-      );
-    if (
-      validatorToAddress(manifest.network, step.spendingScript) !==
-      step.spendingScriptAddress
-    )
-      throw new Error(
-        `${SPEND_INPUT_SIGNER_MISSING_CATEGORY}: applied step address mismatch`,
-      );
-    if (!/^[0-9a-f]{64}#[0-9]+$/u.test(step.referenceOutRef))
-      throw new Error(
-        `${SPEND_INPUT_SIGNER_MISSING_CATEGORY}: invalid step reference out-ref`,
-      );
-  });
-  if (manifest.firstStepHash !== manifest.steps[0].spendingScriptHash)
-    throw new Error(
-      `${SPEND_INPUT_SIGNER_MISSING_CATEGORY}: first-step identity mismatch`,
-    );
-  requireHash(manifest.computationThreadPolicyId, "computation-thread policy");
-  requireHash(manifest.fraudProofPolicyId, "fraud-proof policy");
-  requireHash(manifest.hubOraclePolicyId, "hub oracle");
-  requireHash(manifest.fieldPreimageCertificatePolicyId, "certificate policy");
-  requireHash(manifest.stateQueuePolicyId, "state queue policy");
-  return Object.freeze(manifest);
 };

@@ -33,17 +33,11 @@ import {
   defineLinearFamily,
   type LinearFamilyAssemblyContext,
   type LinearFamilyReferenceScripts,
-  type ManifestBoundLinearFamilyWorkflow,
-  type ManifestBoundLinearFamilyWorkflowConfig,
 } from "./family-definition.js";
 import {
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyTransactionPort,
 } from "./linear-family-adapter.js";
-import {
-  assembleManifestBoundFamilyWorkflow,
-  runOrResumeManifestBoundFamilyWorkflow,
-} from "./manifest-bound-family-assembly.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
 import {
   captureLocallyEvaluatedTransaction,
@@ -342,16 +336,6 @@ const transactionPort = (
   },
 });
 
-export type ManifestBoundFabricatedDepositWorkflowConfig =
-  ManifestBoundLinearFamilyWorkflowConfig<
-    "fabricatedDeposit",
-    (typeof WITNESS_ROLES)[number],
-    false
-  >;
-
-export type ManifestBoundFabricatedDepositWorkflow =
-  ManifestBoundLinearFamilyWorkflow<"fabricatedDeposit", false>;
-
 const contracts = (context: AssemblyContext): FabricatedDepositContracts => {
   const resolved = context.binding.resolvedContracts;
   const chain = resolved.contracts.fabricatedDeposit;
@@ -423,14 +407,3 @@ export const FABRICATED_DEPOSIT_FAMILY_DEFINITION = defineLinearFamily({
       }),
   },
 });
-
-export const createManifestBoundFabricatedDepositWorkflow = (
-  config: ManifestBoundFabricatedDepositWorkflowConfig,
-): Promise<ManifestBoundFabricatedDepositWorkflow> =>
-  assembleManifestBoundFamilyWorkflow(
-    FABRICATED_DEPOSIT_FAMILY_DEFINITION,
-    config,
-  );
-
-export const runOrResumeManifestBoundFabricatedDepositWorkflow =
-  runOrResumeManifestBoundFamilyWorkflow;

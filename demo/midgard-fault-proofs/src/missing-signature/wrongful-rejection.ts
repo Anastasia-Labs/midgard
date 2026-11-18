@@ -54,9 +54,6 @@ export const missingSignatureWrongfulRejectionWitnessIndex = (
   });
   return index < 0 ? null : BigInt(index);
 };
-export const missingSignatureWrongfulRejectionCloses = (
-  evidence: MissingSignatureWrongfulRejectionEvidence,
-): boolean => missingSignatureWrongfulRejectionWitnessIndex(evidence) !== null;
 
 export const detectMissingSignatureForcedTransaction = (
   forced: Pick<

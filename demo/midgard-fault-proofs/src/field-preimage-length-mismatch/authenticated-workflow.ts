@@ -184,11 +184,4 @@ export const executeManifestBoundFieldPreimageLengthWorkflow = async ({
     replayer: FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
   });
 
-/** Stable construct/execute pair consumed by the compiled production runtime. */
-export const FIELD_PREIMAGE_LENGTH_WORKFLOW_SURFACE = Object.freeze({
-  workflowVersion: FIELD_PREIMAGE_LENGTH_AUTHENTICATED_WORKFLOW,
-  constructWorkflow: createManifestBoundFieldPreimageLengthWorkflow,
-  execute: executeManifestBoundFieldPreimageLengthWorkflow,
-});
-
 export type { AuthenticatedFieldPreimageLengthEvidence } from "./evidence.js";

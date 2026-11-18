@@ -2,12 +2,6 @@ import type { Script } from "@lucid-evolution/lucid";
 
 export const WITHDRAWN_INPUT_CATEGORY_LABEL = "withdrawn-input";
 
-export const WITHDRAWN_INPUT_BLUEPRINT_TITLES = {
-  step01: "fraud_proofs/withdrawn_input/step_01.main.spend",
-  step02: "fraud_proofs/withdrawn_input/step_02.main.spend",
-  step03: "fraud_proofs/withdrawn_input/step_03.main.spend",
-} as const;
-
 export type WithdrawnInputStepContract = {
   readonly spendingScript: Script;
   readonly spendingScriptHash: string;

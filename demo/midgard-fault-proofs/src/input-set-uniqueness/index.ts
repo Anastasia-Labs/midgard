@@ -8,5 +8,4 @@ export * from "./submit-input-set-uniqueness-step-01.js";
 export * from "./submit-input-set-uniqueness-step-02.js";
 export * from "./submit-input-set-uniqueness-step-03.js";
 export * from "./submit-input-set-uniqueness-step-04.js";
-export * from "./v1.js";
 export * from "./wrongful-rejection.js";

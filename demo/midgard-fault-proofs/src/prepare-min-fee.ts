@@ -22,11 +22,8 @@ import {
   buildTrieView,
   type DecodedTransactionMaterial,
   decodeTransactionMaterial,
-  type FetchLike,
-  fetchNodeBlockTransactions,
   type NodeTransactionPayload,
   type PreparedTxInclusionJson,
-  readNodeTransactionPayloadsFile,
   requireProof,
   transactionSourceTrieItem,
 } from "./prepare-double-spend.js";
@@ -61,23 +58,6 @@ export type PreparedMinFeeOutput = {
     readonly planPath: string;
   };
 };
-
-export type PrepareMinFeeCliConfig = {
-  readonly midgardNodeUrl: string;
-  readonly headerHash: string;
-  readonly expectedTransactionsRoot: string;
-  readonly minFeeA: string | number | bigint;
-  readonly minFeeB: string | number | bigint;
-  readonly txId?: string;
-  readonly categoryId?: string;
-  readonly outputDir?: string;
-  readonly fetchImpl?: FetchLike;
-};
-
-export type PrepareMinFeeFromFileConfig = Omit<
-  PrepareMinFeeCliConfig,
-  "midgardNodeUrl" | "fetchImpl"
-> & { readonly transactionsPath: string };
 
 const nonNegative = (
   value: string | number | bigint,
@@ -291,29 +271,3 @@ export const prepareMinFeeFromTransactions = async ({
     files: await writePreparedFiles({ output: base, outputDir }),
   };
 };
-
-export const prepareMinFeeFromNode = async (
-  config: PrepareMinFeeCliConfig,
-): Promise<PreparedMinFeeOutput> => {
-  const headerHash = parseHex(config.headerHash, "--header-hash", 28);
-  const transactions = await fetchNodeBlockTransactions({
-    midgardNodeUrl: config.midgardNodeUrl,
-    headerHash,
-    fetchImpl: config.fetchImpl,
-  });
-  return await prepareMinFeeFromTransactions({
-    ...config,
-    headerHash,
-    transactions,
-  });
-};
-
-export const prepareMinFeeFromFile = async (
-  config: PrepareMinFeeFromFileConfig,
-): Promise<PreparedMinFeeOutput> =>
-  await prepareMinFeeFromTransactions({
-    ...config,
-    transactions: await readNodeTransactionPayloadsFile(
-      config.transactionsPath,
-    ),
-  });

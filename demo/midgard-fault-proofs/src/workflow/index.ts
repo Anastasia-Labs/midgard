@@ -4,7 +4,6 @@ export {
   encodeWorkflowArtifact,
   requireWorkflowArtifactMatches,
 } from "./artifact-codec.js";
-export * from "./authenticated-replay-artifact.js";
 export * from "./canonical-decodability.js";
 export * from "./catalogue-replay.js";
 export * from "./classification.js";

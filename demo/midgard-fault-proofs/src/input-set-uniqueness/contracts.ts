@@ -29,14 +29,6 @@ import type { Script } from "@lucid-evolution/lucid";
 /** Human-readable family label used in every local failure message. */
 export const INPUT_SET_UNIQUENESS_CATEGORY_LABEL = "input-set-uniqueness";
 
-/** Blueprint titles of the four parameterized step validators. */
-export const INPUT_SET_UNIQUENESS_BLUEPRINT_TITLES = {
-  step01: "fraud_proofs/input_set_uniqueness/step_01.main.spend",
-  step02: "fraud_proofs/input_set_uniqueness/step_02.main.spend",
-  step03: "fraud_proofs/input_set_uniqueness/step_03.main.spend",
-  step04: "fraud_proofs/input_set_uniqueness/step_04.main.spend",
-} as const;
-
 /** One deployed step of the `input-set-uniqueness` chain. */
 export type InputSetUniquenessStepContract = {
   readonly spendingScript: Script;

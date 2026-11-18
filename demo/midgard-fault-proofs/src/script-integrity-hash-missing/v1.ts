@@ -34,9 +34,6 @@ import { admitScriptIntegrityHashMissingArtifact } from "./artifact.js";
 import type { ScriptIntegrityHashMissingContracts } from "./contracts.js";
 import { ScriptIntegrityStepDatums } from "./schemas.js";
 
-export const SCRIPT_INTEGRITY_HASH_MISSING_WORKFLOW_IDENTITY =
-  "script-integrity-hash-missing-production-v1" as const;
-
 export const SCRIPT_INTEGRITY_HASH_MISSING_MANIFEST_CONTRACTS = Object.freeze({
   witnesses: {
     computationThreadMint: "computationThreadMint",

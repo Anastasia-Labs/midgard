@@ -130,18 +130,3 @@ export const detectInputSetUniquenessForcedReplay = (
   );
   return Object.freeze(detections);
 };
-
-export const selectCanonicalInputSetUniquenessForcedDetection = (
-  detections: readonly InputSetUniquenessForcedReplayDetection[],
-): InputSetUniquenessForcedReplayDetection => {
-  if (detections.length === 0) {
-    throw new Error("inputSetUniqueness: no authenticated wrongful rejection");
-  }
-  return [...detections].sort((left, right) =>
-    left.position === right.position
-      ? left.detectionId.localeCompare(right.detectionId)
-      : left.position < right.position
-        ? -1
-        : 1,
-  )[0]!;
-};

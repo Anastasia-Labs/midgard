@@ -25,7 +25,6 @@
 import {
   buildMidgardBoundedItem,
   buildMidgardBoundedItemChunkProof,
-  computeHash32,
   encodeMidgardSpendInputItem,
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
   midgardBoundedItemChunkCount,
@@ -82,11 +81,6 @@ export const nativeScriptDecodingOutpointKey = ({
     outputIndex,
   });
 };
-
-/** `blake2b_256` of the key bytes — the thread state's `outpoint_key_hash`. */
-export const nativeScriptDecodingOutpointKeyHash = (
-  outpointKey: Buffer,
-): string => computeHash32(outpointKey).toString("hex");
 
 /**
  * The §2.5 field the accused pair names: `outpoint_source_kind` 0 reads the

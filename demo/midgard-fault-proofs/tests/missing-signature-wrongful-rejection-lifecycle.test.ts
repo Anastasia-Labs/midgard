@@ -6,7 +6,6 @@ import {
   ledgerEd25519SignatureReady,
   midgardFieldCarriageBounds,
 } from "@al-ft/midgard-core";
-import { forcedVerdictSubject } from "@al-ft/midgard-sdk";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import {
@@ -15,7 +14,6 @@ import {
 } from "../src/missing-signature/forced-artifact.js";
 import * as family from "../src/missing-signature/index.js";
 import { submitMissingSignatureForcedCancel } from "../src/missing-signature/submit-forced.js";
-import { missingSignatureWrongfulRejectionCloses } from "../src/missing-signature/wrongful-rejection.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { workflowFieldCarriageOwnOutputs } from "../src/workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import {
@@ -391,22 +389,6 @@ describe("missingSignature wrongful rejection real lifecycle", () => {
     for (let i = 0; i < 3; i++) thread = await s.advance(thread, i, lying);
     await expect(s.finalizeRaw(thread)).rejects.toThrow();
   }, 600_000);
-  it("refuses a matching key with a forged signature", () => {
-    const tx = transactionFor({ forged: true });
-    const subject = forcedVerdictSubject({
-      transactionId: tx.transactionId,
-      sourceKey: { transactionId: "11".repeat(32), outputIndex: 0n },
-      rejectionReason: { RequiredSignerUnsigned: { signer_index: 0n } },
-    });
-    expect(
-      missingSignatureWrongfulRejectionCloses({
-        subject,
-        signerIndex: 0n,
-        requiredSignerHashes: tx.requiredSignerHashes,
-        addrTxWits: tx.addrTxWits,
-      }),
-    ).toBe(false);
-  });
   it.each([1n, -1n])(
     "proves impossible signer coordinate %s",
     async (index) => {

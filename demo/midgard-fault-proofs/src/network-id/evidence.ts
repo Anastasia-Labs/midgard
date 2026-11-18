@@ -9,8 +9,6 @@ import {
   decodeMidgardOutputFieldPreimage,
   encodeMidgardNativeTxCompact,
 } from "@al-ft/midgard-core";
-import type { FieldCarriage, FieldOpening } from "@al-ft/midgard-sdk";
-import { fieldOpeningForField, MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk";
 
 export type NetworkIdFaultClaim =
   | { readonly kind: "transaction-network" }
@@ -105,32 +103,4 @@ export const requireNetworkIdFault = (args: {
     throw new Error("the retained transaction has no network-id fault");
   }
   return fault;
-};
-
-/**
- * Builds the field-2 opening used by an output claim. `carriage` is already
- * resolved against the proof transaction's complete reference-input set; it
- * is never resolved against a carriage-only subset.
- */
-export const networkIdOutputsOpening = ({
-  evidence,
-  carriage,
-}: {
-  readonly evidence: RetainedDaNetworkIdEvidence;
-  readonly carriage: FieldCarriage;
-}): FieldOpening => {
-  const inspected = exactCanonicalTransaction(evidence);
-  if (
-    "Inline" in carriage &&
-    carriage.Inline.preimage !== inspected.outputsPreimageCbor
-  ) {
-    throw new Error(
-      "inline network-id output opening does not equal the retained transaction's outputs preimage",
-    );
-  }
-  return fieldOpeningForField({
-    fieldIndex: MIDGARD_FIELD_INDEX.outputs,
-    nativeTxCompactCbor: inspected.nativeTxCompactCbor,
-    carriage,
-  });
 };

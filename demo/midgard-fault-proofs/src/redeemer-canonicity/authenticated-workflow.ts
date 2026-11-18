@@ -6,17 +6,12 @@ import {
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import {
   acceptedVerdictSubject,
-  type AuthenticatedStateQueueHeaderObservation,
   forcedVerdictSubject,
   type VerdictSubject,
 } from "@al-ft/midgard-sdk";
 
-import {
-  type CanonicalBlockEvidence,
-  fetchCanonicalBlockEvidence,
-} from "../evidence/canonical-block-evidence.js";
+import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { claimedFieldItems } from "../evidence/claimed-coordinate.js";
-import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import {
   acceptedTransactionSubject,
   type DetectionSubject,
@@ -29,9 +24,6 @@ import {
   type RedeemerCanonicityEvidence,
   redeemerCanonicityEvidenceCloses,
 } from "./family.js";
-
-export const REDEEMER_CANONICITY_WORKFLOW =
-  "midgard-redeemer-canonicity-production-workflow-v1" as const;
 
 export type RedeemerCanonicityDetection = DetectionSubject &
   Readonly<{
@@ -166,52 +158,6 @@ const prepareAllOrNone = ({
   }
 };
 
-export const detectRedeemerCanonicityFromRetainedDa = async ({
-  observation,
-  sources,
-}: {
-  readonly observation: AuthenticatedStateQueueHeaderObservation;
-  readonly sources: readonly RetainedDaPayloadSource[];
-}): Promise<readonly RedeemerCanonicityDetection[]> =>
-  detectRedeemerCanonicityFromCanonicalBlock(
-    await fetchCanonicalBlockEvidence({ observation, sources }),
-  );
-
 /** Canonical all-detections adapter consumed by complete replay registries. */
 export const detectRedeemerCanonicityCompleteReplay =
   detectRedeemerCanonicityFromCanonicalBlock;
-
-export type RedeemerCanonicityWorkflowStage =
-  | "none"
-  | "step01"
-  | "step02"
-  | "step03"
-  | "proven"
-  | "removed"
-  | "cancelled";
-
-export const nextRedeemerCanonicityAction = (
-  stage: RedeemerCanonicityWorkflowStage,
-):
-  | "submitInit"
-  | "submitStep01"
-  | "submitDecode"
-  | "submitFinal"
-  | "remove"
-  | "done" => {
-  switch (stage) {
-    case "none":
-      return "submitInit";
-    case "step01":
-      return "submitStep01";
-    case "step02":
-      return "submitDecode";
-    case "step03":
-      return "submitFinal";
-    case "proven":
-      return "remove";
-    case "removed":
-    case "cancelled":
-      return "done";
-  }
-};

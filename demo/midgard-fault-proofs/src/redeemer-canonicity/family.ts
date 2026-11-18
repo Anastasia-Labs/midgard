@@ -15,9 +15,7 @@ import { claimedItem } from "../evidence/claimed-coordinate.js";
 import { planRedeemerData, type RedeemerDataPlan } from "./data-plan.js";
 
 export const REDEEMER_CANONICITY_CATEGORY = "redeemerCanonicity" as const;
-export const REDEEMER_CANONICITY_CATEGORY_ID = "00000028" as const;
 export const REDEEMER_CANONICITY_FIELD_INDEX = 8 as const;
-export const REDEEMER_CANONICITY_VIOLATION_ID = "redeemer-malformed" as const;
 
 const fail = (message: string): never => {
   throw new Error(`${REDEEMER_CANONICITY_CATEGORY}: ${message}`);
@@ -162,18 +160,3 @@ export const redeemerCanonicityEvidenceCloses = (
   evidence: RedeemerCanonicityEvidence,
 ): boolean =>
   terminalVerdictContradiction(evidence.subject, !evidence.canonical);
-
-export const selectCanonicalRedeemerCanonicityEvidence = (
-  values: readonly RedeemerCanonicityEvidence[],
-): RedeemerCanonicityEvidence => {
-  if (values.length === 0) return fail("no authenticated detection");
-  return [...values].sort(
-    (left, right) =>
-      (left.redeemerIndex === right.redeemerIndex
-        ? 0
-        : left.redeemerIndex < right.redeemerIndex
-          ? -1
-          : 1) ||
-      left.subject.transaction_id.localeCompare(right.subject.transaction_id),
-  )[0]!;
-};

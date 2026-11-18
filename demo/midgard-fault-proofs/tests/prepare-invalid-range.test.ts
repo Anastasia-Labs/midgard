@@ -1,7 +1,3 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
 import {
   computeHash32,
   computeMidgardNativeTxId,
@@ -18,8 +14,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   type NodeTransactionPayload,
-  prepareInvalidRangeFromFile,
-  prepareInvalidRangeFromNode,
   prepareInvalidRangeFromTransactions,
 } from "../src/index.js";
 
@@ -70,15 +64,6 @@ const payloadFromTx = (tx: MidgardNativeTxFull): NodeTransactionPayload => ({
   nodeTxId: computeMidgardNativeTxId(tx).toString("hex"),
   txCbor: encodeMidgardNativeTxCanonical(tx).toString("hex"),
 });
-
-const withTempDir = async <A>(run: (dir: string) => Promise<A>): Promise<A> => {
-  const dir = await mkdtemp(join(tmpdir(), "midgard-invalid-range-"));
-  try {
-    return await run(dir);
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-};
 
 describe("prepare-invalid-range", () => {
   it("prepares submit-step material for a transaction whose lower bound is after the committed block slot", async () => {
@@ -196,80 +181,5 @@ describe("prepare-invalid-range", () => {
         blockSlot: 150n,
       }),
     ).rejects.toThrow("No transaction with a validity interval excluding");
-  });
-
-  it("writes deterministic tx inclusion and plan files from an explicit transactions file", async () => {
-    await withTempDir(async (dir) => {
-      const badTx = payloadFromTx(
-        makeNativeTx({
-          validityIntervalStart: 150n,
-          validityIntervalEnd: 150n,
-          fee: 3n,
-        }),
-      );
-      const transactionsPath = join(dir, "block-transactions.json");
-      await writeFile(transactionsPath, JSON.stringify([badTx]));
-
-      const output = await prepareInvalidRangeFromFile({
-        headerHash: h28(0xdd),
-        transactionsPath,
-        blockSlot: 100n,
-        outputDir: dir,
-      });
-
-      expect(output.tx.violationReason).toBe("invalid-range");
-      expect(output.files?.txInclusionPath).toBe(
-        join(dir, "tx-inclusion.json"),
-      );
-      expect(output.files?.planPath).toBe(join(dir, "plan.json"));
-      const inclusion = JSON.parse(
-        await readFile(join(dir, "tx-inclusion.json"), "utf8"),
-      ) as { readonly nativeTxId: string };
-      expect(inclusion.nativeTxId).toBe(badTx.nodeTxId);
-      const plan = JSON.parse(
-        await readFile(join(dir, "plan.json"), "utf8"),
-      ) as {
-        readonly violationReason: string;
-        readonly txNodeTxId: string;
-      };
-      expect(plan).toMatchObject({
-        violationReason: "invalid-range",
-        txNodeTxId: badTx.nodeTxId,
-      });
-    });
-  });
-
-  it("fetches node block transactions before preparing invalid-range material", async () => {
-    const badTx = payloadFromTx(
-      makeNativeTx({
-        validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
-        validityIntervalEnd: 100n,
-        fee: 4n,
-      }),
-    );
-    const fetchImpl = async (input: string | URL): Promise<Response> => {
-      const url = new URL(String(input));
-      if (url.pathname === "/block") {
-        return new Response(JSON.stringify({ hashes: [badTx.nodeTxId] }), {
-          status: 200,
-        });
-      }
-      if (url.pathname === "/tx") {
-        return new Response(JSON.stringify({ tx: badTx.txCbor }), {
-          status: 200,
-        });
-      }
-      return new Response("not found", { status: 404 });
-    };
-
-    const output = await prepareInvalidRangeFromNode({
-      midgardNodeUrl: "http://node.local/",
-      headerHash: h28(0xee),
-      blockSlot: 100n,
-      fetchImpl,
-    });
-
-    expect(output.tx.nodeTxId).toBe(badTx.nodeTxId);
-    expect(output.tx.violationReason).toBe("ends-before-block-slot");
   });
 });

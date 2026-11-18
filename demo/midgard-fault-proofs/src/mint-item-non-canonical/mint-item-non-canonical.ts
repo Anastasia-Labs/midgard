@@ -24,9 +24,7 @@ import {
 export { mintItemScanControlData } from "./scan.js";
 
 export const MINT_ITEM_NON_CANONICAL_CATEGORY = "mintItemNonCanonical" as const;
-export const MINT_ITEM_NON_CANONICAL_CATEGORY_ID = "00000036" as const;
 export const MINT_ITEM_NON_CANONICAL_MINT_FIELD = 5 as const;
-export const MINT_ITEM_NON_CANONICAL_MAX_ITEM_BYTES = 32_768;
 
 const fail = (message: string): never => {
   throw new Error(`${MINT_ITEM_NON_CANONICAL_CATEGORY}: ${message}`);
@@ -214,17 +212,7 @@ export const MintItemBoundItemSchema = Data.Object({
   item_index: Data.Integer(),
   field_cursor: Data.Nullable(MintFieldCursorSchema),
 });
-export const encodeMintItemBoundItem = (finding: MintItemFinding): string => {
-  const exact = classifyMintItemFinding(finding);
-  return Data.to(
-    {
-      subject: exact.subject,
-      item_index: BigInt(exact.itemIndex),
-      field_cursor: null,
-    } as never,
-    MintItemBoundItemSchema as never,
-  );
-};
+
 export const MINT_ITEM_NON_CANONICAL_STAGES = [
   "none",
   "step01",

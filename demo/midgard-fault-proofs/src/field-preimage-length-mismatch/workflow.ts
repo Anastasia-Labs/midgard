@@ -202,48 +202,6 @@ export type FieldPreimageLengthAction =
   | "remove"
   | "complete";
 
-export const FIELD_PREIMAGE_LENGTH_PHYSICAL_SCRIPTS = Object.freeze([
-  {
-    role: "firstStep",
-    title: "fraud_proofs/field_preimage_length_mismatch/step_01.main.spend",
-    parameters: [
-      "accepted_step_02_validator_script_hash",
-      "forced_step_02_validator_script_hash",
-      "computation_thread_token_policy_id",
-      "hub_oracle",
-    ],
-  },
-  {
-    role: "acceptedAuthenticator",
-    title:
-      "fraud_proofs/field_preimage_length_mismatch/step_02_accepted.main.spend",
-    parameters: [
-      "step_03_validator_script_hash",
-      "computation_thread_token_policy_id",
-      "field_preimage_certificate_policy_id",
-    ],
-  },
-  {
-    role: "forcedAuthenticator",
-    title:
-      "fraud_proofs/field_preimage_length_mismatch/step_02_forced.main.spend",
-    parameters: [
-      "step_03_validator_script_hash",
-      "computation_thread_token_policy_id",
-      "field_preimage_certificate_policy_id",
-    ],
-  },
-  {
-    role: "terminal",
-    title: "fraud_proofs/field_preimage_length_mismatch/step_03.main.spend",
-    parameters: [
-      "fraud_proof_token_policy_id",
-      "fraud_proof_token_address",
-      "computation_thread_token_policy_id",
-    ],
-  },
-] as const);
-
 export type FieldPreimageLengthSubmissionKind =
   | Exclude<FieldPreimageLengthAction, "complete">
   | "cancelDispatch"

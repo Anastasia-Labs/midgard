@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 import { midgardFieldCommitment } from "@al-ft/midgard-core";
 import type { VerdictSubject } from "@al-ft/midgard-sdk";
 import { ProofThreadForcedSourcePayloadSchema } from "@al-ft/midgard-sdk";
@@ -243,16 +241,3 @@ export const admitObserverOrderInvalidArtifact = (
 
 export const ObserverOrderInvalidForcedSourcePayloadSchema =
   ProofThreadForcedSourcePayloadSchema;
-
-export const observerOrderInvalidArtifactDigest = (
-  artifact: ObserverOrderInvalidArtifact,
-): string =>
-  createHash("sha256")
-    .update(
-      JSON.stringify(
-        Object.fromEntries(
-          Object.entries(artifact).sort(([a], [b]) => a.localeCompare(b)),
-        ),
-      ),
-    )
-    .digest("hex");

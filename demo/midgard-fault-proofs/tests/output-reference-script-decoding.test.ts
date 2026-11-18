@@ -18,7 +18,6 @@ import {
 import {
   classifyOutputReferenceScriptDecodingFinding,
   OUTPUT_REFERENCE_PLUTUS_SCRIPT_UNDECODABLE_VIOLATION_ID,
-  OUTPUT_REFERENCE_SCRIPT_DECODING_ID,
   OUTPUT_REFERENCE_SCRIPT_DEPTH_LIMIT_VIOLATION_ID,
   OUTPUT_REFERENCE_SCRIPT_MALFORMED_VIOLATION_ID,
   OUTPUT_REFERENCE_SCRIPT_NODE_LIMIT_VIOLATION_ID,
@@ -70,7 +69,6 @@ const transaction = (kind: "valid" | "malformed") =>
 
 describe("outputReferenceScriptDecoding V1", () => {
   it("freezes ID and binds all exact forced reasons", () => {
-    expect(OUTPUT_REFERENCE_SCRIPT_DECODING_ID).toBe("0000002a");
     for (const constructor of [
       "OutputReferenceScriptMalformed",
       "OutputReferenceScriptNodeLimit",

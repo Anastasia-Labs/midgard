@@ -27,20 +27,6 @@ import {
   type ValueNotPreservedContracts,
 } from "./contracts.js";
 
-/**
- * The deployed catalogue category the thread mints under. Mirrors
- * `FraudProofCatalogueCategoryDeploymentInfo`, passed explicitly because the
- * family's catalogue entry is parent-owned and lands at registration.
- */
-export type ValueNotPreservedCatalogueCategory = {
-  /** 4-byte category id, hex. */
-  readonly categoryId: string;
-  /** The registered category script hash — must be the step-01 hash. */
-  readonly scriptHash: string;
-  /** MPF membership proof of `(categoryId, scriptHash)` under the catalogue root. */
-  readonly membershipProofCbor: string;
-};
-
 export const valueNotPreservedSubmitError = (message: string): Error =>
   new Error(`${VALUE_NOT_PRESERVED_CATEGORY_LABEL}: ${message}`);
 

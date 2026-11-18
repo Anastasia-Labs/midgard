@@ -24,7 +24,6 @@ import {
   encodeMidgardAddressWitnessCanonical,
   MIDGARD_FIELD_INDEX,
   type MidgardAddressWitness,
-  missingSignatureVkeyHash,
   type NativeTxWitnessSetCompact,
 } from "@al-ft/midgard-sdk";
 
@@ -36,44 +35,6 @@ import { MISSING_SIGNATURE_CATEGORY_LABEL } from "./contracts.js";
 import { missingSignatureSubmitError } from "./submit-common.js";
 
 // ## Accused-ordinal selection (§3.4)
-
-/**
- * The accusation detection makes: the first required-signer ordinal whose
- * hash is the blake2b-224 image of no address witness's verification key,
- * with the hash read back out of the list so finding and redeemer can never
- * name different signers. `null` when every required signer is witnessed —
- * an honest commitment.
- *
- * Presence is judged by hash, exactly as the on-chain pair judges it: a
- * witness whose key hashes to the accused signer counts as present even if
- * its signature is garbage — that is `invalid-signature`'s fault (§7.3, D6).
- */
-export const selectMissingSignatureAccusation = ({
-  requiredSignerHashes,
-  addrTxWits,
-}: {
-  readonly requiredSignerHashes: readonly string[];
-  readonly addrTxWits: readonly MidgardAddressWitness[];
-}): { readonly index: bigint; readonly hash: string } | null => {
-  const witnessKeyHashes = new Set(
-    addrTxWits.map((witness) =>
-      missingSignatureVkeyHash(witness.verification_key),
-    ),
-  );
-  const index = requiredSignerHashes.findIndex(
-    (hash) => !witnessKeyHashes.has(hash.toLowerCase()),
-  );
-  if (index === -1) {
-    return null;
-  }
-  const hash = requiredSignerHashes[index];
-  if (hash === undefined) {
-    throw missingSignatureSubmitError(
-      "required-signer list mutated during selection.",
-    );
-  }
-  return { index: BigInt(index), hash: hash.toLowerCase() };
-};
 
 // ## Field-4 opening plan (step-02, BodyAnchor)
 

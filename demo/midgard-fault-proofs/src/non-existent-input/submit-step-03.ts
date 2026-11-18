@@ -3,5 +3,3 @@
 import { createInputExistenceDeploymentStep } from "../input-existence/deployment-step.js";
 
 export const neSubmitStep03 = createInputExistenceDeploymentStep(0, 2);
-
-export type NeSubmitStep03Result = Awaited<ReturnType<typeof neSubmitStep03>>;

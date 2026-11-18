@@ -65,9 +65,6 @@ import {
 } from "./staged-plan.js";
 import { mintDeclaredFoldSnapshotData } from "./submit-step-03.js";
 
-export const MINT_DECLARED_ASSET_LIMIT_WORKFLOW =
-  "midgard-mint-declared-asset-limit-production-workflow-v1" as const;
-
 export type MintDeclaredAssetLimitRemovalReferenceScripts = Readonly<{
   correctionLockSpend: UTxO;
   stateQueueSpend: UTxO;
@@ -433,9 +430,6 @@ const currentAction = async ({
     return { stage: "step_04", threadOutRef: stage.threadOutRef };
   throw new Error("mintDeclaredAssetLimit observed an impossible step");
 };
-
-export type MintDeclaredAssetLimitWorkflowRunResult =
-  FraudProofWorkflowRunResult;
 
 export const executeManifestBoundMintDeclaredAssetLimitWorkflow = async ({
   workflow,

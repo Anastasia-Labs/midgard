@@ -12,11 +12,8 @@ import { parseHex, parseSignedInteger, stringifyJson } from "./json-file.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
-  type FetchLike,
-  fetchNodeBlockTransactions,
   type NodeTransactionPayload,
   type PreparedTxInclusionJson,
-  readNodeTransactionPayloadsFile,
   requireProof,
   requireTransactionsRootMatch,
   transactionSourceTrieItem,
@@ -25,25 +22,6 @@ import {
 export type InvalidRangeViolationReason = NonNullable<
   ReturnType<typeof invalidRangeViolationReason>
 >;
-
-export type PrepareInvalidRangeCliConfig = {
-  readonly midgardNodeUrl: string;
-  readonly headerHash: string;
-  readonly blockSlot: string | number | bigint;
-  readonly expectedTransactionsRoot?: string;
-  readonly txId?: string;
-  readonly outputDir?: string;
-  readonly fetchImpl?: FetchLike;
-};
-
-export type PrepareInvalidRangeFromFileConfig = {
-  readonly transactionsPath: string;
-  readonly headerHash: string;
-  readonly blockSlot: string | number | bigint;
-  readonly expectedTransactionsRoot?: string;
-  readonly txId?: string;
-  readonly outputDir?: string;
-};
 
 export type PreparedInvalidRangeTx = {
   readonly nodeTxId: string;
@@ -224,39 +202,4 @@ export const prepareInvalidRangeFromTransactions = async ({
     outputDir,
   });
   return { ...baseOutput, files };
-};
-
-export const prepareInvalidRangeFromNode = async (
-  config: PrepareInvalidRangeCliConfig,
-): Promise<PreparedInvalidRangeOutput> => {
-  const headerHash = parseHex(config.headerHash, "--header-hash", 28);
-  const transactions = await fetchNodeBlockTransactions({
-    midgardNodeUrl: config.midgardNodeUrl,
-    headerHash,
-    fetchImpl: config.fetchImpl,
-  });
-  return await prepareInvalidRangeFromTransactions({
-    headerHash,
-    transactions,
-    blockSlot: config.blockSlot,
-    expectedTransactionsRoot: config.expectedTransactionsRoot,
-    txId: config.txId,
-    outputDir: config.outputDir,
-  });
-};
-
-export const prepareInvalidRangeFromFile = async (
-  config: PrepareInvalidRangeFromFileConfig,
-): Promise<PreparedInvalidRangeOutput> => {
-  const transactions = await readNodeTransactionPayloadsFile(
-    config.transactionsPath,
-  );
-  return await prepareInvalidRangeFromTransactions({
-    headerHash: config.headerHash,
-    transactions,
-    blockSlot: config.blockSlot,
-    expectedTransactionsRoot: config.expectedTransactionsRoot,
-    txId: config.txId,
-    outputDir: config.outputDir,
-  });
 };

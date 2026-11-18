@@ -15,8 +15,6 @@ import { Data } from "@lucid-evolution/lucid";
 
 export const OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY =
   "observersForbiddenOnUntaggedNetwork" as const;
-export const OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY_ID =
-  "00000024" as const;
 export const OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_FIELD_INDEX = 3 as const;
 export const OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_ID =
   "ObserversForbiddenOnUntaggedNetwork" as const;

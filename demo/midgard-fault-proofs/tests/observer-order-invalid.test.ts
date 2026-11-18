@@ -15,12 +15,10 @@ import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evi
 import {
   admitObserverOrderInvalidArtifact,
   buildObserverOrderInvalidArtifact,
-  observerOrderInvalidArtifactDigest,
 } from "../src/observer-order-invalid/artifact.js";
 import {
   classifyObserverOrderInvalidFinding,
   OBSERVER_ORDER_INVALID_CATEGORY,
-  OBSERVER_ORDER_INVALID_CATEGORY_ID,
   observerOrderInvalidEvidenceCloses,
   prepareObserverOrderInvalidEvidence,
   scanObserverOrderInvalid,
@@ -69,7 +67,6 @@ const evidence = (
 describe("observerOrderInvalid V1 semantics", () => {
   it("freezes category identity", () => {
     expect(OBSERVER_ORDER_INVALID_CATEGORY).toBe("observerOrderInvalid");
-    expect(OBSERVER_ORDER_INVALID_CATEGORY_ID).toBe("00000025");
   });
   it.each([
     ["first", [observer(2), observer(1)], 1],
@@ -296,9 +293,6 @@ describe("observerOrderInvalid V1 semantics", () => {
     });
     expect(admitObserverOrderInvalidArtifact(artifact).evidence).toEqual(
       prepared,
-    );
-    expect(observerOrderInvalidArtifactDigest(artifact)).toMatch(
-      /^[0-9a-f]{64}$/u,
     );
     expect(() =>
       admitObserverOrderInvalidArtifact({

@@ -54,8 +54,6 @@ import {
 import { ObserversForbiddenStep02DatumSchema } from "./schemas.js";
 
 const CATEGORY = OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY;
-export const OBSERVERS_FORBIDDEN_WORKFLOW =
-  "midgard-observers-forbidden-on-untagged-network-production-workflow-v1" as const;
 
 export type ObserversForbiddenRemovalReferenceScripts = Readonly<{
   correctionLockSpend: UTxO;
@@ -344,8 +342,6 @@ const currentAction = async ({
   }
   throw new Error("observersForbidden observed an impossible step");
 };
-
-export type ObserversForbiddenWorkflowRunResult = FraudProofWorkflowRunResult;
 
 export const executeManifestBoundObserversForbiddenWorkflow = async ({
   workflow,

@@ -35,12 +35,7 @@ import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { parseHex, stringifyJson } from "./json-file.js";
-import {
-  type CheckedLedger,
-  predecessorLedger,
-  readLedgerFile,
-  requireLedgerOpening,
-} from "./ledger-at.js";
+import { type CheckedLedger, requireLedgerOpening } from "./ledger-at.js";
 import {
   buildMembershipProof,
   buildNonMembershipProof,
@@ -49,10 +44,7 @@ import {
 } from "./ne-proofs.js";
 import {
   deriveL2TransactionSourceCbor,
-  type FetchLike,
-  fetchNodeBlockTransactions,
   type NodeTransactionPayload,
-  readNodeTransactionPayloadsFile,
 } from "./prepare-double-spend.js";
 import { spendInputsWitnessFromCbors } from "./spend-input-witness.js";
 import { ledgerKeyBytesHex } from "./step-support.js";
@@ -68,31 +60,6 @@ import { keyValuePhasNonMembershipProof } from "./transition-trace/phas.js";
 export type NoReferenceInputPreimageEntry = {
   readonly txId: string;
   readonly index: number | bigint;
-};
-
-export type PrepareNoReferenceInputCliConfig = {
-  readonly midgardNodeUrl: string;
-  readonly headerHash: string;
-  readonly badTxId?: string;
-  readonly badReferenceInputIndex?: string | number;
-  readonly prevHeaderHash?: string;
-  readonly prevUtxosRoot?: string;
-  readonly prevLedgerPath?: string;
-  readonly expectedTransactionsRoot?: string;
-  readonly outputDir?: string;
-  readonly fetchImpl?: FetchLike;
-};
-
-export type PrepareNoReferenceInputFromFileConfig = {
-  readonly transactionsPath: string;
-  readonly headerHash: string;
-  readonly badTxId?: string;
-  readonly badReferenceInputIndex?: string | number;
-  readonly prevHeaderHash?: string;
-  readonly prevUtxosRoot?: string;
-  readonly prevLedgerPath?: string;
-  readonly expectedTransactionsRoot?: string;
-  readonly outputDir?: string;
 };
 
 /** step-01 material: the bad tx and its membership proof in the txs trie. */
@@ -414,69 +381,4 @@ export const prepareNoReferenceInputFromTransactions = async ({
     ),
   ]);
   return { ...base, files };
-};
-
-/**
- * The predecessor ledger named by `--prev-header-hash` / `--prev-utxos-root`,
- * read from `--prev-ledger-file` and checked against that root.
- */
-const readPrevLedger = async (config: {
-  readonly prevHeaderHash?: string;
-  readonly prevUtxosRoot?: string;
-  readonly prevLedgerPath?: string;
-}): Promise<CheckedLedger | undefined> => {
-  if (config.prevLedgerPath === undefined) return undefined;
-  if (config.prevUtxosRoot === undefined || config.prevHeaderHash === undefined)
-    throw new Error(
-      "--prev-ledger-file needs --prev-header-hash and --prev-utxos-root to check it against.",
-    );
-  return await predecessorLedger({
-    prevHeaderHash: parseHex(config.prevHeaderHash, "--prev-header-hash", 28),
-    prevUtxosRoot: parseHex(config.prevUtxosRoot, "--prev-utxos-root", 32),
-    ledgerAt: await readLedgerFile(config.prevLedgerPath),
-    label: "--prev-ledger-file",
-  });
-};
-
-export const prepareNoReferenceInputFromNode = async (
-  config: PrepareNoReferenceInputCliConfig,
-): Promise<PreparedNoReferenceInputOutput> => {
-  const headerHash = parseHex(config.headerHash, "--header-hash", 28);
-  const [transactions, prevLedger] = await Promise.all([
-    fetchNodeBlockTransactions({
-      midgardNodeUrl: config.midgardNodeUrl,
-      headerHash,
-      fetchImpl: config.fetchImpl,
-    }),
-    readPrevLedger(config),
-  ]);
-  return await prepareNoReferenceInputFromTransactions({
-    headerHash,
-    transactions,
-    badTxId: config.badTxId,
-    badReferenceInputIndex: config.badReferenceInputIndex,
-    prevUtxosRoot: config.prevUtxosRoot,
-    prevLedger,
-    expectedTransactionsRoot: config.expectedTransactionsRoot,
-    outputDir: config.outputDir,
-  });
-};
-
-export const prepareNoReferenceInputFromFile = async (
-  config: PrepareNoReferenceInputFromFileConfig,
-): Promise<PreparedNoReferenceInputOutput> => {
-  const [transactions, prevLedger] = await Promise.all([
-    readNodeTransactionPayloadsFile(config.transactionsPath),
-    readPrevLedger(config),
-  ]);
-  return await prepareNoReferenceInputFromTransactions({
-    headerHash: config.headerHash,
-    transactions,
-    badTxId: config.badTxId,
-    badReferenceInputIndex: config.badReferenceInputIndex,
-    prevUtxosRoot: config.prevUtxosRoot,
-    prevLedger,
-    expectedTransactionsRoot: config.expectedTransactionsRoot,
-    outputDir: config.outputDir,
-  });
 };

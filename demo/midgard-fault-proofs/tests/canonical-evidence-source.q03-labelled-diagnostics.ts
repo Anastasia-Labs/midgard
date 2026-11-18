@@ -1,14 +1,8 @@
 import "./canonical-evidence-source.q03-canonical-evidence-builders.js";
 
-import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it, vi } from "vitest";
 
 import { main as cliMain } from "../src/bin.js";
-import {
-  diagnosticBlockTransactionsFromMidgardNode,
-  diagnosticEvidenceBanner,
-} from "../src/evidence/index.js";
-import { doubleSpendBlock } from "./canonical-evidence-source.q03-provenance-admission.js";
 
 describe("Q03 labelled diagnostics", () => {
   it("rejects diagnostic grade on every prepare CLI verb before proof construction", async () => {
@@ -53,45 +47,5 @@ describe("Q03 labelled diagnostics", () => {
       process.argv = priorArgv;
       stderr.mockRestore();
     }
-  });
-
-  it("labels operator REST imports and keeps them out of security paths", async () => {
-    const fixture = await doubleSpendBlock();
-    const payloads = fixture.transactions.map((tx) => ({
-      nodeTxId: tx.txId,
-      txCbor: tx.canonicalCbor.toString("hex"),
-    }));
-    const fetchImpl = (input: string | URL): Promise<Response> => {
-      const url = String(input);
-      if (url.includes("/block")) {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({ hashes: payloads.map((tx) => tx.nodeTxId) }),
-          ),
-        );
-      }
-      const txId = new URL(url).searchParams.get("tx_hash");
-      const payload = payloads.find((tx) => tx.nodeTxId === txId);
-      return Promise.resolve(
-        new Response(JSON.stringify({ tx: payload?.txCbor })),
-      );
-    };
-
-    const diagnostic = await diagnosticBlockTransactionsFromMidgardNode({
-      midgardNodeUrl: "http://operator.invalid",
-      headerHash: fixture.headerHash,
-      fetchImpl,
-    });
-
-    expect(diagnostic.provenance.grade).toBe("diagnostic");
-    expect(diagnostic.provenance.trustClass).toBe("operator_admin_api");
-    expect(diagnostic.provenance.diagnosticLabel).toMatch(/never a security/u);
-    expect(diagnostic.transactions).toHaveLength(3);
-    expect(diagnosticEvidenceBanner(diagnostic.provenance)).toMatch(
-      /^DIAGNOSTIC EVIDENCE \(operator_admin_api\/midgard-node-url\)/u,
-    );
-    expect(() =>
-      SDK.assertSecurityGradeEvidence(diagnostic.provenance),
-    ).toThrowError(/prohibited_trust_class/u);
   });
 });

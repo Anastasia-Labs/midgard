@@ -60,31 +60,11 @@ import {
   buildTrieView,
   type DecodedTransactionMaterial,
   decodeTransactionMaterial,
-  type FetchLike,
-  fetchNodeBlockTransactions,
   type NodeTransactionPayload,
   type PreparedTxInclusionJson,
-  readNodeTransactionPayloadsFile,
   requireProof,
   transactionSourceTrieItem,
 } from "./prepare-double-spend.js";
-
-export type PrepareInvalidSignatureCliConfig = {
-  readonly midgardNodeUrl: string;
-  readonly headerHash: string;
-  readonly expectedTransactionsRoot: string;
-  readonly txId?: string;
-  readonly outputDir?: string;
-  readonly fetchImpl?: FetchLike;
-};
-
-export type PrepareInvalidSignatureFromFileConfig = {
-  readonly transactionsPath: string;
-  readonly headerHash: string;
-  readonly expectedTransactionsRoot: string;
-  readonly txId?: string;
-  readonly outputDir?: string;
-};
 
 export type PreparedInvalidSignatureTx = {
   readonly nodeTxId: string;
@@ -361,42 +341,4 @@ export const prepareInvalidSignatureFromTransactions = async ({
     outputDir,
   });
   return { ...baseOutput, files };
-};
-
-/**
- * Operator-diagnostic rehearsal route: block material is read from the node's
- * REST surface, an `operator_only_diagnostic_endpoint`. Never security grade.
- */
-export const prepareInvalidSignatureFromNode = async (
-  config: PrepareInvalidSignatureCliConfig,
-): Promise<PreparedInvalidSignatureOutput> => {
-  const headerHash = parseHex(config.headerHash, "--header-hash", 28);
-  const transactions = await fetchNodeBlockTransactions({
-    midgardNodeUrl: config.midgardNodeUrl,
-    headerHash,
-    ...(config.fetchImpl === undefined ? {} : { fetchImpl: config.fetchImpl }),
-  });
-  return await prepareInvalidSignatureFromTransactions({
-    headerHash,
-    transactions,
-    expectedTransactionsRoot: config.expectedTransactionsRoot,
-    ...(config.txId === undefined ? {} : { txId: config.txId }),
-    ...(config.outputDir === undefined ? {} : { outputDir: config.outputDir }),
-  });
-};
-
-/** Operator-diagnostic rehearsal route over an `operator_private_file`. */
-export const prepareInvalidSignatureFromFile = async (
-  config: PrepareInvalidSignatureFromFileConfig,
-): Promise<PreparedInvalidSignatureOutput> => {
-  const transactions = await readNodeTransactionPayloadsFile(
-    config.transactionsPath,
-  );
-  return await prepareInvalidSignatureFromTransactions({
-    headerHash: config.headerHash,
-    transactions,
-    expectedTransactionsRoot: config.expectedTransactionsRoot,
-    ...(config.txId === undefined ? {} : { txId: config.txId }),
-    ...(config.outputDir === undefined ? {} : { outputDir: config.outputDir }),
-  });
 };

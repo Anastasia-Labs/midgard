@@ -26,20 +26,6 @@ import {
   type MintAuthorizationContracts,
 } from "./contracts.js";
 
-/**
- * The deployed catalogue category the thread mints under. Mirrors
- * `FraudProofCatalogueCategoryDeploymentInfo`, passed explicitly because the
- * family's catalogue entry is parent-owned and lands at registration.
- */
-export type MintAuthorizationCatalogueCategory = {
-  /** 4-byte category id, hex. */
-  readonly categoryId: string;
-  /** The registered category script hash — must be the step-01 hash. */
-  readonly scriptHash: string;
-  /** MPF membership proof of `(categoryId, scriptHash)` under the catalogue root. */
-  readonly membershipProofCbor: string;
-};
-
 export type MintAuthorizationStepIndex = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
 export const mintAuthorizationSubmitError = (message: string): Error =>

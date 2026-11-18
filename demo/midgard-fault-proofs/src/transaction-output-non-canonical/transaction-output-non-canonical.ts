@@ -1,7 +1,6 @@
 import {
   advanceMidgardLedgerOutputScan,
   decodeMidgardFieldPreimage,
-  encodeMidgardLedgerOutputScanControl,
   finishMidgardLedgerOutputScan,
   initialMidgardLedgerOutputScanControl,
   midgardFieldCommitment,
@@ -29,8 +28,6 @@ import {
 
 export const TRANSACTION_OUTPUT_NON_CANONICAL_CATEGORY =
   "transactionOutputNonCanonical" as const;
-export const TRANSACTION_OUTPUT_NON_CANONICAL_PROPOSED_ID = "00000029" as const;
-export const TRANSACTION_OUTPUT_NON_CANONICAL_OUTPUTS_FIELD = 2 as const;
 export const TRANSACTION_OUTPUT_NON_CANONICAL_MAX_OUTPUT_BYTES = 16_384;
 /** The terminal outcome of an output field 2 does not have (`rule.outcome_absent`). */
 export const TRANSACTION_OUTPUT_OUTCOME_ABSENT = 3n;
@@ -241,18 +238,6 @@ export const TransactionOutputBoundOutputSchema = Data.Object({
   subject: TransactionOutputVerdictSubjectSchema,
   output_index: Data.Integer(),
 });
-export const encodeTransactionOutputBoundOutput = (
-  finding: TransactionOutputFinding,
-): string => {
-  const exact = classifyTransactionOutputFinding(finding);
-  return Data.to(
-    { subject: exact.subject, output_index: exact.itemIndex } as never,
-    TransactionOutputBoundOutputSchema as never,
-  );
-};
-export const encodeTransactionOutputScanControl = (
-  control: MidgardLedgerOutputScanControl,
-): string => encodeMidgardLedgerOutputScanControl(control).toString("hex");
 
 export const transactionOutputScanControlData = (
   control: MidgardLedgerOutputScanControl,

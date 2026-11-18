@@ -13,13 +13,7 @@ import {
   classifyRedeemerCanonicityFinding,
   prepareRedeemerCanonicityEvidence,
   redeemerCanonicityEvidenceCloses,
-  selectCanonicalRedeemerCanonicityEvidence,
 } from "../src/redeemer-canonicity/family.js";
-import {
-  reconcileRedeemerCanonicityState,
-  type RedeemerCanonicityDurableState,
-  runRedeemerCanonicityWorkflow,
-} from "../src/redeemer-canonicity/workflow.js";
 
 const txId = "00".repeat(32);
 const accepted = acceptedVerdictSubject(txId);
@@ -108,97 +102,5 @@ describe("redeemerCanonicity V1", () => {
         committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
       }),
     ).toThrow(/outside/u);
-  });
-
-  it("selects the canonical lowest coordinate deterministically", () => {
-    const first = evidence(accepted, "1800", 0);
-    const secondField = encodeMidgardFieldPreimage([
-      item("00", 0),
-      item("1800", 1),
-    ]);
-    const second = prepareRedeemerCanonicityEvidence({
-      finding: { subject: accepted, redeemerIndex: 1n },
-      fieldPreimage: secondField,
-      committedFieldHashHex:
-        midgardFieldCommitment(secondField).toString("hex"),
-    });
-    expect(selectCanonicalRedeemerCanonicityEvidence([second, first])).toBe(
-      first,
-    );
-  });
-});
-
-describe("redeemerCanonicity durable workflow", () => {
-  it("reconstructs each next action from authenticated chain state", async () => {
-    const prepared = evidence(rejected(0), "00");
-    const entries: RedeemerCanonicityDurableState[] = [];
-    let state: RedeemerCanonicityDurableState = {
-      stage: "none",
-      decodeCursor: 0,
-      txHash: "00".repeat(32),
-      outputReference: null,
-    };
-    const stages = [
-      "step01",
-      "step02",
-      "step02Data",
-      "step02Data",
-      "step03",
-      "proven",
-      "removed",
-    ] as const;
-    let submitted = 0;
-    const result = await runRedeemerCanonicityWorkflow({
-      evidence: prepared,
-      journal: {
-        load: async () => entries,
-        append: async (_identity, expectedLength, next) => {
-          expect(expectedLength).toBe(entries.length);
-          entries.push(next);
-        },
-      },
-      actuator: {
-        observe: async () => state,
-        submit: async ({ action }) => {
-          expect(action).toBe(
-            ["init", "bind", "open", "decode", "decode", "finalize", "remove"][
-              submitted
-            ],
-          );
-          state = {
-            stage: stages[submitted]!,
-            decodeCursor: submitted === 3 ? 7 : 0,
-            txHash: submitted.toString(16).padStart(64, "0"),
-            outputReference:
-              submitted === 6 ? null : `${submitted.toString()}#0`,
-          };
-          submitted += 1;
-          return state;
-        },
-      },
-    });
-    expect(result).toBe("removed");
-    expect(entries.map((entry) => entry.stage)).toEqual(stages);
-  });
-
-  it("fails closed on checkpoint or stage regression", () => {
-    const recorded: RedeemerCanonicityDurableState = {
-      stage: "step02Data",
-      decodeCursor: 2,
-      txHash: "11".repeat(32),
-      outputReference: "11".repeat(32) + "#0",
-    };
-    expect(() =>
-      reconcileRedeemerCanonicityState({
-        journal: [recorded],
-        observed: { ...recorded, decodeCursor: 1 },
-      }),
-    ).toThrow(/checkpoint regressed/u);
-    expect(() =>
-      reconcileRedeemerCanonicityState({
-        journal: [recorded],
-        observed: { ...recorded, stage: "step01" },
-      }),
-    ).toThrow(/chain regressed/u);
   });
 });

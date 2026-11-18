@@ -19,7 +19,6 @@
  * whose root is not the thread's `prior_ledger_root`, an outpoint tx id that
  * is not 32 bytes.
  */
-import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
 import type * as SDK from "@al-ft/midgard-sdk";
 import { Proof } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
@@ -35,29 +34,6 @@ const evidenceError = (message: string): Error =>
   new Error(`${MINT_AUTHORIZATION_CATEGORY_LABEL} evidence: ${message}`);
 
 // ## The scanned reference input's ledger-trie key
-
-/**
- * Twin of `encode_midgard_tx_input` — the §5.3 fixed 38-byte spend-input
- * item IS the ledger trie's key for the outpoint, and field 1's items are
- * spelled in exactly that shape.
- */
-export const mintAuthorizationOutpointKey = ({
-  txIdHex,
-  outputIndex,
-}: {
-  readonly txIdHex: string;
-  readonly outputIndex: number;
-}): Buffer => {
-  if (!/^[0-9a-f]{64}$/u.test(txIdHex)) {
-    throw evidenceError(
-      "reference-input outpoint tx id must be 32 bytes of lowercase hex",
-    );
-  }
-  return encodeMidgardSpendInputItem({
-    txId: Buffer.from(txIdHex, "hex"),
-    outputIndex,
-  });
-};
 
 // ## Pre-state ledger membership (injected trie handle)
 

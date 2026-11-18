@@ -5,10 +5,7 @@ import {
 import { beforeAll, describe, expect, it } from "vitest";
 
 import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
-import {
-  detectMissingSignatureWrongfulRejections,
-  missingSignatureWrongfulRejectionCloses,
-} from "../src/missing-signature/wrongful-rejection.js";
+import { detectMissingSignatureWrongfulRejections } from "../src/missing-signature/wrongful-rejection.js";
 import { buildMissingSignatureForcedTransaction } from "./support/missing-signature-forced-shapes.js";
 
 // The ledger's Ed25519 check is libsodium's, which initialises
@@ -48,7 +45,6 @@ describe("missingSignature authenticated wrongful rejection evidence", () => {
     expect(found).toBeDefined();
     expect(found!.evidence.signerIndex).toBe(0n);
     expect(found!.witnessIndex).toBe(0n);
-    expect(missingSignatureWrongfulRejectionCloses(found!.evidence)).toBe(true);
   });
   it("does not classify a matching key with a forged signature", () =>
     expect(detect(forcedBlock(true))).toHaveLength(0));
@@ -63,17 +59,5 @@ describe("missingSignature authenticated wrongful rejection evidence", () => {
     if (field === "tx_id") leaf.value.tx_id = "ff".repeat(32);
     else leaf.value.submitted_source[field] = "80";
     expect(() => detect(block)).toThrow(/differs from/u);
-  });
-  it("refuses a subject whose reason coordinate differs from its evidence", () => {
-    const evidence = detect(forcedBlock())[0]!.evidence;
-    expect(
-      missingSignatureWrongfulRejectionCloses({ ...evidence, signerIndex: 1n }),
-    ).toBe(false);
-    expect(
-      missingSignatureWrongfulRejectionCloses({
-        ...evidence,
-        subject: { ...evidence.subject, direction: 0n },
-      }),
-    ).toBe(false);
   });
 });

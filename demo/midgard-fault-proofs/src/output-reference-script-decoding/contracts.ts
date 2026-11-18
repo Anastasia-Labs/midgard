@@ -5,19 +5,8 @@ import {
   parseFaultProofBlueprint,
   type SpendingValidator,
 } from "@al-ft/midgard-sdk";
-import {
-  type Data,
-  type Network,
-  type Script,
-  validatorToAddress,
-  validatorToScriptHash,
-} from "@lucid-evolution/lucid";
+import { type Data, type Network, type Script } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-
-import {
-  OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY,
-  OUTPUT_REFERENCE_SCRIPT_DECODING_ID,
-} from "./output-reference-script-decoding.js";
 
 export const OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY_LABEL =
   "output-reference-script-decoding";
@@ -120,40 +109,4 @@ export const applyOutputReferenceScriptDecodingScripts = ({
     adapt(steps[4], 4),
     adapt(steps[5], 5),
   ];
-};
-
-export type OutputReferenceScriptDecodingManifest = Readonly<{
-  schemaVersion: "output-reference-script-decoding-production-manifest-v1";
-  category: typeof OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY;
-  categoryId: typeof OUTPUT_REFERENCE_SCRIPT_DECODING_ID;
-  network: Network;
-  steps: OutputReferenceScriptDecodingContracts["steps"];
-  firstStepHash: string;
-}>;
-
-export const loadOutputReferenceScriptDecodingManifest = (
-  manifest: OutputReferenceScriptDecodingManifest,
-): OutputReferenceScriptDecodingManifest => {
-  if (
-    manifest.schemaVersion !==
-      "output-reference-script-decoding-production-manifest-v1" ||
-    manifest.category !== OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY ||
-    manifest.categoryId !== OUTPUT_REFERENCE_SCRIPT_DECODING_ID ||
-    manifest.firstStepHash !== manifest.steps[0].spendingScriptHash
-  )
-    throw new Error("outputReferenceScriptDecoding manifest identity changed");
-  manifest.steps.forEach((step, index) => {
-    if (
-      step.blueprintTitle !==
-        OUTPUT_REFERENCE_SCRIPT_DECODING_BLUEPRINT_TITLES[index] ||
-      validatorToScriptHash(step.spendingScript) !== step.spendingScriptHash ||
-      validatorToAddress(manifest.network, step.spendingScript) !==
-        step.spendingScriptAddress ||
-      !/^[0-9a-f]{64}#[0-9]+$/u.test(step.referenceOutRef)
-    )
-      throw new Error(
-        `outputReferenceScriptDecoding step ${(index + 1).toString()} identity changed`,
-      );
-  });
-  return Object.freeze(manifest);
 };

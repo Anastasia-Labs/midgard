@@ -5,8 +5,6 @@ import {
   verdictSubjectIsCanonical,
 } from "@al-ft/midgard-sdk";
 
-export const INVALID_RANGE_CATEGORY = "invalidRange" as const;
-export const INVALID_RANGE_CATEGORY_ID = "00000003" as const;
 export type InvalidRangeReason =
   | "ValidityIntervalMalformed"
   | "ValidityIntervalExcludesBlockSlot";

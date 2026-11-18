@@ -151,25 +151,9 @@
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [": left.detectionId.localeCompare(right.detectionId),"]
     },
-    "midgard-fault-proofs/src/input-set-uniqueness/replay.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
-      "sites": ["? left.detectionId.localeCompare(right.detectionId)"]
-    },
-    "midgard-fault-proofs/src/mint-declared-asset-limit/artifact.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
-      "sites": [
-        "Object.entries(artifact).sort(([a], [b]) => a.localeCompare(b)),"
-      ]
-    },
     "midgard-fault-proofs/src/mint-declared-asset-limit/replay.ts": {
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": ["? left.detectionId.localeCompare(right.detectionId)"]
-    },
-    "midgard-fault-proofs/src/observer-order-invalid/artifact.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
-      "sites": [
-        "Object.entries(artifact).sort(([a], [b]) => a.localeCompare(b)),"
-      ]
     },
     "midgard-fault-proofs/src/observer-order-invalid/replay.prepare-observer-order-invalid-forced-artifact.ts": {
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
@@ -178,21 +162,9 @@
         "? left.detectionId.localeCompare(right.detectionId)"
       ]
     },
-    "midgard-fault-proofs/src/observers-forbidden-on-untagged-network/artifact.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
-      "sites": [
-        "Object.entries(artifact).sort(([a], [b]) => a.localeCompare(b)),"
-      ]
-    },
     "midgard-fault-proofs/src/observers-forbidden-on-untagged-network/replay.ts": {
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": ["? left.detectionId.localeCompare(right.detectionId)"]
-    },
-    "midgard-fault-proofs/src/redeemer-canonicity/family.ts": {
-      "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
-      "sites": [
-        "left.subject.transaction_id.localeCompare(right.subject.transaction_id),"
-      ]
     },
     "midgard-fault-proofs/src/redeemer-canonicity/runtime.admit-redeemer-workflow-artifact.ts": {
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",

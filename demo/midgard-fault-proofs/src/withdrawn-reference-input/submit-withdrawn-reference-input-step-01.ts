@@ -65,7 +65,6 @@ import {
 } from "../runtime.js";
 import { completeStep, fundStep, submitStep } from "../step-completion.js";
 import {
-  parseSubmitStep01TxInclusion,
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
   requireInitialStepDatum,
   requireNativeTxMatchesCompactCbor,
@@ -92,8 +91,6 @@ import {
 // non-existent-input), so the tx-inclusion material is identical to
 // `submit-step-01`'s and to what `prepareWithdrawnReferenceInputV1` returns.
 export type WithdrawnReferenceInputStep01TxInclusion = SubmitStep01TxInclusion;
-export const parseWithdrawnReferenceInputStep01TxInclusion =
-  parseSubmitStep01TxInclusion;
 
 export type SubmitWithdrawnReferenceInputStep01Result = {
   readonly txHash: string;

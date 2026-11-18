@@ -3,32 +3,6 @@ import type { Script } from "@lucid-evolution/lucid";
 /** Human-readable family label used in every local failure message. */
 export const VALUE_NOT_PRESERVED_CATEGORY_LABEL = "value-not-preserved";
 
-/** Blueprint titles of the registered family validators. */
-export const VALUE_NOT_PRESERVED_BLUEPRINT_TITLES = {
-  unionAcceptedSource:
-    "fraud_proofs/value_not_preserved/union_accepted_source.main.spend",
-  unionForcedSource:
-    "fraud_proofs/value_not_preserved/union_forced_source.main.spend",
-  unionEvent: "fraud_proofs/value_not_preserved/union_event.main.spend",
-  unionPreState: "fraud_proofs/value_not_preserved/union_pre_state.main.spend",
-  unionInputs: "fraud_proofs/value_not_preserved/union_inputs.main.spend",
-  unionInputValue:
-    "fraud_proofs/value_not_preserved/union_input_value.main.spend",
-  unionAssets: "fraud_proofs/value_not_preserved/union_assets.main.spend",
-  unionFieldGrammar:
-    "fraud_proofs/value_not_preserved/union_field_grammar.main.spend",
-  unionOutputs: "fraud_proofs/value_not_preserved/union_outputs.main.spend",
-  unionOutputScan:
-    "fraud_proofs/value_not_preserved/union_output_scan.main.spend",
-  unionMint: "fraud_proofs/value_not_preserved/union_mint.main.spend",
-  unionUpdate: "fraud_proofs/value_not_preserved/union_update.main.spend",
-  unionTerminal: "fraud_proofs/value_not_preserved/union_terminal.main.spend",
-  step01: "fraud_proofs/value_not_preserved/step_01.main.spend",
-  step02: "fraud_proofs/value_not_preserved/step_02.main.spend",
-  step03: "fraud_proofs/value_not_preserved/step_03.main.spend",
-  step04: "fraud_proofs/value_not_preserved/step_04.main.spend",
-} as const;
-
 /** One deployed step of the `value-not-preserved` chain. */
 export type ValueNotPreservedStepContract = {
   readonly spendingScript: Script;

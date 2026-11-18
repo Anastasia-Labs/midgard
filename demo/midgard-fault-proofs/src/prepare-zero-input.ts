@@ -27,31 +27,11 @@ import { parseHex, stringifyJson } from "./json-file.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
-  type FetchLike,
-  fetchNodeBlockTransactions,
   type NodeTransactionPayload,
   type PreparedTxInclusionJson,
-  readNodeTransactionPayloadsFile,
   requireProof,
   transactionSourceTrieItem,
 } from "./prepare-double-spend.js";
-
-export type PrepareZeroInputCliConfig = {
-  readonly midgardNodeUrl: string;
-  readonly headerHash: string;
-  readonly expectedTransactionsRoot: string;
-  readonly txId?: string;
-  readonly outputDir?: string;
-  readonly fetchImpl?: FetchLike;
-};
-
-export type PrepareZeroInputFromFileConfig = {
-  readonly transactionsPath: string;
-  readonly headerHash: string;
-  readonly expectedTransactionsRoot: string;
-  readonly txId?: string;
-  readonly outputDir?: string;
-};
 
 export type PreparedZeroInputTx = {
   readonly nodeTxId: string;
@@ -205,37 +185,4 @@ export const prepareZeroInputFromTransactions = async ({
     outputDir,
   });
   return { ...baseOutput, files };
-};
-
-export const prepareZeroInputFromNode = async (
-  config: PrepareZeroInputCliConfig,
-): Promise<PreparedZeroInputOutput> => {
-  const headerHash = parseHex(config.headerHash, "--header-hash", 28);
-  const transactions = await fetchNodeBlockTransactions({
-    midgardNodeUrl: config.midgardNodeUrl,
-    headerHash,
-    fetchImpl: config.fetchImpl,
-  });
-  return await prepareZeroInputFromTransactions({
-    headerHash,
-    transactions,
-    expectedTransactionsRoot: config.expectedTransactionsRoot,
-    txId: config.txId,
-    outputDir: config.outputDir,
-  });
-};
-
-export const prepareZeroInputFromFile = async (
-  config: PrepareZeroInputFromFileConfig,
-): Promise<PreparedZeroInputOutput> => {
-  const transactions = await readNodeTransactionPayloadsFile(
-    config.transactionsPath,
-  );
-  return await prepareZeroInputFromTransactions({
-    headerHash: config.headerHash,
-    transactions,
-    expectedTransactionsRoot: config.expectedTransactionsRoot,
-    txId: config.txId,
-    outputDir: config.outputDir,
-  });
 };

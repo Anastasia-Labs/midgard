@@ -2,11 +2,10 @@ import {
   acceptedVerdictSubject,
   forcedVerdictSubject,
 } from "@al-ft/midgard-sdk";
-import { describe, expect, expectTypeOf, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { planFaultProofFieldOpening } from "../src/field-opening.js";
 import { detectInputSetUniquenessForcedReplay } from "../src/input-set-uniqueness/replay.js";
-import type { InputSetUniquenessForcedInput } from "../src/input-set-uniqueness/v1.js";
 import {
   bindForcedDuplicateInput,
   inputSetUnionIsStrictlyIncreasing,
@@ -163,11 +162,5 @@ describe("input-set-uniqueness wrongful-rejection rules", () => {
         label: "input-set-uniqueness adjacent over-bound",
       }),
     ).toThrow(/32,?768|aggregate (field )?bound/i);
-  });
-
-  it("keeps the production authority boundary callback-free", () => {
-    expectTypeOf<
-      keyof InputSetUniquenessForcedInput
-    >().toEqualTypeOf<"block">();
   });
 });

@@ -242,55 +242,6 @@ export const eventOrder = (
 };
 
 /**
- * The committed event that introduced a post-state output: among the events
- * whose committed verdict applies their outputs (a forced transaction
- * committed `ForcedTxValid`, an L2 transaction committed `TxIsValid`, or the
- * deposit whose event id the output reference is), the one earliest on the
- * block's event order. A non-accepted copy of the producing transaction
- * applies no outputs, so it never introduces one. A later accepted copy
- * spends inputs the earliest one already consumed, so it is a fault of its
- * own and introduces nothing. An output no accepted event produced is a fault
- * of the block's post-state as a whole.
- */
-export const introducedOutputSubject = (
-  reconstruction: EventOrderSource,
-  outRef: Readonly<{ transactionId: string; outputIndex: bigint }>,
-): DetectionSubject => {
-  const transactionId = outRef.transactionId.toLowerCase();
-  const orders = eventOrdersOf(reconstruction);
-  const introducers = reconstruction.sourceEvents.filter((source) => {
-    switch (source.phase) {
-      case "Withdrawal":
-        return false;
-      case "ForcedTransaction":
-        return (
-          source.entry.value.verdict === "ForcedTxValid" &&
-          source.entry.value.tx_id.toLowerCase() === transactionId
-        );
-      case "L2Transaction":
-        return (
-          source.entry.validity === "TxIsValid" &&
-          source.entry.txId.toLowerCase() === transactionId
-        );
-      case "Deposit":
-        return (
-          source.entry.key.transactionId.toLowerCase() === transactionId &&
-          source.entry.key.outputIndex === outRef.outputIndex
-        );
-    }
-  });
-  const earliest = introducers.reduce<(typeof introducers)[number] | undefined>(
-    (best, source) =>
-      best === undefined ||
-      orders.get(source.fingerprint)! < orders.get(best.fingerprint)!
-        ? source
-        : best,
-    undefined,
-  );
-  return earliest === undefined ? BLOCK_SUBJECT : sourceEventSubject(earliest);
-};
-
-/**
  * The event a detection convicts, placed on the event order from its
  * declared subject only, never from its position, its violation id or the
  * committed `event_to_step`. A pair finding convicts its later event.

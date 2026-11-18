@@ -3,12 +3,6 @@ import type { Script } from "@lucid-evolution/lucid";
 /** Human-readable family label used in fail-closed submission errors. */
 export const COMMITTED_FIELD_SHAPE_CATEGORY_LABEL = "committed-field-shape";
 
-/** Applied blueprint titles, in proof-chain order. */
-export const COMMITTED_FIELD_SHAPE_BLUEPRINT_TITLES = {
-  step01: "fraud_proofs/committed_field_shape/step_01.main.spend",
-  step02: "fraud_proofs/committed_field_shape/step_02.main.spend",
-} as const;
-
 export type CommittedFieldShapeStepContract = {
   readonly spendingScript: Script;
   readonly spendingScriptHash: string;

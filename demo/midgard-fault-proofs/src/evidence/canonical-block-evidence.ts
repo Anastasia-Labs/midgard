@@ -20,10 +20,7 @@
  * module; the labelled-diagnostic escape hatch lives in
  * `./diagnostic-evidence.ts` and cannot be admitted as security evidence.
  */
-import {
-  computeDaSha256Hash,
-  type DaRequestResponseProtocol,
-} from "@al-ft/midgard-core/da-transport";
+import { computeDaSha256Hash } from "@al-ft/midgard-core/da-transport";
 import {
   admitAuthenticatedStateQueueHeaderObservation,
   admitEvidenceProvenance,
@@ -40,7 +37,6 @@ import {
 import type { NodeTransactionPayload } from "../prepare-double-spend.js";
 import {
   fetchRetainedDaPayloadByHeaderHash,
-  type RetainedDaFetchAttempt,
   type RetainedDaPayloadSource,
 } from "../transition-trace/fetch.js";
 import {
@@ -81,13 +77,6 @@ export type CanonicalBlockEvidence = {
   readonly reconstruction: TransitionTraceReconstruction;
   readonly transactions: readonly CanonicalBlockTransaction[];
   readonly inclusionRootAuthentication: TransactionsInclusionRootAuthentication;
-};
-
-export type CanonicalBlockEvidenceFetchAttempt = {
-  readonly sourceId: string;
-  readonly sourcePeerId: string;
-  readonly protocol: DaRequestResponseProtocol;
-  readonly status: RetainedDaFetchAttempt["status"];
 };
 
 /** Re-derives the one normative transaction-source leaf convention. */

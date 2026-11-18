@@ -33,17 +33,11 @@ import {
   defineLinearFamily,
   type LinearFamilyAssemblyContext,
   type LinearFamilyReferenceScripts,
-  type ManifestBoundLinearFamilyWorkflow,
-  type ManifestBoundLinearFamilyWorkflowConfig,
 } from "./family-definition.js";
 import {
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyTransactionPort,
 } from "./linear-family-adapter.js";
-import {
-  assembleManifestBoundFamilyWorkflow,
-  runOrResumeManifestBoundFamilyWorkflow,
-} from "./manifest-bound-family-assembly.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
 import {
   captureLocallyEvaluatedTransaction,
@@ -342,16 +336,6 @@ const transactionPort = (
   },
 });
 
-export type ManifestBoundFabricatedWithdrawalWorkflowConfig =
-  ManifestBoundLinearFamilyWorkflowConfig<
-    "fabricatedWithdrawal",
-    (typeof WITNESS_ROLES)[number],
-    false
-  >;
-
-export type ManifestBoundFabricatedWithdrawalWorkflow =
-  ManifestBoundLinearFamilyWorkflow<"fabricatedWithdrawal", false>;
-
 const contracts = (context: AssemblyContext): FabricatedWithdrawalContracts => {
   const resolved = context.binding.resolvedContracts;
   const chain = resolved.contracts.fabricatedWithdrawal;
@@ -426,14 +410,3 @@ export const FABRICATED_WITHDRAWAL_FAMILY_DEFINITION = defineLinearFamily({
       }),
   },
 });
-
-export const createManifestBoundFabricatedWithdrawalWorkflow = (
-  config: ManifestBoundFabricatedWithdrawalWorkflowConfig,
-): Promise<ManifestBoundFabricatedWithdrawalWorkflow> =>
-  assembleManifestBoundFamilyWorkflow(
-    FABRICATED_WITHDRAWAL_FAMILY_DEFINITION,
-    config,
-  );
-
-export const runOrResumeManifestBoundFabricatedWithdrawalWorkflow =
-  runOrResumeManifestBoundFamilyWorkflow;

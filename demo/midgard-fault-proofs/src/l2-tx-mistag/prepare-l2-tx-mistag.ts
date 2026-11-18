@@ -13,11 +13,8 @@ import { parseHex, stringifyJson } from "../json-file.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
-  type FetchLike,
-  fetchNodeBlockTransactions,
   type NodeTransactionPayload,
   type PreparedTxInclusionJson,
-  readNodeTransactionPayloadsFile,
   requireProof,
   transactionSourceTrieItem,
 } from "../prepare-double-spend.js";
@@ -154,28 +151,3 @@ export const prepareL2TxMistagFromTransactions = async ({
     ? output
     : { ...output, files: await writePreparedFiles(output, outputDir) };
 };
-
-export const prepareL2TxMistagFromNode = async (
-  config: PrepareL2TxMistagConfig & {
-    readonly midgardNodeUrl: string;
-    readonly fetchImpl?: FetchLike;
-  },
-): Promise<PreparedL2TxMistagOutput> => {
-  const headerHash = parseHex(config.headerHash, "--header-hash", 28);
-  const transactions = await fetchNodeBlockTransactions({
-    midgardNodeUrl: config.midgardNodeUrl,
-    headerHash,
-    fetchImpl: config.fetchImpl,
-  });
-  return prepareL2TxMistagFromTransactions({ ...config, transactions });
-};
-
-export const prepareL2TxMistagFromFile = async (
-  config: PrepareL2TxMistagConfig & { readonly transactionsPath: string },
-): Promise<PreparedL2TxMistagOutput> =>
-  prepareL2TxMistagFromTransactions({
-    ...config,
-    transactions: await readNodeTransactionPayloadsFile(
-      config.transactionsPath,
-    ),
-  });

@@ -11,8 +11,6 @@
  * unchecked or substituted ledger never reaches a proof builder.
  */
 
-import { readFile } from "node:fs/promises";
-
 import {
   EMPTY_MERKLE_TREE_ROOT,
   GENESIS_HEADER_HASH,
@@ -23,7 +21,7 @@ import {
 } from "@al-ft/midgard-validation";
 
 import { undecodableNativeOutputDescriptor } from "./evidence/retained-ledger-output.js";
-import { parseHex, parseJsonText } from "./json-file.js";
+import { parseHex } from "./json-file.js";
 import {
   keyValuePhasResolutionProofs,
   type KeyValuePhasRoot,
@@ -363,28 +361,3 @@ export const checkLedgerJson = async ({
     utxosRoot,
     label,
   });
-
-/**
- * A ledger file: `{ "headerHash": <28-byte hex>, "entries": [[<out-ref hex>,
- * <output CBOR hex>], ...] }`, the ledger after the block `headerHash`. The
- * returned source answers only for that header; its entries are checked like
- * any other source's.
- */
-export const readLedgerFile = async (path: string): Promise<LedgerAt> => {
-  const label = `ledger file ${path}`;
-  const json = parseJsonText(
-    await readFile(path, "utf8"),
-    () => `${label} is not JSON`,
-  );
-  if (
-    typeof json !== "object" ||
-    json === null ||
-    Object.keys(json).sort().join(",") !== "entries,headerHash"
-  )
-    throw new Error(`${label} must hold exactly headerHash and entries`);
-  const { headerHash, entries } = json as Record<string, unknown>;
-  return singleLedgerAt(
-    parseHex(headerHash, `${label} headerHash`, 28),
-    parseLedgerJson(entries, label),
-  );
-};

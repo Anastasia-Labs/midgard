@@ -5,7 +5,6 @@ import {
   EMPTY_NULL_ROOT,
   encodeCbor,
   encodeMidgardNativeTxCanonical,
-  encodeMidgardNativeTxCompact,
   encodeMidgardTxOutput,
   materializeMidgardNativeTxFromCanonical,
   MIDGARD_NATIVE_TX_VERSION,
@@ -21,7 +20,6 @@ import {
 } from "../src/evidence/index.js";
 import {
   findNetworkIdFaults,
-  networkIdOutputsOpening,
   requireNetworkIdFault,
   type RetainedDaNetworkIdEvidence,
 } from "../src/network-id/evidence.js";
@@ -266,30 +264,6 @@ describe("Q35 network-id DA-first evidence", () => {
         expectedNetworkId: 0n,
       }),
     ).toThrow();
-  });
-
-  it("builds the exact body-field opening used by the Aiken door", () => {
-    const tx = nativeTx({});
-    const preimage = tx.body.outputsPreimageCbor.toString("hex");
-    expect(
-      networkIdOutputsOpening({
-        evidence: retained(tx),
-        carriage: { Inline: { preimage } },
-      }),
-    ).toEqual({
-      BodyFieldOpening: {
-        native_tx_compact_cbor: encodeMidgardNativeTxCompact(
-          tx.compact,
-        ).toString("hex"),
-        carriage: { Inline: { preimage } },
-      },
-    });
-    expect(() =>
-      networkIdOutputsOpening({
-        evidence: retained(tx),
-        carriage: { Inline: { preimage: "80" } },
-      }),
-    ).toThrow("does not equal the retained transaction's outputs preimage");
   });
 
   it("detects the last output in a high-cardinality fixture", () => {

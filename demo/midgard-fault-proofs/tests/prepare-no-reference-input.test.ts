@@ -1,7 +1,3 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
 import {
   computeHash32,
   computeMidgardNativeTxId,
@@ -25,8 +21,6 @@ import {
   LedgerRootMismatchError,
   type NodeTransactionPayload,
   predecessorLedger,
-  prepareNoReferenceInputFromFile,
-  prepareNoReferenceInputFromNode,
   prepareNoReferenceInputFromTransactions,
   singleLedgerAt,
 } from "../src/index.js";
@@ -99,15 +93,6 @@ const otherTxPayload = payloadFromTx(
     fee: 1n,
   }),
 );
-
-const withTempDir = async <A>(run: (dir: string) => Promise<A>): Promise<A> => {
-  const dir = await mkdtemp(join(tmpdir(), "midgard-no-reference-input-"));
-  try {
-    return await run(dir);
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-};
 
 type LedgerPairs = readonly (readonly [string, string])[];
 
@@ -267,87 +252,6 @@ describe("prepare-no-reference-input", () => {
     ).rejects.toThrow("starts from a non-empty ledger");
   });
 
-  it("writes deterministic submit-step files from an explicit transactions file", async () => {
-    await withTempDir(async (dir) => {
-      const transactionsPath = join(dir, "block-transactions.json");
-      await writeFile(
-        transactionsPath,
-        JSON.stringify([badTxPayload, otherTxPayload]),
-      );
-
-      const output = await prepareNoReferenceInputFromFile({
-        headerHash: h28(0xaa),
-        transactionsPath,
-        badTxId: badTxPayload.nodeTxId,
-        outputDir: dir,
-      });
-
-      expect(output.files?.txInclusionPath).toBe(
-        join(dir, "nri-tx-inclusion.json"),
-      );
-      expect(output.files?.referenceInputsPreimagePath).toBe(
-        join(dir, "nri-reference-inputs-preimage.json"),
-      );
-      expect(output.files?.ledgerNonMembershipPath).toBe(
-        join(dir, "nri-ledger-non-membership.json"),
-      );
-      expect(output.files?.txsNonMembershipPath).toBe(
-        join(dir, "nri-txs-non-membership.json"),
-      );
-      expect(output.files?.planPath).toBe(join(dir, "nri-plan.json"));
-
-      const inclusion = JSON.parse(
-        await readFile(join(dir, "nri-tx-inclusion.json"), "utf8"),
-      ) as { readonly nativeTxId: string };
-      expect(inclusion.nativeTxId).toBe(badTxPayload.nodeTxId);
-
-      const referenceInputsPreimage = JSON.parse(
-        await readFile(join(dir, "nri-reference-inputs-preimage.json"), "utf8"),
-      ) as readonly { readonly txId: string; readonly index: string }[];
-      expect(referenceInputsPreimage).toEqual([
-        { txId: PHANTOM_TX_ID, index: "0" },
-      ]);
-
-      const plan = JSON.parse(
-        await readFile(join(dir, "nri-plan.json"), "utf8"),
-      ) as {
-        readonly badTxId: string;
-        readonly badReferenceInputIndex: number;
-      };
-      expect(plan).toMatchObject({
-        badTxId: badTxPayload.nodeTxId,
-        badReferenceInputIndex: 0,
-      });
-    });
-  });
-
-  it("fetches node block transactions before preparing no-reference-input material", async () => {
-    const fetchImpl = async (input: string | URL): Promise<Response> => {
-      const url = new URL(String(input));
-      if (url.pathname === "/block") {
-        return new Response(
-          JSON.stringify({ hashes: [badTxPayload.nodeTxId] }),
-          { status: 200 },
-        );
-      }
-      if (url.pathname === "/tx") {
-        return new Response(JSON.stringify({ tx: badTxPayload.txCbor }), {
-          status: 200,
-        });
-      }
-      return new Response("not found", { status: 404 });
-    };
-
-    const output = await prepareNoReferenceInputFromNode({
-      midgardNodeUrl: "http://node.local/",
-      headerHash: h28(0xaa),
-      fetchImpl,
-    });
-
-    expect(output.badTxId).toBe(badTxPayload.nodeTxId);
-    expect(output.missingReferenceInput.tx_id).toBe(PHANTOM_TX_ID);
-  });
-
   it("runs from the checked predecessor ledger for a non-first block", async () => {
     const ledger: LedgerPairs = [[LEDGER_UTXO_KEY, LEDGER_OUTPUT_CBOR]];
     const utxosRoot = await ledgerRoot(ledger);
@@ -399,54 +303,5 @@ describe("prepare-no-reference-input", () => {
         prevLedger: await checkedPredecessor(ledger, utxosRoot),
       }),
     ).rejects.toThrow(/present key/i);
-  });
-
-  it("reads --prev-ledger-file and checks it against --prev-utxos-root", async () => {
-    await withTempDir(async (dir) => {
-      const transactionsPath = join(dir, "block-transactions.json");
-      await writeFile(transactionsPath, JSON.stringify([badTxPayload]));
-      const ledger: LedgerPairs = [[LEDGER_UTXO_KEY, LEDGER_OUTPUT_CBOR]];
-      const utxosRoot = await ledgerRoot(ledger);
-      const prevLedgerPath = join(dir, "prev-ledger.json");
-      await writeFile(
-        prevLedgerPath,
-        JSON.stringify({ headerHash: PREV_HEADER_HASH, entries: ledger }),
-      );
-      const wrongLedgerPath = join(dir, "wrong-ledger.json");
-      await writeFile(
-        wrongLedgerPath,
-        JSON.stringify({
-          headerHash: PREV_HEADER_HASH,
-          entries: [[LEDGER_UTXO_KEY, WRONG_OUTPUT_CBOR]],
-        }),
-      );
-      const config = {
-        headerHash: h28(0xaa),
-        transactionsPath,
-        prevHeaderHash: PREV_HEADER_HASH,
-        prevUtxosRoot: utxosRoot,
-      };
-
-      const output = await prepareNoReferenceInputFromFile({
-        ...config,
-        prevLedgerPath,
-      });
-      expect(output.prevUtxosRoot).toBe(utxosRoot);
-      expect(output.missingReferenceInput.tx_id).toBe(PHANTOM_TX_ID);
-
-      await expect(
-        prepareNoReferenceInputFromFile({
-          ...config,
-          prevLedgerPath: wrongLedgerPath,
-        }),
-      ).rejects.toBeInstanceOf(LedgerRootMismatchError);
-      await expect(
-        prepareNoReferenceInputFromFile({
-          ...config,
-          prevHeaderHash: h28(0x91),
-          prevLedgerPath,
-        }),
-      ).rejects.toThrow("is unavailable");
-    });
   });
 });

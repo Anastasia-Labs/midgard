@@ -5,13 +5,7 @@ import {
   SIGNER_WITNESS_SCAN_TITLES,
   type SpendingValidator,
 } from "@al-ft/midgard-sdk";
-import {
-  type Data,
-  type Network,
-  type Script,
-  validatorToAddress,
-  validatorToScriptHash,
-} from "@lucid-evolution/lucid";
+import { type Data, type Network, type Script } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
@@ -127,31 +121,4 @@ export const applyProtectedOutputSignerMissingScripts = ({
     adapt(steps[2], 2),
     adapt(steps[3], 3),
   ];
-};
-
-export const loadProtectedOutputSignerMissingManifest = (
-  manifest: ProtectedOutputSignerManifest,
-): ProtectedOutputSignerManifest => {
-  if (
-    manifest.schemaVersion !==
-      "protected-output-signer-missing-production-manifest-v1" ||
-    manifest.category !== PROTECTED_OUTPUT_SIGNER_MISSING_CATEGORY ||
-    manifest.categoryId !== PROTECTED_OUTPUT_SIGNER_MISSING_ID ||
-    manifest.firstStepHash !== manifest.steps[0].spendingScriptHash
-  )
-    throw new Error("protectedOutputSignerMissing manifest identity changed");
-  manifest.steps.forEach((step, index) => {
-    if (
-      step.blueprintTitle !==
-        PROTECTED_OUTPUT_SIGNER_MISSING_BLUEPRINT_TITLES[index] ||
-      validatorToScriptHash(step.spendingScript) !== step.spendingScriptHash ||
-      validatorToAddress(manifest.network, step.spendingScript) !==
-        step.spendingScriptAddress ||
-      !/^[0-9a-f]{64}#[0-9]+$/u.test(step.referenceOutRef)
-    )
-      throw new Error(
-        `protectedOutputSignerMissing step ${(index + 1).toString()} identity changed`,
-      );
-  });
-  return Object.freeze(manifest);
 };

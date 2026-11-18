@@ -4,7 +4,6 @@ export * from "./output-reference-script-decoding.canonical-findings.js";
 export * from "./output-reference-script-decoding.js";
 export * from "./schemas.js";
 export * from "./submit-cancel.js";
-export * from "./submit-init.js";
 export * from "./submit-step-01-accepted.js";
 export * from "./submit-step-01-forced.js";
 export * from "./submit-step-02.js";

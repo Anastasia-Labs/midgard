@@ -11,10 +11,3 @@ import { createInputExistenceFileSubmitter } from "./input-existence/submit-from
 
 export const submitNoReferenceInputStep03FromFiles =
   createInputExistenceFileSubmitter(1, 2);
-
-export type SubmitNoReferenceInputStep03Result = Awaited<
-  ReturnType<typeof submitNoReferenceInputStep03>
->;
-export type SubmitNoReferenceInputStep03CliConfig = Parameters<
-  typeof submitNoReferenceInputStep03FromFiles
->[0];

@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 
-import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { SpendInputSignerMissingEvidence } from "./spend-input-signer-missing.js";
 
 export const SPEND_INPUT_SIGNER_STAGES = [
@@ -37,21 +36,6 @@ export type SpendInputSignerJournalEntry = Readonly<{
 export interface SpendInputSignerJournal {
   load(identity: string): Promise<readonly SpendInputSignerJournalEntry[]>;
   append(entry: SpendInputSignerJournalEntry): Promise<void>;
-}
-export interface SpendInputSignerActuator {
-  observe(identity: string): Promise<SpendInputSignerStage>;
-  build(input: {
-    readonly action: SubmitAction;
-    readonly evidence: SpendInputSignerMissingEvidence;
-    readonly lease?: StateQueueMutationLeaseCoordinator;
-  }): Promise<
-    Readonly<{
-      txHash: string;
-      targetStage: SpendInputSignerStage;
-      submit(): Promise<string>;
-    }>
-  >;
-  transactionConfirmed(txHash: string): Promise<boolean>;
 }
 
 export const spendInputSignerWorkflowEvidenceIdentity = (
@@ -103,132 +87,5 @@ export const nextSpendInputSignerAction = (
     case "removed":
     case "cancelled":
       return "done";
-  }
-};
-
-const targetFor = (
-  action: SubmitAction,
-  claimed: SpendInputSignerStage,
-): SpendInputSignerStage => {
-  switch (action) {
-    case "submitInit":
-      return "step01";
-    case "submitStep01":
-      return "step02";
-    case "submitStep02":
-      // The witness scan opens next; a coordinate that needs no signer goes
-      // straight to the terminal.
-      if (claimed !== "scanning" && claimed !== "terminal")
-        throw new Error("spendInputSignerMissing step-02 target is invalid");
-      return claimed;
-    case "submitScan":
-      if (claimed !== "scanning" && claimed !== "terminal")
-        throw new Error("spendInputSignerMissing scan target is invalid");
-      return claimed;
-    case "submitTerminal":
-      return "proven";
-    case "cancel":
-      return "cancelled";
-    case "removeDescendants":
-      return "removed";
-  }
-};
-
-const pendingIntent = (
-  entries: readonly SpendInputSignerJournalEntry[],
-): SpendInputSignerJournalEntry | undefined =>
-  [...entries]
-    .reverse()
-    .find(
-      (candidate) =>
-        candidate.phase === "intent" &&
-        !entries.some(
-          (later) =>
-            later.sequence > candidate.sequence &&
-            later.action === candidate.action &&
-            later.txHash === candidate.txHash &&
-            later.phase === "confirmed",
-        ),
-    );
-
-/** Exact-signed-hash durable transition loop. The concrete production actuator
- * is package-owned; this narrow port exists only to test crash boundaries. */
-export const runSpendInputSignerMissingWorkflow = async ({
-  evidence,
-  journal,
-  actuator,
-  removalLease,
-}: {
-  readonly evidence: SpendInputSignerMissingEvidence;
-  readonly journal: SpendInputSignerJournal;
-  readonly actuator: SpendInputSignerActuator;
-  readonly removalLease?: StateQueueMutationLeaseCoordinator;
-}): Promise<SpendInputSignerStage> => {
-  const identity = spendInputSignerWorkflowEvidenceIdentity(evidence);
-  for (;;) {
-    const entries = await journal.load(identity);
-    if (
-      entries.some(
-        (entry, index) =>
-          entry.identity !== identity || entry.sequence !== index,
-      )
-    )
-      throw new Error(
-        "spendInputSignerMissing journal identity/sequence changed",
-      );
-    const pending = pendingIntent(entries);
-    if (pending !== undefined) {
-      if (!(await actuator.transactionConfirmed(pending.txHash)))
-        throw new Error(
-          "spendInputSignerMissing exact intended transaction is unresolved",
-        );
-      const observed = await actuator.observe(identity);
-      if (observed !== pending.targetStage)
-        throw new Error(
-          "spendInputSignerMissing authenticated stage/transaction identity substitution",
-        );
-      await journal.append({
-        ...pending,
-        sequence: entries.length,
-        phase: "confirmed",
-      });
-      continue;
-    }
-    const observed = await actuator.observe(identity);
-    const action = nextSpendInputSignerAction(observed);
-    if (action === "done") return observed;
-    if (action === "removeDescendants" && removalLease === undefined)
-      throw new Error(
-        "spendInputSignerMissing removal requires the state-queue mutation lease",
-      );
-    const built = await actuator.build({
-      action,
-      evidence,
-      ...(action === "removeDescendants" ? { lease: removalLease } : {}),
-    });
-    if (!/^[0-9a-f]{64}$/u.test(built.txHash))
-      throw new Error(
-        "spendInputSignerMissing signed transaction hash is invalid",
-      );
-    const intent: SpendInputSignerJournalEntry = {
-      sequence: entries.length,
-      identity,
-      sourceStage: observed,
-      targetStage: targetFor(action, built.targetStage),
-      action,
-      phase: "intent",
-      txHash: built.txHash,
-    };
-    await journal.append(intent);
-    const submitted = await built.submit();
-    if (submitted !== built.txHash)
-      throw new Error(
-        "spendInputSignerMissing submitter changed exact transaction identity",
-      );
-    await journal.append({
-      ...intent,
-      sequence: intent.sequence + 1,
-      phase: "submitted",
-    });
   }
 };
