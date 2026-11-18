@@ -60,6 +60,22 @@ describe("supervisor execution adapter with durable funding", () => {
     expect(test.setAlert).not.toHaveBeenCalled();
   });
 
+  it("returns revoked authority when the decision is revoked while the run reads the chain", async () => {
+    const test = await setup();
+    const journal = test.fixture.objectiveJournal();
+    const before = await journal.load(test.fixture.initial.workflowId);
+    test.fixture.chain.mockImplementation(async (txHash) => {
+      test.controller.revoke("new rollback generation");
+      return { kind: "confirmed", txHash };
+    });
+    expect(await test.execution.execute(test.input)).toMatchObject({
+      kind: "authority_revoked",
+    });
+    expect(test.runOrResume).toHaveBeenCalledOnce();
+    expect(await journal.load(test.fixture.initial.workflowId)).toEqual(before);
+    expect(test.setAlert).not.toHaveBeenCalled();
+  });
+
   it("waits for a fresh observation when a typed canonical capture changes", async () => {
     const test = await setup();
     test.runOrResume.mockRejectedValueOnce(
