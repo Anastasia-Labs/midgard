@@ -18,6 +18,7 @@ import {
   stackRunTimeoutsMs,
 } from "./journey-timing.js";
 import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
+import { proverDisputeTopUpBeforeFamily } from "./prover-dispute-top-up.js";
 import { readStackJourneyTimingPaths } from "./stack-context.js";
 import { fundStackLedgerOwner } from "./stack-ledger-owner.js";
 import { verifiedPredecessorBeforeFamily } from "./stack-verified-predecessor.before-family.js";
@@ -92,6 +93,12 @@ beforeAll(async () => {
 // verified-predecessor check then runs once more, without a heal, on the
 // last block the harness caused. None does anything once the session has
 // closed, nor for a family resuming its staging.
+//
+// First of all, a family whose dispute posts a bond needs the prover to hold
+// the product's custody for it over the run's actor funding; a devnet tops
+// it up by the shortfall, and a stack refuses a short prover
+// (`proverDisputeTopUpBeforeFamily`). It reads only the dispute's terms for
+// any other family.
 const familyTitle = (category: string) =>
   `automatically proves '${category}', corrects exact economics, and processes an honest successor`;
 beforeEach(async ({ task }) => {
@@ -101,11 +108,15 @@ beforeEach(async ({ task }) => {
     ({ category }) => familyTitle(category) === task.name,
   );
   if (fixture === undefined) return;
-  if (source.mode !== "stack" && !spendsOwnerOutput(fixture.category)) return;
   const opened = await openSession();
   const onStage = (name: string) => {
     console.info(`Before the family: ${name}`);
   };
+  await proverDisputeTopUpBeforeFamily(opened, {
+    category: fixture.category,
+    onStage,
+  });
+  if (source.mode !== "stack" && !spendsOwnerOutput(fixture.category)) return;
   await verifiedPredecessorBeforeFamily({
     familyDirectory: journeyFamilyDirectory(
       opened.context.runDirectory,

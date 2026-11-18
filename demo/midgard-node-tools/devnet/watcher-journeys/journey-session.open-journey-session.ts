@@ -41,6 +41,7 @@ import {
   waitForRestartedJourneyOperations,
 } from "./operations.js";
 import { journeyPorts, launchJourneyWatcherProcess } from "./process.js";
+import { JOURNEY_PROVER_FUNDING_OUTPUTS_LOVELACE } from "./prover-dispute-top-up.js";
 import { openJourneyReplayedLedger } from "./replayed-ledger.js";
 import { startJourneyRetainedDa } from "./retained-da.js";
 import type { SignedCommitAttempt } from "./signed-commit-reconciliation.js";
@@ -224,11 +225,10 @@ export const openJourneySession = async (runDirectory: string) => {
             Object.keys(utxo.assets).every((unit) => unit === "lovelace"),
         ),
       );
-      const built = await deployment.publisherLucid
-        .newTx()
-        .pay.ToAddress(prover, { lovelace: 500_000_000n })
-        .pay.ToAddress(prover, { lovelace: 500_000_000n })
-        .pay.ToAddress(prover, { lovelace: 100_000_000n })
+      const built = await JOURNEY_PROVER_FUNDING_OUTPUTS_LOVELACE.reduce(
+        (tx, lovelace) => tx.pay.ToAddress(prover, { lovelace }),
+        deployment.publisherLucid.newTx(),
+      )
         .pay.ToAddress(availability, { lovelace: 40_000_000_000n })
         .pay.ToAddress(availability, { lovelace: 10_000_000n })
         .complete({ localUPLCEval: true })

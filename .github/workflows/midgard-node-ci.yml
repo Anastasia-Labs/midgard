@@ -1395,6 +1395,7 @@ jobs:
             watcher-journeys/owner-output-selection.test.ts \
             watcher-journeys/process.test.ts \
             watcher-journeys/prover-address-isolation.test.ts \
+            watcher-journeys/prover-dispute-top-up.test.ts \
             watcher-journeys/public-da-preflight.test.ts \
             watcher-journeys/readiness-evidence.prover-payout.test.ts \
             watcher-journeys/readiness-evidence.test.ts \
