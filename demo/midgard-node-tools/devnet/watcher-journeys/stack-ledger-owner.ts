@@ -18,7 +18,10 @@ import {
 } from "../../src/full-stack/journey.js";
 import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";
 import type { JourneyLedgerPredecessor } from "./journey-ledger.js";
-import { readStackJourneyTiming } from "./journey-timing.js";
+import {
+  readStackJourneyTiming,
+  stackAbsorbWithinMs,
+} from "./journey-timing.js";
 import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
 import type { OperatorPause } from "./operator-pause.js";
 import type { StackJourneyContext } from "./stack-context.js";
@@ -312,14 +315,6 @@ export const stackLedgerOwnerDepositStatus =
       : "pending";
   };
 
-/**
- * How long our node may take to absorb work handed to it and have its block
- * attested: it may commit only after operator-2's whole shift, then its own
- * shift begins, and its committee attests within the DA attestation timeout.
- */
-export const STACK_ABSORB_WITHIN_MS =
-  2 * Number(SDK.SHIFT_DURATION_MS) + Number(SDK.DA_ATTESTATION_TIMEOUT_MS);
-
 /** Polls the stack's tail no faster than this while the deposit is pending. */
 const LEDGER_OWNER_POLL_MS = 30_000;
 
@@ -476,7 +471,9 @@ export const stackLedgerOwnerFunding = async (
     },
     now: () => chain.now(),
     pause: () => delay(LEDGER_OWNER_POLL_MS),
-    absorbWithinMs: STACK_ABSORB_WITHIN_MS,
+    absorbWithinMs: stackAbsorbWithinMs(
+      context.deployment.manifest.deploymentProfile.timing,
+    ),
     onStage,
   };
   return { owner, ourLedger, readTail, ports };

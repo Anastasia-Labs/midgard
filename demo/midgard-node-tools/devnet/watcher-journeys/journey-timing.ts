@@ -30,6 +30,7 @@ export {
   readStackJourneyTiming,
 } from "./journey-timing.read-journey-timing-tip.js";
 export {
+  stackAbsorbWithinMs,
   stackJourneyTimeoutMs,
   stackRunTimeoutsMs,
   type StackShiftCoverInput,

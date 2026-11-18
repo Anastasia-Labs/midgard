@@ -1420,6 +1420,7 @@ jobs:
             watcher-journeys/stack-user-event-floor.funding.test.ts \
             watcher-journeys/stack-user-event-floor.idle-scheduler.test.ts \
             watcher-journeys/stack-user-event-floor.test.ts \
+            watcher-journeys/stack-verified-predecessor.absorb-bound.test.ts \
             watcher-journeys/stack-verified-predecessor.test.ts \
             watcher-journeys/stack-verified-predecessor.top-up.test.ts \
             watcher-journeys/stage-timing.test.ts \

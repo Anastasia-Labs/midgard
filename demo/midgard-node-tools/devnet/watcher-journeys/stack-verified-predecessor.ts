@@ -56,10 +56,12 @@ import { readIndexedStateQueueHeader } from "./honest-successor.observables.js";
 import { successorTransfer } from "./honest-successor.transfer.js";
 import { journeyNetwork } from "./journey-network.js";
 import type { AttachedJourneySession } from "./journey-session.js";
-import { readStackJourneyTiming } from "./journey-timing.js";
+import {
+  readStackJourneyTiming,
+  stackAbsorbWithinMs,
+} from "./journey-timing.js";
 import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
 import { stackJourneyDa } from "./stack-journey-da.js";
-import { STACK_ABSORB_WITHIN_MS } from "./stack-ledger-owner.js";
 import { stackJourneyTransactions } from "./stack-transactions.js";
 import { leftQueueByMerge } from "./state-queue-root-anchor.js";
 import {
@@ -419,7 +421,9 @@ export const checkStackVerifiedPredecessor = async (
       }),
     now: () => chain.now(),
     pause: () => pauseUnlessAborted(DECISION_POLL_MS, session.signal),
-    absorbWithinMs: STACK_ABSORB_WITHIN_MS,
+    absorbWithinMs: stackAbsorbWithinMs(
+      context.deployment.manifest.deploymentProfile.timing,
+    ),
     decisionWithinMs: timing.allowances.automaticDecisionMs,
     onStage: input.onStage,
   };

@@ -70,6 +70,19 @@ export const stackJourneyTimeoutMs = (
 };
 
 /**
+ * How long our node may take, on an attached stack of deployment `profile`,
+ * to absorb work handed to it and have its block attested: it may commit
+ * only after operator-2's whole shift, then its own shift begins, and its
+ * committee attests within the DA attestation timeout.
+ */
+export const stackAbsorbWithinMs = (
+  profile: Readonly<{
+    operator_shift_ms: number;
+    da_attestation_timeout_ms: number;
+  }>,
+) => 2 * profile.operator_shift_ms + profile.da_attestation_timeout_ms;
+
+/**
  * Every family's time limit for one attached-stack run, in run order: each
  * family's own limit (`stackJourneyTimeoutMs`), and for the last, which alone
  * resumes operator-2's node (`journey.test.ts`), the longest that resume
