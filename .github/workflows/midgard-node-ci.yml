@@ -1378,6 +1378,7 @@ jobs:
             watcher-journeys/journey-runner.polls.test.ts \
             watcher-journeys/journey-session.family-run.test.ts \
             watcher-journeys/journey-session.test.ts \
+            watcher-journeys/journey-timing.devnet-staging.test.ts \
             watcher-journeys/journey-timing.stack-limit.test.ts \
             watcher-journeys/journey-timing.test.ts \
             watcher-journeys/kupo-consumption.test.ts \

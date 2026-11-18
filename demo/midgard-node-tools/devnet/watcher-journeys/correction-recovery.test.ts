@@ -17,6 +17,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { expect, it, vi } from "vitest";
 
 import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";
+import { expectQuietBoundRefusal } from "./correction.journey-progress-clock.test-support.js";
 import {
   finalizePendingJourneyEvidence,
   JOURNEY_WORKFLOW_STALL_ALLOWANCE_MS,
@@ -307,15 +308,14 @@ it("allows retained catch-up for the decision allowance plus the quiet bound, th
     entry(3, { kind: "confirmed", actionId: "init", txHash: "ab".repeat(32) }),
   ];
   const caughtUpAt = 900_000 + quietBoundMs;
-  await expect(
+  await expectQuietBoundRefusal(
     pollCorrectionProgress(retainedIntent, [
       { at: caughtUpAt, records: reobserved },
       { at: caughtUpAt + 1, records: progressed },
       { at: caughtUpAt + 1 + quietBoundMs, records: progressed },
       { at: caughtUpAt + 2 + quietBoundMs, records: progressed },
     ]),
-  ).rejects.toThrow(
-    `no journaled progress for ${quietBoundMs.toString()} ms (3 milestones, last action init)`,
+    { at: "", last: "last action init" },
   );
 });
 
@@ -336,7 +336,7 @@ it("bounds retained catch-up by the journey's own decision allowance despite rec
 });
 
 it("applies the watcher's quiet bound to a fresh workflow", async () => {
-  await expect(
+  await expectQuietBoundRefusal(
     pollCorrectionProgress(
       [],
       [
@@ -344,8 +344,7 @@ it("applies the watcher's quiet bound to a fresh workflow", async () => {
         { at: quietBoundMs + 1, records: [] },
       ],
     ),
-  ).rejects.toThrow(
-    `no journaled progress for ${quietBoundMs.toString()} ms (0 milestones, no action journaled)`,
+    { at: "", last: "no action journaled" },
   );
 });
 
@@ -430,7 +429,7 @@ it("does not count abandoning and re-resolving the same action as progress", asy
       outcome: "not_found",
     }),
   ];
-  await expect(
+  await expectQuietBoundRefusal(
     pollCorrectionProgress(
       [],
       [
@@ -441,8 +440,7 @@ it("does not count abandoning and re-resolving the same action as progress", asy
       ],
       reconciliationAllowanceMs,
     ),
-  ).rejects.toThrow(
-    `no journaled progress for ${quietBoundMs.toString()} ms (2 milestones, last action init:old#0)`,
+    { at: "", last: "last action init:old#0" },
   );
 });
 

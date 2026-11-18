@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   entry,
+  expectQuietBoundRefusal,
   identity,
   pollCorrectionProgress,
 } from "./correction.journey-progress-clock.test-support.js";
@@ -163,7 +164,7 @@ describe("the progress clock over an undefended validation-trace case", () => {
   it("catches a stall before the case opens after the watcher's quiet bound", async () => {
     // Open landed; VerifySource, which creates the case, never does.
     const openedAt = startedAt - 300_000;
-    await expect(
+    await expectQuietBoundRefusal(
       pollCorrectionProgress({
         retained: [],
         observations: [
@@ -174,8 +175,10 @@ describe("the progress clock over an undefended validation-trace case", () => {
         startAt: openedAt - 60_000,
         gate: gate(),
       }),
-    ).rejects.toThrow(
-      `at observation 3 of 3: Workflow made no journaled progress for ${quietBoundMs.toString()} ms (5 milestones, last action validation-trace-open:${initHash}#0)`,
+      {
+        at: "at observation 3 of 3: ",
+        last: `last action validation-trace-open:${initHash}#0`,
+      },
     );
   });
 

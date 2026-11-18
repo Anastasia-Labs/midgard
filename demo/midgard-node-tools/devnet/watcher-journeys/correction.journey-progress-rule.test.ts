@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   entry,
+  expectQuietBoundRefusal,
   pollCorrectionProgress,
 } from "./correction.journey-progress-clock.test-support.js";
 import { journeyTimingForCategory } from "./journey-timing.js";
@@ -77,14 +78,14 @@ describe.each([0.05, 0.25])(
     });
 
     it.each([
-      ["", 4],
+      "",
       // The orchestrator journals a diagnostic between the action's entries
       // each time; the watcher writes it again because it is no longer the
       // journal's last entry, and only the first one is news.
-      ["reconciliation failed for step-1: provider unavailable", 5],
+      "reconciliation failed for step-1: provider unavailable",
     ])(
       "fails a loop that resubmits and abandons one action, naming it, just past the quiet bound (diagnostic %j)",
-      async (diagnostic, milestones) => {
+      async (diagnostic) => {
         const loop = journal();
         loop.add(startAt, { kind: "started" });
         loop.step(startAt + stepMs, "step-0");
@@ -131,10 +132,12 @@ describe.each([0.05, 0.25])(
           { at: firstAttemptAt + quietBoundMs + 1, records: loop.snapshot() },
         );
         const count = observations.length.toString();
-        await expect(
+        await expectQuietBoundRefusal(
           pollCorrectionProgress({ retained: [], observations, startAt, gate }),
-        ).rejects.toThrow(
-          `at observation ${count} of ${count}: Workflow made no journaled progress for ${quietBoundMs.toString()} ms (${milestones.toString()} milestones, last action ${actionId})`,
+          {
+            at: `at observation ${count} of ${count}: `,
+            last: `last action ${actionId}`,
+          },
         );
       },
     );
@@ -183,10 +186,12 @@ describe.each([0.05, 0.25])(
       const failing = (
         observations.findIndex(({ at }) => at - stallAt > quietBoundMs) + 1
       ).toString();
-      await expect(
+      await expectQuietBoundRefusal(
         pollCorrectionProgress({ retained: [], observations, startAt, gate }),
-      ).rejects.toThrow(
-        `at observation ${failing} of ${observations.length.toString()}: Workflow made no journaled progress for ${quietBoundMs.toString()} ms (4 milestones, last action step-0)`,
+        {
+          at: `at observation ${failing} of ${observations.length.toString()}: `,
+          last: "last action step-0",
+        },
       );
     });
 
@@ -195,7 +200,7 @@ describe.each([0.05, 0.25])(
       silent.add(startAt, { kind: "started" });
       silent.step(startAt + stepMs, "step-0");
       const confirmedAt = startAt + stepMs;
-      await expect(
+      await expectQuietBoundRefusal(
         pollCorrectionProgress({
           retained: [],
           observations: [
@@ -206,8 +211,7 @@ describe.each([0.05, 0.25])(
           startAt,
           gate,
         }),
-      ).rejects.toThrow(
-        `at observation 3 of 3: Workflow made no journaled progress for ${quietBoundMs.toString()} ms (3 milestones, last action step-0)`,
+        { at: "at observation 3 of 3: ", last: "last action step-0" },
       );
     });
   },

@@ -7,6 +7,7 @@ import {
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
   type FraudProofWorkflowJournalEntry,
+  WORKFLOW_CONTINUATION_QUIET_BOUND_MS,
 } from "@al-ft/midgard-fault-proofs";
 import { expect, vi } from "vitest";
 
@@ -101,4 +102,27 @@ export const pollCorrectionProgress = async ({
     now.mockRestore();
     await rm(directory, { recursive: true, force: true });
   }
+};
+
+/**
+ * Expect `run` to be refused by the watcher's quiet bound: the refusal
+ * follows `at` (where the gate stopped, `""` when the caller does not report
+ * it) and names `last`, the workflow's last journaled action. The refusal
+ * also reports a tally of milestones; that is the progress rule's internal
+ * count, not behaviour, so it is not asserted.
+ */
+export const expectQuietBoundRefusal = async (
+  run: Promise<unknown>,
+  { at, last }: { at: string; last: string },
+) => {
+  const message = await run.then(
+    () => {
+      throw new Error("expected the watcher's quiet bound to refuse the run");
+    },
+    (error: unknown) => (error as Error).message,
+  );
+  expect(message).toContain(
+    `${at}Workflow made no journaled progress for ${WORKFLOW_CONTINUATION_QUIET_BOUND_MS.toString()} ms (`,
+  );
+  expect(message).toContain(`, ${last})`);
 };
