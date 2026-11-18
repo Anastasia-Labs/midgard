@@ -1,4 +1,8 @@
-import { beginWorkflowFundingReservationAction } from "@al-ft/midgard-fault-proofs";
+import {
+  beginWorkflowFundingReservationAction,
+  createWorkflowActuationPermitController,
+  isWorkflowActuationRevokedError,
+} from "@al-ft/midgard-fault-proofs";
 import { afterEach, expect, it, vi } from "vitest";
 
 import {
@@ -10,6 +14,7 @@ import {
 import { correctionOn } from "./included-correction.js";
 import { retirementFixture } from "./sqlite-prover-funding-reservation-store.signed-transition.js";
 import {
+  type Fixture,
   fundingOf,
   recordReplacement,
   signReplacement,
@@ -79,6 +84,53 @@ it("keeps the confirmed replacement as the result when the expired attempt is on
   ]);
   expect(intentsOf(events, fixture.transactionHash)).toBe(1);
   expect((await fixture.records())[0]!.pendingTransition).toBeNull();
+});
+
+/** The process restarts again under a permit the test holds. */
+const restartUnderHeldPermit = async (fixture: Fixture) => {
+  const controller = createWorkflowActuationPermitController({
+    decision: fixture.fresh,
+    rollbackGeneration: "2",
+  });
+  const journal = fixture.bind(
+    fixture.fresh,
+    await fixture.createPermit(fixture.fresh, "2", controller),
+  );
+  return { controller, journal };
+};
+
+it("records the pair once when the process restarts with both attempts on chain", async () => {
+  const fixture = await setupFundingRecoveryFixture(false, true);
+  const { replacement } = await confirmReplacement(fixture);
+  const { journal } = await restartUnderHeldPermit(fixture);
+  const before = (await journal.load(fixture.initial.workflowId)).length;
+  chainHolds(fixture, [fixture.transactionHash, replacement.transactionHash]);
+  const events = await runMinutesApart(fixture, journal, 4);
+  expect(events.slice(before)).toEqual([
+    {
+      kind: "stalled",
+      reason: `attempts ${replacement.transactionHash} and ${fixture.transactionHash} of init both landed; ${replacement.transactionHash} is its result`,
+    },
+  ]);
+});
+
+it("hands back the revocation that arrives while the confirmed replacement is read beside the landed expired attempt, and records nothing", async () => {
+  const fixture = await setupFundingRecoveryFixture(false, true);
+  const { replacement } = await confirmReplacement(fixture);
+  const { controller, journal } = await restartUnderHeldPermit(fixture);
+  const before = await journal.load(fixture.initial.workflowId);
+  fixture.chain.mockImplementation(async (txHash) => {
+    // The decision is revoked while the chain answers for the replacement.
+    if (txHash === replacement.transactionHash)
+      controller.revoke("native_chain_rollback");
+    return { kind: "confirmed", txHash: txHash! };
+  });
+  const outcome = await runMinutesApart(fixture, journal, 4).then(
+    (result) => result,
+    (error: unknown) => error,
+  );
+  expect(isWorkflowActuationRevokedError(outcome)).toBe(true);
+  expect(await journal.load(fixture.initial.workflowId)).toEqual(before);
 });
 
 it("keeps the confirmed replacement as the result when it is on chain deeper than the recovery window and the expired attempt lands beside it, and records the pair once", async () => {
