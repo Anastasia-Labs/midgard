@@ -372,9 +372,9 @@ export const selectFeeInput = (walletUtxos: readonly UTxO[]): UTxO => {
       const nonAdaAssets = Object.entries(utxo.assets).filter(
         ([unit, amount]) => unit !== "lovelace" && amount > 0n,
       );
+      // The funding rule (`isPlainFundingOutput`): a datum does not matter
+      // at the funding address, which holds no proof material.
       return (
-        utxo.datum == null &&
-        utxo.datumHash == null &&
         utxo.scriptRef == null &&
         nonAdaAssets.length === 0 &&
         (utxo.assets.lovelace ?? 0n) >= MIN_FEE_INPUT_LOVELACE

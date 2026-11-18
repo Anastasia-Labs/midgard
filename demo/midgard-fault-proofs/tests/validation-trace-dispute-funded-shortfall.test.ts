@@ -3,9 +3,11 @@
  * on the emulator. A wallet the operator empties once Init has landed pauses
  * the objective at Open on the funding-shortfall hold, with the
  * prover-funding alarm, on every observation until a top-up, releases what
- * the paused attempt held, and then Opens and VerifySources. Coins at the prover address that carry an inline datum, a
- * datum hash or a reference script are never spent and never offered as
- * collateral, even when each is larger than every plain coin.
+ * the paused attempt held, and then Opens and VerifySources. Coins at the
+ * prover's funding address that carry a token or a reference script are
+ * never spent and never offered as collateral, even when each is larger than
+ * every plain coin; a refund the chain tags with a datum is money, and funds
+ * the next move.
  *
  * The category is not installed until its defender exists; this file
  * stands in for that install so the production classifier mints the
@@ -13,6 +15,7 @@
  */
 import {
   CML,
+  Constr,
   Data,
   type Emulator,
   getAddressDetails,
@@ -33,6 +36,7 @@ import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import {
   drainProver,
   drainProverToOneCoin,
+  sendTokenCoin,
   topUpProver,
 } from "./support/installed-prover-wallet.js";
 import {
@@ -170,7 +174,7 @@ describe("validation-trace dispute funding under the prover funding permit", () 
   );
 
   it(
-    "pauses VerifySource on a wallet whose ada sits in coins carrying an inline datum, a datum hash or a reference script, and lands after a top-up without spending them or offering them as collateral",
+    "pauses VerifySource on a wallet whose ada sits in coins carrying a token or a reference script, and lands on a top-up of tagged refunds, never spending those coins or offering them as collateral",
     async () => {
       const { h } = scene;
       const dispute = await openFundedDispute(scene);
@@ -191,28 +195,20 @@ describe("validation-trace dispute funding under the prover funding permit", () 
         h.funderLucid.clearUTxOOverride();
         const planting = await h.funderLucid
           .newTx()
-          .pay.ToAddressWithData(
-            address,
-            { kind: "inline", value: Data.void() },
-            { lovelace },
-          )
-          .pay.ToAddressWithData(
-            address,
-            { kind: "asHash", value: Data.void() },
-            { lovelace },
-          )
           .pay.ToAddressWithData(address, undefined, { lovelace }, scriptRef)
           .complete();
         const planted = await (
           await planting.sign.withWallet().complete()
         ).submit();
         h.emulator.awaitBlock(1);
-        const shaped = [0, 1, 2].map(
-          (index) => `${planted}#${index.toString()}`,
-        );
+        const token = await sendTokenCoin(h as never, lovelace);
+        const shaped = [
+          `${planted}#0`,
+          `${token.txHash}#${token.outputIndex.toString()}`,
+        ];
         expect(
           await h.emulator.getUtxosByOutRef(shaped.map(parseOwnOutRef)),
-        ).toHaveLength(3);
+        ).toHaveLength(2);
 
         recorded = recordSubmitted(h.emulator);
         const paused = await turnUntil(dispute, WORKFLOW_FUNDING_SHORTFALL);
@@ -223,9 +219,29 @@ describe("validation-trace dispute funding under the prover funding permit", () 
         );
         expect(confirmedStages(paused.result)).toStrictEqual(["init", "open"]);
 
-        await recorded.asOtherParty(
-          async () => await topUpProver(h as never, BOND_LOVELACE + 100n * ADA),
-        );
+        // The top-up is two refunds as a dispute's Close pays them: tagged
+        // with the out-ref they release, one inline, one by its hash.
+        const tag = Data.to(new Constr(0, ["ab".repeat(32), 0n]));
+        let refunded = "";
+        await recorded.asOtherParty(async () => {
+          const refunds = await h.funderLucid
+            .newTx()
+            .pay.ToAddressWithData(
+              address,
+              { kind: "inline", value: tag },
+              { lovelace: BOND_LOVELACE + 100n * ADA },
+            )
+            .pay.ToAddressWithData(
+              address,
+              { kind: "asHash", value: tag },
+              { lovelace: 100n * ADA },
+            )
+            .complete();
+          refunded = await (
+            await refunds.sign.withWallet().complete()
+          ).submit();
+          h.emulator.awaitBlock(1);
+        });
         const { result, history } = await turnUntil(
           dispute,
           VALIDATION_TRACE_CASE_OPEN,
@@ -244,9 +260,15 @@ describe("validation-trace dispute funding under the prover funding permit", () 
             expect(collateral).not.toContain(outRef);
           }
         }
+        // Only the inline-tagged refund pays the bond: it was spent.
+        expect(
+          recorded.submitted.some(({ inputs }) =>
+            inputs.includes(`${refunded}#0`),
+          ),
+        ).toBe(true);
         expect(
           await h.emulator.getUtxosByOutRef(shaped.map(parseOwnOutRef)),
-        ).toHaveLength(3);
+        ).toHaveLength(2);
       } finally {
         recorded?.restore();
         await dispute.close();

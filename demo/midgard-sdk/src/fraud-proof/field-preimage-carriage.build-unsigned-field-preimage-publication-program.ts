@@ -234,9 +234,9 @@ export const assertFieldPreimagePublicationFits = ({
 };
 
 /**
- * Publishes **one** raw carriage output: an ada-only UTxO at the publisher's
- * own key address carrying the bytes as a nothing-but-bytes inline datum
- * (§8.5).
+ * Publishes **one** raw carriage output: an ada-only UTxO at
+ * `publisherAddress` (the prover's proof-materials address) carrying the
+ * bytes as a nothing-but-bytes inline datum (§8.5).
  *
  * **One publication per transaction, not one per plan.** A chunk is sized to
  * fill a transaction: against a 16,384-byte `maxTxSize`, a full chunk's signed
@@ -275,12 +275,11 @@ export const buildUnsignedFieldPreimagePublicationProgram = (
         publication,
         ...(maxPublicationBytes === undefined ? {} : { maxPublicationBytes }),
       });
-      // Publications and authenticated script references may share the prover
-      // address. They are evidence, not transaction funding.
+      // The wallet is the prover's funding address, which holds no
+      // publication: every pure-Ada output there without a reference script
+      // is money, a tag datum (a refund the chain paid us) included.
       const fundingInputs = (await lucid.wallet().getUtxos()).filter(
         (utxo) =>
-          utxo.datum == null &&
-          utxo.datumHash == null &&
           utxo.scriptRef == null &&
           Object.keys(utxo.assets).every((unit) => unit === "lovelace"),
       );

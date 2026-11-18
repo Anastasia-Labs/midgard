@@ -221,9 +221,10 @@ export const midgardCekStagingDeposit = ({
     label: "staging output",
   });
 
+/** A coin of the wallet's funding address: pure Ada and no reference
+ * script. A datum does not matter there: the chain pays refunds to it with
+ * a tag datum, and staging outputs live at the staging address. */
 const plainAda = (utxo: UTxO): boolean =>
-  utxo.datum == null &&
-  utxo.datumHash == null &&
   utxo.scriptRef == null &&
   Object.keys(utxo.assets).every((unit) => unit === "lovelace");
 

@@ -43,9 +43,9 @@ const validator: SpendingValidator = {
   script: applyDoubleCborEncoding("5101010023259800a518a4d136564004ae69"),
 };
 
-/** A prover whose wallet holds `coins`, in order, beside a funder. A coin
- * with a datum stands for a published proof chunk at the prover's key
- * address. */
+/** A prover holding `coins`, in order, beside a funder. A coin with a datum
+ * stands for a published proof chunk, at the prover's proof-materials
+ * address; the others are its wallet's, at its funding address. */
 const prover = async (
   coins: readonly { readonly lovelace: bigint; readonly datum?: string }[],
 ) => {
@@ -65,7 +65,8 @@ const prover = async (
     },
     ...coins.map(({ lovelace, datum }) => ({
       ...proverAccount,
-      address: signer.address,
+      address:
+        datum === undefined ? signer.address : signer.proofMaterialsAddress,
       assets: { lovelace },
       ...(datum === undefined ? {} : { outputData: { inline: datum } }),
     })),
@@ -142,7 +143,10 @@ describe("fundStep and completeStep", () => {
     const [fee, extra] = proverUtxos;
 
     const funding = await fundStep(lucid, { signer });
+    // A plain coin and a tagged refund reach the wallet, the prover's own
+    // carriage its proof-materials address.
     const carriage = Data.to(new Constr(0, ["cd".repeat(32)]));
+    const tag = Data.to(new Constr(0, ["ef".repeat(32), 0n]));
     const lateHash = await (
       await (
         await funderLucid
@@ -150,6 +154,11 @@ describe("fundStep and completeStep", () => {
           .pay.ToAddress(signer.address, { lovelace: ada(100n) })
           .pay.ToAddressWithData(
             signer.address,
+            { kind: "inline", value: tag },
+            { lovelace: ada(150n) },
+          )
+          .pay.ToAddressWithData(
+            signer.proofMaterialsAddress,
             { kind: "inline", value: carriage },
             { lovelace: ada(200n) },
           )
@@ -163,7 +172,7 @@ describe("fundStep and completeStep", () => {
       ({ txHash }) => txHash === lateHash,
     );
     expect(late.map(({ datum }) => datum ?? null).sort()).toEqual(
-      [carriage, null].sort(),
+      [tag, null].sort(),
     );
 
     const signed = await completeStep(

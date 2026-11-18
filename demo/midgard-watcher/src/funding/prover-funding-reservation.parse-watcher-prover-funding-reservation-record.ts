@@ -243,6 +243,12 @@ export const compareLargestFirst = (
       ? -1
       : 1;
 
+/**
+ * `utxo` as a funding candidate, or null when it is not one: it must sit at
+ * `expectedAddress` (the funding address) and carry no reference script. A
+ * datum or datum hash does not matter: the chain's tagged refunds to the
+ * funding address are money (`isPlainFundingOutput`).
+ */
 export const parseCandidate = (
   utxo: UTxO,
   expectedAddress: string,
@@ -250,8 +256,6 @@ export const parseCandidate = (
   const reference = outRef(utxo);
   if (
     utxo.address !== expectedAddress ||
-    (utxo.datum !== undefined && utxo.datum !== null) ||
-    (utxo.datumHash !== undefined && utxo.datumHash !== null) ||
     (utxo.scriptRef !== undefined && utxo.scriptRef !== null)
   ) {
     return null;

@@ -124,7 +124,7 @@ export const nodeRoleWallets = (
 
 const walletPlainLovelaceGauge = Metric.gauge("midgard_wallet_plain_lovelace", {
   description:
-    "Lovelace in the plain-ADA outputs (no token, datum or script reference) of a node role wallet's view, by role",
+    "Lovelace in the plain-ADA outputs (no token or script reference; a datum does not matter) of a node role wallet's view, by role",
   bigint: true,
 });
 

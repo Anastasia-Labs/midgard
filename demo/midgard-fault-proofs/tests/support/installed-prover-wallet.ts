@@ -28,9 +28,9 @@ const drainProverTo = async (harness: Harness, keep: readonly bigint[]) => {
   harness.emulator.awaitBlock();
   const lucid = harness.proverLucid;
   lucid.clearUTxOOverride();
+  // Every coin but a reference-script one; a refund's tag datum is money.
   const plain = (await lucid.wallet().getUtxos()).filter(
-    (utxo) =>
-      utxo.datum == null && utxo.datumHash == null && utxo.scriptRef == null,
+    (utxo) => utxo.scriptRef == null,
   );
   let draining = lucid.newTx().collectFrom(plain);
   for (const lovelace of keep)

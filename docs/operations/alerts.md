@@ -332,8 +332,9 @@ within five minutes of the provider answering.
 
 ### MidgardWalletBalanceLow
 
-**Meaning.** A node role wallet holds less plain ADA (outputs with no token,
-datum or script reference) than its transactions need for five minutes. The
+**Meaning.** A node role wallet holds less plain ADA (outputs with no token
+or script reference; a tag datum on a refund does not matter) than its
+transactions need for five minutes. The
 `role` label names the wallet; the balance is
 `midgard_wallet_plain_lovelace` and the requirement
 `midgard_wallet_required_lovelace`. Both are read from the wallet view the
@@ -543,8 +544,10 @@ meets something else, as the first run after a top-up does, or once the
 objective settles.
 
 **First checks.** `l1Readiness` in `GET /v1/status`, and the prover wallet's
-plain-ADA coins (a coin holding a token is never spent; one reserved pool of
-coins funds a transaction and posts its collateral).
+plain-ADA coins at its funding address (a coin holding a token or a
+reference script is never spent, a refund's tag datum does not matter; one
+reserved pool of coins funds a transaction and posts its collateral). Proof
+materials sit at the prover's proof-materials address and are never funding.
 
 **Action.** Top up the prover wallet with plain-ADA coins at once: the proof
 still has to land before its header matures, and `supervisor.deadlineHealth`

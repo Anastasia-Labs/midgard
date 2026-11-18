@@ -14,6 +14,7 @@ import {
   type LucidEvolution,
   type OutRef,
   paymentCredentialOf,
+  scriptFromNative,
   type TxSignBuilder,
   type UTxO,
 } from "@lucid-evolution/lucid";
@@ -59,10 +60,15 @@ const submit = async (lucid: LucidEvolution, unsigned: TxSignBuilder) => {
 
 /**
  * A stager wallet holding exactly `outputs`, each paid to it by a separate
- * funder account; the stager's wallet is selected.
+ * funder account, under an inline `datum` or with a reference script when
+ * asked; the stager's wallet is selected.
  */
 const stagerHolding = async (
-  outputs: readonly { readonly lovelace: bigint; readonly datum?: string }[],
+  outputs: readonly {
+    readonly lovelace: bigint;
+    readonly datum?: string;
+    readonly referenceScript?: true;
+  }[],
 ) => {
   const funder = generateEmulatorAccount({ lovelace: 2_000_000_000n });
   const stager = generateEmulatorAccount({ lovelace: 0n });
@@ -70,14 +76,19 @@ const stagerHolding = async (
   const lucid = await Lucid(emulator, "Custom");
   lucid.selectWallet.fromSeed(funder.seedPhrase);
   let tx = lucid.newTx();
-  for (const { lovelace, datum } of outputs) {
+  const script = scriptFromNative({
+    type: "sig",
+    keyHash: paymentCredentialOf(stager.address).hash,
+  });
+  for (const { lovelace, datum, referenceScript } of outputs) {
     tx =
-      datum === undefined
+      datum === undefined && referenceScript === undefined
         ? tx.pay.ToAddress(stager.address, { lovelace })
         : tx.pay.ToAddressWithData(
             stager.address,
-            { kind: "inline", value: datum },
+            datum === undefined ? undefined : { kind: "inline", value: datum },
             { lovelace },
+            referenceScript === undefined ? undefined : script,
           );
   }
   await submit(lucid, await tx.complete());
@@ -293,11 +304,11 @@ describe("CEK operand staging", () => {
     ).toBe(true);
   });
 
-  it("funds staging from plain-Ada outputs only", async () => {
-    const other = Data.to(new Constr(0, [["ab", 1n]]));
+  it("funds staging from pure-Ada coins, a tagged refund included, never from a reference-script coin", async () => {
+    const tag = Data.to(new Constr(0, [["ab", 1n]]));
     const { stager, lucid } = await stagerHolding([
-      { lovelace: 300_000_000n, datum: other },
-      { lovelace: 25_000_000n },
+      { lovelace: 300_000_000n, referenceScript: true },
+      { lovelace: 25_000_000n, datum: tag },
     ]);
     const [run] = planMidgardCekStaging([operand(5_000, 6)]);
     const unsigned = await Effect.runPromise(
@@ -305,7 +316,8 @@ describe("CEK operand staging", () => {
     );
     await submit(lucid, unsigned);
     const wallet = await lucid.wallet().getUtxos();
-    expect(wallet.filter((utxo) => utxo.datum === other)).toHaveLength(1);
+    expect(wallet.filter((utxo) => utxo.scriptRef != null)).toHaveLength(1);
+    expect(wallet.filter((utxo) => utxo.datum === tag)).toHaveLength(0);
     expect(
       await lucid.utxosByOutRef([
         outRefOf(midgardCekStagingOutRef(unsigned, run!)),
@@ -317,10 +329,7 @@ describe("CEK operand staging", () => {
 
   it("refuses to stage from a wallet with no plain-Ada outputs", async () => {
     const { lucid } = await stagerHolding([
-      {
-        lovelace: 300_000_000n,
-        datum: Data.to(new Constr(0, [["ab", 1n]])),
-      },
+      { lovelace: 300_000_000n, referenceScript: true },
     ]);
     const [run] = planMidgardCekStaging([operand(5_000, 7)]);
     const refused = await Effect.runPromise(

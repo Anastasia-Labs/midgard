@@ -12,6 +12,7 @@ import {
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { isPlainFundingOutput } from "../src/funding/plain-funding-output.js";
 import { expectOnchainRefusal } from "./support/submit-init-emulator-shared.js";
 import {
   buildCloseCase,
@@ -93,6 +94,9 @@ describe("validation case bond on the emulator", () => {
     await submitSigned(world, await buildCloseCase(world, first));
     const refund = await paidWithTag(world, world.proverAddress, first.bond);
     expect(refund.map(lovelaceOf)).toEqual([bondLovelace]);
+    // The refund is tagged with the bond's out-ref, and it is money: coin
+    // selection may spend it.
+    expect(refund.filter(isPlainFundingOutput)).toEqual(refund);
   });
 
   it("refuses a convicted close that pays the bond anywhere but the challenger", async () => {
