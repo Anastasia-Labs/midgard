@@ -78,6 +78,7 @@ export * from "./release-economics-policy.js";
 export * from "./release-finality-policy.js";
 export * from "./replay-requirements.js";
 export * from "./runtime.js";
+export { validationDisputeWalletMoveReserve } from "./runtime-funding-fee.js";
 export * from "./runtime-funding-policy.js";
 export {
   reconcileSignedWorkflowTransaction,
