@@ -1,10 +1,10 @@
 /**
  * The field-carriage roles of the installed application, read off the
  * transactions the ledger watch records: the field publications (inline
- * byte-string datums at the prover address) and the field certificate (the
- * output holding the certificate token). A row places other parties'
- * outputs with the same datums at those addresses and checks that the
- * application's own transactions read only the carriage it published.
+ * byte-string datums at the prover's proof-materials address) and the field
+ * certificate (the output holding the certificate token). A row places other
+ * parties' outputs with the same datums at those addresses and checks that
+ * the application's own transactions read only the carriage it published.
  */
 import { FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX } from "@al-ft/midgard-sdk";
 import {
@@ -33,9 +33,9 @@ export type CarriageOutput = Readonly<{
 
 /** Where the installed application's field carriage goes. */
 export type FieldCarriageSites = Readonly<{
-  /** The prover address field publications are paid to. */
+  /** The proof-materials address field publications are paid to. */
   publisherAddress: string;
-  /** Script-decode staging datums, also at the prover address. */
+  /** Script-decode staging datums, also at the proof-materials address. */
   stagingDatums: readonly string[];
   /** The field-preimage certificate policy. */
   certificatePolicyId: string;

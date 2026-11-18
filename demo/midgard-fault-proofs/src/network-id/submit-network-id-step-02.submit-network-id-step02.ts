@@ -222,7 +222,7 @@ export const submitNetworkIdStep02 = async ({
           lucid,
           signer,
           planned,
-          publisherAddress: signer.address,
+          publisherAddress: signer.proofMaterialsAddress,
           label: `${STEP_LABEL} outputs`,
           preSubmitBoundary,
         });

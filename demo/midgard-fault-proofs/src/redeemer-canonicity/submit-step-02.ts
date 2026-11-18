@@ -152,7 +152,7 @@ export const submitRedeemerCanonicityStep02 = async ({
       lucid,
       signer,
       planned,
-      publisherAddress: signer.address,
+      publisherAddress: signer.proofMaterialsAddress,
       label: "redeemer-canonicity field opening",
       preSubmitBoundary: publicationPreSubmitBoundary,
     }));

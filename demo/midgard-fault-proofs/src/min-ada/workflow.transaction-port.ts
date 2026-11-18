@@ -86,7 +86,7 @@ export const transactionPort = (
       const chunks = !isForced(admitted)
         ? await resolvePublishedProofChunks({
             lucid: config.lucid,
-            address: config.signer.address,
+            address: config.signer.proofMaterialsAddress,
             proofCbor: admitted.prepared.txInclusion.txMembershipProofCbor,
           })
         : [];

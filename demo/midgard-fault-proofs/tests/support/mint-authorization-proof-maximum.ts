@@ -206,7 +206,6 @@ export const runMintAuthorizationProofMaximum = async (
   const chunks = await capture("source-publications", () =>
     publishProofChunks({
       lucid: h.proverLucid,
-      network,
       signer: h.proverSigner,
       proofCbor: block.txInclusion!.txMembershipProofCbor!,
     }),
@@ -264,7 +263,7 @@ export const runMintAuthorizationProofMaximum = async (
       lucid: h.proverLucid,
       signer: h.proverSigner,
       planned,
-      publisherAddress: h.proverSigner.address,
+      publisherAddress: h.proverSigner.proofMaterialsAddress,
       label: "maximum mint field",
     }),
   );
@@ -307,7 +306,7 @@ export const runMintAuthorizationProofMaximum = async (
         await h.proverLucid
           .newTx()
           .pay.ToAddressWithData(
-            h.proverSigner.address,
+            h.proverSigner.proofMaterialsAddress,
             { kind: "inline", value: datum },
             { lovelace: 80_000_000n },
           )
@@ -317,9 +316,9 @@ export const runMintAuthorizationProofMaximum = async (
         .complete();
       const txHash = await signed.submit();
       await h.proverLucid.awaitTx(txHash);
-      const found = (await h.proverLucid.utxosAt(h.proverSigner.address)).find(
-        (utxo) => utxo.txHash === txHash && utxo.datum === datum,
-      );
+      const found = (
+        await h.proverLucid.utxosAt(h.proverSigner.proofMaterialsAddress)
+      ).find((utxo) => utxo.txHash === txHash && utxo.datum === datum);
       if (found === undefined)
         throw new Error("missing structured claim publication");
       evidenceReferences.push(found);

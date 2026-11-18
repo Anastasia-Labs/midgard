@@ -63,14 +63,14 @@ export type OwnOutputRole = Readonly<{
   datums: readonly string[];
 }>;
 
-/** The script-decode roles of one Plutus item, over `emulator`'s deployment. */
+/** A Plutus item's script-decode roles, staged at `materialsAddress`. */
 export const scriptDecodeRoles = ({
   emulator,
-  proverAddress,
+  materialsAddress,
   item,
 }: {
   readonly emulator: Emulator;
-  readonly proverAddress: string;
+  readonly materialsAddress: string;
   readonly item: Uint8Array;
 }) => {
   const script = plutusItemScript(item);
@@ -80,7 +80,7 @@ export const scriptDecodeRoles = ({
     script,
     staging: {
       role: "script_decode_staging",
-      address: proverAddress,
+      address: materialsAddress,
       datums: scriptDecodeStagingDatums(script.scriptBytes),
     } satisfies OwnOutputRole,
     run: {

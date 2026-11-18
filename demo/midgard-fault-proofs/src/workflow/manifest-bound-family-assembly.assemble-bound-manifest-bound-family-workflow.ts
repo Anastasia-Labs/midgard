@@ -89,6 +89,7 @@ export const bindManifestBoundFamilyWorkflow = async <
   assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: config.signer.address,
+    proofMaterialsAddress: config.signer.proofMaterialsAddress,
     paymentKeyHash: config.signer.paymentKeyHash,
   });
   let certificate: FieldPreimageCertificateBinding | null = null;
@@ -298,7 +299,6 @@ export const assembleBoundManifestBoundFamilyWorkflow = <
       prerequisite: createAuthenticatedProofChunkPrerequisitePort({
         category,
         lucid: deployment.lucid,
-        network: binding.network,
         signer: deployment.signer,
         publications: l1.publications,
         maximumTransactionBytes: binding.cardanoProtocolParameters.maxTxSize,

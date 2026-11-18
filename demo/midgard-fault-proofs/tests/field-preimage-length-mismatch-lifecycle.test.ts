@@ -170,7 +170,7 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
             commitment: Buffer.from(rawPlan.commitment).toString("hex"),
             plan: rawPlan,
           },
-          publisherAddress: fixture.harness.proverSigner.address,
+          publisherAddress: fixture.harness.proverSigner.proofMaterialsAddress,
           label: "field-preimage-length raw tier boundary",
         }),
     );
@@ -184,7 +184,7 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
           lucid: fixture.harness.proverLucid,
           signer: fixture.harness.proverSigner,
           planned,
-          publisherAddress: fixture.harness.proverSigner.address,
+          publisherAddress: fixture.harness.proverSigner.proofMaterialsAddress,
           label: "field-preimage-length maximum",
         }),
     );

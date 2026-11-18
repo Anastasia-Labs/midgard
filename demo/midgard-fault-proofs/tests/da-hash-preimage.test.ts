@@ -257,6 +257,7 @@ describe("production da-hash-preimage workflow V1", () => {
         signer: {
           source: "test",
           address: "addr_test",
+          proofMaterialsAddress: "addr_test_proof_materials",
           paymentKeyHash: "77".repeat(28),
           selectWallet: () => undefined,
         },

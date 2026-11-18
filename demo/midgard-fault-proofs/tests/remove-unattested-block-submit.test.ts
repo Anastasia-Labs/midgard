@@ -110,8 +110,7 @@ const observation = (
   reason,
 });
 
-/** `ttl: "validity"` signs each attempt valid to the upper bound it was
- * built with (on the mocked 1 s slot clock); otherwise to slot 20. */
+/** `ttl: "validity"`: valid to the built upper bound (1 s slots); else 20. */
 const setup = ({ ttl = 20n }: { readonly ttl?: bigint | "validity" } = {}) => {
   let retained: TimeoutCorrectionJournal | undefined;
   let wallet = [utxo("dd")];
@@ -224,6 +223,7 @@ const setup = ({ ttl = 20n }: { readonly ttl?: bigint | "validity" } = {}) => {
     signer: {
       source: "test",
       address,
+      proofMaterialsAddress: "addr_test1_unused_no_proof_material",
       paymentKeyHash: h("dd"),
       selectWallet: () => undefined,
     },

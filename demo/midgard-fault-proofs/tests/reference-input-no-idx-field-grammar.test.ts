@@ -239,7 +239,7 @@ describe("reference-input-no-idx step 04 through the field grammar certificate",
 
     const expectedDatum = fieldPreimagePublicationDatumCbor(preimage);
     const publications = (
-      await proverLucid.utxosAt(proverSigner.address)
+      await proverLucid.utxosAt(proverSigner.proofMaterialsAddress)
     ).filter((utxo) => utxo.datum === expectedDatum);
     expect(publications).toHaveLength(1);
 

@@ -28,12 +28,7 @@ export const submitProductionClassification = async (
   return submit({
     lucid: h.lucid,
     contracts,
-    signer: {
-      source: "emulator fixture",
-      address: h.wallet.address,
-      paymentKeyHash: h.owner,
-      selectWallet: (lucid) => lucid.selectWallet.fromSeed(h.wallet.seedPhrase),
-    },
+    signer: h.signer,
     threadOutRef: `${thread.txHash}#${thread.outputIndex}`,
     openingCbor: captured ? fabricatedHistoryOpeningCbor(captured) : undefined,
     referenceScriptUtxo: p.refs[1]!,

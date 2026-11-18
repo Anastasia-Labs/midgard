@@ -123,6 +123,7 @@ export const loadManifestBoundFieldPreimageLengthConfig = async (
   assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: input.signer.address,
+    proofMaterialsAddress: input.signer.proofMaterialsAddress,
     paymentKeyHash: input.signer.paymentKeyHash,
   });
   const names = FIELD_PREIMAGE_LENGTH_MANIFEST_CONTRACTS;

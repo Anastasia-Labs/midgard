@@ -308,7 +308,7 @@ const captureRedeemerAction = async (
           await resolveFaultProofFieldCarriagePublications({
             ownOutputs,
             lucid: workflow.lucid,
-            publisherAddress: workflow.signer.address,
+            publisherAddress: workflow.signer.proofMaterialsAddress,
             planned,
           });
         if (publishedCarriageUtxos === undefined)

@@ -414,7 +414,7 @@ export const makeOutputReferenceStages = ({
       lucid,
       signer,
       planned,
-      publisherAddress: signer.address,
+      publisherAddress: signer.proofMaterialsAddress,
       label: "output-reference foreign field 2",
     });
     if (planned.plan.tier !== "Certified")

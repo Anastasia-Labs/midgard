@@ -105,7 +105,7 @@ export const resolveMintDeclaredFieldCarriage = async ({
   const carriageUtxos = await resolveFaultProofFieldCarriagePublications({
     ownOutputs,
     lucid,
-    publisherAddress: signer.address,
+    publisherAddress: signer.proofMaterialsAddress,
     planned,
   });
   if (carriageUtxos === undefined)

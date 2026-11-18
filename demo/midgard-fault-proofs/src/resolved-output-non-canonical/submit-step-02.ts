@@ -157,7 +157,7 @@ export const submitResolvedOutputNonCanonicalStep02 = async ({
           lucid,
           signer,
           planned,
-          publisherAddress: signer.address,
+          publisherAddress: signer.proofMaterialsAddress,
           label: "resolved-output-non-canonical field opening",
           preSubmitBoundary: publicationPreSubmitBoundary,
         })));

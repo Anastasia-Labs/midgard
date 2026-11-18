@@ -132,7 +132,7 @@ export const installFieldCarriage = async ({
     ownOutputs,
     lucid,
     planned: requirement.planned,
-    publisherAddress: signer.address,
+    publisherAddress: signer.proofMaterialsAddress,
   });
   if (chunks === undefined)
     throw new Error("the installed field carriage is not readable");

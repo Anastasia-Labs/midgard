@@ -473,11 +473,11 @@ describe("invalid-signature emulator lifecycle", () => {
     expect(step02.badAddrTxWitsHash).toBe(
       subject.witnessSetCompact.addr_tx_wits_hash,
     );
-    // The published carriage is a live UTxO at the prover address carrying the
-    // preimage as an inline datum; the step referenced it rather than carrying
-    // the bytes.
+    // The published carriage is a live UTxO at the prover's proof-materials
+    // address carrying the preimage as an inline datum; the step referenced it
+    // rather than carrying the bytes.
     const carriageUtxos = (
-      await proverLucid.utxosAt(proverSigner.address)
+      await proverLucid.utxosAt(proverSigner.proofMaterialsAddress)
     ).filter((utxo) => utxo.datum != null);
     expect(carriageUtxos).toHaveLength(1);
 
@@ -654,10 +654,11 @@ describe("invalid-signature emulator lifecycle", () => {
     } = harness;
 
     // The control for the adversarial journey: identical raw transaction shape,
-    // identical §8.8 opening, identical layout — the accused witness is the only
-    // thing that differs, and here it genuinely fails to sign the transaction
-    // id. It convicts, so nothing but `verify_ed25519_signature(...) == False`
-    // can be what refused the honest commitment.
+    // identical §8.8 opening, identical layout — the accused witness is the
+    // only thing that differs, and here it genuinely fails to sign the
+    // transaction id. It convicts, so nothing but
+    // `verify_ed25519_signature(...) == False` can be what refused the honest
+    // commitment.
     const subject = await buildInvalidSignatureSubject({
       accused: "invalid",
       spendInputByte: "bb",

@@ -219,6 +219,7 @@ const submitTransitionTraceFinalStep = async ({
     finalIndex === 4 || finalIndex === 5
       ? await resolveTransitionTraceProofCarriage({
           lucid,
+          address: signer.proofMaterialsAddress,
           proof: proofInput,
           publish: false,
         })
@@ -407,6 +408,7 @@ const submitTransitionTraceFinalStep = async ({
       ? []
       : await resolveTransitionTraceByteCarriage({
           lucid,
+          address: signer.proofMaterialsAddress,
           chunks: transitionTraceByteChunks(selectedOutput),
           publish: preSubmitBoundary === undefined,
         });

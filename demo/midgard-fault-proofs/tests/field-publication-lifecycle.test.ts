@@ -157,7 +157,8 @@ it.each(["none", "ours", "unrelated"] as const)(
       lucid,
       signer: {
         source: "test",
-        address,
+        address: "addr_test1_funding",
+        proofMaterialsAddress: address,
         paymentKeyHash: "12".repeat(28),
         selectWallet: () => {},
       },

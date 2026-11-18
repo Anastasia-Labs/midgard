@@ -179,7 +179,7 @@ export const exerciseForcedLifecycle = async ({
         lucid: harness.proverLucid,
         signer: harness.proverSigner,
         planned: referencePlan,
-        publisherAddress: harness.proverSigner.address,
+        publisherAddress: harness.proverSigner.proofMaterialsAddress,
         label: "input-set-uniqueness frontier reference",
       }),
   );

@@ -34,7 +34,8 @@ describe("production field-carriage prerequisite V1", () => {
     });
     const signer = {
       source: "test",
-      address: "addr_test1_field_publication",
+      address: "addr_test1_field_funding",
+      proofMaterialsAddress: "addr_test1_field_publication",
       paymentKeyHash: "12".repeat(28),
       selectWallet: () => undefined,
     };
@@ -44,7 +45,7 @@ describe("production field-carriage prerequisite V1", () => {
       (datum, index) => ({
         txHash: publicationTxHash(index),
         outputIndex: 0,
-        address: signer.address,
+        address: signer.proofMaterialsAddress,
         datum,
         assets: { lovelace: 2_000_000n },
       }),
@@ -189,7 +190,8 @@ describe("production field-carriage prerequisite V1", () => {
     });
     const signer = {
       source: "test",
-      address: "addr_test1_field_publication",
+      address: "addr_test1_field_funding",
+      proofMaterialsAddress: "addr_test1_field_publication",
       paymentKeyHash: "12".repeat(28),
       selectWallet: () => undefined,
     };
@@ -254,7 +256,7 @@ describe("production field-carriage prerequisite V1", () => {
       {
         txHash,
         outputIndex: 0,
-        address: signer.address,
+        address: signer.proofMaterialsAddress,
         assets: { lovelace: 2_000_000n },
         datum: datumCbor,
       },

@@ -94,7 +94,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
   const proofChunks = async (proofCbor: string) =>
     await resolvePublishedProofChunks({
       lucid: config.lucid,
-      address: config.signer.address,
+      address: config.signer.proofMaterialsAddress,
       proofCbor,
     });
 
@@ -103,7 +103,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
     await addressFieldCarriageOwnOutputs({
       lucid: config.lucid,
       network: config.network,
-      publisherAddress: config.signer.address,
+      publisherAddress: config.signer.proofMaterialsAddress,
       planned,
       certificatePolicyId: config.fieldPreimageCertificate.policyId,
     });
@@ -130,7 +130,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
       const observed = await observer.observeExact({
         headerHash,
         kind: "field_publication",
-        address: config.signer.address,
+        address: config.signer.proofMaterialsAddress,
         expectedOutRef: `${publication.txHash}#${publication.outputIndex.toString()}`,
         expectedDatumCbor: publication.datum,
       });
@@ -225,7 +225,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
       const plan = fieldPlan(stage.kind, artifact);
       const ownOutputs = await fieldCarriage(plan);
       const missing = firstUnclaimedFieldPublication({
-        publisherAddress: config.signer.address,
+        publisherAddress: config.signer.proofMaterialsAddress,
         planned: plan,
         ownOutputs,
       });
@@ -254,7 +254,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
             {
               ownOutputs,
               lucid: config.lucid,
-              publisherAddress: config.signer.address,
+              publisherAddress: config.signer.proofMaterialsAddress,
               planned: plan,
             },
           );
@@ -322,7 +322,6 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
       return await captureLocallyEvaluatedTransaction(async (boundary) => {
         await publishProofChunks({
           lucid: config.lucid,
-          network: config.network,
           signer: config.signer,
           proofCbor: requireJournalString(
             requested.input.proofCbor,
@@ -421,7 +420,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
       const ownOutputs = await fieldCarriage(plan);
       const publications = await resolveFaultProofFieldCarriagePublications({
         lucid: config.lucid,
-        publisherAddress: config.signer.address,
+        publisherAddress: config.signer.proofMaterialsAddress,
         planned: plan,
         ownOutputs,
       });
@@ -483,7 +482,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
       const ownOutputs = await fieldCarriage(plan);
       if (stage === "publish-field") {
         const expectedMissing = firstUnclaimedFieldPublication({
-          publisherAddress: config.signer.address,
+          publisherAddress: config.signer.proofMaterialsAddress,
           planned: plan,
           ownOutputs,
         });
@@ -502,7 +501,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
           : await resolveFaultProofFieldCarriagePublications({
               ownOutputs,
               lucid: config.lucid,
-              publisherAddress: config.signer.address,
+              publisherAddress: config.signer.proofMaterialsAddress,
               planned: plan,
             });
       if (stage !== "publish-field" && publications === undefined) {
@@ -874,7 +873,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
         if (actionStage === "publish-proof") {
           const chunks = await resolvePublishedProofChunks({
             lucid: config.lucid,
-            address: config.signer.address,
+            address: config.signer.proofMaterialsAddress,
             proofCbor: requireJournalString(
               requested.input.proofCbor,
               "action.proofCbor",
@@ -886,7 +885,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
             const observed = await publicationObserver.observeExact({
               headerHash: preparedArtifact.headerHash,
               kind: "field_publication",
-              address: config.signer.address,
+              address: config.signer.proofMaterialsAddress,
               expectedOutRef: chunk.outRef,
               expectedDatumCbor: chunk.datumCbor,
             });
@@ -907,7 +906,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
           const plan = fieldPlan(proofFor, preparedArtifact);
           if (actionStage === "publish-field") {
             const candidates = await config.lucid.utxosAt(
-              config.signer.address,
+              config.signer.proofMaterialsAddress,
             );
             const candidate = candidates.find(
               (utxo) =>
@@ -918,7 +917,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
             const observed = await publicationObserver.observeExact({
               headerHash: preparedArtifact.headerHash,
               kind: "field_publication",
-              address: config.signer.address,
+              address: config.signer.proofMaterialsAddress,
               expectedOutRef: `${candidate.txHash}#${candidate.outputIndex.toString()}`,
               expectedDatumCbor: candidate.datum,
             });

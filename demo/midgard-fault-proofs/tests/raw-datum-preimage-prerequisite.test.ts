@@ -6,6 +6,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { proofMaterialsAddress } from "../src/funding/proof-materials-address.js";
 import type { ResolvedProverSigner } from "../src/runtime.js";
 import type { FraudProofWorkflowAction } from "../src/workflow/orchestrator.js";
 import {
@@ -43,6 +44,10 @@ describe("raw datum preimage publication prerequisite", () => {
         address: account.address,
         paymentKeyHash: getAddressDetails(account.address).paymentCredential!
           .hash,
+        proofMaterialsAddress: proofMaterialsAddress(
+          network,
+          getAddressDetails(account.address).paymentCredential!.hash,
+        ),
         selectWallet: (target) =>
           target.selectWallet.fromSeed(account.seedPhrase),
       };

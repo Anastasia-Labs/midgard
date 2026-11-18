@@ -6,6 +6,7 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
+import { isProverOwnAddress } from "../funding/proof-materials-address.js";
 import { validationDisputeFunding } from "./funding-reservation-permit.assert-validation-dispute-funding.js";
 import {
   addAssets,
@@ -25,7 +26,10 @@ import {
 import { bindSlashFunding } from "./funding-reservation-permit.slash-funding-binding.js";
 import { assertThreadReclaimBound } from "./funding-reservation-permit.thread-reclaim-binding.js";
 import { validationDisputeStagingFunding } from "./funding-reservation-permit.validation-dispute-staging-authority.js";
-import { type PermitState } from "./funding-reservation-permit.workflow-funding-reservation-port.js";
+import {
+  isReservedFundingAddressInput,
+  type PermitState,
+} from "./funding-reservation-permit.workflow-funding-reservation-port.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
 import { workflowRuntimeFundingMinimumFee } from "./runtime-funding-fee.js";
 import { readWorkflowRuntimeFundingPolicy } from "./runtime-funding-policy.js";
@@ -195,9 +199,13 @@ export const assertRuntimeTransactionBound = async ({
     const percentage =
       (body.fee() * BigInt(parameters.collateralPercentage) + 99n) / 100n;
     const floor = BigInt(policy.economics.policy.proverCollateralFloorLovelace);
-    // Any reserved plain-ADA coin may be posted as collateral.
+    // Any reserved plain-ADA coin at the funding address may be posted as
+    // collateral.
     const reservedCollateral = state.snapshot.activeInputs
-      .filter(({ assets }) => assets.length === 0)
+      .filter(
+        ({ outRef, assets }) =>
+          assets.length === 0 && isReservedFundingAddressInput(state, outRef),
+      )
       .reduce((sum, input) => sum + BigInt(input.lovelace), 0n);
     if (reservedCollateral < floor)
       throw new Error(
@@ -265,9 +273,12 @@ export const assertRuntimeTransactionBound = async ({
   let releasedCustody = 0n;
   let protocolInputLovelace = 0n;
   dispute?.admitOpener(allInputs);
+  // Ours: the funding address and the proof-materials address of its key.
+  const own = (address: string): boolean =>
+    isProverOwnAddress(state.snapshot.walletAddress, address);
   for (const [outRef, input] of allInputs) {
     addAssets(inputAssets, input.assets);
-    if (input.address === state.snapshot.walletAddress) {
+    if (own(input.address)) {
       if (slash !== null)
         throw new Error("fraud slash cannot consume ordinary wallet funding");
       if (!fundingOutRefs.includes(outRef))
@@ -383,7 +394,7 @@ export const assertRuntimeTransactionBound = async ({
         addAssets(walletOutputAssets, output.assets);
       continue;
     }
-    if (output.address === state.snapshot.walletAddress) {
+    if (own(output.address)) {
       if (slash !== null)
         throw new Error("fraud slash cannot pay unrelated caller change");
       addAssets(walletOutputAssets, output.assets);

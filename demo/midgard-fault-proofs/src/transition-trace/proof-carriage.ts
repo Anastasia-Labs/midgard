@@ -31,15 +31,19 @@ export const transitionTraceTimedProofNeedsChunks = (
 
 export const resolveTransitionTraceProofCarriage = async ({
   lucid,
+  address,
   proof,
   publish = false,
 }: {
   lucid: LucidEvolution;
+  /** The prover's proof-materials address. */
+  address: string;
   proof: TransitionProofInput;
   publish?: boolean;
 }): Promise<readonly UTxO[]> => {
   return resolveTransitionTraceByteCarriage({
     lucid,
+    address,
     chunks: transitionTraceProofChunks(proof).chunks,
     publish,
   });
@@ -50,36 +54,42 @@ export const transitionTraceByteChunks = (bytes: string) =>
   );
 export const resolveTransitionTraceByteCarriage = async ({
   lucid,
+  address,
   chunks,
   publish = false,
 }: {
   lucid: LucidEvolution;
+  /** The prover's proof-materials address. */
+  address: string;
   chunks: readonly string[];
   publish?: boolean;
 }): Promise<readonly UTxO[]> => {
   return resolveTransitionTraceDataCarriage({
     lucid,
+    address,
     datums: chunks.map((chunk) => Data.to(chunk)),
     publish,
   });
 };
 /**
- * The carriage at the prover's address for each of `datums`, in order. Only an
- * ada-only output with the datum inline serves: an output that also carries a
- * reference script or other assets holds the same bytes but makes the step
- * that reads it pay for more than the chunk. With `publish`, a chunk no such
- * output holds is paid to the prover's address first.
+ * The carriage at `address`, the prover's proof-materials address, for each
+ * of `datums`, in order. Only an ada-only output with the datum inline
+ * serves: an output that also carries a reference script or other assets
+ * holds the same bytes but makes the step that reads it pay for more than
+ * the chunk. With `publish`, a chunk no such output holds is paid to that
+ * address first.
  */
 export const resolveTransitionTraceDataCarriage = async ({
   lucid,
+  address,
   datums,
   publish = false,
 }: {
   lucid: LucidEvolution;
+  address: string;
   datums: readonly string[];
   publish?: boolean;
 }): Promise<readonly UTxO[]> => {
-  const address = await lucid.wallet().address();
   let candidates = await lucid.utxosAt(address);
   const result: UTxO[] = [];
   for (const datum of datums) {

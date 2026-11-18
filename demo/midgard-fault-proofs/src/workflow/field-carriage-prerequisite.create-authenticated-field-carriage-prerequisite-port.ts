@@ -109,7 +109,7 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
     return resolved === null ? null : requirementIdentity(resolved);
   };
   const publicationAddress = (required: Requirement) =>
-    boundPublicationAddress(required, signer.address);
+    boundPublicationAddress(required, signer.proofMaterialsAddress);
   const certificateAddress = (required: Requirement) =>
     fieldPreimageCertificateAddress({
       network,
@@ -543,7 +543,7 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
       }
       const address =
         recovered.kind === "publication"
-          ? (recovered.publicationAddress ?? signer.address)
+          ? (recovered.publicationAddress ?? signer.proofMaterialsAddress)
           : fieldPreimageCertificateAddress({
               network,
               certificatePolicyId: recovered.unit!.slice(0, 56),

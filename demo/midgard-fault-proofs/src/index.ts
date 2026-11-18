@@ -10,6 +10,7 @@ export * from "./execution-source-script-decoding/index.js";
 export * from "./field-item-width-illegal/index.js";
 export * from "./field-preimage-length-mismatch/index.js";
 export * from "./funding/plain-funding-output.js";
+export * from "./funding/proof-materials-address.js";
 export * from "./input-set-uniqueness/index.js";
 export * from "./inspect-contracts.js";
 export * from "./invalid-range/index.js";

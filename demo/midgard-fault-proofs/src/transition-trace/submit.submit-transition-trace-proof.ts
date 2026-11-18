@@ -155,6 +155,7 @@ export const submitTransitionTraceProof = async ({
     transitionTraceTimedProofNeedsChunks(proofInput)
       ? await resolveTransitionTraceProofCarriage({
           lucid,
+          address: signer.proofMaterialsAddress,
           proof: proofInput,
           publish: true,
         })

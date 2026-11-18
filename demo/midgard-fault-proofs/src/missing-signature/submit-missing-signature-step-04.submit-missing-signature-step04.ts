@@ -168,7 +168,7 @@ export const submitMissingSignatureStep04 = async ({
     lucid,
     signer,
     planned,
-    publisherAddress: signer.address,
+    publisherAddress: signer.proofMaterialsAddress,
     label: `${STEP_LABEL} address-witnesses`,
   });
   // A configured certificate, or the one this workflow's own journal claims.

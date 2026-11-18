@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { isAbsolute, normalize } from "node:path";
 
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { isProverOwnAddress } from "@al-ft/midgard-fault-proofs";
 import { CML, coreToTxOutput } from "@lucid-evolution/lucid";
 
 import type { WatcherWorkflowJournal } from "../fault-proofs/watcher-workflow-journal.js";
@@ -325,7 +326,8 @@ export const deriveSignedTransition = ({
   const producedInputs: WatcherProverFundingReservationInput[] = [];
   for (let index = 0; index < outputs.len(); index += 1) {
     const output = coreToTxOutput(outputs.get(index));
-    if (output.address !== plan.walletAddress) continue;
+    // The prover's outputs at its funding and proof-materials addresses.
+    if (!isProverOwnAddress(plan.walletAddress, output.address)) continue;
     producedInputs.push(
       walletInput(`${transactionHash}#${index.toString()}`, output),
     );

@@ -5,8 +5,13 @@
  */
 import { createHash } from "node:crypto";
 
-import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
+import {
+  type LucidEvolution,
+  paymentCredentialOf,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 
+import { proofMaterialsAddress } from "../funding/proof-materials-address.js";
 import {
   claimOwnOutputs,
   createOwnOutputJournal,
@@ -24,8 +29,9 @@ const scriptDecodeStagingDigest = (datum: string): string =>
   createHash("sha256").update(datum).digest("hex");
 
 /**
- * Stages `scriptBytes` in order across UTxOs at `address` (the wallet's own by
- * default, so their Ada stays reclaimable), one transaction each. With
+ * Stages `scriptBytes` in order across UTxOs at `address` (by default the
+ * proof-materials address of the selected wallet's key, which that key
+ * spends back), one transaction each. With
  * `ownOutputs`, a chunk an earlier call staged and journaled there, still
  * live, is reused; every chunk staged here is journaled there.
  */
@@ -40,7 +46,12 @@ export const stageScriptDecodeBytes = async ({
   readonly address?: string;
   readonly ownOutputs?: OwnOutputJournal;
 }): Promise<UTxO[]> => {
-  const target = address ?? (await lucid.wallet().address());
+  const target =
+    address ??
+    proofMaterialsAddress(
+      lucid.config().network ?? "Custom",
+      paymentCredentialOf(await lucid.wallet().address()).hash,
+    );
   const journal = ownOutputs ?? createOwnOutputJournal();
   const datums = scriptDecodeStagingDatums(scriptBytes);
   const keyOf = (ordinal: number) =>

@@ -80,7 +80,7 @@ const runWithLostDataDirectory = async (kind: "stage" | "step") => {
       const watch = watchLedger(harness.emulator);
       const roles = scriptDecodeRoles({
         emulator: harness.emulator,
-        proverAddress: harness.proverSigner.address,
+        materialsAddress: harness.proverSigner.proofMaterialsAddress,
         item: ITEM,
       });
       clock.state.onPoll = async () => {

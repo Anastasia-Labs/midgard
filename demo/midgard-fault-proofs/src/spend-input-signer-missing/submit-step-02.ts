@@ -157,7 +157,7 @@ export const submitSpendInputSignerMissingStep02 = async ({
     lucid,
     signer,
     planned,
-    publisherAddress: signer.address,
+    publisherAddress: signer.proofMaterialsAddress,
     label: "spend-input-signer-missing spend inputs",
     preSubmitBoundary: publicationBoundary,
   });

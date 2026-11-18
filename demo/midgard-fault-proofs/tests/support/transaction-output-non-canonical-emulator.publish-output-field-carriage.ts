@@ -239,7 +239,7 @@ export const publishOutputFieldCarriage = async ({
     lucid,
     signer,
     planned,
-    publisherAddress: signer.address,
+    publisherAddress: signer.proofMaterialsAddress,
     label: "transaction-output-non-canonical test carriage",
   });
   const certificateUtxo =

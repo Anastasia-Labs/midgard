@@ -114,7 +114,7 @@ describe("forced OutputBelowMinAda coordinate the node writes", () => {
       lucid: f.h.proverLucid,
       signer: f.h.proverSigner,
       planned,
-      publisherAddress: f.h.proverSigner.address,
+      publisherAddress: f.h.proverSigner.proofMaterialsAddress,
       label: "min-ada outputs",
     });
     const opened = await submitMinAdaTxStep02({

@@ -120,7 +120,7 @@ export const submitMintAuthorizationStep03EvaluateUnsatisfied = async ({
       lucid: shared.lucid,
       signer: shared.signer,
       planned,
-      publisherAddress: shared.signer.address,
+      publisherAddress: shared.signer.proofMaterialsAddress,
       label: `${STEP_LABEL} address-witnesses`,
     }));
   const fieldReferenceInputs = [

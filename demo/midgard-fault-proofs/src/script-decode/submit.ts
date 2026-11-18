@@ -4,12 +4,12 @@
  * run and withdraws zero from each class staker that steps one of its
  * segments; each staker's redeemer carries its segments and their links.
  *
- * Coin selection spends only plain coins (no datum, no script, nothing but
- * ada), so a staged chunk (at the wallet address, read by Bind and Walk)
- * stays put. Each `build*Tx` signs without submitting, so a journaled caller can record
- * the exact transaction before it is sent; an optional `validTo` (POSIX ms)
- * makes a transaction the ledger never takes expire instead of staying
- * pending.
+ * Coin selection spends only plain coins from the funding address
+ * (`isPlainFundingOutput`); a staged chunk sits at the proof-materials address
+ * (read by Bind and Walk) and so stays put. Each `build*Tx` signs without
+ * submitting, so a journaled caller can record the exact transaction before
+ * it is sent; an optional `validTo` (POSIX ms) makes a transaction the ledger
+ * never takes expire instead of staying pending.
  */
 import {
   requireReferenceInputIndex,

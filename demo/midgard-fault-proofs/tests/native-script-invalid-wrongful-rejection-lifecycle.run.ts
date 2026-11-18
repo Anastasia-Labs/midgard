@@ -52,7 +52,7 @@ export const publishNativeScriptFieldCarriage = async (
     lucid: f.h.proverLucid,
     signer: f.h.proverSigner,
     planned,
-    publisherAddress: f.h.proverSigner.address,
+    publisherAddress: f.h.proverSigner.proofMaterialsAddress,
     label: "native-script field",
   });
   if (planned.plan.tier !== "Certified")

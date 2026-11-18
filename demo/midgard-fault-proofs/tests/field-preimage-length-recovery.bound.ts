@@ -199,6 +199,7 @@ export const bound = async (
     signer: {
       source: "test",
       address: "test-address",
+      proofMaterialsAddress: "test-proof-materials-address",
       paymentKeyHash: "11".repeat(28),
       selectWallet: forbidden,
     },

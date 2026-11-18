@@ -240,9 +240,11 @@ describe("missing-signature accepted-path field carriage", () => {
       return outRefOf(thread);
     };
     const datumOutputsAtProver = async () =>
-      (await harness.proverLucid.utxosAt(harness.proverSigner.address)).filter(
-        ({ datum, scriptRef }) => datum != null && scriptRef == null,
-      );
+      (
+        await harness.proverLucid.utxosAt(
+          harness.proverSigner.proofMaterialsAddress,
+        )
+      ).filter(({ datum, scriptRef }) => datum != null && scriptRef == null);
     const stepAddress = (index: number) =>
       harness.missingSignature.steps[index]!.spendingScriptAddress;
 

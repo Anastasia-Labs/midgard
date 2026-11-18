@@ -474,7 +474,7 @@ export const runInvalidSignatureWrongfulRejectionScenario = async (scenario: {
             lucid: harness.proverLucid,
             signer: harness.proverSigner,
             planned: opening,
-            publisherAddress: harness.proverSigner.address,
+            publisherAddress: harness.proverSigner.proofMaterialsAddress,
             label: "invalid signature witnesses",
           }),
         );

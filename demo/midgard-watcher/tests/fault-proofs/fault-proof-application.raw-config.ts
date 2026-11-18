@@ -2,6 +2,7 @@ import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   type FraudProofL1Source,
+  proofMaterialsAddressOfFundingAddress,
   type ResolvedProverSigner,
   type StateQueueMutationLeaseCoordinator,
   type WorkflowAdapterRunnerInput,
@@ -190,6 +191,9 @@ export const dependencies = (): WatcherFaultProofApplicationDependencies => {
   const signer: ResolvedProverSigner = {
     source: "test",
     address: "addr_test1vqpzry9x8gf2tvdw0s3jn54khce6mua7l0yp4rx3z9g4zpq0j52c7",
+    proofMaterialsAddress: proofMaterialsAddressOfFundingAddress(
+      "addr_test1vqpzry9x8gf2tvdw0s3jn54khce6mua7l0yp4rx3z9g4zpq0j52c7",
+    ),
     paymentKeyHash: "01".repeat(28),
     selectWallet: vi.fn(),
   };

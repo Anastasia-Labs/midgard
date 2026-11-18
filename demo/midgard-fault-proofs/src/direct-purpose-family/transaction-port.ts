@@ -285,7 +285,7 @@ export const createDirectWalkTransactionPort = <
               );
               const chunks = await resolvePublishedProofChunks({
                 lucid: config.lucid,
-                address: config.signer.address,
+                address: config.signer.proofMaterialsAddress,
                 proofCbor: inclusion.txMembershipProofCbor,
               });
               await submitDirectPurposeStep01Accepted({
@@ -333,7 +333,7 @@ export const createDirectWalkTransactionPort = <
                   ownOutputs,
                   lucid: config.lucid,
                   planned: opening,
-                  publisherAddress: config.signer.address,
+                  publisherAddress: config.signer.proofMaterialsAddress,
                 });
               const certificate =
                 opening.plan.tier === "Certified"

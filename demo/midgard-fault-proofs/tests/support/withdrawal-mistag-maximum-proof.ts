@@ -41,7 +41,7 @@ export const runWithdrawalMistagMaximumProof = async (
             const unsigned = await harness.proverLucid
               .newTx()
               .pay.ToAddressWithData(
-                harness.proverSigner.address,
+                harness.proverSigner.proofMaterialsAddress,
                 { kind: "inline", value: datum },
                 { lovelace: 100_000_000n },
               )
@@ -50,7 +50,9 @@ export const runWithdrawalMistagMaximumProof = async (
             const txHash = await signed.submit();
             await harness.proverLucid.awaitTx(txHash);
             return (
-              await harness.proverLucid.utxosAt(harness.proverSigner.address)
+              await harness.proverLucid.utxosAt(
+                harness.proverSigner.proofMaterialsAddress,
+              )
             ).find((utxo) => utxo.txHash === txHash && utxo.datum === datum)!;
           },
         );

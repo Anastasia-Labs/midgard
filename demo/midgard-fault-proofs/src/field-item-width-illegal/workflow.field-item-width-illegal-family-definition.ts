@@ -68,6 +68,7 @@ export const loadManifestBoundFieldItemWidthIllegalConfig = async (
   assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: input.signer.address,
+    proofMaterialsAddress: input.signer.proofMaterialsAddress,
     paymentKeyHash: input.signer.paymentKeyHash,
   });
 

@@ -61,7 +61,7 @@ export const publishMissingSignatureField07Certificate = async ({
     lucid: harness.proverLucid,
     signer: harness.proverSigner,
     planned,
-    publisherAddress: harness.proverSigner.address,
+    publisherAddress: harness.proverSigner.proofMaterialsAddress,
     label: "missing-signature tier-3 field-7",
   });
   const certificate = harness.contracts.fieldPreimageCertificate;
@@ -155,7 +155,7 @@ export const submitRawMissingSignatureStep04 = async ({
     lucid: harness.proverLucid,
     signer: harness.proverSigner,
     planned,
-    publisherAddress: harness.proverSigner.address,
+    publisherAddress: harness.proverSigner.proofMaterialsAddress,
     label: "raw missing-signature step-04",
   });
   const computationThreadCarriage = witnessMintingPolicyCarriage({

@@ -149,7 +149,7 @@ export const submitNetworkIdForcedScanAction = async ({
       : await resolveFaultProofFieldCarriagePublications({
           ownOutputs,
           lucid,
-          publisherAddress: signer.address,
+          publisherAddress: signer.proofMaterialsAddress,
           planned: outputsOpeningPlan,
         }));
   if (carriage === undefined) {

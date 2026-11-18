@@ -303,7 +303,7 @@ describe("registered maximum event/transition counted membership", () => {
           lucid: h.proverLucid,
           signer: h.proverSigner,
           planned: prepared.fieldPlan,
-          publisherAddress: h.proverSigner.address,
+          publisherAddress: h.proverSigner.proofMaterialsAddress,
           label: tag,
           preSubmitBoundary: ({ signed }) =>
             captureSigned(tag + "-field-publication", signed.toCBOR()),
@@ -338,7 +338,6 @@ describe("registered maximum event/transition counted membership", () => {
               ...(
                 await publishProofChunks({
                   lucid: h.proverLucid,
-                  network,
                   signer: h.proverSigner,
                   proofCbor: part,
                   preSubmitBoundary: ({ signed }) =>

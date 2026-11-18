@@ -213,7 +213,7 @@ export const createNetworkIdWorkflowAdapter = (
     await addressFieldCarriageOwnOutputs({
       lucid: config.lucid,
       network: config.network,
-      publisherAddress: config.signer.address,
+      publisherAddress: config.signer.proofMaterialsAddress,
       planned: opening,
       certificatePolicyId: config.contracts.fieldPreimageCertificatePolicyId,
     });
@@ -285,7 +285,7 @@ export const createNetworkIdWorkflowAdapter = (
       const observed = await observer.observeExact({
         headerHash: prepared.headerHash,
         kind: "field_publication",
-        address: config.signer.address,
+        address: config.signer.proofMaterialsAddress,
         expectedOutRef: outRefLabel(publication),
         expectedDatumCbor: publication.datum,
       });
@@ -469,7 +469,7 @@ export const createNetworkIdWorkflowAdapter = (
       if (opening !== undefined) {
         const ownOutputs = await fieldCarriage(opening);
         const missing = firstUnclaimedFieldPublication({
-          publisherAddress: config.signer.address,
+          publisherAddress: config.signer.proofMaterialsAddress,
           planned: opening,
           ownOutputs,
         });
@@ -502,7 +502,7 @@ export const createNetworkIdWorkflowAdapter = (
               await resolveFaultProofFieldCarriagePublications({
                 ownOutputs,
                 lucid: config.lucid,
-                publisherAddress: config.signer.address,
+                publisherAddress: config.signer.proofMaterialsAddress,
                 planned: opening,
               });
             if (publications === undefined) {
@@ -550,7 +550,7 @@ export const createNetworkIdWorkflowAdapter = (
         const { opening, plan } = forcedScanPlanFor(admitted);
         const ownOutputs = await fieldCarriage(opening);
         const missing = firstUnclaimedFieldPublication({
-          publisherAddress: config.signer.address,
+          publisherAddress: config.signer.proofMaterialsAddress,
           planned: opening,
           ownOutputs,
         });
@@ -584,7 +584,7 @@ export const createNetworkIdWorkflowAdapter = (
               await resolveFaultProofFieldCarriagePublications({
                 ownOutputs,
                 lucid: config.lucid,
-                publisherAddress: config.signer.address,
+                publisherAddress: config.signer.proofMaterialsAddress,
                 planned: opening,
               });
             if (publications === undefined) {
@@ -820,7 +820,7 @@ export const createNetworkIdWorkflowAdapter = (
             {
               ownOutputs,
               lucid: config.lucid,
-              publisherAddress: config.signer.address,
+              publisherAddress: config.signer.proofMaterialsAddress,
               planned: opening,
             },
           );
@@ -890,7 +890,7 @@ export const createNetworkIdWorkflowAdapter = (
           const ownOutputs = await fieldCarriage(opening);
           if (kind === "publish_field") {
             const missing = firstUnclaimedFieldPublication({
-              publisherAddress: config.signer.address,
+              publisherAddress: config.signer.proofMaterialsAddress,
               planned: opening,
               ownOutputs,
             });
@@ -907,7 +907,7 @@ export const createNetworkIdWorkflowAdapter = (
               lucid: config.lucid,
               signer: config.signer,
               planned: opening,
-              publisherAddress: config.signer.address,
+              publisherAddress: config.signer.proofMaterialsAddress,
               label: "network-id step-02 outputs",
               preSubmitBoundary: boundary,
             });
@@ -922,7 +922,7 @@ export const createNetworkIdWorkflowAdapter = (
             {
               ownOutputs,
               lucid: config.lucid,
-              publisherAddress: config.signer.address,
+              publisherAddress: config.signer.proofMaterialsAddress,
               planned: opening,
             },
           );
@@ -971,7 +971,7 @@ export const createNetworkIdWorkflowAdapter = (
               : await resolveFaultProofFieldCarriagePublications({
                   ownOutputs,
                   lucid: config.lucid,
-                  publisherAddress: config.signer.address,
+                  publisherAddress: config.signer.proofMaterialsAddress,
                   planned: opening,
                 });
           if (publications === undefined) {
@@ -1260,7 +1260,9 @@ export const createNetworkIdWorkflowAdapter = (
           };
         }
         if (kind === "publish_field") {
-          const candidates = await config.lucid.utxosAt(config.signer.address);
+          const candidates = await config.lucid.utxosAt(
+            config.signer.proofMaterialsAddress,
+          );
           const candidate = candidates.find(
             (utxo) =>
               utxo.txHash === context.txHash &&
@@ -1270,7 +1272,7 @@ export const createNetworkIdWorkflowAdapter = (
           const observation = await observer.observeExact({
             headerHash: prepared.headerHash,
             kind: "field_publication",
-            address: config.signer.address,
+            address: config.signer.proofMaterialsAddress,
             expectedOutRef: outRefLabel(candidate),
             expectedDatumCbor: requireString(
               context.action.input.publicationDatumCbor,

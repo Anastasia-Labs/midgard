@@ -266,7 +266,7 @@ describe("applied transition history", () => {
         proof: fixture.proof,
       });
       await resolveTransitionTraceByteCarriage({
-        lucid: h.proverLucid,
+        ...h.proverCarriage,
         chunks: transitionTraceByteChunks(outputCbor.toString("hex")),
         publish: true,
       });

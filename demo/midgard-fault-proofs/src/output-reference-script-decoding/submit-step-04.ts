@@ -159,7 +159,7 @@ export const submitOutputReferenceScriptDecodingStep04 = async ({
           lucid,
           signer,
           planned,
-          publisherAddress: signer.address,
+          publisherAddress: signer.proofMaterialsAddress,
           label: `${FAMILY} reference bind`,
           preSubmitBoundary: publicationPreSubmitBoundary,
         });

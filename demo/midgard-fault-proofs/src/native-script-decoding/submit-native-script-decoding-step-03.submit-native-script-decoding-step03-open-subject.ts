@@ -152,7 +152,7 @@ export const submitNativeScriptDecodingStep03OpenSubject = async ({
         lucid,
         signer,
         planned,
-        publisherAddress: signer.address,
+        publisherAddress: signer.proofMaterialsAddress,
         label: `${OPEN_SUBJECT_LABEL} subject field`,
         preSubmitBoundary: publicationPreSubmitBoundary,
       }));

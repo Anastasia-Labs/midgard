@@ -69,7 +69,7 @@ const boundThread = async (options: Options) => {
     lucid: f.h.proverLucid,
     signer: f.h.proverSigner,
     planned,
-    publisherAddress: f.h.proverSigner.address,
+    publisherAddress: f.h.proverSigner.proofMaterialsAddress,
     label: "min-ada absent outputs",
   });
   // Field 2 past the raw-carriage bound opens through its certificate.

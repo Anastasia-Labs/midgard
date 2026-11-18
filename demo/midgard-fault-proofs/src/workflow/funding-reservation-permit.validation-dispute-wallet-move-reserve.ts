@@ -1,4 +1,7 @@
-import type { PermitState } from "./funding-reservation-permit.workflow-funding-reservation-port.js";
+import {
+  isReservedFundingAddressInput,
+  type PermitState,
+} from "./funding-reservation-permit.workflow-funding-reservation-port.js";
 import { WorkflowFundingShortfallError } from "./funding-reservation-permit.workflow-funding-shortfall.js";
 
 /** The reason prefix of a validation dispute's thread move blocked on our
@@ -6,12 +9,15 @@ import { WorkflowFundingShortfallError } from "./funding-reservation-permit.work
 export const VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED =
   "validation-trace-wallet-move-unfunded" as const;
 
-/** The plain-ADA funding the reservation holds for its current action. */
+/** The plain-ADA funding the reservation holds for its current action, at
+ * the funding address. */
 const reservedPlainLovelace = (state: PermitState): bigint =>
   state.snapshot.activeInputs
     .filter(
       ({ outRef, assets }) =>
-        assets.length === 0 && state.currentFundingOutRefs.includes(outRef),
+        assets.length === 0 &&
+        state.currentFundingOutRefs.includes(outRef) &&
+        isReservedFundingAddressInput(state, outRef),
     )
     .reduce((sum, { lovelace }) => sum + BigInt(lovelace), 0n);
 

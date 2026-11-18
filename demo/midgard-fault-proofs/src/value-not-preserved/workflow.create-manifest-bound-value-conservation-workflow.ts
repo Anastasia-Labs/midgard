@@ -114,6 +114,7 @@ export const createManifestBoundValueConservationWorkflow = async (
   assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: config.signer.address,
+    proofMaterialsAddress: config.signer.proofMaterialsAddress,
     paymentKeyHash: config.signer.paymentKeyHash,
   });
   const resolved = binding.resolvedContracts;
@@ -248,7 +249,6 @@ export const createManifestBoundValueConservationWorkflow = async (
   const proofPrerequisite = createAuthenticatedProofChunkPrerequisitePort({
     category: "valueNotPreserved",
     lucid: config.lucid,
-    network: binding.network,
     signer: config.signer,
     publications: l1.publications,
     maximumTransactionBytes: binding.cardanoProtocolParameters.maxTxSize,
@@ -443,7 +443,7 @@ export const createManifestBoundValueConservationWorkflow = async (
               const publishedProofChunks = await resolveDirectFirstProofChunks({
                 action: context.action,
                 lucid: config.lucid,
-                address: config.signer.address,
+                address: config.signer.proofMaterialsAddress,
                 proofCbor: admitted.artifact.acceptedProofCbor!,
               });
               await submitConservationAcceptedSource({

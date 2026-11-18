@@ -131,7 +131,7 @@ export const submitMintItemNonCanonicalStep02 = async ({
       lucid,
       signer,
       planned,
-      publisherAddress: signer.address,
+      publisherAddress: signer.proofMaterialsAddress,
       label: "mint-item-non-canonical field opening",
       preSubmitBoundary: publicationPreSubmitBoundary,
     }));

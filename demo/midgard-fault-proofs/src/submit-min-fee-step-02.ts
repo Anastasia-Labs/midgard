@@ -261,7 +261,7 @@ export const submitMinFeeStep02 = async ({
           lucid,
           signer,
           planned,
-          publisherAddress: signer.address,
+          publisherAddress: signer.proofMaterialsAddress,
           label: `${STEP_LABEL} field ${fieldIndex.toString()}`,
         })),
       );

@@ -120,6 +120,7 @@ export const submitTransitionTraceRoute = async ({
     transitionTraceTimedProofNeedsChunks(proofInput)
       ? await resolveTransitionTraceProofCarriage({
           lucid,
+          address: signer.proofMaterialsAddress,
           proof: proofInput,
           publish: preSubmitBoundary === undefined,
         })

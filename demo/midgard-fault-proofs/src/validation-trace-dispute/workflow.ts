@@ -127,6 +127,7 @@ export const createManifestBoundValidationTraceDisputeWorkflow = async (
   assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: config.signer.address,
+    proofMaterialsAddress: config.signer.proofMaterialsAddress,
     paymentKeyHash: config.signer.paymentKeyHash,
   });
   const contracts = binding.resolvedContracts;

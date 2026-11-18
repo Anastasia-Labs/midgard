@@ -148,7 +148,7 @@ export const submitInputSetUniquenessStep04Advance = async ({
         lucid,
         signer,
         planned,
-        publisherAddress: signer.address,
+        publisherAddress: signer.proofMaterialsAddress,
         label: "input-set-uniqueness step-04 field",
       }))),
     ...(certificateUtxo === undefined ? [] : [certificateUtxo]),

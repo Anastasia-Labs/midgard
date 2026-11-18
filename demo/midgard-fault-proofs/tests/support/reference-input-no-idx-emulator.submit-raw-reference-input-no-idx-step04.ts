@@ -109,7 +109,7 @@ export const submitRawReferenceInputNoIdxStep04 = async ({
     lucid,
     signer,
     planned,
-    publisherAddress: signer.address,
+    publisherAddress: signer.proofMaterialsAddress,
     label: "Raw reference-input-no-idx step 04 outputs field",
   });
   const stepReference = requireFaultProofStepReferenceScript({

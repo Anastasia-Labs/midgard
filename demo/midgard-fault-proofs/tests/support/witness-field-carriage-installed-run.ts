@@ -72,10 +72,10 @@ export type PlaceContext = Readonly<{
 }>;
 
 export const sitesOf = (harness: Harness): FieldCarriageSites => ({
-  publisherAddress: harness.proverSigner.address,
+  publisherAddress: harness.proverSigner.proofMaterialsAddress,
   stagingDatums: scriptDecodeRoles({
     emulator: harness.emulator,
-    proverAddress: harness.proverSigner.address,
+    materialsAddress: harness.proverSigner.proofMaterialsAddress,
     item: ITEM,
   }).staging.datums,
   certificatePolicyId: harness.contracts.fieldPreimageCertificate.policyId,
@@ -85,7 +85,7 @@ export const sitesOf = (harness: Harness): FieldCarriageSites => ({
 const costOf = (watch: LedgerWatch, harness: Harness) => {
   const { staging, run } = scriptDecodeRoles({
     emulator: harness.emulator,
-    proverAddress: harness.proverSigner.address,
+    materialsAddress: harness.proverSigner.proofMaterialsAddress,
     item: ITEM,
   });
   const sites = sitesOf(harness);

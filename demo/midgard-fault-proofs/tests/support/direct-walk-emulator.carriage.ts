@@ -51,7 +51,7 @@ export const publishDirectWalkCarriage = async ({
         lucid: harness.proverLucid,
         signer: harness.proverSigner,
         planned,
-        publisherAddress: harness.proverSigner.address,
+        publisherAddress: harness.proverSigner.proofMaterialsAddress,
         label: `${label} field ${field.toString()}`,
       }),
     );

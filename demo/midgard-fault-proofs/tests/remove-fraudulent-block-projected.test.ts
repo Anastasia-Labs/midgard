@@ -15,6 +15,7 @@ import {
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 import { expect, it, vi } from "vitest";
 
+import { proofMaterialsAddressOfFundingAddress } from "../src/funding/proof-materials-address.js";
 import {
   RegisteredOperatorActivationRequiredError,
   submitRemoveFraudulentBlock,
@@ -164,6 +165,7 @@ it.skipIf(runDirectory === undefined)(
         signer: {
           source: "retained-public-credential",
           address,
+          proofMaterialsAddress: proofMaterialsAddressOfFundingAddress(address),
           paymentKeyHash: prover,
           selectWallet: (wallet) =>
             wallet.selectWallet.fromAddress(address, walletUtxos),

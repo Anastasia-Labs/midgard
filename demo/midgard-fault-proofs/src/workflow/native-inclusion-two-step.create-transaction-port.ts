@@ -92,7 +92,7 @@ export const createTransactionPort = <
           ? await resolveDirectFirstProofChunks({
               action,
               lucid: config.lucid,
-              address: config.signer.address,
+              address: config.signer.proofMaterialsAddress,
               proofCbor: admitted.artifact.txMembershipProofCbor,
             })
           : undefined;

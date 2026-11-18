@@ -68,6 +68,7 @@ export const createManifestBoundMissingSignatureWorkflow = async (
   assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: config.signer.address,
+    proofMaterialsAddress: config.signer.proofMaterialsAddress,
     paymentKeyHash: config.signer.paymentKeyHash,
   });
   const chain = binding.resolvedContracts.contracts.missingSignature;

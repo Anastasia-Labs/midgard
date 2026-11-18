@@ -333,7 +333,7 @@ describe("networkId wrongful-rejection real lifecycle", () => {
         lucid: harness.proverLucid,
         signer: harness.proverSigner,
         planned: opening,
-        publisherAddress: harness.proverSigner.address,
+        publisherAddress: harness.proverSigner.proofMaterialsAddress,
         label: "network-id honest-refusal outputs",
       });
       let cursor = bound.nextThreadOutRef;
@@ -572,7 +572,7 @@ describe("networkId wrongful-rejection real lifecycle", () => {
         lucid: harness.proverLucid,
         signer: harness.proverSigner,
         planned: opening,
-        publisherAddress: harness.proverSigner.address,
+        publisherAddress: harness.proverSigner.proofMaterialsAddress,
         label: "network-id maximum outputs",
       }),
     );
@@ -665,7 +665,7 @@ describe("networkId wrongful-rejection real lifecycle", () => {
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
       planned: opening,
-      publisherAddress: harness.proverSigner.address,
+      publisherAddress: harness.proverSigner.proofMaterialsAddress,
       label: "network-id certified outputs",
     });
     const certificateReference = await publishPlainReferenceScriptUtxo({
@@ -745,7 +745,7 @@ describe("networkId wrongful-rejection real lifecycle", () => {
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
       planned: opening,
-      publisherAddress: harness.proverSigner.address,
+      publisherAddress: harness.proverSigner.proofMaterialsAddress,
       label: "network-id scan-mutation outputs",
     });
     const options = { publish: true, ownOutputs } as const;

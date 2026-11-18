@@ -164,7 +164,7 @@ export const submitInvalidSignatureStep02 = async ({
           lucid,
           signer,
           planned,
-          publisherAddress: signer.address,
+          publisherAddress: signer.proofMaterialsAddress,
           label: "Invalid-signature step 02 address-witnesses field",
         })
       : []),

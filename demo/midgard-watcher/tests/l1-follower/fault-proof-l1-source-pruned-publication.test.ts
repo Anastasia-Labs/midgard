@@ -73,7 +73,8 @@ describe("field publication on a pruned follower", () => {
       network: "Preview",
       signer: {
         source: "test",
-        address,
+        address: "addr_test1_funding",
+        proofMaterialsAddress: address,
         paymentKeyHash: "12".repeat(28),
         selectWallet: () => undefined,
       },

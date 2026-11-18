@@ -16,6 +16,7 @@ import { validatorToScriptHash } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { proofMaterialsAddress } from "../src/funding/proof-materials-address.js";
 import {
   resolveDoubleSpendDeploymentContracts,
   resolveInvalidRangeDeploymentContracts,
@@ -474,6 +475,7 @@ describe("fault-proof deployment contract resolution", () => {
           source: "test",
           address:
             "addr_test1vqz2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3d7t0s7uqthvq7n",
+          proofMaterialsAddress: proofMaterialsAddress("Preprod", h28),
           paymentKeyHash: h28,
           selectWallet: () => undefined,
         },
@@ -526,6 +528,7 @@ describe("fault-proof deployment contract resolution", () => {
           source: "test",
           address:
             "addr_test1vqz2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3d7t0s7uqthvq7n",
+          proofMaterialsAddress: proofMaterialsAddress("Preprod", h28),
           paymentKeyHash: h28,
           selectWallet: () => undefined,
         },

@@ -145,7 +145,7 @@ export const submitWidthStep02Raw = async ({
       lucid,
       signer,
       planned,
-      publisherAddress: signer.address,
+      publisherAddress: signer.proofMaterialsAddress,
       label: "field-item-width-illegal raw field opening",
     }));
   const certificateUtxo =

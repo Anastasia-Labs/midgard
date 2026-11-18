@@ -158,7 +158,7 @@ export const submitWitnessScriptDecodingStep02 = async ({
       lucid,
       signer,
       planned,
-      publisherAddress: signer.address,
+      publisherAddress: signer.proofMaterialsAddress,
       label: `${FAMILY} step 02 field 6`,
       preSubmitBoundary: publicationPreSubmitBoundary,
     }));

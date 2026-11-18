@@ -103,10 +103,10 @@ describe("production proof-chunk prerequisite V1", () => {
       const port = createAuthenticatedProofChunkPrerequisitePort({
         category: "invalidRange",
         lucid: { utxosAt: async () => [] } as unknown as LucidEvolution,
-        network: "Preview",
         signer: {
           source: "test",
-          address: "addr_test1_proof_publication",
+          address: "addr_test1_proof_funding",
+          proofMaterialsAddress: "addr_test1_proof_publication",
           paymentKeyHash: "12".repeat(28),
           selectWallet: () => undefined,
         },
@@ -157,10 +157,10 @@ describe("production proof-chunk prerequisite V1", () => {
       category: "invalidRange",
       maximumTransactionBytes: 16_384,
       lucid: { utxosAt: async () => [] } as unknown as LucidEvolution,
-      network: "Preview",
       signer: {
         source: "test",
-        address: "addr_test1_proof_publication",
+        address: "addr_test1_proof_funding",
+        proofMaterialsAddress: "addr_test1_proof_publication",
         paymentKeyHash: "12".repeat(28),
         selectWallet: () => undefined,
       },

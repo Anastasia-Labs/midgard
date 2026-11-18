@@ -190,7 +190,7 @@ export const submitWithdrawnReferenceInputStep02 = async ({
             lucid,
             signer,
             planned,
-            publisherAddress: signer.address,
+            publisherAddress: signer.proofMaterialsAddress,
             label: "Withdrawn-reference-input step 02 reference-inputs",
           })
         : (() => {

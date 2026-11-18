@@ -1,6 +1,7 @@
 import { Emulator, Lucid } from "@lucid-evolution/lucid";
 import { expect, it } from "vitest";
 
+import { proofMaterialsAddressOfFundingAddress } from "../src/funding/proof-materials-address.js";
 import { restrictWorkflowFundingSigner } from "../src/workflow/funding-reservation-permit.js";
 import {
   fundingAddress,
@@ -27,6 +28,8 @@ const replacementInputs = async (
     signer: {
       source: "funding-test",
       address: fundingAddress,
+      proofMaterialsAddress:
+        proofMaterialsAddressOfFundingAddress(fundingAddress),
       paymentKeyHash: fundingKey.to_public().hash().to_hex(),
       selectWallet: (instance) =>
         instance.selectWallet.fromPrivateKey(fundingKey.to_bech32()),

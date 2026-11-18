@@ -11,10 +11,12 @@ import {
   generateEmulatorAccount,
   Lucid,
   type LucidEvolution,
+  paymentCredentialOf,
   type UTxO,
 } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 
+import { proofMaterialsAddress } from "../src/funding/proof-materials-address.js";
 import {
   bindScriptDecodeRun,
   buildScriptDecodeWalk,
@@ -208,22 +210,26 @@ describe("script-decode record builders on a wallet holding a token", () => {
   }, 300_000);
 });
 
-describe("script-decode record builders on a wallet holding a staged chunk", () => {
-  it("fund from plain-ADA coins only, leaving a larger staged chunk at the wallet unspent", async () => {
+describe("script-decode record builders beside a staged chunk", () => {
+  it("fund from the wallet's coins only, leaving a larger staged chunk at the proof-materials address unspent", async () => {
     const account = generateEmulatorAccount({ lovelace: 5_000_000_000n });
     const emulator = new Emulator([account], EMULATOR_PROTOCOL_PARAMETERS);
     const chunkDeployment = injectScriptDecodeDeployment(emulator);
     const wallet = await Lucid(emulator, "Custom");
     wallet.selectWallet.fromSeed(account.seedPhrase);
-    // A chunk staged at the wallet's own address under its inline datum,
-    // holding most of the ada, beside one plain coin.
+    // A chunk staged at the key's proof-materials address under its inline
+    // datum, holding most of the ada, beside one plain coin of the wallet.
     const [chunkDatum] = scriptDecodeStagingDatums(undecodable);
+    const materials = proofMaterialsAddress(
+      "Custom",
+      paymentCredentialOf(account.address).hash,
+    );
     const stage = await (
       await (
         await wallet
           .newTx()
           .pay.ToAddressWithData(
-            account.address,
+            materials,
             { kind: "inline", value: chunkDatum! },
             { lovelace: 4_000_000_000n },
           )
@@ -233,7 +239,7 @@ describe("script-decode record builders on a wallet holding a staged chunk", () 
         .complete()
     ).submit();
     await wallet.awaitTx(stage);
-    const chunk = (await wallet.wallet().getUtxos()).find(
+    const chunk = (await wallet.utxosAt(materials)).find(
       (utxo) => utxo.datum === chunkDatum,
     )!;
     expect(chunk.assets.lovelace).toBe(4_000_000_000n);

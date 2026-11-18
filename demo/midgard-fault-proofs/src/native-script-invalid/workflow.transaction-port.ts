@@ -127,7 +127,7 @@ export const transactionPort = (
         throw new Error("native-script-invalid: accepted inclusion is absent");
       const chunks = await resolvePublishedProofChunks({
         lucid: config.lucid,
-        address: config.signer.address,
+        address: config.signer.proofMaterialsAddress,
         proofCbor: txInclusion.txMembershipProofCbor,
       });
       if (chunks === undefined) {

@@ -362,7 +362,7 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
       planned,
-      publisherAddress: harness.proverSigner.address,
+      publisherAddress: harness.proverSigner.proofMaterialsAddress,
       label: "zero input forced field",
     });
     const references: UTxO[] = [];

@@ -34,7 +34,7 @@ const repeatedFirstChunkSpendInputs = () =>
 
 /**
  * The ledger view and carriage claims the double-spend adapter publishes
- * with, over `wallet` as the prover's address.
+ * with, over `wallet` as the prover's proof-materials address.
  */
 const adapterCarriage = async (
   plan: ReturnType<typeof certifiedOpening>["plan"],
@@ -57,7 +57,7 @@ const adapterCarriage = async (
     ownOutputs: await addressFieldCarriageOwnOutputs({
       lucid,
       network: "Preview",
-      publisherAddress: SIGNER.address,
+      publisherAddress: SIGNER.proofMaterialsAddress,
       planned: plan,
     }),
   };
@@ -102,13 +102,13 @@ describe("double-spend carriage shared with other on-chain objects", () => {
     });
   });
 
-  it("confirms its own proof-chunk publication by its own outputs, whatever else sits at the prover's address", async () => {
+  it("confirms its own proof-chunk publication by its own outputs, whatever else sits at the prover's proof-materials address", async () => {
     const proofCbor = Data.to([{ Branch: { skip: 0n, neighbors: "" } }], Proof);
     const [chunkDatum] = splitProofIntoChunkDatums(proofCbor);
     const chunk = (txHash: string): UTxO => ({
       txHash,
       outputIndex: 0,
-      address: SIGNER.address,
+      address: SIGNER.proofMaterialsAddress,
       assets: { lovelace: 2_000_000n },
       datum: chunkDatum!,
     });
@@ -213,7 +213,7 @@ describe("double-spend carriage shared with other on-chain objects", () => {
     });
   });
 
-  it("publishes a field chunk whose only output at the prover's address has a different shape", async () => {
+  it("publishes a field chunk whose only output at the prover's proof-materials address has a different shape", async () => {
     const { plan, publications } = certifiedOpening();
     const [first, ...rest] = publications;
     const wallet = [withOtherAsset(first!, LOWEST_TX_HASH), ...rest];
@@ -223,7 +223,7 @@ describe("double-spend carriage shared with other on-chain objects", () => {
         ...(await adapterCarriage(plan, wallet)),
         signer: SIGNER,
         planned: plan,
-        publisherAddress: SIGNER.address,
+        publisherAddress: SIGNER.proofMaterialsAddress,
         label: "double-spend shared carriage test",
         beforePublication: async () => {
           throw new PublicationStarted();
@@ -238,7 +238,7 @@ describe("double-spend carriage shared with other on-chain objects", () => {
     const own: UTxO = {
       txHash: h32(0x6e),
       outputIndex: 0,
-      address: SIGNER.address,
+      address: SIGNER.proofMaterialsAddress,
       assets: { lovelace: 2_000_000n },
       datum: chunkDatum!,
     };
@@ -365,7 +365,7 @@ describe("double-spend carriage shared with other on-chain objects", () => {
         ...(await adapterCarriage(plan, wallet)),
         signer: SIGNER,
         planned: plan,
-        publisherAddress: SIGNER.address,
+        publisherAddress: SIGNER.proofMaterialsAddress,
         label: "double-spend shared carriage test",
         beforePublication: async () => {
           throw new PublicationStarted();
@@ -385,7 +385,7 @@ describe("double-spend carriage shared with other on-chain objects", () => {
         ...(await adapterCarriage(plan, wallet)),
         signer: SIGNER,
         planned: plan,
-        publisherAddress: SIGNER.address,
+        publisherAddress: SIGNER.proofMaterialsAddress,
         label: "double-spend shared carriage test",
         beforePublication: async () => {
           throw new Error("every chunk is already on chain");
@@ -400,7 +400,7 @@ describe("double-spend carriage shared with other on-chain objects", () => {
     const chunk: UTxO = {
       txHash: h32(0x6e),
       outputIndex: 0,
-      address: SIGNER.address,
+      address: SIGNER.proofMaterialsAddress,
       assets: { lovelace: 2_000_000n },
       datum: chunkDatum!,
     };

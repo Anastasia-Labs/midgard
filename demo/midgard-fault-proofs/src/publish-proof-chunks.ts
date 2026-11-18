@@ -26,12 +26,7 @@ import {
   MAXIMUM_PROOF_CHUNK_COUNT,
   ProofChunkDatum,
 } from "@al-ft/midgard-sdk";
-import {
-  credentialToAddress,
-  Data,
-  type LucidEvolution,
-  type Network,
-} from "@lucid-evolution/lucid";
+import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
 
 import { isAdaOnlyInlineDatumOutput } from "./ada-only-carriage-output.js";
 import {
@@ -106,7 +101,7 @@ export const resolvePublishedProofChunks = async ({
 };
 
 /**
- * Publishes a proof as chunk UTxOs at the prover's own key address.
+ * Publishes a proof as chunk UTxOs at the prover's proof-materials address.
  *
  * The UTxOs hold Ada only, carry no reference script, and are never spent by
  * the step that references them — a step builder must keep them out of both its
@@ -114,14 +109,12 @@ export const resolvePublishedProofChunks = async ({
  */
 export const publishProofChunks = async ({
   lucid,
-  network,
   signer,
   proofCbor,
   preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
-  readonly network: Network;
   readonly signer: ResolvedProverSigner;
   readonly proofCbor: string;
   /** Production workflow seam for the chunk publication transaction. */
@@ -134,10 +127,7 @@ export const publishProofChunks = async ({
       "A zero-step proof has nothing to publish; carry it in the step redeemer instead.",
     );
   }
-  const address = credentialToAddress(network, {
-    type: "Key",
-    hash: signer.paymentKeyHash,
-  });
+  const address = signer.proofMaterialsAddress;
   const { coinsPerUtxoByte } = await resolveProtocolParameters(lucid);
 
   const funding = await fundStep(lucid, { signer });

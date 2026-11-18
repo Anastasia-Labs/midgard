@@ -159,7 +159,7 @@ export const submitReferenceInputNoIdxStep04 = async ({
       lucid,
       signer,
       planned,
-      publisherAddress: signer.address,
+      publisherAddress: signer.proofMaterialsAddress,
       label: "Reference-input-no-idx step 04 outputs field",
       preSubmitBoundary: publicationPreSubmitBoundary,
     }));

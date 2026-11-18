@@ -106,7 +106,7 @@ export const submitRawInvalidSignatureStep02 = async ({
     lucid,
     signer,
     planned,
-    publisherAddress: signer.address,
+    publisherAddress: signer.proofMaterialsAddress,
     label: "Raw invalid-signature step 02 field",
   });
   const stepReference = requireFaultProofStepReferenceScript({

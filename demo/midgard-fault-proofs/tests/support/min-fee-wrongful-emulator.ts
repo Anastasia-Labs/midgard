@@ -299,7 +299,7 @@ export const makeMinFeeWrongfulRejectionScenario = async (
         lucid: h.proverLucid,
         signer: h.proverSigner,
         planned,
-        publisherAddress: h.proverSigner.address,
+        publisherAddress: h.proverSigner.proofMaterialsAddress,
         label: "min-fee maximum field",
       });
       chunks.push(...published);

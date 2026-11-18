@@ -201,7 +201,7 @@ export const submitMissingSignatureForcedAction = async (
           lucid,
           signer,
           planned,
-          publisherAddress: signer.address,
+          publisherAddress: signer.proofMaterialsAddress,
           label: "missing-signature forced field",
         });
   const certificateUtxo =

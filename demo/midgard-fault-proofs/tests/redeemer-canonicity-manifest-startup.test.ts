@@ -9,6 +9,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
+import { proofMaterialsAddress } from "../src/funding/proof-materials-address.js";
 import { parseContractDeploymentInfo } from "../src/inspect-contracts.js";
 import { REDEEMER_CANONICITY_BLUEPRINT_TITLES } from "../src/redeemer-canonicity/contracts.js";
 import {
@@ -72,6 +73,10 @@ describe.skipIf(runDirectory === undefined)(
         signer: {
           source: "startup-test-public-credential",
           paymentKeyHash,
+          proofMaterialsAddress: proofMaterialsAddress(
+            manifest.network,
+            paymentKeyHash,
+          ),
           address: credentialToAddress(manifest.network, {
             type: "Key",
             hash: paymentKeyHash,

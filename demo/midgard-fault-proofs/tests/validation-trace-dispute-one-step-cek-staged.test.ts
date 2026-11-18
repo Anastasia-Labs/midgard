@@ -84,8 +84,8 @@ const liveStagings = async () => {
   return live.sort();
 };
 
-/** An output of our wallet holding a datum and half its ada, which no move
- * may fund from. */
+/** An output at our proof-materials address holding a datum and half our
+ * ada: it is no coin of the funding address, so no move may fund from it. */
 let datumOutput: string;
 /** The staging output spent before the PrepareSelected move. */
 let spent: string;
@@ -104,7 +104,7 @@ describe("validation-trace dispute runner: staging the operands of a staged buil
       await lucid
         .newTx()
         .pay.ToAddressWithData(
-          scene.h.proverSigner.address,
+          scene.h.proverSigner.proofMaterialsAddress,
           { kind: "inline", value: Data.to(42n) },
           { lovelace: funds / 2n },
         )

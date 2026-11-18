@@ -289,7 +289,7 @@ export const publishCarriage = async (
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
       planned,
-      publisherAddress: harness.proverSigner.address,
+      publisherAddress: harness.proverSigner.proofMaterialsAddress,
       label,
     }),
   );

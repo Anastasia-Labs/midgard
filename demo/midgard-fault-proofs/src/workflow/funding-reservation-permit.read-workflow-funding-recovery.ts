@@ -1,5 +1,6 @@
 import { CML, coreToUtxo, type TxSigned } from "@lucid-evolution/lucid";
 
+import { isProverOwnAddress } from "../funding/proof-materials-address.js";
 import { readFraudSlashFundingAuthority } from "../remove-fraudulent-block.js";
 import { assertRuntimeTransactionBound } from "./funding-reservation-permit.assert-runtime-transaction-bound.js";
 import { readValidationDisputeFundingAuthority } from "./funding-reservation-permit.assert-validation-dispute-funding.js";
@@ -55,7 +56,9 @@ const producedFundingInputs = ({
   const produced: WorkflowFundingReservedInput[] = [];
   for (let index = 0; index < outputs.len(); index += 1) {
     const output = outputs.get(index);
-    if (output.address().to_bech32() !== walletAddress) continue;
+    // Ours at the funding or the proof-materials address: both stay reserved.
+    if (!isProverOwnAddress(walletAddress, output.address().to_bech32()))
+      continue;
     const utxo = CML.TransactionUnspentOutput.new(
       CML.TransactionInput.new(
         CML.TransactionHash.from_hex(transactionHash),

@@ -163,7 +163,7 @@ export const submitFieldItemWidthIllegalStep02 = async ({
           lucid,
           signer,
           planned,
-          publisherAddress: signer.address,
+          publisherAddress: signer.proofMaterialsAddress,
           label: "field-item-width-illegal field opening",
           preSubmitBoundary: publicationPreSubmitBoundary,
         })));

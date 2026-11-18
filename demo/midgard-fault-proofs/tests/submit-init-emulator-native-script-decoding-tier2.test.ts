@@ -189,12 +189,12 @@ describe("native-script-decoding emulator tier-2 carriage", () => {
     }
     expect(journal).toContain("outcome:proven");
 
-    // The tier-2 publication really exists: the whole §5.1 preimage sits at
-    // the prover's address as a bytes-only inline datum, referenced rather
-    // than carried in the bind's own redeemer.
+    // The tier-2 publication really exists: the whole §5.1 preimage sits at the
+    // prover's proof-materials address as a bytes-only inline datum, referenced
+    // rather than carried in the bind's own redeemer.
     const expectedDatum = SDK.fieldPreimagePublicationDatumCbor(preimage);
     const publications = (
-      await proverLucid.utxosAt(proverSigner.address)
+      await proverLucid.utxosAt(proverSigner.proofMaterialsAddress)
     ).filter((utxo) => utxo.datum === expectedDatum);
     expect(publications).toHaveLength(1);
 

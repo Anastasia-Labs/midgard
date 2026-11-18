@@ -107,7 +107,7 @@ type Harness = InstalledTurnContext["harness"];
 const rolesOf = (harness: Harness) =>
   scriptDecodeRoles({
     emulator: harness.emulator,
-    proverAddress: harness.proverSigner.address,
+    materialsAddress: harness.proverSigner.proofMaterialsAddress,
     item: ITEM,
   });
 

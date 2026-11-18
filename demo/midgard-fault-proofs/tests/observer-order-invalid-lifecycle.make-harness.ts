@@ -185,7 +185,7 @@ export const makeHarness = async () => {
         lucid: harness.proverLucid,
         signer: harness.proverSigner,
         planned,
-        publisherAddress: harness.proverSigner.address,
+        publisherAddress: harness.proverSigner.proofMaterialsAddress,
         label: `observer order field ${shape.label}`,
       });
       return { tier: planned.plan.tier, chunks: [], certificate: undefined };
@@ -196,7 +196,7 @@ export const makeHarness = async () => {
         lucid: harness.proverLucid,
         signer: harness.proverSigner,
         planned,
-        publisherAddress: harness.proverSigner.address,
+        publisherAddress: harness.proverSigner.proofMaterialsAddress,
         label: `observer order field ${shape.label}`,
       }),
     );

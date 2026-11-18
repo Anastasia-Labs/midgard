@@ -373,7 +373,7 @@ it.each(RAW_HISTORY_ROWS)(
     });
     for (const outputCbor of outputCbors)
       await resolveTransitionTraceByteCarriage({
-        lucid: h.proverLucid,
+        ...h.proverCarriage,
         chunks: transitionTraceByteChunks(outputCbor),
         publish: true,
       });

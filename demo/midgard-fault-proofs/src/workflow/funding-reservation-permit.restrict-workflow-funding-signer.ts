@@ -63,18 +63,23 @@ export const restrictWorkflowFundingSigner = ({
       // Builders may retain this Lucid wallet across prerequisite transactions.
       // Read the action refreshed by begin(), rather than the preceding action's
       // candidates, which may already have been spent by a publication.
-      // Only reserved plain-ADA coins are offered: no datum, no script, no
-      // token. An action's own datum output at the wallet (staged bytes a
-      // later action reads) and any coin holding a token stay reserved but
-      // out of coin selection, so no builder needs a preset that would hide
-      // the reserved collateral from Lucid (which takes collateral only from
-      // a preset). The same coins are the collateral Lucid may post; a
-      // transaction may spend a coin it also posts as collateral.
+      // Only reserved plain-ADA coins at the funding address are offered
+      // (`isPlainFundingOutput`: no script, no token; a refund's tag datum
+      // does not matter). An action's own output at the proof-materials
+      // address (staged bytes a later action reads) and any coin holding a
+      // token stay reserved but out of coin selection, so no builder needs a
+      // preset that would hide the reserved collateral from Lucid (which
+      // takes collateral only from a preset). The same coins are the
+      // collateral Lucid may post; a transaction may spend a coin it also
+      // posts as collateral.
       const selectable = (): readonly UTxO[] => {
         assertCurrentAction();
         return state.currentFundingOutRefs
           .map((outRef) => state.resolvedInputs.get(outRef)!)
-          .filter(isPlainFundingOutput);
+          .filter(
+            (utxo) =>
+              utxo.address === signer.address && isPlainFundingOutput(utxo),
+          );
       };
       const addressHex = CML.Address.from_bech32(signer.address).to_hex();
       const api: WalletApi = Object.freeze({

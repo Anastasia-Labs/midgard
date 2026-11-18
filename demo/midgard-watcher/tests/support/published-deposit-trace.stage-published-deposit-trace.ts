@@ -1,5 +1,6 @@
 import {
   createFileTimeoutCorrectionJournalStore,
+  proofMaterialsAddressOfFundingAddress,
   submitUnattestedTimeoutCorrection,
   type TimeoutCorrectionJournal,
 } from "@al-ft/midgard-fault-proofs";
@@ -167,6 +168,7 @@ export const stagePublishedDepositTrace = async (
         signer: {
           source: "journey-operator-wallet",
           address,
+          proofMaterialsAddress: proofMaterialsAddressOfFundingAddress(address),
           paymentKeyHash: operatorVkey,
           selectWallet: () => undefined,
         },

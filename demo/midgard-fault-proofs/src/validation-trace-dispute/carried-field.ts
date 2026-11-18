@@ -1,9 +1,10 @@
 /** Our publications of a field a move of our thread reads by reference
  * (one-step-carried-moves.ts). A field one publication of §8.4's raw tier
- * holds is published bytes-only at our key address through the shared
- * raw-datum prerequisite; a longer one through the shared field-carriage
- * prerequisite, which certifies its publications under the dispute's
- * field-preimage certificate policy past one publication's bytes. Either
+ * holds is published bytes-only at our proof-materials address through the
+ * shared raw-datum prerequisite; a longer one through the shared
+ * field-carriage prerequisite, which certifies its publications under the
+ * dispute's field-preimage certificate policy past one publication's bytes.
+ * Either
  * publishes it again should it go missing before the move that needs it
  * lands. Threads of one case at steps carrying the same field read the
  * same publications. A publication is spent back by our key once our
@@ -298,7 +299,7 @@ export const validationTraceCarriedFields = ({
     ]);
     return utxo !== undefined &&
       label(utxo) === publication.outRef &&
-      utxo.address === signer.address &&
+      utxo.address === signer.proofMaterialsAddress &&
       utxo.datum === publication.datumCbor &&
       utxo.scriptRef == null
       ? utxo

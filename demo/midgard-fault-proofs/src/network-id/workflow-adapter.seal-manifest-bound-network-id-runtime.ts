@@ -116,6 +116,7 @@ export const sealManifestBoundNetworkIdRuntime = ({
   assertManifestBoundWorkflowSigner({
     network: binding.network,
     address: signer.address,
+    proofMaterialsAddress: signer.proofMaterialsAddress,
     paymentKeyHash: signer.paymentKeyHash,
   });
   const requireReference = (contractName: string, utxo: UTxO): UTxO =>

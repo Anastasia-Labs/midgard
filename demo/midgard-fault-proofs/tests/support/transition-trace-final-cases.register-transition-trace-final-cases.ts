@@ -630,6 +630,7 @@ export const transitionTraceFinalCaseRunner = (
       for (const bytes of outputCbors)
         await resolveTransitionTraceByteCarriage({
           lucid: proverLucid,
+          address: proverSigner.proofMaterialsAddress,
           chunks: transitionTraceByteChunks(bytes.toString("hex")),
           publish: true,
         });

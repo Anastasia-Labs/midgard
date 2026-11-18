@@ -65,7 +65,7 @@ export const actuateProtectedOutputSignerFieldOpening = async ({
       lucid,
       signer,
       planned,
-      publisherAddress: signer.address,
+      publisherAddress: signer.proofMaterialsAddress,
       label,
       preSubmitBoundary: publicationBoundary,
     }));

@@ -314,7 +314,7 @@ export const setupMissingSignatureForcedScenario = async (
         lucid: harness.proverLucid,
         signer: harness.proverSigner,
         planned,
-        publisherAddress: harness.proverSigner.address,
+        publisherAddress: harness.proverSigner.proofMaterialsAddress,
         label: "missing-signature max field",
       }),
     );

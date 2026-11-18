@@ -159,7 +159,7 @@ export const submitNativeScriptInvalidStep03 = async ({
       lucid,
       signer,
       planned,
-      publisherAddress: signer.address,
+      publisherAddress: signer.proofMaterialsAddress,
       label: `${FAMILY} final field 7`,
       preSubmitBoundary: publicationPreSubmitBoundary,
     }));

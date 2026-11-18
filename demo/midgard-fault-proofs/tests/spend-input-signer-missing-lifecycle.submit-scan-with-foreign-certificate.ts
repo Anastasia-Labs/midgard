@@ -103,7 +103,7 @@ export const submitScanWithForeignCertificate = async ({
     lucid,
     signer,
     planned,
-    publisherAddress: signer.address,
+    publisherAddress: signer.proofMaterialsAddress,
     label: "foreign address witnesses",
   });
   const { certificateUtxo } = await certifyFaultProofFieldCarriage({

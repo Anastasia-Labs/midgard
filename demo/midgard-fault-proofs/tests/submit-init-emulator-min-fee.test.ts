@@ -298,13 +298,16 @@ describe("min-fee emulator lifecycle", () => {
     ).toBe(true);
     expect(finalized.fieldPreimageLengths[0]).toBe(preimageBytes);
 
-    // The tier-2 publication really exists at the prover's address as a
-    // bytes-only inline datum, referenced rather than spent by the step.
+    // The tier-2 publication really exists at the prover's proof-materials
+    // address as a bytes-only inline datum, referenced rather than spent by the
+    // step.
     const expectedDatum = SDK.fieldPreimagePublicationDatumCbor(
       encodeMidgardFieldPreimage(scenario.fieldItemCbors[0]),
     );
     const publications = (
-      await harness.proverLucid.utxosAt(harness.proverSigner.address)
+      await harness.proverLucid.utxosAt(
+        harness.proverSigner.proofMaterialsAddress,
+      )
     ).filter((utxo) => utxo.datum === expectedDatum);
     expect(publications).toHaveLength(1);
 

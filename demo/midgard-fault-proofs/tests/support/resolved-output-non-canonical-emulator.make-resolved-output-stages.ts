@@ -312,7 +312,7 @@ export const makeResolvedOutputStages = async (
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
       planned,
-      publisherAddress: harness.proverSigner.address,
+      publisherAddress: harness.proverSigner.proofMaterialsAddress,
       label: `${FAMILY} raw field opening`,
     });
     const { certificateUtxo } = await certifyFaultProofFieldCarriage({
@@ -732,7 +732,7 @@ export const makeResolvedOutputStages = async (
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
       planned,
-      publisherAddress: harness.proverSigner.address,
+      publisherAddress: harness.proverSigner.proofMaterialsAddress,
       label: `${FAMILY} other-field opening`,
     });
     return (

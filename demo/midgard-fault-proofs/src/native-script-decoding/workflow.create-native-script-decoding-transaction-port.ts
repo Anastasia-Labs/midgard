@@ -199,7 +199,7 @@ export const createNativeScriptDecodingTransactionPort = (
                   txInclusion: inclusion,
                   publishedProofChunks: await resolvePublishedProofChunks({
                     lucid: config.lucid,
-                    address: config.signer.address,
+                    address: config.signer.proofMaterialsAddress,
                     proofCbor: inclusion.txMembershipProofCbor,
                   }),
                   referenceScriptUtxo: config.references.steps[0],
@@ -236,7 +236,7 @@ export const createNativeScriptDecodingTransactionPort = (
                       ownOutputs,
                       lucid: config.lucid,
                       planned,
-                      publisherAddress: config.signer.address,
+                      publisherAddress: config.signer.proofMaterialsAddress,
                     });
               const certificate =
                 planned === null

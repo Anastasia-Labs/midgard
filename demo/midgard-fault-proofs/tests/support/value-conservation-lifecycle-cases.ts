@@ -982,7 +982,7 @@ export const registerValueConservationCases = (
                 lucid: harness.proverLucid,
                 signer: harness.proverSigner,
                 planned,
-                publisherAddress: harness.proverSigner.address,
+                publisherAddress: harness.proverSigner.proofMaterialsAddress,
                 label: "value conservation",
               }),
             );
@@ -1043,7 +1043,6 @@ export const registerValueConservationCases = (
             await record("source:proof-publication", () =>
               publishProofChunks({
                 lucid: harness.proverLucid,
-                network,
                 signer: harness.proverSigner,
                 proofCbor: block.txInclusion!.txMembershipProofCbor!,
               }),

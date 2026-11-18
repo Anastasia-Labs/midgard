@@ -1,13 +1,15 @@
 /**
- * Which outputs at the prover's address the transition-trace carriage lookup
- * takes as a chunk's carriage when other outputs there hold the same datum.
+ * Which outputs at the prover's proof-materials address the transition-trace
+ * carriage lookup takes as a chunk's carriage when other outputs there hold
+ * the same datum.
  */
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { resolveTransitionTraceDataCarriage } from "../src/transition-trace/proof-carriage.js";
 
-const ADDRESS = "addr_test1prover";
+const ADDRESS = "addr_test1prover_proof_materials";
+const FUNDING_ADDRESS = "addr_test1prover_funding";
 const FOREIGN_UNIT = `${"ab".repeat(28)}${"cd".repeat(4)}`;
 const DATUMS = [Data.to("aa".repeat(4096)), Data.to("bb".repeat(100))];
 
@@ -38,13 +40,14 @@ const lookAlikes = (datum: string, txHashByte: string): UTxO[] => [
 ];
 
 /**
- * A wallet at `ADDRESS` holding `held`. A carriage publication it signs adds
- * a plain output with the paid datum, listed after everything already held.
+ * A wallet funded at `FUNDING_ADDRESS` whose proof-materials address
+ * `ADDRESS` holds `held`. A carriage publication it signs adds a plain output
+ * with the paid datum there, listed after everything already held.
  */
 const walletHolding = (held: UTxO[]) => {
   const published: string[] = [];
   const lucid = {
-    wallet: () => ({ address: async () => ADDRESS }),
+    wallet: () => ({ address: async () => FUNDING_ADDRESS }),
     utxosAt: async (address: string) =>
       address === ADDRESS ? held.map((utxo) => ({ ...utxo })) : [],
     awaitTx: async () => true,
@@ -88,6 +91,7 @@ describe("transition-trace carriage lookup", () => {
 
     const carriage = await resolveTransitionTraceDataCarriage({
       lucid,
+      address: ADDRESS,
       datums: DATUMS,
     });
 
@@ -102,7 +106,11 @@ describe("transition-trace carriage lookup", () => {
     ]);
 
     await expect(
-      resolveTransitionTraceDataCarriage({ lucid, datums: DATUMS }),
+      resolveTransitionTraceDataCarriage({
+        lucid,
+        address: ADDRESS,
+        datums: DATUMS,
+      }),
     ).rejects.toThrow("requires a journaled chunk publication");
   });
 
@@ -114,6 +122,7 @@ describe("transition-trace carriage lookup", () => {
 
     const carriage = await resolveTransitionTraceDataCarriage({
       lucid,
+      address: ADDRESS,
       datums: DATUMS,
       publish: true,
     });

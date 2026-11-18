@@ -91,7 +91,7 @@ describe("min-fee step 02 at a large field", () => {
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
       planned,
-      publisherAddress: harness.proverSigner.address,
+      publisherAddress: harness.proverSigner.proofMaterialsAddress,
       label: LABEL,
     });
     const preimageCertificate = harness.contracts.fieldPreimageCertificate;

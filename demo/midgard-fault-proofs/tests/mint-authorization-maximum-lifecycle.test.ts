@@ -159,7 +159,7 @@ it.each(["signers", "native", "cancel"])(
         lucid: h.proverLucid,
         signer: h.proverSigner,
         planned,
-        publisherAddress: h.proverSigner.address,
+        publisherAddress: h.proverSigner.proofMaterialsAddress,
         label: "mint maximum signers",
       });
       const certificateReference = await publishPlainReferenceScriptUtxo({
@@ -202,7 +202,7 @@ it.each(["signers", "native", "cancel"])(
         const unsigned = await h.proverLucid
           .newTx()
           .pay.ToAddressWithData(
-            h.proverSigner.address,
+            h.proverSigner.proofMaterialsAddress,
             { kind: "inline", value: datum },
             { lovelace: 80_000_000n },
           )
@@ -211,9 +211,9 @@ it.each(["signers", "native", "cancel"])(
           await unsigned.sign.withWallet().complete()
         ).submit();
         await h.proverLucid.awaitTx(txHash);
-        const utxo = (await h.proverLucid.utxosAt(h.proverSigner.address)).find(
-          (item) => item.txHash === txHash && item.datum === datum,
-        );
+        const utxo = (
+          await h.proverLucid.utxosAt(h.proverSigner.proofMaterialsAddress)
+        ).find((item) => item.txHash === txHash && item.datum === datum);
         if (utxo === undefined)
           throw new Error("missing published native preimage");
         rawPreimageUtxos.push(utxo);

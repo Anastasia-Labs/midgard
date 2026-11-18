@@ -150,7 +150,7 @@ export const submitInputNoIdxStep02 = async ({
       lucid,
       signer,
       planned,
-      publisherAddress: signer.address,
+      publisherAddress: signer.proofMaterialsAddress,
       label: "Input-no-idx step 02 spend-inputs",
       preSubmitBoundary: publicationPreSubmitBoundary,
     }));

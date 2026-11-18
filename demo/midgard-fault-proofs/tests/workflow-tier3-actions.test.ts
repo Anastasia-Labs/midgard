@@ -60,9 +60,8 @@ import {
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
 
-// The double-spend preflight must reach a real builder's pre-submit boundary;
-// only the init builder itself is replaced, so everything the adapter does
-// with the captured body stays under test.
+// The double-spend preflight must reach a real builder's pre-submit boundary:
+// only the init builder is replaced, so all the adapter does stays under test.
 vi.mock("../src/submit-init.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/submit-init.js")>()),
   submitInit: vi.fn(),
@@ -75,7 +74,8 @@ const STATE_QUEUE_OUT_REF = `${h32(0x73)}#0`;
 const SCRIPT: MintingPolicy = { type: "Native", script: "8200" };
 const SIGNER: ResolvedProverSigner = {
   source: "tier3-test",
-  address: "addr_test1_tier3_test",
+  address: "addr_test1_tier3_funding",
+  proofMaterialsAddress: "addr_test1_tier3_test",
   paymentKeyHash: "81".repeat(28),
   selectWallet: () => undefined,
 };
@@ -97,7 +97,7 @@ const stageObservation = (stage: DoubleSpendWorkflowStage) => ({
 const utxo = ({
   txHash,
   outputIndex,
-  address = SIGNER.address,
+  address = SIGNER.proofMaterialsAddress,
   datum,
   assets = { lovelace: 5_000_000n },
   scriptRef,
@@ -151,10 +151,10 @@ const certificateFor = ({
 
 /** Ledger reads, by address and by out-ref, over the current outputs. */
 const ledgerReads = (
-  live: () => readonly [wallet: readonly UTxO[], others: readonly UTxO[]],
+  live: () => readonly [materials: readonly UTxO[], others: readonly UTxO[]],
 ) => ({
   utxosAt: async (address: string) =>
-    live()[address === SIGNER.address ? 0 : 1],
+    live()[address === SIGNER.proofMaterialsAddress ? 0 : 1],
   utxosByOutRef: async (outRefs: readonly OutRef[]) =>
     live()
       .flat()

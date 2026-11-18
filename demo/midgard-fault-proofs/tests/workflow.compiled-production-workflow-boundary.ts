@@ -13,6 +13,7 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 import { parseArgs } from "../src/bin.js";
+import { proofMaterialsAddress } from "../src/funding/proof-materials-address.js";
 import { sealManifestBoundNetworkIdRuntime } from "../src/network-id/workflow-adapter.js";
 import type { RetainedDaPayloadSource } from "../src/transition-trace/fetch.js";
 import { WORKFLOW_ACTUATION_PERMIT } from "../src/workflow/actuation-permit.js";
@@ -28,10 +29,7 @@ import {
   workflowReadinessReport,
 } from "../src/workflow/cli.js";
 import { DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
-import {
-  assertManifestBoundWorkflowSigner,
-  requireManifestBoundReferenceScriptUtxo,
-} from "../src/workflow/deployment-manifest-binding.js";
+import { requireManifestBoundReferenceScriptUtxo } from "../src/workflow/deployment-manifest-binding.js";
 import { WORKFLOW_FUNDING_RESERVATION_PERMIT } from "../src/workflow/funding-reservation-permit.js";
 import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.js";
 import {
@@ -52,26 +50,13 @@ import {
 } from "./workflow.make-adapter.js";
 
 describe("compiled production workflow boundary", () => {
-  it("rejects substituted signer and reference-script identities", () => {
+  // The signer's identities: proof-materials-address.test.ts.
+  it("rejects substituted reference-script identities", () => {
     const paymentKeyHash = "a7".repeat(28);
     const address = credentialToAddress("Preview", {
       type: "Key",
       hash: paymentKeyHash,
     });
-    expect(() =>
-      assertManifestBoundWorkflowSigner({
-        network: "Preview",
-        address,
-        paymentKeyHash,
-      }),
-    ).not.toThrow();
-    expect(() =>
-      assertManifestBoundWorkflowSigner({
-        network: "Mainnet",
-        address,
-        paymentKeyHash,
-      }),
-    ).toThrow("manifest-network enterprise address");
 
     const scriptRef = {
       type: "Native" as const,
@@ -164,6 +149,7 @@ describe("compiled production workflow boundary", () => {
       signer: {
         source: "test",
         address,
+        proofMaterialsAddress: proofMaterialsAddress("Preview", paymentKeyHash),
         paymentKeyHash,
         selectWallet: () => {},
       },

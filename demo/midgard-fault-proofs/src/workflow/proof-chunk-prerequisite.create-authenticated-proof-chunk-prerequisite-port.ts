@@ -1,5 +1,5 @@
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
-import { type LucidEvolution, type Network } from "@lucid-evolution/lucid";
+import { type LucidEvolution } from "@lucid-evolution/lucid";
 
 import {
   publishProofChunks,
@@ -44,7 +44,6 @@ export const createAuthenticatedProofChunkPrerequisitePort = <
 >({
   category,
   lucid,
-  network,
   signer,
   publications,
   proofCborForAction,
@@ -53,7 +52,6 @@ export const createAuthenticatedProofChunkPrerequisitePort = <
 }: {
   readonly category: Category;
   readonly lucid: LucidEvolution;
-  readonly network: Network;
   readonly signer: ResolvedProverSigner;
   readonly publications: FraudProofAuthenticatedPublicationObserver;
   readonly proofCborForAction: (input: {
@@ -187,7 +185,7 @@ export const createAuthenticatedProofChunkPrerequisitePort = <
             await publications.observeExact({
               headerHash,
               kind: "proof_chunk",
-              address: signer.address,
+              address: signer.proofMaterialsAddress,
               expectedOutRef: output.outRef,
               expectedDatumCbor: output.datumCbor,
             })
@@ -272,7 +270,7 @@ export const createAuthenticatedProofChunkPrerequisitePort = <
       }
       const chunks = await resolvePublishedProofChunks({
         lucid,
-        address: signer.address,
+        address: signer.proofMaterialsAddress,
         proofCbor: required.proofCbor,
       });
       if (chunks === undefined) {
@@ -299,7 +297,6 @@ export const createAuthenticatedProofChunkPrerequisitePort = <
         async (boundary) => {
           await publishProofChunks({
             lucid,
-            network,
             signer,
             proofCbor: required.proofCbor,
             preSubmitBoundary: boundary,
@@ -312,7 +309,7 @@ export const createAuthenticatedProofChunkPrerequisitePort = <
         durableRecovery: recoveryForTransaction({
           transaction,
           requirement: required,
-          address: signer.address,
+          address: signer.proofMaterialsAddress,
         }),
       };
     },

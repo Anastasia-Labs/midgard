@@ -46,7 +46,8 @@ export const STATE_QUEUE_OUT_REF = `${h32(0x73)}#0`;
 const SCRIPT: MintingPolicy = { type: "Native", script: "8200" };
 export const SIGNER: ResolvedProverSigner = {
   source: "double-spend-shared-carriage-test",
-  address: "addr_test1_double_spend_shared_carriage",
+  address: "addr_test1_double_spend_shared_carriage_funding",
+  proofMaterialsAddress: "addr_test1_double_spend_shared_carriage",
   paymentKeyHash: "81".repeat(28),
   selectWallet: () => undefined,
 };
@@ -118,7 +119,7 @@ export const certifiedOpening = (
     (publication, index): UTxO => ({
       txHash: h32(0x20 + index),
       outputIndex: 0,
-      address: SIGNER.address,
+      address: SIGNER.proofMaterialsAddress,
       assets: { lovelace: 5_000_000n },
       datum: fieldPreimagePublicationDatumCbor(publication.bytes),
     }),
@@ -144,7 +145,7 @@ export const doubleSpendHarness = ({
   readonly certificateUtxos: readonly UTxO[];
 }) => {
   const at = (address: string) =>
-    address === SIGNER.address
+    address === SIGNER.proofMaterialsAddress
       ? walletUtxos
       : address === CERTIFICATE_ADDRESS
         ? certificateUtxos

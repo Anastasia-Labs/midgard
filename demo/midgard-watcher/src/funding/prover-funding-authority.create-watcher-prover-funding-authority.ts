@@ -1,6 +1,7 @@
 import {
   assertWorkflowActuationPermitIdentity,
   createWorkflowFundingReservationPermit,
+  isProverOwnAddress,
   type WorkflowActuationPermit,
   type WorkflowAdapterRunner,
   type WorkflowFundingReservationPort,
@@ -159,7 +160,8 @@ export const createWatcherProverFundingAuthority = async (input: {
       );
       const inputs = resolved.map((utxo) => {
         const value = reservationInput(utxo);
-        if (!recorded.has(value.outRef) || utxo.address !== plan.walletAddress)
+        const own = isProverOwnAddress(plan.walletAddress, utxo.address);
+        if (!recorded.has(value.outRef) || !own)
           throw new Error(
             "reobserved funding source substituted a wallet input",
           );

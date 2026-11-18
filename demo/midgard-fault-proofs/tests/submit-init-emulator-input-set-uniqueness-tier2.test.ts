@@ -183,14 +183,16 @@ describe("input-set-uniqueness emulator tier-2 carriage", () => {
     expect(step02.badTxId).toBe(fixture.nativeTxId);
 
     // The tier-2 publication really exists: the whole §5.1 preimage sits at
-    // the prover's address as a bytes-only inline datum, and the step
-    // transaction consumed it as a reference input rather than carrying
-    // 14,603 bytes in its own redeemer.
+    // the prover's proof-materials address as a bytes-only inline datum, and
+    // the step transaction consumed it as a reference input rather than
+    // carrying 14,603 bytes in its own redeemer.
     const expectedDatum = fieldPreimagePublicationDatumCbor(
       fieldPreimage(fixture.spendInputItemCbors),
     );
     const publications = (
-      await harness.proverLucid.utxosAt(harness.proverSigner.address)
+      await harness.proverLucid.utxosAt(
+        harness.proverSigner.proofMaterialsAddress,
+      )
     ).filter((utxo) => utxo.datum === expectedDatum);
     expect(publications).toHaveLength(1);
 
@@ -221,7 +223,7 @@ describe("input-set-uniqueness emulator tier-2 carriage", () => {
     } = await driveToStep01();
 
     // Publish a byte-flipped twin of the honest preimage at the prover's own
-    // address — same length, same shape, wrong content.
+    // proof-materials address — same length, same shape, wrong content.
     const tampered = Buffer.from(fieldPreimage(fixture.spendInputItemCbors));
     tampered[tampered.length - 1] = tampered[tampered.length - 1]! ^ 0xff;
     const tamperedDatum = fieldPreimagePublicationDatumCbor(tampered);
@@ -229,7 +231,7 @@ describe("input-set-uniqueness emulator tier-2 carriage", () => {
     const publishTx = await harness.proverLucid
       .newTx()
       .pay.ToAddressWithData(
-        harness.proverSigner.address,
+        harness.proverSigner.proofMaterialsAddress,
         { kind: "inline", value: tamperedDatum },
         {},
       )
@@ -237,7 +239,9 @@ describe("input-set-uniqueness emulator tier-2 carriage", () => {
     const publishSigned = await publishTx.sign.withWallet().complete();
     await harness.proverLucid.awaitTx(await publishSigned.submit(), 100);
     const tamperedUtxo = (
-      await harness.proverLucid.utxosAt(harness.proverSigner.address)
+      await harness.proverLucid.utxosAt(
+        harness.proverSigner.proofMaterialsAddress,
+      )
     ).find((utxo) => utxo.datum === tamperedDatum);
     if (tamperedUtxo === undefined) {
       throw new Error("the tampered publication did not confirm");

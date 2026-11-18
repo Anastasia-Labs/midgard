@@ -87,7 +87,7 @@ export const submitMintAuthorizationStep03WitnessAbsence = async ({
       lucid: shared.lucid,
       signer: shared.signer,
       planned,
-      publisherAddress: shared.signer.address,
+      publisherAddress: shared.signer.proofMaterialsAddress,
       label: `${STEP_LABEL} script-witnesses`,
     }));
   const fieldReferenceInputs = [

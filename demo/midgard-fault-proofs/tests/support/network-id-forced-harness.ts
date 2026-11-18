@@ -68,7 +68,8 @@ const CATEGORY_ID = "0000001c";
 const SCRIPT: MintingPolicy = { type: "Native", script: "8200" };
 export const SIGNER: ResolvedProverSigner = {
   source: "network-id-forced-test",
-  address: "addr_test1_network_id_forced",
+  address: "addr_test1_network_id_forced_funding",
+  proofMaterialsAddress: "addr_test1_network_id_forced",
   paymentKeyHash: "81".repeat(28),
   selectWallet: () => undefined,
 };

@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 
+import { proofMaterialsAddressOfFundingAddress } from "@al-ft/midgard-fault-proofs";
 import { FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-sdk";
 
 import {
@@ -232,7 +233,12 @@ export const startWatcherRuntime = async (
         networkMagic,
         requestTimeoutMs: watcherConfig.l1.requestTimeoutMs,
       },
-      walletAddresses: [proverWalletAddress, availabilityWalletAddress],
+      // The prover's proof materials sit at their own address, read by it.
+      walletAddresses: [
+        proverWalletAddress,
+        proofMaterialsAddressOfFundingAddress(proverWalletAddress),
+        availabilityWalletAddress,
+      ],
       eventProjection: userEventScripts.eventProjection,
       replayPruneFloor: replayHost.retention.floor,
       log: (line) => process.stderr.write(`${line}\n`),

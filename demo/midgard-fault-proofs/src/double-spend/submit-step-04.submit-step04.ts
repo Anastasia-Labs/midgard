@@ -175,7 +175,7 @@ export const submitStep04 = async ({
       lucid,
       signer,
       planned,
-      publisherAddress: signer.address,
+      publisherAddress: signer.proofMaterialsAddress,
       label: "Double-spend step 04 tx2 spend-inputs",
       preSubmitBoundary,
     }));

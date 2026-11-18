@@ -219,7 +219,7 @@ export const publishInputExistenceSelectionCarriage = async (
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
       planned,
-      publisherAddress: harness.proverSigner.address,
+      publisherAddress: harness.proverSigner.proofMaterialsAddress,
       label: "retained input-existence field",
     });
     fieldCarriageUtxos.push(...chunks);

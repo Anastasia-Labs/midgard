@@ -306,6 +306,11 @@ export type FaultProofEmulatorHarness = {
   readonly funderLucid: Awaited<ReturnType<typeof Lucid>>;
   readonly proverLucid: Awaited<ReturnType<typeof Lucid>>;
   readonly proverSigner: ReturnType<typeof resolveProverSigner>;
+  /** Where the prover publishes proof material: its proof-materials address. */
+  readonly proverCarriage: {
+    readonly lucid: Awaited<ReturnType<typeof Lucid>>;
+    readonly address: string;
+  };
   readonly nonceUtxo: UTxO;
   readonly contracts: Awaited<
     ReturnType<typeof buildMinimalFaultProofContracts>
@@ -479,6 +484,10 @@ export const makeFaultProofEmulatorHarness = async ({
     funderLucid,
     proverLucid,
     proverSigner,
+    proverCarriage: {
+      lucid: proverLucid,
+      address: proverSigner.proofMaterialsAddress,
+    },
     nonceUtxo,
     contracts,
     catalogue,

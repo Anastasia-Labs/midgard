@@ -56,7 +56,7 @@ const resolveFieldCarriages = async (
       await resolveFaultProofFieldCarriagePublications({
         ownOutputs,
         lucid: config.lucid,
-        publisherAddress: config.signer.address,
+        publisherAddress: config.signer.proofMaterialsAddress,
         planned: plan,
       });
     if (resolvedPublications === undefined) {
@@ -173,7 +173,7 @@ export const createTransactionPort = (
       const chunks = await resolveDirectFirstProofChunks({
         action,
         lucid: config.lucid,
-        address: config.signer.address,
+        address: config.signer.proofMaterialsAddress,
         proofCbor: admitted.artifact.txMembershipProofCbor,
       });
       return Object.freeze({

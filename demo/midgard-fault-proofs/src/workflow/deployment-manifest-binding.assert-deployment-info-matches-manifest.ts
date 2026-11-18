@@ -14,6 +14,7 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
+import { proofMaterialsAddress } from "../funding/proof-materials-address.js";
 import { type ContractDeploymentInfo } from "../inspect-contracts.js";
 import { resolveFaultProofDeploymentContracts } from "../runtime.js";
 import type { FraudProofRawL1FamilyDefinition } from "./raw-l1-family-derivation.js";
@@ -100,10 +101,12 @@ export const HEX_28 = /^[0-9a-f]{56}$/u;
 export const assertManifestBoundWorkflowSigner = ({
   network,
   address,
+  proofMaterialsAddress: materialsAddress,
   paymentKeyHash,
 }: {
   readonly network: Network;
   readonly address: string;
+  readonly proofMaterialsAddress: string;
   readonly paymentKeyHash: string;
 }): void => {
   if (!HEX_28.test(paymentKeyHash)) {
@@ -116,6 +119,11 @@ export const assertManifestBoundWorkflowSigner = ({
   if (address !== expected) {
     throw new Error(
       "workflow signer address is not the manifest-network enterprise address for its payment credential",
+    );
+  }
+  if (materialsAddress !== proofMaterialsAddress(network, paymentKeyHash)) {
+    throw new Error(
+      "workflow signer proof-materials address is not the manifest-network address of its payment credential",
     );
   }
 };

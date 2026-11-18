@@ -66,7 +66,7 @@ export const resolveChunks = async ({
   const chunks = await resolveDirectFirstProofChunks({
     action,
     lucid: config.lucid,
-    address: config.signer.address,
+    address: config.signer.proofMaterialsAddress,
     proofCbor,
   });
   // Absence is the expected state for the direct-first attempt. Once a
@@ -113,7 +113,7 @@ export const inputExistenceRemoval = <Category extends InputExistenceCategory>({
     const publications = await resolveFaultProofFieldCarriagePublications({
       ownOutputs,
       lucid: config.lucid,
-      publisherAddress: config.signer.address,
+      publisherAddress: config.signer.proofMaterialsAddress,
       planned,
     });
     if (publications === undefined) {

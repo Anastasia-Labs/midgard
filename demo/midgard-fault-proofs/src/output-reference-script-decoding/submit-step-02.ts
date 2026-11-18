@@ -295,7 +295,7 @@ export const submitOutputReferenceScriptDecodingStep02 = async ({
       lucid,
       signer,
       planned,
-      publisherAddress: signer.address,
+      publisherAddress: signer.proofMaterialsAddress,
       label: `${FAMILY} field 2`,
       preSubmitBoundary: publicationPreSubmitBoundary,
     }));

@@ -122,13 +122,13 @@ export const prepareTransitionFieldCarriage = async ({
         lucid,
         signer,
         planned,
-        publisherAddress: signer.address,
+        publisherAddress: signer.proofMaterialsAddress,
         label,
       })
     : await resolveFaultProofFieldCarriagePublications({
         ownOutputs,
         lucid,
-        publisherAddress: signer.address,
+        publisherAddress: signer.proofMaterialsAddress,
         planned,
       });
   if (chunks === undefined)

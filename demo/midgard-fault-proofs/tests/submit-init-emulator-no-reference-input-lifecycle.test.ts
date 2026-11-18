@@ -293,12 +293,12 @@ describe("no-reference-input emulator lifecycle", () => {
       NO_REFERENCE_INPUT_ABSENT_PRODUCER_TX_ID,
     );
 
-    // The tier-2 publication really exists: the whole §5.1 preimage sits at
-    // the prover's address as a bytes-only inline datum, referenced by the
-    // step rather than carried in its redeemer.
+    // The tier-2 publication really exists: the whole §5.1 preimage sits at the
+    // prover's proof-materials address as a bytes-only inline datum, referenced
+    // by the step rather than carried in its redeemer.
     const expectedDatum = SDK.fieldPreimagePublicationDatumCbor(preimage);
     const publications = (
-      await proverLucid.utxosAt(proverSigner.address)
+      await proverLucid.utxosAt(proverSigner.proofMaterialsAddress)
     ).filter((utxo) => utxo.datum === expectedDatum);
     expect(publications).toHaveLength(1);
 
@@ -371,10 +371,11 @@ describe("no-reference-input emulator lifecycle", () => {
       });
 
     // The strongest material an adversary holds is the genuine MEMBERSHIP
-    // witness for the held input under its actual event pre-root. `pexcludes.exclusion.withdraw`
-    // binds it as `mpf.insert(trie, key, "", proof)`, which asserts
-    // `excluding(key, proof) == root` and fails outright for a key the trie
-    // already holds: a membership witness cannot masquerade as its opposite.
+    // witness for the held input under its actual event pre-root.
+    // `pexcludes.exclusion.withdraw` binds it as `mpf.insert(trie, key, "",
+    // proof)`, which asserts `excluding(key, proof) == root` and fails outright
+    // for a key the trie already holds: a membership witness cannot masquerade
+    // as its opposite.
     const membershipRefusal = await expectOnchainRefusal(async () =>
       forgeStep04(genuineLedgerMembershipProof),
     );

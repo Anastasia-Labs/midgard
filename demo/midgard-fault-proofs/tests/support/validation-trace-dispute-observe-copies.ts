@@ -32,10 +32,11 @@ export const outRefsOf = (inputs: CML.TransactionInputList | undefined) => {
   return found;
 };
 
-/** The outputs the emulator accepted at our key address that carry only ADA
- * and, as their inline datum, `bytes` bytes and nothing else. */
+/** The outputs the emulator accepted at our proof-materials address that
+ * carry only ADA and, as their inline datum, `bytes` bytes and nothing
+ * else. */
 export const copiesOf = (scene: Scene, bytes: number) => {
-  const prover = scene.h.proverSigner.address;
+  const prover = scene.h.proverSigner.proofMaterialsAddress;
   return landed(scene).flatMap(({ hash, tx }) => {
     const outputs = tx.body().outputs();
     const found: string[] = [];
@@ -75,7 +76,7 @@ export const blockOf = async (scene: Scene, hash: string) => {
   return status.confirmation.blockHeight!;
 };
 
-/** Spends `outRef` back to our key address by our key, and lands it. */
+/** Spends `outRef` back to our funding address by our key, and lands it. */
 export const spendByKey = async (scene: Scene, outRef: string) => {
   const lucid = scene.h.proverLucid;
   const [hash, index] = outRef.split("#");
@@ -90,24 +91,30 @@ export const spendByKey = async (scene: Scene, outRef: string) => {
   scene.h.emulator.awaitBlock(1);
 };
 
-/** `spender` spends one copy back to our key address by our key alone: no
- * script runs and nothing else is spent. */
+/** `spender` spends one copy back by our key alone, as plain coins at our
+ * funding address: no script runs, nothing else is spent, and no output
+ * carries a datum, a token or a reference script. */
 export const expectReclaimedByKey = (scene: Scene, spender: Landed) => {
   const body = spender.tx.body();
   expect(spender.tx.witness_set().redeemers()).toBeUndefined();
   expect(body.inputs().len()).toBe(1);
   const outputs = body.outputs();
-  for (let index = 0; index < outputs.len(); index += 1)
-    expect(outputs.get(index).address().to_bech32(undefined)).toBe(
+  for (let index = 0; index < outputs.len(); index += 1) {
+    const output = outputs.get(index);
+    expect(output.address().to_bech32(undefined)).toBe(
       scene.h.proverSigner.address,
     );
+    expect(output.datum()).toBeUndefined();
+    expect(output.amount().has_multiassets()).toBe(false);
+    expect(output.script_ref()).toBeUndefined();
+  }
 };
 
-/** The outputs at our key address the transaction `cbor` reads as
- * reference inputs, each with its inline datum's CBOR, from the
+/** The outputs at our proof-materials address the transaction `cbor` reads
+ * as reference inputs, each with its inline datum's CBOR, from the
  * transactions the emulator accepted. */
 export const ownReadsOf = (scene: Scene, cbor: string) => {
-  const prover = scene.h.proverSigner.address;
+  const prover = scene.h.proverSigner.proofMaterialsAddress;
   const created = new Map(landed(scene).map(({ hash, tx }) => [hash, tx]));
   return outRefsOf(
     CML.Transaction.from_cbor_hex(cbor).body().reference_inputs(),

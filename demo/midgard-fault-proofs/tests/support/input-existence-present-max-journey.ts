@@ -365,7 +365,7 @@ export const runPresentMaxJourney = async ({
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
       planned: plan,
-      publisherAddress: harness.proverSigner.address,
+      publisherAddress: harness.proverSigner.proofMaterialsAddress,
       label: `${family.label} field`,
     }),
   );

@@ -272,7 +272,7 @@ export const submitValueNotPreservedStep03 = async ({
           lucid,
           signer,
           planned: outputsPlan,
-          publisherAddress: signer.address,
+          publisherAddress: signer.proofMaterialsAddress,
           label: `${STEP_LABEL} outputs`,
         })
       : [];
@@ -284,7 +284,7 @@ export const submitValueNotPreservedStep03 = async ({
           lucid,
           signer,
           planned: mintPlan,
-          publisherAddress: signer.address,
+          publisherAddress: signer.proofMaterialsAddress,
           label: `${STEP_LABEL} mint`,
         });
   const carriageUtxos = [...outputsCarriageUtxos, ...mintCarriageUtxos];

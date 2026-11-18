@@ -94,7 +94,7 @@ export const resolveFieldPreimageLengthCarriage = async ({
   const publications = await resolveFaultProofFieldCarriagePublications({
     ownOutputs,
     lucid: workflow.config.lucid,
-    publisherAddress: workflow.config.signer.address,
+    publisherAddress: workflow.config.signer.proofMaterialsAddress,
     planned,
   });
   if (publications === undefined) {

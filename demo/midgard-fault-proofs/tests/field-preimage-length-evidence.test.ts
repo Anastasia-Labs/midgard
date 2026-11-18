@@ -208,7 +208,7 @@ it.each([
     expect(planned.preimage).toEqual(preimage);
     const publications: UTxO[] = planned.plan.publications.map(
       (publication, index) => ({
-        address: workflow.config.signer.address,
+        address: workflow.config.signer.proofMaterialsAddress,
         txHash: "67".repeat(32),
         outputIndex: index,
         assets: { lovelace: 2_000_000n },

@@ -95,7 +95,7 @@ const buildTier3Scenario = async () => {
     lucid: harness.proverLucid,
     signer: harness.proverSigner,
     planned,
-    publisherAddress: harness.proverSigner.address,
+    publisherAddress: harness.proverSigner.proofMaterialsAddress,
     label: LABEL,
   });
   const preimageCertificate = harness.contracts.fieldPreimageCertificate;
@@ -217,12 +217,14 @@ describe("input-no-idx step 04 through the field grammar certificate", () => {
       TIER2_PRODUCING_OUTPUT_COUNT,
     );
 
-    // The tier-2 publication really exists and survives its consumer: the
-    // whole §5.1 preimage sits at the prover's address as a bytes-only inline
-    // datum (§8.5), referenced rather than spent (§8.7).
+    // The tier-2 publication really exists and survives its consumer: the whole
+    // §5.1 preimage sits at the prover's proof-materials address as a
+    // bytes-only inline datum (§8.5), referenced rather than spent (§8.7).
     const expectedDatum = fieldPreimagePublicationDatumCbor(preimage);
     const publications = (
-      await harness.proverLucid.utxosAt(harness.proverSigner.address)
+      await harness.proverLucid.utxosAt(
+        harness.proverSigner.proofMaterialsAddress,
+      )
     ).filter((utxo) => utxo.datum === expectedDatum);
     expect(publications).toHaveLength(1);
     await expectInputNoIdxConviction(harness, step04Result);

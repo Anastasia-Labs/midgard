@@ -13,6 +13,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
+import { proofMaterialsAddressOfFundingAddress } from "../src/funding/proof-materials-address.js";
 import { DaLibp2pRetainedDaSource } from "../src/transition-trace/fetch.js";
 import {
   assertWorkflowJournalActuation,
@@ -370,6 +371,8 @@ describe("compiled manifest-bound production runtime V1", () => {
       signer: {
         source: "funding-test",
         address: fundingAddress,
+        proofMaterialsAddress:
+          proofMaterialsAddressOfFundingAddress(fundingAddress),
         paymentKeyHash: fundingKey.to_public().hash().to_hex(),
         selectWallet: (instance) =>
           instance.selectWallet.fromPrivateKey(fundingKey.to_bech32()),

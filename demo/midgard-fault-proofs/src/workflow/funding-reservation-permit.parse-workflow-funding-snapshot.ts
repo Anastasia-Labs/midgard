@@ -1,5 +1,6 @@
 import { type UTxO } from "@lucid-evolution/lucid";
 
+import { isProverOwnAddress } from "../funding/proof-materials-address.js";
 import {
   canonicalOutRefs,
   DIGEST,
@@ -113,7 +114,8 @@ export const exactUtxos = ({
   for (const reserved of snapshot.activeInputs) {
     const utxo = resolved.get(reserved.outRef);
     if (utxo === undefined) continue;
-    if (utxo.address !== snapshot.walletAddress) {
+    // The prover's outputs at its funding or proof-materials address.
+    if (!isProverOwnAddress(snapshot.walletAddress, utxo.address)) {
       throw new Error("production funding resolver returned a foreign address");
     }
     const lovelace = utxo.assets.lovelace;

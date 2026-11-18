@@ -138,7 +138,7 @@ export const createScriptDecodePrerequisitePort = <
       ...input,
       lucid,
       category,
-      address: signer.address,
+      address: signer.proofMaterialsAddress,
       recent,
     });
 
@@ -311,7 +311,7 @@ export const createScriptDecodePrerequisitePort = <
             built = await buildScriptDecodeStageTx({
               lucid,
               datum,
-              address: signer.address,
+              address: signer.proofMaterialsAddress,
               validTo,
             });
             unit = null;

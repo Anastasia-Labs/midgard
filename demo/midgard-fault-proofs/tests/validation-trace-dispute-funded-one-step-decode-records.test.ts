@@ -52,9 +52,17 @@ const open = async (
   return dispute;
 };
 
-/** The prover wallet's outputs, by out-ref. */
+/** The prover's outputs at its funding and proof-materials addresses. */
 const walletOutRefs = async () =>
-  (await scene.h.emulator.getUtxos(scene.h.proverSigner.address))
+  (
+    await Promise.all(
+      [
+        scene.h.proverSigner.address,
+        scene.h.proverSigner.proofMaterialsAddress,
+      ].map(async (address) => await scene.h.emulator.getUtxos(address)),
+    )
+  )
+    .flat()
     .map(({ txHash, outputIndex }) => `${txHash}#${outputIndex.toString()}`)
     .sort();
 

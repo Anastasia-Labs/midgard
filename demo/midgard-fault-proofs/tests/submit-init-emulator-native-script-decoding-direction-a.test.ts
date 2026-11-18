@@ -399,7 +399,6 @@ describe("native-script-decoding direction-A emulator lifecycle", () => {
     // #545 carriage: the membership proof is published once, then referenced.
     const publication = await publishProofChunks({
       lucid: proverLucid,
-      network,
       signer: proverSigner,
       proofCbor: block.txInclusion.txMembershipProofCbor,
       awaitConfirmation: true,

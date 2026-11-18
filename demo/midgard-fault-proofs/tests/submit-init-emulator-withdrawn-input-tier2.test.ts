@@ -60,12 +60,12 @@ describe("withdrawn-input emulator tier-2 carriage", () => {
     expect(step02.carriageTier).toBe("RawUtxo");
 
     // The tier-2 publication really exists: the whole §5.1 preimage sits at
-    // the prover's address as a bytes-only inline datum, referenced rather
-    // than carried in the step's own redeemer.
+    // the prover's proof-materials address as a bytes-only inline datum,
+    // referenced rather than carried in the step's own redeemer.
     const expectedDatum = fieldPreimagePublicationDatumCbor(preimage);
     const publications = (
       await scenario.harness.proverLucid.utxosAt(
-        scenario.harness.proverSigner.address,
+        scenario.harness.proverSigner.proofMaterialsAddress,
       )
     ).filter((utxo) => utxo.datum === expectedDatum);
     expect(publications).toHaveLength(1);

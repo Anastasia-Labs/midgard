@@ -241,7 +241,9 @@ export const runInstalled = async (
         )
       ).length,
       stagingOutputs: (
-        await harness.proverLucid.utxosAt(harness.proverSigner.address)
+        await harness.proverLucid.utxosAt(
+          harness.proverSigner.proofMaterialsAddress,
+        )
       ).filter(isStaging).length,
     };
     return {
@@ -260,11 +262,14 @@ export const runInstalled = async (
   }
 };
 
-/** The prover wallet's datum-bearing staging outputs, as a test sees them. */
+/** The prover's staging outputs at its proof-materials address, as a test
+ * sees them. */
 export const stagingOutputsOf = async (harness: Harness) =>
-  (await harness.proverLucid.utxosAt(harness.proverSigner.address)).filter(
-    isStaging,
-  );
+  (
+    await harness.proverLucid.utxosAt(
+      harness.proverSigner.proofMaterialsAddress,
+    )
+  ).filter(isStaging);
 
 /**
  * A process that stops once, at the poll after `stopAtNextPoll()`, and is

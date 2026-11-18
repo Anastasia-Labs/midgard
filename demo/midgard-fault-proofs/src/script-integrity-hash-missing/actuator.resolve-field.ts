@@ -62,7 +62,7 @@ export const resolveField = async (
   const publications = await resolveFaultProofFieldCarriagePublications({
     ownOutputs,
     lucid: config.lucid,
-    publisherAddress: config.signer.address,
+    publisherAddress: config.signer.proofMaterialsAddress,
     planned,
   });
   if (publications === undefined)

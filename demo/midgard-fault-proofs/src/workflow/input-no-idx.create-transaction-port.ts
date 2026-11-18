@@ -160,7 +160,7 @@ const createTransactionPort = (
       const chunks = await resolveDirectFirstProofChunks({
         action,
         lucid: config.lucid,
-        address: config.signer.address,
+        address: config.signer.proofMaterialsAddress,
         proofCbor,
       });
       return Object.freeze({

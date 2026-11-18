@@ -1060,7 +1060,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       lucid: s.harness.proverLucid,
       signer: s.harness.proverSigner,
       planned: overBoundPlanned,
-      publisherAddress: s.harness.proverSigner.address,
+      publisherAddress: s.harness.proverSigner.proofMaterialsAddress,
       label: "over-bound witness carriage",
     });
     expect(overBoundChunks).toHaveLength(3);

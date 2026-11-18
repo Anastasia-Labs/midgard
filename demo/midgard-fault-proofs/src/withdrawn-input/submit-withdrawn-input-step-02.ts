@@ -139,7 +139,7 @@ export const submitWithdrawnInputStep02 = async ({
             lucid,
             signer,
             planned,
-            publisherAddress: signer.address,
+            publisherAddress: signer.proofMaterialsAddress,
             label: `${WITHDRAWN_INPUT_CATEGORY_LABEL} spend inputs`,
           })
         : (() => {

@@ -511,11 +511,11 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
     );
     expect(step02Result.badReferenceInputTxId).toBe(fixture.producingTxId);
 
-    // The whole §5.1 preimage sits at the prover's address as a bytes-only
-    // inline datum (§8.5), referenced rather than spent (§8.7).
+    // The whole §5.1 preimage sits at the prover's proof-materials address as a
+    // bytes-only inline datum (§8.5), referenced rather than spent (§8.7).
     const expectedDatum = fieldPreimagePublicationDatumCbor(preimage);
     const publications = (
-      await proverLucid.utxosAt(proverSigner.address)
+      await proverLucid.utxosAt(proverSigner.proofMaterialsAddress)
     ).filter((utxo) => utxo.datum === expectedDatum);
     expect(publications).toHaveLength(1);
 

@@ -303,7 +303,7 @@ describe("mint-authorization size-forced tier-2 carriage", () => {
           await proverLucid
             .newTx()
             .pay.ToAddressWithData(
-              proverSigner.address,
+              proverSigner.proofMaterialsAddress,
               { kind: "inline", value: datum },
               { lovelace: 80_000_000n },
             )
@@ -313,9 +313,9 @@ describe("mint-authorization size-forced tier-2 carriage", () => {
           .complete()
       ).submit();
       await proverLucid.awaitTx(txHash);
-      const utxo = (await proverLucid.utxosAt(proverSigner.address)).find(
-        (item) => item.txHash === txHash && item.datum === datum,
-      );
+      const utxo = (
+        await proverLucid.utxosAt(proverSigner.proofMaterialsAddress)
+      ).find((item) => item.txHash === txHash && item.datum === datum);
       if (utxo === undefined) throw new Error("missing published preimage");
       rawPreimageUtxos.push(utxo);
     }

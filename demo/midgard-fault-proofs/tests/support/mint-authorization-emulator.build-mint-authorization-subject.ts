@@ -303,11 +303,11 @@ export const publishRawFieldPreimageCarriage = async ({
     .newTx()
     .collectFrom([feeInput])
     .pay.ToAddressWithData(
-      signer.address,
+      signer.proofMaterialsAddress,
       { kind: "inline", value: datum },
       {
         lovelace: minimumLovelaceForInlineDatumOutput({
-          address: signer.address,
+          address: signer.proofMaterialsAddress,
           datum,
           coinsPerUtxoByte,
         }),
@@ -318,11 +318,13 @@ export const publishRawFieldPreimageCarriage = async ({
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();
   await lucid.awaitTx(txHash);
-  const published = (await lucid.utxosAt(signer.address)).find(
+  const published = (await lucid.utxosAt(signer.proofMaterialsAddress)).find(
     (utxo) => utxo.datum === datum,
   );
   if (published === undefined) {
-    throw new Error("raw tampered publication did not land at prover address");
+    throw new Error(
+      "raw tampered publication did not land at the proof-materials address",
+    );
   }
   return published;
 };

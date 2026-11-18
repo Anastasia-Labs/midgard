@@ -109,7 +109,7 @@ const publishAsProverSigner = async ({
       lucid,
       signer,
       planned: plan,
-      publisherAddress: signer.address,
+      publisherAddress: signer.proofMaterialsAddress,
       label: "N6 actual receive field",
     }),
   );
@@ -132,7 +132,7 @@ const publishAsProverSigner = async ({
         return {
           walletAddressType,
           publisherAddressBytes: CML.Address.from_bech32(
-            signer.address,
+            signer.proofMaterialsAddress,
           ).to_raw_bytes().length,
           bodyBytes: body.to_cbor_bytes().length,
           witnessSetBytes: tx.witness_set().to_cbor_bytes().length,

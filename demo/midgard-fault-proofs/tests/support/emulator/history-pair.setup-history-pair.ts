@@ -25,6 +25,8 @@ import {
 import { Effect } from "effect";
 import { expect } from "vitest";
 
+import { proofMaterialsAddressOfFundingAddress } from "../../../src/funding/proof-materials-address.js";
+import type { ResolvedProverSigner } from "../../../src/runtime.js";
 import { inputAt, referenceAt, same } from "./history-pair.index.js";
 import { measureCompleteSignedTransaction } from "./measurement.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./protocol-parameters.js";
@@ -52,6 +54,16 @@ export const setupHistoryPair = async ({
   const emulator = new Emulator([wallet], EMULATOR_PROTOCOL_PARAMETERS);
   const lucid = await Lucid(emulator, "Custom");
   lucid.selectWallet.fromSeed(wallet.seedPhrase);
+  /** The fraud prover: the wallet's key, at both of its addresses. */
+  const signer: ResolvedProverSigner = {
+    source: "emulator fixture",
+    address: wallet.address,
+    proofMaterialsAddress: proofMaterialsAddressOfFundingAddress(
+      wallet.address,
+    ),
+    paymentKeyHash: owner,
+    selectWallet: (prover) => prover.selectWallet.fromSeed(wallet.seedPhrase),
+  };
   const submit = async (label: string, tx: TxSignBuilder) => {
     const signed = await tx.sign.withWallet().complete();
     const cbor = signed.toCBOR();
@@ -335,6 +347,7 @@ export const setupHistoryPair = async ({
     scripts,
     owner,
     wallet,
+    signer,
     funding,
     submit,
     bounds,

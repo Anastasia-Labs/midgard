@@ -9,6 +9,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { expect, it } from "vitest";
 
+import { proofMaterialsAddress } from "../src/funding/proof-materials-address.js";
 import {
   createAuthenticatedRawDatumPreimagePrerequisitePort,
   createStructuredDataPreimageRequirement,
@@ -33,6 +34,10 @@ it("journals bounded structured Data publications and re-admits every exact outp
     source: "structured-evidence-test",
     address: account.address,
     paymentKeyHash: getAddressDetails(account.address).paymentCredential!.hash,
+    proofMaterialsAddress: proofMaterialsAddress(
+      network,
+      getAddressDetails(account.address).paymentCredential!.hash,
+    ),
     selectWallet: (target: typeof lucid) =>
       target.selectWallet.fromSeed(account.seedPhrase),
   };

@@ -111,7 +111,7 @@ export const createTransactionPort = (
       const chunks = await resolveDirectFirstProofChunks({
         action,
         lucid: config.lucid,
-        address: config.signer.address,
+        address: config.signer.proofMaterialsAddress,
         proofCbor: admitted.artifact.tx.txMembershipProofCbor,
       });
       return Object.freeze({

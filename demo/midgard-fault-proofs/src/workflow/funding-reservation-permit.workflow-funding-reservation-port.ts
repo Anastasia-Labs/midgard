@@ -245,6 +245,17 @@ export type PermitState = {
 
 export const admittedPermits = new WeakMap<object, PermitState>();
 
+/**
+ * Whether the reserved input `outRef` sits at the funding address. The
+ * reservation also holds the prover's outputs at its proof-materials
+ * address; those never fund a transaction or post collateral.
+ */
+export const isReservedFundingAddressInput = (
+  state: Pick<PermitState, "snapshot" | "resolvedInputs">,
+  outRef: string,
+): boolean =>
+  state.resolvedInputs.get(outRef)?.address === state.snapshot.walletAddress;
+
 export const journalPermits = new WeakMap<object, PermitState>();
 
 export const isPlainObject = (

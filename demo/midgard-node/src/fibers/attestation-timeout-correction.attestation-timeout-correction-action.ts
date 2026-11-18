@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 
 import {
   createFileTimeoutCorrectionJournalStore,
+  proofMaterialsAddress,
   submitUnattestedTimeoutCorrection,
 } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -178,6 +179,11 @@ export const attestationTimeoutCorrectionAction = (): Effect.Effect<
                 signer: {
                   source: "operator-node-main-wallet",
                   address: lucid.operatorMainAddress,
+                  // A timeout correction publishes no proof material.
+                  proofMaterialsAddress: proofMaterialsAddress(
+                    nodeConfig.NETWORK,
+                    paymentCredential.hash,
+                  ),
                   paymentKeyHash: paymentCredential.hash,
                   selectWallet: () => undefined,
                 },

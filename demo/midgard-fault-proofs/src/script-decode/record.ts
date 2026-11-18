@@ -224,7 +224,7 @@ export const fitScriptDecodeWalk = async (
  * yet. An open run of the script (an interrupted earlier record) is resumed
  * from its on-chain cursor. The bytes are staged afresh unless `ownOutputs`
  * holds chunks an earlier call staged and journaled there, still live; they
- * are found by their out-refs, never by a search of the wallet's address.
+ * are found by their out-refs, never by a search of an address.
  * Each Walk takes the most ticks that build within the ledger's limits
  * (`fitScriptDecodeWalk`). A Walk the ledger rejects is refitted after
  * `refreshLedgerParameters` (by default, re-reading them from the provider),

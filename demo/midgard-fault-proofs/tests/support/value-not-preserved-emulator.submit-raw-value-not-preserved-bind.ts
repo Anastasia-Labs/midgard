@@ -75,7 +75,7 @@ export const publishTamperedFieldPreimagePublication = async ({
   const tx = await lucid
     .newTx()
     .pay.ToAddressWithData(
-      signer.address,
+      signer.proofMaterialsAddress,
       { kind: "inline", value: datum },
       { lovelace: 80_000_000n },
     )
@@ -83,7 +83,7 @@ export const publishTamperedFieldPreimagePublication = async ({
   const signed = await tx.sign.withWallet().complete();
   const txHash = await signed.submit();
   await lucid.awaitTx(txHash);
-  const utxos = await lucid.utxosAt(signer.address);
+  const utxos = await lucid.utxosAt(signer.proofMaterialsAddress);
   const published = utxos.find(
     (utxo) =>
       utxo.txHash === txHash &&

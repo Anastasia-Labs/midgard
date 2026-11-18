@@ -13,6 +13,7 @@ import {
   walletFromSeed,
 } from "@lucid-evolution/lucid";
 
+import { proofMaterialsAddress } from "./funding/proof-materials-address.js";
 import { type ContractDeploymentInfo } from "./inspect-contracts.js";
 
 const DEFAULT_WALLET_SEED_ENV = "USER_WALLET";
@@ -33,7 +34,12 @@ export type ProverSignerConfig = {
 
 export type ResolvedProverSigner = {
   readonly source: "direct-seed-phrase" | string;
+  /** The funding address: the plain enterprise address of the payment key,
+   * which holds the prover's money and nothing else of it. */
   readonly address: string;
+  /** Where the prover's in-flight proof materials live
+   * (`proofMaterialsAddress`): same key, never the funding address. */
+  readonly proofMaterialsAddress: string;
   readonly paymentKeyHash: string;
   readonly selectWallet: (lucid: LucidEvolution) => void;
   /** The wallet out-refs a funding reservation holds for this signer to
@@ -76,10 +82,12 @@ const resolveSeedSigner = (
     LucidEvolution,
     { readonly wallet: unknown; readonly provider: unknown }
   >();
+  const paymentKeyHash = paymentKeyHashFromAddress(wallet.address);
   return {
     source,
     address: wallet.address,
-    paymentKeyHash: paymentKeyHashFromAddress(wallet.address),
+    proofMaterialsAddress: proofMaterialsAddress(network, paymentKeyHash),
+    paymentKeyHash,
     selectWallet: (lucid) => {
       const previous = selected.get(lucid);
       const currentWallet = lucid.wallet();
@@ -114,6 +122,7 @@ const resolvePrivateKeySigner = (
       type: "Key",
       hash: paymentKeyHash,
     }),
+    proofMaterialsAddress: proofMaterialsAddress(network, paymentKeyHash),
     paymentKeyHash,
     selectWallet: (lucid) =>
       lucid.selectWallet.fromPrivateKey(privateKey as PrivateKey),

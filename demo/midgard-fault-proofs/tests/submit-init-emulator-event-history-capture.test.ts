@@ -144,13 +144,7 @@ for (const kind of ["Deposit", "Withdrawal"] as const)
           lucid: h.lucid,
           contracts: productionContracts(h, p),
           network: "Custom" as const,
-          signer: {
-            source: "emulator fixture",
-            address: h.wallet.address,
-            paymentKeyHash: h.owner,
-            selectWallet: (lucid: typeof h.lucid) =>
-              lucid.selectWallet.fromSeed(h.wallet.seedPhrase),
-          },
+          signer: h.signer,
           threadOutRef: `${p.thread.txHash}#${p.thread.outputIndex}`,
           evidence: presence
             ? {

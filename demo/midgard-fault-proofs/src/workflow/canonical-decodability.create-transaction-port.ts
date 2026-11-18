@@ -137,7 +137,7 @@ export const createTransactionPort = (
       const [proofChunks, field] = await Promise.all([
         resolvePublishedProofChunks({
           lucid: config.lucid,
-          address: config.signer.address,
+          address: config.signer.proofMaterialsAddress,
           proofCbor: admitted.artifact.txMembershipProofCbor,
         }),
         config.fieldCarriage.resolveAuthenticated({

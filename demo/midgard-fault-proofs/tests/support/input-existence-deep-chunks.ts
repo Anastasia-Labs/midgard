@@ -32,7 +32,6 @@ export const deepProofChunks = async (
     (
       await publishProofChunks({
         lucid: harness.proverLucid,
-        network: "Custom",
         signer: harness.proverSigner,
         proofCbor: Data.to(proof, SDK.Proof),
       })

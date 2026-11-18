@@ -453,7 +453,7 @@ export const makeHarness = async ({
         lucid,
         signer,
         planned,
-        publisherAddress: signer.address,
+        publisherAddress: signer.proofMaterialsAddress,
         label: `witness field ${shape.label}`,
       }),
     );
@@ -525,7 +525,7 @@ export const makeHarness = async ({
       lucid,
       signer,
       planned,
-      publisherAddress: signer.address,
+      publisherAddress: signer.proofMaterialsAddress,
       label: `witness field ${shape.label}`,
     });
     expect(chunkUtxos).toHaveLength(3);

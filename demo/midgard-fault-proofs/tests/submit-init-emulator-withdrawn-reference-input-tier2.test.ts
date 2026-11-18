@@ -120,12 +120,14 @@ describe("withdrawn-reference-input emulator tier-2 carriage", () => {
       scenario.prepared.missingReferenceInput,
     );
 
-    // The tier-2 publication really exists: the whole §5.1 preimage sits at
-    // the prover's address as a bytes-only inline datum, referenced rather
-    // than carried in the step's own redeemer.
+    // The tier-2 publication really exists: the whole §5.1 preimage sits at the
+    // prover's proof-materials address as a bytes-only inline datum, referenced
+    // rather than carried in the step's own redeemer.
     const expectedDatum = SDK.fieldPreimagePublicationDatumCbor(preimage);
     const publications = (
-      await harness.proverLucid.utxosAt(harness.proverSigner.address)
+      await harness.proverLucid.utxosAt(
+        harness.proverSigner.proofMaterialsAddress,
+      )
     ).filter((utxo) => utxo.datum === expectedDatum);
     expect(publications).toHaveLength(1);
 

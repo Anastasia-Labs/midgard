@@ -177,7 +177,7 @@ export const submitMinAdaTxStep02 = async ({
       lucid,
       signer,
       planned,
-      publisherAddress: signer.address,
+      publisherAddress: signer.proofMaterialsAddress,
       label: `${label} field 2`,
       preSubmitBoundary: publicationPreSubmitBoundary,
     }));
