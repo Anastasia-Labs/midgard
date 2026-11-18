@@ -70,7 +70,8 @@ export type TransactionOptions = Readonly<{
    * its connection, so a server or network that never answers holds
    * nothing past the abort. For reads: an abort during a write's `COMMIT`
    * leaves its outcome unknown, as a dropped connection does. On Postgres
-   * a read given no signal ends at the backend's `readDeadlineMs`.
+   * a read given no signal ends at the backend's `readDeadlineMs`, unless
+   * it scans the whole store (`scansWholeStore`).
    */
   signal?: AbortSignal;
   /**
@@ -82,6 +83,17 @@ export type TransactionOptions = Readonly<{
    * unknown outcome.
    */
   onlyReads?: boolean;
+  /**
+   * Marks a read whose length grows with the whole store: the full
+   * invariant scan (`FactStore.checkInvariants`), whole-table checks that
+   * no page bounds. Given no signal, it ends at no read deadline, since a
+   * store large enough would outlast any fixed one and fail every start.
+   * Like a real write, only TCP keepalive ends one whose peer vanished.
+   * That adds no new way for a start to hang: a start runs unbounded
+   * writes on the same server just before its scan (migrations, the
+   * tracked-set check, the epoch bump).
+   */
+  scansWholeStore?: boolean;
 }>;
 
 export type SqlBackend = {

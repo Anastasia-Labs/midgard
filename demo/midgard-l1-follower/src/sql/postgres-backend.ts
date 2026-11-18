@@ -101,7 +101,8 @@ export type PostgresConnection = (
 ) & {
   /**
    * Bound on a read given no abort signal (ms), a write transaction that
-   * only reads among them (`TransactionOptions.onlyReads`): past it the
+   * only reads among them (`TransactionOptions.onlyReads`) and a scan of
+   * the whole store not (`TransactionOptions.scansWholeStore`): past it the
    * read ends as an abort ends it (`TransactionOptions`), so a connection
    * that never answers holds no pooled connection longer. The local node
    * transport's request bound by default: a store read is one request to
@@ -212,10 +213,12 @@ export const openPostgresBackend = (
       // A real write is not bounded so: one the server is still applying
       // is progress, and one cut short at its `COMMIT` has an unknown
       // outcome. TCP keepalive, on the operating system's timing, ends one
-      // whose peer vanished. A write that only reads is a read here.
+      // whose peer vanished. A write that only reads is a read here; a
+      // read that scans the whole store is bounded as a write is.
       const deadline =
         options.signal === undefined &&
-        (mode === "read" || options.onlyReads === true)
+        (mode === "read" || options.onlyReads === true) &&
+        options.scansWholeStore !== true
           ? readDeadline(readDeadlineMs)
           : undefined;
       const signal = options.signal ?? deadline?.signal;

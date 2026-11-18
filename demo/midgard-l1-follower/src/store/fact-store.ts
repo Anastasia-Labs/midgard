@@ -262,6 +262,7 @@ export const rewindFaults = new WeakMap<FactStore, RewindFault>();
 
 const LOAD_PAGE = 10_000;
 const DEFAULT_PRUNE_BUDGET = 5_000;
+const FULL_SCAN = { scansWholeStore: true } as const;
 
 export const createFactStore = (
   backend: SqlBackend,
@@ -367,7 +368,7 @@ export const createFactStore = (
     backend.transaction("read", run, options);
 
   const checkInvariants = (): Promise<InvariantReport> =>
-    read((tx) => runInvariantChecks(tx, dialect, registry, "full"));
+    read((tx) => runInvariantChecks(tx, dialect, registry, "full"), FULL_SCAN);
 
   const seedWrites = createSeedWrites({
     dialect,

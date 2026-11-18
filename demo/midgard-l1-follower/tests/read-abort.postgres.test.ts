@@ -1,3 +1,4 @@
+import pg from "pg";
 import { afterAll, describe, expect, it } from "vitest";
 
 import { openPostgresFactStore } from "../src/index.js";
@@ -13,7 +14,8 @@ import { freezableProxy, testDatabases } from "./support/postgres.js";
  * ends at the store's read deadline, as does a read Postgres must take in
  * a write transaction (a view check's `FOR SHARE`). The server's silence
  * is a frozen TCP proxy in front of the test cluster. A write is never
- * ended by that deadline.
+ * ended by that deadline, and neither is the start-up invariant scan, whose
+ * length grows with the store.
  */
 const databases = testDatabases();
 
@@ -268,6 +270,47 @@ describe("store reads on Postgres: an aborted read ends", () => {
         }),
       ).toBe("committed");
     } finally {
+      await store.close();
+    }
+  });
+});
+
+describe("the start-up invariant scan on Postgres", () => {
+  it("starts though the scan outlasts the store's read deadline, and an ordinary read still ends there", async () => {
+    const database = await databases.create();
+    const store = openPostgresFactStore({
+      ...simStoreOptions([FIXTURE_PROJECTION], SIM_K, "postgres"),
+      connection: { connectionString: database.url, readDeadlineMs: 300 },
+    });
+    // Another session's lock on the outputs table: every read of it waits
+    // until that session commits, as on a store too large to scan in time.
+    const locker = new pg.Client({ connectionString: database.url });
+    const lockOutputs = async () => {
+      await locker.query("BEGIN");
+      await locker.query("LOCK TABLE l1_outputs IN ACCESS EXCLUSIVE MODE");
+    };
+    try {
+      expect((await store.start()).kind).toBe("ready");
+      await locker.connect();
+
+      await lockOutputs();
+      const unlocked = pause(1_200).then(() => locker.query("COMMIT"));
+      expect(
+        (await within("the start behind the lock", 10_000, store.start())).kind,
+      ).toBe("ready");
+      await unlocked;
+
+      await lockOutputs();
+      await expect(
+        within(
+          "the read behind the lock",
+          5_000,
+          store.liveUtxos({ by: "outref", outRefs: [] }),
+        ),
+      ).rejects.toThrow("the read had no answer within 300 ms");
+      await locker.query("COMMIT");
+    } finally {
+      await locker.end().catch(() => undefined);
       await store.close();
     }
   });
