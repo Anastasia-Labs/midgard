@@ -102,6 +102,7 @@ export type StackVerifiedPredecessorPorts = Readonly<{
 
 export type StackVerifiedPredecessorRefusalReason =
   | "tail-not-healthy"
+  | "funded-tail-unverified"
   | "payload-mismatch"
   | "left-queue-unmerged"
   | "watcher-undecided"
@@ -219,10 +220,12 @@ const awaitDecision = async (
 /**
  * Makes sure the stack's attested tail is a block the watcher verified from
  * its payload, healing it with one honest transfer when the watcher can no
- * longer verify it.
+ * longer verify it. Without `heal`, as after the funding check, whose output
+ * a transfer would move, that tail is refused instead.
  */
 export const ensureStackVerifiedPredecessor = async (
   ports: StackVerifiedPredecessorPorts,
+  { heal = true }: Readonly<{ heal?: boolean }> = {},
 ): Promise<
   | Readonly<{ kind: "verified"; block: JourneyBlock }>
   | Readonly<{
@@ -251,6 +254,12 @@ export const ensureStackVerifiedPredecessor = async (
       "tail-not-healthy",
       tail.headerHash,
       `the watcher decided the tail ${decided.outcome}`,
+    );
+  if (!heal)
+    throw new StackVerifiedPredecessorRefusal(
+      "funded-tail-unverified",
+      tail.headerHash,
+      `the watcher left the tail ${decided.outcome} after the funding check; a heal would move the output the family needs, so none is sent`,
     );
   ports.onStage(
     `the watcher can no longer verify tail ${tail.headerHash} (${decided.outcome}); healing it with one transfer`,
@@ -332,7 +341,12 @@ export const ensureStackVerifiedPredecessor = async (
 /** The check on an attached stack, through its own services and our node. */
 export const checkStackVerifiedPredecessor = async (
   session: AttachedJourneySession,
-  input: Readonly<{ category: string; onStage(name: string): void }>,
+  input: Readonly<{
+    category: string;
+    /** Whether a tail the watcher can no longer verify is healed. */
+    heal: boolean;
+    onStage(name: string): void;
+  }>,
 ) => {
   const { context } = session;
   const { contracts, chain } = context.deployment;
@@ -362,7 +376,7 @@ export const checkStackVerifiedPredecessor = async (
         session.releaseFinality.policy.confirmationDepth,
     },
   );
-  return ensureStackVerifiedPredecessor({
+  const ports: StackVerifiedPredecessorPorts = {
     directory,
     readAttestedTail: () => da.readAttestedTail(),
     readAttestedAtOrAfterTail: () => da.readAttestedAtOrAfterTail(),
@@ -408,5 +422,6 @@ export const checkStackVerifiedPredecessor = async (
     absorbWithinMs: STACK_ABSORB_WITHIN_MS,
     decisionWithinMs: timing.allowances.automaticDecisionMs,
     onStage: input.onStage,
-  });
+  };
+  return ensureStackVerifiedPredecessor(ports, { heal: input.heal });
 };

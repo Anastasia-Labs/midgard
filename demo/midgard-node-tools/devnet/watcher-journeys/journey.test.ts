@@ -87,9 +87,11 @@ beforeAll(async () => {
 // heal's transfer, may have spent or split them, so when none on the tail it
 // builds on does, one deposit of exactly what the family needs (never less
 // than the SDK deposits) tops the owner up and the check waits for it to be
-// absorbed (`withdrawalOwnerTopUpBeforeFamily`). It runs
-// last, so no transfer moves the output it found. Neither does anything once
-// the session has closed, nor for a family resuming its staging.
+// absorbed (`withdrawalOwnerTopUpBeforeFamily`). It runs after the heal, so
+// no transfer moves the output it found. A top-up adds a block, so the
+// verified-predecessor check then runs once more, without a heal, on the
+// last block the harness caused. None does anything once the session has
+// closed, nor for a family resuming its staging.
 const familyTitle = (category: string) =>
   `automatically proves '${category}', corrects exact economics, and processes an honest successor`;
 beforeEach(async ({ task }) => {
@@ -111,10 +113,11 @@ beforeEach(async ({ task }) => {
     ),
     isClosed: opened.isClosed,
     close: opened.close,
-    checkPredecessor: async () => {
+    checkPredecessor: async ({ heal }) => {
       if (opened.mode === "attached")
         await checkStackVerifiedPredecessor(opened, {
           category: fixture.category,
+          heal,
           onStage,
         });
     },

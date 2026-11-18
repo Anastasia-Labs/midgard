@@ -276,7 +276,7 @@ it("finds the output a withdrawal family needs after the heal's transfer has mov
       familyDirectory: join(tmpdir(), `no-family-${randomUUID()}`),
       isClosed: () => false,
       close: () => Promise.resolve(),
-      checkPredecessor: run.heal,
+      checkPredecessor: ({ heal }) => (heal ? run.heal() : Promise.resolve()),
       checkFunding: run.fund,
       onStage: () => undefined,
     }),

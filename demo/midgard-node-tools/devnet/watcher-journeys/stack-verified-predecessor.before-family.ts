@@ -72,7 +72,10 @@ const stagingResumes = async (familyDirectory: string) => {
  * whose heal is a transfer that moves the ledger owner's outputs, then the
  * withdrawal funding check, so the output a withdrawal family needs is found
  * after the last transfer before the family, never split by one after it.
- * A closed session, as after a failed family, does nothing. A family
+ * The funding's top-up may add a block, so the verified-predecessor check
+ * runs again last, without a heal, on the last block the harness caused: the
+ * family builds on a block checked like any other. A closed session, as
+ * after a failed family, does nothing. A family
  * resuming its staging keeps its fixed predecessor, whose staged fault tail
  * would read as faulty. A refusal closes the shared session, so no later
  * family sends anything.
@@ -82,8 +85,11 @@ export const verifiedPredecessorBeforeFamily = async (
     familyDirectory: string;
     isClosed(): boolean;
     close(): Promise<void>;
-    /** The verified-predecessor check, healing the tail if it must. */
-    checkPredecessor(): Promise<unknown>;
+    /**
+     * The verified-predecessor check. With `heal`, it heals a tail the
+     * watcher can no longer verify; without it, it refuses that tail.
+     */
+    checkPredecessor(options: { heal: boolean }): Promise<unknown>;
     /** The withdrawal family's funding check, topping the owner up. */
     checkFunding(): Promise<unknown>;
     onStage(name: string): void;
@@ -95,8 +101,9 @@ export const verifiedPredecessorBeforeFamily = async (
     return "staging-resumed";
   }
   try {
-    await input.checkPredecessor();
+    await input.checkPredecessor({ heal: true });
     await input.checkFunding();
+    await input.checkPredecessor({ heal: false });
   } catch (cause) {
     // A close that fails is reported again by the suite's own close.
     await input.close().catch(() => undefined);
