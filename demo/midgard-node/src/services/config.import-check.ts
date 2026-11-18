@@ -86,6 +86,7 @@ const OPENER_MARGIN_MS_BY_PROFILE = {
   "preprod-rehearsal": 600_000,
   "preprod-testing": 120_000,
   "local-devnet-testing": 120_000,
+  "local-devnet-dispute-testing": 120_000,
   "preprod-emulator-testing": 120_000,
   "preprod-emulator-curated": 120_000,
 } as const satisfies Record<DeploymentProfileName, number>;

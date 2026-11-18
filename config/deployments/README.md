@@ -3,15 +3,16 @@
 Edit the YAML files here, then regenerate and rebuild. A Cardano network is not
 a deployment profile: both `preprod-public` and `preprod-testing` use `Preprod`.
 
-| Profile                    | Cardano network | Economics schedule             |
-| -------------------------- | --------------- | ------------------------------ |
-| `mainnet`                  | `Mainnet`       | Public                         |
-| `preprod-public`           | `Preprod`       | Public                         |
-| `preprod-rehearsal`        | `Preprod`       | Bounded testing                |
-| `preprod-testing`          | `Preprod`       | Bounded testing                |
-| `local-devnet-testing`     | `Custom`        | Bounded testing                |
-| `preprod-emulator-testing` | `Preprod`       | Bounded testing; emulator only |
-| `preprod-emulator-curated` | `Preprod`       | Bounded testing; emulator only |
+| Profile                        | Cardano network | Economics schedule             |
+| ------------------------------ | --------------- | ------------------------------ |
+| `mainnet`                      | `Mainnet`       | Public                         |
+| `preprod-public`               | `Preprod`       | Public                         |
+| `preprod-rehearsal`            | `Preprod`       | Bounded testing                |
+| `preprod-testing`              | `Preprod`       | Bounded testing                |
+| `local-devnet-testing`         | `Custom`        | Bounded testing                |
+| `local-devnet-dispute-testing` | `Custom`        | Bounded testing; test only     |
+| `preprod-emulator-testing`     | `Preprod`       | Bounded testing; emulator only |
+| `preprod-emulator-curated`     | `Preprod`       | Bounded testing; emulator only |
 
 `preprod-rehearsal` rehearses the public deployment on Preprod before it
 launches (owner, 2026-10-29). Every value equals `preprod-public`'s, including
@@ -132,20 +133,51 @@ exact rational (`"0.05"` is 5/100) and compares in integers. With W =
 
 Each profile uses the largest d all bounds admit:
 
-| Profile                    | No-strike largest d | W − B − slot | Plannable largest d | Production largest d | d    |
-| -------------------------- | ------------------- | ------------ | ------------------- | -------------------- | ---- |
-| `mainnet`                  | 2,180 − 1 = 2,179   | 130,049,000  | 2,167 − 1 = 2,166   | 2,160 (tight)        | 2160 |
-| `preprod-public`           | 42 − 1 = 41         | 1,769,000    | 29 − 1 = 28         | 22                   | 22   |
-| `preprod-rehearsal`        | 42 − 1 = 41         | 1,769,000    | 29 − 1 = 28         | 22                   | 22   |
-| `preprod-testing`          | 17 − 1 = 16         | 269,000      | 4 − 1 = 3           | —                    | 3    |
-| `local-devnet-testing`     | 17 − 1 = 16         | 269,000      | 4 − 1 = 3           | —                    | 3    |
-| `preprod-emulator-testing` | 22 − 1 = 21         | 569,000      | 9 − 1 = 8           | —                    | 8    |
-| `preprod-emulator-curated` | 22 − 1 = 21         | 569,000      | 9 − 1 = 8           | —                    | 8    |
+| Profile                        | No-strike largest d | W − B − slot | Plannable largest d | Production largest d | d    |
+| ------------------------------ | ------------------- | ------------ | ------------------- | -------------------- | ---- |
+| `mainnet`                      | 2,180 − 1 = 2,179   | 130,049,000  | 2,167 − 1 = 2,166   | 2,160 (tight)        | 2160 |
+| `preprod-public`               | 42 − 1 = 41         | 1,769,000    | 29 − 1 = 28         | 22                   | 22   |
+| `preprod-rehearsal`            | 42 − 1 = 41         | 1,769,000    | 29 − 1 = 28         | 22                   | 22   |
+| `preprod-testing`              | 17 − 1 = 16         | 269,000      | 4 − 1 = 3           | —                    | 3    |
+| `local-devnet-testing`         | 17 − 1 = 16         | 269,000      | 4 − 1 = 3           | —                    | 3    |
+| `local-devnet-dispute-testing` | 26 − 1 = 25         | 849,000      | 14 − 1 = 13         | —                    | 3    |
+| `preprod-emulator-testing`     | 22 − 1 = 21         | 569,000      | 9 − 1 = 8           | —                    | 8    |
+| `preprod-emulator-curated`     | 22 − 1 = 21         | 569,000      | 9 − 1 = 8           | —                    | 8    |
 
 The no-strike column divides W + N − L by 60,000 ms, the plannable column
 divides W − B − slot and the production column W − L; each rounds down.
-Mainnet's d also meets d ≤ k with equality. Every profile has N = 1,200,000
+Mainnet's d also meets d ≤ k with equality. `local-devnet-dispute-testing`
+keeps `local-devnet-testing`'s d = 3, which every bound admits. Every profile has N = 1,200,000
 and L = 480,000, so N ≥ L holds with 720,000 ms to spare.
+
+### Local execution-dispute drill
+
+`local-devnet-dispute-testing` is a test-only profile for drilling the Plutus
+execution dispute (`validationTraceDispute`, 00000006) on a local devnet before
+its first live run. It is `local-devnet-testing` with the execution dispute
+installed and with the values every rule then requires. Only the two 900 s
+profiles are exempt from the public timing rules, so this profile is held to
+them all:
+
+- 72-hour block maturity, the emulator profiles' value. The longest
+  transition-trace thread binds it (252,320,000 ms); the execution dispute
+  needs 2 D_case + 1 = 72,440,001 ms.
+- an event wait of 880,000 ms, the public floor (maximum validity range plus
+  ten confirmation blocks at twice the mean);
+- a DA challenge window of 1,960,000 ms, the attestation timeout plus the public
+  open-after-apply margin, and the withdrawal delay that follows from it and
+  maturity, 259,980,000 ms.
+
+Its dispute values are sized at the profile's declared cadence (f = 0.05,
+one-second slots), with the watcher acting at depth 1. A move costs at most one
+dependent transaction: one block at twice the 20-second mean, 120 seconds to
+build and 30 to submit, 190 seconds. C covers 34 charged moves on one side
+(6,460,000 ms). L_d is two worst-case blocks at 3/f slots (120,000 ms). R covers
+the 19-transaction one-step resolution of two threads (7,220,000 ms). So
+D_case = 36,220,000 ms. Every other value equals `local-devnet-testing`'s. Build
+it with `pnpm --dir demo deployment:build local-devnet-dispute-testing` and run
+with `MIDGARD_DEPLOYMENT_PROFILE=local-devnet-dispute-testing` and
+`NETWORK=Custom`.
 
 ### Interactive emulator tests
 

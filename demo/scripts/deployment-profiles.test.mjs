@@ -348,6 +348,7 @@ test("every DA response window covers the minimum response budget, and the bound
     "preprod-rehearsal": 1_440_000,
     "preprod-testing": 640_000,
     "local-devnet-testing": 640_000,
+    "local-devnet-dispute-testing": 640_000,
     "preprod-emulator-testing": 360_000,
     "preprod-emulator-curated": 360_000,
   };
@@ -626,7 +627,14 @@ test("every profile carries the pooled DA bond amounts and timing, rendered into
             da_slash_grace_ms: 300_000,
             da_bond_withdraw_delay_ms: 259_980_000,
           }
-        : expected[publicProfiles.includes(name) ? "public" : "testing"].timing,
+        : name === "local-devnet-dispute-testing"
+          ? {
+              da_challenge_window_ms: 1_960_000,
+              da_slash_grace_ms: 300_000,
+              da_bond_withdraw_delay_ms: 259_980_000,
+            }
+          : expected[publicProfiles.includes(name) ? "public" : "testing"]
+              .timing,
     };
     assert.deepEqual(profile.da_bond, want.da_bond);
     const rendered = renderAiken(profile, "");
@@ -714,11 +722,16 @@ test("every profile's withdrawal delay meets the spec relation and the head-remo
     // 480,000 + 1,800,000 + 840,000 + 300,000 (spec) and
     // 480,000 + max(2,640,000, 259,200,000) + 300,000 (enforced).
     emulator: { spec: 3_420_000, enforced: 259_980_000 },
+    // 480,000 + 1,960,000 + 880,000 + 300,000 (spec) and
+    // 480,000 + max(2,840,000, 259,200,000) + 300,000 (enforced).
+    dispute: { spec: 3_620_000, enforced: 259_980_000 },
   };
   for (const [name, original] of Object.entries(profiles)) {
     const want = emulatorOnlyProfileNames.includes(name)
       ? floors.emulator
-      : floors[publicProfiles.includes(name) ? "public" : "testing"];
+      : name === "local-devnet-dispute-testing"
+        ? floors.dispute
+        : floors[publicProfiles.includes(name) ? "public" : "testing"];
     const profile = structuredClone(original);
     assert.equal(specDaBondWithdrawDelayFloorMs(profile.timing), want.spec);
     assert.equal(daBondWithdrawDelayFloorMs(profile.timing), want.enforced);

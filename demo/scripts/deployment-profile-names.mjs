@@ -6,6 +6,7 @@ export const profileNames = [
   "preprod-rehearsal",
   "preprod-testing",
   "local-devnet-testing",
+  "local-devnet-dispute-testing",
   "preprod-emulator-testing",
   "preprod-emulator-curated",
 ];
@@ -14,6 +15,7 @@ export const networks = [
   "Preprod",
   "Preprod",
   "Preprod",
+  "Custom",
   "Custom",
   "Preprod",
   "Preprod",
@@ -38,6 +40,7 @@ export const retainedDaProfileNames = ["preprod-public", "preprod-rehearsal"];
 export const boundedEconomicsProfileNames = [
   "preprod-testing",
   "local-devnet-testing",
+  "local-devnet-dispute-testing",
   "preprod-rehearsal",
   ...emulatorOnlyProfileNames,
 ];

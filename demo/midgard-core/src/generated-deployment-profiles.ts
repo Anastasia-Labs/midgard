@@ -396,6 +396,80 @@ export const DEPLOYMENT_PROFILES = {
     },
     excluded_fraud_proof_categories: ["validationTraceDispute"],
   },
+  "local-devnet-dispute-testing": {
+    name: "local-devnet-dispute-testing",
+    network: "Custom",
+    l1_finality: {
+      confirmation_depth: 10,
+      commit_event_depth: 3,
+      security_parameter: 2160,
+      active_slot_coeff: "0.05",
+      slot_length_ms: 1000,
+    },
+    timing: {
+      block_maturity_ms: 259200000,
+      dispute_side_clock_ms: 6460000,
+      dispute_max_validity_range_ms: 120000,
+      dispute_resolution_allowance_ms: 7220000,
+      operator_shift_ms: 1800000,
+      registration_ms: 30000,
+      event_wait_ms: 880000,
+      user_events_negligence_timeout_ms: 1200000,
+      new_shift_inactivity_grace_period_ms: 480000,
+      max_validity_range_ms: 480000,
+      max_event_validity_range_ms: 600000,
+      da_attestation_timeout_ms: 600000,
+      da_small_response_window_ms: 880000,
+      da_full_response_window_ms: 880000,
+      da_challenge_window_ms: 1960000,
+      da_slash_grace_ms: 300000,
+      da_bond_withdraw_delay_ms: 259980000,
+    },
+    da_bond: {
+      da_bond_lovelace: 500000000,
+      da_slash_penalty_lovelace: 100000000,
+      da_bond_min_top_up_lovelace: 5000000,
+      da_bond_pool_floor_lovelace: 5000000,
+      challenge_record_lovelace: 27000000,
+    },
+    limits: {
+      max_bisection_rounds: 32,
+      max_inactivity_strikes: 5,
+      coins_per_utxo_byte: 4310,
+      max_dispute_move_fee_lovelace: 1200000,
+      fraud_proof_output_lovelace: 2000000,
+    },
+    economics: {
+      profile: "bounded-acceptance-v1",
+      requiredBondLovelace: 900000000,
+      slashingPenaltyLovelace: 500000000,
+      inactivitySlashingPenaltyLovelace: 100000000,
+      fraudProverRewardLovelace: 400000000,
+      proverCollateralFloorLovelace: 5000000,
+    },
+    protocol_treasury_native_script: {
+      type: "atLeast",
+      required: 2,
+      scripts: [
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000001",
+        },
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000002",
+        },
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000003",
+        },
+      ],
+    },
+    allow_lists: {
+      operators: null,
+    },
+    excluded_fraud_proof_categories: [],
+  },
   "preprod-emulator-testing": {
     name: "preprod-emulator-testing",
     network: "Preprod",
@@ -556,6 +630,8 @@ export const DEPLOYMENT_PROFILE_DIGESTS = {
     "eb9e2fed4434ee58df122bb07b52e239f22cef0b561ab1e757ef1027e5675316",
   "local-devnet-testing":
     "e59eb501122530c3ff7ae83c73c6d8849ef6a3ee73d492dff7df9bb2d433a2da",
+  "local-devnet-dispute-testing":
+    "e05f952e284af2ac1cbb6199e792c3843b2cc09fcbf5c36f7dc1b653fc748034",
   "preprod-emulator-testing":
     "d737e37fed195766797bd492cdb8c8ca3d90c85d0ac444ef611a69df1a333a93",
   "preprod-emulator-curated":
