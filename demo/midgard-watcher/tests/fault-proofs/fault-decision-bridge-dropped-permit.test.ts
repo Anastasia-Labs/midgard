@@ -213,6 +213,13 @@ describe("a fault target a pass cannot classify", () => {
       const target = (await h.bridge.reconcileAndDispatch(current)).target;
       expect(target?.headerHash).toBe(targeted.headerHash);
       const permit = h.progressRequests[0]!.fault!.actuationPermit;
+      const generation = h.progressRequests[0]!.rollbackGeneration;
+      // Every controller and every dispatch carries the target's original
+      // rollback generation, however many dispatches there were.
+      const keepsGeneration = () => {
+        expect(new Set(h.controllerGenerations)).toEqual(new Set([generation]));
+        expect(new Set(h.enqueuedGenerations)).toEqual(new Set([generation]));
+      };
 
       // A later block: the target is classified again, and cannot be.
       deferring = true;
@@ -222,7 +229,7 @@ describe("a fault target a pass cannot classify", () => {
         target,
       );
       expect(h.revocations).toEqual([]);
-      expect(h.controllerGenerations).toEqual(["1"]);
+      keepsGeneration();
       expect(h.retainedDecisionAuthorities.at(-1)).toBe(target?.decisionDigest);
       expect(h.progressRequests.at(-1)?.fault?.actuationPermit).toBe(permit);
 
@@ -230,13 +237,16 @@ describe("a fault target a pass cannot classify", () => {
       deferring = false;
       const cleared = { ...current, observationDigest: "44".repeat(32) };
       h.admitted.add(cleared);
+      const dispatchedBefore = h.progressRequests.length;
       expect((await h.bridge.reconcileAndDispatch(cleared)).target).toEqual(
         target,
       );
       expect(h.revocations).toEqual([]);
-      expect(h.controllerGenerations).toEqual(["1"]);
-      expect(h.enqueuedGenerations).toEqual(["1", "1", "1"]);
-      expect(h.progressRequests.at(-1)?.fault?.actuationPermit).toBe(permit);
+      keepsGeneration();
+      // The proof is dispatched again, with the permit it started with.
+      const continued = h.progressRequests.slice(dispatchedBefore).at(-1);
+      expect(continued?.fault?.actuationPermit).toBe(permit);
+      expect(continued?.rollbackGeneration).toBe(generation);
     },
   );
 });
