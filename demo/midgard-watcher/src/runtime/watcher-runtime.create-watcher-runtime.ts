@@ -79,7 +79,6 @@ import {
 } from "./watcher-runtime.prepare-authority.js";
 import { prepareWatcherRuntimeWorkflows } from "./watcher-runtime.prepare-services.js";
 import { createWatcherRuntimeReplayHost } from "./watcher-runtime.replayed-ledger.js";
-import { watcherRetirementReady } from "./watcher-runtime.retirement-ready.js";
 
 type WatcherStartup = ReturnType<typeof createWatcherStartupProgress>;
 
@@ -250,7 +249,6 @@ export const startWatcherRuntime = async (
       await prepareWatcherRuntimeWorkflows(input, {
         deploymentAuthority,
         deploymentIdentity,
-        sqlite,
         fundingProfileOverlay,
         startup,
         replayedLedger: replay.keeper,
@@ -401,18 +399,6 @@ export const startWatcherRuntime = async (
               hubOracleOneShotOutRef: authority.hubOracleOneShotOutRef,
               depth,
             }),
-        },
-        retirement: {
-          ready: () => watcherRetirementReady(activeSupervisor.status()),
-          retire: (observation) =>
-            sqlite.replayTranscripts.retireExpired({
-              observation,
-              network: watcherConfig.targetNetwork,
-              ...(watcherConfig.customNetwork === undefined
-                ? {}
-                : { customSlotConfig: watcherConfig.customNetwork.slotConfig }),
-            }),
-          reset: () => sqlite.replayTranscripts.resetRetirementWitnesses(),
         },
         onDecided: (tip) => {
           const observedAtMs = BigInt(Date.now()).toString();

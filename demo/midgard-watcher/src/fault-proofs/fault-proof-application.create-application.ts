@@ -16,6 +16,7 @@ import {
   normalizeJournalJson,
   resolveFamilyApplicationReferences,
   runFraudProofWorkflowCli,
+  verifyCompletedFraudProofWorkflow,
   type WorkflowAdapterRunner,
 } from "@al-ft/midgard-fault-proofs";
 import { Header } from "@al-ft/midgard-sdk";
@@ -32,7 +33,6 @@ import {
   assertVerifiedWatcherDeploymentIdentity,
   watcherDeploymentReleaseFinalityAuthority,
 } from "../runtime/deployment-identity.js";
-import { verifyCompletedWatcherReplayTranscriptWorkflow } from "../storage/replay-transcript-completion.js";
 import {
   createWatcherRetainedDaRuntimeOwner,
   createWatcherWorkflowRuntimeLoader,
@@ -93,18 +93,12 @@ export function createApplication({
   const watcherConfig = parseWatcherConfig(options.watcherConfig);
   const l1 = options.l1;
   const deploymentAuthority = options.deploymentAuthority;
-  const replayTranscriptStore = options.replayTranscriptStore;
   const replayedLedger = options.replayedLedger;
   if (allowExecution && replayedLedger === undefined)
     throw new Error("watcher execution requires a durable replay ledger");
   if (allowExecution) {
-    if (
-      deploymentAuthority === undefined ||
-      replayTranscriptStore === undefined
-    ) {
-      throw new Error(
-        "watcher execution requires deployment/rule authority and durable replay transcripts",
-      );
+    if (deploymentAuthority === undefined) {
+      throw new Error("watcher execution requires deployment/rule authority");
     }
     assertWatcherVerifiedDeploymentAuthority(deploymentAuthority);
     if (deploymentAuthority.deploymentIdentity !== deploymentIdentity) {
@@ -430,10 +424,7 @@ export function createApplication({
           observationDepth: "inclusion",
         });
       try {
-        return await verifyCompletedWatcherReplayTranscriptWorkflow({
-          ...(replayTranscriptStore === undefined
-            ? {}
-            : { replayTranscriptStore }),
+        return await verifyCompletedFraudProofWorkflow({
           binding,
           authority,
           entries: input.entries,

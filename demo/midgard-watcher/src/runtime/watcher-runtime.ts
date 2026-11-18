@@ -37,8 +37,6 @@ export {
   createWatcherDecisionDriver,
   WATCHER_DECISION_PASS_FAILED,
   WATCHER_RELEASE_OBSERVATION_PENDING,
-  WATCHER_RETIREMENT_RESET_FAILED,
-  WATCHER_RETIREMENT_RESET_PENDING,
   type WatcherDecisionDriver,
   type WatcherDecisionDriverInput,
   type WatcherDecisionReadiness,

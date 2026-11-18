@@ -1,10 +1,4 @@
-import {
-  isRejectionReasonArm,
-  type RejectionReason,
-  rejectionReasonArmOf,
-  Value,
-  valueToAssets,
-} from "@al-ft/midgard-sdk";
+import { Value, valueToAssets } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 /**
@@ -129,55 +123,4 @@ export const watcherOriginalDepositAssets = (
   if (event.kind !== "deposit" || event.originalAssetsCborHex === null)
     throw new Error("Original deposit funds require a deposit event");
   return valueToAssets(Data.from(event.originalAssetsCborHex, Value));
-};
-
-/**
- * The watcher's JSON-safe spelling of a forced-inclusion operator verdict
- * (`ForcedInclusionTxV1.verdict`): the literal `ForcedTxValid`, or the
- * constructor tag of the `RejectionReason` an invalid verdict carries. The
- * reason's subject coordinates are dropped: replay records are canonical-JSON
- * digested, and that encoding admits no `bigint`.
- */
-export type WatcherForcedOperatorVerdict = string;
-
-/** `ForcedTxValid`: the watcher spelling of an accepting operator verdict. */
-export const WATCHER_FORCED_TX_VALID = "ForcedTxValid" as const;
-
-/**
- * Membership test for {@link WatcherForcedOperatorVerdict}: the accepting
- * literal, or any `RejectionReasonV1` arm name the SDK knows (delegating
- * keeps the watcher vocabulary in lockstep with the SDK).
- */
-export const isWatcherForcedOperatorVerdict = (
-  value: unknown,
-): value is WatcherForcedOperatorVerdict => {
-  if (typeof value !== "string") return false;
-  if (value === WATCHER_FORCED_TX_VALID) return true;
-  return isRejectionReasonArm(value);
-};
-
-/**
- * Projects a decoded `OperatorVerdictV1` onto its watcher spelling, or null
- * when the value is not a verdict at all.
- */
-export const watcherForcedOperatorVerdict = (
-  verdict: unknown,
-): WatcherForcedOperatorVerdict | null => {
-  if (verdict === WATCHER_FORCED_TX_VALID) return WATCHER_FORCED_TX_VALID;
-  if (typeof verdict !== "object" || verdict === null) return null;
-  const invalid = (verdict as { ForcedTxInvalid?: unknown }).ForcedTxInvalid;
-  if (typeof invalid !== "object" || invalid === null) return null;
-  const reason = (invalid as { reason?: unknown }).reason;
-  if (
-    typeof reason !== "string" &&
-    (typeof reason !== "object" || reason === null)
-  )
-    return null;
-  let arm: string;
-  try {
-    arm = rejectionReasonArmOf(reason as RejectionReason);
-  } catch {
-    return null;
-  }
-  return isWatcherForcedOperatorVerdict(arm) ? arm : null;
 };

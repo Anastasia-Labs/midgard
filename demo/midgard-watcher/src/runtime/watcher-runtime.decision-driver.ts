@@ -24,8 +24,6 @@ import {
   WATCHER_DECISION_PASS_FAILED,
   WATCHER_FOLLOWER_NOT_STARTED,
   WATCHER_RELEASE_OBSERVATION_PENDING,
-  WATCHER_RETIREMENT_RESET_FAILED,
-  WATCHER_RETIREMENT_RESET_PENDING,
   type WatcherDecisionReadiness,
 } from "./watcher-runtime.decision-readiness.js";
 
@@ -54,14 +52,8 @@ import {
  * (`follower-generation.ts`) through the store's rollback log. Both paths
  * meet in one handler, idempotent per generation: the invalidations, the
  * rewind count and `onRewind` run once for each new generation, so a pull of
- * a generation this process already handled (the marker waits on the
- * retirement reset) changes nothing.
- *
- * The durable marker moves only once the replay-transcript retirement reset
- * the last rewind started held. The pass waits for that reset at most
- * `retryDelayMs`; while it is still pending or failed, the driver is unready
- * by name and the marker waits (a reset that failed transiently is retried
- * by the next pass, one `retryDelayMs` later).
+ * a generation this process already handled changes nothing. The pass then
+ * moves the durable marker to the pulled generation.
  *
  * Liveness: a pass never throws out of the driver. A failure is a named
  * readiness reason with its detail. Only a transient failure
@@ -77,8 +69,6 @@ export {
   WATCHER_DECISION_PASS_FAILED,
   WATCHER_FOLLOWER_NOT_STARTED,
   WATCHER_RELEASE_OBSERVATION_PENDING,
-  WATCHER_RETIREMENT_RESET_FAILED,
-  WATCHER_RETIREMENT_RESET_PENDING,
   watcherFollowerStarted,
 } from "./watcher-runtime.decision-readiness.js";
 
@@ -108,23 +98,11 @@ export type WatcherDecisionDriverInput = Readonly<{
   >;
   /** A durable ledger head beyond the follower's rollback limit. */
   replayedLedger?: WatcherReplayCheckpointDriver;
-  /** Replay-transcript retirement at release-final observations. */
-  retirement?: Readonly<{
-    /** No proof work is pending or running: retirement may sweep. */
-    ready(): boolean;
-    retire(
-      observation: WatcherAuthenticatedStateQueueObservation,
-    ): Promise<unknown>;
-    reset(): Promise<void>;
-  }>;
   /** The tip the driver last decided at, for L1 freshness reporting. */
   onDecided?: (tip: WatcherAuthenticatedStateQueueObservation) => void;
   /** Once per follower generation a rewind or reset raised, pushed or pulled. */
   onRewind?: (generation: number) => void;
-  /**
-   * The delay before a failed pass (or a failed retirement reset) is
-   * retried, and the most a pass waits for a pending retirement reset.
-   */
+  /** The delay before a failed pass is retried. */
   retryDelayMs: number;
   log?: (line: string) => void;
 }>;
@@ -196,16 +174,6 @@ export const createWatcherDecisionDriver = (
   // The highest follower generation this process handled; null before the
   // first push or pull.
   let handledGeneration: number | null = null;
-  // The last retirement reset a rewind started; the durable handled
-  // generation moves only once it held.
-  type RetirementReset = {
-    outcome: "pending" | "held" | "failed";
-    detail: string;
-    /** Whether a failure was transient, so the next pass retries it. */
-    transient: boolean;
-    settled: Promise<void>;
-  };
-  let retirementReset: RetirementReset | null = null;
 
   let resolveRecovered!: (count: number) => void;
   const recovered = new Promise<number>((resolve) => {
@@ -228,36 +196,6 @@ export const createWatcherDecisionDriver = (
     retry.unref();
   };
 
-  const resetRetirement = (): void => {
-    const retirement = input.retirement;
-    if (retirement === undefined) return;
-    const reset: RetirementReset = {
-      outcome: "pending",
-      detail: "",
-      transient: false,
-      settled: Promise.resolve(),
-    };
-    const failed = (error: unknown): void => {
-      reset.outcome = "failed";
-      ({ transient: reset.transient, detail: reset.detail } =
-        decisionFailure(error));
-      log(`replay-transcript retirement reset failed: ${reset.detail}`);
-      // A pass names the failure; only a transient one is retried.
-      if (reset.transient) scheduleRetry();
-      else wake();
-    };
-    try {
-      reset.settled = retirement.reset().then(() => {
-        reset.outcome = "held";
-        // The next pass moves the marker and clears the reason.
-        wake();
-      }, failed);
-    } catch (error) {
-      failed(error);
-    }
-    retirementReset = reset;
-  };
-
   /** One rewind or reset at `generation`, pushed or pulled. */
   const rewound = (generation: number): void => {
     if (handledGeneration !== null && generation <= handledGeneration) return;
@@ -268,7 +206,6 @@ export const createWatcherDecisionDriver = (
     inclusion = null;
     rewinds += 1;
     recoveryPending = true;
-    resetRetirement();
     input.onRewind?.(generation);
   };
 
@@ -305,48 +242,13 @@ export const createWatcherDecisionDriver = (
     return { handled, generation: since.generation };
   };
 
-  /**
-   * Moves the durable handled generation, once the last retirement reset
-   * held. Waits for a pending reset at
-   * most `retryDelayMs`. Returns why the marker waits, or null.
-   */
+  /** Moves the durable handled generation to the one a pull found. */
   const recordHandled = async (
     pulled: Readonly<{ handled: number | null; generation: number | null }>,
-  ): Promise<WatcherDecisionReadiness | null> => {
+  ): Promise<void> => {
     if (pulled.generation === null || pulled.generation === pulled.handled)
-      return null;
-    const reset = retirementReset;
-    if (reset !== null) {
-      if (reset.outcome === "pending") {
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        await Promise.race([
-          reset.settled,
-          new Promise<void>((resolve) => {
-            timer = setTimeout(resolve, input.retryDelayMs);
-            timer.unref();
-          }),
-        ]);
-        clearTimeout(timer);
-      }
-      if (reset.outcome === "pending")
-        // Its settling wakes the driver.
-        return {
-          reason: WATCHER_RETIREMENT_RESET_PENDING,
-          detail: `the replay-transcript retirement reset has not settled within ${input.retryDelayMs.toString()} ms`,
-        };
-      if (reset.outcome === "failed") {
-        // A transient failure is retried here; a later pass records the
-        // generation once it held. Any other waits for the next rewind.
-        if (retirementReset === reset && reset.transient) resetRetirement();
-        return {
-          reason: WATCHER_RETIREMENT_RESET_FAILED,
-          detail: reset.detail,
-        };
-      }
-      if (retirementReset === reset) retirementReset = null;
-    }
+      return;
     await writeHandledFollowerGeneration(input.store, pulled.generation);
-    return null;
   };
 
   const pass = async (): Promise<void> => {
@@ -361,8 +263,7 @@ export const createWatcherDecisionDriver = (
     }
     const pulled = await catchUp();
     const reasons: WatcherDecisionReadiness[] = [];
-    const waiting = await recordHandled(pulled);
-    if (waiting !== null) reasons.push(waiting);
+    await recordHandled(pulled);
     const tip = await observe(1);
     if (tip.kind === "unready") {
       held = [{ reason: tip.reason, detail: tip.detail }, ...reasons];
@@ -409,11 +310,6 @@ export const createWatcherDecisionDriver = (
     if (recoveredCount === null) {
       recoveredCount = recoveredNow;
       resolveRecovered(recoveredNow);
-    }
-    if (input.retirement !== undefined && release.kind === "ok") {
-      if (input.retirement.ready())
-        await input.retirement.retire(release.observation);
-      else await input.retirement.reset();
     }
     input.onDecided?.(tip.observation);
     held = reasons;

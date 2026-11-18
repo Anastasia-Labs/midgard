@@ -52,14 +52,6 @@
     "midgard-watcher/src/indexers/authenticated-state-queue-observation.parse-persisted-header.ts": {
       "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
       "sites": ["BigInt(record.finalityDepth) < BigInt(RELEASE_FINALITY_DEPTH)"]
-    },
-    "midgard-watcher/src/verification/authenticated-replay-transcript.assert-raw-cbor-value.ts": {
-      "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
-      "sites": ["depth < BigInt(input.minimumConfirmationDepth) ||"]
-    },
-    "midgard-watcher/src/verification/replay-transcript-records.read-watcher-replay-transcript-records.ts": {
-      "reason": "Watcher finality and observation depth against cd or k; W1 moves the watcher onto the follower and W3 deletes the finality and rollback engines (incidents only beyond k).",
-      "sites": ["BigInt(text(inclusion.finalityDepth, \"inclusion depth\")) >="]
     }
   },
   "midgard/exact-fee-no-change-output": {
@@ -590,24 +582,6 @@
       "sites": [
         "left.code.localeCompare(right.code) ||",
         "left.subjectDigest.localeCompare(right.subjectDigest),"
-      ]
-    },
-    "midgard-watcher/src/verification/authenticated-replay-transcript.assert-raw-cbor-value.ts": {
-      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
-      "sites": [
-        "result.sort((left, right) => left.outRef.localeCompare(right.outRef));"
-      ]
-    },
-    "midgard-watcher/src/verification/block-replay.evaluate-watcher-block-replay.ts": {
-      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
-      "sites": [
-        ".sort((left, right) => left.outRef.localeCompare(right.outRef)),"
-      ]
-    },
-    "midgard-watcher/src/verification/replay-transcript-records.read-watcher-replay-transcript-records.ts": {
-      "reason": "Pre-rule call site in watcher source, which keeps code-unit ordering in its canonical paths on purpose and must not be unified with the node's \"en\" collation. Untriaged for whether this order feeds a digest, hash or datum; moving it to \"en\" or to `<`/`>` is a per-site owner call, not a lint cleanup.",
-      "sites": [
-        "[...priorState].sort((a, b) => a.outRef.localeCompare(b.outRef)),"
       ]
     },
     "midgard-watcher/tests/funding/prover-funding-calculation.test.ts": {

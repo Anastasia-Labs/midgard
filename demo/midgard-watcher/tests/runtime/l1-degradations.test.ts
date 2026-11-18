@@ -17,7 +17,7 @@ import {
 } from "../../src/l1-follower/tx-inputs.js";
 import { createWatcherOperationsObservability } from "../../src/runtime/operations-observability.js";
 import {
-  WATCHER_RETIREMENT_RESET_FAILED,
+  WATCHER_DECISION_PASS_FAILED,
   type WatcherDecisionReadiness,
 } from "../../src/runtime/watcher-runtime.decision-driver.js";
 import { createWatcherL1Readiness } from "../../src/runtime/watcher-runtime.l1-readiness.js";
@@ -131,16 +131,16 @@ describe("L1 degradations in operations observability", () => {
     });
   });
 
-  it("fails readiness by name while the decision driver reports a failed retirement reset", async () => {
+  it("fails readiness by name while the decision driver reports a failed decision pass", async () => {
     const failed = {
-      reason: WATCHER_RETIREMENT_RESET_FAILED,
-      detail: "the transcript store is locked",
+      reason: WATCHER_DECISION_PASS_FAILED,
+      detail: "the fact store is locked",
     };
     const w = watcher({ readiness: [], degradations: [] }, [failed]);
     await w.l1.refresh();
     expect(w.api.status()).toMatchObject({
       readiness: "not_ready",
-      readinessReasons: [WATCHER_RETIREMENT_RESET_FAILED],
+      readinessReasons: [WATCHER_DECISION_PASS_FAILED],
       l1Readiness: [failed],
     });
   });

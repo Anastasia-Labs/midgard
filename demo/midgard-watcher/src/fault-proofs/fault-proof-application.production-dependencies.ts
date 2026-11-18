@@ -46,7 +46,6 @@ import type { WatcherConfig } from "../runtime/config.js";
 import { type VerifiedWatcherDeploymentAuthority } from "../runtime/deployment-authority.js";
 import { type VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
 import type { WatcherDecisionReadiness } from "../runtime/watcher-runtime.decision-driver.js";
-import type { WatcherReplayTranscriptStore } from "../storage/replay-transcript-store.js";
 import {
   type WatcherRetainedDaRuntimeOptions,
   type WatcherRetainedDaTransportStatus,
@@ -158,7 +157,6 @@ export type WatcherFaultProofApplicationOptions = Readonly<{
   l1: WatcherFaultProofL1;
   replayedLedger: WatcherReplayedLedger;
   deploymentAuthority: VerifiedWatcherDeploymentAuthority;
-  replayTranscriptStore: WatcherReplayTranscriptStore;
   infrastructure: WatcherFaultProofInfrastructureAuthority;
   fundingProfileOverlay: WatcherWorkflowFundingProfileOverlay;
   /** Told each time a classifier's script re-execution keeps failing the
@@ -168,16 +166,12 @@ export type WatcherFaultProofApplicationOptions = Readonly<{
 
 export type WatcherFaultProofApplicationConstructionOptions = Omit<
   WatcherFaultProofApplicationOptions,
-  | "fundingProfileOverlay"
-  | "replayedLedger"
-  | "deploymentAuthority"
-  | "replayTranscriptStore"
+  "fundingProfileOverlay" | "replayedLedger" | "deploymentAuthority"
 > &
   Readonly<{
     deploymentIdentity: VerifiedWatcherDeploymentIdentity;
     replayedLedger?: WatcherReplayedLedger;
     deploymentAuthority?: VerifiedWatcherDeploymentAuthority;
-    replayTranscriptStore?: WatcherReplayTranscriptStore;
     fundingProfileOverlay?: WatcherWorkflowFundingProfileOverlay;
     unsafeTransportOptionsForTest?: WatcherRetainedDaRuntimeOptions["unsafeTransportOptionsForTest"];
     unsafeTransportFactoryForTest?: WatcherRetainedDaRuntimeOptions["unsafeTransportFactoryForTest"];

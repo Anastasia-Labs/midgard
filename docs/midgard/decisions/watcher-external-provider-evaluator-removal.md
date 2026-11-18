@@ -55,6 +55,9 @@ durable result still carries the existing `downstreamPrerequisite` and
 verified-contract text, which name W26 and W29. That text was left unchanged in
 this removal because it is part of the durable replay-transcript format.
 
+W25 block replay and the replay-transcript store were themselves deleted
+later: no production path ran them.
+
 ## Consequences
 
 - The watcher does not provide W16 settlement, reserve or payout tracking.
@@ -79,4 +82,4 @@ this removal because it is part of the durable replay-transcript format.
 - [Prelaunch format replacement](prelaunch-format-replacement.md)
 - [State-queue observation](../../../demo/midgard-watcher/src/indexers/authenticated-state-queue-observation.ts)
 - [State-queue snapshot parsers](../../../demo/midgard-watcher/src/indexers/state-queue-snapshot.ts)
-- [W25 block replay](../../../demo/midgard-watcher/src/verification/block-replay.ts)
+- W25 block replay (`demo/midgard-watcher/src/verification/block-replay.ts`, since deleted with the rest of the watcher's own replay: the watcher decides from the fault-proofs replayed ledger) <!-- doc-links:historical -->

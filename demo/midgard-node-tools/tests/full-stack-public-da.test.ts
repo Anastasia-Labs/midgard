@@ -1,17 +1,84 @@
+import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DaRequestResponseProtocol } from "@al-ft/midgard-core/da-transport";
 import type {
   RetainedDaFetchAttempt,
   RetainedDaFetchAttemptStatus,
   RetainedDaPayloadSource,
 } from "@al-ft/midgard-fault-proofs";
-import {
-  buildPublicReplayFixture,
-  DA_PROVENANCE,
-  headerHashOf,
-} from "midgard-watcher/tests/support/block-replay-public-fixture";
+import * as SDK from "@al-ft/midgard-sdk";
+import { h28 } from "@al-ft/midgard-test-support/hex";
+import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { fetchCommittedPublicDa } from "../src/full-stack/public-da.js";
+
+const DA_PROVENANCE: SDK.EvidenceProvenance = {
+  trustClass: "public_or_permissionless_da",
+  sourceId: "watcher-da-peer-1",
+  grade: "security",
+};
+
+/**
+ * The payload envelope of a block with no events, and its header hash. The
+ * roots are the empty-tree root for every domain: the fetch checks only that
+ * a served copy is a canonical payload that commits to the header asked for.
+ */
+const emptyBlock = async () => {
+  const counts = {
+    withdrawalCount: 0n,
+    forcedTransactionCount: 0n,
+    l2TransactionCount: 0n,
+    depositCount: 0n,
+    totalEventCount: 0n,
+    transitionStepCount: 0n,
+    validationTraceCount: 0n,
+  };
+  const root = SDK.EMPTY_MERKLE_TREE_ROOT;
+  const header: SDK.Header = {
+    prevUtxosRoot: root,
+    utxosRoot: root,
+    withdrawalsRoot: root,
+    forcedTransactionsRoot: root,
+    transactionsRoot: root,
+    depositsRoot: root,
+    transitionTraceRoot: root,
+    eventToStepRoot: root,
+    ...counts,
+    validationTracesRoot: root,
+    startTime: 10n,
+    endTime: 20n,
+    blockSlot: 0n,
+    expectedNetworkId: 0n,
+    minFeeA: 0n,
+    minFeeB: 0n,
+    prevHeaderHash: h28(90),
+    operatorVkey: h28(91),
+    protocolVersion: 1n,
+  };
+  const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
+  const envelope = await wrapDaPayload(
+    SDK.encodeDaPayload({
+      version: SDK.DA_PAYLOAD_VERSION,
+      block_body: {
+        header_hash: headerHash,
+        header,
+        withdrawals: [],
+        forced_transactions: [],
+        transactions: [],
+        deposits: [],
+        transition_trace: [],
+        event_to_step: [],
+        transaction_preimages: [],
+        forced_transaction_preimages: [],
+        validation_traces: [],
+        validation_trace_witnesses: [],
+        counts,
+      },
+    }),
+    { mode: "identity" },
+  );
+  return { headerHash, envelope };
+};
 
 describe("public DA of a committed block", () => {
   // The node reports a block committed before the committee has stored its
@@ -71,13 +138,8 @@ describe("public DA of a committed block", () => {
   });
 
   it("keeps asking while the committee has not stored the payload, then returns what it serves", async () => {
-    const block = await buildPublicReplayFixture({
-      steps: [],
-      priorState: [],
-      postState: [],
-      requireAcceptedBindings: false,
-    });
-    const headerHash = headerHashOf(block.header);
+    const block = await emptyBlock();
+    const { headerHash } = block;
     vi.useFakeTimers({ toFake: ["setTimeout", "Date"] });
     const { source, calls } = scriptedSource([
       ["not_found"],

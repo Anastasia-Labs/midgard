@@ -2,11 +2,6 @@ import { mkdir, realpath, stat } from "node:fs/promises";
 import { dirname, isAbsolute, normalize } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-import {
-  createWatcherSqliteReplayTranscriptStore,
-  type WatcherReplayTranscriptStore,
-} from "./replay-transcript-store.js";
-
 export const WATCHER_SQLITE_DURABLE_BACKEND_SCHEMA_VERSION =
   "midgard-watcher-sqlite-durable-backend-v1" as const;
 
@@ -27,11 +22,14 @@ const canonicalDatabasePath = (value: unknown): string => {
 
 export type WatcherSqliteDurableBackend = Readonly<{
   schemaVersion: typeof WATCHER_SQLITE_DURABLE_BACKEND_SCHEMA_VERSION;
-  replayTranscripts: WatcherReplayTranscriptStore;
   close(): void;
 }>;
 
-/** The watcher's production SQLite store: replay transcripts. */
+/**
+ * Opens the watcher's production SQLite file at startup: it refuses a
+ * non-durable or symlinked path and sets the file's journal mode before the
+ * stores that keep their tables in it open.
+ */
 export const openWatcherSqliteDurableBackend = async (input: {
   readonly path: string;
   readonly busyTimeoutMs?: number;
@@ -75,7 +73,6 @@ export const openWatcherSqliteDurableBackend = async (input: {
 
   return Object.freeze({
     schemaVersion: WATCHER_SQLITE_DURABLE_BACKEND_SCHEMA_VERSION,
-    replayTranscripts: createWatcherSqliteReplayTranscriptStore(database),
     close: () => database.close(),
   });
 };

@@ -11,20 +11,6 @@ export const WATCHER_RELEASE_OBSERVATION_PENDING =
  * may be incomplete for this process's tracked set: no pass reads them.
  */
 export const WATCHER_FOLLOWER_NOT_STARTED = "l1_follower_not_started";
-/**
- * The replay-transcript retirement reset a rewind started failed; the
- * detail names the failure. The handled-generation marker waits for it, and
- * the next pass retries it.
- */
-export const WATCHER_RETIREMENT_RESET_FAILED =
-  "watcher_retirement_reset_failed";
-/**
- * The replay-transcript retirement reset a rewind started has not settled
- * within the pass's wait. The handled-generation marker waits for it.
- */
-export const WATCHER_RETIREMENT_RESET_PENDING =
-  "watcher_retirement_reset_pending";
-
 /** The driver's `started` gate: the follower published a status with a cursor. */
 export const watcherFollowerStarted = (
   status: Pick<FollowStatus, "cursor"> | null | undefined,

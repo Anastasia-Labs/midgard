@@ -44,10 +44,7 @@ export const prepareWatcherRuntimeWorkflows = async (
   input: Readonly<{ config: WatcherProcessConfig }>,
   options: Pick<
     Awaited<ReturnType<typeof prepareWatcherRuntimeAuthority>>,
-    | "sqlite"
-    | "deploymentAuthority"
-    | "deploymentIdentity"
-    | "fundingProfileOverlay"
+    "deploymentAuthority" | "deploymentIdentity" | "fundingProfileOverlay"
   > &
     Readonly<{
       startup: ReturnType<typeof createWatcherStartupProgress>;
@@ -62,7 +59,6 @@ export const prepareWatcherRuntimeWorkflows = async (
   const {
     deploymentAuthority,
     deploymentIdentity,
-    sqlite,
     fundingProfileOverlay,
     startup,
     replayedLedger,
@@ -78,7 +74,6 @@ export const prepareWatcherRuntimeWorkflows = async (
       l1,
       replayedLedger,
       deploymentAuthority,
-      replayTranscriptStore: sqlite.replayTranscripts,
       infrastructure: input.config.faultProofInfrastructure,
       fundingProfileOverlay,
       onValidationTraceReplayStuck: (hold) =>

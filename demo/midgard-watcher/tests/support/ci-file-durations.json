@@ -82,7 +82,6 @@
     "tests/indexers/attestation-timeout-observation.test.ts": 1.3,
     "tests/indexers/authenticated-state-queue-observation.test.ts": 1.7,
     "tests/indexers/state-queue-catchup-finality.test.ts": 3.1,
-    "tests/l1-follower/decision-driver-retirement.test.ts": 1.6,
     "tests/l1-follower/departure-release-order.test.ts": 1.5,
     "tests/l1-follower/event-refusals.test.ts": 1.6,
     "tests/l1-follower/follower-provider-family-reads.test.ts": 7.0,
@@ -117,8 +116,6 @@
     "tests/runtime/user-event-origin-fixture.test.ts": 3.4,
     "tests/storage/canonical-json.test.ts": 0.8,
     "tests/storage/public-da-transport-lifecycle.test.ts": 2.6,
-    "tests/storage/replay-transcript-classification-retirement.test.ts": 3.5,
-    "tests/storage/replay-transcript-store.test.ts": 1.9,
     "tests/storage/retained-da-read-scope.test.ts": 2,
     "tests/storage/retained-da-runtime.test.ts": 6.2,
     "tests/storage/retained-da-transport-alert-subject.test.ts": 1.4,
@@ -126,15 +123,6 @@
     "tests/storage/retained-da-transport-restart.test.ts": 3,
     "tests/storage/sqlite-durable-backend.test.ts": 1.3,
     "tests/support/published-deposit-history.test.ts": 2.1,
-    "tests/verification/authenticated-replay-transcript.test.ts": 1.9,
-    "tests/verification/block-replay-admission.test.ts": 1.5,
-    "tests/verification/block-replay.test.ts": 9.2,
-    "tests/verification/forced-native-first-fault.test.ts": 2.6,
-    "tests/verification/forced-operator-verdict.test.ts": 1.3,
-    "tests/verification/forced-submission.test.ts": 4,
-    "tests/verification/header-root-reconstruction.test.ts": 2.8,
-    "tests/verification/missing-signature-detector.test.ts": 1.4,
-    "tests/verification/phase-a-verifier.test.ts": 4.1,
     "tests/verification/rule-bundle.test.ts": 2.8
   }
 }

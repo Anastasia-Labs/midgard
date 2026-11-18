@@ -1220,11 +1220,6 @@
     "reason": "createSyntheticUserEventOriginFixture is the dominant indivisible declaration (996 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
-    "file": "midgard-watcher/tests/verification/block-replay.w25-roots-and-deterministic-replay.ts",
-    "max": 1408,
-    "reason": "Retained test registration “W25 roots and deterministic replay” (1341 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
-  },
-  {
     "file": "scripts/deployment-profiles.mjs",
     "max": 593,
     "reason": "validateProfile is the dominant indivisible declaration (273 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Operator economics: relation checks now live in their profile helper. The public DA transport policy is validated in deployment-profile-da.mjs; only its import, key admission and call stay here."

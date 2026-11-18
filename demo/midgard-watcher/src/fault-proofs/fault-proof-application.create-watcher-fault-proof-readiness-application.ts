@@ -26,7 +26,6 @@ export const createWatcherFaultProofApplication = (
       replayedLedger: options.replayedLedger,
       deploymentIdentity: options.deploymentAuthority.deploymentIdentity,
       deploymentAuthority: options.deploymentAuthority,
-      replayTranscriptStore: options.replayTranscriptStore,
       infrastructure: options.infrastructure,
       fundingProfileOverlay: options.fundingProfileOverlay,
       ...(options.onValidationTraceReplayStuck === undefined
