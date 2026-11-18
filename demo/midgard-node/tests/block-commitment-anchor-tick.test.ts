@@ -1,4 +1,4 @@
-import { Effect, Ref } from "effect";
+import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { blockCommitmentAction } from "../src/fibers/block-commitment.block-commitment-action.js";
@@ -18,8 +18,8 @@ import { openFollowerWriteGateAt } from "./helpers/follower-write-gate.js";
 import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
-/** One commitment tick that does nothing past its readiness publication: a
- * reset in progress skips the rest of the tick. */
+/** One commitment tick over empty application tables: it publishes its
+ * readiness, finds no pending work and skips before the L1 control plane. */
 const tickReasons = (depth: number) =>
   Effect.runPromise(
     provideDatabaseLayers(
@@ -30,7 +30,6 @@ const tickReasons = (depth: number) =>
         const view = yield* writeFollowerTip(100, FOLLOWER_GENERATION, 100);
         yield* openFollowerWriteGateAt(view);
         const globals = yield* Globals;
-        yield* Ref.set(globals.RESET_IN_PROGRESS, true);
         yield* blockCommitmentAction;
         return yield* activeLivenessReasons(globals);
       }).pipe(

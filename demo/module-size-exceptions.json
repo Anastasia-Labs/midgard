@@ -750,11 +750,6 @@
     "reason": "operatorLifecycleProgram is the dominant indivisible declaration (881 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
-    "file": "midgard-node/src/transactions/state-queue/merge-to-confirmed-state.build-and-submit-merge-tx.ts",
-    "max": 569,
-    "reason": "buildAndSubmitMergeTx is the dominant indivisible declaration (495 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
-  },
-  {
     "file": "midgard-node/src/workers/commit-block-header.build-on-verified-base-program.ts",
     "max": 902,
     "reason": "buildOnVerifiedCommitBaseProgram is the dominant indivisible declaration (807 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."

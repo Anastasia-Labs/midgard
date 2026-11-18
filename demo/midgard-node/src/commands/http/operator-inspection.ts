@@ -91,13 +91,11 @@ export const getStateQueueHandler = Effect.gen(function* () {
     );
   const [
     unconfirmedSubmittedBlockTxHash,
-    resetInProgress,
     durableAdmissionBacklog,
     mempoolTxCount,
   ] = yield* Effect.all(
     [
       Ref.get(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH),
-      Ref.get(globals.RESET_IN_PROGRESS),
       TxAdmissionsDB.countBacklog,
       MempoolDB.retrieveTxCount,
     ],
@@ -109,7 +107,6 @@ export const getStateQueueHandler = Effect.gen(function* () {
       nodeConfig.MIN_QUEUE_LENGTH_FOR_MERGING ??
       DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING,
     unresolvedSubmittedBlockTxHash: unconfirmedSubmittedBlockTxHash,
-    resetInProgress,
     durableAdmissionBacklog,
     mempoolTxCount,
   });
@@ -249,7 +246,6 @@ export const getLogGlobalsHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✍  Logging global variables...`);
   const globals = yield* Globals;
   const BLOCKS_IN_QUEUE: number = yield* Ref.get(globals.BLOCKS_IN_QUEUE);
-  const RESET_IN_PROGRESS: boolean = yield* Ref.get(globals.RESET_IN_PROGRESS);
   const COMMIT_WORKER_ACTIVE: boolean = yield* Ref.get(
     globals.COMMIT_WORKER_ACTIVE,
   );
@@ -285,7 +281,6 @@ export const getLogGlobalsHandler = Effect.gen(function* () {
 
   yield* Effect.logInfo(`
   BLOCKS_IN_QUEUE ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${BLOCKS_IN_QUEUE}
-  RESET_IN_PROGRESS ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${RESET_IN_PROGRESS}
   COMMIT_WORKER_ACTIVE ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${COMMIT_WORKER_ACTIVE}
   COMMIT_PIPELINE_PHASE ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${COMMIT_PIPELINE_PHASE}
   AVAILABLE_CONFIRMED_BLOCK ⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${AVAILABLE_CONFIRMED_BLOCK === "" ? "unavailable" : "available"}

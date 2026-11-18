@@ -105,60 +105,57 @@ export const blockCommitmentAction: Effect.Effect<
   yield* Ref.set(globals.HEARTBEAT_BLOCK_COMMITMENT, Date.now());
   yield* publishCommitAnchorReadiness;
   const eventOrphaned = yield* refuseCommitForOrphanedOwnBlockEvent;
-  const RESET_IN_PROGRESS = yield* Ref.get(globals.RESET_IN_PROGRESS);
-  if (!RESET_IN_PROGRESS) {
-    if (eventOrphaned) return;
-    if (yield* shouldSkipIdleCommitPipelineBeforeSchedulerAlignment) return;
-    if (yield* shouldSkipForActivePendingFinalization) {
-      return;
-    }
-    if (yield* shouldSkipForDueValidationTraceDefense) return;
-    yield* withL1ControlPlane(
-      globals,
-      { scope: "block_commitment", maxHoldMs: 180_000 },
-      Effect.gen(function* () {
-        if (yield* shouldSkipForRegisteredCommitDueWork) {
-          return;
-        }
-        if (yield* registerPreLeaseCommitSchedulerDueWorkIfProven) {
-          return;
-        }
-        if (yield* alignCommitSchedulerBeforeMutationWorkerIfIdle) {
-          return;
-        }
-        const acquired = yield* tryAcquireCommitMutationWorkerPhase(globals);
-        if (!acquired.acquired) {
-          yield* Effect.logInfo(
-            `🔹 Skipping block commitment trigger because commit pipeline phase is already active (phase=${acquired.activePhase}).`,
-          );
-          return;
-        }
-
-        yield* Effect.logInfo("🔹 New block commitment process started.");
-        const leaseResult = yield* StateQueueMutationLeasesDB.tryWithLease(
-          "block_commitment",
-          (leaseToken) =>
-            buildAndSubmitCommitmentBlockAction(leaseToken).pipe(
-              Effect.withSpan("buildAndSubmitCommitmentBlockAction"),
-            ),
-          {
-            ttlMs: nodeConfig.STATE_QUEUE_MUTATION_LEASE_TTL_MS,
-            renewIntervalMs:
-              nodeConfig.STATE_QUEUE_MUTATION_LEASE_RENEW_INTERVAL_MS,
-          },
-        ).pipe(Effect.ensuring(releaseCommitMutationWorkerPhase(globals)));
-        if (leaseResult._tag === "Busy") {
-          yield* Effect.logInfo(
-            `🔹 Skipping block commitment trigger because the state-queue mutation lease is busy (${StateQueueMutationLeasesDB.describeActiveLease(
-              leaseResult.activeLease,
-            )}).`,
-          );
-          return undefined;
-        }
-        return leaseResult.value;
-      }),
-    );
+  if (eventOrphaned) return;
+  if (yield* shouldSkipIdleCommitPipelineBeforeSchedulerAlignment) return;
+  if (yield* shouldSkipForActivePendingFinalization) {
+    return;
   }
+  if (yield* shouldSkipForDueValidationTraceDefense) return;
+  yield* withL1ControlPlane(
+    globals,
+    { scope: "block_commitment", maxHoldMs: 180_000 },
+    Effect.gen(function* () {
+      if (yield* shouldSkipForRegisteredCommitDueWork) {
+        return;
+      }
+      if (yield* registerPreLeaseCommitSchedulerDueWorkIfProven) {
+        return;
+      }
+      if (yield* alignCommitSchedulerBeforeMutationWorkerIfIdle) {
+        return;
+      }
+      const acquired = yield* tryAcquireCommitMutationWorkerPhase(globals);
+      if (!acquired.acquired) {
+        yield* Effect.logInfo(
+          `🔹 Skipping block commitment trigger because commit pipeline phase is already active (phase=${acquired.activePhase}).`,
+        );
+        return;
+      }
+
+      yield* Effect.logInfo("🔹 New block commitment process started.");
+      const leaseResult = yield* StateQueueMutationLeasesDB.tryWithLease(
+        "block_commitment",
+        (leaseToken) =>
+          buildAndSubmitCommitmentBlockAction(leaseToken).pipe(
+            Effect.withSpan("buildAndSubmitCommitmentBlockAction"),
+          ),
+        {
+          ttlMs: nodeConfig.STATE_QUEUE_MUTATION_LEASE_TTL_MS,
+          renewIntervalMs:
+            nodeConfig.STATE_QUEUE_MUTATION_LEASE_RENEW_INTERVAL_MS,
+        },
+      ).pipe(Effect.ensuring(releaseCommitMutationWorkerPhase(globals)));
+      if (leaseResult._tag === "Busy") {
+        yield* Effect.logInfo(
+          `🔹 Skipping block commitment trigger because the state-queue mutation lease is busy (${StateQueueMutationLeasesDB.describeActiveLease(
+            leaseResult.activeLease,
+          )}).`,
+        );
+        return undefined;
+      }
+      return leaseResult.value;
+    }),
+  );
 });
 
 /**

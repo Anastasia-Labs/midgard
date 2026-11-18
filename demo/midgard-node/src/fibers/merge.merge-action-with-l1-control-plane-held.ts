@@ -77,27 +77,14 @@ export const mergeActionWithL1ControlPlaneHeld = (
     const globals = yield* Globals;
     const nodeConfig = yield* NodeConfig;
     yield* Ref.set(globals.HEARTBEAT_MERGE, startedAtMs);
-    const [initialUnconfirmedSubmittedBlockTxHash, initialResetInProgress] =
-      yield* Effect.all(
-        [
-          Ref.get(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH),
-          Ref.get(globals.RESET_IN_PROGRESS),
-        ],
-        { concurrency: "unbounded" },
-      );
+    const initialUnconfirmedSubmittedBlockTxHash = yield* Ref.get(
+      globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
+    );
     if (initialUnconfirmedSubmittedBlockTxHash !== "") {
       const reason = `submitted_tx=${initialUnconfirmedSubmittedBlockTxHash}`;
       yield* Effect.logInfo(`🔸 Skipping merge (${reason}).`);
       return {
         status: "skipped_unresolved_commitment",
-        reason,
-      } satisfies MergeActionResult;
-    }
-    if (initialResetInProgress) {
-      const reason = "reset_in_progress=true";
-      yield* Effect.logInfo(`🔸 Skipping merge (${reason}).`);
-      return {
-        status: "skipped_reset_in_progress",
         reason,
       } satisfies MergeActionResult;
     }
@@ -222,13 +209,11 @@ export const mergeActionWithL1ControlPlaneHeld = (
           );
           const [
             unconfirmedSubmittedBlockTxHash,
-            resetInProgress,
             durableAdmissionBacklog,
             mempoolTxCount,
           ] = yield* Effect.all(
             [
               Ref.get(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH),
-              Ref.get(globals.RESET_IN_PROGRESS),
               TxAdmissionsDB.countBacklog,
               MempoolDB.retrieveTxCount,
             ],
@@ -239,7 +224,6 @@ export const mergeActionWithL1ControlPlaneHeld = (
             queueLength,
             minQueueLength,
             unresolvedSubmittedBlockTxHash: unconfirmedSubmittedBlockTxHash,
-            resetInProgress,
             durableAdmissionBacklog,
             mempoolTxCount,
           });

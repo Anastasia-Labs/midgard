@@ -26,7 +26,6 @@ import { NATIVE_MPF_FULL_INDEX_NEAR_CAP } from "./mpf-native-owner/service.full-
 import {
   COUNT,
   detail,
-  field,
   hex,
   members,
   oneOf,
@@ -57,9 +56,6 @@ export const NODE_READINESS_ROWS: readonly ReadinessRow[] = [
   reason("validation_worker_crashed"),
   reason("validation_worker_load_failed"),
   reason("validation_worker_start_failed"),
-  // No producer names it; it leaves with the reset flag it stands for
-  // (`Globals.RESET_IN_PROGRESS`).
-  field("reset_in_progress"),
   // The `/readyz` handler (`commands/http/readiness*.ts`).
   reason("durable_admission_oldest_age_exceeded", COUNT, COUNT),
   reason("admission_writer_stalled", COUNT, COUNT),

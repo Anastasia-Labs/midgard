@@ -27,7 +27,6 @@ const baseInput = {
   queueLength: 1,
   minQueueLength: 8,
   unresolvedSubmittedBlockTxHash: "",
-  resetInProgress: false,
   durableAdmissionBacklog: 0n,
   mempoolTxCount: 0n,
 };

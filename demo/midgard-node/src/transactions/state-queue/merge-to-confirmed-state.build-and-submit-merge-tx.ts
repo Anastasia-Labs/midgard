@@ -98,15 +98,6 @@ export const buildAndSubmitMergeTx = (
     const minQueueLengthForMerging =
       nodeConfig.MIN_QUEUE_LENGTH_FOR_MERGING ??
       DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING;
-    const resetInProgress = yield* Ref.get(globals.RESET_IN_PROGRESS);
-    if (resetInProgress) {
-      return {
-        status: "skipped_reset_in_progress",
-        reason: "reset_in_progress=true",
-        queueLength: currentStateQueueLength,
-        minQueueLength: minQueueLengthForMerging,
-      } satisfies MergeTxResult;
-    }
     if (currentStateQueueLength <= 0) {
       return {
         status: "no_queued_block",

@@ -64,9 +64,6 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
     // Blocks in the landed state queue (P1), as last read.
     const BLOCKS_IN_QUEUE = yield* Ref.make<number>(0);
 
-    // Needed for development to prevent other actions triggering while spending
-    // all UTxOs at state queue.
-    const RESET_IN_PROGRESS = yield* Ref.make<boolean>(false);
     // The latest merge this process submitted whose landing it still awaits,
     // and when its landing wait failed on the monotonic clock (null while it
     // runs): a scheduled merge skips while the landed queue shows its header,
@@ -310,7 +307,6 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
 
     return {
       BLOCKS_IN_QUEUE,
-      RESET_IN_PROGRESS,
       MERGE_AWAITING_LANDING,
       OPERATOR_MEMBERSHIP,
       OPERATOR_SET,

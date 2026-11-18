@@ -24,7 +24,6 @@ export type MergeReadinessStatus =
   | "tail_eligible_final_merge"
   | "no_queued_block"
   | "skipped_unresolved_commitment"
-  | "skipped_reset_in_progress"
   | "skipped_below_min_queue_length"
   | "skipped_pending_local_work"
   | "skipped_oldest_block_unattested"
@@ -39,7 +38,6 @@ export type MergePreflightInput = {
   readonly queueLength: number;
   readonly minQueueLength: number;
   readonly unresolvedSubmittedBlockTxHash: string;
-  readonly resetInProgress: boolean;
   readonly durableAdmissionBacklog: bigint;
   readonly mempoolTxCount: bigint;
 };
@@ -70,15 +68,6 @@ export const planMergePreflight = (
     return {
       status: "skipped_unresolved_commitment",
       reason: `submitted_tx=${input.unresolvedSubmittedBlockTxHash}`,
-      queueLength: input.queueLength,
-      minQueueLength: input.minQueueLength,
-      bypassQueueLengthGuard: false,
-    };
-  }
-  if (input.resetInProgress) {
-    return {
-      status: "skipped_reset_in_progress",
-      reason: "reset_in_progress=true",
       queueLength: input.queueLength,
       minQueueLength: input.minQueueLength,
       bypassQueueLengthGuard: false,

@@ -105,7 +105,6 @@ export const getReadinessHandler = Effect.gen(function* () {
   } = databaseState.right;
   const nowMillis = Date.now();
   const stateQueueBlocksInQueue = yield* Ref.get(globals.BLOCKS_IN_QUEUE);
-  const resetInProgress = yield* Ref.get(globals.RESET_IN_PROGRESS);
   const commitWorkerActive = yield* Ref.get(globals.COMMIT_WORKER_ACTIVE);
   const commitPipelinePhase = yield* Ref.get(globals.COMMIT_PIPELINE_PHASE);
   const blockCommitmentHeartbeat = yield* Ref.get(
@@ -386,7 +385,6 @@ export const getReadinessHandler = Effect.gen(function* () {
       nodeConfig.MIN_QUEUE_LENGTH_FOR_MERGING ??
       DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING,
     unresolvedSubmittedBlockTxHash: unconfirmedSubmittedBlockTxHash,
-    resetInProgress,
     durableAdmissionBacklog,
     mempoolTxCount,
   });
