@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, it } from "vitest";
 
 import { openPostgresFactStore } from "../src/index.js";
-import { simStoreOptions } from "../src/testing/index.js";
+import { SIM_ORIGIN, simStoreOptions } from "../src/testing/index.js";
 import { FIXTURE_PROJECTION, SIM_K } from "./support/fork-sim.js";
 import { freezableProxy, testDatabases } from "./support/postgres.js";
 
@@ -10,9 +10,10 @@ import { freezableProxy, testDatabases } from "./support/postgres.js";
  * never answers it, and gives up its connection with it: on a pool of one
  * connection, the next read gets a fresh one and answers. A read waiting
  * for a free connection ends at its abort too, and a read given no signal
- * ends at the store's read deadline. The server's silence is a frozen TCP
- * proxy in front of the test cluster. A write is never ended by that
- * deadline.
+ * ends at the store's read deadline, as does a read Postgres must take in
+ * a write transaction (a view check's `FOR SHARE`). The server's silence
+ * is a frozen TCP proxy in front of the test cluster. A write is never
+ * ended by that deadline.
  */
 const databases = testDatabases();
 
@@ -148,6 +149,108 @@ describe("store reads on Postgres: an aborted read ends", () => {
       );
       await writer.close();
       await proxy.close();
+    }
+  });
+
+  it("ends a view check, a read taken in a write transaction, at the store's read deadline", async () => {
+    const database = await databases.create();
+    const storeOptions = simStoreOptions(
+      [FIXTURE_PROJECTION],
+      SIM_K,
+      "postgres",
+    );
+    const writer = openPostgresFactStore({
+      ...storeOptions,
+      connection: { connectionString: database.url, maxConnections: 1 },
+    });
+    const proxy = await freezableProxy(database);
+    const reader = openPostgresFactStore({
+      ...storeOptions,
+      connection: {
+        connectionString: proxy.url,
+        maxConnections: 1,
+        readDeadlineMs: 500,
+      },
+    });
+    const view = { generation: 0, point: SIM_ORIGIN.point, height: 0 };
+    try {
+      expect((await writer.start()).kind).toBe("ready");
+      expect(await reader.viewValid(view)).toBe(false);
+
+      proxy.freeze();
+      await expect(
+        within(
+          "the view check the server never answers",
+          5_000,
+          reader.viewValid(view),
+        ),
+      ).rejects.toThrow("the read had no answer within 500 ms");
+      expect(
+        await within(
+          "the view check after the deadline",
+          5_000,
+          reader.viewValid(view),
+        ),
+      ).toBe(false);
+      expect(proxy.accepted()).toBe(2);
+    } finally {
+      await within("closing the reader", 5_000, reader.close()).catch(
+        () => undefined,
+      );
+      await writer.close();
+      await proxy.close();
+    }
+  });
+
+  it("leaves a write on a connection the server never answers past the store's read deadline", async () => {
+    const database = await databases.create();
+    const storeOptions = simStoreOptions(
+      [FIXTURE_PROJECTION],
+      SIM_K,
+      "postgres",
+    );
+    const writer = openPostgresFactStore({
+      ...storeOptions,
+      connection: { connectionString: database.url, maxConnections: 1 },
+    });
+    const proxy = await freezableProxy(database);
+    const store = openPostgresFactStore({
+      ...storeOptions,
+      connection: {
+        connectionString: proxy.url,
+        maxConnections: 1,
+        readDeadlineMs: 500,
+      },
+    });
+    let writeSettled = false;
+    try {
+      expect((await writer.start()).kind).toBe("ready");
+      await writer.transaction("write", (tx) =>
+        tx.exec("CREATE TABLE write_probe (n integer)"),
+      );
+      expect(await store.cursor()).toBeNull();
+
+      proxy.freeze();
+      const write = store.transaction("write", (tx) =>
+        tx.query("INSERT INTO write_probe (n) VALUES (1)"),
+      );
+      void write.then(
+        () => {
+          writeSettled = true;
+        },
+        () => {
+          writeSettled = true;
+        },
+      );
+      await pause(1_500);
+      expect(writeSettled).toBe(false);
+    } finally {
+      // Closing the proxy ends the write's connection, and the write with it.
+      await proxy.close();
+      await within("closing the store", 5_000, store.close()).catch(
+        () => undefined,
+      );
+      await writer.close();
     }
   });
 

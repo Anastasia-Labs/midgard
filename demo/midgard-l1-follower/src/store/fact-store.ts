@@ -555,7 +555,9 @@ export const createFactStore = (
     currentView: () => read((tx) => currentViewIn(tx, dialect)),
     // FOR SHARE needs a read-write transaction on Postgres.
     viewValid: (view) =>
-      backend.transaction("write", (tx) => viewValidIn(tx, dialect, view)),
+      backend.transaction("write", (tx) => viewValidIn(tx, dialect, view), {
+        onlyReads: true,
+      }),
     onGeneration: (listener) => {
       listeners.add(listener);
       return () => listeners.delete(listener);

@@ -89,9 +89,12 @@ export const readQueueHistory = (
 ) =>
   Effect.gen(function* () {
     const read = yield* Effect.tryPromise(() =>
-      // The view check takes FOR SHARE on Postgres: a read-write transaction.
-      store.transaction("write", (tx) =>
-        stateQueueHistoryIn(tx, store.dialect, config, view),
+      // The view check takes FOR SHARE on Postgres: a read-write
+      // transaction that only reads.
+      store.transaction(
+        "write",
+        (tx) => stateQueueHistoryIn(tx, store.dialect, config, view),
+        { onlyReads: true },
       ),
     );
     if (read.kind === "view_moved")

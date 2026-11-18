@@ -100,7 +100,8 @@ export type PostgresConnection = (
     }
 ) & {
   /**
-   * Bound on a read transaction given no abort signal (ms): past it the
+   * Bound on a read given no abort signal (ms), a write transaction that
+   * only reads among them (`TransactionOptions.onlyReads`): past it the
    * read ends as an abort ends it (`TransactionOptions`), so a connection
    * that never answers holds no pooled connection longer. The local node
    * transport's request bound by default: a store read is one request to
@@ -208,12 +209,13 @@ export const openPostgresBackend = (
       run: (tx: SqlTx) => Promise<T>,
       options: TransactionOptions = {},
     ): Promise<T> => {
-      // A write is not bounded so: one the server is still applying is
-      // progress, and one cut short at its `COMMIT` has an unknown
+      // A real write is not bounded so: one the server is still applying
+      // is progress, and one cut short at its `COMMIT` has an unknown
       // outcome. TCP keepalive, on the operating system's timing, ends one
-      // whose peer vanished.
+      // whose peer vanished. A write that only reads is a read here.
       const deadline =
-        options.signal === undefined && mode === "read"
+        options.signal === undefined &&
+        (mode === "read" || options.onlyReads === true)
           ? readDeadline(readDeadlineMs)
           : undefined;
       const signal = options.signal ?? deadline?.signal;

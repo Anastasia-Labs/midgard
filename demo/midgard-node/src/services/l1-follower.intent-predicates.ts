@@ -307,49 +307,56 @@ export const nodeFamilyPredicate = (
     )[state.intent.family];
     if (predicate === undefined)
       throw new Error(`no §8.4 predicate for family ${state.intent.family}`);
-    return deps.store.transaction("write", async (tx) => {
-      const { dialect } = deps.store;
-      const view = await currentViewIn(tx, dialect);
-      if (view === null) throw new Error("the follower has no view");
-      let queue: LandedStateQueue | undefined;
-      return predicate({
-        tx,
-        dialect,
-        view,
-        state,
-        deps,
-        queue: async () => {
-          if (queue !== undefined) return queue;
-          const read = await landedStateQueueIn(
-            tx,
-            dialect,
-            deps.stateQueue,
-            view,
-          );
-          if (read.kind !== "ok")
-            throw new Error(
-              `the landed state queue is unreadable: ${read.detail}`,
+    // A write transaction for its view check's FOR SHARE; it only reads.
+    return deps.store.transaction(
+      "write",
+      async (tx) => {
+        const { dialect } = deps.store;
+        const view = await currentViewIn(tx, dialect);
+        if (view === null) throw new Error("the follower has no view");
+        let queue: LandedStateQueue | undefined;
+        return predicate({
+          tx,
+          dialect,
+          view,
+          state,
+          deps,
+          queue: async () => {
+            if (queue !== undefined) return queue;
+            const read = await landedStateQueueIn(
+              tx,
+              dialect,
+              deps.stateQueue,
+              view,
             );
-          if (!read.queue.healthy)
-            throw new Error(
-              `the landed state queue is unhealthy (${read.queue.reason ?? "unknown"})`,
-            );
-          queue = read.queue;
-          return queue;
-        },
-        operators: async () => {
-          if (mirror === null)
-            throw new Error("the operator key is unreadable: no operator set");
-          const read = await mirror.refresh(tx, dialect);
-          if (read.kind !== "ok")
-            throw new Error(`the operator set is unreadable: ${read.detail}`);
-          if (read.set.unhealthy !== null)
-            throw new Error(
-              `the operator set is unhealthy: ${read.set.unhealthy}`,
-            );
-          return read.set;
-        },
-      });
-    });
+            if (read.kind !== "ok")
+              throw new Error(
+                `the landed state queue is unreadable: ${read.detail}`,
+              );
+            if (!read.queue.healthy)
+              throw new Error(
+                `the landed state queue is unhealthy (${read.queue.reason ?? "unknown"})`,
+              );
+            queue = read.queue;
+            return queue;
+          },
+          operators: async () => {
+            if (mirror === null)
+              throw new Error(
+                "the operator key is unreadable: no operator set",
+              );
+            const read = await mirror.refresh(tx, dialect);
+            if (read.kind !== "ok")
+              throw new Error(`the operator set is unreadable: ${read.detail}`);
+            if (read.set.unhealthy !== null)
+              throw new Error(
+                `the operator set is unhealthy: ${read.set.unhealthy}`,
+              );
+            return read.set;
+          },
+        });
+      },
+      { onlyReads: true },
+    );
   };
 };

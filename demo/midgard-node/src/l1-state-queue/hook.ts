@@ -29,9 +29,12 @@ export const readLandedStateQueueFrom = (
   config: StateQueueProjectionConfig,
   at?: FollowerChange["view"],
 ): Promise<LandedStateQueueRead> =>
-  // The view check takes FOR SHARE on Postgres: a read-write transaction.
-  store.transaction("write", (tx) =>
-    landedStateQueueIn(tx, store.dialect, config, at),
+  // The view check takes FOR SHARE on Postgres: a read-write transaction
+  // that only reads.
+  store.transaction(
+    "write",
+    (tx) => landedStateQueueIn(tx, store.dialect, config, at),
+    { onlyReads: true },
   );
 
 /** The hold a read leaves, if any. */

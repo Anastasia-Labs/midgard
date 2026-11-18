@@ -73,6 +73,15 @@ export type TransactionOptions = Readonly<{
    * a read given no signal ends at the backend's `readDeadlineMs`.
    */
   signal?: AbortSignal;
+  /**
+   * Marks a write transaction that only reads: one Postgres must run
+   * read-write because it takes `FOR SHARE` (a view check), which a
+   * read-only transaction refuses. Given no signal, it ends at the read
+   * deadline as a read does. A real write never does: one the server is
+   * still applying is progress, and one cut short at its `COMMIT` has an
+   * unknown outcome.
+   */
+  onlyReads?: boolean;
 }>;
 
 export type SqlBackend = {
