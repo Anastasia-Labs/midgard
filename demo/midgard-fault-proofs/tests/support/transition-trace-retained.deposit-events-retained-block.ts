@@ -9,7 +9,10 @@ import {
   plutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
-import { deriveCanonicalOriginalDepositTransitionEffect } from "@al-ft/midgard-validation";
+import {
+  createCanonicalMidgardLedgerDescriptorResolver,
+  deriveCanonicalOriginalDepositTransitionEffect,
+} from "@al-ft/midgard-validation";
 import { type Assets, Data } from "@lucid-evolution/lucid";
 
 import { buildCountedRoot } from "../../src/transition-trace/phas.js";
@@ -81,6 +84,9 @@ export const depositEventsRetainedBlock = async (input: {
   const ledger = new Map(
     input.priorLedger ?? fixtureLedgerEntries(input.prevUtxosRoot),
   );
+  // The ledger is rebuilt after every insertion; each entry's descriptor is
+  // derived once across the rebuilds.
+  const ledgerDescriptor = createCanonicalMidgardLedgerDescriptorResolver();
   const buildLedger = () =>
     buildCanonicalBlockFixture({
       transactions: [],
@@ -94,6 +100,7 @@ export const depositEventsRetainedBlock = async (input: {
       prevUtxosRoot: input.prevUtxosRoot,
       minFeeA: input.minFeeA,
       minFeeB: input.minFeeB,
+      ledgerDescriptor,
     });
   let base = await buildLedger();
   if (base.header.utxosRoot !== input.prevUtxosRoot)

@@ -183,6 +183,8 @@ export const buildCanonicalBlockFixture = async ({
   prevHeaderHash = h28(90),
   prevUtxosRoot = SDK.EMPTY_MERKLE_TREE_ROOT,
   transitionSteps = [],
+  ledgerDescriptor = (entry) =>
+    buildCanonicalMidgardLedgerEntryOutputMaterial(entry).descriptorCbor,
 }: {
   readonly transactions: readonly FixtureTransaction[];
   readonly utxos?: readonly Readonly<{
@@ -197,6 +199,14 @@ export const buildCanonicalBlockFixture = async ({
   readonly prevHeaderHash?: string;
   readonly prevUtxosRoot?: string;
   readonly transitionSteps?: readonly SDK.TransitionStep[];
+  /**
+   * A ledger entry's descriptor. A caller rebuilding one growing ledger passes
+   * one `createCanonicalMidgardLedgerDescriptorResolver()` for every build, so
+   * an unchanged entry's descriptor is derived once.
+   */
+  readonly ledgerDescriptor?: (
+    entry: Readonly<{ outRef: Uint8Array; outputCbor: Uint8Array }>,
+  ) => Buffer;
 }): Promise<CanonicalBlockFixture> => {
   const transactionEntries: SDK.DaPayloadEntry[] = transactions.map((tx) => [
     tx.txId,
@@ -289,10 +299,7 @@ export const buildCanonicalBlockFixture = async ({
   const utxosRoot = await keyValuePhasRootWithCount(
     utxos.map(({ key, value }) => ({
       key: Buffer.from(key),
-      value: buildCanonicalMidgardLedgerEntryOutputMaterial({
-        outRef: key,
-        outputCbor: value,
-      }).descriptorCbor,
+      value: ledgerDescriptor({ outRef: key, outputCbor: value }),
     })),
   );
 
