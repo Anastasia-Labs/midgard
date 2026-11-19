@@ -177,9 +177,12 @@ describe("validation-trace dispute runner: an evaluator failure holds, then the 
     // Held runs submit nothing.
     expect(await h.proverLucid.wallet().getUtxos()).toStrictEqual(walletBefore);
 
-    await new Promise((resolve) =>
-      setTimeout(resolve, Math.max(0, retryAtMs - Date.now())),
-    );
+    // A timer can fire a millisecond before the clock reaches its target, and
+    // the hold is kept while the clock is before the retry time.
+    while (Date.now() < retryAtMs)
+      await new Promise((resolve) =>
+        setTimeout(resolve, retryAtMs - Date.now()),
+      );
     // The event now decides, but the claim's own re-execution fails without
     // a result: the run is pending under the claim build's state, with
     // nothing prepared or submitted.
