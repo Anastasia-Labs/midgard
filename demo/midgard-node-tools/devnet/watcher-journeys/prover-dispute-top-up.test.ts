@@ -120,14 +120,25 @@ describe("ensureProverDisputeFunding", () => {
     expect(spendable(wallet)).toBeGreaterThanOrEqual(productRequirement());
   });
 
-  it("counts only plain-ADA coins, as the watcher's reservation does", async () => {
+  it("counts a tagged refund as funding, as the watcher's reservation does", async () => {
+    const wallet = [
+      ...actorFunding(),
+      coin(51, 20_000_000_000n, { datum: "d87980" }),
+    ];
+    const ports = fakePorts({ wallet, bond: BOND });
+
+    await ensureProverDisputeFunding(ports);
+
+    expect(ports.transfers).toHaveLength(0);
+  });
+
+  it("leaves a coin holding a token out, as the watcher's reservation does", async () => {
     const token = { [`${"22".repeat(28)}74`]: 1n };
     const wallet = [
       ...actorFunding(),
       coin(50, 20_000_000_000n, {
         assets: { lovelace: 20_000_000_000n, ...token },
       }),
-      coin(51, 20_000_000_000n, { datum: "d87980" }),
     ];
     const ports = fakePorts({ wallet, bond: BOND });
 

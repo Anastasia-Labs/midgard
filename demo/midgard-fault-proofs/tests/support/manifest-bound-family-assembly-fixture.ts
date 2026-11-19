@@ -5,6 +5,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { type Mock, type MockInstance, vi } from "vitest";
 
+import { proofMaterialsAddress } from "../../src/funding/proof-materials-address.js";
 import * as inspection from "../../src/inspect-contracts.js";
 import * as deployment from "../../src/workflow/deployment-manifest-binding.js";
 import {
@@ -185,7 +186,11 @@ export const fixture = (category: FamilyCategory) => {
     deploymentInfo: {},
     headerHash: HEADER,
     lucid: { fake: "lucid" },
-    signer: { address, paymentKeyHash: OWNER },
+    signer: {
+      address,
+      proofMaterialsAddress: proofMaterialsAddress("Preprod", OWNER),
+      paymentKeyHash: OWNER,
+    },
     referenceScripts: {
       steps,
       witnesses,
