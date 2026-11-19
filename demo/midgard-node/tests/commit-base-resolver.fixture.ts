@@ -110,10 +110,13 @@ export const fixture = async (setup: Setup) => {
     utxosRoot: r1,
   };
   const { headerHash, tail } = await tailOf(header);
+  // Reset before taking the gate: the worker's database may hold a follower
+  // view an earlier file applied, and the gate refuses a fixture write while
+  // one is applied.
+  await run(resetApplicationTables);
   await run(
     withFollowerWrite(
       Effect.gen(function* () {
-        yield* resetApplicationTables;
         yield* ConfirmedLedgerDB.insertMultiple([
           ...(yield* ledgerRows([E0], new Map())),
         ]);
