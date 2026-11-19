@@ -1,11 +1,11 @@
 import {
-  credentialToAddress,
   Data,
   Emulator,
   generateEmulatorAccount,
   getAddressDetails,
   Lucid,
   scriptFromNative,
+  validatorToAddress,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -20,8 +20,9 @@ describe("field preimage publication funding", () => {
     lucid.selectWallet.fromSeed(account.seedPhrase);
     const key = getAddressDetails(account.address).paymentCredential!;
     const script = scriptFromNative({ type: "sig", keyHash: key.hash });
-    // The key's proof-materials address: its payment key as stake credential.
-    const materials = credentialToAddress("Custom", key, key);
+    // The key's proof-materials address: the enterprise address of its
+    // sig(key) native script.
+    const materials = validatorToAddress("Custom", script);
     const setup = await (
       await lucid
         .newTx()

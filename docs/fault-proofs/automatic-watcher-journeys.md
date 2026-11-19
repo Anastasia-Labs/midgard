@@ -1032,8 +1032,8 @@ queue. Before staging each family, the runner captures existing workflow journal
 prefixes. That baseline distinguishes retained completion from work the live
 observer performs during staging and preserves the resumed progress clock.
 Fixture wallets keep their existing Base addresses, while prover wallets use
-Enterprise addresses for funding and keep proof materials at the Base address
-whose stake credential is the payment key itself, which no fixture wallet
+Enterprise addresses for funding and keep proof materials at the Enterprise
+address of the native script `sig(payment key)`, which no fixture wallet
 uses. Address-scoped selection isolates their UTxOs even where they share a
 payment key; the session requires no wallet pause API.
 

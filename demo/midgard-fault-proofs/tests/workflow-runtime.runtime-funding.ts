@@ -298,6 +298,7 @@ export const signedFundingTransaction = (input: {
   readonly signingKey?: CML.PrivateKey;
   readonly nonCanonicalBody?: boolean;
   readonly mint?: CML.Mint;
+  readonly nativeScripts?: readonly CML.NativeScript[];
 }): TxSigned => {
   const inputs = CML.TransactionInputList.new();
   for (const outRef of input.inputOutRefs) {
@@ -370,6 +371,11 @@ export const signedFundingTransaction = (input: {
       ),
     );
     witnesses.set_redeemers(CML.Redeemers.new_arr_legacy_redeemer(redeemers));
+  }
+  if (input.nativeScripts !== undefined) {
+    const natives = CML.NativeScriptList.new();
+    for (const script of input.nativeScripts) natives.add(script);
+    witnesses.set_native_scripts(natives);
   }
   const signingKey = input.signingKey ?? fundingKey;
   const vkeys = CML.VkeywitnessList.new();

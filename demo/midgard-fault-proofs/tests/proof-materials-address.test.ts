@@ -2,12 +2,13 @@
  * The prover's two addresses. Its money sits at the plain enterprise address
  * of its key (the funding address), where every pure-Ada coin without a
  * reference script is funding, a refund's tag datum included. Its in-flight
- * proof materials sit at the base address whose stake credential is the
- * same key (the proof-materials address). A read of either by its full
+ * proof materials sit at the enterprise address of the native script
+ * `sig(key)` (the proof-materials address), which only that key spends. A read of either by its full
  * address never returns an output of the other; a reservation's transaction
  * may pay and spend reserved outputs at both, but posts collateral from, and
  * returns collateral to, the funding address only.
  */
+import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
   Constr,
@@ -18,6 +19,7 @@ import {
   getAddressDetails,
   Lucid,
   type UTxO,
+  validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -26,6 +28,7 @@ import {
   isProverOwnAddress,
   proofMaterialsAddress,
   proofMaterialsAddressOfFundingAddress,
+  proofMaterialsScript,
 } from "../src/funding/proof-materials-address.js";
 import { resolveProverSigner } from "../src/runtime.js";
 import { assertManifestBoundWorkflowSigner } from "../src/workflow/deployment-manifest-binding.js";
@@ -62,15 +65,23 @@ const coin = (output: Partial<UTxO>): UTxO => ({
 });
 
 describe("the proof-materials address", () => {
-  it("is the base address of the payment key staked to itself, on the funding address's network", () => {
+  it("is the enterprise address of the key's sig native script, on the funding address's network", () => {
     for (const network of ["Preview", "Mainnet"] as const) {
       const funding = credentialToAddress(network, { type: "Key", hash: KEY });
       const materials = proofMaterialsAddress(network, KEY);
       const details = getAddressDetails(materials);
-      expect(details.type).toBe("Base");
+      expect(details.type).toBe("Enterprise");
       expect(details.networkId).toBe(getAddressDetails(funding).networkId);
-      expect(details.paymentCredential).toEqual({ type: "Key", hash: KEY });
-      expect(details.stakeCredential).toEqual({ type: "Key", hash: KEY });
+      expect(details.paymentCredential).toEqual({
+        type: "Script",
+        hash: validatorToScriptHash(proofMaterialsScript(KEY)),
+      });
+      expect(details.stakeCredential).toBeUndefined();
+      // As long as the funding address, so publications keep their size.
+      expect(Buffer.from(details.address.hex, "hex").length).toBe(
+        Buffer.from(getAddressDetails(funding).address.hex, "hex").length,
+      );
+      expect(materials).toBe(SDK.midgardCekStagingAddress(network, KEY));
       expect(materials).not.toBe(funding);
       expect(proofMaterialsAddressOfFundingAddress(funding)).toBe(materials);
       expect(isProverOwnAddress(funding, funding)).toBe(true);
@@ -304,6 +315,36 @@ describe("a reservation's transaction at admission", () => {
 
   it("spends a reserved proof-materials output and pays our proof-materials address", async () => {
     await expect(admit({ outputAddress: materials })).resolves.toBeUndefined();
+  });
+
+  it("embeds our proof-materials lock only to spend a proof material", async () => {
+    const lock = (key: string) =>
+      CML.NativeScript.new_script_pubkey(CML.Ed25519KeyHash.from_hex(key));
+    const ours = lock(fundingKey.to_public().hash().to_hex());
+    await expect(admit({ nativeScripts: [ours] })).resolves.toBeUndefined();
+    const runtime = await reservation();
+    const signed = signedFundingTransaction({
+      inputOutRefs: runtime.selected.fundingOutRefs.filter(
+        (outRef) => outRef !== `${"71".repeat(32)}#0`,
+      ),
+      outputLovelace: 11_800_000n,
+      nativeScripts: [ours],
+    });
+    await expect(
+      runtime.prepareTransaction({
+        action: { actionId: "step-one", input: { actionKind: "step-one" } },
+        preflight: bindWorkflowPreflightTransaction(
+          Object.freeze({ txHash: signed.toHash() }),
+          signed,
+        ),
+      }),
+    ).rejects.toThrow(
+      "funding transaction embeds our proof-materials script without spending a proof material",
+    );
+    for (const nativeScripts of [[lock("a8".repeat(28))], [ours, ours]])
+      await expect(admit({ nativeScripts })).rejects.toThrow(
+        "funding transaction embeds executable script witnesses",
+      );
   });
 
   it("pays no other address of a key", async () => {

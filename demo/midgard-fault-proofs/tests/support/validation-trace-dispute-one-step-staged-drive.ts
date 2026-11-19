@@ -13,6 +13,7 @@ import { hashMidgardValidationMachineState } from "@al-ft/midgard-core";
 import {
   midgardCekStagingAddress,
   type MidgardCekStagingRun,
+  midgardCekStagingRunChunks,
   planMidgardCekStaging,
 } from "@al-ft/midgard-sdk";
 import {
@@ -383,7 +384,8 @@ export const stagedDrive = ({
     stagings: () => journaledStagings(latest).stagings,
 
     /** The staging outputs the landed transactions left at our staging
-     * address, in the order they landed: what the ledger shows staged. */
+     * address, in the order they landed: what the ledger shows staged. The
+     * address is our proof-materials address, so only staging datums count. */
     stagedOnL1: async (): Promise<
       readonly Readonly<{ outRef: string; datumCbor: string | undefined }>[]
     > => {
@@ -399,7 +401,14 @@ export const stagedDrive = ({
             output: outputs.get(index),
             index,
           }))
-            .filter(({ output }) => coreToTxOutput(output).address === address)
+            .filter(({ output }) => {
+              const { address: at, datum } = coreToTxOutput(output);
+              return (
+                at === address &&
+                typeof datum === "string" &&
+                midgardCekStagingRunChunks(datum) !== null
+              );
+            })
             .map(({ output, index }) => ({
               outRef: `${hash}#${index.toString()}`,
               datumCbor: output.datum()?.as_datum()?.to_cbor_hex(),

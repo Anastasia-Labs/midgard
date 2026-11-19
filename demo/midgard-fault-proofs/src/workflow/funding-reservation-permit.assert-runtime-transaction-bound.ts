@@ -6,7 +6,11 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
-import { isProverOwnAddress } from "../funding/proof-materials-address.js";
+import {
+  isProverOwnAddress,
+  proofMaterialsAddressOfFundingAddress,
+  proofMaterialsScript,
+} from "../funding/proof-materials-address.js";
 import { validationDisputeFunding } from "./funding-reservation-permit.assert-validation-dispute-funding.js";
 import {
   addAssets,
@@ -109,12 +113,21 @@ export const assertRuntimeTransactionBound = async ({
   }
   if (!fundingSignature)
     throw new Error("funding transaction lacks the reserved wallet signature");
+  const natives = witnesses.native_scripts()?.len() ?? 0;
+  const plutus =
+    (witnesses.plutus_v1_scripts()?.len() ?? 0) +
+    (witnesses.plutus_v2_scripts()?.len() ?? 0) +
+    (witnesses.plutus_v3_scripts()?.len() ?? 0);
+  // The one script a funding transaction may embed: our proof-materials
+  // lock `sig(key)`, and only to spend an output there (checked below).
+  const materialsWitness =
+    natives === 1 &&
+    plutus === 0 &&
+    witnesses.native_scripts()!.get(0).hash().to_hex() ===
+      validatorToScriptHash(proofMaterialsScript(policy.fundingPaymentKeyHash));
   if (
-    (witnesses.native_scripts()?.len() ?? 0) +
-      (witnesses.plutus_v1_scripts()?.len() ?? 0) +
-      (witnesses.plutus_v2_scripts()?.len() ?? 0) +
-      (witnesses.plutus_v3_scripts()?.len() ?? 0) !==
-      0 &&
+    natives + plutus !== 0 &&
+    !materialsWitness &&
     staging?.admitsScriptWitnesses(witnesses) !== true
   )
     throw new Error("funding transaction embeds executable script witnesses");
@@ -261,6 +274,16 @@ export const assertRuntimeTransactionBound = async ({
     outRefs: bodyInputs,
     label: "runtime funding ordinary inputs",
   });
+  const materials = proofMaterialsAddressOfFundingAddress(
+    state.snapshot.walletAddress,
+  );
+  if (
+    materialsWitness &&
+    ![...allInputs.values()].some((input) => input.address === materials)
+  )
+    throw new Error(
+      "funding transaction embeds our proof-materials script without spending a proof material",
+    );
   assertThreadReclaimBound({
     state,
     action,
@@ -278,6 +301,12 @@ export const assertRuntimeTransactionBound = async ({
     isProverOwnAddress(state.snapshot.walletAddress, address);
   for (const [outRef, input] of allInputs) {
     addAssets(inputAssets, input.assets);
+    // A staging spend back's staged operand sits at our proof-materials
+    // address; its staging authority, not our reservation, admits it.
+    if (staging !== null && input.address !== state.snapshot.walletAddress) {
+      staging.admitInput(outRef, input);
+      continue;
+    }
     if (own(input.address)) {
       if (slash !== null)
         throw new Error("fraud slash cannot consume ordinary wallet funding");
@@ -286,10 +315,6 @@ export const assertRuntimeTransactionBound = async ({
           `signed transaction consumed an unreserved wallet input: ${outRef}`,
         );
       addAssets(walletAssets, input.assets);
-      continue;
-    }
-    if (staging !== null) {
-      staging.admitInput(outRef, input);
       continue;
     }
     const contract = contracts.get(input.address);

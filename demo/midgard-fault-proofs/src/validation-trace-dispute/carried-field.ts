@@ -19,6 +19,7 @@
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
+import { spendProofMaterials } from "../funding/proof-materials-address.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import {
   createAuthenticatedFieldCarriagePrerequisitePort,
@@ -415,14 +416,12 @@ export const validationTraceCarriedFields = ({
         parseOutRefLabel(action.input.consumes as string),
       ]);
       signer.selectWallet(lucid);
-      // The publication sits at our proof-materials address, which is not
-      // the selected (funding) wallet's: Lucid's seed wallet signs only for
-      // inputs at its own address or for declared signers, so declare ours.
-      const unsigned = await lucid
-        .newTx()
-        .collectFrom([publication!])
-        .addSignerKey(signer.paymentKeyHash)
-        .complete({ coinSelection: false });
+      // The publication sits at our proof-materials address: spend it by
+      // its sig(key) lock, its coin going back to our funding address.
+      const unsigned = await spendProofMaterials(
+        lucid.newTx().collectFrom([publication!]),
+        signer.paymentKeyHash,
+      ).complete({ coinSelection: false });
       return { signed: await unsigned.sign.withWallet().complete() };
     },
   };

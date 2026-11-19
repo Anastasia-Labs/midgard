@@ -5,6 +5,7 @@
 import { CML, Data } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
+import { spendProofMaterials } from "../../src/funding/proof-materials-address.js";
 import type { Scene } from "./validation-trace-dispute-open-scene.js";
 
 export type Landed = Readonly<{
@@ -83,11 +84,10 @@ export const spendByKey = async (scene: Scene, outRef: string) => {
   const [utxo] = await lucid.utxosByOutRef([
     { txHash: hash!, outputIndex: Number(index) },
   ]);
-  const spend = await lucid
-    .newTx()
-    .collectFrom([utxo!])
-    .addSignerKey(scene.h.proverSigner.paymentKeyHash)
-    .complete({ coinSelection: false });
+  const spend = await spendProofMaterials(
+    lucid.newTx().collectFrom([utxo!]),
+    scene.h.proverSigner.paymentKeyHash,
+  ).complete({ coinSelection: false });
   await (await spend.sign.withWallet().complete()).submit();
   scene.h.emulator.awaitBlock(1);
 };

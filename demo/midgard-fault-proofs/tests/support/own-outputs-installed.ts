@@ -27,6 +27,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { vi } from "vitest";
 
+import { spendProofMaterials } from "../../src/funding/proof-materials-address.js";
 import { plutusItemScript } from "../../src/script-decode/item-record.js";
 import { stageScriptDecodeBytes } from "../../src/script-decode/stage.js";
 import {
@@ -473,9 +474,7 @@ export const emulatorWallClock = () => {
   };
 };
 
-/** Takes `utxo` (at `lucid`'s key, declared: it sits at the proof-materials
- * address, not the seed wallet's own) off the chain, its ada going to `to`:
- * the chain once its transaction is rolled back for good, as the world acts. */
+/** Takes our coin or proof material `utxo` off the chain, ada to `to`. */
 export const removeOutput = async (
   watch: LedgerWatch,
   lucid: LucidEvolution,
@@ -484,15 +483,17 @@ export const removeOutput = async (
 ) => {
   await watch.asOtherParty(async () => {
     lucid.clearUTxOOverride();
-    const unsigned = await lucid
-      .newTx()
-      .collectFrom([utxo])
-      .addSignerKey(getAddressDetails(utxo.address).paymentCredential!.hash)
-      .complete({
-        presetWalletInputs: [utxo],
-        coinSelection: false,
-        changeAddress: to,
-      });
+    const wallet = getAddressDetails(await lucid.wallet().address());
+    const spend = lucid.newTx().collectFrom([utxo]);
+    const unsigned = await (
+      utxo.address === wallet.address.bech32
+        ? spend
+        : spendProofMaterials(spend, wallet.paymentCredential!.hash)
+    ).complete({
+      presetWalletInputs: [utxo],
+      coinSelection: false,
+      changeAddress: to,
+    });
     await (await unsigned.sign.withWallet().complete()).submit();
     lucid.clearUTxOOverride();
   });

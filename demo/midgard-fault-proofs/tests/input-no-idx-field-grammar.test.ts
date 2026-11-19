@@ -236,7 +236,7 @@ describe("input-no-idx step 04 through the field grammar certificate", () => {
     // the step aborts on chain.
     const { step04 } = await tier3ScenarioOf();
     await expect(step04(undefined)).rejects.toThrow(
-      /Spend\[0\] the validator crashed/u,
+      /Spend\[\d+\] the validator crashed/u,
     );
   }, 1_800_000);
 
