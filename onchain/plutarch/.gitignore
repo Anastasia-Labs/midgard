@@ -3,3 +3,15 @@ dist-newstyle/
 
 # VSCode user settings
 .vscode/
+
+# pre-commit-hooks writes this from the nix store
+.pre-commit-config.yaml
+
+# nix build results
+result
+result-*
+.direnv
+
+# Deterministic off-chain compatibility artifact. Rebuild with
+# `node scripts/build-offchain-blueprint.mjs`.
+plutus.json

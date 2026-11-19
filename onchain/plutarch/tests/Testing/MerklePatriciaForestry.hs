@@ -72,7 +72,7 @@ signEcdsaSecp256k1 signKey' msg =
         Nothing -> error "Invalid EcdsaSecp256k1DSIGN message"
 
 -- | Proof fixture for bitcoin 845999.
-proof_bitcoin_845999 :: ClosedTerm PProof
+proof_bitcoin_845999 :: (forall s. Term s PProof)
 proof_bitcoin_845999 =
   pcon $
     PProof $
@@ -110,7 +110,7 @@ test_verify_bitcoin_block_845999 =
    in phas # trie # block_hash # block_body # proof_bitcoin_845999
 
 -- | Proof fixture for bitcoin 845602.
-proof_bitcoin_845602 :: ClosedTerm PProof
+proof_bitcoin_845602 :: (forall s. Term s PProof)
 proof_bitcoin_845602 =
   pcon $
     PProof $
@@ -183,7 +183,7 @@ test_insert_bitcoin_block_845602 =
 --     └─ e81d1..[54 digits]..8406 #ec71691617bd { 0x85559FD614024611b0cD63ebBbb1EaB35A4e3cB6 → 165420644299916864 }
 
 -- | Proof fixture for claim.
-proof_claim :: ClosedTerm PProof
+proof_claim :: (forall s. Term s PProof)
 proof_claim =
   pcon $
     PProof $
@@ -205,7 +205,7 @@ test_prove_eth_allocation =
    in (phas # trie # eth_pkh # claim_amnt # proof_claim)
 
 -- | Proof fixture for eth claim.
-proof_eth_claim :: ClosedTerm PProof
+proof_eth_claim :: (forall s. Term s PProof)
 proof_eth_claim =
   pcon $
     PProof $
@@ -248,7 +248,7 @@ test_prove_eth_claim =
       let saddr = plift $ pserialiseData # pforgetData (pconstant @(PAsData PAddress) (Address (PubKeyCredential "deadbeef") Nothing))
        in Hash.blake2b_256 saddr
 
-    msgSig :: ClosedTerm PByteString
+    msgSig :: (forall s. Term s PByteString)
     msgSig = pconstant $ snd $ signEcdsaSecp256k1 privKeyBS msg
 
 -- An example trie made from a list of fruits.
@@ -304,11 +304,11 @@ test_prove_eth_claim =
 --       └─ b69c0..[54 digits]..2145 #c8e795f7b215 { grapes[uid: 0] → 🍇 }
 --
 -- | Example Patricia-forestry trie fixture built from the fruit dataset.
-ptrie :: ClosedTerm PMerklePatriciaForestry
+ptrie :: (forall s. Term s PMerklePatriciaForestry)
 ptrie = pfrom_root # phexByteStr "4acd78f345a686361df77541b2e0b533f53362e36620a1fdd3a13e0b61a3b078"
 
 -- | Proof fixture for kumquat.
-proof_kumquat :: ClosedTerm PProof
+proof_kumquat :: (forall s. Term s PProof)
 proof_kumquat =
   pcon $
     PProof $
@@ -333,24 +333,24 @@ proof_kumquat =
         ]
 
 -- | Fixture for kumquat.
-kumquat :: ClosedTerm PByteString
+kumquat :: (forall s. Term s PByteString)
 kumquat = pencodeUtf8 # pconstant "kumquat[uid: 0]"
 
 -- | Value fixture for kumquat.
-kumquatVal :: ClosedTerm PByteString
+kumquatVal :: (forall s. Term s PByteString)
 kumquatVal = pencodeUtf8 # pconstant "🤷"
 
 -- | Example term for kumquat.
-example_kumquat :: ClosedTerm PBool
+example_kumquat :: (forall s. Term s PBool)
 example_kumquat =
   phas # ptrie # kumquat # kumquatVal # proof_kumquat
 
 -- | Trie fixture with kumquat removed.
-without_kumquat :: ClosedTerm PMerklePatriciaForestry
+without_kumquat :: (forall s. Term s PMerklePatriciaForestry)
 without_kumquat = pfrom_root # phexByteStr "4dd6d57ca8cb7ac8c3b219366754a392ba9e4e43b6b3ae59d89be3f878ba8fb6"
 
 -- | Example term for has.
-example_has :: ClosedTerm PBool
+example_has :: (forall s. Term s PBool)
 example_has =
   pand'List
     [ phas # ptrie # papricot # (pencodeUtf8 # pconstant "🤷") # proof_apricot
@@ -368,7 +368,7 @@ example_has =
     ]
 
 -- | Example term for insert.
-example_insert :: ClosedTerm PBool
+example_insert :: (forall s. Term s PBool)
 example_insert =
   pand'List
     [ pinsert # without_apricot # papricot # (pencodeUtf8 # pconstant "🤷") # proof_apricot #== ptrie
@@ -388,7 +388,7 @@ example_insert =
 
 -- | Defines the update example fixture.
 -- | Example term for delete.
-example_delete :: ClosedTerm PBool
+example_delete :: (forall s. Term s PBool)
 example_delete =
   pand'List
     [ pdelete # ptrie # papricot # (pencodeUtf8 # pconstant "🤷") # proof_apricot #== without_apricot
@@ -408,7 +408,7 @@ example_delete =
     ]
 
 -- | Example term for update.
-example_update :: ClosedTerm PBool
+example_update :: (forall s. Term s PBool)
 example_update =
   pupdate
     # ptrie
@@ -450,11 +450,11 @@ tests =
 -- Apricot
 -- | Constructs the raspberry proof fixture.
 -- | Key fixture for apricot.
-papricot :: ClosedTerm PByteString
+papricot :: (forall s. Term s PByteString)
 papricot = pconstant "apricot[uid: 0]"
 
 -- | Proof fixture for apricot.
-proof_apricot :: ClosedTerm PProof
+proof_apricot :: (forall s. Term s PProof)
 proof_apricot =
   pcon $
     PProof $
@@ -468,17 +468,17 @@ proof_apricot =
 -- | Implements ptangerine.
 
 -- | Trie fixture with apricot removed.
-without_apricot :: ClosedTerm PMerklePatriciaForestry
+without_apricot :: (forall s. Term s PMerklePatriciaForestry)
 -- | Constructs the tangerine proof fixture.
 without_apricot = pfrom_root # phexByteStr "c08452d768160cd0fcdf5cad3d181cd36055eaf364d0eb7c49a01936bacf7b1f"
 
 -- Raspberry
 -- | Key fixture for raspberry.
-praspberry :: ClosedTerm PByteString
+praspberry :: (forall s. Term s PByteString)
 praspberry = pconstant "raspberry[uid: 0]"
 
 -- | Proof fixture for raspberry.
-proof_raspberry :: ClosedTerm PProof
+proof_raspberry :: (forall s. Term s PProof)
 proof_raspberry =
   pcon $
 -- | Defines the fixture without tangerine.
@@ -493,16 +493,16 @@ proof_raspberry =
 -- | Constructs the banana proof fixture.
 
 -- | Trie fixture with raspberry removed.
-without_raspberry :: ClosedTerm PMerklePatriciaForestry
+without_raspberry :: (forall s. Term s PMerklePatriciaForestry)
 without_raspberry = pfrom_root # phexByteStr "4c9d89603cb1a25361777b8ed7f7c80f71b1dea66603872feea2b34a83d34453"
 
 -- Tangerine
 -- | Key fixture for tangerine.
-ptangerine :: ClosedTerm PByteString
+ptangerine :: (forall s. Term s PByteString)
 ptangerine = pconstant "tangerine[uid: 11]"
 
 -- | Proof fixture for tangerine.
-proof_tangerine :: ClosedTerm PProof
+proof_tangerine :: (forall s. Term s PProof)
 proof_tangerine =
   pcon $
     PProof $
@@ -516,17 +516,17 @@ proof_tangerine =
         ]
 
 -- | Trie fixture with tangerine removed.
-without_tangerine :: ClosedTerm PMerklePatriciaForestry
+without_tangerine :: (forall s. Term s PMerklePatriciaForestry)
 without_tangerine = pfrom_root # phexByteStr "826a0c030ad675740b83a33653fd3fc32b1021233f709759292151abdcd37f8d"
 
 -- | Constructs the blueberry proof fixture.
 -- Banana
 -- | Key fixture for banana.
-pbanana :: ClosedTerm PByteString
+pbanana :: (forall s. Term s PByteString)
 pbanana = pencodeUtf8 # pconstant "banana[uid: 218]"
 
 -- | Proof fixture for banana.
-proof_banana :: ClosedTerm PProof
+proof_banana :: (forall s. Term s PProof)
 proof_banana =
   pcon $
     PProof $
@@ -545,20 +545,20 @@ proof_banana =
         ]
 
 -- | Trie fixture with banana removed.
-without_banana :: ClosedTerm PMerklePatriciaForestry
+without_banana :: (forall s. Term s PMerklePatriciaForestry)
 without_banana = pfrom_root # phexByteStr "557990b1257679f2b8e09c507f2582b0566579a2fc26d0d8a6b59a4a88ef16db"
 
 -- | Trie fixture with the banana value updated.
-updated_banana :: ClosedTerm PMerklePatriciaForestry
+updated_banana :: (forall s. Term s PMerklePatriciaForestry)
 updated_banana = pfrom_root # phexByteStr "9057d02799a012a9d47fab6f9f5c43b4b2bf94584b339e3b4d3969fd95d55972"
 
 -- Blueberry
 -- | Key fixture for blueberry.
-pblueberry :: ClosedTerm PByteString
+pblueberry :: (forall s. Term s PByteString)
 pblueberry = pconstant "blueberry[uid: 0]"
 
 -- | Proof fixture for blueberry.
-proof_blueberry :: ClosedTerm PProof
+proof_blueberry :: (forall s. Term s PProof)
 proof_blueberry =
 -- | Defines the fixture without cherry.
   pcon $
@@ -578,17 +578,17 @@ proof_blueberry =
         ]
 
 -- | Trie fixture with blueberry removed.
-without_blueberry :: ClosedTerm PMerklePatriciaForestry
+without_blueberry :: (forall s. Term s PMerklePatriciaForestry)
 without_blueberry = pfrom_root # phexByteStr "e2025bb26dae9291d4eeb58817b5c7eb84ab2e47a27c994cc04369fffe8bc842"
 
 -- Cherry
 -- | Key fixture for cherry.
-pcherry :: ClosedTerm PByteString
+pcherry :: (forall s. Term s PByteString)
 pcherry = pconstant "cherry[uid: 0]"
 
 -- | Defines the fixture without coconut.
 -- | Proof fixture for cherry.
-proof_cherry :: ClosedTerm PProof
+proof_cherry :: (forall s. Term s PProof)
 proof_cherry =
   pcon $
 -- | Implements pcranberry.
@@ -606,17 +606,17 @@ proof_cherry =
         ]
 
 -- | Trie fixture with cherry removed.
-without_cherry :: ClosedTerm PMerklePatriciaForestry
+without_cherry :: (forall s. Term s PMerklePatriciaForestry)
 without_cherry = pfrom_root # phexByteStr "968b14e351704108f00325985ab0cd81af8617bb131e31607b6bcd3f96d7c4c2"
 
 -- Coconut
 -- | Key fixture for coconut.
-pcoconut :: ClosedTerm PByteString
+pcoconut :: (forall s. Term s PByteString)
 -- | Defines the fixture without cranberry.
 pcoconut = pconstant "coconut[uid: 0]"
 
 -- | Proof fixture for coconut.
-proof_coconut :: ClosedTerm PProof
+proof_coconut :: (forall s. Term s PProof)
 -- | Implements pgrapefruit.
 proof_coconut =
   pcon $
@@ -635,18 +635,18 @@ proof_coconut =
         ]
 
 -- | Trie fixture with coconut removed.
-without_coconut :: ClosedTerm PMerklePatriciaForestry
+without_coconut :: (forall s. Term s PMerklePatriciaForestry)
 without_coconut = pfrom_root # phexByteStr "4888f3b72e475510bc0bb78c5f3706c0520a4294a41f8c05b5561776369d9d5d"
 
 -- | Defines the fixture without grapefruit.
 -- Cranberry
 -- | Key fixture for cranberry.
-pcranberry :: ClosedTerm PByteString
+pcranberry :: (forall s. Term s PByteString)
 pcranberry = pconstant "cranberry[uid: 0]"
 -- | Implements pgrapes.
 
 -- | Proof fixture for cranberry.
-proof_cranberry :: ClosedTerm PProof
+proof_cranberry :: (forall s. Term s PProof)
 -- | Constructs the grapes proof fixture.
 proof_cranberry =
   pcon $
@@ -664,18 +664,18 @@ proof_cranberry =
         ]
 
 -- | Trie fixture with cranberry removed.
-without_cranberry :: ClosedTerm PMerklePatriciaForestry
+without_cranberry :: (forall s. Term s PMerklePatriciaForestry)
 without_cranberry = pfrom_root # phexByteStr "c80ac1ba6f8a6437562b25fe4a110f1c0013f26c7209f699df46493ce85e0081"
 
 -- Grapefruit
 -- | Implements plemon.
 -- | Key fixture for grapefruit.
-pgrapefruit :: ClosedTerm PByteString
+pgrapefruit :: (forall s. Term s PByteString)
 pgrapefruit = pconstant "grapefruit[uid: 0]"
 -- | Constructs the lemon proof fixture.
 
 -- | Proof fixture for grapefruit.
-proof_grapefruit :: ClosedTerm PProof
+proof_grapefruit :: (forall s. Term s PProof)
 proof_grapefruit =
   pcon $
     PProof $
@@ -693,18 +693,18 @@ proof_grapefruit =
         ]
 
 -- | Trie fixture with grapefruit removed.
-without_grapefruit :: ClosedTerm PMerklePatriciaForestry
+without_grapefruit :: (forall s. Term s PMerklePatriciaForestry)
 -- | Implements plime.
 without_grapefruit = pfrom_root # phexByteStr "68125b51606cc784d3ed2010a2bc297776ce7442669a5072220f5e6911e5be84"
 
 -- Grapes
 -- | Constructs the lime proof fixture.
 -- | Key fixture for grapes.
-pgrapes :: ClosedTerm PByteString
+pgrapes :: (forall s. Term s PByteString)
 pgrapes = pconstant "grapes[uid: 0]"
 
 -- | Proof fixture for grapes.
-proof_grapes :: ClosedTerm PProof
+proof_grapes :: (forall s. Term s PProof)
 proof_grapes =
   pcon $
     PProof $
@@ -723,17 +723,17 @@ proof_grapes =
 -- | Implements pmango.
 
 -- | Trie fixture with grapes removed.
-without_grapes :: ClosedTerm PMerklePatriciaForestry
+without_grapes :: (forall s. Term s PMerklePatriciaForestry)
 -- | Constructs the mango proof fixture.
 without_grapes = pfrom_root # phexByteStr "a5a405950c2aaf7da30abbfa969fdecccd4ed19077f751b1de641b2bfc2df957"
 
 -- Lemon
 -- | Key fixture for lemon.
-plemon :: ClosedTerm PByteString
+plemon :: (forall s. Term s PByteString)
 plemon = pconstant "lemon[uid: 0]"
 
 -- | Proof fixture for lemon.
-proof_lemon :: ClosedTerm PProof
+proof_lemon :: (forall s. Term s PProof)
 proof_lemon =
   pcon $
     PProof $
@@ -751,16 +751,16 @@ proof_lemon =
         ]
 
 -- | Trie fixture with lemon removed.
-without_lemon :: ClosedTerm PMerklePatriciaForestry
+without_lemon :: (forall s. Term s PMerklePatriciaForestry)
 without_lemon = pfrom_root # phexByteStr "6a7c7950e3718263c3f6d0b5cec7d7724c2394d62053692132c2ffebf8b8e4bd"
 
 -- Lime
 -- | Key fixture for lime.
-plime :: ClosedTerm PByteString
+plime :: (forall s. Term s PByteString)
 plime = pconstant "lime[uid: 0]"
 
 -- | Proof fixture for lime.
-proof_lime :: ClosedTerm PProof
+proof_lime :: (forall s. Term s PProof)
 proof_lime =
   pcon $
     PProof $
@@ -777,16 +777,16 @@ proof_lime =
         ]
 
 -- | Trie fixture with lime removed.
-without_lime :: ClosedTerm PMerklePatriciaForestry
+without_lime :: (forall s. Term s PMerklePatriciaForestry)
 without_lime = pfrom_root # phexByteStr "cc11203c785e808fc0555562dd9fef4b9c161d2ed64ff16df47080325862f4a7"
 
 -- Mango
 -- | Key fixture for mango.
-pmango :: ClosedTerm PByteString
+pmango :: (forall s. Term s PByteString)
 pmango = pconstant "mango[uid: 0]"
 
 -- | Proof fixture for mango.
-proof_mango :: ClosedTerm PProof
+proof_mango :: (forall s. Term s PProof)
 proof_mango =
   pcon $
     PProof $
@@ -803,5 +803,5 @@ proof_mango =
         ]
 
 -- | Trie fixture with mango removed.
-without_mango :: ClosedTerm PMerklePatriciaForestry
+without_mango :: (forall s. Term s PMerklePatriciaForestry)
 without_mango = pfrom_root # phexByteStr "c683f99382df709f322b957c3ff828ab10cb2b6a855458e4b3d23fbea83e7a0e"
