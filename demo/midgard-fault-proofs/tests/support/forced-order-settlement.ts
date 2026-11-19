@@ -25,6 +25,7 @@ import {
   buildCountedRoot,
   keyValuePhasProof,
 } from "../../src/transition-trace/phas.js";
+import { walletOnlyValidTo } from "../../src/wallet-only-validity.js";
 import { settleOldestCrossBlockHeader } from "./cross-block-settlement-emulator.js";
 import {
   type OrderDatumRewrite,
@@ -109,6 +110,7 @@ export const publishForcedOrderCarriage = async (
             compactCbor: material.submitted_source.compact_cbor,
             witnessSetCompactCbor:
               material.submitted_source.witness_set_compact_cbor,
+            validTo: walletOnlyValidTo(lucid),
           }),
         ),
       );

@@ -230,11 +230,16 @@ const plainAda = (utxo: UTxO): boolean =>
 
 /**
  * The transaction staging `run` as one output at the wallet's staging address.
- * It is funded from the wallet's plain-Ada outputs only.
+ * It is funded from the wallet's plain-Ada outputs only, so the caller bounds
+ * it with `validTo` (POSIX ms): a copy rebuilt after a restart cannot land
+ * beside one built before it once that bound has passed.
  */
 export const buildUnsignedMidgardCekStagingProgram = (
   lucid: LucidEvolution,
-  { run }: { readonly run: MidgardCekStagingRun },
+  {
+    run,
+    validTo,
+  }: { readonly run: MidgardCekStagingRun; readonly validTo: number },
 ): Effect.Effect<TxSignBuilder, Error> =>
   Effect.tryPromise({
     try: async () => {
@@ -257,6 +262,7 @@ export const buildUnsignedMidgardCekStagingProgram = (
             }),
           },
         )
+        .validTo(validTo)
         .complete({ localUPLCEval: true, presetWalletInputs: fundingInputs });
     },
     catch: (cause) =>

@@ -8,6 +8,7 @@ import {
   lucidOwnOutputReader,
 } from "../field-opening.own-field-carriage.js";
 import { finishStep } from "../step-completion.js";
+import { walletOnlyValidTo } from "../wallet-only-validity.js";
 import {
   claimOwnOutputs,
   inlineDatumCarriageSlot,
@@ -100,7 +101,8 @@ export const resolveTransitionTraceByteCarriage = async ({
  * than the chunk. Another workflow's output with the same bytes is never
  * taken for ours. With `publish`, the first chunk we hold no live output for
  * is claimed and returned as a publication turn that pays it to that address;
- * without it, a missing chunk is an error.
+ * without it, a missing chunk is an error. The publication spends only wallet
+ * coins and carries the wallet-only validity window (`walletOnlyValidTo`).
  */
 export const resolveTransitionTraceDataCarriage = async ({
   lucid,
@@ -140,6 +142,7 @@ export const resolveTransitionTraceDataCarriage = async ({
         { kind: "inline", value: datums[resolved.ordinal]! },
         { lovelace: 0n },
       )
+      .validTo(walletOnlyValidTo(lucid))
       .complete({ localUPLCEval: true })
   ).sign
     .withWallet()

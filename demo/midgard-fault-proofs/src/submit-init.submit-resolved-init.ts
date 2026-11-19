@@ -36,6 +36,7 @@ import {
   type SubmitResolvedInitParams,
 } from "./submit-init.resolve-non-existent-input-no-index-init.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
+import { walletOnlyValidTo } from "./wallet-only-validity.js";
 import {
   witnessMintingPolicyCarriage,
   witnessWithdrawalValidatorCarriage,
@@ -46,8 +47,10 @@ import { workflowReferenceScript } from "./workflow/transaction-boundary.js";
  * The one computation-thread Init transaction: catalogue, hub-oracle and
  * fraudulent-block reference inputs, the PHAS membership withdrawal carrying
  * the category proof, and the `Init` mint paying the thread token to the
- * family's first step. Every family init resolves its contracts and calls
- * this; `buildInit` is the deployment-info resolver in front of it.
+ * family's first step. It spends only wallet coins, so it carries the
+ * wallet-only validity window (`walletOnlyValidTo`). Every family init
+ * resolves its contracts and calls this; `buildInit` is the deployment-info
+ * resolver in front of it.
  * Callers own the category/first-step agreement check and its message.
  */
 export const buildResolvedInit = async ({
@@ -212,7 +215,8 @@ export const buildResolvedInit = async ({
       firstStep.spendingScriptAddress,
       { kind: "inline", value: firstStepDatum },
       { [computationThreadUnit]: 1n },
-    );
+    )
+    .validTo(walletOnlyValidTo(lucid));
   const signed = await completeStep(
     phasMembershipCarriage.attach(
       computationThreadMintCarriage.attach(chainedTx),

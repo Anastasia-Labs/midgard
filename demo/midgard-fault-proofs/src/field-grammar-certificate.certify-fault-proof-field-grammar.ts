@@ -33,6 +33,7 @@ import { Effect } from "effect";
 import { faultProofRawFieldCarriage } from "./field-opening.publish-fault-proof-field-carriage.js";
 import { type ResolvedProverSigner } from "./runtime.js";
 import { finishStep } from "./step-completion.js";
+import { walletOnlyValidTo } from "./wallet-only-validity.js";
 import {
   type LocallyEvaluatedTransaction,
   submitUnjournaled,
@@ -280,7 +281,9 @@ export const resumeFaultProofFieldGrammar = async ({
 /**
  * Builds and signs one certificate batch for a variable-width field's
  * grammar: the open when `from` is null, and otherwise the advance of the
- * `InProgress` certificate `from` names. It submits nothing. The validator
+ * `InProgress` certificate `from` names. The open spends only wallet coins
+ * and carries the wallet-only validity window (`walletOnlyValidTo`); the
+ * advance spends the certificate. It submits nothing. The validator
  * runs only from its hash-checked published reference script.
  */
 export const buildFaultProofFieldGrammarBatch = async ({
@@ -335,6 +338,7 @@ export const buildFaultProofFieldGrammarBatch = async ({
           carriage,
           batch,
           referenceInputs,
+          validTo: walletOnlyValidTo(lucid),
           ...output(batch),
         })
       : buildUnsignedFieldGrammarCertificateAdvanceProgram(lucid, {

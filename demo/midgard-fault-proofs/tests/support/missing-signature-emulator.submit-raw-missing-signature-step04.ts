@@ -16,6 +16,7 @@ import {
   requireMissingSignatureThreadUtxo,
 } from "../../src/missing-signature/index.js";
 import { outputWithDatumAndUnitPredicate } from "../../src/tx-layout.js";
+import { walletOnlyValidTo } from "../../src/wallet-only-validity.js";
 import { witnessMintingPolicyCarriage } from "../../src/witness-reference-scripts.js";
 import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.js";
@@ -93,6 +94,7 @@ export const publishMissingSignatureField07Certificate = async ({
       chunkUtxos,
       compactCbor: scenario.block.nativeTxCompactCbor,
       witnessSetCompactCbor,
+      validTo: walletOnlyValidTo(harness.proverLucid),
     }),
   );
   const signed = await unsigned.sign.withWallet().complete();

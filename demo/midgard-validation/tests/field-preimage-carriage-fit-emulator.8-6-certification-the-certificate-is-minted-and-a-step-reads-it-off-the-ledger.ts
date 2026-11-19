@@ -111,6 +111,8 @@ describe("§8.6 certification — the certificate is minted, and a step reads it
     // The SDK's certification builder, driven end to end. It derives the
     // manifest, the asset name, the min-Ada, the redeemer and — through
     // `resolveChunkReferenceIndices` — the positional chunk indices.
+    const validTo =
+      harness.lucid.slotToUnixTime(harness.lucid.currentSlot()) + 180_000;
     const unsigned = await Effect.runPromise(
       buildUnsignedFieldPreimageCertificationProgram(harness.lucid, {
         sourceKind: 0n,
@@ -125,8 +127,12 @@ describe("§8.6 certification — the certificate is minted, and a step reads it
         chunkUtxos: [...chunkUtxos].reverse(),
         compactCbor: "ab".repeat(400),
         witnessSetCompactCbor: "cd".repeat(100),
+        validTo,
       }),
     );
+    const body = unsigned.toTransaction().body();
+    expect(body.ttl()).toBe(BigInt(harness.lucid.unixTimeToSlot(validTo)));
+    expect(body.validity_interval_start()).toBeUndefined();
     const signed = await unsigned.sign.withWallet().complete();
     const certificationBytes = signed.toCBOR().length / 2;
     await harness.lucid.awaitTx(await signed.submit());

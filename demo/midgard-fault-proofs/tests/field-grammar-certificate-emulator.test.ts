@@ -43,6 +43,7 @@ import {
   VAN_ROSSEM_PUBLICATION_TARGET_BYTES,
 } from "../src/proof-fit/van-rossem.js";
 import { resolveProverSigner } from "../src/runtime.js";
+import { walletOnlyValidTo } from "../src/wallet-only-validity.js";
 import {
   network,
   readBlueprint,
@@ -53,6 +54,10 @@ import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
+import {
+  expectNoValidity,
+  expectWalletOnlyValidity,
+} from "./support/wallet-only-validity.js";
 
 const EMPTY = Buffer.from("80", "hex");
 /** The repository's per-transaction execution reserve: 80% of each limit. */
@@ -202,6 +207,7 @@ const ownCertificateFixture = async (salt: number) => {
         certificateAddress,
         datumCbor: datumAt(next),
         lovelace: 0n,
+        validTo: walletOnlyValidTo(lucid),
       }),
     );
     await lucid.awaitTx(
@@ -280,11 +286,23 @@ describe("field grammar certificate builder against the emulator", () => {
       certificateValidator,
       certificateReferenceScriptUtxo,
     };
+    // The Open spends only wallet coins and carries the wallet-only window
+    // for the time it is built at, now; each Advance spends the certificate
+    // and carries none.
+    const openSlot = lucid.currentSlot();
+    const openBuiltAt = {
+      currentSlot: () => openSlot,
+      slotToUnixTime: lucid.slotToUnixTime.bind(lucid),
+      unixTimeToSlot: lucid.unixTimeToSlot.bind(lucid),
+    };
     const certified = await captureEmulatorSubmission(emulator, () =>
       reuseOrCertifyFaultProofFieldGrammar(input),
     );
     expect(certified.result.batches).toEqual([384, 224, 92]);
     expect(certified.result.txHashes).toHaveLength(3);
+    expectWalletOnlyValidity(openBuiltAt, certified.transactionCbors[0]!);
+    for (const advance of certified.transactionCbors.slice(1))
+      expectNoValidity(advance);
     expect(certified.measurements).toHaveLength(3);
     for (const measurement of certified.measurements) {
       expect(measurement.completeSignedBytes).toBeLessThanOrEqual(

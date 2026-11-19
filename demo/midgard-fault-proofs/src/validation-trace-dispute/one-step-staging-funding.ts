@@ -24,6 +24,7 @@ import type {
 import { Effect, Either } from "effect";
 
 import type { ResolvedProverSigner } from "../runtime.js";
+import { walletOnlyValidTo } from "../wallet-only-validity.js";
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
 import { grantValidationDisputeStagingAuthority } from "../workflow/funding-reservation-permit.validation-dispute-staging-authority.js";
 import { ValidationDisputeWalletMoveUnfundedError } from "../workflow/funding-reservation-permit.validation-dispute-wallet-move-reserve.js";
@@ -165,7 +166,8 @@ export const validationTraceStagingSigner = ({
   return {
     unfunded,
     /** The signed staging of `step`'s run, and the index of its staging
-     * output. */
+     * output. It spends only wallet coins and carries the wallet-only
+     * validity window. */
     stage: async (
       context: FraudProofWorkflowAdapterContext,
       actionId: string,
@@ -174,7 +176,10 @@ export const validationTraceStagingSigner = ({
       let unsigned: TxSignBuilder;
       try {
         unsigned = await run(
-          buildUnsignedMidgardCekStagingProgram(lucid, { run: step.run }),
+          buildUnsignedMidgardCekStagingProgram(lucid, {
+            run: step.run,
+            validTo: walletOnlyValidTo(lucid),
+          }),
         );
       } catch (cause) {
         if (!isWorkflowFundingShortfall(cause)) throw cause;

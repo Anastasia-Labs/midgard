@@ -263,7 +263,10 @@ const failure = (action: string) => (cause: unknown) =>
  * Opens a certificate and runs its first `batch` items: one token minted
  * into the datum the validator computes, at the policy's own address.
  * `referenceInputs` carries the policy's reference script and the field's
- * carriage; nothing else is spent from the certificate address.
+ * carriage; nothing else is spent from the certificate address. The
+ * transaction spends only wallet coins, so the caller bounds it with
+ * `validTo`: a copy rebuilt after a restart cannot land beside one built
+ * before it once that bound has passed.
  */
 export const buildUnsignedFieldGrammarCertificateOpenProgram = (
   lucid: LucidEvolution,
@@ -272,12 +275,15 @@ export const buildUnsignedFieldGrammarCertificateOpenProgram = (
     carriage,
     batch,
     referenceInputs,
+    validTo,
     ...output
   }: CertificateOutput & {
     readonly source: FieldGrammarCertificateSource;
     readonly carriage: FieldGrammarCertificateCarriage;
     readonly batch: number;
     readonly referenceInputs: readonly UTxO[];
+    /** The transaction's upper validity bound, POSIX ms. */
+    readonly validTo: number;
   },
 ): Effect.Effect<TxSignBuilder, Error> =>
   Effect.tryPromise({
@@ -299,6 +305,7 @@ export const buildUnsignedFieldGrammarCertificateOpenProgram = (
           { kind: "inline", value: output.datumCbor },
           { lovelace, [unit]: 1n },
         )
+        .validTo(validTo)
         .complete({ localUPLCEval: true });
     },
     catch: failure("open"),

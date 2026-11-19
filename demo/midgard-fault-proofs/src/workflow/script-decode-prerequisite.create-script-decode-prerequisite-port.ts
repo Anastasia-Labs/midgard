@@ -75,7 +75,10 @@ import {
  */
 export const SCRIPT_DECODE_PROVIDER_GRACE_MS = 10 * 60_000;
 
-/** How long a signed script-decode transaction stays valid. */
+/**
+ * How long a signed Walk or Finish stays valid. Stage and Bind spend only
+ * wallet coins and carry the shorter wallet-only window instead.
+ */
 export const SCRIPT_DECODE_VALIDITY_MS = 15 * 60_000;
 
 /** Our newest runs looked up at once: a rollback revives at most these. */
@@ -312,7 +315,6 @@ export const createScriptDecodePrerequisitePort = <
               lucid,
               datum,
               address: signer.proofMaterialsAddress,
-              validTo,
             });
             unit = null;
             break;
@@ -325,7 +327,6 @@ export const createScriptDecodePrerequisitePort = <
               scriptHashHex,
               initialRun: startScriptDecodeWalk(language, scriptBytes).run,
               staging: await staging(),
-              validTo,
             });
             break;
           case "script_decode_walk": {
