@@ -415,7 +415,7 @@ export const runPresentMaxJourney = async ({
     const advanced = await captures(
       `step-${(stepIndex + 1).toString()}`,
       async () =>
-        family.step({
+        buildAndSubmitUnjournaled(family.step, {
           blueprint: harness.realBlueprint,
           network: "Custom",
           witnessReferenceScripts: harness.witnessReferenceScripts,
