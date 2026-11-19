@@ -86,6 +86,19 @@ export const skippedLines = ({ file, reason, commands }) => [
   ...commands.map((command) => `       run: ${command}`),
 ];
 
+/** What a cached run reused, and from which earlier runs. */
+const cacheLines = (cache) => {
+  const sources = [...new Set(cache.reused.map((entry) => entry.from.receipt))];
+  return [
+    `  cache: ${cache.ran} file(s) ran, ${cache.reused.length} reused` +
+      (sources.length ? ` from ${sources.length} earlier run(s)` : "") +
+      `, ${cache.recorded} pass(es) recorded` +
+      (cache.notRecorded ? ` (not recorded: ${cache.notRecorded})` : ""),
+    ...sources.slice(0, 3).map((source) => `       reused from: ${source}`),
+    ...(sources.length > 3 ? [`       ... ${sources.length - 3} more`] : []),
+  ];
+};
+
 /** A few lines a person can read: the verdict, what failed, where to look. */
 export const summaryLines = (receipt, { limit = 10 } = {}) => {
   const counts = receipt.counts;
@@ -95,6 +108,7 @@ export const summaryLines = (receipt, { limit = 10 } = {}) => {
         ? ` (${counts.passed} passed, ${counts.failed} failed, ${counts.skipped} skipped, in ${receipt.selectedFiles?.length ?? 0} file(s), seed ${receipt.seed})`
         : ""),
   ];
+  if (receipt.cache) lines.push(...cacheLines(receipt.cache));
   if (receipt.reason) lines.push(`  ${receipt.reason}`);
   if (receipt.reportError) lines.push(`  report: ${receipt.reportError}`);
   for (const failure of (receipt.failures ?? []).slice(0, limit))

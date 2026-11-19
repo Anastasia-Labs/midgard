@@ -93,6 +93,9 @@ export const writeReceipt = ({
   testName,
   selectedFiles,
   proofKind = "candidate-pass",
+  // Recorded passes a cached test run reused instead of running
+  // (test-cache.mjs): with them, a run needs no step of its own.
+  reused = 0,
 }) => {
   let counts;
   let reportHash;
@@ -107,7 +110,8 @@ export const writeReceipt = ({
     }
   }
   const failedStep =
-    steps.length === 0 || steps.some((step) => !completeStep(step));
+    (steps.length === 0 && reused === 0) ||
+    steps.some((step) => !completeStep(step));
   const status =
     failedStep ||
     reportError ||
@@ -176,6 +180,11 @@ export const verifyReceipt = (root, path) => {
     ].includes(receipt.kind)
   )
     throw new Error("unknown receipt schema/kind");
+  // Proof is what ran; a reused pass ran in another run, under another tree.
+  if (receipt.cache?.reused?.length)
+    throw new Error(
+      `the run reused ${receipt.cache.reused.length} recorded pass(es) (--cached); rerun without --cached for a receipt that proves them`,
+    );
   if (receipt.status !== "passed" || receipt.steps.length === 0)
     throw new Error(`receipt is ${receipt.status}, not a completed pass`);
   if (

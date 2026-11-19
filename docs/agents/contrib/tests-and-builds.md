@@ -106,6 +106,142 @@ compiled-worker behavior. A zero-test selection, missing/inconsistent report,
 setup error, changed input or changed protected artifact fails. Selected skips
 or todos produce exit 3, rather than a complete pass.
 
+## Cached test results
+
+```sh
+node scripts/contrib.mjs test --package midgard-watcher --tier fast --cached
+node scripts/contrib.mjs test --package midgard-fault-proofs --cached --file tests/a.test.ts tests/b.test.ts
+node scripts/contrib.mjs test --package midgard-node --cached --related demo/midgard-core/src/canonical-json.ts
+node scripts/contrib.mjs test-cache stats
+node scripts/contrib.mjs test-cache clear
+```
+
+`--cached` (opt-in, with or without `--file`, `--related` and `--tier`) skips a
+test file whose recorded full pass still holds and runs the rest. Without it
+nothing changes, and CI never uses it: CI runs every file, every time.
+[script: scripts/contrib/test-cache.test.mjs]
+
+How it decides (`scripts/contrib/test-cache.mjs`, with the run key and graph
+cache in `test-cache-key.mjs` and the store in `test-cache-store.mjs`):
+
+- A pass is recorded against two things. The first is a run key: the package,
+  its Vitest flags, environment and config, the tier and seed, `--source-only`,
+  the digest of every environment variable except a short list of per-session
+  names (`PWD`, `OLDPWD`, `SHLVL`, `_`, `SSH_*`, terminal, multiplexer and
+  systemd session ids, and contrib's per-invocation database prefix and
+  evidence path; values are never stored), Node's version and platform, the
+  installed packages (`node_modules/.pnpm/lock.yaml`), the compiled
+  prerequisites, native outputs and blueprint by content, the test Postgres
+  server version for packages that use it, the content of contrib's own
+  scripts and the task declarations (what decides what runs and what is
+  recorded), and the cache schema. The second is a snapshot: the digest of
+  every repository file (tracked or untracked and not ignored) plus the ignored
+  files inside the package's source directories.
+- A later run with the same run key reuses the pass when the files that differ
+  between that snapshot and the checkout now do not reach the test file. That
+  is decided by `reachedTests`, the same code and graph as `--related`, with
+  two answers wider than `--related`'s: a changed file outside every package
+  that is not a script (configuration, schemas, documents) reaches every test
+  file, since any suite may read it by a computed path; and a graph probed
+  while the checkout changed is neither stored nor trusted, so that run reuses
+  nothing. In effect the key of each file is its forward closure in that graph.
+- A run records only when it vouches for itself as a whole: Vitest exited 0,
+  its report says it succeeded, and no repository file in the snapshot was
+  changed or even written (by modification or change time) while it ran, so an
+  edit undone before the end of a run still stops it. A run with any failure
+  records nothing, passes beside the failure included: Vitest reports an
+  unhandled error or rejection outside every test with exit 1 but
+  `success: true`, and it cannot be pinned on a file. A file is recorded only
+  after a pass of the whole file: every test it declares ran and passed, and
+  more than zero ran. Nothing is recorded from a run with `--name` (which
+  `--cached` refuses), a skipped or todo test, a missing or inconsistent
+  report, a timeout or stop, or a run whose inputs, artifacts or blueprint
+  changed while it ran.
+- Any test run, with or without `--cached`, that fails forgets the recorded
+  passes of the files it failed, under every run key; when Vitest fails with
+  no file to blame, it forgets every file it ran.
+- Some files always run and are never recorded: those whose test-side code
+  draws unseeded random inputs (`fast-check`, `Math.random`, `node:crypto`'s
+  `randomInt`, `randomBytes`, `randomUUID` and `randomFill`,
+  `getRandomValues`, `generatePrivateKey`, `generateSeedPhrase`); retries or
+  repeats tests; or decides at run time whether a suite runs (`skipIf`,
+  `runIf`, a dynamic `skip(...)`) or reads a global setup's value
+  (`inject(...)`, such as a binary built with the machine's toolchain), since
+  when it runs it tests state outside the checkout (a devnet, Docker, a
+  binary). Test-side code is the file and everything it imports, followed
+  through relative paths, `#` aliases and workspace packages, except a
+  package's code under test (`src/`, `dist/`, `vendor/`); the shared
+  `midgard-test-support` package counts throughout. The seeded fuzz helper
+  (`plutus-data-fuzz`, driven by `makeFuzzRng(seed)`) calls none of those
+  sources, so it does not mark its users. So does the publication driver,
+  which writes evidence its receipt binds. A package whose Vitest config or
+  the shared harness sets `retry` records nothing, because the report does not
+  mark a pass that took a retry; nor does one that runs files without
+  isolation (`isolate: false` or `--no-isolate`). The receipt's
+  `cache.uncacheable` lists each such file and the reason.
+- `--cached` refuses `--config`: another config selects suites the default run
+  leaves out on purpose, such as watcher journeys against a live devnet.
+- A reused pass must still point at its evidence. The earlier run's Vitest
+  report must exist with the recorded digest and must show the file passing.
+  The run registry keeps it for 7 days, which is also the age limit of a pass.
+
+What it reports: the stderr verdict adds `cache: N file(s) ran, M reused from K
+earlier run(s)` and the earlier receipts. The receipt gains a `cache` field
+(nothing else changes) with every reused file and its source receipt, report,
+checkout and snapshot. It also lists the reason each other file ran, what was
+recorded or why nothing was, how many recorded passes a failure forgot, the
+import-graph source, and the time the key took. Counts and `selectedFiles`
+cover the files that ran. Exit codes keep their meaning, and a run that reused
+every file exits 0 without starting Vitest. `receipts verify` refuses a
+receipt that reused passes, because its proof is what ran: rerun without
+`--cached` for handoff evidence.
+
+Where it pays: a rerun with no relevant source change. Examples are a second
+run before pushing, a rebase or pull that touched other packages, a test-only
+or helper-only edit, and another worktree with the same content (the store is
+keyed by content, so worktrees share it). It pays little after an edit to a
+widely imported source module, which reaches most of a package's tests through
+barrels, after a change to data outside the packages, or in packages where
+most files are gated or draw random inputs.
+
+Where it is not sound: the same places `--related` is not. A test that reads a
+file through a computed path, with no part of the file's name spelled, does
+not depend on that file as far as the graph knows. Also unseen, and so not
+part of any key:
+
+- state outside the repository: a network service, the clock (bounded by the
+  7-day age), a database's contents beyond the server version (suites create
+  their own fresh databases), and files outside the checkout;
+- fresh identities that are not test inputs: Lucid's
+  `generateEmulatorAccount` gives most emulator suites new keys on every run,
+  and those files stay cacheable. A suite whose result depends on which key
+  it drew is flaky, and its failure in any run forgets the recorded pass;
+- ignored local files outside source directories, such as a package-root
+  `.env` or `config.yaml` that a suite or its config reads;
+- the checkout's absolute path (another worktree of the same content reuses
+  the pass; only whether it sits in the temporary directory is bound);
+- the submodule pointer and contents (`technical-spec/Lean4Midgard`).
+
+Process isolation: the packages run test files with Vitest's default
+`isolate: true`, each file in a fresh module graph. Most use one process per
+file (`isolatedForksPool`); `midgard-core` and `midgard-validation` have a
+sub-project on `pool: "threads"`, where isolation holds through
+`isolate: true` (a fresh worker context per file). A package that turns
+isolation off records nothing.
+
+Storage: `test-cache/` in the owner-only run registry
+(`$TMPDIR/midgard-contrib-<uid>`). Writes are atomic renames, so concurrent
+runs are safe. The store is pruned at most hourly: passes past 7 days go
+first, then the least recently used files until it fits 512 MiB.
+`test-cache stats` shows its size, and `test-cache clear` drops it.
+
+The import graph is probed once per distinct content and stored. When only
+scripts changed since the last graph, outside every configuration and Vitest
+config input, and no file was added or removed, only the changed scripts are
+regraphed. Otherwise the graph is probed in full, which takes about 25 s for
+the watcher and 50 s for fault-proofs. A run whose files have no recorded pass,
+or whose recorded passes have no difference from the checkout, needs no graph.
+
 ## Mutation checks
 
 ```sh

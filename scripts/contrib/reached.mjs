@@ -124,7 +124,7 @@ const repositoryFiles = (root) => {
 
 let textIndex;
 /** Every script file, tracked or not ignored, with its text. */
-const scriptTexts = (root) => {
+export const scriptTexts = (root) => {
   if (textIndex?.root === root) return textIndex.files;
   const files = repositoryFiles(root)
     .filter((path) => SCRIPT.test(path))
@@ -134,6 +134,17 @@ const scriptTexts = (root) => {
 };
 
 let usersIndex;
+
+/**
+ * Forget the file list, script texts and package users read so far. They
+ * are read once per process; a process that edits files between two reaches
+ * (a test, the test cache's lookup after a run) starts over.
+ */
+export const resetReachIndexes = () => {
+  fileIndex = undefined;
+  textIndex = undefined;
+  usersIndex = undefined;
+};
 /**
  * Which packages use which, by declared dependency or by spelling another
  * package's directory name in a script (running its files without depending
@@ -598,12 +609,18 @@ const graphRoots = (root, pkg) => {
     });
 };
 
-/** Probe a package's import graph in a child process (reached-probe.mjs). */
+/**
+ * Probe a package's import graph in a child process (reached-probe.mjs).
+ * With `previous` (a graph file probed with the same file list,
+ * configuration and environment) and `changed` (the absolute paths of the
+ * scripts whose text differs since), only the changed scripts and what they
+ * newly import are graphed again; the caller vouches for the rest.
+ */
 export const probeGraph = async (
   root,
   pkg,
   command,
-  { env, signal, directory },
+  { env, signal, directory, previous, changed },
 ) => {
   const output = resolve(directory, "reached-graph.json");
   const request = resolve(directory, "reached-request.json");
@@ -613,6 +630,7 @@ export const probeGraph = async (
       output,
       exclude: command.exclude,
       files: graphRoots(root, pkg).map((path) => resolve(root, path)),
+      ...(previous ? { previous, changed } : {}),
     }),
   );
   const run = await runProcess({

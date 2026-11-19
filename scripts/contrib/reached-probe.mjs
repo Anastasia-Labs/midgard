@@ -14,8 +14,15 @@
 // literals outside import specifiers (the names it can read, spawn or load
 // files by) and whether it lists directories.
 //
+// With `previous` (a graph this probe wrote for the same file list,
+// configuration and environment) and `changed` (scripts whose text differs
+// since), every other module keeps its recorded imports and spellings, and
+// only the changed scripts, and modules they newly import, are graphed.
+// Tests are collected afresh either way.
+//
 // usage: node reached-probe.mjs <request.json>
-// request: { output, exclude: [glob], files: [absolute script path] }
+// request: { output, exclude: [glob], files: [absolute script path],
+//            previous?: graph path, changed?: [absolute script path] }
 // output: { tests, edges: { file: [dependency] }, failed: { file: why },
 //           spelled: { file: { paths: [token], walks } } }
 
@@ -126,6 +133,18 @@ const vitest = await createVitest(
 const tests = new Set();
 const edges = {};
 const failed = {};
+// What an incremental probe keeps from the previous graph.
+const prior = request.previous
+  ? JSON.parse(readFileSync(request.previous, "utf8"))
+  : { edges: {}, failed: {}, spelled: {} };
+const changed = new Set(request.changed ?? []);
+const kept = new Set(
+  Object.keys(prior.edges).filter((file) => !changed.has(file)),
+);
+for (const file of kept) {
+  edges[file] = prior.edges[file];
+  if (file in prior.failed) failed[file] = prior.failed[file];
+}
 try {
   for (const project of vitest.projects) {
     const { testFiles } = await project.globTestFiles();
@@ -137,7 +156,7 @@ try {
       .filter((file) => typeof file === "string")
       .map((file) => resolve(project.config.root, file));
     const environment = project.vite.environments.ssr;
-    const visited = new Set();
+    const visited = new Set(kept);
     const visit = async (file) => {
       if (visited.has(file)) return;
       visited.add(file);
@@ -199,7 +218,10 @@ try {
         edges[file].filter((path) => SCRIPT.test(path)).map(visit),
       );
     };
-    for (const file of [...testFiles, ...setup, ...request.files])
+    // A changed module the previous graph held may be reached only through
+    // a kept one, which is not visited again: graph it from here.
+    const regraphed = [...changed].filter((file) => file in prior.edges);
+    for (const file of [...testFiles, ...setup, ...request.files, ...regraphed])
       await visit(file);
   }
 } finally {
@@ -208,6 +230,10 @@ try {
 const spelled = {};
 for (const file of Object.keys(edges)) {
   if (!existsSync(file)) continue;
+  if (kept.has(file) && prior.spelled[file]) {
+    spelled[file] = prior.spelled[file];
+    continue;
+  }
   try {
     spelled[file] = (await parse(file)).spelled;
   } catch (error) {

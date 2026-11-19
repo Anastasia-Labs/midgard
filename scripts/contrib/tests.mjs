@@ -14,6 +14,7 @@ import {
   dropRemovedWorktreeDatabases,
   dropTestDatabases,
   invocationDatabasePrefix,
+  postgresServerVersion,
 } from "./databases.mjs";
 import { buildPackage, checkBuild, runDirectory } from "./build.mjs";
 import {
@@ -33,6 +34,15 @@ import { buildNative, checkNative } from "./native.mjs";
 import { pinnedPnpm } from "./pnpm.mjs";
 import { reachedTests } from "./reached.mjs";
 import {
+  cacheDirectory,
+  cachedGraph,
+  cachePath,
+  forgetFailedRun,
+  planCachedRun,
+  recordCachedRun,
+  repositorySnapshot,
+} from "./test-cache.mjs";
+import {
   failures,
   declaredTestCommand,
   skippedLines,
@@ -41,6 +51,8 @@ import {
 } from "./vitest-command.mjs";
 
 const VITEST_CONFIG = /^vitest\.[\w-]+\.config\.[cm]?[jt]s$/u;
+// Its run writes evidence the receipt binds, so it never reuses a pass.
+const PUBLICATION_DRIVER = "tests/published-workflow-deployment.test.ts";
 
 export const preparationPlan = (root, name, { sourceOnly = false } = {}) => {
   const pkg = packageByName(root, name);
@@ -216,6 +228,9 @@ export const runTests = async (
     refuseUncollected = false,
     reach: findReach = reachedTests,
     tier,
+    cached = false,
+    // Tests point the cache elsewhere and stub its import-graph probe.
+    cache: { directory: cacheRoot, probe: graphProbe } = {},
   } = {},
 ) => {
   const pkg = packageByName(root, name);
@@ -285,7 +300,19 @@ export const runTests = async (
     );
   if (proofKind === "live-acceptance")
     throw new Error("synthetic tests cannot be labeled live acceptance");
+  // A pass is reused and recorded per whole file (test-cache.mjs).
+  if (cached && testName !== undefined)
+    throw new Error(
+      "--cached reuses and records only whole files; --name runs part of them",
+    );
+  // Another config selects what the default run leaves out on purpose:
+  // journeys against a live devnet, whose state no key holds.
+  if (cached && flags.config !== undefined)
+    throw new Error(
+      "--cached is for the package's default config; --config runs suites that test state outside the checkout",
+    );
   const directory = runDirectory();
+  const cacheAt = cached ? (cacheRoot ?? cacheDirectory()) : undefined;
   // The tests a set of changed files reaches (reached.mjs): none skips the
   // run, an unsure answer runs the whole package.
   let reach;
@@ -294,12 +321,32 @@ export const runTests = async (
     const changed = [
       ...new Set(related.map((path) => relative(base, inside(base, path)))),
     ].sort();
+    const ignoredSources = cached
+      ? inputIdentity(root, pkg.name).files
+      : undefined;
     reach = {
       changed,
       ...(await findReach(root, pkg, command, changed, {
         env,
         signal,
         directory,
+        // The cache's graph store serves the reach too, probing once.
+        ...(cached
+          ? {
+              probe: cachedGraph({
+                directory: cacheAt,
+                root,
+                pkg,
+                command,
+                env,
+                extra: () => inputIdentity(root, pkg.name).files,
+                snapshot: repositorySnapshot(root, ignoredSources),
+                runDirectory: directory,
+                signal,
+                probe: graphProbe,
+              }).get,
+            }
+          : {}),
       })),
     };
     // Plain-Node preludes are not graphed: a change that can reach the
@@ -338,7 +385,7 @@ export const runTests = async (
     // An ambient tier never narrows a run that did not ask for one.
     MIDGARD_TEST_TIER: tier ?? "all",
   };
-  if (files.includes("tests/published-workflow-deployment.test.ts"))
+  if (files.includes(PUBLICATION_DRIVER))
     overrides.MIDGARD_PUBLISHED_WORKFLOW_RECEIPT_PATH = resolve(
       directory,
       "published-workflow.json",
@@ -411,6 +458,40 @@ export const runTests = async (
     );
   const blueprintBefore = prepared.blueprint ? blueprintHash(root) : undefined;
   const before = inputIdentity(root, pkg.name);
+  // With --cached, the files whose recorded pass still holds are reused and
+  // the rest run, named by their filters (test-cache.mjs).
+  const plan = cached
+    ? await planCachedRun({
+        root,
+        pkg,
+        command,
+        cwd,
+        env: runEnv,
+        tier,
+        seed,
+        sourceOnly,
+        artifacts: {
+          prerequisites: prepared.prerequisites.map(({ name, stamp }) => [
+            name,
+            stamp?.outputs?.sha256 ?? null,
+          ]),
+          native: native.map(({ name, outputs }) => [name, outputs.sha256]),
+          blueprint: blueprintHash(root) ?? null,
+        },
+        postgres:
+          prepared.postgres && runEnv.MIDGARD_SKIP_DB_TESTS !== "1"
+            ? await postgresServerVersion(root, { env: runEnv })
+            : undefined,
+        before,
+        selected: selectedFiles,
+        evidence: [PUBLICATION_DRIVER],
+        runDirectory: directory,
+        signal,
+        probe: graphProbe,
+        directory: cacheAt,
+      })
+    : undefined;
+  const runsVitest = !plan || plan.run.length > 0;
   const reportPath = resolve(directory, "vitest.json");
   const steps = [];
   let databaseCleanup;
@@ -432,38 +513,39 @@ export const runTests = async (
           }),
         );
       }
-    steps.push(
-      await runProcess({
-        argv: [
-          process.execPath,
-          runner,
-          "run",
-          ...files,
-          ...vitestFlags(command),
-          "--reporter=default",
-          "--reporter=json",
-          `--outputFile=${reportPath}`,
-          // Files run in seeded order, which exposes state leaking between
-          // files; tests in a file keep their declared order, as in CI, since
-          // a lifecycle suite's last test checks what the earlier ones did.
-          `--sequence.seed=${seed}`,
-          "--sequence.shuffle.files",
-          ...(testName ? ["--testNamePattern", testName] : []),
-        ],
-        cwd,
-        env: runEnv,
-        signal,
-        logPath: resolve(directory, "test.log"),
-        echo: process.env.MIDGARD_CONTRIB_VERBOSE === "1",
-        // A whole package is what CI shards, and a caller's deadline (a
-        // devnet journey) can be longer still; give either room to finish.
-        ...(timeoutMs !== undefined
-          ? { timeoutMs, maxBytes: 256 << 20 }
-          : whole
-            ? { timeoutMs: 3 * 3_600_000, maxBytes: 256 << 20 }
-            : {}),
-      }),
-    );
+    if (runsVitest)
+      steps.push(
+        await runProcess({
+          argv: [
+            process.execPath,
+            runner,
+            "run",
+            ...(plan ? plan.filters : files),
+            ...vitestFlags(command),
+            "--reporter=default",
+            "--reporter=json",
+            `--outputFile=${reportPath}`,
+            // Files run in seeded order, which exposes state leaking between
+            // files; tests in a file keep their declared order, as in CI, since
+            // a lifecycle suite's last test checks what the earlier ones did.
+            `--sequence.seed=${seed}`,
+            "--sequence.shuffle.files",
+            ...(testName ? ["--testNamePattern", testName] : []),
+          ],
+          cwd,
+          env: runEnv,
+          signal,
+          logPath: resolve(directory, "test.log"),
+          echo: process.env.MIDGARD_CONTRIB_VERBOSE === "1",
+          // A whole package is what CI shards, and a caller's deadline (a
+          // devnet journey) can be longer still; give either room to finish.
+          ...(timeoutMs !== undefined
+            ? { timeoutMs, maxBytes: 256 << 20 }
+            : whole
+              ? { timeoutMs: 3 * 3_600_000, maxBytes: 256 << 20 }
+              : {}),
+        }),
+      );
   } finally {
     // The invocation's databases and schemas die with it; the prefix is
     // fresh, so nothing else can be using them.
@@ -486,15 +568,19 @@ export const runTests = async (
     before,
     after,
     steps,
-    reportPath,
+    reportPath: runsVitest ? reportPath : undefined,
     proofKind,
     testName,
-    selectedFiles,
+    selectedFiles: plan ? plan.run : selectedFiles,
+    reused: plan?.reused.size ?? 0,
   });
+  // What makes the run's own passes untrustworthy, beside failed tests.
+  const integrity = [];
   const fail = (reason) => {
     receipt.status = "failed";
     receipt.exitCode = 1;
     receipt.reason = reason;
+    integrity.push(reason);
   };
   // Stamp validation catches dist replacement even with identical sources.
   const changedArtifacts = prepared.prerequisites.filter(
@@ -519,8 +605,10 @@ export const runTests = async (
   if (prepared.blueprint && blueprintHash(root) !== blueprintBefore)
     fail("the blueprint changed during test");
   let failed = [];
+  let report;
   try {
-    failed = failures(JSON.parse(readFileSync(reportPath, "utf8")), cwd);
+    if (runsVitest) report = JSON.parse(readFileSync(reportPath, "utf8"));
+    failed = report ? failures(report, cwd) : [];
   } catch {
     // No report: the receipt's reportError and step logs say why.
   }
@@ -554,6 +642,51 @@ export const runTests = async (
     final.exitCode = 1;
     final.reason =
       "selected publication driver did not emit its measurement evidence";
+    integrity.push(final.reason);
+  }
+  // A failure, with or without --cached, casts doubt on every recorded pass
+  // of the files it touched (test-cache.mjs).
+  const vitestStep = runsVitest ? steps.at(-1) : undefined;
+  const forgotten = vitestStep
+    ? forgetFailedRun({
+        directory: cacheAt ?? cacheRoot ?? cachePath(),
+        cwd,
+        report,
+        exitCode: vitestStep.exitCode,
+        ran: plan ? plan.run : selectedFiles,
+      })
+    : 0;
+  if (plan) {
+    final.cache = recordCachedRun({
+      plan,
+      pkg,
+      cwd,
+      root,
+      report,
+      exitCode: vitestStep?.exitCode,
+      forgotten,
+      reportEvidence: { receipt: receipt.path, report: receipt.report },
+      unsound: receipt.reportError
+        ? `its report is unusable (${receipt.reportError})`
+        : before.sha256 !== after.sha256
+          ? "its inputs changed while it ran"
+          : integrity.length
+            ? integrity.join("; ")
+            : steps.some((step) => step.signal || step.reason)
+              ? "a step was stopped"
+              : undefined,
+      after,
+    });
+    // Nothing ran: no report counts, and the reused passes carry the proof.
+    final.counts ??= {
+      passed: 0,
+      failed: 0,
+      skipped: 0,
+      filtered: 0,
+      todo: 0,
+      setupErrors: 0,
+      executed: 0,
+    };
   }
   // A named file left unrun cannot pass: a run of the rest is partial
   // (exit 4), not one whose own tests skipped (exit 3).

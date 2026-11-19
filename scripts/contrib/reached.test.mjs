@@ -524,3 +524,72 @@ test("a source change reaches the tests importing it, directly or not, and no te
     result.why,
   );
 });
+
+test("an incremental probe regraphs the changed scripts, and equals a full probe", async (t) => {
+  const vitest = resolve(repository, "demo/node_modules/vitest");
+  if (!existsSync(vitest)) {
+    t.skip("demo/node_modules/vitest is not installed");
+    return;
+  }
+  const root = workspace(t, {
+    "demo/core/package.json": JSON.stringify({ name: "core", type: "module" }),
+    "demo/core/src/c.ts": "export const c = 1;\n",
+    "demo/core/src/d.ts": "export const d = 1;\n",
+    "demo/app/package.json": JSON.stringify({ name: "app", type: "module" }),
+    "demo/app/src/x.ts": 'export { c as x } from "../../core/src/c.js";\n',
+    "demo/app/src/w.ts": "export const w = 1;\n",
+    "demo/app/src/y.ts": 'export { x as y } from "./x.js";\n',
+    "demo/app/tests/transitive.test.ts":
+      'import { test } from "vitest";\nimport { y } from "../src/y.js";\ntest("y", () => y);\n',
+    "demo/app/tests/other.test.ts":
+      'import { test } from "vitest";\nimport { w } from "../src/w.js";\ntest("w", () => w);\n',
+  });
+  mkdirSync(resolve(root, "demo/node_modules"));
+  symlinkSync(realpathSync(vitest), resolve(root, "demo/node_modules/vitest"));
+  const app = packageByName(root, "app");
+  const command = { exclude: [], env: {} };
+  const probe = async (name, options = {}) => {
+    const directory = resolve(root, name);
+    mkdirSync(directory);
+    return probeGraph(root, app, command, {
+      env: process.env,
+      directory,
+      ...options,
+    });
+  };
+  const first = await probe("first");
+  writeFileSync(resolve(root, "first.json"), JSON.stringify(first));
+  // Another package's module is graphed only through the modules importing
+  // it, none of which changed: it is still graphed again, with its new
+  // import. A changed root of the package is too, with its new spelling.
+  writeFileSync(
+    resolve(root, "demo/core/src/c.ts"),
+    'export { d as c } from "./d.js";\n',
+  );
+  writeFileSync(
+    resolve(root, "demo/app/src/y.ts"),
+    'export { x as y } from "./x.js";\nexport { w } from "./w.js";\nexport const file = "fixtures/table.json";\n',
+  );
+  const incremental = await probe("incremental", {
+    previous: resolve(root, "first.json"),
+    changed: [
+      resolve(root, "demo/core/src/c.ts"),
+      resolve(root, "demo/app/src/y.ts"),
+    ],
+  });
+  const full = await probe("full");
+  assert.deepEqual(incremental, full);
+  const a = at(root);
+  assert.deepEqual(incremental.edges[a("demo/core/src/c.ts")], [
+    a("demo/core/src/d.ts"),
+  ]);
+  assert.ok(
+    incremental.spelled[a("demo/app/src/y.ts")].paths.includes(
+      "fixtures/table.json",
+    ),
+  );
+  assert.deepEqual(incremental.edges[a("demo/app/src/y.ts")].sort(), [
+    a("demo/app/src/w.ts"),
+    a("demo/app/src/x.ts"),
+  ]);
+});

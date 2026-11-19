@@ -30,6 +30,7 @@ import { checkPnpm } from "./doctor.check-pnpm.mjs";
 import { pinnedPnpmVersion } from "./contrib/pnpm.mjs";
 import { listResources, reclaimResource } from "./contrib/resources.mjs";
 import { preparationPlan, prepare, runTests } from "./contrib/tests.mjs";
+import { cacheStats, clearCache } from "./contrib/test-cache.mjs";
 import { summaryLines } from "./contrib/vitest-command.mjs";
 import {
   createWorktree,
@@ -53,7 +54,8 @@ export const HELP = `Midgard deterministic contributor tools (run from any cwd)
   node scripts/contrib.mjs native --package NAME
   node scripts/contrib.mjs test --package NAME [--file PATH... | --related PATH... | --tier fast|slow]
       [--name REGEX] [--seed N] [--source-only] [--maxWorkers N] [--exclude GLOB]... [--disableConsoleIntercept]
-      [--config FILE (with --file)] [--timeout-seconds N]
+      [--config FILE (with --file)] [--timeout-seconds N] [--cached]
+  node scripts/contrib.mjs test-cache stats | clear
   node scripts/contrib.mjs mutate --target PATH --from TEXT --to TEXT [--package NAME]
       [--file TEST...] [--name REGEX] [--expect REGEX] [--seed N]
   node scripts/contrib.mjs mutate restore
@@ -78,7 +80,8 @@ export const HELP = `Midgard deterministic contributor tools (run from any cwd)
   node scripts/contrib.mjs acceptance --input STACK_CONFIG [--plan]
 Global: --root CHECKOUT, --output JSON_FILE. Exit 0 passed/planned, 1 failed,
 2 invalid usage, 3 incomplete/skipped, 4 partial (a named test file not run).
-Plans never execute prerequisites.
+Plans never execute prerequisites. --cached reuses a test file's recorded
+full pass while nothing it reaches changed (never used by CI).
 Receipts/logs live in the owner-only temporary run registry. Preserve their
 directories when using them as handoff evidence. See docs/agents/contrib.md.`;
 
@@ -144,6 +147,15 @@ const testView = (result) =>
           whole: result.reach.whole,
           why: result.reach.why.slice(0, 10),
         },
+        cache: result.cache && {
+          ran: result.cache.ran,
+          reused: result.cache.reused.length,
+          recorded: result.cache.recorded,
+          notRecorded: result.cache.notRecorded,
+          uncacheable: Object.keys(result.cache.uncacheable).length,
+          graph: result.cache.graph,
+          keyMs: result.cache.keyMs,
+        },
         databaseCleanup: result.databaseCleanup,
         logs: result.steps.map((step) => step.logPath),
         receipt: result.path,
@@ -191,6 +203,7 @@ const flagOptions = new Set([
   "force",
   "help",
   "disableConsoleIntercept",
+  "cached",
 ]);
 // Vitest's own flags, passed through `contrib test` under Vitest's spelling.
 const vitestOptions = [
@@ -320,6 +333,8 @@ export const main = async (argv) => {
       throw new Error(`--${vitestOption} is supported only for test`);
     if (options.related.length && command !== "test")
       throw new Error("--related is supported only for test");
+    if (options.cached && command !== "test")
+      throw new Error("--cached is supported only for test");
     if (options["timeout-seconds"] !== undefined && command !== "test")
       throw new Error("--timeout-seconds is supported only for test");
     if (
@@ -406,6 +421,7 @@ export const main = async (argv) => {
         files: options.files,
         related: options.related,
         testName: options.name,
+        cached: options.cached ?? false,
         flags: {
           config: options.config,
           maxWorkers: options.maxWorkers,
@@ -447,6 +463,8 @@ export const main = async (argv) => {
         ...execution,
         sync: action === "sync",
       });
+    else if (command === "test-cache" && ["stats", "clear"].includes(action))
+      result = action === "clear" ? clearCache() : cacheStats();
     else if (command === "resources" && action === "list")
       result = listResources();
     else if (command === "resources" && action === "reclaim") {

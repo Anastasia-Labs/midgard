@@ -91,6 +91,21 @@ const namesMatching = async (client, sql, matches) => {
 };
 
 /**
+ * The test server's version, which a Postgres suite's result depends on
+ * beside its own code (its databases are created fresh by each run), or
+ * `{ status: "unavailable" }`.
+ */
+export const postgresServerVersion = async (
+  root,
+  { env = process.env, client = adminClient(root, env) } = {},
+) =>
+  connected(client, async () => ({
+    status: "available",
+    version: (await client.query("SELECT version() AS version")).rows[0]
+      .version,
+  }));
+
+/**
  * Drop every database, and every schema in the `postgres` database (where the
  * watcher suites put theirs), named by one of `prefixes`. Returns what was
  * dropped, or `{ status: "unavailable" }` when no server is listening.
