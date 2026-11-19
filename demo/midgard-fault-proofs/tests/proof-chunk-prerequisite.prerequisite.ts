@@ -1,6 +1,9 @@
 import { vi } from "vitest";
 
-import { type FraudProofWorkflowIdentity } from "../src/workflow/journal.js";
+import {
+  type FraudProofWorkflowIdentity,
+  type FraudProofWorkflowJournalEntry,
+} from "../src/workflow/journal.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
@@ -54,6 +57,31 @@ export const context = {
   artifact: { proofCbor: "proof-from-public-da" },
   entries: [],
 } as const;
+
+/** The test prover's signer, its proof materials at their own address. */
+export const proofSigner = {
+  source: "test",
+  address: "addr_test1_proof_funding",
+  proofMaterialsAddress: "addr_test1_proof_publication",
+  paymentKeyHash: "12".repeat(28),
+  selectWallet: () => undefined,
+};
+
+/** A journal entry confirming `confirmedTxHash` as one of the workflow's. */
+export const confirmedEntry = (
+  confirmedTxHash: string,
+): FraudProofWorkflowJournalEntry => ({
+  schemaVersion: "midgard-fraud-proof-workflow-journal-entry-v1",
+  workflowId: context.workflowId,
+  identity,
+  sequence: 0,
+  recordedAt: "2026-09-13T00:00:00.000Z",
+  event: {
+    kind: "confirmed",
+    actionId: `chain:${confirmedTxHash}`,
+    txHash: confirmedTxHash,
+  },
+});
 
 const signed = (): LocallyEvaluatedTransaction["signed"] =>
   ({

@@ -26,10 +26,12 @@ import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../src/workflow/
 import {
   base,
   baseAction,
+  confirmedEntry,
   context,
   headerHash,
   identity,
   prerequisite,
+  proofSigner,
   publicationAction,
   transaction,
   txHash,
@@ -103,13 +105,7 @@ describe("production proof-chunk prerequisite V1", () => {
       const port = createAuthenticatedProofChunkPrerequisitePort({
         category: "invalidRange",
         lucid: { utxosAt: async () => [] } as unknown as LucidEvolution,
-        signer: {
-          source: "test",
-          address: "addr_test1_proof_funding",
-          proofMaterialsAddress: "addr_test1_proof_publication",
-          paymentKeyHash: "12".repeat(28),
-          selectWallet: () => undefined,
-        },
+        signer: proofSigner,
         publications: {
           observerVersion: FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
           observeExact: async () => ({ kind: "not_found" }),
@@ -157,13 +153,7 @@ describe("production proof-chunk prerequisite V1", () => {
       category: "invalidRange",
       maximumTransactionBytes: 16_384,
       lucid: { utxosAt: async () => [] } as unknown as LucidEvolution,
-      signer: {
-        source: "test",
-        address: "addr_test1_proof_funding",
-        proofMaterialsAddress: "addr_test1_proof_publication",
-        paymentKeyHash: "12".repeat(28),
-        selectWallet: () => undefined,
-      },
+      signer: proofSigner,
       publications: {
         observerVersion: FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
         observeExact: async ({ expectedOutRef }) =>
@@ -547,10 +537,7 @@ describe("production proof-chunk prerequisite V1", () => {
     });
     const noReferenceContext = {
       ...context,
-      identity: {
-        ...identity,
-        category: "noReferenceInput" as const,
-      },
+      identity: { ...identity, category: "noReferenceInput" as const },
     };
     const observedChunkCounts: number[] = [];
     const makeBase = (failure?: Error): FraudProofFamilyWorkflowAdapter => ({
@@ -644,9 +631,14 @@ describe("production proof-chunk prerequisite V1", () => {
       base: makeBase(),
       prerequisite: makePrerequisite(true),
     });
+    // Only a publication our journal confirmed carries our chunks.
+    await expect(
+      published.preflight({ ...noReferenceContext, action: directAction }),
+    ).rejects.toThrow("journal-authorized proof publication has no exact");
     await expect(
       published.preflight({
         ...noReferenceContext,
+        entries: [confirmedEntry(preexistingChunk.txHash)],
         action: directAction,
       }),
     ).resolves.toMatchObject({ txHash: "99".repeat(32) });
