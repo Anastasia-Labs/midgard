@@ -1,4 +1,4 @@
-import { decodeMidgardSubmittedTxFromCanonicalCbor } from "@al-ft/midgard-validation";
+import { decodeMidgardSubmittedTxFromCanonicalCbor } from "@al-ft/midgard-validation/ledger-tx/codec";
 
 import type { ExUnitsBudget } from "./commit-block-planner.commit-scheduler-evidence-key.js";
 

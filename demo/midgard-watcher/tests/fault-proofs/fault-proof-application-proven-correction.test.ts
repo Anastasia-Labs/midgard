@@ -1,7 +1,7 @@
 import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "@al-ft/midgard-sdk";
 import { expect, it } from "vitest";
 
-import { unsafeCreateWatcherFaultProofApplicationForTest } from "../../src/fault-proofs/fault-proof-application.js";
+import { unsafeCreateWatcherFaultProofApplicationForTest } from "../../src/fault-proofs/fault-proof-application.create-watcher-fault-proof-readiness-application.js";
 import {
   admittedWatcherConfig,
   AUTHORITY,

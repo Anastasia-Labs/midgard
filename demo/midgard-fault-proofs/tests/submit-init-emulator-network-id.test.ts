@@ -3,14 +3,17 @@ import { FraudProofTokenDatum, NetworkIdStep02Datum } from "@al-ft/midgard-sdk";
 import { Data, getAddressDetails, toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildNetworkIdCancel,
-  buildNetworkIdInit,
-  buildNetworkIdStep01,
-  buildNetworkIdStep02,
-  planNetworkIdOutputsOpening,
-} from "../src/network-id/index.js";
-import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
+import { planNetworkIdOutputsOpening } from "../src/network-id/prepare.js";
+import { buildNetworkIdCancel } from "../src/network-id/submit-network-id-cancel.js";
+import { buildNetworkIdInit } from "../src/network-id/submit-network-id-init.js";
+import { buildNetworkIdStep01 } from "../src/network-id/submit-network-id-step-01.js";
+import { buildNetworkIdStep02 } from "../src/network-id/submit-network-id-step-02.submit-network-id-step02.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
+import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import {
   buildNetworkIdFixture,
   makeNetworkIdEmulatorHarness,
@@ -18,14 +21,7 @@ import {
   publishNetworkIdReferenceScripts,
 } from "./support/network-id-emulator.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
-import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
-import {
-  buildRemovalDeploymentInfo,
-  captureEmulatorSubmission,
-  expectSingleUtxoWithUnit,
-  network,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
+import { setupFraudulentBlock } from "./support/submit-init/removal.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,

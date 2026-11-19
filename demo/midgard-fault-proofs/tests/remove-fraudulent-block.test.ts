@@ -7,16 +7,20 @@ import { credentialToAddress, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  createLocalStateQueueMutationLeaseCoordinator,
   fraudRemovalUsesWalletCoinSelection,
   fraudSlashEconomicsFromDeploymentManifest,
   fraudSlashFeeLovelace,
+  resolveFraudSlashEconomics,
+} from "../src/remove-fraudulent-block.assert-exact-fraud-slash-lovelace-conservation.js";
+import {
+  createLocalStateQueueMutationLeaseCoordinator,
   LOCAL_STATE_QUEUE_MUTATION_LEASE_SOURCE,
   LOCAL_STATE_QUEUE_MUTATION_LEASE_TOKEN,
+} from "../src/remove-fraudulent-block.remove-fraudulent-block-explicit-category.js";
+import {
   RegisteredOperatorActivationRequiredError,
-  resolveFraudSlashEconomics,
   resolveRegisteredOperatorRemovalWitness,
-} from "../src/remove-fraudulent-block.js";
+} from "../src/remove-fraudulent-block.resolve-registered-operator-removal-witness.js";
 
 describe("registered-operator scheduler rewind witness", () => {
   const policyId = "ab".repeat(28);

@@ -15,14 +15,14 @@ import * as removalFunding from "../src/remove-fraudulent-block.js";
 import {
   defineFamilyApplication,
   type FamilyApplicationWorkflowIdentity,
-} from "../src/workflow/family-application.js";
+} from "../src/workflow/family-application.assert-family-definition-roster.js";
 import {
   beginWorkflowFundingReservationAction,
   bindWorkflowFundingReservationJournal,
-  createWorkflowFundingReservationPermit,
-  prepareWorkflowFundingReservationTransaction,
-  type WorkflowFundingReservationSnapshot,
-} from "../src/workflow/funding-reservation-permit.js";
+} from "../src/workflow/funding-reservation-permit.begin-workflow-funding-reservation-action.js";
+import { createWorkflowFundingReservationPermit } from "../src/workflow/funding-reservation-permit.create-workflow-funding-reservation-permit.js";
+import { prepareWorkflowFundingReservationTransaction } from "../src/workflow/funding-reservation-permit.read-workflow-funding-recovery.js";
+import type { WorkflowFundingReservationSnapshot } from "../src/workflow/funding-reservation-permit.workflow-funding-reservation-port.js";
 import {
   type LoadedWorkflowRuntime,
   WORKFLOW_RUNTIME_CONFIG,

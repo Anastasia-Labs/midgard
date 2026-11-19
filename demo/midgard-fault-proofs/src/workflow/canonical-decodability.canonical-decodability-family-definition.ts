@@ -15,14 +15,15 @@ import {
   type ManifestBoundCanonicalDecodabilityWorkflow,
   type ManifestBoundCanonicalDecodabilityWorkflowConfig,
 } from "./canonical-decodability.create-transaction-port.js";
-import { CANONICAL_DECODABILITY_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
+import { CANONICAL_DECODABILITY_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.detect-double-withdraws.js";
 import { CANONICAL_DECODABILITY_CURSOR_SPEC } from "./cursor-family-spec.js";
-import { cursorStepContractNames, defineFamily } from "./family-definition.js";
-import { createAuthenticatedFieldCarriagePrerequisitePort } from "./field-carriage-prerequisite.js";
 import {
-  assembleManifestBoundFamilyWorkflow,
-  runOrResumeManifestBoundFamilyWorkflow,
-} from "./manifest-bound-family-assembly.js";
+  cursorStepContractNames,
+  defineFamily,
+} from "./family-definition.family-definition.js";
+import { createAuthenticatedFieldCarriagePrerequisitePort } from "./field-carriage-prerequisite.create-authenticated-field-carriage-prerequisite-port.js";
+import { assembleManifestBoundFamilyWorkflow } from "./manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
+import { runOrResumeManifestBoundFamilyWorkflow } from "./manifest-bound-family-assembly.run-or-resume-manifest-bound-family-workflow.js";
 
 /**
  * The transaction port resolves the authenticated field carriage before it

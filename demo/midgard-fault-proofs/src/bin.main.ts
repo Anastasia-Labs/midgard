@@ -17,44 +17,42 @@ import {
   resolveFabricatedDepositCliContracts,
   resolveFabricatedWithdrawalCliContracts,
 } from "./fabricated-cli-contracts.js";
-import {
-  inspectContractsFromFiles,
-  parseNetwork,
-} from "./inspect-contracts.js";
+import { inspectContractsFromFiles } from "./inspect-contracts.inspect-contracts-from-files.js";
+import { parseNetwork } from "./inspect-contracts.parse-contract-deployment-info.js";
 import { rejectUnadmittedSubmissionRoute } from "./legacy-submission-boundary.js";
 import { prepareTransitionTraceFromDaEnvelope } from "./prepare-transition-trace.js";
-import { submitRemoveFraudulentBlockFromFiles } from "./remove-fraudulent-block.js";
-import { submitUnattestedTimeoutCorrectionFromFiles } from "./remove-unattested-block.js";
-import { submitDaHashPreimageStep01FromFiles } from "./submit-da-hash-preimage-step-01.js";
+import { submitRemoveFraudulentBlockFromFiles } from "./remove-fraudulent-block.submit-remove-fraudulent-block-from-files.js";
+import { submitUnattestedTimeoutCorrectionFromFiles } from "./remove-unattested-block.submit-unattested-timeout-correction-from-files.js";
+import { submitDaHashPreimageStep01FromFiles } from "./submit-da-hash-preimage-step-01.submit-da-hash-preimage-step01-from-files.js";
 import { submitDaHashPreimageStep02FromFiles } from "./submit-da-hash-preimage-step-02.submit-da-hash-preimage-step02-from-files.js";
-import { submitFabricatedDepositStep01FromFiles } from "./submit-fabricated-deposit-step-01.js";
+import { submitFabricatedDepositStep01FromFiles } from "./submit-fabricated-deposit-step-01.submit-fabricated-deposit-step01.js";
 import { submitFabricatedDepositStep02FromFiles } from "./submit-fabricated-deposit-step-02.js";
 import { submitFabricatedDepositStep03FromFiles } from "./submit-fabricated-deposit-step-03.js";
 import { submitFabricatedDepositStep04FromFiles } from "./submit-fabricated-deposit-step-04.js";
-import { submitFabricatedWithdrawalStep01FromFiles } from "./submit-fabricated-withdrawal-step-01.js";
+import { submitFabricatedWithdrawalStep01FromFiles } from "./submit-fabricated-withdrawal-step-01.submit-fabricated-withdrawal-step01.js";
 import { submitFabricatedWithdrawalStep02FromFiles } from "./submit-fabricated-withdrawal-step-02.js";
 import { submitFabricatedWithdrawalStep03FromFiles } from "./submit-fabricated-withdrawal-step-03.js";
 import { submitFabricatedWithdrawalStep04FromFiles } from "./submit-fabricated-withdrawal-step-04.js";
-import { submitInitFromFiles } from "./submit-init.js";
+import { submitInitFromFiles } from "./submit-init.submit-init.js";
 import { submitInputNoIdxStep01FromFiles } from "./submit-input-no-idx-step-01.js";
-import { submitInputNoIdxStep02FromFiles } from "./submit-input-no-idx-step-02.js";
+import { submitInputNoIdxStep02FromFiles } from "./submit-input-no-idx-step-02.submit-input-no-idx-step02.js";
 import { submitInputNoIdxStep03FromFiles } from "./submit-input-no-idx-step-03.js";
-import { submitInputNoIdxStep04FromFiles } from "./submit-input-no-idx-step-04.js";
-import { submitInvalidRangeStep01FromFiles } from "./submit-invalid-range-step-01.js";
-import { submitInvalidRangeStep02FromFiles } from "./submit-invalid-range-step-02.js";
+import { submitInputNoIdxStep04FromFiles } from "./submit-input-no-idx-step-04.submit-input-no-idx-step04-from-files.js";
+import { submitInvalidRangeStep01FromFiles } from "./submit-invalid-range-step-01.submit-invalid-range-step01-from-files.js";
+import { submitInvalidRangeStep02FromFiles } from "./submit-invalid-range-step-02.submit-invalid-range-step02-v1.js";
 import { submitInvalidSignatureStep01FromFiles } from "./submit-invalid-signature-step-01.js";
-import { submitInvalidSignatureStep02FromFiles } from "./submit-invalid-signature-step-02.js";
+import { submitInvalidSignatureStep02FromFiles } from "./submit-invalid-signature-step-02.submit-invalid-signature-step02-from-files.js";
 import { submitNoReferenceInputStep01FromFiles } from "./submit-no-reference-input-step-01.js";
 import { submitNoReferenceInputStep02FromFiles } from "./submit-no-reference-input-step-02.js";
 import { submitNoReferenceInputStep03FromFiles } from "./submit-no-reference-input-step-03.js";
-import { submitNoReferenceInputStep04FromFiles } from "./submit-no-reference-input-step-04.js";
+import { submitNoReferenceInputStep04FromFiles } from "./submit-no-reference-input-step-04.submit-no-reference-input-step04-from-files.js";
 import { submitReferenceInputNoIdxStep01FromFiles } from "./submit-reference-input-no-idx-step-01.js";
-import { submitReferenceInputNoIdxStep02FromFiles } from "./submit-reference-input-no-idx-step-02.js";
+import { submitReferenceInputNoIdxStep02FromFiles } from "./submit-reference-input-no-idx-step-02.submit-reference-input-no-idx-step02.js";
 import { submitReferenceInputNoIdxStep03FromFiles } from "./submit-reference-input-no-idx-step-03.js";
-import { submitReferenceInputNoIdxStep04FromFiles } from "./submit-reference-input-no-idx-step-04.js";
+import { submitReferenceInputNoIdxStep04FromFiles } from "./submit-reference-input-no-idx-step-04.submit-reference-input-no-idx-step04-from-files.js";
 import { submitTransitionTraceProofFromCborFile } from "./submit-transition-trace-proof.js";
-import { submitZeroInputStep01FromFiles } from "./submit-zero-input-step-01.js";
-import { submitZeroInputStep02FromFiles } from "./submit-zero-input-step-02.js";
+import { submitZeroInputStep01FromFiles } from "./submit-zero-input-step-01.submit-zero-input-step01-from-files.js";
+import { submitZeroInputStep02FromFiles } from "./submit-zero-input-step-02.submit-zero-input-step02-v1.js";
 import {
   directoryWorkflowJournal,
   runFraudProofWorkflowCli,

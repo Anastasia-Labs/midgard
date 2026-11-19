@@ -8,7 +8,7 @@ import {
   retryTransientSubmitSlotSnapshot,
 } from "../custom-slot-mapping.js";
 import { isRetryableProviderError } from "../provider-retry.js";
-import { configureReferencePublication } from "../transactions/reference-publication.js";
+import { configureReferencePublication } from "../transactions/reference-publication.reference-publication-funding-required.js";
 import { selectNodeWallet } from "../transactions/utils.wallet-view.js";
 import { ConfigError, NodeConfig } from "./config.js";
 import { asStartupConfigError, L1Adapter } from "./l1-adapter.js";

@@ -6,14 +6,14 @@ import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "@al-ft/mi
 import type { Script, UTxO } from "@lucid-evolution/lucid";
 import {
   makeWatcherAuthorityContracts,
-  makeWatcherDeploymentAuthorityFixture,
   type WatcherAuthorityContractSet,
   type WatcherDeploymentAuthorityFixtureOptions,
-} from "midgard-watcher/tests/support/deployment-authority-fixture";
+} from "midgard-watcher/tests/support/deployment-authority-fixture.build-watcher-authority-contracts";
+import { makeWatcherDeploymentAuthorityFixture } from "midgard-watcher/tests/support/deployment-authority-fixture.build-watcher-deployment-authority-fixture";
 
 import { VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES } from "../../src/validation-trace-dispute/one-step-holders.js";
 import type { ValidationTraceDisputeDeployment } from "../../src/validation-trace-dispute/transactions.js";
-import { SCRIPT_DECODE_SPEND_ROLE } from "../../src/workflow/script-decode-prerequisite.js";
+import { SCRIPT_DECODE_SPEND_ROLE } from "../../src/workflow/script-decode-prerequisite.deployment.js";
 import { oneStepScripts } from "./validation-trace-dispute-one-step.js";
 import type { Scene } from "./validation-trace-dispute-open-scene.js";
 

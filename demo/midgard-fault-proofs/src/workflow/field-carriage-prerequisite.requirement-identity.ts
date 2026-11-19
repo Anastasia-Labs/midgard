@@ -33,7 +33,10 @@ import {
   type Requirement,
   sha256,
 } from "./field-carriage-prerequisite.field-carriage-prerequisite-port.js";
-import { type JournalJsonObject, normalizeJournalJson } from "./journal.js";
+import {
+  type JournalJsonObject,
+  normalizeJournalJson,
+} from "./journal.fraud-proof-workflow-terminal.js";
 import { type FraudProofWorkflowAction } from "./orchestrator.js";
 import { rawDatumPreimagePublicationPlan } from "./raw-datum-preimage.js";
 

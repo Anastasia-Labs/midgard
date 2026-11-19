@@ -12,16 +12,21 @@ import {
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { forcedVerdictForRejection } from "@al-ft/midgard-fault-proofs";
+import {
+  encodeEventToStepValueCbor,
+  encodeTransitionIntegerCbor,
+  encodeTransitionStepCbor,
+} from "@al-ft/midgard-fault-proofs/block-replay";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  encodeMidgardCekCardanoFlatProgram,
-  type MidgardCekVerdictRequest,
-  MidgardRedeemerTag,
   placeholderValidationTraceDescriptorV1,
   replayValidationVerdictEvent,
   validationMachineLedgerRoot,
   validationTransactionCommitmentV1,
 } from "@al-ft/midgard-validation";
+import { encodeMidgardCekCardanoFlatProgram } from "@al-ft/midgard-validation/cek-program";
+import { MidgardRedeemerTag } from "@al-ft/midgard-validation/midgard-redeemers";
+import type { MidgardCekVerdictRequest } from "@al-ft/midgard-validation/phase-b";
 import {
   FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,
@@ -45,11 +50,6 @@ import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { encodeTransactionRootValue } from "../src/mpf/ledger-hydration.js";
-import {
-  encodeEventToStepValueCbor,
-  encodeTransitionIntegerCbor,
-  encodeTransitionStepCbor,
-} from "../src/mpf/transition-cbor.js";
 import { buildPlaceholderValidationTraceMembers } from "../src/mpf/validation-trace.js";
 import { countsFromLengths, headerFor } from "./da-payload.record.js";
 import { rebind, verdict } from "./foreign-block-import.fixture.js";

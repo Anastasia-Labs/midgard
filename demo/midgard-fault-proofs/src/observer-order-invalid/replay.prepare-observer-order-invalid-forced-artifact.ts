@@ -7,8 +7,11 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { buildTrieView, requireProof } from "../prepare-double-spend.js";
-import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
+import {
+  buildTrieView,
+  requireProof,
+} from "../prepare-double-spend.resolve-double-spend-pair.js";
+import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.build-source-membership-proof.js";
 import type { CanonicalViolationDetection } from "../workflow/classification.js";
 import {
   buildObserverOrderInvalidArtifact,

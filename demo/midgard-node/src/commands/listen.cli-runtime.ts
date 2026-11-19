@@ -1,8 +1,8 @@
 import { Effect, pipe } from "effect";
 
 import { NodeConfig } from "../services/config.js";
+import { Globals } from "../services/globals.globals.js";
 import * as Services from "../services/index.js";
-import { Globals } from "../services/index.js";
 import {
   type IntentJournal,
   IntentJournalWithoutFollower,

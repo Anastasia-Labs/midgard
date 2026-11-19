@@ -1,7 +1,7 @@
 import { describe, it } from "vitest";
 
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
-import { transitionTraceFinalCaseRunner } from "./support/transition-trace-final-cases.js";
+import { transitionTraceFinalCaseRunner } from "./support/transition-trace-final-cases.register-transition-trace-final-cases.js";
 
 // The streamed accepted-transaction replay, honest and with one step forged
 // per withdraw-zero script. Each forgery is visible to that script alone: the

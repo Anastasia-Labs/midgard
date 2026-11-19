@@ -9,12 +9,14 @@ import {
   type EntryWithTimeStamp,
 } from "../src/database/utils/tx.js";
 import { measureCommitDaPayloadUpperBound } from "../src/workers/commit-block-header/submission.assert-pre-submit-da-payload-size.js";
+import type {
+  CommitDaFrameMeasurement,
+  CommitTxCandidateSelection,
+} from "../src/workers/utils/commit-block-planner.commit-scheduler-evidence-key.js";
 import {
-  type CommitDaFrameMeasurement,
-  type CommitTxCandidateSelection,
   selectCommitTxCandidates,
   stepDownCommitSelectionToDaFrame,
-} from "../src/workers/utils/commit-block-planner.js";
+} from "../src/workers/utils/commit-block-planner.select-commit-tx-candidates.js";
 import {
   blockContentFor,
   type BlockShape,

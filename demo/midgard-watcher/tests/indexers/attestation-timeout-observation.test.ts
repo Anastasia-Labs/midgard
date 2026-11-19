@@ -3,10 +3,8 @@ import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { describe, expect, it } from "vitest";
 
 import { deriveWatcherAttestationTimeoutObservation } from "../../src/indexers/attestation-timeout-observation.js";
-import {
-  makeWatcherStateQueueHeader,
-  makeWatcherStateQueueSnapshot,
-} from "../../src/indexers/state-queue-snapshot.js";
+import { makeWatcherStateQueueHeader } from "../../src/indexers/state-queue-snapshot.parse-watcher-state-queue-header.js";
+import { makeWatcherStateQueueSnapshot } from "../../src/indexers/state-queue-snapshot.parse-watcher-state-queue-snapshot.js";
 
 const emptyRoot =
   "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8";

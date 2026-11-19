@@ -19,31 +19,33 @@ import { describe, expect, it } from "vitest";
 
 import { COMMITTED_FIELD_SHAPE_CATEGORY_LABEL } from "../src/committed-field-shape/contracts.js";
 import {
-  buildCommittedFieldShapeInit,
-  buildCommittedFieldShapeStep01,
-  buildCommittedFieldShapeStep02,
   classifyCommittedFieldShapeFields,
   prepareCommittedFieldShapeFromCanonicalTx,
-} from "../src/committed-field-shape/index.js";
+} from "../src/committed-field-shape/prepare-committed-field-shape.js";
+import { buildCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
+import { buildCommittedFieldShapeStep01 } from "../src/committed-field-shape/submit-committed-field-shape-step-01.submit-committed-field-shape-step01.js";
+import { buildCommittedFieldShapeStep02 } from "../src/committed-field-shape/submit-committed-field-shape-step-02.js";
 import { buildLinearFaultCancel } from "../src/linear-fault-cancel.js";
 import {
   type CommittedFieldShapeEmulatorHarness,
-  committedFieldShapeInlineClaim,
   type CommittedFieldShapeScenario,
-  expectCommittedFieldShapeOnchainRefusal,
-  fundCommittedFieldShapeOutsider,
   makeCommittedFieldShapeEmulatorHarness,
   publishCommittedFieldShapeReferenceScripts,
   setupCommittedFieldShapeScenario,
-  submitRawCommittedFieldShapeCancel,
-  submitRawCommittedFieldShapeStep01,
-  submitRawCommittedFieldShapeStep02,
-} from "./support/committed-field-shape-emulator.js";
+} from "./support/committed-field-shape-emulator.committed-field-shape-scenario-material.js";
 import {
-  expectSingleUtxoWithUnit,
-  makeNativeTx,
-  network,
-} from "./support/submit-init-emulator-shared.js";
+  fundCommittedFieldShapeOutsider,
+  submitRawCommittedFieldShapeStep01,
+} from "./support/committed-field-shape-emulator.submit-raw-committed-field-shape-step01.js";
+import {
+  committedFieldShapeInlineClaim,
+  expectCommittedFieldShapeOnchainRefusal,
+  submitRawCommittedFieldShapeCancel,
+  submitRawCommittedFieldShapeStep02,
+} from "./support/committed-field-shape-emulator.submit-raw-committed-field-shape-step02.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
+import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 const initThread = async (

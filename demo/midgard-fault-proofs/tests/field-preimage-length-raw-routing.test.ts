@@ -14,21 +14,21 @@ import { expect, it, vi } from "vitest";
 import {
   FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
   MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY,
-} from "../src/workflow/complete-replay.js";
+} from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
+import { DirectoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
 import {
-  DirectoryFraudProofWorkflowJournalStore,
   journalJsonDigest,
   type JournalJsonObject,
   normalizeJournalJson,
-} from "../src/workflow/journal.js";
+} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import {
-  createFraudProofWorkflowRegistry,
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
   type FraudProofFamilyWorkflowAdapter,
-  runFraudProofWorkflowFromRetainedDa,
   type WorkflowRawFamilyEvidence,
-} from "../src/workflow/orchestrator.js";
+} from "../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
+import { createFraudProofWorkflowRegistry } from "../src/workflow/orchestrator.immutable-fraud-proof-workflow-registry.js";
+import { runFraudProofWorkflowFromRetainedDa } from "../src/workflow/orchestrator.run-fraud-proof-workflow-from-retained-da.js";
 import {
   computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,

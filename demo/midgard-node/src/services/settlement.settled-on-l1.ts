@@ -33,7 +33,7 @@ import { parseEventId } from "../commands/command-utils.js";
 import { inFollowerSnapshot } from "../database/follower-schema.js";
 import type { SettlementKind } from "../database/settlement.js";
 import { eventOrderOrPrunedByIdIn } from "../l1-events/event-by-id.js";
-import { MidgardContracts } from "./midgard-contracts.js";
+import { MidgardContracts } from "./midgard-contracts.make-midgard-contract-runtime.js";
 
 /** Settled more than k deep: the follower has pruned the facts that show it. */
 export type SettledBeyondK = "pruned";

@@ -67,20 +67,24 @@ import {
   transientFailure,
 } from "../l1-events/driver.js";
 import {
-  blockedRebaseHold,
-  deadJournalsFor,
-  failureHold,
-  followJournals,
   LANDED_BLOCK_REBASE_PENDING,
   LANDED_BLOCK_REBASE_SOURCE,
+} from "../landed-blocks/holds.js";
+import { ownJournalDisposition } from "../landed-blocks/own-journals.js";
+import {
+  failureHold,
+  followJournals,
   moveNativeRoot,
-  ownJournalDisposition,
+  rebaseSql,
+} from "../landed-blocks/rebase.js";
+import {
+  blockedRebaseHold,
+  deadJournalsFor,
   rebasePlan,
   rebasePlanOf,
-  rebaseSql,
   type RebaseTarget,
   rebaseTargetOf,
-} from "../landed-blocks/index.js";
+} from "../landed-blocks/rebase-target.js";
 import { retrieveRows } from "../landed-blocks/store.js";
 import { NodeConfig } from "./config.js";
 import type { Database } from "./database.js";
@@ -112,10 +116,10 @@ import {
   raiseLivenessIncident,
 } from "./liveness-halt.js";
 import { Lucid } from "./lucid.js";
-import { MempoolLedgerCache } from "./mempool-ledger-cache.js";
+import { MempoolLedgerCache } from "./mempool-ledger-cache.mempool-ledger-cache-service.js";
 import type { MidgardContracts } from "./midgard-contracts.js";
 import { initializeArchitectureGOwner } from "./native-mpf-startup.js";
-import { WriteBehind } from "./write-behind.js";
+import { WriteBehind } from "./write-behind.summarize-write-behind-telemetry.js";
 
 /** The startup preparation failed; the next recompute runs it again. */
 export const STARTUP_PREPARATION_FAILED = "startup_preparation_failed";

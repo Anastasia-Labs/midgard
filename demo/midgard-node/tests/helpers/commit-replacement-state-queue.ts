@@ -19,23 +19,21 @@ import { SqlClient } from "@effect/sql";
 import { Effect, Layer, ManagedRuntime } from "effect";
 
 import { followerSqlTx } from "../../src/database/follower-schema.js";
-import { forcedOrderConfigFromContracts } from "../../src/forced-orders/index.js";
+import { forcedOrderConfigFromContracts } from "../../src/forced-orders/config.js";
+import { stateQueueProjectionConfig } from "../../src/l1-state-queue/config.js";
 import { readLandedStateQueueFrom } from "../../src/l1-state-queue/hook.js";
-import { stateQueueProjectionConfig } from "../../src/l1-state-queue/index.js";
 import { nodeLandedBlockPorts } from "../../src/landed-blocks/node-ports.js";
 import { processLandedQueue } from "../../src/landed-blocks/process.js";
-import { NodeConfig } from "../../src/services/config.js";
+import { NodeConfig } from "../../src/services/config.make-config.js";
 import { Database } from "../../src/services/database.js";
 import { withDriverView } from "../../src/services/follower-write-gate.driver.js";
-import { Globals } from "../../src/services/globals.js";
+import { Globals } from "../../src/services/globals.globals.js";
 import { readIntentStatus } from "../../src/services/intent-journal.js";
 import { nodeFamilyPredicate } from "../../src/services/l1-follower.intent-predicates.js";
 import { RESUBMIT_REJECTIONS_TO_ABANDON } from "../../src/services/l1-follower.intents.js";
 import { Lucid } from "../../src/services/lucid.js";
-import {
-  availabilityParametersFromExplicitEnvironment,
-  ContractDeploymentIdentity,
-} from "../../src/services/midgard-contracts.js";
+import { availabilityParametersFromExplicitEnvironment } from "../../src/services/midgard-contracts.load-reference-script-auth-validator.js";
+import { ContractDeploymentIdentity } from "../../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import { SDK } from "../deposit-flow-emulator-shared.js";
 import type { Lifecycle } from "./correction-admission-scenario.js";
 import { syncEmulatorChain } from "./emulator-l1-follower.js";

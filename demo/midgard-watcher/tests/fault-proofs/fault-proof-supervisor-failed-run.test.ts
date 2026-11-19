@@ -20,9 +20,9 @@ import {
   openWatcherFaultProofQueueJournal,
   watcherFaultProofQueueIdentityDigest,
 } from "../../src/fault-proofs/fault-proof-queue-journal.js";
-import { unsafeCreateWatcherFaultProofSupervisorForTest } from "../../src/fault-proofs/fault-proof-supervisor.js";
-import { watcherDeploymentReleaseFinalityAuthority } from "../../src/runtime/deployment-identity.js";
-import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
+import { unsafeCreateWatcherFaultProofSupervisorForTest } from "../../src/fault-proofs/fault-proof-supervisor.create-watcher-fault-proof-supervisor.js";
+import { watcherDeploymentReleaseFinalityAuthority } from "../../src/runtime/deployment-identity.watcher-deployment-availability-challenge-authority.js";
+import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.build-watcher-deployment-authority-fixture.js";
 
 // The double-spend classifier fixture launches one family, so the installed
 // scope is narrowed to that family for this file only.

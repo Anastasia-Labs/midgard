@@ -9,13 +9,11 @@ import {
 } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import {
-  buildDirectReceiveEvidence,
-  createDirectFieldPlan,
-  prepareDirectScriptMaterial,
-} from "../../src/direct-script-derivation/index.js";
-import { faultProofFieldOpening } from "../../src/field-opening.js";
-import { reconstructDaPayload } from "../../src/transition-trace/reconstruct.js";
+import { createDirectFieldPlan } from "../../src/direct-script-derivation/field-plan.js";
+import { prepareDirectScriptMaterial } from "../../src/direct-script-derivation/material.js";
+import { buildDirectReceiveEvidence } from "../../src/direct-script-derivation/receive-evidence.js";
+import { faultProofFieldOpening } from "../../src/field-opening.publish-fault-proof-field-carriage.js";
+import { reconstructDaPayload } from "../../src/transition-trace/reconstruct.reconstruct-da-payload.js";
 import {
   buildCanonicalBlockFixture,
   buildFixtureTransaction,
@@ -23,12 +21,12 @@ import {
 import { createDirectComponentStepper } from "./direct-component-stepper.js";
 import { directHandoffContext } from "./direct-handoff-fixture.js";
 import {
-  EMULATOR_PROTOCOL_PARAMETERS,
   network,
-  publishPlainReferenceScriptUtxo,
   readBlueprint,
   realBlueprintPath,
-} from "./submit-init-emulator-shared.js";
+} from "./emulator/blueprints.js";
+import { EMULATOR_PROTOCOL_PARAMETERS } from "./emulator/protocol-parameters.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 
 export const driveDirectDeclarationRegression = async (
   attack: "wrong-index" | "unsigned-correct",

@@ -4,12 +4,12 @@ import { Cause, Effect, Exit, FiberId, Ref, Runtime } from "effect";
 import { UnknownException } from "effect/Cause";
 import { describe, expect, it } from "vitest";
 
+import { attestationTimeoutCorrectionStep } from "../src/fibers/attestation-timeout-correction.attestation-timeout-correction-action.js";
 import {
   attestationTimeoutCorrectionReadinessBounds,
-  attestationTimeoutCorrectionStep,
   recordTimeoutCorrectionJournalProgress,
   withTimeoutCorrectionProgress,
-} from "../src/fibers/attestation-timeout-correction.js";
+} from "../src/fibers/attestation-timeout-correction.reconcile-state-queue-corrections.js";
 import type { AttestationTimeoutCorrectionHealth } from "../src/services/globals.js";
 
 const unattestedHeader = { headerHash: "cd".repeat(32), deadlineMs: 1_000 };

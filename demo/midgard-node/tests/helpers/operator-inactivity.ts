@@ -11,10 +11,11 @@
 import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "effect";
-import "../../src/transactions/initialization.js";
+import "../../src/transactions/initialization.fetch-protocol-deployment-status.js";
+import "../../src/transactions/initialization.derive-operator-da-params.js";
 import "../../src/transactions/operators/takeover.js";
 import "../../src/transactions/reference-scripts.js";
-import "../../src/transactions/register-active-operator.js";
+import "../../src/transactions/register-active-operator.activate-registered-operator-program.js";
 import "../../src/transactions/script-reward-registration.js";
 import "../../src/workers/utils/commit-end-time.js";
 import "./real-midgard-contracts.js";

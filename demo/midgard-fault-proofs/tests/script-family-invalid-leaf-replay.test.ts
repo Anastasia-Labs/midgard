@@ -32,7 +32,7 @@ import {
 } from "./helpers/canonical-block-evidence-fixture.js";
 import { redeemerItem } from "./support/missing-redeemer-emulator.purposes.js";
 import { plutusScript } from "./support/missing-redeemer-emulator.subject.js";
-import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
+import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.build-decoding-block-fixture.js";
 
 const script = plutusScript(1);
 

@@ -8,20 +8,20 @@ import { credentialToAddress, type UTxO } from "@lucid-evolution/lucid";
 import { vi } from "vitest";
 
 import { proofMaterialsAddress } from "../../src/funding/proof-materials-address.js";
-import { DaLibp2pRetainedDaSource } from "../../src/transition-trace/fetch.js";
+import { DaLibp2pRetainedDaSource } from "../../src/transition-trace/fetch.da-libp2p-retained-da-source.js";
 import * as deployment from "../../src/workflow/deployment-manifest-binding.js";
-import { FAMILY_APPLICATION_REGISTRY } from "../../src/workflow/family-application-registry.js";
-import { familyStepContractNames } from "../../src/workflow/family-definition.js";
+import { FAMILY_APPLICATION_REGISTRY } from "../../src/workflow/family-application-registry.family-application-registry.js";
+import { familyStepContractNames } from "../../src/workflow/family-definition.family-definition.js";
 import * as observations from "../../src/workflow/family-l1-observation.js";
-import { unsafeCreateWorkflowFundingReservationPermitForTest } from "../../src/workflow/funding-reservation-permit.js";
-import { bindManifestBoundFamilyWorkflow } from "../../src/workflow/manifest-bound-family-assembly.js";
+import { unsafeCreateWorkflowFundingReservationPermitForTest } from "../../src/workflow/funding-reservation-permit.restrict-workflow-funding-signer.js";
+import { bindManifestBoundFamilyWorkflow } from "../../src/workflow/manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
 import type { FraudProofWorkflowRunResult } from "../../src/workflow/orchestrator.js";
-import { FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY } from "../../src/workflow/raw-l1-snapshot.js";
+import { FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY } from "../../src/workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
 import {
   WORKFLOW_RUNNER_FACTORIES,
   WORKFLOW_RUNTIME_CONFIG,
 } from "../../src/workflow/runtime.js";
-import { SCRIPT_DECODE_SPEND_ROLE } from "../../src/workflow/script-decode-prerequisite.js";
+import { SCRIPT_DECODE_SPEND_ROLE } from "../../src/workflow/script-decode-prerequisite.deployment.js";
 import type { customWorkflowRecoveryFixture } from "./custom-workflow-recovery.js";
 import { familyCommonInfrastructureForTest } from "./family-common-infrastructure.js";
 import {

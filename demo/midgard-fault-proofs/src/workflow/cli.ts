@@ -15,8 +15,8 @@ import {
   type WorkflowApplicationRegistry,
 } from "./adapters.js";
 import type { WorkflowFundingReservationPermit } from "./funding-reservation-permit.js";
+import { DirectoryFraudProofWorkflowJournalStore } from "./journal.directory-fraud-proof-workflow-journal-store.js";
 import type { FraudProofWorkflowJournalStore } from "./journal.fraud-proof-workflow-journal-event.js";
-import { DirectoryFraudProofWorkflowJournalStore } from "./journal.js";
 import type { WalletOnlySend } from "./wallet-only-send-gate.js";
 
 /** The standalone command's journal: a directory store, whose construction

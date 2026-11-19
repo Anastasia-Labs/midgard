@@ -38,10 +38,8 @@ import {
   observerFieldShape,
   transactionIdOf,
 } from "./support/observer-order-invalid-raw.js";
-import {
-  buildInvalidForcedTransitionTraceFixture,
-  setupFraudulentBlock,
-} from "./support/submit-init-emulator-fixtures.js";
+import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init/forced-transitions.js";
+import { setupFraudulentBlock } from "./support/submit-init/removal.js";
 
 // ---------------------------------------------------------------------------
 // Shapes: every ordering polarity at first, middle, last and duplicate ordinals

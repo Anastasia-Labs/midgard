@@ -3,12 +3,12 @@
  * membership the bound source can show. */
 import type * as SDK from "@al-ft/midgard-sdk";
 
+import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
 import {
   directPurposeAt,
   directReceiveCredentials,
   directSpendInputAt,
-} from "../direct-script-derivation/index.js";
-import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
+} from "../direct-script-derivation/purposes.js";
 
 type Coordinate = SDK.DirectPurposeCoordinate;
 

@@ -8,10 +8,8 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import {
-  type NodeTransactionPayload,
-  prepareMinFeeFromTransactions,
-} from "../src/index.js";
+import type { NodeTransactionPayload } from "../src/prepare-double-spend.encode-l2-transaction-source-value.js";
+import { prepareMinFeeFromTransactions } from "../src/prepare-min-fee.js";
 import {
   buildCanonicalBlockFixture,
   buildFixtureTransaction,

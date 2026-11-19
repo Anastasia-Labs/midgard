@@ -8,10 +8,10 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
-import { planFaultProofFieldOpening } from "../field-opening.js";
-import { buildInit } from "../submit-init.js";
+import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
+import { buildInit } from "../submit-init.submit-init.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import { completeCanonicalReplayPredecessorLedger } from "../workflow/complete-replay.js";
+import { completeCanonicalReplayPredecessorLedger } from "../workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import { captureCursorRemoval } from "../workflow/cursor-family-runtime.js";
 import {
   assertManifestBoundWorkflowSigner,
@@ -27,7 +27,7 @@ import { withFieldCarriagePrerequisite } from "../workflow/field-carriage-prereq
 import {
   journalJsonDigest,
   type JournalJsonObject,
-} from "../workflow/journal.js";
+} from "../workflow/journal.fraud-proof-workflow-terminal.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
   FraudProofWorkflowAction,
@@ -35,17 +35,15 @@ import type {
 } from "../workflow/orchestrator.js";
 import {
   createAuthenticatedProofChunkPrerequisitePort,
-  resolveDirectFirstProofChunks,
   withProofChunkPrerequisite,
 } from "../workflow/proof-chunk-prerequisite.js";
+import { resolveDirectFirstProofChunks } from "../workflow/proof-chunk-prerequisite.route-action-identity.js";
 import {
   deriveFraudProofRawL1FamilyStage,
   fraudProofRawL1SnapshotRequestForFamily,
 } from "../workflow/raw-l1-family-derivation.js";
-import {
-  admitFraudProofRawL1Snapshot,
-  type FraudProofRawL1ComputationStepRole,
-} from "../workflow/raw-l1-snapshot.js";
+import type { FraudProofRawL1ComputationStepRole } from "../workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
+import { admitFraudProofRawL1Snapshot } from "../workflow/raw-l1-snapshot.js";
 import { journaledStepTransaction } from "../workflow/step-transaction.js";
 import { createValueConservationAdapter } from "./adapter.js";
 import { admitValueConservationArtifact } from "./artifact.js";

@@ -18,18 +18,20 @@ import {
 } from "../src/linear-fault-family.js";
 import { buildLinearFaultContinue } from "../src/linear-fault-submit.js";
 import {
-  buildRedeemerCanonicityStep01Accepted,
-  buildRedeemerCanonicityStep02,
-  buildRedeemerCanonicityStep02Data,
-  buildRedeemerCanonicityStep03,
-  prepareRedeemerCanonicityEvidence,
   REDEEMER_DATA_CHUNK_BYTES,
+  redeemerDataScanState,
+  redeemerDataStepArgs,
+} from "../src/redeemer-canonicity/data-plan.js";
+import { prepareRedeemerCanonicityEvidence } from "../src/redeemer-canonicity/family.js";
+import {
   RedeemerCanonicityStep02DataDatumSchema,
   RedeemerCanonicityStep02DataRedeemerSchema,
   RedeemerCanonicityStep03DatumSchema,
-  redeemerDataScanState,
-  redeemerDataStepArgs,
-} from "../src/redeemer-canonicity/index.js";
+} from "../src/redeemer-canonicity/schemas.js";
+import { buildRedeemerCanonicityStep01Accepted } from "../src/redeemer-canonicity/submit-step-01.js";
+import { buildRedeemerCanonicityStep02 } from "../src/redeemer-canonicity/submit-step-02.js";
+import { buildRedeemerCanonicityStep02Data } from "../src/redeemer-canonicity/submit-step-02-data.js";
+import { buildRedeemerCanonicityStep03 } from "../src/redeemer-canonicity/submit-step-03.js";
 import { computationThreadOutputPredicate } from "../src/tx-layout.js";
 import {
   familyContracts,
@@ -40,7 +42,7 @@ import {
 import {
   type CommittedFieldShapeEmulatorHarness,
   setupCommittedFieldShapeScenario,
-} from "./support/committed-field-shape-emulator.js";
+} from "./support/committed-field-shape-emulator.committed-field-shape-scenario-material.js";
 import { network } from "./support/emulator/blueprints.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";

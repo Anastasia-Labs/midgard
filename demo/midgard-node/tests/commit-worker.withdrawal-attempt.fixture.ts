@@ -16,7 +16,7 @@ import { Deferred, Effect, Exit, Logger } from "effect";
 import { withStartupHttpServer } from "../src/commands/listen.startup-http.js";
 import * as LedgerUtils from "../src/database/utils/ledger.js";
 import * as WithdrawalsDB from "../src/database/withdrawals.js";
-import { Globals } from "../src/services/globals.js";
+import { Globals } from "../src/services/globals.globals.js";
 import { activeLivenessReasons } from "../src/services/liveness-halt.js";
 import { findTransientBudgetExhausted } from "../src/services/transient-exhaustion.js";
 import { captureCommitWorkerFailure } from "../src/workers/commit-block-header.run-commit-block-header-worker-program.js";

@@ -29,12 +29,18 @@ import "@al-ft/midgard-core";
 import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "vitest";
-import "../src/resolved-output-non-canonical/index.js";
+import "../src/resolved-output-non-canonical/resolved-output-non-canonical.prepare-resolved-output-non-canonical-evidence.js";
+import "../src/resolved-output-non-canonical/reconstruction-plan.js";
+import "../src/resolved-output-non-canonical/datum-plan.js";
+import "../src/resolved-output-non-canonical/submit-step-04-datum.js";
 import "../src/testing/complete-lifecycle.js";
 import "../src/transition-trace/phas.js";
 import "./support/emulator/expect-onchain-refusal.js";
 import "./support/lifecycle-coverage.js";
-import "./support/resolved-output-non-canonical-emulator.js";
+import "./support/resolved-output-non-canonical-emulator.build-prior-ledger.js";
+import "./support/resolved-output-non-canonical-emulator.commit-block.js";
+import "./support/resolved-output-non-canonical-emulator.resolved-output-evidence.js";
+import "./support/resolved-output-non-canonical-emulator.make-resolved-output-stages.js";
 import "./support/submit-init-emulator-shared.js";
 import "./resolved-output-non-canonical-lifecycle.record-carriage.js";
 import "./resolved-output-non-canonical-lifecycle.refuse-datum-seams.js";
@@ -54,11 +60,13 @@ import { Data } from "@lucid-evolution/lucid";
 import { afterAll, describe, expect, it } from "vitest";
 
 import {
-  classifyResolvedOutputNonCanonicalFinding,
   locateResolvedOutputScanControl,
   resolvedOutputChunkProofData,
+} from "../src/resolved-output-non-canonical/reconstruction-plan.js";
+import {
+  classifyResolvedOutputNonCanonicalFinding,
   resolvedOutputScanControlData,
-} from "../src/resolved-output-non-canonical/index.js";
+} from "../src/resolved-output-non-canonical/resolved-output-non-canonical.prepare-resolved-output-non-canonical-evidence.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import {
@@ -75,21 +83,23 @@ import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.
 import {
   buildPriorLedger,
   buildSubjectTransaction,
-  commitBlock,
-  forcedSourceOf,
   makeResolvedOutputContext,
-  makeResolvedOutputStages,
   MAXIMUM_INPUT_ITEM_COUNT,
   maximumCanonicalOutput,
   maximumMalformedOutput,
   RESOLVED_OUTPUT_MAXIMUM_BYTES,
   RESOLVED_OUTPUT_REASON_ARM,
-  resolvedOutputEvidence,
   resolvedOutputReason,
   smallCanonicalOutput,
   smallMalformedOutput,
   subjectTransactionFor,
-} from "./support/resolved-output-non-canonical-emulator.js";
+} from "./support/resolved-output-non-canonical-emulator.build-prior-ledger.js";
+import { commitBlock } from "./support/resolved-output-non-canonical-emulator.commit-block.js";
+import { makeResolvedOutputStages } from "./support/resolved-output-non-canonical-emulator.make-resolved-output-stages.js";
+import {
+  forcedSourceOf,
+  resolvedOutputEvidence,
+} from "./support/resolved-output-non-canonical-emulator.resolved-output-evidence.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
 
 describe("resolvedOutputNonCanonical registered-chain lifecycle", () => {

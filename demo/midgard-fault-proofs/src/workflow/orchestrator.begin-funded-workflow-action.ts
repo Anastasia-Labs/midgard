@@ -1,8 +1,6 @@
 import { WorkflowActionChangedError } from "./action-changed.js";
-import {
-  beginWorkflowFundingReservationAction,
-  WorkflowFundingShortfallError,
-} from "./funding-reservation-permit.js";
+import { beginWorkflowFundingReservationAction } from "./funding-reservation-permit.begin-workflow-funding-reservation-action.js";
+import { WorkflowFundingShortfallError } from "./funding-reservation-permit.workflow-funding-shortfall.js";
 import { isCallerOwnedWorkflowFailure } from "./orchestrator.caller-owned-failure.js";
 import type {
   FraudProofFamilyWorkflowAdapter,

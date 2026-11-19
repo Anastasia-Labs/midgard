@@ -1,10 +1,7 @@
 import "./tx-queue-processor.classify-plutus-evaluation-failure.js";
 
-import {
-  type PhaseAResult,
-  QueuedTx,
-  runPhaseAValidation,
-} from "@al-ft/midgard-validation";
+import { runPhaseAValidation } from "@al-ft/midgard-validation/phase-a";
+import { type PhaseAResult, QueuedTx } from "@al-ft/midgard-validation/types";
 import { Cause, Chunk, Effect, Ref, Schedule } from "effect";
 
 import { TxAdmissionsDB } from "../database/index.js";

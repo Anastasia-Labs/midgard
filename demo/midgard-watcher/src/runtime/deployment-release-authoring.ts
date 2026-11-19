@@ -14,7 +14,11 @@ import {
   deploymentFraudProofCatalogueCategories,
   isProductionDeploymentProfileName,
 } from "@al-ft/midgard-core/deployment-profile";
-import { parseDeploymentReleaseProvenance } from "@al-ft/midgard-core/deployment-release";
+import {
+  DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION as WATCHER_DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION,
+  parseDeploymentReleaseProvenance,
+  SIGNED_DEPLOYMENT_RELEASE_SCHEMA_VERSION as WATCHER_SIGNED_DEPLOYMENT_IDENTITY_SCHEMA_VERSION,
+} from "@al-ft/midgard-core/deployment-release";
 import { computeFraudProofReleaseEconomicsPolicyDigest } from "@al-ft/midgard-fault-proofs";
 
 import {
@@ -25,14 +29,10 @@ import {
 import {
   computeWatcherRuleBundleCommitment,
   makeWatcherCanonicalRuleBundle,
-} from "../verification/rule-bundle.js";
+} from "../verification/rule-bundle.parse-watcher-rule-bundle.js";
 import { loadWatcherVerifiedDeploymentAuthority } from "./deployment-authority.js";
-import {
-  makeWatcherDeploymentIdentitySignaturePayload,
-  WATCHER_DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION,
-  WATCHER_SIGNED_DEPLOYMENT_IDENTITY_SCHEMA_VERSION,
-  type WatcherDeploymentIdentityPolicy,
-} from "./deployment-identity.js";
+import type { WatcherDeploymentIdentityPolicy } from "./deployment-identity.catalogue-category-to-contract.js";
+import { makeWatcherDeploymentIdentitySignaturePayload } from "./deployment-identity.parse-policy.js";
 import { verifyDeploymentReleaseParameterRegistry } from "./deployment-release-parameter-registry.js";
 
 /** Where a release's artifacts live; the watcher process config names them. */

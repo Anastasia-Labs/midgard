@@ -6,7 +6,7 @@ import {
   configureCommitMpfRuntime,
   getMpfScratchBuild,
   setMpfScratchBuild,
-} from "../src/mpf/index.js";
+} from "../src/mpf/engine-config.js";
 import {
   NATIVE_OWNER_PIN_REMEDY,
   requirePinnedNativeOwnerBinary,

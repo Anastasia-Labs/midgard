@@ -11,12 +11,12 @@ import {
 } from "@al-ft/midgard-sdk";
 import { expect } from "vitest";
 
+import { trieRootHex } from "../emulator/catalogue.js";
+import { h32 } from "../emulator/header-fixtures.js";
 import {
-  h32,
   l2TransactionSourceCbor as l2TransactionSourceCborV1,
   makeNativeTx,
-  trieRootHex,
-} from "../submit-init-emulator-shared.js";
+} from "../emulator/native-tx.js";
 import {
   insertAdversarialMembershipSiblings,
   MembershipProofShape,

@@ -7,6 +7,11 @@ import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
   plutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
+import {
+  encodeEventToStepValueCbor,
+  encodeTransitionIntegerCbor,
+  encodeTransitionStepCbor,
+} from "@al-ft/midgard-fault-proofs/block-replay";
 import type { FactStore, OutRef } from "@al-ft/midgard-l1-follower";
 import { eventsAt } from "@al-ft/midgard-l1-follower/events";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -14,11 +19,6 @@ import { Effect } from "effect";
 
 import { WithdrawalsDB } from "../src/database/index.js";
 import { eventKeyCbor } from "../src/mpf/trace-events.js";
-import {
-  encodeEventToStepValueCbor,
-  encodeTransitionIntegerCbor,
-  encodeTransitionStepCbor,
-} from "../src/mpf/transition-cbor.js";
 import { countsFromLengths } from "./da-payload.record.js";
 import { rebind } from "./foreign-block-import.fixture.js";
 import { listOf } from "./helpers/l1-events-chain.js";

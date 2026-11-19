@@ -23,16 +23,18 @@ import {
 import { Effect, Exit, Layer } from "effect";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 
-import { loadDeploymentRunState } from "../src/e2e/run-state.js";
+import { loadDeploymentRunState } from "../src/e2e/run-state.parse-deployment-run-state.js";
 import { hubOracleReadinessProbe } from "../src/fibers/l1-provider-readiness-refresher.js";
-import { Lucid, MidgardContracts, NodeConfig } from "../src/services/index.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
+import { Lucid } from "../src/services/lucid.js";
+import { MidgardContracts } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   configuredProtocolDeploymentKeys,
   fetchProtocolDeploymentStatus,
   hubOraclePolicyOfNonce,
   program as initializeProtocol,
-} from "../src/transactions/initialization.js";
-import { registerOperatorProgram } from "../src/transactions/register-active-operator.js";
+} from "../src/transactions/initialization.fetch-protocol-deployment-status.js";
+import { registerOperatorProgram } from "../src/transactions/register-active-operator.activate-registered-operator-program.js";
 import { makeFinalizedDeploymentManifestFixture } from "./helpers/finalized-deployment-manifest.js";
 import { stateOf, utxoAnswer } from "./helpers/follower-emulator.ledger.js";
 import { runWithoutFollower } from "./helpers/intent-journal.js";

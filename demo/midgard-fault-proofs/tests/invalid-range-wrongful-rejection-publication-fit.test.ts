@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  makeFaultProofEmulatorHarness,
-  publishPlainReferenceScriptUtxo,
-} from "./support/submit-init-emulator-shared.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
+import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 
 describe("invalidRange direction-complete signed publication fit", () => {
   it("publishes both applied scripts below the reliability reserve", async () => {

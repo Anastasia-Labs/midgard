@@ -13,18 +13,24 @@
  */
 import "@al-ft/midgard-sdk";
 import "vitest";
-import "../src/network-id/index.js";
+import "../src/network-id/prepare.js";
+import "../src/network-id/submit-network-id-accepted-forced-bind.js";
+import "../src/network-id/submit-network-id-cancel.js";
+import "../src/network-id/submit-network-id-forced-bind.js";
+import "../src/network-id/submit-network-id-forced-scan.submit-network-id-forced-scan-action.js";
+import "../src/network-id/submit-network-id-forced-step-01.js";
+import "../src/network-id/submit-network-id-init.js";
+import "../src/network-id/submit-network-id-step-02.submit-network-id-step02.js";
+import "../src/network-id/forced-scan-plan.plan-network-id-forced-scan.js";
 import "./network-id-wrongful-rejection-lifecycle.commit-forced-block.js";
 import "./network-id-wrongful-rejection-lifecycle.make-stages.js";
 
 import { forcedVerdictSubject, type NetworkIdFault } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import {
-  type NetworkIdFaultClaim,
-  planNetworkIdOutputsOpening,
-  type PreparedNetworkIdAcceptedForced,
-} from "../src/network-id/index.js";
+import type { PreparedNetworkIdAcceptedForced } from "../src/network-id/accepted-forced.js";
+import type { NetworkIdFaultClaim } from "../src/network-id/evidence.js";
+import { planNetworkIdOutputsOpening } from "../src/network-id/prepare.js";
 import { runAcceptedForcedAdapter } from "./network-id-accepted-forced-lifecycle.workflow.js";
 import {
   commitForcedBlock,

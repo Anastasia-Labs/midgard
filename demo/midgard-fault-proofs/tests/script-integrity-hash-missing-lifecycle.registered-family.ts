@@ -1,7 +1,7 @@
-import { EMPTY_NULL_ROOT } from "@al-ft/midgard-core";
 import {
   computeHash32,
   EMPTY_CBOR_LIST,
+  EMPTY_NULL_ROOT,
   encodeMidgardVersionedScript,
   materializeMidgardNativeTxFromCanonical,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
@@ -19,13 +19,11 @@ import {
   decodeFieldGrammarCheckpoint,
   encodeFieldGrammarCheckpoint,
   initialFieldGrammarCheckpoint,
-} from "../src/staged-field-walk/index.js";
+} from "../src/staged-field-walk/grammar-checkpoint.js";
+import { network } from "./support/emulator/blueprints.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { expectRegisteredChainParity } from "./support/emulator/registered-chain.js";
 import { createLifecycleCoverageRecorder } from "./support/lifecycle-coverage.js";
-import {
-  makeFaultProofEmulatorHarness,
-  network,
-} from "./support/submit-init-emulator-shared.js";
 
 export const field8Checkpoint = (
   checkpoint: ReturnType<typeof initialFieldGrammarCheckpoint>,

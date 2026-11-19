@@ -23,7 +23,7 @@ import {
   type OperatorSetConfig,
   operatorSetConfig,
   type OperatorSetContract,
-} from "../../src/l1-operator-set/index.js";
+} from "../../src/l1-operator-set/config.js";
 import { loadRealMidgardContractsForTest } from "./real-midgard-contracts.js";
 
 export type OperatorList = "registered" | "active" | "retired";

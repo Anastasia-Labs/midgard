@@ -1,13 +1,13 @@
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { createFraudProofAuthenticatedPublicationObserver } from "../src/workflow/raw-l1-publication-observation.js";
+import { admitFraudProofRawL1Snapshot } from "../src/workflow/raw-l1-snapshot.admit-fraud-proof-raw-l1-snapshot.js";
+import { admitFraudProofRawL1Transaction } from "../src/workflow/raw-l1-snapshot.admit-fraud-proof-raw-l1-transaction.js";
 import {
-  admitFraudProofRawL1Snapshot,
-  admitFraudProofRawL1Transaction,
   FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
   type FraudProofRawL1SnapshotRequest,
-} from "../src/workflow/index.js";
-import { createFraudProofAuthenticatedPublicationObserver } from "../src/workflow/raw-l1-publication-observation.js";
+} from "../src/workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
 import {
   admit,
   chainPoint,

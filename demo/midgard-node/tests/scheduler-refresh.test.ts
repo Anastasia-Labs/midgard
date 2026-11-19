@@ -9,7 +9,7 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { createSlotAwareDueWorkRegistry } from "../src/fibers/slot-aware-due-work.js";
-import { NoInlineSubmitDefer } from "../src/transactions/utils.js";
+import { NoInlineSubmitDefer } from "../src/transactions/utils.await-required-output-visibility.js";
 import { resolveLatestFeasibleCommitEndTime } from "../src/workers/utils/commit-end-time.js";
 import {
   captureSchedulerSlotSnapshot,

@@ -31,13 +31,13 @@ import {
   proofMaterialsScript,
 } from "../src/funding/proof-materials-address.js";
 import { resolveProverSigner } from "../src/runtime.js";
-import { assertManifestBoundWorkflowSigner } from "../src/workflow/deployment-manifest-binding.js";
+import { assertManifestBoundWorkflowSigner } from "../src/workflow/deployment-manifest-binding.assert-deployment-info-matches-manifest.js";
 import {
   beginWorkflowFundingReservationAction,
   bindWorkflowFundingReservationJournal,
-  createWorkflowFundingReservationPermit,
-  restrictWorkflowFundingSigner,
-} from "../src/workflow/funding-reservation-permit.js";
+} from "../src/workflow/funding-reservation-permit.begin-workflow-funding-reservation-action.js";
+import { createWorkflowFundingReservationPermit } from "../src/workflow/funding-reservation-permit.create-workflow-funding-reservation-permit.js";
+import { restrictWorkflowFundingSigner } from "../src/workflow/funding-reservation-permit.restrict-workflow-funding-signer.js";
 import { readWorkflowRuntimeFundingPolicy } from "../src/workflow/runtime-funding-policy.js";
 import { bindWorkflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
 import { runtimeFundingPolicyFixture } from "./helpers/runtime-funding-policy-fixture.js";

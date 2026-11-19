@@ -7,15 +7,13 @@ import blake2b from "blake2b";
 import { Effect } from "effect";
 import { Level } from "level";
 
-import {
-  buildNativeRootProbe,
-  MidgardMpf,
-  type MpfBatchOp,
-  type MpfReplayCorpusBlock,
-  type NativeMpfBuildContext,
-  setMpfScratchBuild,
-} from "../mpf/index.js";
-import { ProductionNativeMpfOwnerService } from "../services/mpf-native-owner/index.js";
+import { setMpfScratchBuild } from "../mpf/engine-config.js";
+import type { MpfReplayCorpusBlock } from "../mpf/replay-corpus.js";
+import { MidgardMpf } from "../mpf/store.midgard-mpf.js";
+import type { NativeMpfBuildContext } from "../mpf/transition-trace.apply-trace-ledger-ops-to-mpf.js";
+import { buildNativeRootProbe } from "../mpf/transition-trace.build-native-root-probe.js";
+import type { MpfBatchOp } from "../mpf/types.js";
+import { ProductionNativeMpfOwnerService } from "../services/mpf-native-owner/service.production-native-mpf-owner-service.js";
 import {
   decodeEntry,
   decodeSourceEvents,

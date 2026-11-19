@@ -1,8 +1,8 @@
 import { Header, StateQueueNode } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import { unsafeAdmitWatcherStateQueueObservationForReplayTest } from "../../src/indexers/authenticated-state-queue-observation.js";
-import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.js";
+import { unsafeAdmitWatcherStateQueueObservationForReplayTest } from "../../src/indexers/authenticated-state-queue-observation.parse-persisted-observation.js";
+import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.canonical-json.js";
 
 /** Canonical test observation admitted through the real persisted-data parser. */
 export const progressObservation = (input: {

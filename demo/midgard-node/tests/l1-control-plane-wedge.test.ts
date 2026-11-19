@@ -5,17 +5,17 @@ import { describe, expect, it } from "vitest";
 
 import { runCommitWorkerInThread } from "../src/fibers/block-commitment.run-commit-worker-in-thread.js";
 import type { SpawnWorker } from "../src/fibers/worker-lifecycle.js";
-import {
-  Globals,
-  L1ControlPlaneTimeoutError,
-  withL1ControlPlane,
-} from "../src/services/globals.js";
+import { Globals } from "../src/services/globals.globals.js";
 import {
   L1_CONTROL_PLANE_WEDGED_WAIT_FACTOR,
   l1ControlPlaneWaiterWedgeLimitMs,
+  withL1ControlPlane,
 } from "../src/services/globals.l1-control-plane.js";
 import { currentLivenessReasons } from "../src/services/globals.liveness-reasons.js";
-import { DEFAULT_L1_CONTROL_PLANE_MAX_HOLD_MS } from "../src/services/globals.next-l1-provider-health-evidence.js";
+import {
+  DEFAULT_L1_CONTROL_PLANE_MAX_HOLD_MS,
+  L1ControlPlaneTimeoutError,
+} from "../src/services/globals.next-l1-provider-health-evidence.js";
 
 /** Settles with "hung" when `promise` has not settled within `ms`. */
 const within = <A>(promise: Promise<A>, ms: number) =>

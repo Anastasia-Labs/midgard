@@ -1,7 +1,7 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK } from "../src/execution-native-script-invalid/index.js";
+import { EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK } from "../src/execution-native-script-invalid/workflow.js";
 import {
   makeDirectWalkHarness,
   publishDirectWalkRoles,

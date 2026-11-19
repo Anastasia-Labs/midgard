@@ -13,14 +13,21 @@ import "../src/double-withdraw/contracts.js";
 import "../src/double-withdraw/index.js";
 import "../src/double-withdraw/submit-double-withdraw-step-01.js";
 import "../src/linear-fault-cancel.js";
-import "../src/prepare-double-withdraw.js";
-import "../src/remove-fraudulent-block.js";
+import "../src/prepare-double-withdraw.prepare-double-withdraw-from-committed-leaves.js";
+import "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import "../src/runtime.js";
 import "../src/step-support.js";
 import "../src/transition-trace/phas.js";
 import "../src/tx-layout.js";
-import "./support/native-script-decoding-emulator.js";
-import "./support/submit-init-emulator-shared.js";
+import "./support/emulator/expect-onchain-refusal.js";
+import "./support/emulator/removal-deployment.build-removal-deployment-info.js";
+import "./support/emulator/emulator-context.js";
+import "./support/emulator/blueprints.js";
+import "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import "./support/emulator/harness.js";
+import "./support/emulator/header-fixtures.js";
+import "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import "./support/emulator/setup-tx.submit-setup-tx.js";
 import "./submit-init-emulator-double-withdraw.setup-block.js";
 import "./submit-init-emulator-double-withdraw.submit-raw-terminal.js";
 
@@ -36,8 +43,8 @@ import {
 } from "../src/double-withdraw/index.js";
 import { parseSubmitDoubleWithdrawInclusion } from "../src/double-withdraw/submit-double-withdraw-step-01.js";
 import { buildLinearFaultCancel } from "../src/linear-fault-cancel.js";
-import { prepareDoubleWithdrawFromCommittedLeaves } from "../src/prepare-double-withdraw.js";
-import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
+import { prepareDoubleWithdrawFromCommittedLeaves } from "../src/prepare-double-withdraw.prepare-double-withdraw-from-committed-leaves.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import { fetchUtxoByOutRef, parseOutRef } from "../src/runtime.js";
 import {
   FIRST_ID,
@@ -53,14 +60,12 @@ import {
   submitRawCancel,
   submitRawTerminal,
 } from "./submit-init-emulator-double-withdraw.submit-raw-terminal.js";
-import { expectOnchainRefusal } from "./support/native-script-decoding-emulator.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
-import {
-  buildRemovalDeploymentInfo,
-  expectSingleUtxoWithUnit,
-  network,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 describe("double-withdraw emulator lifecycle", () => {

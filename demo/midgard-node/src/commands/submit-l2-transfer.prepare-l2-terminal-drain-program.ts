@@ -1,10 +1,8 @@
 import { getAddressDetails, walletFromSeed } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import {
-  ContractDeploymentIdentity,
-  NodeConfig as NodeConfigService,
-} from "../services/index.js";
+import { NodeConfig as NodeConfigService } from "../services/config.make-config.js";
+import { ContractDeploymentIdentity } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import { outRefLabel } from "../tx-context.js";
 import {
   networkIdFromName,
@@ -23,7 +21,7 @@ import {
   prepareL2TransferProgram,
   submitNativeTransferTx,
 } from "./submit-l2-transfer.submit-native-transfer-tx.js";
-import { buildTerminalDrainTx } from "./transfer-build-core.js";
+import { buildTerminalDrainTx } from "./transfer-build-core.build-terminal-drain-tx.js";
 
 /** Builds and signs an all-input, exact-zero source sweep without submitting. */
 export const prepareL2TerminalDrainProgram = ({

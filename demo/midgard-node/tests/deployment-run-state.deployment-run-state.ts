@@ -4,31 +4,35 @@ import { join } from "node:path";
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { describe, expect, it } from "vitest";
 
+import { loadPendingHubOracleNonceAttempt } from "../src/commands/deployment-run-state.assert-deployment-identity-matches.js";
 import {
   type DeploymentRunCliOptions,
-  loadPendingHubOracleNonceAttempt,
   recordHubOracleNonce,
   recordHubOracleNonceSigned,
   recordHubOracleNonceSubmitted,
   recordHubOracleNonceTxHashConfirmed,
-} from "../src/commands/deployment-run-state.js";
+} from "../src/commands/deployment-run-state.record-hub-oracle-nonce.js";
+import {
+  DEPLOYMENT_RUN_STATE_SCHEMA_VERSION,
+  RunStateError,
+} from "../src/e2e/run-state.deployment-run-identity.js";
+import { mutateDeploymentRunState } from "../src/e2e/run-state.mutate-deployment-run-state.js";
+import {
+  parseDeploymentRunEvent,
+  parseDeploymentRunIdentity,
+  parseDeploymentStepState,
+} from "../src/e2e/run-state.parse-deployment-run-identity.js";
 import {
   bindDeploymentRunStateToMarker,
   createDeploymentRunState,
   defaultDeploymentRunStatePath,
-  DEPLOYMENT_RUN_STATE_SCHEMA_VERSION,
   loadDeploymentRunState,
-  mutateDeploymentRunState,
-  parseDeploymentRunEvent,
-  parseDeploymentRunIdentity,
   parseDeploymentRunState,
-  parseDeploymentStepState,
-  RunStateError,
   sha256File,
   transitionDeploymentStep,
   withDeploymentRunStateLock,
   writeDeploymentRunStateAtomic,
-} from "../src/e2e/run-state.js";
+} from "../src/e2e/run-state.parse-deployment-run-state.js";
 import { makeTempDir } from "./deployment-run-state.lucid.js";
 
 describe("deployment run state", () => {

@@ -13,7 +13,7 @@ import {
   keyValuePhasProof,
   keyValuePhasRootWithCount,
 } from "../src/transition-trace/phas.js";
-import { buildIndexedTraceProof } from "../src/transition-trace/witnesses.js";
+import { buildIndexedTraceProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
 import type { InputChronology } from "./helpers/input-existence-chronology-fixture.js";
 import {
   expectOnchainRefusal,

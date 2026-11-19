@@ -53,7 +53,7 @@ import { SIM_ORIGIN } from "@al-ft/midgard-l1-follower/testing";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Runtime } from "effect";
 
-import { stateQueueProjection } from "../../src/l1-state-queue/index.js";
+import { stateQueueProjection } from "../../src/l1-state-queue/projection.js";
 import { retrieveMergeLinks } from "../../src/landed-blocks/confirmed-merges.js";
 import {
   CONFIRMED_LEDGER_BEHIND,

@@ -13,7 +13,7 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
+import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.build-source-membership-proof.js";
 import { verdictDetectionSubject } from "../workflow/detection-subject.js";
 
 export const INVALID_SIGNATURE_WRONGFUL_REJECTION_VIOLATION_ID =

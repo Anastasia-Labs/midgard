@@ -20,7 +20,7 @@ import {
 import {
   NativeScriptDecodingPlanRoutes,
   type NativeScriptDecodingScanPlan,
-} from "../../src/native-script-decoding/scan-plan.js";
+} from "../../src/native-script-decoding/scan-plan.native-script-decoding-plan-costs.js";
 import {
   type NativeScriptDecodingCatalogueCategory,
   nativeScriptDecodingSubmitError,

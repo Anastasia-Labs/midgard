@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 
 import { processLandedQueue } from "../src/landed-blocks/process.js";
 import { Frontier, markApplied } from "../src/landed-blocks/store.js";
-import { Globals } from "../src/services/index.js";
+import { Globals } from "../src/services/globals.globals.js";
 import {
   AFTER_A,
   AFTER_F,

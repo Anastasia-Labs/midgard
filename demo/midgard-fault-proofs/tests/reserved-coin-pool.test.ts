@@ -26,10 +26,10 @@ import { resolveProverSigner } from "../src/runtime.js";
 import {
   beginWorkflowFundingReservationAction,
   bindWorkflowFundingReservationJournal,
-  createWorkflowFundingReservationPermit,
-  restrictWorkflowFundingSigner,
-  type WorkflowFundingReservationSnapshot,
-} from "../src/workflow/funding-reservation-permit.js";
+} from "../src/workflow/funding-reservation-permit.begin-workflow-funding-reservation-action.js";
+import { createWorkflowFundingReservationPermit } from "../src/workflow/funding-reservation-permit.create-workflow-funding-reservation-permit.js";
+import { restrictWorkflowFundingSigner } from "../src/workflow/funding-reservation-permit.restrict-workflow-funding-signer.js";
+import type { WorkflowFundingReservationSnapshot } from "../src/workflow/funding-reservation-permit.workflow-funding-reservation-port.js";
 import { readWorkflowRuntimeFundingPolicy } from "../src/workflow/runtime-funding-policy.js";
 import {
   bindWorkflowPreflightTransaction,

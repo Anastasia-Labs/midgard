@@ -4,7 +4,7 @@ import { vi } from "vitest";
 import {
   FIELD_CARRIAGE_PREREQUISITE,
   type FieldCarriagePrerequisitePort,
-} from "../src/workflow/field-carriage-prerequisite.js";
+} from "../src/workflow/field-carriage-prerequisite.field-carriage-prerequisite-port.js";
 import type {
   FraudProofWorkflowIdentity,
   FraudProofWorkflowJournalEntry,
@@ -15,7 +15,7 @@ import {
   FRAUD_PROOF_WORKFLOW_SAFETY,
   type FraudProofFamilyWorkflowAdapter,
   type FraudProofWorkflowAction,
-} from "../src/workflow/orchestrator.js";
+} from "../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import type { LocallyEvaluatedTransaction } from "../src/workflow/transaction-boundary.js";
 
 export const txHash = "11".repeat(32);

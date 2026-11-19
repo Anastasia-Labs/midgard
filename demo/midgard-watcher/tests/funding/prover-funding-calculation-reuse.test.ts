@@ -5,18 +5,18 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 import { afterEach, expect, it, vi } from "vitest";
 
-import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.js";
+import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
 import * as parameterAuthorities from "../../src/funding/prover-funding.js";
 import { createWatcherProtocolParameterRuntimeAuthority } from "../../src/funding/prover-funding.js";
 import * as authorityCreation from "../../src/funding/prover-funding-authority.create-watcher-prover-funding-authority.js";
-import { createWatcherProverFundingAuthorityFactory } from "../../src/funding/prover-funding-authority.js";
+import { createWatcherProverFundingAuthorityFactory } from "../../src/funding/prover-funding-authority.create-watcher-prover-funding-authority-factory.js";
 import * as calculations from "../../src/funding/prover-funding-calculation.js";
+import { setupFundingRecoveryFixture } from "../support/fault-proof-funding-fixture.setup-funding-recovery-fixture.js";
 import {
   cleanupFundingRecoveryFixtures,
   deploymentIdentity,
-  setupFundingRecoveryFixture,
   walletAddress,
-} from "../support/fault-proof-funding-fixture.js";
+} from "../support/fault-proof-funding-fixture.sources-for.js";
 import { ledgerParameterQuery } from "../support/ledger-protocol-parameters.js";
 import {
   emptyWorkflowJournal,

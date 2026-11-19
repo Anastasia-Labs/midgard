@@ -2,6 +2,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { MpfError } from "../../mpf/errors.js";
 import {
   canonicalizeKeyValuePhasEntries,
   type KeyValuePhasEntry,
@@ -9,10 +10,11 @@ import {
   keyValuePhasProof,
   type KeyValuePhasRoot,
   keyValuePhasRootWithCount,
-  MpfError,
+} from "../utils/mpf/phas.key-value-phas-non-membership-proof.js";
+import {
   verifyKeyValuePhasMembershipProof,
   verifyKeyValuePhasNonMembershipProof,
-} from "../../mpf/index.js";
+} from "../utils/mpf/phas.traverse-phas-proof.js";
 import {
   buildAuthenticatedMpfRootInWorker,
   shouldBuildMpfRootInWorker,

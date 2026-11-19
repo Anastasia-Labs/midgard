@@ -12,25 +12,23 @@ import {
 } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { buildListenRouter } from "../src/commands/listen-router.js";
+import { buildListenRouter } from "../src/commands/http/router.js";
 import {
   READINESS_FAILURE_MAX_CHARS,
   readinessFailureSummary,
   refreshExactL1ProviderEvidence,
   runL1ProviderReadinessRefresher,
 } from "../src/fibers/l1-provider-readiness-refresher.js";
-import { NodeConfig } from "../src/services/config.js";
-import {
-  Globals,
-  type L1ProviderHealthEvidence,
-  withL1ControlPlane,
-} from "../src/services/globals.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
+import { Globals } from "../src/services/globals.globals.js";
+import { withL1ControlPlane } from "../src/services/globals.l1-control-plane.js";
+import type { L1ProviderHealthEvidence } from "../src/services/globals.next-l1-provider-health-evidence.js";
 import { Lucid } from "../src/services/lucid.js";
 import {
   ContractDeploymentIdentity,
   MidgardContracts,
-} from "../src/services/midgard-contracts.js";
-import { ValidationPool } from "../src/services/validation-pool.js";
+} from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
+import { ValidationPool } from "../src/services/validation-pool.bundled-worker-exec-argv.js";
 import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 import { provideDatabaseLayers } from "./utils.js";
 

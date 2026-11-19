@@ -21,14 +21,14 @@ import {
   type WatcherStateQueueRemovalKind,
 } from "../indexers/authenticated-state-queue-observation.js";
 import type { WatcherOperationsSink } from "../runtime/operations-observability.js";
-import { watcherSameCanonicalJson } from "../storage/durable-store.js";
+import { watcherSameCanonicalJson } from "../storage/durable-store.canonical-json.js";
 import type { WatcherClassificationWarning } from "./fault-decision-bridge.classification-miss.js";
 import { type WatcherPersistedFaultDecisionRecord } from "./fault-decision-journal.js";
+import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "./fault-proof-application.js";
 import {
-  WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
   type WatcherFaultProofApplication,
   type WatcherInstalledWorkflowCategory,
-} from "./fault-proof-application.js";
+} from "./fault-proof-application.production-dependencies.js";
 import type {
   WatcherDecisionSupersedeRequest,
   WatcherDecisionSupersession,

@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  makeFaultProofEmulatorHarness,
-  publishPlainReferenceScriptUtxo,
-} from "./support/submit-init-emulator-shared.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
+import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 describe("invalidSignature signed publication fit", () => {
   it("publishes the applied direction-complete chain below the reserve", async () => {
     const harness = await makeFaultProofEmulatorHarness({

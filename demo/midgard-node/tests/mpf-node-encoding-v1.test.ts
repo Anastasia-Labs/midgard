@@ -6,13 +6,13 @@ import { it } from "@effect/vitest";
 import { Effect } from "effect";
 import { describe, expect } from "vitest";
 
-import {
-  verifyKeyValuePhasMembershipProof,
-  verifyKeyValuePhasNonMembershipProof,
-} from "../src/mpf/index.js";
 import { encodeStoredNode } from "../src/services/mpf-native-owner/service.encode-stored-node.js";
 import { parsePromotionRecords } from "../src/services/mpf-native-owner/service.parse-promotion-records.js";
 import { computeLeafHash } from "../src/workers/utils/mpf/phas.key-value-phas-non-membership-proof.js";
+import {
+  verifyKeyValuePhasMembershipProof,
+  verifyKeyValuePhasNonMembershipProof,
+} from "../src/workers/utils/mpf/phas.traverse-phas-proof.js";
 import { prepareEventFlatDigest } from "../src/workers/utils/mpf-event-flat-digest.js";
 
 /**

@@ -12,8 +12,8 @@ import {
 import {
   deriveMidgardForcedTxProofSource,
   encodeMidgardForcedTxCanonical,
+  materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
-import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import {
   encodeHeaderCbor,
   FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX,
@@ -35,12 +35,10 @@ import {
 } from "@lucid-evolution/lucid";
 import { vi } from "vitest";
 
-import { fieldPreimageCertificateAddress } from "../../src/field-opening.js";
-import {
-  createNetworkIdWorkflowAdapter,
-  networkIdForcedArtifactFromPrepared,
-  type NetworkIdWorkflowAdapterConfig,
-} from "../../src/network-id/workflow-adapter.js";
+import { fieldPreimageCertificateAddress } from "../../src/field-opening.certify-fault-proof-field-carriage.js";
+import { networkIdForcedArtifactFromPrepared } from "../../src/network-id/workflow-adapter.admit-network-id-forced-artifact.js";
+import type { NetworkIdWorkflowAdapterConfig } from "../../src/network-id/workflow-adapter.create-network-id-raw-l1-observation-port.js";
+import { createNetworkIdWorkflowAdapter } from "../../src/network-id/workflow-adapter.create-network-id-workflow-adapter.js";
 import {
   detectNetworkIdWrongfulRejections,
   type PreparedNetworkIdWrongfulRejection,
@@ -51,7 +49,7 @@ import {
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   type FraudProofWorkflowIdentity,
   type JournalJsonObject,
-} from "../../src/workflow/journal.js";
+} from "../../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import type { FraudProofRawL1FamilyStage } from "../../src/workflow/raw-l1-family-derivation.js";
 import type { SignedTransactionRecoveryObservation } from "../../src/workflow/signed-transaction-reconciliation.js";
 import {

@@ -4,7 +4,7 @@ import {
   protectMidgardAddress,
 } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import { type QueuedTx } from "@al-ft/midgard-validation";
+import type { QueuedTx } from "@al-ft/midgard-validation/types";
 import { assetsToValue, CML, walletFromSeed } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -13,11 +13,9 @@ import {
   type NodeUtxo,
   resolveWalletSeedPhrase,
 } from "../src/commands/command-utils.js";
-import {
-  makeStaticMidgardProvider,
-  parseSubmitL2TransferConfig,
-} from "../src/commands/submit-l2-transfer.js";
-import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.js";
+import { parseSubmitL2TransferConfig } from "../src/commands/submit-l2-transfer.compare-assets-by-coverage.js";
+import { makeStaticMidgardProvider } from "../src/commands/transfer-build-core.make-static-midgard-provider.js";
+import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   makeMidgardTxOutput,
   makeOutRefCbor,

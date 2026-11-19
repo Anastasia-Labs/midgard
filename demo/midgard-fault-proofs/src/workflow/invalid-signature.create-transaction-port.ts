@@ -1,18 +1,16 @@
-import {
-  resolveFaultProofFieldCarriagePublications,
-  resolveFaultProofFieldPreimageCertificate,
-} from "../field-opening.js";
+import { resolveFaultProofFieldPreimageCertificate } from "../field-opening.certify-fault-proof-field-carriage.js";
+import { resolveFaultProofFieldCarriagePublications } from "../field-opening.publish-fault-proof-field-carriage.js";
 import { prepareInvalidSignatureForcedArtifact } from "../invalid-signature/artifact.js";
 import { buildInvalidSignatureStep01Forced } from "../invalid-signature/submit.js";
 import {
   detectInvalidSignatureWrongfulRejections,
   INVALID_SIGNATURE_WRONGFUL_REJECTION_VIOLATION_ID,
 } from "../invalid-signature/wrongful-rejection.js";
-import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.build-remove-fraudulent-block.js";
 import { resolveInvalidSignatureDeploymentContracts } from "../runtime.js";
-import { buildInit } from "../submit-init.js";
+import { buildInit } from "../submit-init.submit-init.js";
 import { buildInvalidSignatureStep01 } from "../submit-invalid-signature-step-01.js";
-import { buildInvalidSignatureStep02 } from "../submit-invalid-signature-step-02.js";
+import { buildInvalidSignatureStep02 } from "../submit-invalid-signature-step-02.submit-invalid-signature-step02.js";
 import {
   type ManifestBoundLinearFamilyWorkflow,
   type ManifestBoundLinearFamilyWorkflowConfig,
@@ -31,7 +29,7 @@ import {
   type LinearFamilyTransactionPort,
 } from "./linear-family-adapter.js";
 import type { OwnOutputJournal } from "./own-outputs.js";
-import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.js";
+import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.route-action-identity.js";
 import { admitRemovalTransaction } from "./removal-admission.js";
 import { journaledStepTransaction } from "./step-transaction.js";
 import {

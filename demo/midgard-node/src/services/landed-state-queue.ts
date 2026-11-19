@@ -18,6 +18,7 @@ import { SqlClient } from "@effect/sql";
 import { Duration, Effect, Ref, Schedule } from "effect";
 
 import { followerSqlTx } from "../database/follower-schema.js";
+import { stateQueueProjectionConfig } from "../l1-state-queue/config.js";
 import {
   formatLandedStateQueue,
   landedElements,
@@ -26,8 +27,7 @@ import {
   landedStateQueueIn,
   type LandedStateQueueRead,
   landedTail,
-  stateQueueProjectionConfig,
-} from "../l1-state-queue/index.js";
+} from "../l1-state-queue/landed.js";
 import { isConnectionClassError } from "../provider-retry.js";
 import {
   type SerializedStateQueueUTxO,

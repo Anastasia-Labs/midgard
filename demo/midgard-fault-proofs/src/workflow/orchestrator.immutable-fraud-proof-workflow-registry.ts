@@ -5,12 +5,12 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import type { FraudProofWorkflowJournalEntry } from "./journal.fraud-proof-workflow-journal-event.js";
 import {
-  type FraudProofWorkflowJournalEntry,
   journalJsonDigest,
   type JournalJsonObject,
   normalizeJournalJson,
-} from "./journal.js";
+} from "./journal.fraud-proof-workflow-terminal.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,

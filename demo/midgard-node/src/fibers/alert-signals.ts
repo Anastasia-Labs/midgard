@@ -7,10 +7,10 @@ import {
   EVENT_IDENTITY_CONFLICT,
   EVENT_UNDECODABLE,
 } from "../l1-events/driver.js";
-import { Globals } from "../services/globals.js";
+import { Globals } from "../services/globals.globals.js";
 import type { IntentJournal } from "../services/intent-journal.js";
 import { Lucid } from "../services/lucid.js";
-import { ContractDeploymentIdentity } from "../services/midgard-contracts.js";
+import { ContractDeploymentIdentity } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import { SETTLEMENT_JOB_FAILURE_CAP } from "../services/settlement-retry.js";
 import { commitPlanningAgeMs } from "../workers/commit-planning-notice.js";
 import {

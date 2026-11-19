@@ -13,24 +13,22 @@ import {
   type MidgardNativeTxWitnessSetCanonical,
 } from "@al-ft/midgard-core/codec";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
+import { buildPhaseAValidatedTx } from "@al-ft/midgard-validation";
+import { decodeMidgardSubmittedTxFromCanonicalCbor } from "@al-ft/midgard-validation/ledger-tx/codec";
+import { runPhaseAValidation } from "@al-ft/midgard-validation/phase-a";
+import { runPhaseBValidationWithPatch } from "@al-ft/midgard-validation/phase-b";
 import {
-  buildPhaseAValidatedTx,
-  decodeMidgardSubmittedTxFromCanonicalCbor,
   PhaseAValidatedTx,
   QueuedTx,
   RejectCodes,
-  runPhaseAValidation,
-  runPhaseBValidationWithPatch,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/types";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import {
-  hasUnseenTxQueueWake,
-  sampleValidationQueueWaits,
-} from "../src/fibers/tx-queue-processor.js";
-import { resolveValidationWorkerPoolSize } from "../src/services/config.js";
+import { sampleValidationQueueWaits } from "../src/fibers/tx-queue-processor.run-phase-afor-batch.js";
+import { hasUnseenTxQueueWake } from "../src/fibers/tx-queue-processor.tx-queue-processor-drain-once.js";
+import { resolveValidationWorkerPoolSize } from "../src/services/config.validation.js";
 import { packPhaseAJob } from "../src/workers/utils/validation-pool.js";
 import {
   makeMidgardTxOutput,

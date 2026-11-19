@@ -14,12 +14,14 @@ import {
 } from "@al-ft/midgard-core";
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
-  cardanoScriptPurposeData,
-  type MidgardScriptPurpose,
-  midgardScriptPurposeData,
   redeemerTagForPurposeKind,
   summarizeMidgardCekLucidData,
 } from "@al-ft/midgard-validation";
+import {
+  cardanoScriptPurposeData,
+  type MidgardScriptPurpose,
+  midgardScriptPurposeData,
+} from "@al-ft/midgard-validation/midgard-redeemers";
 import { Constr, Data } from "@lucid-evolution/lucid";
 
 /** A redeemer select's states past the authenticate, each field as Data

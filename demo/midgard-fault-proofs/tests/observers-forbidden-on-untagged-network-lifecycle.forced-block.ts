@@ -33,10 +33,8 @@ import {
   observerShape,
   transactionIdOf,
 } from "./support/observers-forbidden-on-untagged-network-raw.js";
-import {
-  buildInvalidForcedTransitionTraceFixture,
-  setupFraudulentBlock,
-} from "./support/submit-init-emulator-fixtures.js";
+import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init/forced-transitions.js";
+import { setupFraudulentBlock } from "./support/submit-init/removal.js";
 
 // ---------------------------------------------------------------------------
 // Shapes: every polarity of observer count, network scalar, integrity hash

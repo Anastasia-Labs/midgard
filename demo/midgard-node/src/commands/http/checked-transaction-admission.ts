@@ -11,18 +11,18 @@ import { TxAdmissionsDB } from "../../database/index.js";
 import {
   settleAdmissionBacklogSlot,
   tryReserveAdmissionBacklogSlot,
-} from "../../fibers/index.js";
-import { admissionBacklogLimitsFor } from "../../services/config.admission-backlog.js";
+} from "../../fibers/admission-backlog-gauge.js";
+import { UNKNOWN_SPENDABLE_VIEW } from "../../services/admission-input-claims.js";
 import {
   type AdmissionAck,
   AdmissionWriter,
   type AdmissionWriteRefusal,
   type AdmissionWriteRequest,
-  Globals,
-  MempoolLedgerCache,
-  NodeConfig,
-  UNKNOWN_SPENDABLE_VIEW,
-} from "../../services/index.js";
+} from "../../services/admission-writer.validate-options.js";
+import { admissionBacklogLimitsFor } from "../../services/config.admission-backlog.js";
+import { Globals } from "../../services/globals.globals.js";
+import { NodeConfig } from "../../services/index.js";
+import { MempoolLedgerCache } from "../../services/mempool-ledger-cache.mempool-ledger-cache-service.js";
 
 /**
  * The part of a checked transaction admission needs. Both the checked value

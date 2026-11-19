@@ -5,10 +5,8 @@ import {
   MIDGARD_CARDANO_MAX_VALUE_CBOR_BYTES,
 } from "@al-ft/midgard-core";
 import type { MidgardVersionedScript } from "@al-ft/midgard-core/codec";
-import {
-  MidgardRedeemerTag,
-  outputCborMinAdaLovelace,
-} from "@al-ft/midgard-validation";
+import { outputCborMinAdaLovelace } from "@al-ft/midgard-validation";
+import { MidgardRedeemerTag } from "@al-ft/midgard-validation/midgard-redeemers";
 import {
   hashScriptWitness,
   makeMintPreimageCbor,

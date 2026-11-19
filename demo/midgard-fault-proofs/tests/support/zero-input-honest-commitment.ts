@@ -47,10 +47,8 @@ import {
 import { l2TransactionSourceCbor, makeNativeTx } from "./emulator/native-tx.js";
 import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.js";
 import { submitSetupTx } from "./emulator/setup-tx.js";
-import {
-  buildInvalidForcedTransitionTraceFixture,
-  setupFraudulentBlock,
-} from "./submit-init-emulator-fixtures.js";
+import { buildInvalidForcedTransitionTraceFixture } from "./submit-init/forced-transitions.js";
+import { setupFraudulentBlock } from "./submit-init/removal.js";
 import { buildAndSubmitUnjournaled } from "./submit-unjournaled.js";
 
 const network = "Custom" as const;

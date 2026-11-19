@@ -51,9 +51,9 @@ import {
 } from "../src/validation-trace-dispute/waiting.js";
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { workflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
+import { network } from "./support/emulator/blueprints.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { enrollSuccessor } from "./support/rotated-successor-operator.js";
-import { network } from "./support/submit-init-emulator-shared.js";
 import {
   type Defender,
   sceneOperator,

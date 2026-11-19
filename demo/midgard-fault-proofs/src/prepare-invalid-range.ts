@@ -9,15 +9,17 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import { parseHex, parseSignedInteger, stringifyJson } from "./json-file.js";
+import type {
+  NodeTransactionPayload,
+  PreparedTxInclusionJson,
+} from "./prepare-double-spend.encode-l2-transaction-source-value.js";
+import { requireTransactionsRootMatch } from "./prepare-double-spend.prepare-double-spend-from-transactions.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
-  type NodeTransactionPayload,
-  type PreparedTxInclusionJson,
   requireProof,
-  requireTransactionsRootMatch,
   transactionSourceTrieItem,
-} from "./prepare-double-spend.js";
+} from "./prepare-double-spend.resolve-double-spend-pair.js";
 
 export type InvalidRangeViolationReason = NonNullable<
   ReturnType<typeof invalidRangeViolationReason>

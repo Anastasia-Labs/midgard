@@ -1,20 +1,17 @@
 import {
-  deriveMidgardNativeTxProofSource,
-  encodeMidgardFieldPreimage,
-} from "@al-ft/midgard-core";
-import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
+  deriveMidgardNativeTxProofSource,
   deriveMidgardNativeTxWitnessSetCompact,
+  encodeMidgardFieldPreimage,
 } from "@al-ft/midgard-core";
 import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
+  MIDGARD_FIELD_INDEX,
   MintAuthorizationClaimEvidence,
   MintAuthorizationStep04Datum,
   type MintAuthorizationStep04State,
 } from "@al-ft/midgard-sdk";
-import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk";
-import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
-import { Data } from "@lucid-evolution/lucid";
+import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import {
   planFaultProofFieldOpening,

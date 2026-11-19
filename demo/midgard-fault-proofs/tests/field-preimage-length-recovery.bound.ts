@@ -10,20 +10,18 @@ import { fetchFraudProofEvidence } from "../src/evidence/fraud-proof-evidence.js
 import { type ManifestBoundFieldPreimageLengthWorkflow } from "../src/field-preimage-length-mismatch/authenticated-workflow.js";
 import { createFieldPreimageLengthRecoveryPorts } from "../src/field-preimage-length-mismatch/recovery.js";
 import { FIELD_PREIMAGE_LENGTH_CURSOR_SPEC } from "../src/field-preimage-length-mismatch/workflow-spec.js";
-import { createCursorFamilyWorkflowAdapter } from "../src/workflow/cursor-family-adapter.js";
+import { createCursorFamilyWorkflowAdapter } from "../src/workflow/cursor-family-adapter.create-cursor-family-workflow-adapter.js";
 import { cursorFamilyObservation } from "../src/workflow/cursor-family-state.js";
 import {
   FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
   type FraudProofFamilyL1ObservationPort,
 } from "../src/workflow/family-l1-observation.js";
-import {
-  createAuthenticatedFieldCarriagePrerequisitePort,
-  withFieldCarriagePrerequisite,
-} from "../src/workflow/field-carriage-prerequisite.js";
+import { createAuthenticatedFieldCarriagePrerequisitePort } from "../src/workflow/field-carriage-prerequisite.create-authenticated-field-carriage-prerequisite-port.js";
+import { withFieldCarriagePrerequisite } from "../src/workflow/field-carriage-prerequisite.with-field-carriage-prerequisite.js";
 import {
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   type FraudProofWorkflowIdentity,
-} from "../src/workflow/journal.js";
+} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import type { FraudProofRawL1FamilyStage } from "../src/workflow/raw-l1-family-derivation.js";
 import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../src/workflow/raw-l1-publication-observation.js";
 import {

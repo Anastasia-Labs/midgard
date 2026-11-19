@@ -24,7 +24,7 @@ import {
   ForcedTransactionsDB,
   MigrationRunner,
 } from "../src/database/index.js";
-import { resolveIncludedForcedTransactionEntriesForWindow } from "../src/mpf/event-window.js";
+import { resolveIncludedForcedTransactionEntriesForWindow } from "../src/mpf/event-window.resolve-included-forced-transaction-entries-for-window.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 const isolatedDb = <A, E, R>(effect: Effect.Effect<A, E, R>) =>

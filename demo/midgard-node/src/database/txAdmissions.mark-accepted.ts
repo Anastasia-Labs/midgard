@@ -6,7 +6,7 @@ import { emitPhase1AcceptCommitCheckpoint } from "../e2e/phase1-accept-crash-che
 import { NodeConfig } from "../services/config.js";
 import { Database } from "../services/database.js";
 import { withFollowerWrite } from "../services/follower-write-gate.js";
-import { WriteBehind } from "../services/write-behind.js";
+import { WriteBehind } from "../services/write-behind.summarize-write-behind-telemetry.js";
 import { ProcessedTx } from "../utils.js";
 import * as DepositsDB from "./deposits.js";
 import * as MempoolDB from "./mempool.js";

@@ -12,8 +12,8 @@ import { Data, Effect } from "effect";
 import type { DatabaseError } from "../../database/utils/common.js";
 import { Columns as TxColumns } from "../../database/utils/tx.js";
 import { COMMIT_REJECT_CODE_DA_OVERSIZE } from "../../mpf/commit-rejection.js";
-import { NodeConfig } from "../../services/config.js";
-import { EMPTY_BLOCK_DA_PAYLOAD_UPPER_BOUND_BYTES } from "../utils/commit-block-planner.js";
+import { NodeConfig } from "../../services/config.make-config.js";
+import { EMPTY_BLOCK_DA_PAYLOAD_UPPER_BOUND_BYTES } from "../utils/commit-block-planner.select-commit-tx-candidates.js";
 import { DA_FRAME_REFUSAL_MESSAGE } from "./submission.assert-pre-submit-da-payload-size.js";
 
 export type CommitEviction = {

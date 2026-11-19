@@ -38,7 +38,7 @@ import type {
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { recordCrossBlockRawEmulator } from "./support/cross-block-raw-emulator.js";
-import { expectStateQueueHeaderOrder } from "./support/submit-init-emulator-fixtures.js";
+import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
 import { completedTerminal } from "./support/validation-trace-dispute-completed-terminal.js";
 import {
   type Scene,

@@ -9,7 +9,7 @@ import { CML } from "@lucid-evolution/lucid";
 import { Cause, Runtime } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { daBondSubmitAndConfirm } from "../src/commands/da-bond.js";
+import { daBondSubmitAndConfirm } from "../src/commands/da-bond.da-bond-context.js";
 
 /** A transaction with no inputs or outputs: enough to carry an id. */
 const TX_CBOR = "84a3008001800200a0f5f6";

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { makeCommittedFieldShapeEmulatorHarness } from "./support/committed-field-shape-emulator.js";
-import { publishPlainReferenceScriptUtxo } from "./support/submit-init-emulator-shared.js";
+import { makeCommittedFieldShapeEmulatorHarness } from "./support/committed-field-shape-emulator.committed-field-shape-scenario-material.js";
+import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 
 describe("committedFieldShape signed publication fit", () => {
   it("publishes every step's reference script within the signed-transaction reserve", async () => {

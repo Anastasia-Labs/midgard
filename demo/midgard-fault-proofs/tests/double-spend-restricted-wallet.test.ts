@@ -5,18 +5,16 @@
 import { outRefLabel } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
-import { buildStep04 } from "../src/double-spend/submit-step-04.js";
-import {
-  parseSpendInputCbors,
-  parseSubmitStep01TxInclusion,
-} from "./support/legacy-submit-emulator.js";
+import { parseSpendInputCbors } from "../src/double-spend/submit-step-03.js";
+import { buildStep04 } from "../src/double-spend/submit-step-04.submit-step04.js";
+import { parseSubmitStep01TxInclusion } from "../src/step-support.js";
+import { network } from "./support/emulator/blueprints.js";
 import {
   fundReservedCoin,
   restrictedProverFunding,
 } from "./support/restricted-prover-funding.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
 import { stageDoubleSpendStep04 } from "./support/submit-init/double-spend-staging.js";
-import { network } from "./support/submit-init-emulator-shared.js";
 import { submitTurnsUnjournaled } from "./support/submit-unjournaled.js";
 
 describe("double-spend steps under the watcher's restricted wallet", () => {

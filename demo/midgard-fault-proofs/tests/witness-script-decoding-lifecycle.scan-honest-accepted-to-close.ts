@@ -6,18 +6,18 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import { expect } from "vitest";
 
+import { planWitnessScriptDecodingStep03Transition } from "../src/witness-script-decoding/submit-step-03.js";
 import {
-  deriveWitnessScriptDecodingEvidenceFromCanonicalBlock,
-  detectWitnessScriptDecodingCompleteReplay,
-  planWitnessScriptDecodingStep03Transition,
   prepareWitnessScriptDecodingEvidence,
   witnessScriptDecodingCheckpoint,
   type WitnessScriptDecodingEvidence,
-} from "../src/witness-script-decoding/index.js";
+} from "../src/witness-script-decoding/witness-script-decoding.js";
+import { deriveWitnessScriptDecodingEvidenceFromCanonicalBlock } from "../src/witness-script-decoding/workflow.derive-witness-script-decoding-authenticated-source.js";
+import { detectWitnessScriptDecodingCompleteReplay } from "../src/witness-script-decoding/workflow.detect-witness-script-decoding-complete-replay.js";
 import {
   decodingMalformedMaximumItem,
   decodingPlutusItem,
-} from "./support/native-script-decoding-emulator.js";
+} from "./support/native-script-decoding-emulator.build-decoding-ledger-fixture.js";
 import {
   deepCanonicalItem,
   emptyPayloadItem,
@@ -29,7 +29,7 @@ import {
   smallCanonicalItem,
   wideCanonicalMaximumItem,
   witnessSetCarriageOf,
-} from "./support/witness-script-decoding-raw.js";
+} from "./support/witness-script-decoding-raw.over-bound-field-carriage-plan.js";
 import {
   DEEP_DEPTH,
   type ReasonArm,

@@ -3,23 +3,26 @@ import "node:path";
 import "node:url";
 import "@al-ft/midgard-core/consensus-profile";
 import "@al-ft/midgard-validation";
+import "@al-ft/midgard-validation/types";
+import "@al-ft/midgard-validation/phase-a";
+import "@al-ft/midgard-validation/phase-b";
+import "@al-ft/midgard-validation/midgard-redeemers";
 import "effect";
 import "vitest";
 import "../../midgard-validation/tests/ed25519-ledger-vectors.js";
 import "../../midgard-validation/tests/validation-fixtures.js";
-import "../src/services/validation-pool.js";
+import "../src/services/validation-pool.fixed-validation-worker-pool.js";
+import "../src/services/validation-pool.bundled-worker-exec-argv.js";
 import "../src/workers/utils/validation-pool.js";
 import "./validation-worker-pool.build-adversarial-corpus.js";
 
 import { existsSync } from "node:fs";
 
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import {
-  deserializePhaseACandidate,
-  RejectCodes,
-  runPhaseAValidation,
-  runPhaseBValidationWithPatch,
-} from "@al-ft/midgard-validation";
+import { deserializePhaseACandidate } from "@al-ft/midgard-validation";
+import { runPhaseAValidation } from "@al-ft/midgard-validation/phase-a";
+import { runPhaseBValidationWithPatch } from "@al-ft/midgard-validation/phase-b";
+import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -34,10 +37,8 @@ import {
   makeQueued,
   outRefFromByte,
 } from "../../midgard-validation/tests/validation-fixtures.js";
-import {
-  FixedValidationWorkerPool,
-  ValidationWorkerError,
-} from "../src/services/validation-pool.js";
+import { ValidationWorkerError } from "../src/services/validation-pool.bundled-worker-exec-argv.js";
+import { FixedValidationWorkerPool } from "../src/services/validation-pool.fixed-validation-worker-pool.js";
 import { packPhaseAJob } from "../src/workers/utils/validation-pool.js";
 import {
   buildAdversarialCorpus,

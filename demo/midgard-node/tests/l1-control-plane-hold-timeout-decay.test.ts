@@ -8,10 +8,11 @@
 import { Deferred, Effect, Fiber } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { Globals, withL1ControlPlane } from "../src/services/globals.js";
+import { Globals } from "../src/services/globals.globals.js";
 import {
   L1_CONTROL_PLANE_HOLD_TIMEOUT_QUIET_FACTOR,
   l1ControlPlaneHoldTimeoutStreak,
+  withL1ControlPlane,
 } from "../src/services/globals.l1-control-plane.js";
 import { currentLivenessReasons } from "../src/services/globals.liveness-reasons.js";
 

@@ -5,7 +5,7 @@ import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { h32 } from "@al-ft/midgard-test-support/hex";
 
-import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.js";
+import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.watcher-config.js";
 import {
   parseWatcherProcessConfig,
   WATCHER_PROCESS_CONFIG_SCHEMA_VERSION,
@@ -14,11 +14,9 @@ import {
 import {
   computeWatcherRuleBundleCommitment,
   makeWatcherCanonicalRuleBundle,
-} from "../../src/verification/rule-bundle.js";
-import {
-  makeWatcherDeploymentAuthorityFixture,
-  WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS,
-} from "./deployment-authority-fixture.js";
+} from "../../src/verification/rule-bundle.parse-watcher-rule-bundle.js";
+import { WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS } from "./deployment-authority-fixture.build-watcher-authority-contracts.js";
+import { makeWatcherDeploymentAuthorityFixture } from "./deployment-authority-fixture.build-watcher-deployment-authority-fixture.js";
 
 /**
  * Writes a parseable production process config under `directory`: the signed

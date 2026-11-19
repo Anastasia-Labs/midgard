@@ -14,10 +14,8 @@ import {
 } from "@al-ft/midgard-sdk";
 import type { LucidEvolution, Network } from "@lucid-evolution/lucid";
 
-import {
-  type VerifiedWatcherDeploymentIdentity,
-  watcherDeploymentProtocolScriptAuthority,
-} from "../runtime/deployment-identity.js";
+import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.parse-trust-roots.js";
+import { watcherDeploymentProtocolScriptAuthority } from "../runtime/deployment-identity.verify-watcher-user-event-script-binding.js";
 import {
   type WatcherFaultDetectorAlert,
   watcherFaultDetectorIsolation,

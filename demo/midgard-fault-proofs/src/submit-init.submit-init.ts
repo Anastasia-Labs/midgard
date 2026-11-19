@@ -5,7 +5,7 @@ import {
   scriptHashToCredential,
 } from "@lucid-evolution/lucid";
 
-import { parseContractDeploymentInfo } from "./inspect-contracts.js";
+import { parseContractDeploymentInfo } from "./inspect-contracts.parse-contract-deployment-info.js";
 import { rejectUnadmittedSubmissionRoute } from "./legacy-submission-boundary.js";
 import {
   makeLucidForSubmit,
@@ -16,9 +16,9 @@ import {
   resolveProverSigner,
 } from "./runtime.js";
 import { submitFaultProofTurns } from "./submit-fault-proof-turns.js";
-import type { InitBuild } from "./submit-init.resolve-non-existent-input-no-index-init.js";
 import {
   fraudCategoryLabel,
+  type InitBuild,
   requireFraudProofCatalogue,
   resolveNonExistentInputNoIndexInit,
   type SubmitInitCliConfig,

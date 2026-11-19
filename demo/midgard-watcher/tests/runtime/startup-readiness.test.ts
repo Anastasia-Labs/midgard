@@ -11,10 +11,8 @@ import { generatePrivateKey } from "@lucid-evolution/lucid";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { WatcherProcessConfig } from "../../src/runtime/process-config.js";
-import {
-  createWatcherRuntime,
-  WatcherStartupHeldError,
-} from "../../src/runtime/watcher-runtime.js";
+import { WatcherStartupHeldError } from "../../src/runtime/startup-operations.js";
+import { createWatcherRuntime } from "../../src/runtime/watcher-runtime.startup-hold.js";
 import { writeWatcherRuntimeProcessConfig } from "../support/watcher-runtime-process-config.js";
 
 /** The node: down for every read until the test brings it up. */

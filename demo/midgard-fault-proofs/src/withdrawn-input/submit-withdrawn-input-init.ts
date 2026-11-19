@@ -1,8 +1,8 @@
-import {
-  buildResolvedInit,
-  type ResolvedInitBuild,
-  type SubmitResolvedInitParams,
-} from "../submit-init.js";
+import type {
+  ResolvedInitBuild,
+  SubmitResolvedInitParams,
+} from "../submit-init.resolve-non-existent-input-no-index-init.js";
+import { buildResolvedInit } from "../submit-init.submit-resolved-init.js";
 import {
   WITHDRAWN_INPUT_CATEGORY_LABEL,
   type WithdrawnInputContracts,

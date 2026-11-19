@@ -3,12 +3,23 @@ import "@al-ft/midgard-core";
 import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "vitest";
-import "../src/index.js";
+import "../src/submit-min-fee-step-01.js";
+import "../src/submit-min-fee-step-02.js";
+import "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import "../src/submit-min-fee-init.js";
+import "../src/prepare-min-fee.js";
 import "../src/linear-fault-cancel.js";
 import "../src/min-fee-contracts.js";
 import "../src/step-support.js";
 import "./helpers/canonical-block-evidence-fixture.js";
-import "./support/submit-init-emulator-shared.js";
+import "./support/emulator/removal-deployment.build-removal-deployment-info.js";
+import "./support/emulator/emulator-context.js";
+import "./support/emulator/blueprints.js";
+import "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import "./support/emulator/harness.js";
+import "./support/emulator/header-fixtures.js";
+import "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import "./support/emulator/setup-tx.submit-setup-tx.js";
 import "./submit-init-emulator-min-fee.setup-scenario.js";
 
 import {
@@ -21,14 +32,14 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data, toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildMinFeeStep01,
-  buildMinFeeStep02,
-  submitRemoveFraudulentBlock,
-} from "../src/index.js";
 import { buildLinearFaultCancel } from "../src/linear-fault-cancel.js";
 import { MIN_FEE_CATEGORY_LABEL } from "../src/min-fee-contracts.js";
-import type { MinFeeFieldItemCbors } from "../src/submit-min-fee-step-02.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import { buildMinFeeStep01 } from "../src/submit-min-fee-step-01.js";
+import {
+  buildMinFeeStep02,
+  type MinFeeFieldItemCbors,
+} from "../src/submit-min-fee-step-02.js";
 import { outRefCbor } from "./helpers/canonical-block-evidence-fixture.js";
 import {
   advanceStep01,
@@ -37,13 +48,11 @@ import {
   setupScenario,
   TIER2_SPEND_INPUT_COUNT,
 } from "./submit-init-emulator-min-fee.setup-scenario.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
-import {
-  buildRemovalDeploymentInfo,
-  expectSingleUtxoWithUnit,
-  network,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,

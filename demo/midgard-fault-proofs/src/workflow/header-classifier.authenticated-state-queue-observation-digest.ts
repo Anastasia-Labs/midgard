@@ -19,7 +19,7 @@ import {
   COMPLETE_CANONICAL_REPLAY,
   type CompleteCanonicalReplay,
   type CompleteCanonicalReplayContext,
-} from "./complete-replay.js";
+} from "./complete-replay.replay-context-identity.js";
 import { type InstalledFraudProofCategory } from "./installed-categories.js";
 
 export const HEADER_CLASSIFIER =

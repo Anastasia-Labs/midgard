@@ -36,7 +36,7 @@ import {
   type LedgerEntry,
   LedgerRootMismatchError,
 } from "./ledger-at.js";
-import { RetainedDaPayloadUnavailableError } from "./transition-trace/fetch.js";
+import { RetainedDaPayloadUnavailableError } from "./transition-trace/fetch.retained-da-payload-unavailable.js";
 
 /** The L1 facts a block's user events and forced orders replay against. */
 export type BlockReplayMaterial = Pick<

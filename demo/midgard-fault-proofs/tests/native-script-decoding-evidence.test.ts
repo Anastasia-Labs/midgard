@@ -22,7 +22,6 @@ import { describe, expect, it } from "vitest";
 import {
   buildNativeScriptDecodingChunkProof,
   buildNativeScriptDecodingLedgerMembership,
-  buildNativeScriptDecodingScanPlan,
   classifyNativeScriptDecodingOutOfDomainFace,
   nativeScriptDecodingChunkProofData,
   nativeScriptDecodingFrameData,
@@ -32,7 +31,8 @@ import {
   nativeScriptDecodingScanArgsEvidence,
   nativeScriptDecodingSubjectFieldIndex,
   nativeScriptDecodingWindowProofs,
-} from "../src/native-script-decoding/index.js";
+} from "../src/native-script-decoding/evidence.js";
+import { buildNativeScriptDecodingScanPlan } from "../src/native-script-decoding/scan-plan.build-native-script-decoding-scan-plan.js";
 
 const TX_ID_HEX = "ab".repeat(32);
 const FIELD = MIDGARD_FIELD_INDEX.referenceInputs;

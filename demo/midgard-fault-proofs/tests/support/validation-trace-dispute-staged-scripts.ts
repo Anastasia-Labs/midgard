@@ -2,10 +2,8 @@
  * semantics groups 7 and 8), `(program 1.1.0 (lam ctx [(lam _ (error))
  * STEP]))` in Flat, and the step's witness in a run of each. */
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
-import {
-  evaluateMidgardCekScript,
-  type MidgardCekCoreStepWitness,
-} from "@al-ft/midgard-validation";
+import type { MidgardCekCoreStepWitness } from "@al-ft/midgard-validation/cek-machine";
+import { evaluateMidgardCekScript } from "@al-ft/midgard-validation/phase-b";
 import { plutusV3ScriptWitness } from "@al-ft/midgard-validation/tests/validation-fixtures";
 
 /** STEP: `[(builtin sha2_256) B]`, B the 16,384 bytes of fourteen

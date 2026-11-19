@@ -5,20 +5,18 @@ import {
 } from "@al-ft/midgard-sdk";
 import type { MintingPolicy, OutRef, UTxO } from "@lucid-evolution/lucid";
 
-import {
-  fieldPreimageCertificateAddress,
-  planFaultProofFieldOpening,
-} from "../../src/field-opening.js";
+import { fieldPreimageCertificateAddress } from "../../src/field-opening.certify-fault-proof-field-carriage.js";
+import { planFaultProofFieldOpening } from "../../src/field-opening.plan-fault-proof-field-opening.js";
 import type { ResolvedProverSigner } from "../../src/runtime.js";
 import type { DoubleSpendWorkflowStage } from "../../src/workflow/double-spend-adapter.js";
+import type { FraudProofWorkflowJournalEntry } from "../../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import {
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   type FraudProofWorkflowIdentity,
-  type FraudProofWorkflowJournalEntry,
   type JournalJsonObject,
-} from "../../src/workflow/journal.js";
+} from "../../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import type { FraudProofFamilyWorkflowAdapter } from "../../src/workflow/orchestrator.js";
-import { computeFraudProofRawL1PointId } from "../../src/workflow/raw-l1-snapshot.js";
+import { computeFraudProofRawL1PointId } from "../../src/workflow/raw-l1-snapshot.admit-fraud-proof-raw-l1-transaction.js";
 import { h28, h32 } from "../helpers/canonical-block-evidence-fixture.js";
 import { confirmedCarriageEntries } from "./confirmed-carriage-entries.js";
 

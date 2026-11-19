@@ -1,12 +1,12 @@
 import { decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
+import { resolveFaultProofFieldPreimageCertificate } from "../field-opening.certify-fault-proof-field-carriage.js";
+import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
 import {
   faultProofFieldOpening,
-  planFaultProofFieldOpening,
   resolveFaultProofFieldCarriagePublications,
-  resolveFaultProofFieldPreimageCertificate,
-} from "../field-opening.js";
+} from "../field-opening.publish-fault-proof-field-carriage.js";
 import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,

@@ -1,6 +1,6 @@
 /** The `executionNativeScriptInvalid` family's direct walk. */
 import { defineDirectWalkFamily } from "../direct-purpose-family/walk-family.js";
-import { EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
+import { EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import { EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC } from "../workflow/cursor-family-spec.js";
 import { EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY } from "./contracts.js";
 import { EXECUTION_NATIVE_SCRIPT_INVALID_FIELDS } from "./custody.js";

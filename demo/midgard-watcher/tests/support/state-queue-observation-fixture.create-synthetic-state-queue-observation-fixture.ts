@@ -5,10 +5,10 @@ import { Data } from "@lucid-evolution/lucid";
 import {
   assertWatcherStateQueueHeaderObservation,
   assertWatcherStateQueueObservation,
+  RELEASE_FINALITY_DEPTH,
   type WatcherAuthenticatedStateQueueObservation,
   type WatcherStateQueueHeaderObservation,
-} from "../../src/indexers/authenticated-state-queue-observation.js";
-import { RELEASE_FINALITY_DEPTH } from "../../src/indexers/authenticated-state-queue-observation.parse-persisted-header.js";
+} from "../../src/indexers/authenticated-state-queue-observation.parse-persisted-header.js";
 import {
   type FollowerUserEvents,
   type FollowerUserEventsDeployment,

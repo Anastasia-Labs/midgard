@@ -11,11 +11,9 @@ import { Effect } from "effect";
 import { afterEach, beforeEach } from "vitest";
 
 import { ForcedTransactionsDB } from "../../src/database/index.js";
-import {
-  forcedOrderHorizon,
-  forcedOrderProjection,
-  forcedOrderTrackedSet,
-} from "../../src/forced-orders/index.js";
+import { forcedOrderTrackedSet } from "../../src/forced-orders/config.js";
+import { forcedOrderHorizon } from "../../src/forced-orders/horizon.js";
+import { forcedOrderProjection } from "../../src/forced-orders/projection.js";
 import { resetApplicationTables } from "../utils.js";
 import { orphansAwaitingRecovery } from "./follower-view.js";
 import {

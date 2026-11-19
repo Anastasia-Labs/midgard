@@ -8,12 +8,10 @@ import {
   planFieldPreimageLengthCarriage,
   resolveFieldPreimageLengthCarriage,
 } from "../src/field-preimage-length-mismatch/carriage.js";
-import {
-  buildFieldPreimageLengthForcedAuthentication,
-  buildFieldPreimageLengthForcedDispatch,
-  buildFieldPreimageLengthInit,
-  buildFieldPreimageLengthTerminal,
-} from "../src/field-preimage-length-mismatch/submit-lucid.js";
+import { buildFieldPreimageLengthForcedDispatch } from "../src/field-preimage-length-mismatch/submit-lucid.submit-field-preimage-length-accepted-authentication.js";
+import { buildFieldPreimageLengthInit } from "../src/field-preimage-length-mismatch/submit-lucid.submit-field-preimage-length-cancel.js";
+import { buildFieldPreimageLengthForcedAuthentication } from "../src/field-preimage-length-mismatch/submit-lucid.submit-field-preimage-length-forced-authentication.js";
+import { buildFieldPreimageLengthTerminal } from "../src/field-preimage-length-mismatch/submit-lucid.submit-field-preimage-length-terminal.js";
 import { parseOutRef } from "../src/runtime.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { inlineBodyClaim } from "./field-preimage-length-mismatch-lifecycle.forced-prepared.js";

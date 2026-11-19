@@ -13,15 +13,14 @@ import {
 import { getAddressDetails } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
-import {
-  buildTransactionOutputNonCanonicalStep01Accepted,
-  buildTransactionOutputNonCanonicalStep01Forced,
-  buildTransactionOutputNonCanonicalStep02,
-  buildTransactionOutputNonCanonicalStep03,
-  buildTransactionOutputNonCanonicalStep04,
-} from "../src/transaction-output-non-canonical/index.js";
-import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import { buildTransactionOutputNonCanonicalStep01Accepted } from "../src/transaction-output-non-canonical/submit-step-01-accepted.js";
+import { buildTransactionOutputNonCanonicalStep01Forced } from "../src/transaction-output-non-canonical/submit-step-01-forced.js";
+import { buildTransactionOutputNonCanonicalStep02 } from "../src/transaction-output-non-canonical/submit-step-02.js";
+import { buildTransactionOutputNonCanonicalStep03 } from "../src/transaction-output-non-canonical/submit-step-03.js";
+import { buildTransactionOutputNonCanonicalStep04 } from "../src/transaction-output-non-canonical/submit-step-04.js";
+import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
+import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import {
@@ -30,21 +29,16 @@ import {
 } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { nodeForcedVerdict } from "./support/emulator/node-forced-verdict.js";
-import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
-import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
-import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  publishRemovalReferenceScripts,
-  submitSetupTx,
-} from "./support/submit-init-emulator-shared.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
+import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
+import { setupFraudulentBlock } from "./support/submit-init/removal.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,
 } from "./support/submit-unjournaled.js";
-import {
-  buildForcedOutputFixture,
-  submitOutputStep04Raw,
-} from "./support/transaction-output-non-canonical-emulator.js";
+import { buildForcedOutputFixture } from "./support/transaction-output-non-canonical-emulator.build-forced-output-fixture.js";
+import { submitOutputStep04Raw } from "./support/transaction-output-non-canonical-emulator.publish-output-field-carriage.js";
 import { nodeTransactionSpendingHeldInput } from "./transaction-output-non-canonical-datum-lifecycle.scenario.js";
 import {
   committedInclusions,

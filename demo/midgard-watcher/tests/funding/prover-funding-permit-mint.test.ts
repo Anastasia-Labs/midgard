@@ -10,22 +10,18 @@ import {
 import { CML, type UTxO } from "@lucid-evolution/lucid";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createWatcherProtocolParameterRuntimeAuthority } from "../../src/funding/prover-funding.js";
-import {
-  createWatcherProverFundingAuthorityFactory,
-  type WatcherProverFundingAuthorityFactory,
-} from "../../src/funding/prover-funding-authority.js";
-import {
-  parseWatcherProverFundingReservationRecord,
-  type WatcherProverFundingReservationStore,
-} from "../../src/funding/prover-funding-reservation.js";
-import { openWatcherSqliteProverFundingReservationStore } from "../../src/funding/sqlite-prover-funding-reservation-store.js";
-import { watcherDeploymentReleaseEconomicsAuthority } from "../../src/runtime/deployment-identity.js";
 import {
   mintWatcherProverFundingReservationPermit,
   type WatcherProverFundingUtxoProvider,
-} from "../../src/runtime/watcher-runtime.js";
-import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
+} from "../../src/fault-proofs/fault-proof-execution.js";
+import { createWatcherProtocolParameterRuntimeAuthority } from "../../src/funding/prover-funding.js";
+import { createWatcherProverFundingAuthorityFactory } from "../../src/funding/prover-funding-authority.create-watcher-prover-funding-authority-factory.js";
+import type { WatcherProverFundingAuthorityFactory } from "../../src/funding/prover-funding-authority.watcher-prover-funding-authority-factory.js";
+import { parseWatcherProverFundingReservationRecord } from "../../src/funding/prover-funding-reservation.parse-watcher-prover-funding-reservation-record.js";
+import type { WatcherProverFundingReservationStore } from "../../src/funding/prover-funding-reservation.watcher-prover-funding-reservation-store.js";
+import { openWatcherSqliteProverFundingReservationStore } from "../../src/funding/sqlite-prover-funding-reservation-store.unsafe-open-watcher-sqlite-prover-funding-reservation-store-for-test.js";
+import { watcherDeploymentReleaseEconomicsAuthority } from "../../src/runtime/deployment-identity.watcher-deployment-availability-challenge-authority.js";
+import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.build-watcher-deployment-authority-fixture.js";
 import { ledgerParameterQuery } from "../support/ledger-protocol-parameters.js";
 import { testStorageRoot } from "../support/test-storage-root.js";
 import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";

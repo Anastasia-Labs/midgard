@@ -30,7 +30,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { assertWorkflowActuationPermitIdentity } from "./actuation-permit.js";
+import { assertWorkflowActuationPermitIdentity } from "./actuation-permit.assert-workflow-actuation-permit-identity.js";
 import {
   readValidationDisputeMoveAuthority,
   validationDisputeMoveFunding,

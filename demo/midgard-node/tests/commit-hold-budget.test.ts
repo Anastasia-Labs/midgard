@@ -11,12 +11,13 @@ import {
   commitHoldBudgetMs,
   extendCommitmentHoldForBacklog,
 } from "../src/fibers/block-commitment.commit-hold-budget.js";
-import { Globals, withL1ControlPlane } from "../src/services/globals.js";
+import { Globals } from "../src/services/globals.globals.js";
 import {
   extendL1ControlPlaneHold,
   L1_CONTROL_PLANE_HOLD_CEILING_MS,
+  withL1ControlPlane,
 } from "../src/services/globals.l1-control-plane.js";
-import { commitDaFrameStepDownPassBound } from "../src/workers/utils/commit-block-planner.js";
+import { commitDaFrameStepDownPassBound } from "../src/workers/utils/commit-block-planner.da-frame-decision.js";
 
 /** The consensus cap on one block's L2 transactions (config refuses more). */
 const CONSENSUS_MAX_L2_TX_COUNT =

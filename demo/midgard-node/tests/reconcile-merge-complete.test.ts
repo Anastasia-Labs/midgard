@@ -2,11 +2,13 @@ import { Option } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  type MergeCompletionObservation,
-  mergeCompletionVerdict,
   parseReconciliationResult,
   RECONCILIATION_SCHEMA_VERSION,
-} from "../src/commands/reconcile.js";
+} from "../src/commands/reconcile.parse-reconciliation-result.js";
+import {
+  type MergeCompletionObservation,
+  mergeCompletionVerdict,
+} from "../src/commands/reconcile.reconcile-merge-complete-program.js";
 import { PendingBlockFinalizationsDB } from "../src/database/index.js";
 
 const HEADER_HASH = "11".repeat(28);

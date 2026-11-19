@@ -25,26 +25,33 @@ import {
   watcherDeploymentReleaseEconomicsAuthority,
   watcherDeploymentReleaseFinalityAuthority,
 } from "midgard-watcher";
-import { makeWatcherDeploymentAuthorityFixture } from "midgard-watcher/tests/support/deployment-authority-fixture";
+import { makeWatcherDeploymentAuthorityFixture } from "midgard-watcher/tests/support/deployment-authority-fixture.build-watcher-deployment-authority-fixture";
 import { recordWatcherFaultDecision } from "midgard-watcher/tests/support/installed-prover-funding-recovery";
 
-import { createWorkflowActuationPermitController } from "../../src/workflow/actuation-permit.js";
-import { familyStepContractNames } from "../../src/workflow/family-definition.js";
+import { createWorkflowActuationPermitController } from "../../src/workflow/actuation-permit.create-workflow-reconciliation-permit-controller.js";
+import { familyStepContractNames } from "../../src/workflow/family-definition.family-definition.js";
 import { createFraudProofFamilyRawL1ObservationPort } from "../../src/workflow/family-l1-observation.js";
-import { restrictWorkflowFundingSigner } from "../../src/workflow/funding-reservation-permit.js";
-import {
-  authenticatedStateQueueObservationDigest,
-  classifyHeader,
-  createHeaderClassifier,
-} from "../../src/workflow/header-classifier.js";
+import { restrictWorkflowFundingSigner } from "../../src/workflow/funding-reservation-permit.restrict-workflow-funding-signer.js";
+import { authenticatedStateQueueObservationDigest } from "../../src/workflow/header-classifier.authenticated-state-queue-observation-digest.js";
+import { classifyHeader } from "../../src/workflow/header-classifier.classify-header.js";
+import { createHeaderClassifier } from "../../src/workflow/header-classifier.create-header-classifier.js";
 import {
   WORKFLOW_RUNNER_FACTORIES,
   WORKFLOW_RUNTIME_CONFIG,
 } from "../../src/workflow/runtime.js";
-import { SCRIPT_DECODE_SPEND_ROLE } from "../../src/workflow/script-decode-prerequisite.js";
+import { SCRIPT_DECODE_SPEND_ROLE } from "../../src/workflow/script-decode-prerequisite.deployment.js";
 import type { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
+import {
+  alignUnixTimeToEmulatorSlotBoundary,
+  funderPaymentKeyHash,
+} from "./emulator/emulator-context.js";
+import type { makeFaultProofEmulatorHarness } from "./emulator/harness.js";
+import { publishRemovalReferenceScripts } from "./emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.build-removal-deployment-info.js";
+import { submitSetupTx } from "./emulator/setup-tx.submit-setup-tx.js";
 import { deployHarnessFieldGrammarCertificate } from "./field-grammar-certificate-deployment-fixture.js";
-import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.js";
+import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.build-decoding-block-fixture.js";
 import { scratchDirectory } from "./scratch-directory.js";
 import { scriptDecodeDeploymentOf } from "./script-decode-emulator.js";
 import {
@@ -55,15 +62,6 @@ import {
   fixtureLeaseCoordinator,
   FixtureRetainedDaSource,
 } from "./script-decode-installed-host.js";
-import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  buildRemovalDeploymentInfo,
-  funderPaymentKeyHash,
-  type makeFaultProofEmulatorHarness,
-  publishPlainReferenceScriptUtxo,
-  publishRemovalReferenceScripts,
-  submitSetupTx,
-} from "./submit-init-emulator-shared.js";
 import { walletOnlySendAlwaysOpenOn } from "./wallet-only-send-always-open.js";
 
 type Harness = Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>;

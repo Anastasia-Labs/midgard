@@ -5,10 +5,10 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 import { vi } from "vitest";
 
-import { unsafeCreateWatcherFaultDecisionBridgeForTest } from "../../src/fault-proofs/fault-decision-bridge.js";
+import { unsafeCreateWatcherFaultDecisionBridgeForTest } from "../../src/fault-proofs/fault-decision-bridge.create-watcher-fault-decision-bridge.js";
 import type { BridgeDependencies } from "../../src/fault-proofs/fault-decision-bridge.selected-target.js";
 import type { WatcherPersistedFaultDecisionRecord } from "../../src/fault-proofs/fault-decision-journal.js";
-import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.js";
+import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
 import type { WatcherFaultProofProgressRequest } from "../../src/fault-proofs/fault-proof-progress-authority.js";
 import {
   type WatcherAuthenticatedStateQueueObservation,

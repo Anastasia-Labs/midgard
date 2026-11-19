@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { NodeConfig } from "../src/services/config.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
 
 const loadConfig = () =>
   Effect.runPromise(

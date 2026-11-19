@@ -10,7 +10,7 @@ import {
 } from "@al-ft/midgard-core";
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core/codec";
 
-import { deriveL2TransactionSourceCbor } from "../../../src/prepare-double-spend.js";
+import { deriveL2TransactionSourceCbor } from "../../../src/prepare-double-spend.encode-l2-transaction-source-value.js";
 import { h32 } from "./header-fixtures.js";
 
 export const makeNativeTx = ({

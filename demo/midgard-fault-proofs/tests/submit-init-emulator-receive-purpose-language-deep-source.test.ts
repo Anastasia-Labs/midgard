@@ -23,6 +23,7 @@ import {
   makeDirectWalkHarness,
   publishDirectWalkRoles,
 } from "./support/direct-walk-emulator.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
 import {
   type MissingRedeemerSubjectShape,
   plutusScript,
@@ -32,7 +33,6 @@ import {
   driveReceivePurposeLanguageThread,
   receiveCoordinate,
 } from "./support/receive-purpose-language-emulator.js";
-import { expectSingleUtxoWithUnit } from "./support/submit-init-emulator-shared.js";
 
 /** The receiver's PlutusV3 script, sourced only from the first reference
  * input. */

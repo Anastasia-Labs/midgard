@@ -16,18 +16,18 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { IntentJournalWithoutFollower } from "midgard-node/services/intent-journal";
-import { activateRegisteredOperatorProgram } from "midgard-node/transactions/register-active-operator";
+import { activateRegisteredOperatorProgram } from "midgard-node/transactions/register-active-operator.activate-registered-operator-program";
 import { canActivateRegisteredOperatorImmediately } from "midgard-node/transactions/register-active-operator/activation";
 
 import {
   buildPastProtectedPredecessor,
   ledgerClock,
 } from "./history-predecessor-hold.js";
+import { createPublishedWatcherBlockActor } from "./published-block-actor.create-published-watcher-block-actor.js";
 import {
-  createPublishedWatcherBlockActor,
   PublishedTransactionExpiredError,
   type PublishedWatcherBlock,
-} from "./published-block-actor.js";
+} from "./published-block-actor.is-unanswered-submission.js";
 import {
   capturePublishedDepositHistory,
   type PublishedDepositHistory,

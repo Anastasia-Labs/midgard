@@ -19,12 +19,12 @@ import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 
-import {
-  fetchRetainedDaPayloadByHeaderHash,
-  type RetainedDaPayloadFetchResult,
-  type RetainedDaPayloadSource,
-  type RetainedDaPayloadVerifier,
-} from "./transition-trace/fetch.js";
+import type {
+  RetainedDaPayloadFetchResult,
+  RetainedDaPayloadSource,
+  RetainedDaPayloadVerifier,
+} from "./transition-trace/fetch.admit-retained-da-provenance.js";
+import { fetchRetainedDaPayloadByHeaderHash } from "./transition-trace/fetch.fetch-retained-da-payload-by-header-hash.js";
 
 /** Released unbound copies, by header: kept across operations. */
 export type RetainedPayloadReleases = Map<string, Set<string>>;

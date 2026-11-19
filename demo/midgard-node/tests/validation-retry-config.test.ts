@@ -4,7 +4,7 @@ import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { SUBMIT_HTTP_BODY_MAX_BYTES } from "../src/commands/http/submission-capacity.js";
-import { NodeConfig } from "../src/services/config.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
 
 const loadNodeConfig = () =>
   Effect.runPromise(

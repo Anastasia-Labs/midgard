@@ -20,13 +20,13 @@ import {
   publishDirectWalkRoles,
   stepTable,
 } from "./support/direct-walk-emulator.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { driveMissingRedeemerThread } from "./support/missing-redeemer-emulator.js";
 import {
   honestForcedObserverShape,
   setupMissingRedeemerScenario,
 } from "./support/missing-redeemer-emulator.subject.js";
-import { expectSingleUtxoWithUnit } from "./support/submit-init-emulator-shared.js";
 
 const expectWithinBounds = (steps: Parameters<typeof stepTable>[0]): void => {
   for (const { label, measurement } of steps) {

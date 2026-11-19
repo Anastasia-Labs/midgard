@@ -4,11 +4,9 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { checkLedgerAgainstRoot } from "../src/ledger-at.js";
-import {
-  buildCountedRoot,
-  detectTransitionTraceFaults,
-  reconstructDaPayload,
-} from "../src/transition-trace/index.js";
+import { detectTransitionTraceFaults } from "../src/transition-trace/detect.detect-single-ledger-transitions.js";
+import { buildCountedRoot } from "../src/transition-trace/phas.js";
+import { reconstructDaPayload } from "../src/transition-trace/reconstruct.reconstruct-da-payload.js";
 import { deriveTransitionTraceReplayEvidence } from "../src/transition-trace/replay.js";
 import { corpus } from "./cardano-capability-retained-da.reconstruct-authenticated-canonical-transaction-from-field-chunks.js";
 import { buildStrictRetainedDaPairFixture } from "./helpers/cardano-capability-retained-da.js";

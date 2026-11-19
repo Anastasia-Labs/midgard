@@ -8,11 +8,11 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import { daHashPreimageBlockEvidenceFromVerifiedPayload } from "../prepare-da-hash-preimage.js";
+import { requireTransactionsRootMatch } from "../prepare-double-spend.prepare-double-spend-from-transactions.js";
 import {
   buildTrieView,
   requireProof,
-  requireTransactionsRootMatch,
-} from "../prepare-double-spend.js";
+} from "../prepare-double-spend.resolve-double-spend-pair.js";
 
 export type AuthenticatedObserversForbiddenRawTransaction = Readonly<{
   index: number;

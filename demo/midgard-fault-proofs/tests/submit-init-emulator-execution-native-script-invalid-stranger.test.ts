@@ -23,17 +23,15 @@ import {
 } from "@lucid-evolution/lucid";
 import { afterAll, describe, expect, it } from "vitest";
 
+import type { DirectPurposeTransition } from "../src/direct-purpose-family/custody.js";
 import {
   type DirectPurposeRole,
   directPurposeRoleValidator,
-  type DirectPurposeTransition,
-} from "../src/direct-purpose-family/index.js";
-import {
-  EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK,
-  EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY,
-  prepareExecutionNativeScriptInvalidProof,
-} from "../src/execution-native-script-invalid/index.js";
-import { faultProofFieldOpening } from "../src/field-opening.js";
+} from "../src/direct-purpose-family/family.js";
+import { EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY } from "../src/execution-native-script-invalid/contracts.js";
+import { prepareExecutionNativeScriptInvalidProof } from "../src/execution-native-script-invalid/prover.js";
+import { EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK } from "../src/execution-native-script-invalid/workflow.js";
+import { faultProofFieldOpening } from "../src/field-opening.publish-fault-proof-field-carriage.js";
 import type { LedgerEntry } from "../src/ledger-at.js";
 import {
   getCompiledScript,
@@ -47,6 +45,7 @@ import {
   makeDirectWalkHarness,
   publishDirectWalkRoles,
 } from "./support/direct-walk-emulator.js";
+import { network } from "./support/emulator/blueprints.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   admissibleNativeObservers,
@@ -62,7 +61,6 @@ import {
 } from "./support/execution-native-script-invalid-emulator.subject.js";
 import { scriptAddress } from "./support/missing-redeemer-emulator.purposes.js";
 import { rejectedFor } from "./support/script-integrity-hash-mismatch-emulator.subject.js";
-import { network } from "./support/submit-init-emulator-shared.js";
 import { submitDirectPurposeTransition } from "./support/submit-unjournaled.direct-purpose.js";
 
 const STRANGER_FUNDING_LOVELACE = 1_000_000_000n;

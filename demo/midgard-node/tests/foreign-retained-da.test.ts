@@ -20,7 +20,7 @@ import {
 import type { DaProducerPublicationManifest } from "../src/da/libp2p-producer.parse-committee-peers.js";
 import * as Manifest from "../src/da/libp2p-producer.parse-da-producer-publication-manifest.js";
 import * as Publication from "../src/da/libp2p-producer.publication-transport.js";
-import { ContractDeploymentIdentity } from "../src/services/index.js";
+import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import { sha256 } from "../src/sha256.js";
 import { withBuiltValidationTracePair } from "./foreign-block-import.fixture.js";
 import { normalFixture } from "./foreign-block-import.normal-fixture.js";

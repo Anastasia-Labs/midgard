@@ -2,10 +2,8 @@ import { compareOutRefs } from "@al-ft/midgard-core/out-ref";
 import type * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import {
-  detectWitnessScriptDecodingCompleteReplay,
-  WitnessScriptDecodingResultClasses,
-} from "../src/witness-script-decoding/index.js";
+import { WitnessScriptDecodingResultClasses } from "../src/witness-script-decoding/witness-script-decoding.js";
+import { detectWitnessScriptDecodingCompleteReplay } from "../src/witness-script-decoding/workflow.detect-witness-script-decoding-complete-replay.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { recordPlutusItem } from "./support/script-decode-emulator.js";
 import { makeHarness } from "./witness-script-decoding-lifecycle.make-harness.js";

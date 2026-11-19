@@ -10,25 +10,27 @@ import {
   inputExistenceFieldPlans,
   inputExistenceWithPublishedFields,
 } from "../../src/input-existence/field-carriage.js";
-import type { PreparedInputExistence } from "../../src/input-existence/prepare.js";
-import { prepareInputExistence } from "../../src/input-existence/prepare.js";
+import {
+  type PreparedInputExistence,
+  prepareInputExistence,
+} from "../../src/input-existence/prepare.js";
 import type { buildInputExistenceStep } from "../../src/input-existence/submit.js";
 import { checkLedgerAgainstRoot } from "../../src/ledger-at.js";
 import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { authenticatedHeaderObservation } from "../helpers/canonical-block-evidence-fixture.js";
 import { inputExistenceChronologyFixture } from "../helpers/input-existence-chronology-fixture.js";
 import { chronologySeedDeposits } from "../helpers/input-existence-chronology-seed.js";
-import type { makeFaultProofEmulatorHarness } from "./emulator/harness.js";
-import { submitSecondHeaderTx } from "./emulator/setup-tx.js";
-import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.js";
+import { network } from "./emulator/blueprints.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
-  buildRemovalDeploymentInfo,
   funderPaymentKeyHash,
-  network,
-  publishPlainReferenceScriptUtxo,
-  submitSetupTx,
-} from "./submit-init-emulator-shared.js";
+} from "./emulator/emulator-context.js";
+import type { makeFaultProofEmulatorHarness } from "./emulator/harness.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.build-removal-deployment-info.js";
+import { submitSecondHeaderTx } from "./emulator/setup-tx.js";
+import { submitSetupTx } from "./emulator/setup-tx.submit-setup-tx.js";
+import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.build-decoding-block-fixture.js";
 import {
   certifyCarriageUnjournaled,
   publishCarriageUnjournaled,

@@ -15,7 +15,7 @@ import { acceptedVerdictSubject } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import { buildSignerWitnessScan } from "../src/signer-witness-scan/index.js";
-import { buildSpendInputSignerMissingStep02 } from "../src/spend-input-signer-missing/index.js";
+import { buildSpendInputSignerMissingStep02 } from "../src/spend-input-signer-missing/submit-step-02.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
   commitAcceptedBlock,

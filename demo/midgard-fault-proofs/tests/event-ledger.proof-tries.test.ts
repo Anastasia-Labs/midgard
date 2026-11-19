@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 import { eventLedgerBefore } from "../src/event-ledger.js";
 import { RETAINED_PROOF_TRIES } from "../src/event-ledger.view.js";
 import { checkedLedgerPreState } from "../src/ledger-at.js";
-import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.js";
+import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import { plutusExecutionEventsBlockFixture } from "./helpers/plutus-execution-events-fixture.js";
 import { filler, trieLeaves } from "./helpers/trie-leaves.js";
 

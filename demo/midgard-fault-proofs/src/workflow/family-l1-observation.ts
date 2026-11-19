@@ -12,7 +12,7 @@ import {
 import {
   FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
   type FraudProofWorkflowTerminal,
-} from "./journal.js";
+} from "./journal.fraud-proof-workflow-terminal.js";
 import {
   type FraudProofL1Source,
   type FraudProofSignedTransactionRecovery,
@@ -22,33 +22,35 @@ import {
 import {
   FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
   type FraudProofWorkflowTerminalVerifier,
-} from "./orchestrator.js";
-import {
-  deriveRetainedStateQueueHeaderObservationFromRawL1,
-  StateQueueHeaderNotLiveError,
-} from "./raw-l1-family-derivation.js";
+} from "./orchestrator.fraud-proof-family-workflow-adapter.js";
 import {
   deriveAuthenticatedStateQueueHeaderObservationFromRawL1,
+  deriveRetainedStateQueueHeaderObservationFromRawL1,
+} from "./raw-l1-family-derivation.derive-retained-state-queue-header-observation-from-raw-l1.js";
+import {
   deriveFraudProofRawL1FamilyStage,
-  type FraudProofRawL1FamilyDefinition,
-  type FraudProofRawL1FamilyStage,
-  fraudProofRawL1HistoryReader,
   fraudProofRawL1SnapshotRequestForFamily,
 } from "./raw-l1-family-derivation.js";
+import { fraudProofRawL1HistoryReader } from "./raw-l1-family-derivation.lost-defense-slash.js";
 import {
   deriveFraudProofRawL1OwnThreads,
   type FraudProofOwnThreads,
 } from "./raw-l1-family-derivation.own-thread.js";
 import {
+  type FraudProofRawL1FamilyDefinition,
+  type FraudProofRawL1FamilyStage,
+  StateQueueHeaderNotLiveError,
+} from "./raw-l1-family-derivation.state-queue-topology.js";
+import {
   createFraudProofAuthenticatedPublicationObserver,
   type FraudProofAuthenticatedPublicationObserver,
 } from "./raw-l1-publication-observation.js";
 import {
-  admitFraudProofRawL1Snapshot,
   FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
   type FraudProofRawL1Point,
   type FraudProofRawL1SnapshotAuthority,
-} from "./raw-l1-snapshot.js";
+} from "./raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
+import { admitFraudProofRawL1Snapshot } from "./raw-l1-snapshot.js";
 import type { VerifiedFraudProofReleaseEconomicsPolicy } from "./release-economics-policy.js";
 import type { VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
 import type {

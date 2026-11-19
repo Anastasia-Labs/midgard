@@ -5,12 +5,10 @@ import { type TxBuilder } from "@lucid-evolution/lucid";
 import { HashMap, Logger } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import { availabilityParametersFromExplicitEnvironment } from "../src/services/index.js";
-import {
-  attestStateQueueOnceProgram,
-  DA_ATTESTATION_POOL_SKIP_EVENT,
-  fetchDaParamsUtxo,
-} from "../src/transactions/da-attestation.js";
+import { availabilityParametersFromExplicitEnvironment } from "../src/services/midgard-contracts.load-reference-script-auth-validator.js";
+import { attestStateQueueOnceProgram } from "../src/transactions/da-attestation.attest-state-queue-once-program.js";
+import { fetchDaParamsUtxo } from "../src/transactions/da-attestation.fetch-da-attestation-reference-scripts.js";
+import { DA_ATTESTATION_POOL_SKIP_EVENT } from "../src/transactions/da-attestation.fetch-unattested-headers.js";
 import {
   advanceEmulatorPastLatestBlockEndTime,
   DaPayloadsDB,

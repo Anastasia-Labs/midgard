@@ -28,18 +28,18 @@ import {
   SELECTED_DEPLOYMENT_PROFILE_DIGEST,
 } from "@al-ft/midgard-core/deployment-profile";
 import {
+  DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION as WATCHER_DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION,
+  SIGNED_DEPLOYMENT_RELEASE_SCHEMA_VERSION as WATCHER_SIGNED_DEPLOYMENT_IDENTITY_SCHEMA_VERSION,
+} from "@al-ft/midgard-core/deployment-release";
+import {
   type L1SlotConfig,
   NAMED_NETWORK_L1_SLOT_CONFIGS,
 } from "@al-ft/midgard-core/l1-slot-config";
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 
-import {
-  makeWatcherDeploymentIdentitySignaturePayload,
-  verifyWatcherDeploymentIdentity,
-  WATCHER_DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION,
-  WATCHER_SIGNED_DEPLOYMENT_IDENTITY_SCHEMA_VERSION,
-  type WatcherDeploymentIdentityPolicy,
-} from "../../src/runtime/deployment-identity.js";
+import type { WatcherDeploymentIdentityPolicy } from "../../src/runtime/deployment-identity.catalogue-category-to-contract.js";
+import { makeWatcherDeploymentIdentitySignaturePayload } from "../../src/runtime/deployment-identity.parse-policy.js";
+import { verifyWatcherDeploymentIdentity } from "../../src/runtime/deployment-identity.verify-watcher-deployment-identity.js";
 import {
   addWatcherHistoryFixtureMetadata,
   DA_SIGNERS_HASH,

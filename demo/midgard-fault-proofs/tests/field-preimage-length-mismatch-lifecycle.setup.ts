@@ -16,37 +16,34 @@ import {
   type Header,
   Proof,
 } from "@al-ft/midgard-sdk";
-import { Data } from "@lucid-evolution/lucid";
-import { getAddressDetails } from "@lucid-evolution/lucid";
+import { Data, getAddressDetails } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
 import type { ManifestBoundFieldPreimageLengthConfig } from "../src/field-preimage-length-mismatch/config.js";
 import { prepareAcceptedFieldPreimageLengthMismatch } from "../src/field-preimage-length-mismatch/prepare-accepted.js";
-import { encodeL2TransactionSourceValue } from "../src/prepare-double-spend.js";
-import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
+import { encodeL2TransactionSourceValue } from "../src/prepare-double-spend.encode-l2-transaction-source-value.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import { nativeTxFromCoreCompact } from "../src/step-support.js";
 import {
   registeredContracts,
   type SetupOptions,
 } from "./field-preimage-length-mismatch-lifecycle.registered-contracts.js";
-import { committedFieldShapeScenarioMaterial } from "./support/committed-field-shape-emulator.js";
+import { committedFieldShapeScenarioMaterial } from "./support/committed-field-shape-emulator.committed-field-shape-scenario-material.js";
 import { network } from "./support/emulator/blueprints.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
 import { buildFieldPreimageLengthForcedFixture } from "./support/field-preimage-length-mismatch-forced-fixture.js";
+import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init/forced-transitions.js";
 import {
-  buildInvalidForcedTransitionTraceFixture,
-  countedTransactionsRoot,
   createRecordingLeaseCoordinator,
   setupFraudulentBlock,
-} from "./support/submit-init-emulator-fixtures.js";
-import {
-  buildRemovalDeploymentInfo,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/submit-init/removal.js";
+import { countedTransactionsRoot } from "./support/submit-init/transaction-material.js";
 
 export const setup = async ({
   forced = false,

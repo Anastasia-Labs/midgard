@@ -17,13 +17,13 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
+import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
 import type { CanonicalBlockClassification } from "../src/workflow/classification.js";
-import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
-import { L2_TX_MISTAG_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
+import { L2_TX_MISTAG_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import {
   admitL2TxMistagArtifact,
   prepareL2TxMistagArtifact,
-} from "../src/workflow/l2-tx-mistag.js";
+} from "../src/workflow/l2-tx-mistag.parse-artifact.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,

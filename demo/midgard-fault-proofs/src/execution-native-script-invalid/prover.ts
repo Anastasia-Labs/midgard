@@ -31,12 +31,12 @@ import {
   type DirectPurposeSourceEvidence,
   directPurposeSourceTransitions,
 } from "../direct-purpose-family/source-walk.js";
+import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
 import {
-  buildDirectSourceIndexEvidence,
   directPurposeAt,
-  type DirectScriptMaterial,
   directSpendInputAt,
-} from "../direct-script-derivation/index.js";
+} from "../direct-script-derivation/purposes.js";
+import { buildDirectSourceIndexEvidence } from "../direct-script-derivation/source-index.js";
 import { CanonicalReplayPrerequisiteError } from "../workflow/replay-prerequisite.js";
 import {
   EXECUTION_NATIVE_SCRIPT_INVALID_CATEGORY_LABEL,

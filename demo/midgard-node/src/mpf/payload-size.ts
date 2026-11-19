@@ -5,7 +5,7 @@
 import { Effect } from "effect";
 
 import * as Ledger from "../database/utils/ledger.js";
-import { keyValuePhasRoot } from "../workers/utils/mpf/phas.js";
+import { keyValuePhasRoot } from "../workers/utils/mpf/phas.key-value-phas-non-membership-proof.js";
 import { MpfError } from "./errors.js";
 import { ledgerOutputToInsertBatchOp } from "./ledger-delta.js";
 import {

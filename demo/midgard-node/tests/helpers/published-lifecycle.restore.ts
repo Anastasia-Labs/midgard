@@ -17,7 +17,7 @@ import { expect, vi } from "vitest";
 import {
   activateOperatorProgram,
   registerOperatorProgram,
-} from "../../src/transactions/register-active-operator.js";
+} from "../../src/transactions/register-active-operator.activate-registered-operator-program.js";
 import {
   initializeNodeRuntime,
   REGISTRATION_ACTIVATION_DELAY_SLOTS,
@@ -37,12 +37,12 @@ import {
   createMainnetEmulatorLucid,
   MAINNET_PROTOCOL_PARAMETERS,
 } from "./mainnet-protocol-parameters.js";
+import { publishWorkflowDeploymentOnChain } from "./published-workflow-deployment.publish-workflow-deployment-on-chain.js";
 import {
   createPublishedWorkflowDeploymentAccounts,
   type PublishedWorkflowChain,
-  publishWorkflowDeploymentOnChain,
-} from "./published-workflow-deployment.js";
-import { DEFAULT_PUBLICATION_SCHEDULE } from "./reference-publication-chain.js";
+} from "./published-workflow-deployment.submit-published-initialization.js";
+import { DEFAULT_PUBLICATION_SCHEDULE } from "./reference-publication-chain.publication-journal.js";
 import { makeJournalDirectory } from "./run-journal-directory.js";
 
 const preprodEmulatorLucid = (emulator: Emulator) =>

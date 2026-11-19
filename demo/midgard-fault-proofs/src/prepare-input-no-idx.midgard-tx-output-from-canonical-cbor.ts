@@ -4,12 +4,12 @@ import {
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 
-import {
-  type DecodedTransactionMaterial,
-  decodeTransactionMaterial,
-  type NodeTransactionPayload,
-  type PreparedTxInclusionJson,
-} from "./prepare-double-spend.js";
+import type {
+  DecodedTransactionMaterial,
+  NodeTransactionPayload,
+  PreparedTxInclusionJson,
+} from "./prepare-double-spend.encode-l2-transaction-source-value.js";
+import { decodeTransactionMaterial } from "./prepare-double-spend.resolve-double-spend-pair.js";
 import {
   byteAt,
   type Cursor,

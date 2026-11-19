@@ -7,25 +7,25 @@ import {
 import { afterEach, expect, it, vi } from "vitest";
 
 import { proofMaterialsAddress } from "../src/funding/proof-materials-address.js";
-import { MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
+import { MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.detect-double-withdraws.js";
 import {
   CURSOR_FAMILY_TRANSACTION_PORT,
   type CursorFamilyTransactionPort,
-} from "../src/workflow/cursor-family-adapter.js";
+} from "../src/workflow/cursor-family-adapter.admit-reference-scripts.js";
 import * as deployment from "../src/workflow/deployment-manifest-binding.js";
-import {
-  defineFamily,
-  type FamilyAssemblyContext,
-  type ManifestBoundFamilyWorkflowConfig,
-} from "../src/workflow/family-definition.js";
+import type {
+  FamilyAssemblyContext,
+  ManifestBoundFamilyWorkflowConfig,
+} from "../src/workflow/family-definition.family-adapter-arm.js";
+import { defineFamily } from "../src/workflow/family-definition.family-definition.js";
 import * as observations from "../src/workflow/family-l1-observation.js";
 import * as carriage from "../src/workflow/field-carriage-prerequisite.js";
 import {
   assembleBoundManifestBoundFamilyWorkflow,
   bindManifestBoundFamilyWorkflow,
-} from "../src/workflow/manifest-bound-family-assembly.js";
+} from "../src/workflow/manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
 import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../src/workflow/raw-l1-publication-observation.js";
-import { FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY } from "../src/workflow/raw-l1-snapshot.js";
+import { FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY } from "../src/workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
 
 afterEach(() => vi.restoreAllMocks());
 

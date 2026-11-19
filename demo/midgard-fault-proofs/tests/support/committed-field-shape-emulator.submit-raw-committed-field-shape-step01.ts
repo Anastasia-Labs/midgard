@@ -44,7 +44,7 @@ import {
   type CommittedFieldShapeEmulatorHarness,
   type CommittedFieldShapeScenario,
 } from "./committed-field-shape-emulator.committed-field-shape-scenario-material.js";
-import { network } from "./submit-init-emulator-shared.js";
+import { network } from "./emulator/blueprints.js";
 
 /**
  * Funds the outsider after setup has consumed the parameterizing nonce.

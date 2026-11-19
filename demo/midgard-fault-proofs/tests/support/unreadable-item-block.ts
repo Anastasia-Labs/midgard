@@ -15,7 +15,7 @@ import {
   FORCED_ORDER_KEY,
   type MissingRedeemerSource,
 } from "./missing-redeemer-emulator.subject.js";
-import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.js";
+import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.build-decoding-block-fixture.js";
 
 export type UnreadableItems = Pick<
   FixtureTransactionInput,

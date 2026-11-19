@@ -15,7 +15,7 @@ import {
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { expectOnchainRefusal } from "./support/submit-init-emulator-shared.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   buildCloseCase,
   buildCloseTimedOutThread,

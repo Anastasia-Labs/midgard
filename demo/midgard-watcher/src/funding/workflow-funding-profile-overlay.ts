@@ -12,11 +12,9 @@ import {
   type FraudProofCatalogueCategoryName,
 } from "@al-ft/midgard-sdk";
 
-import {
-  assertVerifiedWatcherDeploymentIdentity,
-  type VerifiedWatcherDeploymentIdentity,
-} from "../runtime/deployment-identity.js";
-import { watcherCanonicalJson } from "../storage/durable-store.js";
+import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.parse-trust-roots.js";
+import { assertVerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.verify-watcher-user-event-script-binding.js";
+import { watcherCanonicalJson } from "../storage/durable-store.canonical-json.js";
 
 export const WATCHER_WORKFLOW_FUNDING_PROFILE_BUNDLE =
   "midgard-watcher-production-workflow-funding-profile-bundle-v1" as const;

@@ -11,18 +11,18 @@ import { performance } from "node:perf_hooks";
 import { Deferred, Effect, Exit, Fiber, Option, Ref } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  Globals,
-  withL1ControlPlane,
-  withL1ControlPlaneIfAvailable,
-  withL1ControlPlaneWaitTimeout,
-} from "../src/services/globals.js";
+import { Globals } from "../src/services/globals.globals.js";
 import {
   extendL1ControlPlaneHold,
   L1_CONTROL_PLANE_HOLD_TIMEOUT_STREAK,
   L1_CONTROL_PLANE_HOLDER_OVERRUN_GRACE_MS,
+  withL1ControlPlane,
 } from "../src/services/globals.l1-control-plane.js";
 import { currentLivenessReasons } from "../src/services/globals.liveness-reasons.js";
+import {
+  withL1ControlPlaneIfAvailable,
+  withL1ControlPlaneWaitTimeout,
+} from "../src/services/globals.with-l1-control-plane-held.js";
 
 const runWithGlobals = <A, E>(effect: Effect.Effect<A, E, Globals>) =>
   Effect.runPromise(effect.pipe(Effect.provide(Globals.Default)));

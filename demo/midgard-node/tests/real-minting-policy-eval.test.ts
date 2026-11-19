@@ -8,8 +8,8 @@ import { eval_program_raw } from "@lucid-evolution/uplc";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
-import { withRealStateQueueAndOperatorContracts } from "../src/services/midgard-contracts.js";
+import { AlwaysSucceedsContract } from "../src/services/always-succeeds.always-succeeds-contract.js";
+import { withRealStateQueueAndOperatorContracts } from "../src/services/midgard-contracts.with-real-state-queue-and-operator-contracts.js";
 import { TEST_AVAILABILITY_PARAMETERS } from "./helpers/availability-challenge.js";
 
 const oneShotOutRef = {

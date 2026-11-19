@@ -28,7 +28,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { buildResolvedInit } from "../src/submit-init.js";
+import { buildResolvedInit } from "../src/submit-init.submit-resolved-init.js";
 import { VALUE_NOT_PRESERVED_CATEGORY_LABEL } from "../src/value-not-preserved/contracts.js";
 import {
   buildSpentInputValueWitness,
@@ -37,20 +37,24 @@ import {
 import { buildValueNotPreservedStep01 } from "../src/value-not-preserved/submit-value-not-preserved-step-01.js";
 import { buildValueNotPreservedStep02Fold } from "../src/value-not-preserved/submit-value-not-preserved-step-02.js";
 import type { FaultProofWitnessReferenceScripts } from "../src/witness-reference-scripts.js";
-import { network } from "./support/submit-init-emulator-shared.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 import {
   buildValueNotPreservedFixture,
-  expectOnchainRefusal,
-  makeValueNotPreservedEmulatorHarness,
-  publishValueNotPreservedReferenceScripts,
-  setupValueNotPreservedScenario,
-  submitRawValueNotPreservedBind,
-  type ValueNotPreservedHarness,
   vnpOutput,
   vnpOutRef,
   vnpValue,
-} from "./support/value-not-preserved-emulator.js";
+} from "./support/value-not-preserved-emulator.build-value-not-preserved-fixture.js";
+import {
+  makeValueNotPreservedEmulatorHarness,
+  type ValueNotPreservedHarness,
+} from "./support/value-not-preserved-emulator.commit-header-after-anchor-block.js";
+import {
+  publishValueNotPreservedReferenceScripts,
+  setupValueNotPreservedScenario,
+} from "./support/value-not-preserved-emulator.run-value-not-preserved-thread.js";
+import { submitRawValueNotPreservedBind } from "./support/value-not-preserved-emulator.submit-raw-value-not-preserved-bind.js";
 
 const POLICY_ID_HEX = "ef".repeat(28);
 const ASSET_NAME_HEX = "746f6b33"; // "tok3"

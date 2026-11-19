@@ -1,7 +1,5 @@
-import {
-  evaluateMidgardCekVerdict,
-  type PhaseBConfig,
-} from "@al-ft/midgard-validation";
+import { evaluateMidgardCekVerdict } from "@al-ft/midgard-validation/phase-b";
+import type { PhaseBConfig } from "@al-ft/midgard-validation/types";
 import { Effect } from "effect";
 
 import { type ValidationPoolService } from "../services/index.js";

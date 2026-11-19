@@ -23,7 +23,7 @@ import {
 import {
   DECODING_SIGNER_KEY,
   decodingItemFromPayload,
-} from "./native-script-decoding-emulator.js";
+} from "./native-script-decoding-emulator.build-decoding-ledger-fixture.js";
 
 export const FAMILY = "witness-script-decoding";
 

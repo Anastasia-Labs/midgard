@@ -8,7 +8,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Either } from "effect";
 
 import type { LandedStateQueue } from "../l1-state-queue/index.js";
-import { landedTail } from "../l1-state-queue/index.js";
+import { landedTail } from "../l1-state-queue/landed.js";
 
 export type StateQueueStrikeFacts = Readonly<{
   /** The tail node's `block_time`; null when the tail is the root. */

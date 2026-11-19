@@ -1,11 +1,10 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  type RejectCode,
-  RejectCodes,
   REJECTION_REASON_ARMS_BY_CODE,
   rejectionReasonArmName,
   type RejectSubject,
 } from "@al-ft/midgard-validation";
+import { type RejectCode, RejectCodes } from "@al-ft/midgard-validation/types";
 import { describe, expect, it } from "vitest";
 
 import {

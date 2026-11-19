@@ -14,23 +14,21 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
-import { deriveFieldItemWidthIllegalAuthenticatedSource } from "../src/field-item-width-illegal/workflow.js";
-import { deriveOutputReferenceScriptDecodingAuthenticatedSource } from "../src/output-reference-script-decoding/authenticated-workflow.js";
-import { deriveProtectedOutputSignerMissingAuthenticatedSource } from "../src/protected-output-signer-missing/authenticated-workflow.js";
-import {
-  admitRedeemerWorkflowArtifact,
-  prepareRedeemerCanonicityWorkflowArtifact,
-} from "../src/redeemer-canonicity/runtime.js";
-import { deriveResolvedOutputNonCanonicalAuthenticatedSource } from "../src/resolved-output-non-canonical/authenticated-workflow.js";
-import { deriveSpendInputSignerMissingAuthenticatedSource } from "../src/spend-input-signer-missing/authenticated-workflow.js";
-import { deriveTransactionOutputNonCanonicalAuthenticatedSource } from "../src/transaction-output-non-canonical/workflow.js";
+import { deriveFieldItemWidthIllegalAuthenticatedSource } from "../src/field-item-width-illegal/workflow.derive-field-item-width-illegal-authenticated-source.js";
+import { deriveOutputReferenceScriptDecodingAuthenticatedSource } from "../src/output-reference-script-decoding/authenticated-workflow.derive-output-reference-script-decoding-authenticated-source.js";
+import { deriveProtectedOutputSignerMissingAuthenticatedSource } from "../src/protected-output-signer-missing/authenticated-workflow.derive-protected-output-signer-missing-authenticated-source.js";
+import { admitRedeemerWorkflowArtifact } from "../src/redeemer-canonicity/runtime.admit-redeemer-workflow-artifact.js";
+import { prepareRedeemerCanonicityWorkflowArtifact } from "../src/redeemer-canonicity/runtime.capture-redeemer-action.js";
+import { deriveResolvedOutputNonCanonicalAuthenticatedSource } from "../src/resolved-output-non-canonical/authenticated-workflow.derive-resolved-output-non-canonical-authenticated-source.js";
+import { deriveSpendInputSignerMissingAuthenticatedSource } from "../src/spend-input-signer-missing/authenticated-workflow.derive-spend-input-signer-missing-authenticated-source.js";
+import { deriveTransactionOutputNonCanonicalAuthenticatedSource } from "../src/transaction-output-non-canonical/workflow.derive-transaction-output-non-canonical-authenticated-source.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import {
   type DecodedForcedTransactionEntry,
   eventKeyFingerprint,
   type SourceEventRecord,
-} from "../src/transition-trace/reconstruct.js";
-import { deriveWitnessScriptDecodingAuthenticatedSource } from "../src/witness-script-decoding/workflow.js";
+} from "../src/transition-trace/reconstruct.transition-trace-reconstruction.js";
+import { deriveWitnessScriptDecodingAuthenticatedSource } from "../src/witness-script-decoding/workflow.derive-witness-script-decoding-authenticated-source.js";
 import { makeHeader } from "./support/emulator/header-fixtures.js";
 
 const vector = JSON.parse(

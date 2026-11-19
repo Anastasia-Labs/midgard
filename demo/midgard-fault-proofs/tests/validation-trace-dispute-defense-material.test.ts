@@ -15,7 +15,7 @@ import {
   buildValidationTraceDefenseMaterial,
   type ValidationTraceDefenseMaterial,
 } from "../src/validation-trace-dispute/defense-material.js";
-import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.js";
+import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
   plutusExecutionBlockFixture,
   type PlutusExecutionScenario,

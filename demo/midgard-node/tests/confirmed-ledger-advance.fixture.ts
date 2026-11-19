@@ -19,7 +19,7 @@ import {
 } from "../src/mpf/confirmed-ledger-run.js";
 import { recordConfirmedLedgerVerification } from "../src/mpf/confirmed-ledger-verification.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../src/mpf/ledger-hydration.js";
-import { Globals } from "../src/services/globals.js";
+import { Globals } from "../src/services/globals.globals.js";
 import {
   CommitBaseUnverifiedError,
   verifiedLandedLedgerAt,

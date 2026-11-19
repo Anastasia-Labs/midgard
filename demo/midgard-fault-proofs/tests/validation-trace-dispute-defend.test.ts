@@ -13,7 +13,7 @@ import {
   buildValidationTraceDefenseMaterial,
   type ValidationTraceDefenseMaterial,
 } from "../src/validation-trace-dispute/defense-material.js";
-import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.js";
+import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { sparseTrace } from "./support/validation-game-deep-traces.js";
 import { l1SlotConfig } from "./support/validation-trace-claim-material.js";

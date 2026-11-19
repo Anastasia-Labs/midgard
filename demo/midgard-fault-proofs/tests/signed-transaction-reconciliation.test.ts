@@ -5,7 +5,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { beforeAll, expect, it, vi } from "vitest";
 
-import { computeFraudProofRawL1PointId } from "../src/workflow/raw-l1-snapshot.js";
+import { computeFraudProofRawL1PointId } from "../src/workflow/raw-l1-snapshot.admit-fraud-proof-raw-l1-transaction.js";
 import {
   reconcileSignedWorkflowTransaction,
   type SignedTransactionRecoveryObservation,

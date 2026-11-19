@@ -2,16 +2,18 @@ import { computeHash32, decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
 
 import {
   advanceFieldGrammarCheckpoint,
-  advanceFieldSemanticCheckpoint,
   encodeFieldGrammarCheckpoint,
   encodeFieldSemanticCheckpoint,
   type FieldGrammarCheckpoint,
   type FieldSemanticCheckpoint,
   initialFieldGrammarCheckpoint,
-  initialFieldSemanticCheckpoint,
-} from "../staged-field-walk/index.js";
+} from "../staged-field-walk/grammar-checkpoint.js";
 import {
-  advanceMintDeclaredFold,
+  advanceFieldSemanticCheckpoint,
+  initialFieldSemanticCheckpoint,
+} from "../staged-field-walk/semantic-checkpoint.js";
+import { advanceMintDeclaredFold } from "./family.advance-mint-declared-fold.js";
+import {
   decodeMintDeclaredPolicyHeader,
   initialMintDeclaredFoldCursor,
   MINT_DECLARED_ASSET_LIMIT_FOLD_BUDGET,
@@ -20,7 +22,7 @@ import {
   MINT_DECLARED_OUTCOME_SCANNING,
   type MintDeclaredFoldCursor,
   type MintDeclaredFoldTarget,
-} from "./family.js";
+} from "./family.begin-mint-declared-policy.js";
 
 const GRAMMAR_DOMAIN = Buffer.from("MidgardFieldGrammarCheckpointV1", "ascii");
 const WALK_DOMAIN = Buffer.from("MidgardFieldWalkCheckpointV1", "ascii");

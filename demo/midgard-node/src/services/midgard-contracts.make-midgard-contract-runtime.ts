@@ -16,10 +16,9 @@ import { resolveHousekeepingRetentionDays } from "../database/retention-policy.j
 import {
   defaultDeploymentRunStatePath,
   loadDeploymentRunState,
-} from "../e2e/run-state.js";
-import { AlwaysSucceedsContract } from "./always-succeeds.js";
-import type { NodeConfigDep } from "./config.js";
-import { ConfigError, NodeConfig } from "./config.js";
+} from "../e2e/run-state.parse-deployment-run-state.js";
+import { AlwaysSucceedsContract } from "./always-succeeds.always-succeeds-contract.js";
+import { ConfigError, NodeConfig, type NodeConfigDep } from "./config.js";
 import {
   asStartupConfigError,
   FollowerL1ChainParametersLive,

@@ -7,13 +7,15 @@ import { missingSignatureVkeyHash } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
-  assertNativeScriptInvalidDirectRoute,
   nativeScriptInvalidPushdownStep,
+  resolveNativeScriptInvalidPushdownResume,
+} from "../src/native-script-invalid/evidence-machine.native-script-invalid-pushdown-step.js";
+import {
+  assertNativeScriptInvalidDirectRoute,
   nativeScriptInvalidSignerScanState,
   nativeScriptInvalidSignerSet,
   nativeScriptInvalidUsesDirectRoute,
-  resolveNativeScriptInvalidPushdownResume,
-} from "../src/native-script-invalid/evidence-machine.js";
+} from "../src/native-script-invalid/evidence-machine.native-script-invalid-signer-set.js";
 
 const witnessItem = (verificationKey: Uint8Array): Buffer =>
   encodeMidgardAddressWitnessItem({

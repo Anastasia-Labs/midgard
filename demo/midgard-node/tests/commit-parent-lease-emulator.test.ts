@@ -16,11 +16,11 @@ import {
   FollowerWrite,
   runAtFollowerView,
 } from "../src/services/follower-write-gate.js";
-import { Globals } from "../src/services/globals.js";
+import { Globals } from "../src/services/globals.globals.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/services/history-commit-window.js";
 import { IntentJournal } from "../src/services/intent-journal.js";
-import { MempoolLedgerCache } from "../src/services/mempool-ledger-cache.js";
-import { captureCommitWorkerFailure } from "../src/workers/commit-block-header.js";
+import { MempoolLedgerCache } from "../src/services/mempool-ledger-cache.mempool-ledger-cache-service.js";
+import { captureCommitWorkerFailure } from "../src/workers/commit-block-header.run-commit-block-header-worker-program.js";
 import type { WorkerOutput } from "../src/workers/utils/commit-block-header.js";
 import {
   advanceEmulatorPastLatestBlockEndTime,

@@ -17,16 +17,16 @@ import {
   ProcessedMempoolDB,
 } from "../database/index.js";
 import * as Tx from "../database/utils/tx.js";
-import { NodeConfig } from "../services/config.js";
+import { NodeConfig } from "../services/config.make-config.js";
 import { type Lucid } from "../services/index.js";
 import { openNodeLedgerAccessFromConfig } from "../services/l1-node-ledger-access.js";
-import { ProductionNativeMpfOwnerService } from "../services/mpf-native-owner/index.js";
+import { ProductionNativeMpfOwnerService } from "../services/mpf-native-owner/service.production-native-mpf-owner-service.js";
 import { batchProgram, breakDownTx } from "../utils.js";
 import {
   type CommitLucidFactory,
   provideCommitBlockWorkerServices,
-  runCommitBlockHeaderWorkerProgram,
-} from "./commit-block-header.js";
+} from "./commit-block-header.pending-user-event-counts-up-to.js";
+import { runCommitBlockHeaderWorkerProgram } from "./commit-block-header.run-commit-block-header-worker-program.js";
 import {
   assertArchitectureGCandidateSlotRuntimeIdentity,
   decodeArchitectureGCommitCandidateInput,

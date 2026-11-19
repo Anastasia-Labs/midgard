@@ -13,15 +13,15 @@ import {
   driveProvenCorrectionRemoval,
   excludeReservedFunding,
   type HoldWalletInputs,
-  resolveProverSigner,
-} from "../src/index.js";
+} from "../src/proven-correction-removal.js";
+import { resolveProverSigner } from "../src/runtime.resolve-prover-signer.js";
+import { network } from "./support/emulator/blueprints.js";
 import {
   buildProvedDoubleSpendFixture,
-  expectStateQueueHeaderOrder,
   type ProvedDoubleSpendFixture,
-  submitRemovalForFixture,
-} from "./support/submit-init-emulator-fixtures.js";
-import { network } from "./support/submit-init-emulator-shared.js";
+} from "./support/submit-init/double-spend.js";
+import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
+import { submitRemovalForFixture } from "./support/submit-init/removal.js";
 
 // A proven fraud-proof record names the queued header it convicts. Whoever
 // reads it and the CorrectionLock from L1 can start that removal from an Idle

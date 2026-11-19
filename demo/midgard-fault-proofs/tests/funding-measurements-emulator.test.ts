@@ -6,14 +6,16 @@ import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deploym
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { measureComputationThreadInitFunding } from "../src/workflow/funding-measurements.computation-thread-init.js";
 import {
   assertCompleteWorkflowFundingMeasurements,
-  createWorkflowFundingMeasurementContext,
-  measureComputationThreadInitFunding,
-  readWorkflowFundingMeasurementContext,
-  workflowFundingMeasurementArtifactBytes,
   workflowFundingMeasurementCoverage,
-} from "../src/workflow/funding-measurements.js";
+} from "../src/workflow/funding-measurements.coverage.js";
+import {
+  createWorkflowFundingMeasurementContext,
+  readWorkflowFundingMeasurementContext,
+} from "../src/workflow/funding-measurements.identity.js";
+import { workflowFundingMeasurementArtifactBytes } from "../src/workflow/funding-measurements.recording.js";
 import { submitCapturedTransaction } from "../src/workflow/transaction-boundary.js";
 import { makeGenuineFundingInitCaptureForTest } from "./support/funding-measurement.js";
 

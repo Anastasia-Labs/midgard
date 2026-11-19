@@ -8,7 +8,7 @@ import { Effect } from "effect";
 import { expect } from "vitest";
 
 import { buildCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
-import { planFaultProofFieldOpening } from "../src/field-opening.js";
+import { planFaultProofFieldOpening } from "../src/field-opening.plan-fault-proof-field-opening.js";
 import {
   applyObserverOrderInvalidScripts,
   OBSERVER_ORDER_INVALID_BLUEPRINT_TITLES,
@@ -26,7 +26,7 @@ import {
 import { buildObserverOrderInvalidStep02 } from "../src/observer-order-invalid/submit-step-02.js";
 import { buildObserverOrderInvalidStep03 } from "../src/observer-order-invalid/submit-step-03.js";
 import { buildObserverOrderInvalidStep04 } from "../src/observer-order-invalid/submit-step-04.js";
-import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import type { SubmitStep01TxInclusion } from "../src/step-support.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
@@ -41,11 +41,12 @@ import {
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
 import {
   expectRegisteredChainParity,
   familyStepsFromRegisteredChain,
 } from "./support/emulator/registered-chain.js";
-import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { TRACED_REFUSALS } from "./support/emulator/traced-refusals.js";
 import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
 import {
@@ -58,7 +59,6 @@ import {
   transactionIdOf,
   witnessSetCompactCborHex,
 } from "./support/observer-order-invalid-raw.js";
-import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
 import {
   buildAndSubmitUnjournaled,
   certifyCarriageUnjournaled,

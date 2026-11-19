@@ -2,27 +2,25 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { type UTxO } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import {
-  buildMinFeeInit,
-  buildMinFeeStep01,
-  prepareMinFeeFromTransactions,
-} from "../src/index.js";
+import { prepareMinFeeFromTransactions } from "../src/prepare-min-fee.js";
 import { parseSubmitStep01TxInclusion } from "../src/step-support.js";
+import { buildMinFeeInit } from "../src/submit-min-fee-init.js";
+import { buildMinFeeStep01 } from "../src/submit-min-fee-step-01.js";
 import type { MinFeeFieldItemCbors } from "../src/submit-min-fee-step-02.js";
 import {
   buildCanonicalBlockFixture,
   buildFixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
+import { network } from "./support/emulator/blueprints.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   funderPaymentKeyHash,
-  makeFaultProofEmulatorHarness,
-  makeHeader,
-  network,
-  publishPlainReferenceScriptUtxo,
-  submitSetupTx,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/emulator/emulator-context.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
+import { makeHeader } from "./support/emulator/header-fixtures.js";
+import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 /**

@@ -4,7 +4,8 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Layer } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { Globals, NodeConfig } from "../src/services/index.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
+import { Globals } from "../src/services/globals.globals.js";
 import {
   attachTestL1Access,
   TEN_MINUTES_MS,
@@ -107,12 +108,10 @@ import {
   IntentJournal,
   IntentJournalWithoutFollower,
 } from "../src/services/intent-journal.js";
-import {
-  buildAndSubmitMergeTx,
-  mergeNoInlineSubmitDueWorkFromDefer,
-  type MergeTxResult,
-} from "../src/transactions/state-queue/merge-to-confirmed-state.js";
-import { NoInlineSubmitDefer } from "../src/transactions/utils.js";
+import { buildAndSubmitMergeTx } from "../src/transactions/state-queue/merge-to-confirmed-state.build-and-submit-merge-tx.js";
+import { mergeNoInlineSubmitDueWorkFromDefer } from "../src/transactions/state-queue/merge-to-confirmed-state.capture-merge-local-ledger-gate.js";
+import type { MergeTxResult } from "../src/transactions/state-queue/merge-to-confirmed-state.fetch-canonical-merge-candidate-readiness.js";
+import { NoInlineSubmitDefer } from "../src/transactions/utils.await-required-output-visibility.js";
 
 const fetchConfig: SDK.StateQueueFetchConfig = {
   stateQueueAddress: "addr_test1statequeue",

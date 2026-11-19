@@ -18,12 +18,12 @@ import {
   directBindEventRedeemer,
   directBindingStates,
   directBindPreStateRedeemer,
-  prepareDirectScriptMaterial,
-} from "../src/direct-script-derivation/index.js";
+} from "../src/direct-script-derivation/binding-plan.js";
+import { prepareDirectScriptMaterial } from "../src/direct-script-derivation/material.js";
 import { carriedCountedMembership } from "../src/input-existence/counted-membership-carriage.js";
-import { reconstructDaPayload } from "../src/transition-trace/reconstruct.js";
+import { reconstructDaPayload } from "../src/transition-trace/reconstruct.reconstruct-da-payload.js";
 import { computationThreadOutputPredicate } from "../src/tx-layout.js";
-import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.js";
+import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
   buildCanonicalBlockFixture,
   buildFixtureTransaction,
@@ -33,17 +33,17 @@ import { maximumDirectReceiveOutputs } from "./support/direct-receive-max-fixtur
 import { driveDirectSourceLifecycle } from "./support/direct-source-lifecycle.js";
 import { prepareDirectSourceResourceFixture } from "./support/direct-source-resource-fixture.js";
 import { measureDirectSourceResourcePath } from "./support/direct-source-resource-measurement.js";
-import { nativeDecodingFixture } from "./support/native-script-decoding-retained.js";
 import {
-  EMULATOR_PROTOCOL_PARAMETERS,
-  expectOnchainRefusal,
-  measureCompleteSignedTransaction,
   network,
-  publishPlainReferenceScriptUtxo,
   readBlueprint,
   realBlueprintPath,
-  registerPhasMembershipRewardAccount,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/emulator/blueprints.js";
+import { registerPhasMembershipRewardAccount } from "./support/emulator/emulator-context.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { measureCompleteSignedTransaction } from "./support/emulator/measurement.js";
+import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
+import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { nativeDecodingFixture } from "./support/native-script-decoding-retained.js";
 
 const materialFor = async (direction: "A-N" | "A-F" | "R-F") => {
   if (direction !== "A-N") {

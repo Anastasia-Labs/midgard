@@ -16,15 +16,17 @@ import { cursorFamilyActionInput } from "../workflow/cursor-family-runtime.js";
 import type { CursorFamilySpec } from "../workflow/cursor-family-state.js";
 import {
   CHUNKED_VERIFY_WITNESS_ROLES,
-  cursorStepContractNames,
-  defineFamily,
   type FamilyAssemblyContext,
   type FamilyCategory,
   type FamilyStepTuple,
   type LinearFamilyPrerequisiteInput,
   type LinearFamilyStepDatumSchema,
+} from "../workflow/family-definition.family-adapter-arm.js";
+import {
+  cursorStepContractNames,
+  defineFamily,
   type ManifestBoundFamilyWorkflow,
-} from "../workflow/family-definition.js";
+} from "../workflow/family-definition.family-definition.js";
 import type { FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import {

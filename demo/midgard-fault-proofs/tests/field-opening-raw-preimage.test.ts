@@ -12,11 +12,10 @@ import { fieldPreimagePublicationDatumCbor } from "@al-ft/midgard-sdk";
 import { credentialToAddress, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import {
-  faultProofFieldOpening,
-  planFaultProofFieldOpening,
-} from "../src/field-opening.js";
-import { h32, makeNativeTx } from "./support/submit-init-emulator-shared.js";
+import { planFaultProofFieldOpening } from "../src/field-opening.plan-fault-proof-field-opening.js";
+import { faultProofFieldOpening } from "../src/field-opening.publish-fault-proof-field-carriage.js";
+import { h32 } from "./support/emulator/header-fixtures.js";
+import { makeNativeTx } from "./support/emulator/native-tx.js";
 
 const OWNER = "ab".repeat(28);
 const inputItem = Buffer.concat([

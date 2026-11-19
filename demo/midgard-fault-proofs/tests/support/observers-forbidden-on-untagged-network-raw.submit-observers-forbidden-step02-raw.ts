@@ -2,12 +2,12 @@ import { decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
 import { type FieldOpening } from "@al-ft/midgard-sdk";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
+import { resolveFaultProofFieldPreimageCertificate } from "../../src/field-opening.certify-fault-proof-field-carriage.js";
+import { planFaultProofFieldOpening } from "../../src/field-opening.plan-fault-proof-field-opening.js";
 import {
   faultProofFieldOpening,
-  planFaultProofFieldOpening,
   resolveFaultProofFieldCarriagePublications,
-  resolveFaultProofFieldPreimageCertificate,
-} from "../../src/field-opening.js";
+} from "../../src/field-opening.publish-fault-proof-field-carriage.js";
 import {
   requireLinearFaultReferenceScript,
   requireLinearFaultStepState,

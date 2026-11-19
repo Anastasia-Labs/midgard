@@ -11,17 +11,16 @@ import type * as SDK from "@al-ft/midgard-sdk";
 import * as LE from "@lucid-evolution/lucid";
 import { Effect, Schedule } from "effect";
 
-import {
-  ContractDeploymentIdentity,
-  Database,
-  deploymentL1SlotConfig,
-  Globals,
-  Lucid,
-  MidgardContracts,
-  NodeConfig,
-} from "../services/index.js";
+import { Globals } from "../services/globals.globals.js";
+import { Database, NodeConfig } from "../services/index.js";
 import type { IntentJournal } from "../services/intent-journal.js";
 import { defensePocketAddress } from "../services/intent-journal.tracked-set.js";
+import { Lucid } from "../services/lucid.js";
+import { deploymentL1SlotConfig } from "../services/midgard-contracts.load-reference-script-auth-validator.js";
+import {
+  ContractDeploymentIdentity,
+  MidgardContracts,
+} from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   fetchReferenceScriptUtxosProgram,
   referenceScriptByName,

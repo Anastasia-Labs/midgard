@@ -2,22 +2,22 @@ import { type UTxO } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
 import { type FaultProofFieldOpeningPlan } from "../src/field-opening.js";
-import {
-  buildNetworkIdAcceptedForcedBind,
-  buildNetworkIdCancel,
-  buildNetworkIdForcedBind,
-  buildNetworkIdForcedScanAction,
-  buildNetworkIdForcedStep01,
-  buildNetworkIdInit,
-  buildNetworkIdStep02,
-  type NetworkIdForcedScanPlan,
-  type NetworkIdForcedScanStep,
-  planNetworkIdForcedScan,
-  planNetworkIdOutputsOpening,
-  type PreparedNetworkIdAcceptedForced,
-  type PreparedNetworkIdWrongfulRejection,
-} from "../src/network-id/index.js";
-import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
+import type { PreparedNetworkIdAcceptedForced } from "../src/network-id/accepted-forced.js";
+import type {
+  NetworkIdForcedScanPlan,
+  NetworkIdForcedScanStep,
+} from "../src/network-id/forced-scan-plan.advance-grammar-by.js";
+import { planNetworkIdForcedScan } from "../src/network-id/forced-scan-plan.plan-network-id-forced-scan.js";
+import { planNetworkIdOutputsOpening } from "../src/network-id/prepare.js";
+import { buildNetworkIdAcceptedForcedBind } from "../src/network-id/submit-network-id-accepted-forced-bind.js";
+import { buildNetworkIdCancel } from "../src/network-id/submit-network-id-cancel.js";
+import { buildNetworkIdForcedBind } from "../src/network-id/submit-network-id-forced-bind.js";
+import { buildNetworkIdForcedScanAction } from "../src/network-id/submit-network-id-forced-scan.submit-network-id-forced-scan-action.js";
+import { buildNetworkIdForcedStep01 } from "../src/network-id/submit-network-id-forced-step-01.js";
+import { buildNetworkIdInit } from "../src/network-id/submit-network-id-init.js";
+import { buildNetworkIdStep02 } from "../src/network-id/submit-network-id-step-02.submit-network-id-step02.js";
+import type { PreparedNetworkIdWrongfulRejection } from "../src/network-id/wrongful-rejection.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import type { OwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
   commitForcedBlock,
@@ -29,12 +29,12 @@ import {
   type CompleteSignedTransactionMeasurement,
 } from "./support/emulator/measurement.js";
 import { expectProofFit } from "./support/emulator/proof-fit.js";
-import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import {
   makeNetworkIdEmulatorHarness,
   publishNetworkIdReferenceScriptsMeasured,
 } from "./support/network-id-emulator.js";
-import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,

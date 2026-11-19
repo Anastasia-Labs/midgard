@@ -21,7 +21,7 @@ import type {
   LandedStateQueue,
   LandedStateQueueElement,
 } from "../l1-state-queue/index.js";
-import { landedTail } from "../l1-state-queue/index.js";
+import { landedTail } from "../l1-state-queue/landed.js";
 import type { OperatorListContract } from "./config.js";
 import type { OperatorMembership } from "./membership.js";
 import {

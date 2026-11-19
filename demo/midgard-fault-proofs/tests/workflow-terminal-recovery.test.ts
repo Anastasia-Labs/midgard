@@ -4,12 +4,12 @@ import {
   createFraudProofFamilyAuthenticatedL1TerminalVerifier,
   FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
 } from "../src/workflow/family-l1-observation.js";
+import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
 import {
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
   type FraudProofWorkflowTerminal,
-  MemoryFraudProofWorkflowJournalStore,
-} from "../src/workflow/journal.js";
+} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../src/workflow/raw-l1-publication-observation.js";
 import {
   computeFraudProofReleaseFinalityPolicyDigest,

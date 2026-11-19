@@ -34,7 +34,7 @@ import {
   buildCountedRoot,
   keyValuePhasRootWithCount,
 } from "../../src/transition-trace/phas.js";
-import { encodeData } from "../../src/transition-trace/reconstruct.js";
+import { encodeData } from "../../src/transition-trace/reconstruct.transition-trace-reconstruction.js";
 import { fixtureBlockSlot } from "../support/emulator/header-fixtures.js";
 import { recordFixtureLedger } from "../support/fixture-ledger.js";
 

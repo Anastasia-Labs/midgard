@@ -21,12 +21,12 @@ import {
 } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
+import { buildNativeScriptDecodingScanPlan } from "../src/native-script-decoding/scan-plan.build-native-script-decoding-scan-plan.js";
 import {
-  buildNativeScriptDecodingScanPlan,
   NATIVE_SCRIPT_DECODING_DEFAULT_MAX_STEPS_PER_TX,
   NativeScriptDecodingPlanRoutes,
   type NativeScriptDecodingScanPlan,
-} from "../src/native-script-decoding/scan-plan.js";
+} from "../src/native-script-decoding/scan-plan.native-script-decoding-plan-costs.js";
 
 const DIRECTION_A = MidgardNativeScriptDecodingDirections.WrongfulAcceptance;
 const DIRECTION_B = MidgardNativeScriptDecodingDirections.WrongfulRejection;

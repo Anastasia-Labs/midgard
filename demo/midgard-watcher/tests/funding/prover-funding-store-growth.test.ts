@@ -2,11 +2,11 @@ import { rm } from "node:fs/promises";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  parseWatcherProverFundingReservationRecord,
-  type WatcherProverFundingReservationRecord,
-  type WatcherProverFundingReservationStore,
-} from "../../src/funding/prover-funding-reservation.js";
+import { parseWatcherProverFundingReservationRecord } from "../../src/funding/prover-funding-reservation.parse-watcher-prover-funding-reservation-record.js";
+import type {
+  WatcherProverFundingReservationRecord,
+  WatcherProverFundingReservationStore,
+} from "../../src/funding/prover-funding-reservation.watcher-prover-funding-reservation-store.js";
 import {
   openStore,
   plan,

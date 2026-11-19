@@ -20,7 +20,7 @@ export {
 } from "./emulator/reference-scripts.js";
 export { submitSetupTx } from "./emulator/setup-tx.js";
 export {
-  buildWidthForcedFixture,
   mintFieldTx,
   widthNativeTx,
-} from "./field-item-width-illegal-shapes.js";
+} from "./field-item-width-illegal-shapes.build-accepted-width-inclusions.js";
+export { buildWidthForcedFixture } from "./field-item-width-illegal-shapes.build-width-forced-fixture.js";

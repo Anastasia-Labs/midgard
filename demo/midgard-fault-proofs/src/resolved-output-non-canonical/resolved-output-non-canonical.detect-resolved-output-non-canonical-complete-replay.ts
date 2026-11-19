@@ -16,7 +16,10 @@ import { Data } from "@lucid-evolution/lucid";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { claimedIndex } from "../evidence/claimed-coordinate.js";
 import { type CheckedLedger } from "../ledger-at.js";
-import { buildTrieView, requireProof } from "../prepare-double-spend.js";
+import {
+  buildTrieView,
+  requireProof,
+} from "../prepare-double-spend.resolve-double-spend-pair.js";
 import {
   type AuthenticatedPriorLedgerOutput,
   fail,

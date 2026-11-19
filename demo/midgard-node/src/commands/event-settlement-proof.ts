@@ -6,10 +6,15 @@ import * as DepositsDB from "../database/deposits.js";
 import * as ForcedTransactionsDB from "../database/forcedTransactions.js";
 import { DatabaseError } from "../database/utils/common.js";
 import * as WithdrawalsDB from "../database/withdrawals.js";
+// Through the mpf barrel on purpose: tests/settlement-worker-module-graph.test.ts
+// checks the settlement worker's graph on the path that reaches the
+// fault-proofs root barrel.
 import { keyValuePhasProof, MpfError } from "../mpf/index.js";
-import { Database, Lucid, MidgardContracts } from "../services/index.js";
+import { Database } from "../services/index.js";
+import { Lucid } from "../services/lucid.js";
+import { MidgardContracts } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import { outRefLabel } from "../tx-context.js";
-import { buildAuthenticatedRootFromEncodedEntries } from "../workers/commit-block-header/transition-roots.js";
+import { buildAuthenticatedRootFromEncodedEntries } from "../workers/commit-block-header/transition-roots.validate-count-proof.js";
 import { parseEventId } from "./command-utils.js";
 
 export type EventKind = "deposit" | "withdrawal" | "tx-order";

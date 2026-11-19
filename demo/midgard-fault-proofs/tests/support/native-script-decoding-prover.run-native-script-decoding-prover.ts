@@ -13,11 +13,11 @@ import {
   type NativeScriptDecodingFinding,
   NativeScriptDecodingProvability,
 } from "../../src/native-script-decoding/finding.js";
+import { buildNativeScriptDecodingScanPlan } from "../../src/native-script-decoding/scan-plan.build-native-script-decoding-scan-plan.js";
 import {
-  buildNativeScriptDecodingScanPlan,
   NativeScriptDecodingPlanRoutes,
   type NativeScriptDecodingScanPlan,
-} from "../../src/native-script-decoding/scan-plan.js";
+} from "../../src/native-script-decoding/scan-plan.native-script-decoding-plan-costs.js";
 import { nativeScriptDecodingSubmitError } from "../../src/native-script-decoding/submit-common.js";
 import { outRefLabel } from "../../src/runtime.js";
 import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";

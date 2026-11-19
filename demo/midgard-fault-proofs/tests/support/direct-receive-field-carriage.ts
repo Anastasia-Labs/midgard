@@ -12,11 +12,9 @@ import { expect } from "vitest";
 import { type FaultProofFieldOpeningPlan } from "../../src/field-opening.js";
 import { resolveProverSigner } from "../../src/runtime.js";
 import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
-import {
-  captureEmulatorSubmission,
-  network,
-  publishPlainReferenceScriptUtxo,
-} from "./submit-init-emulator-shared.js";
+import { network } from "./emulator/blueprints.js";
+import { captureEmulatorSubmission } from "./emulator/measurement.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 import {
   certifyCarriageUnjournaled,
   publishCarriageUnjournaled,

@@ -6,18 +6,15 @@ import {
   FollowerWrite,
   runAtFollowerView,
 } from "../services/follower-write-gate.js";
-import {
-  Database,
-  Globals,
-  Lucid,
-  MidgardContracts,
-  NodeConfig,
-} from "../services/index.js";
+import { Globals } from "../services/globals.globals.js";
+import { Database, NodeConfig } from "../services/index.js";
 import { IntentJournal } from "../services/intent-journal.js";
 import {
   landedStateQueueSnapshot,
   refreshStateQueueGlobalsFromSnapshot,
 } from "../services/landed-state-queue.js";
+import { Lucid } from "../services/lucid.js";
+import { MidgardContracts } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   verifiedFrontierWorkerInput,
   WorkerInput,

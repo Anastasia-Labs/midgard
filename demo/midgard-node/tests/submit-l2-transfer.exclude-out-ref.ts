@@ -11,13 +11,13 @@ import {
   DEFAULT_WALLET_SEED_ENV,
   resolveWalletSeedPhrase,
 } from "../src/commands/command-utils.js";
+import { parseSubmitL2TransferConfig } from "../src/commands/submit-l2-transfer.compare-assets-by-coverage.js";
 import {
-  parseSubmitL2TransferConfig,
   submitL2TransferCommandProgram,
   transferSubmissionJournalPath,
-} from "../src/commands/submit-l2-transfer.js";
-import { NodeConfig } from "../src/services/config.js";
-import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.js";
+} from "../src/commands/submit-l2-transfer.submission-journal.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
+import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   admitted,
   destination,

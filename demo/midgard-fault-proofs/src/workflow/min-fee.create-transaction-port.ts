@@ -2,10 +2,8 @@ import { encodeMidgardNativeTxWitnessSetCompact } from "@al-ft/midgard-core";
 import { MIN_FEE_VIOLATION_ID } from "@al-ft/midgard-sdk";
 import type { UTxO } from "@lucid-evolution/lucid";
 
-import {
-  resolveFaultProofFieldCarriagePublications,
-  resolveFaultProofFieldPreimageCertificate,
-} from "../field-opening.js";
+import { resolveFaultProofFieldPreimageCertificate } from "../field-opening.certify-fault-proof-field-carriage.js";
+import { resolveFaultProofFieldCarriagePublications } from "../field-opening.publish-fault-proof-field-carriage.js";
 import type { MinFeeContracts } from "../min-fee-contracts.js";
 import { prepareMinFeeForcedArtifact } from "../min-fee-forced-artifact.js";
 import { buildMinFeeStep01Forced } from "../submit-min-fee-forced-step-01.js";
@@ -39,7 +37,7 @@ import {
   witnessSetCore,
 } from "./min-fee.parse-artifact.js";
 import type { OwnOutputJournal } from "./own-outputs.js";
-import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.js";
+import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.route-action-identity.js";
 import { journaledStepTransaction } from "./step-transaction.js";
 
 const resolveFieldCarriages = async (

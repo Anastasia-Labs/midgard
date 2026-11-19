@@ -1,10 +1,10 @@
 import { createDaAvailabilityReadScope } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { parseWatcherConfig } from "../../src/runtime/config.js";
-import { createWatcherRetainedDaRuntime } from "../../src/storage/retained-da-runtime.js";
+import { parseWatcherConfig } from "../../src/runtime/config.parse-watcher-config.js";
+import { createWatcherRetainedDaRuntime } from "../../src/storage/retained-da-runtime.create-watcher-retained-da-runtime-owner.js";
 import { withWatcherRetainedDaReadScope } from "../../src/storage/retained-da-runtime.read-scope.js";
-import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
+import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.build-watcher-deployment-authority-fixture.js";
 import { rawConfig, transportFactory } from "./retained-da-runtime.fixtures.js";
 
 // Existing retained-DA suites cover lifetime closure; this composition covers

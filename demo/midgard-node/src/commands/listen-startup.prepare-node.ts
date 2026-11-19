@@ -19,12 +19,12 @@ import { Effect } from "effect";
 
 import { backfillMissingDaPayloadsFromAppliedJournals } from "../workers/commit-block-header/da-payload-backfill.js";
 import { landedStateQueueStartupReasons } from "./listen-startup.await-landed-state-queue.js";
+import { releaseLedgerStoreLeaseOfPreviousNodeProcess } from "./listen-startup.release-ledger-store-lease-of-previous-node-process.js";
+import { releaseStateQueueLeasesOfPreviousNodeProcess } from "./listen-startup.release-state-queue-leases-of-previous-node-process.js";
 import {
   hydratePendingBlockFinalizationOnStartup,
-  releaseStateQueueLeasesOfPreviousNodeProcess,
   seedLatestLocalBlockBoundaryOnStartup,
-} from "./listen-startup.js";
-import { releaseLedgerStoreLeaseOfPreviousNodeProcess } from "./listen-startup.release-ledger-store-lease-of-previous-node-process.js";
+} from "./listen-startup.seed-latest-local-block-boundary-on-startup.js";
 
 /** Names the step that failed in the failure the recompute holds on. */
 const step = <A, E, R>(label: string, effect: Effect.Effect<A, E, R>) =>

@@ -8,7 +8,7 @@ import { Effect, Fiber, Ref, type Schedule } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import { nodeFibers } from "../src/commands/listen.node-fibers.js";
-import { Globals } from "../src/services/globals.js";
+import { Globals } from "../src/services/globals.globals.js";
 import {
   FIBER_HALT_SOURCES,
   type HeldFiber,

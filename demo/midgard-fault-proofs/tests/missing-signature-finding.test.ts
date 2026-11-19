@@ -5,7 +5,7 @@ import {
   assertMissingSignatureFindingProvable,
   type MissingSignatureFinding,
   MissingSignatureProvability,
-} from "../src/missing-signature/index.js";
+} from "../src/missing-signature/finding.js";
 
 const VKEY = "11".repeat(32);
 const finding: MissingSignatureFinding = {

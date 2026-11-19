@@ -7,8 +7,8 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { collectScriptDescriptors } from "../src/commands/contract-deployment-info.js";
-import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
+import { collectScriptDescriptors } from "../src/commands/contract-deployment-info.build-reference-script-out-ref-map.js";
+import { AlwaysSucceedsContract } from "../src/services/always-succeeds.always-succeeds-contract.js";
 import { buildRealHubOracleValidator } from "../src/services/midgard-contracts.build-real-hub-oracle-validator.js";
 import { loadRealBlueprint } from "../src/services/midgard-contracts.load-reference-script-auth-validator.js";
 import { withRealEventHistoryForTest } from "./helpers/event-history.js";

@@ -21,18 +21,18 @@ import { Effect, Ref, Runtime } from "effect";
 
 import { followerSqlTx } from "../../src/database/follower-schema.js";
 import { forcedOrderConfigFromContracts } from "../../src/forced-orders/config.js";
+import { memoryActivityRecord } from "../../src/l1-operator-set/activity.js";
+import { operatorSetConfig } from "../../src/l1-operator-set/config.js";
+import { operatorSetHook } from "../../src/l1-operator-set/hook.js";
+import { publishOperatorMembership } from "../../src/l1-operator-set/membership.js";
+import { neglectedEventSourcesOf } from "../../src/l1-operator-set/neglected-event.js";
+import { createOperatorSetMirror } from "../../src/l1-operator-set/set.js";
 import {
-  createOperatorSetMirror,
-  memoryActivityRecord,
-  neglectedEventSourcesOf,
-  operatorSetConfig,
-  operatorSetHook,
   publishedOperatorSetOf,
-  publishOperatorMembership,
-  stateQueueStrikeFactsOf,
   stateQueueTailOf,
-} from "../../src/l1-operator-set/index.js";
-import { Globals } from "../../src/services/globals.js";
+} from "../../src/l1-operator-set/snapshot.js";
+import { stateQueueStrikeFactsOf } from "../../src/l1-operator-set/strike-facts.js";
+import { Globals } from "../../src/services/globals.globals.js";
 import { readLandedStateQueue } from "../../src/services/landed-state-queue.js";
 import { syncEmulatorFollower } from "./emulator-l1-follower.js";
 

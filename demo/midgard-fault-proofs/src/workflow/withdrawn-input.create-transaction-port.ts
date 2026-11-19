@@ -9,27 +9,25 @@ import { buildWithdrawnInputInit } from "../withdrawn-input/submit-withdrawn-inp
 import { buildWithdrawnInputStep01 } from "../withdrawn-input/submit-withdrawn-input-step-01.js";
 import { buildWithdrawnInputStep02 } from "../withdrawn-input/submit-withdrawn-input-step-02.js";
 import { buildWithdrawnInputStep03 } from "../withdrawn-input/submit-withdrawn-input-step-03.js";
-import { WITHDRAWN_INPUT_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
+import { WITHDRAWN_INPUT_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.create-complete-canonical-replay-union.js";
+import type { ManifestBoundLinearFamilyWorkflowConfig } from "./family-definition.family-adapter-arm.js";
 import {
   defineLinearFamily,
   type ManifestBoundLinearFamilyWorkflow,
-  type ManifestBoundLinearFamilyWorkflowConfig,
-} from "./family-definition.js";
+} from "./family-definition.family-definition.js";
 import { type FieldCarriageRequirement } from "./field-carriage-prerequisite.js";
 import { workflowFieldCarriageOwnOutputs } from "./field-carriage-prerequisite.own-carriage-claims.js";
 import {
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyTransactionPort,
 } from "./linear-family-adapter.js";
-import {
-  assembleManifestBoundFamilyWorkflow,
-  runOrResumeManifestBoundFamilyWorkflow,
-} from "./manifest-bound-family-assembly.js";
+import { assembleManifestBoundFamilyWorkflow } from "./manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
+import { runOrResumeManifestBoundFamilyWorkflow } from "./manifest-bound-family-assembly.run-or-resume-manifest-bound-family-workflow.js";
 import {
   admitNativeInclusionArtifact,
   exactJournalRecord,
 } from "./native-index-artifact.js";
-import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.js";
+import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.route-action-identity.js";
 import { journaledStepTransaction } from "./step-transaction.js";
 import { admitWithdrawnInputArtifact } from "./withdrawn-input.admit-withdrawn-input-artifact.js";
 import {

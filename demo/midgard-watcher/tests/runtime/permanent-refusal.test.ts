@@ -17,20 +17,24 @@ import {
   watcherFailureExitCode,
 } from "../../src/cli.js";
 import { WatcherL1UnavailableError } from "../../src/l1/transient-retry.js";
-import { parseWatcherConfigJson } from "../../src/runtime/config.js";
+import { parseWatcherConfigJson } from "../../src/runtime/config.strict-json-reader.js";
 import {
   isWatcherPermanentRefusal,
   refusePermanently,
   WatcherPermanentRefusalError,
 } from "../../src/runtime/permanent-refusal.js";
-import type { WatcherProcessConfig } from "../../src/runtime/process-config.js";
-import { loadWatcherProcessConfigFile } from "../../src/runtime/process-config.js";
-import { WATCHER_STARTUP_FAILED } from "../../src/runtime/startup-operations.js";
+import {
+  loadWatcherProcessConfigFile,
+  type WatcherProcessConfig,
+} from "../../src/runtime/process-config.js";
+import {
+  WATCHER_STARTUP_FAILED,
+  WatcherStartupHeldError,
+} from "../../src/runtime/startup-operations.js";
 import {
   createWatcherRuntime,
   watcherStartupFailureExits,
-  WatcherStartupHeldError,
-} from "../../src/runtime/watcher-runtime.js";
+} from "../../src/runtime/watcher-runtime.startup-hold.js";
 import { freeOperationsEndpoint } from "../support/free-port.js";
 import { writeWatcherRuntimeProcessConfig } from "../support/watcher-runtime-process-config.js";
 

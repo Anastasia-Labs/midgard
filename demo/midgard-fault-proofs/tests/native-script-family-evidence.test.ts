@@ -2,7 +2,7 @@ import "@al-ft/midgard-core";
 import "@al-ft/midgard-sdk";
 import "@al-ft/midgard-validation";
 import "vitest";
-import "../src/evidence/index.js";
+import "../src/evidence/canonical-block-evidence.js";
 import "../src/native-script-invalid/artifact.js";
 import "../src/native-script-invalid/prepare.js";
 import "../src/resolved-output-non-canonical/resolved-output-non-canonical.js";

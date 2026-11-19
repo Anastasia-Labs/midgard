@@ -14,14 +14,16 @@ import {
 
 import type { WatcherInstalledWorkflowCategory } from "../fault-proofs/fault-proof-application.js";
 import type { WatcherWorkflowJournal } from "../fault-proofs/watcher-workflow-journal.js";
+import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.parse-trust-roots.js";
 import {
   assertVerifiedWatcherDeploymentIdentity,
-  type VerifiedWatcherDeploymentIdentity,
+  watcherDeploymentProtocolScriptAuthority,
+} from "../runtime/deployment-identity.verify-watcher-user-event-script-binding.js";
+import {
   watcherDeploymentAppliedScriptHashes,
   watcherDeploymentAvailabilityChallengeAuthority,
-  watcherDeploymentProtocolScriptAuthority,
   watcherDeploymentReleaseEconomicsAuthority,
-} from "../runtime/deployment-identity.js";
+} from "../runtime/deployment-identity.watcher-deployment-availability-challenge-authority.js";
 import type { WatcherOperationsSink } from "../runtime/operations-observability.js";
 import {
   assertWatcherProtocolParameterHistory,
@@ -38,8 +40,10 @@ import {
   WATCHER_PROVER_FUNDING_AUTHORITY,
   type WatcherProverFundingAuthorityFactory,
 } from "./prover-funding-authority.watcher-prover-funding-authority-factory.js";
-import type { WatcherRuntimeProverFundingCalculation } from "./prover-funding-calculation.js";
-import { calculateWatcherRuntimeProverFunding } from "./prover-funding-calculation.js";
+import {
+  calculateWatcherRuntimeProverFunding,
+  type WatcherRuntimeProverFundingCalculation,
+} from "./prover-funding-calculation.js";
 import {
   authorizeWatcherProverFundingRecovery,
   releaseUnusedDecisionReservations,
@@ -49,12 +53,12 @@ import {
   createWatcherOrphanedReservations,
   type WatcherOrphanedReservationObserver,
 } from "./prover-funding-recovery.orphaned-reservation.js";
+import { parseWatcherProverFundingReservationRecord } from "./prover-funding-reservation.parse-watcher-prover-funding-reservation-record.js";
 import {
-  parseWatcherProverFundingReservationRecord,
   type WatcherProverFundingReservationRecord,
   type WatcherProverFundingReservationStore,
   WatcherProverFundingUnavailableError,
-} from "./prover-funding-reservation.js";
+} from "./prover-funding-reservation.watcher-prover-funding-reservation-store.js";
 
 /**
  * A validation-trace dispute policy's custody terms, from the signed

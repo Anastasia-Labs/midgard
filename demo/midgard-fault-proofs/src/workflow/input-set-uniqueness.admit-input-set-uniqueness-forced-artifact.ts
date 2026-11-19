@@ -5,7 +5,7 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import { planFaultProofFieldOpening } from "../field-opening.js";
+import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
 import { INPUT_SET_UNIQUENESS_WRONGFUL_REJECTION_VIOLATION_ID } from "../input-set-uniqueness/replay.js";
 import { INPUT_SET_UNIQUENESS_VIOLATION_ID } from "../input-set-uniqueness/scan.js";
 import {

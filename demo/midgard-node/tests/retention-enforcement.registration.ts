@@ -18,12 +18,12 @@ import {
   retentionSweepAction,
   retentionSweeperFiber,
 } from "../src/fibers/retention-sweeper.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
+import { Lucid } from "../src/services/lucid.js";
 import {
   ContractDeploymentIdentity,
-  Lucid,
   MidgardContracts,
-  NodeConfig,
-} from "../src/services/index.js";
+} from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import { makeRetentionL1Queue } from "./helpers/retention-l1-view.js";
 import {
   daPayloadFixture,

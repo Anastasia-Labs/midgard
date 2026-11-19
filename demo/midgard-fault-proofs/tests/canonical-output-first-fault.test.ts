@@ -5,12 +5,13 @@ import {
   ledgerEd25519SignatureReady,
   MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core";
-import { RejectCodes, validatePhaseASingle } from "@al-ft/midgard-validation";
+import { validatePhaseASingle } from "@al-ft/midgard-validation/phase-a";
 import {
   makeMinAdaFundedExactSizeOutputItem,
   makeNativeTx,
   outRefFromByte,
 } from "@al-ft/midgard-validation/tests/validation-fixtures";
+import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { CML } from "@lucid-evolution/lucid";
 import { beforeAll, expect, it } from "vitest";
 

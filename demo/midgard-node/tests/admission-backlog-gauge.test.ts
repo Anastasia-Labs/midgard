@@ -26,11 +26,9 @@ import {
 import {
   AdmissionWriterFullError,
   AdmissionWriterShutdownError,
-} from "../src/services/admission-writer.js";
-import {
-  type AdmissionBacklogGaugeState,
-  Globals,
-} from "../src/services/globals.js";
+} from "../src/services/admission-writer.validate-options.js";
+import { Globals } from "../src/services/globals.globals.js";
+import type { AdmissionBacklogGaugeState } from "../src/services/globals.next-l1-provider-health-evidence.js";
 
 describe("admission backlog gauge", () => {
   it("preserves the reported value during refresh and retains interleaved admits", () => {

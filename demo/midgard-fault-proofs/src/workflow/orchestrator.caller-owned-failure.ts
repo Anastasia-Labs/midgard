@@ -1,4 +1,4 @@
-import { isWorkflowActuationRevokedError } from "./actuation-permit.js";
+import { isWorkflowActuationRevokedError } from "./actuation-permit.create-workflow-reconciliation-permit-controller.js";
 import { isFraudProofL1WaitError } from "./l1-source.js";
 
 /**

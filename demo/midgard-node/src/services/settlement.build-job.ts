@@ -7,14 +7,14 @@ import { Cause, Effect, Layer, Option, Schedule } from "effect";
 
 import { payoutStatusProgram } from "../commands/reserve-inspection.js";
 import {
-  absorbConfirmedDepositToReserveProgram,
   addReserveFundsToPayoutProgram,
   concludePayoutProgram,
   initializePayoutProgram,
-} from "../commands/reserve-payout.js";
+} from "../commands/reserve-payout.add-reserve-funds-to-payout-program.js";
+import { absorbConfirmedDepositToReserveProgram } from "../commands/reserve-payout.retry-after-retirement-protection.js";
 import * as Journal from "../database/settlement.js";
 import { ReservePayoutTransport } from "../transactions/reserve-payout.js";
-import { TxSignError } from "../transactions/utils.js";
+import { TxSignError } from "../transactions/utils.await-required-output-visibility.js";
 import {
   readWalletView,
   selectNodeWallet,
@@ -29,7 +29,7 @@ import {
 } from "./intent-journal.js";
 import { FollowerLucidAndContracts } from "./l1-adapter.follower.js";
 import { Lucid } from "./lucid.js";
-import { ContractDeploymentIdentity } from "./midgard-contracts.js";
+import { ContractDeploymentIdentity } from "./midgard-contracts.make-midgard-contract-runtime.js";
 import {
   inspectSettlementAttempt,
   reconcileAttempt,

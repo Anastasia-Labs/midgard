@@ -8,10 +8,8 @@ import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import {
-  createCursorFamilyWorkflowAdapter,
-  CURSOR_FAMILY_TRANSACTION_PORT,
-} from "../workflow/cursor-family-adapter.js";
+import { CURSOR_FAMILY_TRANSACTION_PORT } from "../workflow/cursor-family-adapter.admit-reference-scripts.js";
+import { createCursorFamilyWorkflowAdapter } from "../workflow/cursor-family-adapter.create-cursor-family-workflow-adapter.js";
 import {
   captureCursorRemoval,
   cursorFamilyActionInput,

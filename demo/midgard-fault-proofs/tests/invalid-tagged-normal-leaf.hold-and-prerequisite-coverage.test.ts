@@ -7,9 +7,9 @@ import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import { ValidationTraceReplayHeldError } from "../src/validation-trace-dispute/replay-hold.js";
-import { DOUBLE_SPEND_VIOLATION_ID } from "../src/workflow/classification.js";
+import { DOUBLE_SPEND_VIOLATION_ID } from "../src/workflow/classification.fraud-proof-classification-rules.js";
+import { createCompleteCanonicalReplayUnion } from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
 import { completeReplayer } from "../src/workflow/complete-replay.detect-double-withdraws.js";
-import { createCompleteCanonicalReplayUnion } from "../src/workflow/complete-replay.js";
 import {
   acceptedTransactionSubject,
   eventOrder,

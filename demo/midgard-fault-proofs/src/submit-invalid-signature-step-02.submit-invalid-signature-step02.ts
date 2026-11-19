@@ -15,11 +15,11 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { type FaultProofTurn, isPrerequisiteTurn } from "./fault-proof-turn.js";
+import { planFaultProofFieldOpening } from "./field-opening.plan-fault-proof-field-opening.js";
 import {
   faultProofFieldOpening,
-  planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
-} from "./field-opening.js";
+} from "./field-opening.publish-fault-proof-field-carriage.js";
 import {
   fetchUtxoByOutRef,
   outRefLabel,
@@ -27,11 +27,10 @@ import {
   type ResolvedProverSigner,
   resolveInvalidSignatureDeploymentContracts,
 } from "./runtime.js";
-import { completeStep, fundStep } from "./step-completion.js";
-import { finishStep } from "./step-completion.js";
+import { completeStep, finishStep, fundStep } from "./step-completion.js";
 import { requireComputationThreadToken } from "./step-support.js";
-import type { InvalidSignatureStep02Build } from "./submit-invalid-signature-step-02.make-invalid-signature-step02-spend-redeemer.js";
 import {
+  type InvalidSignatureStep02Build,
   type InvalidSignatureStep02ResolvedLayout,
   type InvalidSignatureStep02SpendLayout,
   makeComputationThreadSuccessRedeemer,

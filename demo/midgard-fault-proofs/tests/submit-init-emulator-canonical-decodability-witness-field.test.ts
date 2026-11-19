@@ -3,11 +3,9 @@ import { outRefLabel } from "@al-ft/midgard-core";
 import { MIDGARD_ENVELOPE_VERDICT_MISSING_ITEM_HEADER } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildCanonicalDecodabilityInit,
-  buildCanonicalDecodabilityStep01,
-  buildCanonicalDecodabilityStep02,
-} from "../src/index.js";
+import { buildCanonicalDecodabilityInit } from "../src/canonical-decodability/submit-canonical-decodability-init.js";
+import { buildCanonicalDecodabilityStep01 } from "../src/canonical-decodability/submit-canonical-decodability-step-01.js";
+import { buildCanonicalDecodabilityStep02 } from "../src/canonical-decodability/submit-canonical-decodability-step-02.js";
 import {
   buildCanonicalDecodabilityWitnessFixture,
   makeCanonicalDecodabilityEmulatorHarness,
@@ -16,8 +14,8 @@ import {
   setupCanonicalDecodabilityScenario,
   submitCanonicalDecodabilityStep01Raw,
 } from "./support/canonical-decodability-emulator.js";
-import { expectOnchainRefusal } from "./support/native-script-decoding-emulator.js";
-import { expectSingleUtxoWithUnit } from "./support/submit-init-emulator-shared.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 describe("canonical-decodability witness-field lifecycle", () => {

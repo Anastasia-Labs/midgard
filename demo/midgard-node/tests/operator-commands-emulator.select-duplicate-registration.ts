@@ -7,7 +7,7 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { selectDuplicateRegistration } from "../src/transactions/operators/exit.js";
+import { selectDuplicateRegistration } from "../src/transactions/operators/exit.slash-duplicate-operator-program.js";
 
 describe("selectDuplicateRegistration", () => {
   const node = (

@@ -3,7 +3,7 @@ import { Worker } from "node:worker_threads";
 
 import { Duration, Effect, Ref, Runtime, Schedule } from "effect";
 
-import { Globals } from "../services/globals.js";
+import { Globals } from "../services/globals.globals.js";
 import type { UnwrittenHold } from "../services/intent-journal.holds.js";
 import { IntentJournal } from "../services/intent-journal.js";
 import type { SettlementHealth } from "../services/settlement.js";

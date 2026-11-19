@@ -6,13 +6,13 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 import { fixture as terminalFixture } from "@al-ft/midgard-fault-proofs/test-support/raw-l1-terminal-fixture";
 
-import { watcherDeploymentReleaseEconomicsAuthority } from "../../src/runtime/deployment-identity.js";
+import { watcherDeploymentReleaseEconomicsAuthority } from "../../src/runtime/deployment-identity.watcher-deployment-availability-challenge-authority.js";
+import type { setupFundingRecoveryFixture } from "./fault-proof-funding-fixture.setup-funding-recovery-fixture.js";
 import {
   deploymentIdentity,
   finality,
   key,
-  type setupFundingRecoveryFixture,
-} from "./fault-proof-funding-fixture.js";
+} from "./fault-proof-funding-fixture.sources-for.js";
 
 /**
  * The raw L1 terminal of a funding-recovery fixture's correction, and the

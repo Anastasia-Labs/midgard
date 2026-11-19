@@ -5,7 +5,8 @@
  * injected at the event-ledger walk, trace outcomes at the validation
  * package. */
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import { RejectCodes, ValidationTraceStopped } from "@al-ft/midgard-validation";
+import { ValidationTraceStopped } from "@al-ft/midgard-validation";
+import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { EventLedgerReplayRefusal } from "../src/event-ledger.js";
@@ -18,12 +19,12 @@ import { prepareValidationTraceArtifact } from "../src/validation-trace-dispute/
 import {
   type CanonicalBlockClassification,
   classifyCanonicalBlockViolations,
-} from "../src/workflow/classification.js";
+} from "../src/workflow/classification.classify-canonical-block-violations.js";
+import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
-  completeCanonicalReplayPredecessorLedger,
   createValidationTraceDisputeCompleteCanonicalReplay,
   requireCompleteCanonicalReplayDecision,
-} from "../src/workflow/complete-replay.js";
+} from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
 import { WorkflowArtifactPendingError } from "../src/workflow/workflow-artifact-pending.js";
 import { referenceLedgerBefore } from "./helpers/event-ledger-reference.js";
 import { plutusExecutionEventsBlockFixture } from "./helpers/plutus-execution-events-fixture.js";

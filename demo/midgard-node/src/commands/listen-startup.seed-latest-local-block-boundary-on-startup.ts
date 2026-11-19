@@ -13,13 +13,14 @@ import { setUnresolvedBlockSubmission } from "../fibers/unresolved-block-submiss
 import { foldMerge } from "../landed-blocks/confirmed-merges.js";
 import { ownFoldRow } from "../landed-blocks/journal.js";
 import { Frontier } from "../landed-blocks/store.js";
-import { computeLedgerMpfRootFromLedgerEntries } from "../mpf/index.js";
-import { Globals, MidgardContracts } from "../services/index.js";
+import { computeLedgerMpfRootFromLedgerEntries } from "../mpf/ledger-hydration.js";
+import { Globals } from "../services/globals.globals.js";
 import { unboundJournalReason } from "../services/journal-header-binding.js";
 import {
   landedStateQueueSnapshot,
   refreshStateQueueGlobalsFromSnapshot,
 } from "../services/landed-state-queue.js";
+import { MidgardContracts } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import { deserializeStateQueueUTxO } from "../workers/utils/commit-block-header.js";
 
 /**

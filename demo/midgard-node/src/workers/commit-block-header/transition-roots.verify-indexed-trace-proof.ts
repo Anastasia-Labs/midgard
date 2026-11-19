@@ -2,11 +2,11 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { MpfError } from "../../mpf/errors.js";
 import {
-  MpfError,
   verifyKeyValuePhasMembershipProof,
   verifyKeyValuePhasNonMembershipProof,
-} from "../../mpf/index.js";
+} from "../utils/mpf/phas.traverse-phas-proof.js";
 import {
   buildAuthenticatedRootFromDataEntries,
   buildRootMembershipProof,

@@ -31,11 +31,9 @@ import {
   type DirectPurposeSourceEvidence,
   directPurposeSourceTransitions,
 } from "../direct-purpose-family/source-walk.js";
-import {
-  buildDirectSourceIndexEvidence,
-  directPurposeAt,
-} from "../direct-script-derivation/index.js";
 import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
+import { directPurposeAt } from "../direct-script-derivation/purposes.js";
+import { buildDirectSourceIndexEvidence } from "../direct-script-derivation/source-index.js";
 import {
   UNUSED_REDEEMER_CATEGORY_LABEL,
   unusedRedeemerContractRoles,

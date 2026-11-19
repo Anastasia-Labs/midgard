@@ -18,29 +18,30 @@ import { buildMissingSignatureInit } from "../missing-signature/submit-missing-s
 import { buildMissingSignatureStep01 } from "../missing-signature/submit-missing-signature-step-01.js";
 import { buildMissingSignatureStep02 } from "../missing-signature/submit-missing-signature-step-02.js";
 import { buildMissingSignatureStep03 } from "../missing-signature/submit-missing-signature-step-03.js";
-import { buildMissingSignatureStep04 } from "../missing-signature/submit-missing-signature-step-04.js";
+import { buildMissingSignatureStep04 } from "../missing-signature/submit-missing-signature-step-04.submit-missing-signature-step04.js";
 import {
   MISSING_SIGNATURE_WRONGFUL_REJECTION_VIOLATION_ID,
   prepareMissingSignatureWrongfulRejection,
 } from "../missing-signature/wrongful-rejection.js";
+import type { PreparedTxInclusionJson } from "../prepare-double-spend.encode-l2-transaction-source-value.js";
+import { requireTransactionsRootMatch } from "../prepare-double-spend.prepare-double-spend-from-transactions.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
-  type PreparedTxInclusionJson,
   requireProof,
-  requireTransactionsRootMatch,
   transactionSourceTrieItem,
-} from "../prepare-double-spend.js";
-import {
-  buildRemoveFraudulentBlock,
-  type StateQueueMutationLeaseCoordinator,
-} from "../remove-fraudulent-block.js";
+} from "../prepare-double-spend.resolve-double-spend-pair.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.build-remove-fraudulent-block.js";
+import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.remove-fraudulent-block-explicit-category.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { parseSubmitStep01TxInclusion } from "../step-support.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import { type FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
-import { type JournalJsonObject, normalizeJournalJson } from "./journal.js";
+import {
+  type JournalJsonObject,
+  normalizeJournalJson,
+} from "./journal.fraud-proof-workflow-terminal.js";
 import {
   type AdmittedMissingSignatureArtifact,
   HEX_28,

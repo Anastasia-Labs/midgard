@@ -26,15 +26,14 @@ import {
   type FaultProofFieldGrammarDeployment,
   routeFaultProofFieldGrammar,
   WALKED_FIELD_GRAMMAR_ROUTE,
-} from "../field-grammar-certificate.js";
+} from "../field-grammar-certificate.route-fault-proof-field-grammar.js";
+import type { FaultProofFieldOpeningPlan } from "../field-opening.plan-fault-proof-field-opening.js";
 import {
   faultProofFieldOpening,
-  type FaultProofFieldOpeningPlan,
   publishFaultProofFieldCarriage,
-} from "../field-opening.js";
+} from "../field-opening.publish-fault-proof-field-carriage.js";
 import { type ResolvedProverSigner } from "../runtime.js";
-import { completeStep, fundStep } from "../step-completion.js";
-import { finishStep } from "../step-completion.js";
+import { completeStep, finishStep, fundStep } from "../step-completion.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
@@ -54,9 +53,9 @@ import {
   requireNetworkIdStepState,
   requireNetworkIdThreadUtxo,
 } from "./submit-common.js";
-import type { NetworkIdStep02Build } from "./submit-network-id-step-02.same-fault.js";
 import {
   isForcedPrepared,
+  type NetworkIdStep02Build,
   type PreparedNetworkIdFinalProof,
   sameFault,
   STEP_LABEL,

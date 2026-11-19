@@ -26,7 +26,7 @@ import {
   LEDGER_DIVERGENCE_CHECKS,
   type LedgerDivergenceCheck,
 } from "../src/mpf/local-ledger-divergence.js";
-import { Globals } from "../src/services/globals.js";
+import { Globals } from "../src/services/globals.globals.js";
 import { activeLivenessReasons } from "../src/services/liveness-halt.js";
 import { takeCommitWorkerOutput } from "../src/workers/commit-worker-message.js";
 import type { WorkerOutput } from "../src/workers/utils/commit-block-header.js";

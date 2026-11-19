@@ -1,7 +1,7 @@
 import { assetsToValue, CML } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
-import { createSyntheticUserEventOriginFixture } from "../support/user-event-origin-fixture.js";
+import { createSyntheticUserEventOriginFixture } from "../support/user-event-origin-fixture.create-synthetic-user-event-origin-fixture.js";
 
 const policy = "d1".repeat(28);
 const unit = `${policy}.abcd`;

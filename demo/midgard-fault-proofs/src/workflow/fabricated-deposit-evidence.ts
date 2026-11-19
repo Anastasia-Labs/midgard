@@ -23,8 +23,8 @@ import {
 import {
   type FabricatedDepositL1Witness,
   FabricatedDepositRejection,
-  prepareFabricatedDepositFromCommittedLeaves,
-} from "../prepare-fabricated-deposit.js";
+} from "../prepare-fabricated-deposit.classify-fabricated-deposit-fault.js";
+import { prepareFabricatedDepositFromCommittedLeaves } from "../prepare-fabricated-deposit.prepare-fabricated-deposit-from-committed-leaves.js";
 import type { CanonicalViolationDetection } from "./classification.js";
 import { depositSubject } from "./detection-subject.js";
 

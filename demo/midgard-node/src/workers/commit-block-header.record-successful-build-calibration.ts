@@ -3,7 +3,7 @@ import { Effect } from "effect";
 import * as CommitBuildCalibrationDB from "../database/commitBuildCalibration.js";
 import { shouldPreserveCommitMpfRoots } from "./commit-block-header.commit-explicit-block-header-program.js";
 import type { WorkerOutput } from "./utils/commit-block-header.js";
-import { updateCommitBuildEwma } from "./utils/commit-block-planner.js";
+import { updateCommitBuildEwma } from "./utils/commit-block-planner.commit-scheduler-evidence-key.js";
 
 /** Calibration only records the successful final processing pass. */
 export const recordSuccessfulBuildCalibration = (input: {

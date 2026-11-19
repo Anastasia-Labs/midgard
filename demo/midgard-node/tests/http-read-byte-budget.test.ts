@@ -23,7 +23,7 @@ import {
   HTTP_PUBLIC_READ_DATA_MAX_BYTES,
   HTTP_RESPONSE_MAX_BYTES,
 } from "../src/services/http-resource-limits.js";
-import { address1 } from "./database.test/fixtures.js";
+import { address1 } from "./database.test/fixtures.ledger.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 // Opaque storage-only bytes cover SQL transfer/hex expansion before validation.

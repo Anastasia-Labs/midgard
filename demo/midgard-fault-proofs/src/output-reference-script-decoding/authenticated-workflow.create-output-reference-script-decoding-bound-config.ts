@@ -7,18 +7,14 @@ import {
 } from "@al-ft/midgard-sdk";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
-import {
-  type FaultProofFieldGrammarDeployment,
-  resolveFaultProofFieldGrammarDeployment,
-} from "../field-grammar-certificate.js";
+import { resolveFaultProofFieldGrammarDeployment } from "../field-grammar-certificate.resolve-fault-proof-field-grammar-deployment.js";
+import type { FaultProofFieldGrammarDeployment } from "../field-grammar-certificate.route-fault-proof-field-grammar.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { ScriptDecodeDeployment } from "../script-decode/submit.js";
 import { type SubmitStep01TxInclusion } from "../step-support.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import {
-  type FraudProofWorkflowDeploymentBinding,
-  requireManifestBoundReferenceScriptUtxo,
-} from "../workflow/deployment-manifest-binding.js";
+import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.assert-deployment-info-matches-manifest.js";
+import { requireManifestBoundReferenceScriptUtxo } from "../workflow/deployment-manifest-binding.js";
 import type { OutputReferenceScriptDecodingContracts } from "./contracts.js";
 import { type OutputReferenceScriptDecodingEvidence } from "./output-reference-script-decoding.js";
 import {

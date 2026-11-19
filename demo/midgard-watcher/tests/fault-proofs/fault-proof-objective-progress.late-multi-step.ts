@@ -17,7 +17,7 @@ import { expect, it, vi } from "vitest";
 
 import { WATCHER_FAULT_PROOF_RESUBMISSION_REQUIRED } from "../../src/fault-proofs/fault-proof-resubmission-hold.js";
 import { signReplacement } from "../funding/superseded-attempt-replacement.js";
-import { walletAddress } from "../support/fault-proof-funding-fixture.js";
+import { walletAddress } from "../support/fault-proof-funding-fixture.sources-for.js";
 import type { setup } from "./fault-proof-objective-progress.test.js";
 
 const LATEST_SAFE_START_OFFSET_MS =

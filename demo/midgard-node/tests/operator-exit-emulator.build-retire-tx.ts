@@ -11,7 +11,7 @@ import {
 import {
   activateOperatorProgram,
   registerOperatorProgram,
-} from "../src/transactions/register-active-operator.js";
+} from "../src/transactions/register-active-operator.activate-registered-operator-program.js";
 import { withoutFollowerJournal } from "./helpers/intent-journal.js";
 import {
   BOND_LOVELACE,

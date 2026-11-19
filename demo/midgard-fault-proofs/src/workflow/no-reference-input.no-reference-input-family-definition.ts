@@ -6,8 +6,8 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import { NO_REFERENCE_INPUT_KIND } from "../no-reference-input/wrongful-rejection.js";
-import { NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
-import { defineLinearFamily } from "./family-definition.js";
+import { NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.detect-double-withdraws.js";
+import { defineLinearFamily } from "./family-definition.family-definition.js";
 import {
   inputExistenceRemoval,
   type InputExistenceWorkflowReferenceScripts,
@@ -23,10 +23,8 @@ import {
   admitLedgerAbsenceArtifact,
   inputExistenceProofForStage,
 } from "./ledger-absence-artifact.js";
-import {
-  assembleManifestBoundFamilyWorkflow,
-  runOrResumeManifestBoundFamilyWorkflow,
-} from "./manifest-bound-family-assembly.js";
+import { assembleManifestBoundFamilyWorkflow } from "./manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
+import { runOrResumeManifestBoundFamilyWorkflow } from "./manifest-bound-family-assembly.run-or-resume-manifest-bound-family-workflow.js";
 
 export type NoReferenceInputWorkflowReferenceScripts =
   InputExistenceWorkflowReferenceScripts<"noReferenceInput">;

@@ -11,7 +11,7 @@ import { parentPort, workerData } from "node:worker_threads";
 
 import { Effect, Either } from "effect";
 
-import { NodeConfig } from "../../src/services/config.js";
+import { NodeConfig } from "../../src/services/config.make-config.js";
 import { Database } from "../../src/services/database.js";
 import {
   IntentJournal,

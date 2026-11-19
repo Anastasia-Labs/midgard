@@ -7,7 +7,7 @@
  * prepared artifact under its own inputs still passes after them. */
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
+import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
 import {
   type JournalJsonObject,
   normalizeJournalJson,

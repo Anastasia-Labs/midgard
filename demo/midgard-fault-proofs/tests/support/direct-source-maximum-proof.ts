@@ -12,7 +12,7 @@ import {
 import { Effect } from "effect";
 import { expect } from "vitest";
 
-import { createDirectFieldPlan } from "../../src/direct-script-derivation/index.js";
+import { createDirectFieldPlan } from "../../src/direct-script-derivation/field-plan.js";
 import {
   directSourceAdmissionRedeemer,
   directSourceAuthenticationRedeemer,
@@ -20,12 +20,12 @@ import {
 } from "./direct-source-fixture.js";
 import { createDirectSourceStepper } from "./direct-source-stepper.js";
 import {
-  EMULATOR_PROTOCOL_PARAMETERS,
   network,
-  publishPlainReferenceScriptUtxo,
   readBlueprint,
   realBlueprintPath,
-} from "./submit-init-emulator-shared.js";
+} from "./emulator/blueprints.js";
+import { EMULATOR_PROTOCOL_PARAMETERS } from "./emulator/protocol-parameters.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 
 /** Maximum proof envelopes with opaque sibling hashes and an explicit seeded
  * model cursor/count. These are not full materialized honest 64-level tries,

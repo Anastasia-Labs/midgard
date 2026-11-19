@@ -11,19 +11,30 @@ import "../src/field-preimage-length-mismatch/authenticated-workflow.js";
 import "../src/field-preimage-length-mismatch/recovery.js";
 import "../src/field-preimage-length-mismatch/submit-lucid.js";
 import "../src/field-preimage-length-mismatch/workflow-spec.js";
-import "../src/transition-trace/fetch.js";
+import "../src/transition-trace/fetch.da-libp2p-retained-da-source.js";
+import "../src/transition-trace/fetch.fetch-retained-da-payload-by-header-hash.js";
 import "../src/workflow/action-changed.js";
-import "../src/workflow/actuation-permit.js";
-import "../src/workflow/complete-replay.js";
-import "../src/workflow/cursor-family-adapter.js";
+import "../src/workflow/actuation-permit.assert-workflow-actuation-permit-identity.js";
+import "../src/workflow/actuation-permit.create-workflow-reconciliation-permit-controller.js";
+import "../src/workflow/complete-replay.replay-context-identity.js";
+import "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
+import "../src/workflow/cursor-family-adapter.admit-reference-scripts.js";
+import "../src/workflow/cursor-family-adapter.create-cursor-family-workflow-adapter.js";
 import "../src/workflow/cursor-family-state.js";
-import "../src/workflow/family-application.js";
+import "../src/workflow/family-application.assert-family-definition-roster.js";
+import "../src/workflow/family-application.apply-family-application-record.js";
 import "../src/workflow/family-l1-observation.js";
-import "../src/workflow/field-carriage-prerequisite.js";
-import "../src/workflow/funding-reservation-permit.js";
-import "../src/workflow/header-classifier.js";
-import "../src/workflow/journal.js";
-import "../src/workflow/orchestrator.js";
+import "../src/workflow/field-carriage-prerequisite.create-authenticated-field-carriage-prerequisite-port.js";
+import "../src/workflow/field-carriage-prerequisite.with-field-carriage-prerequisite.js";
+import "../src/workflow/funding-reservation-permit.restrict-workflow-funding-signer.js";
+import "../src/workflow/funding-reservation-permit.begin-workflow-funding-reservation-action.js";
+import "../src/workflow/header-classifier.authenticated-state-queue-observation-digest.js";
+import "../src/workflow/header-classifier.classify-header.js";
+import "../src/workflow/header-classifier.create-header-classifier.js";
+import "../src/workflow/journal.fraud-proof-workflow-terminal.js";
+import "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
+import "../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
+import "../src/workflow/orchestrator.run-da-hash-preimage-workflow-from-retained-da.js";
 import "../src/workflow/raw-l1-publication-observation.js";
 import "../src/workflow/release-finality-policy.js";
 import "../src/workflow/runtime.js";
@@ -43,37 +54,35 @@ import {
   type ManifestBoundFieldPreimageLengthWorkflow,
 } from "../src/field-preimage-length-mismatch/authenticated-workflow.js";
 import * as submitters from "../src/field-preimage-length-mismatch/submit-lucid.js";
-import { DaLibp2pRetainedDaSource } from "../src/transition-trace/fetch.js";
+import { DaLibp2pRetainedDaSource } from "../src/transition-trace/fetch.da-libp2p-retained-da-source.js";
 import { WorkflowActionChangedError } from "../src/workflow/action-changed.js";
+import { bindWorkflowActuationRecoveryIdentity } from "../src/workflow/actuation-permit.assert-workflow-actuation-permit-identity.js";
 import {
-  bindWorkflowActuationRecoveryIdentity,
   createWorkflowActuationPermitController,
   createWorkflowReconciliationPermitController,
-} from "../src/workflow/actuation-permit.js";
-import {
-  COMPLETE_CANONICAL_REPLAY,
-  FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
-} from "../src/workflow/complete-replay.js";
-import { defineFamilyApplication } from "../src/workflow/family-application.js";
-import { unsafeCreateWorkflowFundingReservationPermitForTest } from "../src/workflow/funding-reservation-permit.js";
+} from "../src/workflow/actuation-permit.create-workflow-reconciliation-permit-controller.js";
+import { COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.replay-context-identity.js";
+import { FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
+import { defineFamilyApplication } from "../src/workflow/family-application.assert-family-definition-roster.js";
+import { unsafeCreateWorkflowFundingReservationPermitForTest } from "../src/workflow/funding-reservation-permit.restrict-workflow-funding-signer.js";
 import {
   authenticatedStateQueueObservationDigest,
-  classifyHeader,
-  createHeaderClassifier,
   HEADER_CLASSIFIER,
   HEADER_DECISION,
   type HeaderFaultDecision,
-} from "../src/workflow/header-classifier.js";
+} from "../src/workflow/header-classifier.authenticated-state-queue-observation-digest.js";
+import { classifyHeader } from "../src/workflow/header-classifier.classify-header.js";
+import { createHeaderClassifier } from "../src/workflow/header-classifier.create-header-classifier.js";
+import { DirectoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
+import type { FraudProofWorkflowJournalEvent } from "../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import {
   computeFraudProofWorkflowId,
-  DirectoryFraudProofWorkflowJournalStore,
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-  type FraudProofWorkflowJournalEvent,
   type FraudProofWorkflowTerminal,
   journalJsonDigest,
   type JournalJsonObject,
   normalizeJournalJson,
-} from "../src/workflow/journal.js";
+} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.js";
 import type { FraudProofRawL1FamilyStage } from "../src/workflow/raw-l1-family-derivation.js";
 import { FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY } from "../src/workflow/release-finality-policy.js";

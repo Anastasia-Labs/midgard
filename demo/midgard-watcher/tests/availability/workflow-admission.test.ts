@@ -10,10 +10,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { WatcherAvailabilityAction } from "../../src/availability/action.js";
 import {
-  buildAdmittedWatcherAvailabilityOperation,
   WatcherAvailabilityCapitalShortfall,
   watcherAvailabilityWorkflowRefusal,
-} from "../../src/availability/runtime.js";
+} from "../../src/availability/runtime.release-watcher-availability-workflows.js";
+import { buildAdmittedWatcherAvailabilityOperation } from "../../src/availability/runtime.select-watcher-availability-funding.js";
 
 const ACTOR = "actor";
 const DEPLOYMENT = "deployment";

@@ -374,6 +374,7 @@ export default tseslint.config(
       "midgard/fault-proof-reference-scripts-only": "error",
       "midgard/local-uplc-eval": "error",
       "midgard/locale-compare-explicit-locale": "error",
+      "midgard/no-own-package-barrel": "error",
       "midgard/no-recursive-plutus-data": "error",
       "midgard/node-cli-operator-commands-only": "error",
       "midgard/redeemer-index-from-builder": "error",

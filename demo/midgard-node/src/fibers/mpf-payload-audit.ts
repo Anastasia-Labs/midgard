@@ -3,12 +3,9 @@ import { Effect, Schedule } from "effect";
 import { type MpfAuditResult, runMpfAudit } from "../commands/mpf-audit.js";
 import { NODE_PROCESS_MPF_AUDIT_LEASES } from "../commands/mpf-audit-leases.js";
 import { MpfEngineStateDB } from "../database/index.js";
-import {
-  Database,
-  Globals,
-  NodeConfig,
-  type NodeConfigDep,
-} from "../services/index.js";
+import { type NodeConfigDep } from "../services/config.make-config.js";
+import { Globals } from "../services/globals.globals.js";
+import { Database, NodeConfig } from "../services/index.js";
 
 export const shouldRunMpfPayloadAudit = (
   payloadRootCheck: NodeConfigDep["MPF_PAYLOAD_ROOT_CHECK"],

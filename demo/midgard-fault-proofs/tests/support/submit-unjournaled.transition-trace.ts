@@ -4,12 +4,10 @@
  * ./submit-unjournaled.ts). Like the diagnostic CLI, each one publishes any
  * proof carriage its step lacks before the step.
  */
-import {
-  buildTransitionTraceFinal,
-  buildTransitionTraceProof,
-  buildTransitionTraceRoute,
-} from "../../src/transition-trace/index.js";
 import { resolveTransitionTraceByteCarriage } from "../../src/transition-trace/proof-carriage.js";
+import { buildTransitionTraceFinal } from "../../src/transition-trace/submit.submit-transition-trace-final.js";
+import { buildTransitionTraceProof } from "../../src/transition-trace/submit.submit-transition-trace-proof.js";
+import { buildTransitionTraceRoute } from "../../src/transition-trace/submit.submit-transition-trace-route.js";
 import {
   buildPastPrerequisitesUnjournaled,
   settleTurnsUnjournaled,

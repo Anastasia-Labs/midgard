@@ -10,7 +10,7 @@ import {
   reservedInput,
   type WorkflowFundingPreparedTransition,
 } from "./funding-reservation-permit.workflow-funding-reservation-port.js";
-import { journalJsonDigest } from "./journal.js";
+import { journalJsonDigest } from "./journal.fraud-proof-workflow-terminal.js";
 
 export const parseWorkflowFundingPreparedTransition = (
   value: unknown,

@@ -15,7 +15,7 @@ import {
   keyValuePhasRootWithCount,
 } from "../../src/transition-trace/phas.js";
 import { type WithdrawalMistagCatalogueCategory } from "../../src/withdrawal-mistag/index.js";
-import { makeFaultProofEmulatorHarness } from "./submit-init-emulator-shared.js";
+import { makeFaultProofEmulatorHarness } from "./emulator/harness.js";
 import { syntheticDeepMembershipProof } from "./synthetic-deep-proof.js";
 
 export type WithdrawalMistagDirectionFixture =

@@ -10,19 +10,21 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { prepareDirectScriptMaterial } from "../src/direct-script-derivation/material.js";
 import {
-  buildDirectReceiveEvidence,
-  buildDirectSourceIndexEvidence,
   directPurposeAt,
   directReceiveCredentials,
-  directRedeemerAt,
+} from "../src/direct-script-derivation/purposes.js";
+import { buildDirectReceiveEvidence } from "../src/direct-script-derivation/receive-evidence.js";
+import { directRedeemerAt } from "../src/direct-script-derivation/redeemers.js";
+import { buildDirectSourceIndexEvidence } from "../src/direct-script-derivation/source-index.js";
+import {
   directResolvedSources,
   directWitnessSource,
-  prepareDirectScriptMaterial,
-} from "../src/direct-script-derivation/index.js";
+} from "../src/direct-script-derivation/sources.js";
 import { checkLedgerAgainstRoot, ledgerEntriesRoot } from "../src/ledger-at.js";
-import { reconstructDaPayload } from "../src/transition-trace/reconstruct.js";
-import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.js";
+import { reconstructDaPayload } from "../src/transition-trace/reconstruct.reconstruct-da-payload.js";
+import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
   buildCanonicalBlockFixture,
   buildFixtureTransaction,

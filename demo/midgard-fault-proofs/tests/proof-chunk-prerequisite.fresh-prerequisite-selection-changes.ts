@@ -3,7 +3,7 @@ import "./proof-chunk-prerequisite.production-proof-chunk-prerequisite-v1.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { WorkflowActionChangedError } from "../src/workflow/action-changed.js";
-import { withProofChunkPrerequisite } from "../src/workflow/proof-chunk-prerequisite.js";
+import { withProofChunkPrerequisite } from "../src/workflow/proof-chunk-prerequisite.with-proof-chunk-prerequisite.js";
 import {
   base,
   baseAction,

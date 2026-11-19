@@ -2,13 +2,18 @@ import "./helpers/follower-emulator-installed.js";
 import "node:crypto";
 import "node:fs/promises";
 import "node:path";
-import "@al-ft/midgard-validation";
+import "@al-ft/midgard-validation/types";
+import "@al-ft/midgard-validation/phase-a";
+import "@al-ft/midgard-validation/phase-b";
 import "vitest";
 import "../src/services/history-commit-window.js";
-import "../src/commands/state-reconciliation.js";
+import "../src/commands/state-reconciliation.compares.js";
+import "../src/commands/state-reconciliation.state-reconciliation-program.js";
 import "../src/database/index.js";
-import "../src/fibers/tx-queue-processor.js";
-import "../src/mpf/index.js";
+import "../src/fibers/tx-queue-processor.classify-plutus-evaluation-failure.js";
+import "../src/mpf/commit-rejection.js";
+import "../src/mpf/ledger-hydration.js";
+import "../src/mpf/store.midgard-mpf.js";
 import "./deposit-flow-emulator-shared.js";
 import "./deposit-flow-emulator-merge-payout.admit-l2-tx.js";
 import "./helpers/correction-admission-scenario.js";
@@ -18,12 +23,12 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { RejectCodes } from "@al-ft/midgard-validation";
+import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { describe, expect, it, vi } from "vitest";
 
 import { TxRejectionsDB } from "../src/database/index.js";
-import { ADMISSION_REJECT_CODE_PENDING_WITHDRAWAL_INPUT } from "../src/fibers/tx-queue-processor.js";
-import { COMMIT_REJECT_CODE_WITHDRAWN_REFERENCE_INPUT } from "../src/mpf/index.js";
+import { ADMISSION_REJECT_CODE_PENDING_WITHDRAWAL_INPUT } from "../src/fibers/tx-queue-processor.classify-plutus-evaluation-failure.js";
+import { COMMIT_REJECT_CODE_WITHDRAWN_REFERENCE_INPUT } from "../src/mpf/commit-rejection.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/services/history-commit-window.js";
 import {
   admitAndAcceptL2Tx,

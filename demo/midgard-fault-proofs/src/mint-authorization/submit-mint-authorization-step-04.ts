@@ -24,17 +24,15 @@ import {
   decodeMidgardLedgerOutputCommitment,
   decodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
-import type {
-  MintAuthorizationStep04Args,
-  MintAuthorizationStep04State,
-  MintAuthorizationStep05State,
-} from "@al-ft/midgard-sdk";
 import {
   MIDGARD_FIELD_INDEX,
   MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT,
+  type MintAuthorizationStep04Args,
   MintAuthorizationStep04Datum,
   MintAuthorizationStep04SpendRedeemer,
+  type MintAuthorizationStep04State,
   MintAuthorizationStep05Datum,
+  type MintAuthorizationStep05State,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
@@ -50,14 +48,8 @@ import {
   type FaultProofTurn,
   isPrerequisiteTurn,
 } from "../fault-proof-turn.js";
-import {
-  faultProofFieldOpening,
-  planFaultProofFieldOpening,
-  publishFaultProofFieldCarriage,
-} from "../field-opening.js";
 import { type ResolvedProverSigner } from "../runtime.js";
-import { completeStep, fundStep } from "../step-completion.js";
-import { finishStep } from "../step-completion.js";
+import { completeStep, finishStep, fundStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts.js";
 import {
@@ -76,10 +68,17 @@ import {
   requireMintAuthorizationStepState,
   requireMintAuthorizationThreadUtxo,
 } from "./submit-common.js";
-import type { MintAuthorizationStep04Build } from "./submit-mint-authorization-step-04.submit-mint-authorization-step04-scan-field.js";
-import { step04ScanField } from "./submit-mint-authorization-step-04.submit-mint-authorization-step04-scan-field.js";
+import {
+  type MintAuthorizationStep04Build,
+  step04ScanField,
+} from "./submit-mint-authorization-step-04.submit-mint-authorization-step04-scan-field.js";
 
 export { type SubmitMintAuthorizationStep04Result } from "./submit-mint-authorization-step-04.submit-mint-authorization-step04-scan-field.js";
+import {
+  faultProofFieldOpening,
+  planFaultProofFieldOpening,
+  publishFaultProofFieldCarriage,
+} from "../field-opening.js";
 
 const STEP_LABEL = mintAuthorizationStepLabel(3);
 

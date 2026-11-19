@@ -16,7 +16,7 @@ import {
   deriveL2TransactionSourceCbor,
   type FetchLike,
   type NodeTransactionPayload,
-} from "./prepare-double-spend.js";
+} from "./prepare-double-spend.encode-l2-transaction-source-value.js";
 import { spendInputsWitnessFromCbors } from "./spend-input-witness.js";
 import { nativeTxFromCoreCompact } from "./step-support.js";
 

@@ -19,17 +19,18 @@ import { Effect } from "effect";
 import type { PreparedMinAdaTx } from "../../src/min-ada/prepare.js";
 import type { NativeScriptInvalidContracts } from "../../src/native-script-invalid/contracts.js";
 import { nativeTxFromCoreCompact } from "../../src/step-support.js";
-import { registerPexcludesExclusionRewardAccount } from "./submit-init-emulator-fixtures.js";
+import { cloneBlueprint, network } from "./emulator/blueprints.js";
 import {
   buildCatalogueDeploymentInfo,
-  cloneBlueprint,
-  l2TransactionSourceCbor as l2TransactionSourceCborV1,
-  makeFaultProofEmulatorHarness,
-  makeNativeTx,
-  network,
-  publishPlainReferenceScriptUtxo,
   trieRootHex,
-} from "./submit-init-emulator-shared.js";
+} from "./emulator/catalogue.js";
+import { makeFaultProofEmulatorHarness } from "./emulator/harness.js";
+import {
+  l2TransactionSourceCbor as l2TransactionSourceCborV1,
+  makeNativeTx,
+} from "./emulator/native-tx.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { registerPexcludesExclusionRewardAccount } from "./submit-init/wallet.js";
 
 export const makeMinAdaEmulatorHarness = async () => {
   const harness = await makeFaultProofEmulatorHarness({

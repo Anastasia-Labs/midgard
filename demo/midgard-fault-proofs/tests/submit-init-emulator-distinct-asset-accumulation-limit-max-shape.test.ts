@@ -17,11 +17,11 @@ import { encodeMidgardValue } from "@al-ft/midgard-core/codec";
 import { describe, expect, it } from "vitest";
 
 import {
-  DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
   DistinctAssetAccumulationLimitHonestLeaf,
   prepareDistinctAssetAccumulationLimitProof,
   requireConvictingDistinctAssetAccumulationLimitProof,
-} from "../src/distinct-asset-accumulation-limit/index.js";
+} from "../src/distinct-asset-accumulation-limit/prover.js";
+import { DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK } from "../src/distinct-asset-accumulation-limit/workflow.js";
 import { scriptDecodeLedgerLimits } from "../src/script-decode/record.js";
 import { pathStarts } from "./support/deep-ledger-trie.js";
 import {
@@ -45,8 +45,8 @@ import {
   POLICY_ASSETS,
   setupDistinctAssetScenario,
 } from "./support/distinct-asset-accumulation-limit-emulator.subject.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
-import { expectSingleUtxoWithUnit } from "./support/submit-init-emulator-shared.js";
 
 const FIELD_CAP = MIDGARD_CONSENSUS_LIMITS.maxTransactionAggregateFieldBytes;
 const VALUE_CAP = MIDGARD_CONSENSUS_LIMITS.maxOutputValueCborBytes;

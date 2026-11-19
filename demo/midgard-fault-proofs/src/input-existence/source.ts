@@ -11,11 +11,11 @@ import {
   type CanonicalBlockEvidence,
 } from "../evidence/canonical-block-evidence.js";
 import { commitCountedRoot } from "../transition-trace/phas.js";
-import { eventKeyFingerprint } from "../transition-trace/reconstruct.js";
+import { eventKeyFingerprint } from "../transition-trace/reconstruct.transition-trace-reconstruction.js";
 import {
   buildForcedTransactionLeafMembershipProof,
   buildRawL2TransactionSourceMembershipProof,
-} from "../transition-trace/witnesses.js";
+} from "../transition-trace/witnesses.build-source-membership-proof.js";
 import type { NativeInclusionArtifact } from "../workflow/native-index-artifact.js";
 
 type CommonSource = Readonly<{

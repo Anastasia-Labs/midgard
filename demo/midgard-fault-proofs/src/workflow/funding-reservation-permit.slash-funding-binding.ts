@@ -9,11 +9,9 @@
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import type { CML, TxSigned, UTxO } from "@lucid-evolution/lucid";
 
-import {
-  fraudSlashFeeLovelace,
-  readFraudSlashFundingAuthority,
-} from "../remove-fraudulent-block.js";
-import { assertWorkflowActuationPermitIdentity } from "./actuation-permit.js";
+import { fraudSlashFeeLovelace } from "../remove-fraudulent-block.assert-exact-fraud-slash-lovelace-conservation.js";
+import { readFraudSlashFundingAuthority } from "../remove-fraudulent-block.js";
+import { assertWorkflowActuationPermitIdentity } from "./actuation-permit.assert-workflow-actuation-permit-identity.js";
 import {
   assertAuthenticatedFraudSlashReward,
   isExactFraudSlashRewardOutput,

@@ -3,7 +3,7 @@ import { decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
 import {
   type FaultProofFieldOpeningPlan,
   planFaultProofFieldOpening,
-} from "../field-opening.js";
+} from "../field-opening.plan-fault-proof-field-opening.js";
 import type { SpendInputSignerMissingEvidence } from "./spend-input-signer-missing.js";
 
 export const planSpendInputSignerInputOpening = ({

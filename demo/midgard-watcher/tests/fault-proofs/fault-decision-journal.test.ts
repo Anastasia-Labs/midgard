@@ -8,9 +8,9 @@ import {
   openWatcherFaultDecisionJournal,
   readWatcherFaultDecisionEvidence,
   unsafeOpenWatcherFaultDecisionJournalForTest,
-} from "../../src/fault-proofs/fault-decision-journal.js";
-import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.js";
-import { unsafeCreateWatcherFaultProofSupervisorForTest } from "../../src/fault-proofs/fault-proof-supervisor.js";
+} from "../../src/fault-proofs/fault-decision-journal.create-journal.js";
+import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
+import { unsafeCreateWatcherFaultProofSupervisorForTest } from "../../src/fault-proofs/fault-proof-supervisor.create-watcher-fault-proof-supervisor.js";
 import {
   closeWatcherJournalDatabase,
   isWatcherJournalIntegrityError,
@@ -19,7 +19,7 @@ import {
   watcherJournalIntegrityFailure,
 } from "../../src/fault-proofs/watcher-journal-database.js";
 import { watcherObjectiveScope } from "../../src/fault-proofs/watcher-journal-schema.js";
-import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.js";
+import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.canonical-json.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
 import {
   journalDirectory,

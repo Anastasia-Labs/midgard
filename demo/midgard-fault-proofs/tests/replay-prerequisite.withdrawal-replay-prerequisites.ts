@@ -12,9 +12,9 @@ import {
 import { describe, expect, it } from "vitest";
 
 import { type CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
-import { eventKeyFingerprint } from "../src/transition-trace/reconstruct.js";
+import { eventKeyFingerprint } from "../src/transition-trace/reconstruct.transition-trace-reconstruction.js";
 import { type CanonicalViolationDetection } from "../src/workflow/classification.js";
-import { DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
+import { DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import { withdrawalSubject } from "../src/workflow/detection-subject.js";
 import {
   assertReplayPrerequisiteCovered,

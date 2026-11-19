@@ -6,7 +6,7 @@
  * still waiting; and a verdict arriving after it neither erases nor
  * repeats that alarm.
  */
-import { type MidgardCekVerdictRequest } from "@al-ft/midgard-validation";
+import type { MidgardCekVerdictRequest } from "@al-ft/midgard-validation/phase-b";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 

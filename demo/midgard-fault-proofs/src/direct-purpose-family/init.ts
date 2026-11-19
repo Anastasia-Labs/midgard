@@ -1,9 +1,9 @@
 /** Computation-thread init for a direct purpose family. */
-import {
-  buildResolvedInit,
-  type SubmitResolvedInitParams,
-} from "../submit-init.js";
-import type { ResolvedInitBuild } from "../submit-init.resolve-non-existent-input-no-index-init.js";
+import type {
+  ResolvedInitBuild,
+  SubmitResolvedInitParams,
+} from "../submit-init.resolve-non-existent-input-no-index-init.js";
+import { buildResolvedInit } from "../submit-init.submit-resolved-init.js";
 import type {
   DirectPurposeContracts,
   DirectPurposeCustodyFamily,

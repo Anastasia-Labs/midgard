@@ -13,26 +13,23 @@ import {
   type EntryWithTimeStamp,
 } from "../database/utils/tx.js";
 import { unixTimeToSlotForConfig } from "../lucid-time.js";
-import {
-  configureCommitMpfRuntime,
-  MidgardMpf,
-  type NativeMpfBuildContext,
-  processMpfs,
-} from "../mpf/index.js";
+import { configureCommitMpfRuntime, processMpfs } from "../mpf/index.js";
+import { MidgardMpf } from "../mpf/store.midgard-mpf.js";
+import type { NativeMpfBuildContext } from "../mpf/transition-trace.apply-trace-ledger-ops-to-mpf.js";
+import { NodeConfig } from "../services/config.make-config.js";
+import { Database } from "../services/database.js";
 import { assertFollowerWrite } from "../services/follower-write-gate.js";
 import {
   commitEventHorizon,
   HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
 } from "../services/history-commit-window.js";
+import type { IntentJournal } from "../services/intent-journal.js";
+import { Lucid } from "../services/lucid.js";
 import {
   ContractDeploymentIdentity,
-  Database,
-  Lucid,
   MidgardContracts,
-  NativeMpfWorkerPortClient,
-  NodeConfig,
-} from "../services/index.js";
-import type { IntentJournal } from "../services/intent-journal.js";
+} from "../services/midgard-contracts.make-midgard-contract-runtime.js";
+import { NativeMpfWorkerPortClient } from "../services/mpf-native-owner/client.js";
 import { outRefLabel } from "../tx-context.js";
 import {
   alignCommitMpfsToBase,
@@ -58,11 +55,9 @@ import { verifyAdditiveCommitDaFrame } from "./commit-block-header.verify-additi
 import type { CommitEviction } from "./commit-block-header/commit-da-oversize-eviction.js";
 import * as DaPrefix from "./commit-block-header/commit-da-prefix-search.js";
 import { getLatestBlockDatumEndTime } from "./commit-block-header/state-queue.js";
-import {
-  deferProcessedCommitPayloadUntilConfirmation,
-  submitDepositOnlyCommit,
-  submitTxBackedCommit,
-} from "./commit-block-header/submission.js";
+import { deferProcessedCommitPayloadUntilConfirmation } from "./commit-block-header/submission.defer-processed-commit-payload.js";
+import { submitDepositOnlyCommit } from "./commit-block-header/submission.submit-deposit-only-commit.js";
+import { submitTxBackedCommit } from "./commit-block-header/submission.submit-tx-backed-commit.js";
 import { COMMIT_PLANNING_STARTED_NOTICE } from "./commit-planning-notice.js";
 import {
   type CommitCandidateRoots,
@@ -76,27 +71,29 @@ import {
   nothingToCommitWithNoWork,
 } from "./utils/commit-block-planner.commit-da-frame-notice.js";
 import {
-  buildCommitTxCandidateSelection,
   calibratedCommitBuildMsPerTx,
   type CommitSchedulerStateQueueEvidence,
   type CurrentOperatorSchedulerWindow,
   DEFAULT_COMMIT_BATCH_BUDGET_LIMITS,
-  establishEndTimeFromTxRequests,
-  planCommitBatchBudgets,
+} from "./utils/commit-block-planner.commit-scheduler-evidence-key.js";
+import { establishEndTimeFromTxRequests } from "./utils/commit-block-planner.plan-earliest-commit-scheduler-due-work.js";
+import {
   planSchedulerAwareCommitSelection,
   schedulerAwareCommitWindowBudgets,
-  selectCommitTxCandidates,
   shouldSkipIdleCommitBehindUnmergedTail,
-} from "./utils/commit-block-planner.js";
+} from "./utils/commit-block-planner.plan-scheduler-aware-commit-selection.js";
+import {
+  buildCommitTxCandidateSelection,
+  planCommitBatchBudgets,
+  selectCommitTxCandidates,
+} from "./utils/commit-block-planner.select-commit-tx-candidates.js";
 import {
   COMMIT_MINIMUM_FUTURE_BUFFER_MS,
   resolveCommitEndTimeFit,
   resolveLatestFeasibleCommitEndTime,
 } from "./utils/commit-end-time.js";
-import {
-  resolveCurrentOperatorSchedulerWindow,
-  resolveEarliestCommitSchedulerDueWorkPlan,
-} from "./utils/scheduler-refresh.js";
+import { resolveCurrentOperatorSchedulerWindow } from "./utils/scheduler-refresh.fetch-fresh-active-operator-input-for-commit.js";
+import { resolveEarliestCommitSchedulerDueWorkPlan } from "./utils/scheduler-refresh.resolve-earliest-commit-scheduler-due-work-plan.js";
 
 export const buildOnVerifiedCommitBaseProgram = (
   workerInput: WorkerInput,

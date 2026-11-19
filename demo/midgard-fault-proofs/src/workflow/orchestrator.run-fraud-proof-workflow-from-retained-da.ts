@@ -8,16 +8,16 @@ import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidenc
 import { canonicalDecodabilityArtifactFromRawEvidence } from "../evidence/canonical-decodability-raw-evidence.js";
 import { fetchFraudProofEvidence } from "../evidence/fraud-proof-evidence.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
+import { requireCompleteCanonicalReplayDecision } from "./complete-replay.create-complete-canonical-replay-union.js";
+import type {
+  CompleteCanonicalReplay,
+  CompleteCanonicalReplayContext,
+} from "./complete-replay.replay-context-identity.js";
+import type { FraudProofWorkflowJournalStore } from "./journal.fraud-proof-workflow-journal-event.js";
 import {
-  type CompleteCanonicalReplay,
-  type CompleteCanonicalReplayContext,
-  requireCompleteCanonicalReplayDecision,
-} from "./complete-replay.js";
-import {
-  type FraudProofWorkflowJournalStore,
   type JournalJsonObject,
   normalizeJournalJson,
-} from "./journal.js";
+} from "./journal.fraud-proof-workflow-terminal.js";
 import {
   type FraudProofWorkflowRegistry,
   type FraudProofWorkflowTerminalVerifier,

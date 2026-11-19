@@ -26,15 +26,15 @@ import {
   eventKeyFingerprint,
   eventKeyPhase,
   type TransitionTraceReconstruction,
-} from "./reconstruct.js";
+} from "./reconstruct.transition-trace-reconstruction.js";
 import {
   buildOmittedDueL1EventFault,
-  buildOutOfWindowSourceEventFault,
   buildValidDepositTransitionWitness,
-  buildValidWithdrawalTransitionWitness,
   type OmittedDueL1EventEvidence,
   type OutOfWindowSourceEventEvidence,
-} from "./witnesses.js";
+} from "./witnesses.build-omitted-due-l1-event-fault.js";
+import { buildOutOfWindowSourceEventFault } from "./witnesses.build-out-of-window-source-event-fault.js";
+import { buildValidWithdrawalTransitionWitness } from "./witnesses.build-source-non-membership-proof.js";
 
 const detectSingleLedgerTransitions = async (
   reconstruction: TransitionTraceReconstruction,

@@ -10,7 +10,7 @@ import {
 } from "@al-ft/midgard-core/da-transport";
 import { multiaddr } from "@multiformats/multiaddr";
 
-import { readFinalizedDeploymentIdentity } from "../commands/contract-deployment-info.js";
+import { readFinalizedDeploymentIdentity } from "../commands/contract-deployment-info.build-deployment-manifest.js";
 import { admittedProducers } from "./admitted-producers.js";
 
 export const DA_LIBP2P_RUNTIME_PROFILES = [

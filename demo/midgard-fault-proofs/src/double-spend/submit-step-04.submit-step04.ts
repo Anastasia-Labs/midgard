@@ -15,11 +15,11 @@ import {
   type FaultProofTurn,
   isPrerequisiteTurn,
 } from "../fault-proof-turn.js";
+import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
 import {
   faultProofFieldOpening,
-  planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
-} from "../field-opening.js";
+} from "../field-opening.publish-fault-proof-field-carriage.js";
 import {
   fetchUtxoByOutRef,
   outRefLabel,
@@ -28,8 +28,7 @@ import {
   type ResolvedProverSigner,
 } from "../runtime.js";
 import { spendInputsWitnessFromCbors } from "../spend-input-witness.js";
-import { completeStep, fundStep } from "../step-completion.js";
-import { finishStep } from "../step-completion.js";
+import { completeStep, finishStep, fundStep } from "../step-completion.js";
 import { requireComputationThreadToken } from "../step-support.js";
 import {
   type FaultProofWitnessReferenceScripts,
@@ -41,13 +40,13 @@ import {
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
 import { workflowReferenceScript } from "../workflow/transaction-boundary.js";
-import type { Step04Build } from "./submit-step-04.make-step04-spend-redeemer.js";
 import {
   makeComputationThreadSuccessRedeemer,
   makeFraudProofMintRedeemer,
   makeStep04SpendRedeemer,
   requireStep04Datum,
   sameMidgardTxInput,
+  type Step04Build,
   type Step04ResolvedLayout,
   type Step04SpendLayout,
 } from "./submit-step-04.make-step04-spend-redeemer.js";

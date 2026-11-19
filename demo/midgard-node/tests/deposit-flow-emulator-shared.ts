@@ -19,6 +19,8 @@ import "@al-ft/midgard-core/da-transport";
 import "@al-ft/midgard-core/deployment-manifest-identity";
 import "@al-ft/midgard-sdk";
 import "@al-ft/midgard-validation";
+import "@al-ft/midgard-validation/phase-a";
+import "@al-ft/midgard-validation/phase-b";
 import "@effect/sql";
 import "@lucid-evolution/lucid";
 import "da-committee-node/da/payload";
@@ -26,41 +28,55 @@ import "effect";
 import "vitest";
 import "../src/commands/command-utils.js";
 import "../src/commands/event-settlement-proof.js";
-import "../src/commands/listen-startup.js";
+import "../src/commands/listen-startup.seed-latest-local-block-boundary-on-startup.js";
 import "../src/commands/reserve-inspection.js";
-import "../src/commands/reserve-payout.js";
-import "../src/commands/submit-l2-transfer.js";
+import "../src/commands/reserve-payout.retry-after-retirement-protection.js";
+import "../src/commands/reserve-payout.add-reserve-funds-to-payout-program.js";
+import "../src/commands/transfer-build-core.build-terminal-drain-tx.js";
 import "../src/commands/utxos.js";
 import "../src/commands/withdrawal-status.js";
 import "../src/database/confirmedLedger.js";
 import "../src/database/index.js";
 import "../src/database/utils/ledger.js";
-import "../src/fibers/block-commitment.js";
-import "../src/fibers/merge.js";
+import "../src/fibers/block-commitment.promote-or-recover-native-mpf.js";
+import "../src/fibers/merge.merge-action.js";
 import "../src/fibers/slot-aware-due-work.js";
 import "../src/lucid-time.js";
-import "../src/mpf/index.js";
-import "../src/services/index.js";
+import "../src/mpf/commit-rejection.js";
+import "../src/mpf/ledger-hydration.js";
+import "../src/mpf/store.midgard-mpf.js";
+import "../src/workers/utils/mpf/phas.key-value-phas-non-membership-proof.js";
+import "../src/mpf/errors.js";
+import "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
+import "../src/services/database.js";
+import "../src/services/globals.globals.js";
+import "../src/services/lucid.js";
+import "../src/services/config.make-config.js";
+import "../src/services/globals.with-l1-control-plane-held.js";
 import "../src/services/landed-state-queue.js";
-import "../src/services/mempool-ledger-cache.js";
+import "../src/services/mempool-ledger-cache.mempool-ledger-cache-service.js";
 import "../src/services/native-mpf-startup.js";
-import "../src/services/write-behind.js";
-import "../src/transactions/da-attestation.js";
-import "../src/transactions/initialization.js";
+import "../src/services/write-behind.make-write-behind.js";
+import "../src/transactions/da-attestation.attest-state-queue-once-program.js";
+import "../src/transactions/initialization.fetch-protocol-deployment-status.js";
+import "../src/transactions/initialization.atomic-protocol-init-reference-scripts-from-publications.js";
 import "../src/transactions/phas-membership-registration.js";
-import "../src/transactions/register-active-operator.js";
+import "../src/transactions/register-active-operator.activate-registered-operator-program.js";
+import "../src/transactions/reference-scripts.ensure-reference-script-targets-program.js";
 import "../src/transactions/reserve-payout.js";
 import "../src/transactions/script-reward-registration.js";
 import "../src/transactions/state-queue/confirmed-ledger-snapshot.js";
 import "../src/transactions/state-queue/merge-readiness.js";
 import "../src/tx-context.js";
-import "../src/workers/commit-block-header.js";
-import "../src/workers/commit-block-header/da-payload.js";
-import "../src/workers/commit-block-header/transition-roots.js";
+import "../src/workers/commit-block-header.commit-explicit-block-header-program.js";
+import "../src/workers/commit-block-header.run-commit-block-header-worker-program.js";
+import "../src/workers/commit-block-header/da-payload.build-da-payload-insert.js";
+import "../src/workers/commit-block-header/transition-roots.validate-count-proof.js";
 import "../src/workers/utils/commit-block-header.js";
 import "../src/workers/utils/commit-end-time.js";
 import "../src/workers/utils/common.js";
-import "../src/workers/utils/scheduler-refresh.js";
+import "../src/workers/utils/scheduler-refresh.fetch-fresh-active-operator-input-for-commit.js";
+import "../src/workers/utils/scheduler-refresh.fetch-real-state-queue-witness-context.js";
 import "./helpers/availability-challenge.js";
 import "./helpers/emulator-l1-follower.js";
 import "./helpers/emulator-submit-slot-snapshot.js";
@@ -85,12 +101,10 @@ import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import { type DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  processedTxFromValidatedTx,
-  type QueuedTx,
-  runPhaseAValidation,
-  runPhaseBValidationWithPatch,
-} from "@al-ft/midgard-validation";
+import { processedTxFromValidatedTx } from "@al-ft/midgard-validation";
+import { runPhaseAValidation } from "@al-ft/midgard-validation/phase-a";
+import { runPhaseBValidationWithPatch } from "@al-ft/midgard-validation/phase-b";
+import type { QueuedTx } from "@al-ft/midgard-validation/types";
 import { SqlClient } from "@effect/sql";
 import {
   CML,
@@ -108,18 +122,18 @@ import {
   type NodeUtxo,
 } from "../src/commands/command-utils.js";
 import { resolveEventSettlementProofProgram } from "../src/commands/event-settlement-proof.js";
-import { seedLatestLocalBlockBoundaryOnStartup } from "../src/commands/listen-startup.js";
+import { seedLatestLocalBlockBoundaryOnStartup } from "../src/commands/listen-startup.seed-latest-local-block-boundary-on-startup.js";
 import {
   payoutStatusProgram,
   reserveUtxosProgram,
 } from "../src/commands/reserve-inspection.js";
 import {
-  absorbConfirmedDepositToReserveProgram,
   addReserveFundsToPayoutProgram,
   concludePayoutProgram,
   initializePayoutProgram,
-} from "../src/commands/reserve-payout.js";
-import { buildTransferTx } from "../src/commands/submit-l2-transfer.js";
+} from "../src/commands/reserve-payout.add-reserve-funds-to-payout-program.js";
+import { absorbConfirmedDepositToReserveProgram } from "../src/commands/reserve-payout.retry-after-retirement-protection.js";
+import { buildTransferTx } from "../src/commands/transfer-build-core.build-terminal-drain-tx.js";
 import { utxosProgram } from "../src/commands/utxos.js";
 import { withdrawalStatusProgram } from "../src/commands/withdrawal-status.js";
 import { fullScanCounter as confirmedLedgerFullScanCounter } from "../src/database/confirmedLedger.js";
@@ -140,48 +154,49 @@ import {
   WithdrawalsDB,
 } from "../src/database/index.js";
 import * as Ledger from "../src/database/utils/ledger.js";
-import { promoteOrRecoverNativeMpf } from "../src/fibers/block-commitment.js";
-import { mergeAction, type MergeActionResult } from "../src/fibers/merge.js";
+import { promoteOrRecoverNativeMpf } from "../src/fibers/block-commitment.promote-or-recover-native-mpf.js";
+import { mergeAction } from "../src/fibers/merge.merge-action.js";
+import type { MergeActionResult } from "../src/fibers/merge.registered-merge-due-work-skip.js";
 import { listSlotAwareDueWork } from "../src/fibers/slot-aware-due-work.js";
 import { canonicalSlotConfigForLucid } from "../src/lucid-time.js";
 import {
   commitTxDeltaCacheHitCounter,
   commitTxDeltaFallbackDecodedCounter,
-  deleteMpfStore,
-  MidgardMpf,
-} from "../src/mpf/index.js";
+} from "../src/mpf/commit-rejection.js";
+import { deleteMpfStore } from "../src/mpf/ledger-hydration.js";
+import { MidgardMpf } from "../src/mpf/store.midgard-mpf.js";
 import type { NodeConfigDep } from "../src/services/config.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
+import { Database } from "../src/services/database.js";
 import { FollowerWriteFixture } from "../src/services/follower-write-gate.js";
+import { Globals } from "../src/services/globals.globals.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/services/history-commit-window.js";
+import { IntentJournal } from "../src/services/intent-journal.js";
+import { Lucid as LucidService } from "../src/services/lucid.js";
+import { MempoolLedgerCache } from "../src/services/mempool-ledger-cache.mempool-ledger-cache-service.js";
+import type { ContractDeploymentIdentityValue } from "../src/services/midgard-contracts.js";
 import {
   ContractDeploymentIdentity,
-  Database,
-  Globals,
-  Lucid as LucidService,
   MidgardContracts,
-  NodeConfig,
-} from "../src/services/index.js";
-import { IntentJournal } from "../src/services/intent-journal.js";
-import { MempoolLedgerCache } from "../src/services/mempool-ledger-cache.js";
-import type { ContractDeploymentIdentityValue } from "../src/services/midgard-contracts.js";
+} from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import type { NativeMpfOwnerService } from "../src/services/mpf-native-owner/index.js";
 import { initializeArchitectureGOwner } from "../src/services/native-mpf-startup.js";
-import { WriteBehindLive } from "../src/services/write-behind.js";
-import { attestStateQueueOnceProgram } from "../src/transactions/da-attestation.js";
+import { WriteBehindLive } from "../src/services/write-behind.make-write-behind.js";
+import { attestStateQueueOnceProgram } from "../src/transactions/da-attestation.attest-state-queue-once-program.js";
 import {
-  buildAtomicProtocolInitTxProgram,
   createFraudProofCatalogueMpf,
   fraudProofsToIndexedValidators,
-} from "../src/transactions/initialization.js";
+} from "../src/transactions/initialization.atomic-protocol-init-reference-scripts-from-publications.js";
+import { buildAtomicProtocolInitTxProgram } from "../src/transactions/initialization.fetch-protocol-deployment-status.js";
 import { ensurePhasMembershipRewardAccountRegisteredProgram } from "../src/transactions/phas-membership-registration.js";
 import {
   activateOperatorProgram,
   registerOperatorProgram,
-} from "../src/transactions/register-active-operator.js";
+} from "../src/transactions/register-active-operator.activate-registered-operator-program.js";
 import { assetsToValue } from "../src/transactions/reserve-payout.js";
 import { ensureEventHistoryRewardAccountsRegisteredProgram } from "../src/transactions/script-reward-registration.js";
 import { mergeMaturityWindow } from "../src/transactions/state-queue/merge-readiness.js";
-import { commitExplicitBlockHeaderProgram } from "../src/workers/commit-block-header.js";
+import { commitExplicitBlockHeaderProgram } from "../src/workers/commit-block-header.commit-explicit-block-header-program.js";
 import { LANDED_COMMIT_BASE_PENDING } from "../src/workers/commit-block-header.resolve-commit-base-ledger-entries.js";
 import {
   serializeStateQueueUTxO,
@@ -192,7 +207,7 @@ import {
   COMMIT_MINIMUM_FUTURE_BUFFER_MS,
   commitTimingBudget,
 } from "../src/workers/utils/commit-end-time.js";
-import { resolveCurrentOperatorSchedulerWindow } from "../src/workers/utils/scheduler-refresh.js";
+import { resolveCurrentOperatorSchedulerWindow } from "../src/workers/utils/scheduler-refresh.fetch-fresh-active-operator-input-for-commit.js";
 import {
   fetchLatestCommittedBlock,
   findUtxoWithUnit,

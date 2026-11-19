@@ -10,12 +10,9 @@ import {
   encodeMidgardNativeTxCanonical,
 } from "@al-ft/midgard-core/codec";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import {
-  PhaseAValidatedTx,
-  QueuedTx,
-  runPhaseAValidation,
-  runPhaseBValidationWithPatch,
-} from "@al-ft/midgard-validation";
+import { runPhaseAValidation } from "@al-ft/midgard-validation/phase-a";
+import { runPhaseBValidationWithPatch } from "@al-ft/midgard-validation/phase-b";
+import { PhaseAValidatedTx, QueuedTx } from "@al-ft/midgard-validation/types";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 

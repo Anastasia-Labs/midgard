@@ -31,19 +31,19 @@ import {
 } from "../src/event-ledger.js";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import { type LedgerEntry } from "../src/ledger-at.js";
-import { detectTransitionTraceFaults } from "../src/transition-trace/detect.js";
+import { detectTransitionTraceFaults } from "../src/transition-trace/detect.detect-single-ledger-transitions.js";
 import {
   isStructurallyInconsistent,
   transitionTraceCanonicalDetections,
 } from "../src/transition-trace/replay-authority.canonical-detections.js";
+import { WITHDRAWAL_MISTAG_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
+import { NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.detect-double-withdraws.js";
 import {
   DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY,
   L2_TX_MISTAG_COMPLETE_CANONICAL_REPLAY,
   NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
-  NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY,
   TRANSACTION_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
-  WITHDRAWAL_MISTAG_COMPLETE_CANONICAL_REPLAY,
-} from "../src/workflow/complete-replay.js";
+} from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import { assertReplayPrerequisiteCovered } from "../src/workflow/replay-prerequisite.js";
 import {
   authenticatedHeaderObservation,

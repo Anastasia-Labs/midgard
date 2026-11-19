@@ -11,17 +11,17 @@ import { traceStepPhaseFault } from "./phase-band.js";
 import {
   eventKeyFingerprint,
   type TransitionTraceReconstruction,
-} from "./reconstruct.js";
+} from "./reconstruct.transition-trace-reconstruction.js";
+import { buildInvalidForcedTransactionNoOpWitness } from "./witnesses.build-omitted-due-l1-event-fault.js";
+import { buildDuplicateTraceEventFault } from "./witnesses.build-out-of-window-source-event-fault.js";
 import {
-  buildDuplicateTraceEventFault,
   buildEventToStepMismatchFault,
-  buildInvalidForcedTransactionNoOpWitness,
   buildInvalidWithdrawalNoOpWitness,
   buildMappedEventMissingFromSourceFault,
   buildSourceEventMissingTraceFault,
   buildSourcePhaseMismatchFault,
   buildTraceLinkFault,
-} from "./witnesses.js";
+} from "./witnesses.build-source-non-membership-proof.js";
 
 export const detectTraceLinkFaults = async (
   reconstruction: TransitionTraceReconstruction,

@@ -17,17 +17,16 @@ import {
   type PreparedWithdrawnReferenceInput,
   prepareWithdrawnReferenceInput,
 } from "../../src/withdrawn-reference-input/prepare-withdrawn-reference-input.js";
-import { decodingSubjectTransaction } from "./native-script-decoding-emulator.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   funderPaymentKeyHash,
-  l2TransactionSourceCbor as l2TransactionSourceCborV1,
-  makeFaultProofEmulatorHarness,
-  makeHeader,
-  publishPlainReferenceScriptUtxo,
-  submitSetupTx,
-  withCommitSlot,
-} from "./submit-init-emulator-shared.js";
+} from "./emulator/emulator-context.js";
+import { makeFaultProofEmulatorHarness } from "./emulator/harness.js";
+import { makeHeader, withCommitSlot } from "./emulator/header-fixtures.js";
+import { l2TransactionSourceCbor as l2TransactionSourceCborV1 } from "./emulator/native-tx.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { submitSetupTx } from "./emulator/setup-tx.submit-setup-tx.js";
+import { decodingSubjectTransaction } from "./native-script-decoding-emulator.build-decoding-ledger-fixture.js";
 
 export const WITHDRAWN_REFERENCE_INPUT_ACCUSED_OUTREF: SDK.MidgardTxInput = {
   tx_id: "ab".repeat(32),

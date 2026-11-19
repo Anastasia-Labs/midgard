@@ -34,8 +34,8 @@ import {
   nonExistentInputForcedSourceMaterial,
   type PreparedNonExistentInputWrongfulRejection,
 } from "../../src/non-existent-input/wrongful-rejection.js";
-import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.js";
-import { buildInit } from "../../src/submit-init.js";
+import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import { buildInit } from "../../src/submit-init.submit-init.js";
 import { commitCountedRoot } from "../../src/transition-trace/phas.js";
 import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { verifiedMaximumForkPrefixes } from "./canonical-decodability-emulator.long-fork-proof.js";
@@ -48,15 +48,13 @@ import {
   type CompleteSignedTransactionMeasurement,
 } from "./emulator/measurement.js";
 import { makeNativeTx } from "./emulator/native-tx.js";
-import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.js";
+import { publishRemovalReferenceScripts } from "./emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.build-removal-deployment-info.js";
 import { submitSetupTx } from "./emulator/setup-tx.js";
 import { deepProofChunks } from "./input-existence-deep-chunks.js";
 import { makeReferenceNativeTx } from "./no-reference-input-native.js";
-import { buildInvalidForcedTransitionTraceFixture } from "./submit-init-emulator-fixtures.js";
-import {
-  publishPlainReferenceScriptUtxo,
-  publishRemovalReferenceScripts,
-} from "./submit-init-emulator-shared.js";
+import { buildInvalidForcedTransitionTraceFixture } from "./submit-init/forced-transitions.js";
 import {
   buildAndSubmitUnjournaled,
   certifyCarriageUnjournaled,

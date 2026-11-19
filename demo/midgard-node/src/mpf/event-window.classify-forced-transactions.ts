@@ -7,12 +7,10 @@ import { type MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-prof
 import { type ForcedRejectionStopped } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  applyUTxOStatePatch,
   applyValidationLedgerMutations,
   buildCanonicalTransitionEffect,
   canonicalTransitionEffectFromStatePatch,
   midgardOutRefToCborHex,
-  type RejectCode,
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
   transitionEffectToLedgerOps,
@@ -20,6 +18,8 @@ import {
   type ValidationMachineLedgerMutationStep,
 } from "@al-ft/midgard-validation";
 import { projectMidgardMalformedNativeWitnessEnvelopeV1 } from "@al-ft/midgard-validation/ledger-tx/codec";
+import { applyUTxOStatePatch } from "@al-ft/midgard-validation/phase-b";
+import type { RejectCode } from "@al-ft/midgard-validation/types";
 import { Effect } from "effect";
 
 import * as ForcedTransactionsDB from "../database/forcedTransactions.js";

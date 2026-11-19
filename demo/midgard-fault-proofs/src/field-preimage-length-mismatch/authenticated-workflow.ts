@@ -6,11 +6,13 @@ import {
 
 import {
   CORE_WITNESS_ROLES,
+  type FamilyAssemblyContext,
+} from "../workflow/family-definition.family-adapter-arm.js";
+import {
   cursorStepContractNames,
   defineFamily,
-  type FamilyAssemblyContext,
-} from "../workflow/family-definition.js";
-import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
+} from "../workflow/family-definition.family-definition.js";
+import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
 import { FIELD_PREIMAGE_LENGTH_CURSOR_SPEC } from "./workflow-spec.js";
 export {
   planFieldPreimageLengthCarriage,
@@ -18,7 +20,7 @@ export {
 } from "./carriage.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import { FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
+import { FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import type { FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
@@ -29,11 +31,11 @@ import type {
 } from "../workflow/orchestrator.js";
 import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
 import { type WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
-import {
-  fieldPreimageLengthConfigFromBinding,
-  type LoadManifestBoundFieldPreimageLengthConfig,
-  type ManifestBoundFieldPreimageLengthConfig,
-} from "./config.js";
+import type {
+  LoadManifestBoundFieldPreimageLengthConfig,
+  ManifestBoundFieldPreimageLengthConfig,
+} from "./config.create-concrete-field-preimage-length-lucid-builders.js";
+import { fieldPreimageLengthConfigFromBinding } from "./config.load-manifest-bound-field-preimage-length-config.js";
 import { createFieldPreimageLengthRecoveryPorts } from "./recovery.js";
 
 export const FIELD_PREIMAGE_LENGTH_AUTHENTICATED_WORKFLOW =

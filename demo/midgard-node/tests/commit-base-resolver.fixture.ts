@@ -22,7 +22,7 @@ import { verifyConfirmedLedger } from "../src/mpf/confirmed-ledger-run.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../src/mpf/ledger-hydration.js";
 import { LocalLedgerDivergenceError } from "../src/mpf/local-ledger-divergence.js";
 import { ForeignBlockVerificationError } from "../src/mpf/verified-block-import.js";
-import { NodeConfig } from "../src/services/config.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
 import type { Database } from "../src/services/database.js";
 import { withFollowerWrite } from "../src/services/follower-write-gate.js";
 import { CommitBaseUnverifiedError } from "../src/workers/commit-block-header.landed-commit-base.js";

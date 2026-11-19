@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   REDEEMER_CANONICITY_COMPLETE_CANONICAL_REPLAY,
   requireCompleteCanonicalReplayDecision,
-} from "../src/workflow/complete-replay.js";
+} from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
 import {
   assertReplayPrerequisiteCovered,
   CanonicalReplayPrerequisiteError,
@@ -15,8 +15,10 @@ import {
   buildFixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
-import { ADVISORY_VIOLATION_ID } from "./replay-prerequisite.complete-replay-proof-prerequisites.js";
-import { evidenceFor } from "./replay-prerequisite.complete-replay-proof-prerequisites.js";
+import {
+  ADVISORY_VIOLATION_ID,
+  evidenceFor,
+} from "./replay-prerequisite.complete-replay-proof-prerequisites.js";
 
 /** Two normal transactions, the one at `carrier` carrying `redeemerData` in a
  * spend redeemer and the other a canonical one. */

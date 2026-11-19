@@ -12,12 +12,10 @@ import {
   buildInputNoIdxBlockFixture,
   makeEmulatorHarness,
 } from "./submit-init-emulator-input-no-idx.build-input-no-idx-block-fixture.js";
+import { network } from "./support/emulator/blueprints.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { deployFieldGrammarCertificate } from "./support/field-grammar-certificate-deployment-fixture.js";
 import { writeNoIdxStep04Files } from "./support/no-idx-step04-from-files.js";
-import {
-  buildRemovalDeploymentInfo,
-  network,
-} from "./support/submit-init-emulator-shared.js";
 
 const hooks = vi.hoisted(() => ({ lucid: undefined as unknown }));
 // The command's provider is the emulator; the step itself is observed, not

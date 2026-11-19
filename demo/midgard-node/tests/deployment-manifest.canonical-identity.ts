@@ -8,7 +8,6 @@ import {
   DA_TRANSPORT_LIMITS,
   DA_TRANSPORT_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
-import type { DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   computeDeploymentManifestDaCommitteeSignersHash,
   computeDeploymentManifestId,
@@ -17,6 +16,7 @@ import {
   DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
   DEPLOYMENT_MANIFEST_L1_FINALITY,
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+  type DeploymentManifest,
   normalizeDeploymentManifestJsonValue,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
@@ -38,7 +38,7 @@ import {
 import { Effect } from "effect";
 import { beforeAll } from "vitest";
 
-import { buildFraudProofCatalogueDeploymentInfo } from "../src/transactions/initialization.js";
+import { buildFraudProofCatalogueDeploymentInfo } from "../src/transactions/initialization.atomic-protocol-init-reference-scripts-from-publications.js";
 import { TEST_AVAILABILITY_CHALLENGE } from "./helpers/availability-challenge.js";
 
 const NATIVE_SCRIPT_CBOR = "820501";

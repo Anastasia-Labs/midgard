@@ -16,7 +16,7 @@ import {
   driveCapturedStep,
   fieldPreimageCertificateCount,
 } from "./support/captured-step-turns.js";
-import { maximumIllegalOutputShape } from "./support/field-item-width-illegal-shapes.js";
+import { maximumIllegalOutputShape } from "./support/field-item-width-illegal-shapes.build-accepted-width-inclusions.js";
 
 describe("fieldItemWidthIllegal step 02 built turn by turn", () => {
   it("reuses the field certificate already on chain, so the next built transaction is the step", async () => {

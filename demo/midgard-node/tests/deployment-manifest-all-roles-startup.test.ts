@@ -6,10 +6,8 @@ import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-confi
 import { Effect, Layer } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  buildContractDeploymentInfoFromContracts,
-  buildDeploymentManifest,
-} from "../src/commands/contract-deployment-info.js";
+import { buildContractDeploymentInfoFromContracts } from "../src/commands/contract-deployment-info.build-contract-deployment-info-from-contracts.js";
+import { buildDeploymentManifest } from "../src/commands/contract-deployment-info.build-deployment-manifest.js";
 import { publishedDeployableScripts } from "../src/deployable-scripts.js";
 import { L1ChainParameters } from "../src/services/l1-adapter.js";
 import {

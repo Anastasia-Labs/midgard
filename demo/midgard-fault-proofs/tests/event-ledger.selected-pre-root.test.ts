@@ -19,7 +19,7 @@ import { prepareNoReferenceInputWrongfulRejection } from "../src/no-reference-in
 import { prepareNonExistentInputWrongfulRejection } from "../src/non-existent-input/wrongful-rejection.js";
 import type { TransitionTraceReconstruction } from "../src/transition-trace/reconstruct.js";
 import { prepareWithdrawalMistagReplay } from "../src/withdrawal-mistag/replay.js";
-import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.js";
+import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
   block,
   NATIVE,

@@ -4,13 +4,13 @@ import { type LucidEvolution, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { outRefLabel } from "../../tx-context.js";
-import {
-  type CommitSchedulerDiscoveryStage,
-  type CommitSchedulerState,
-  type CommitSchedulerStateQueueEvidence,
-  type EarliestCommitSchedulerPlan,
-  planEarliestCommitSchedulerDueWork,
-} from "./commit-block-planner.js";
+import type {
+  CommitSchedulerDiscoveryStage,
+  CommitSchedulerState,
+  CommitSchedulerStateQueueEvidence,
+  EarliestCommitSchedulerPlan,
+} from "./commit-block-planner.commit-scheduler-evidence-key.js";
+import { planEarliestCommitSchedulerDueWork } from "./commit-block-planner.plan-earliest-commit-scheduler-due-work.js";
 import {
   getOperatorKeyHash,
   getSchedulerDatumFromUTxO,

@@ -14,13 +14,10 @@ import {
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import type * as SDK from "@al-ft/midgard-sdk";
-import {
-  buildDeterministicValidationMachineTrace,
-  MidgardRedeemerTag,
-  RejectCodes,
-  runPhaseBValidationWithPatch,
-  validatePhaseASingle,
-} from "@al-ft/midgard-validation";
+import { buildDeterministicValidationMachineTrace } from "@al-ft/midgard-validation";
+import { MidgardRedeemerTag } from "@al-ft/midgard-validation/midgard-redeemers";
+import { validatePhaseASingle } from "@al-ft/midgard-validation/phase-a";
+import { runPhaseBValidationWithPatch } from "@al-ft/midgard-validation/phase-b";
 import {
   FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,
@@ -34,17 +31,18 @@ import {
   outRefFromByte,
   plutusV3ScriptWitness,
 } from "@al-ft/midgard-validation/tests/validation-fixtures";
+import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { prepareDirectScriptMaterial } from "../src/direct-script-derivation/material.js";
 import {
   buildDirectSourceIndex,
   buildDirectSourceIndexEvidence,
-  prepareDirectScriptMaterial,
-} from "../src/direct-script-derivation/index.js";
+} from "../src/direct-script-derivation/source-index.js";
 import { checkLedgerAgainstRoot, ledgerEntriesRoot } from "../src/ledger-at.js";
-import { reconstructDaPayload } from "../src/transition-trace/reconstruct.js";
+import { reconstructDaPayload } from "../src/transition-trace/reconstruct.reconstruct-da-payload.js";
 import {
   buildCanonicalBlockFixture,
   fixtureTransactionFromCanonicalCbor,

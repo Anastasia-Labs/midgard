@@ -11,23 +11,23 @@ import {
   normalizeDeploymentManifestJsonValue,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import type {
-  MidgardValidators,
-  ReferenceScriptAuthPolicyDeploymentInfo,
+import {
+  type MidgardValidators,
+  REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
+  type ReferenceScriptAuthPolicyDeploymentInfo,
 } from "@al-ft/midgard-sdk";
-import { REFERENCE_SCRIPT_AUTH_TOKEN_NAMES } from "@al-ft/midgard-sdk";
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import {
-  buildContractDeploymentInfoFromContracts,
-  type DeploymentManifestBuildContext,
-  type DeploymentManifestIdentityContext,
-} from "../src/commands/contract-deployment-info.js";
+import { buildContractDeploymentInfoFromContracts } from "../src/commands/contract-deployment-info.build-contract-deployment-info-from-contracts.js";
+import type {
+  DeploymentManifestBuildContext,
+  DeploymentManifestIdentityContext,
+} from "../src/commands/contract-deployment-info.build-reference-script-out-ref-map.js";
 import {
   buildFraudProofCatalogueDeploymentInfo,
   fraudProofsToIndexedValidators,
-} from "../src/transactions/initialization.js";
+} from "../src/transactions/initialization.atomic-protocol-init-reference-scripts-from-publications.js";
 import { TEST_AVAILABILITY_CHALLENGE } from "./helpers/availability-challenge.js";
 
 export const testReferenceScriptAuthPolicy = (

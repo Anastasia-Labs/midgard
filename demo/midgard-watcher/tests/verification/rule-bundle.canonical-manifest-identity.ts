@@ -40,7 +40,7 @@ import {
 import {
   addWatcherHistoryFixtureMetadata,
   WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS,
-} from "../support/deployment-authority-fixture.js";
+} from "../support/deployment-authority-fixture.build-watcher-authority-contracts.js";
 
 export const h32 = (byte: string): string => byte.repeat(64);
 

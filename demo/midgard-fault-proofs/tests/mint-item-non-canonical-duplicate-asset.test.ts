@@ -16,12 +16,10 @@ import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core/codec";
 import { acceptedVerdictSubject } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildMintItemNonCanonicalStep01Accepted,
-  buildMintItemNonCanonicalStep02,
-  buildMintItemNonCanonicalStep03,
-  buildMintItemNonCanonicalStep04,
-} from "../src/mint-item-non-canonical/index.js";
+import { buildMintItemNonCanonicalStep01Accepted } from "../src/mint-item-non-canonical/submit-step-01-accepted.js";
+import { buildMintItemNonCanonicalStep02 } from "../src/mint-item-non-canonical/submit-step-02.js";
+import { buildMintItemNonCanonicalStep03 } from "../src/mint-item-non-canonical/submit-step-03.js";
+import { buildMintItemNonCanonicalStep04 } from "../src/mint-item-non-canonical/submit-step-04.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
@@ -38,7 +36,7 @@ import {
   mintField,
   mintItem,
 } from "./support/mint-item-vectors.js";
-import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
+import { setupFraudulentBlock } from "./support/submit-init/removal.js";
 import {
   buildAndSubmitUnjournaled,
   type SubmittedStep,

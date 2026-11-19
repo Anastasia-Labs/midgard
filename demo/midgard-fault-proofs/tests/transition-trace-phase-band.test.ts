@@ -2,7 +2,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { detectTransitionTraceFaults } from "../src/transition-trace/detect.js";
+import { detectTransitionTraceFaults } from "../src/transition-trace/detect.detect-single-ledger-transitions.js";
 import {
   phaseForStepIndex,
   traceStepPhaseFault,

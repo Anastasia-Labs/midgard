@@ -13,7 +13,7 @@ import { Constr, Data } from "@lucid-evolution/lucid";
 import {
   deriveLedgerOutputProofFinalizePlan,
   deriveLedgerOutputProofStepPlan,
-} from "../ledger-output-proof-plan.js";
+} from "../ledger-output-proof-plan.derive-ledger-output-proof-step-plan.js";
 import {
   bytes as itemBytes,
   controlData,

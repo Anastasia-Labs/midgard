@@ -29,10 +29,8 @@ import {
 } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import {
-  captureEmulatorSubmission,
-  network,
-} from "../submit-init-emulator-shared.js";
+import { network } from "../emulator/blueprints.js";
+import { captureEmulatorSubmission } from "../emulator/measurement.js";
 import { type ProvedDoubleSpendFixture } from "./double-spend.js";
 import {
   activeOperatorDatumFromUtxo,

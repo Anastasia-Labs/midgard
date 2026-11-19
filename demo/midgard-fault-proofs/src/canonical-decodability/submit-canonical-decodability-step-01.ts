@@ -31,7 +31,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { faultProofRawFieldCarriage } from "../field-opening.js";
+import { faultProofRawFieldCarriage } from "../field-opening.publish-fault-proof-field-carriage.js";
 import {
   builtChunkReferenceIndices,
   chunkedMembershipClaimRedeemer,
@@ -48,8 +48,7 @@ import {
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
 } from "../runtime.js";
-import { completeStep, fundStep } from "../step-completion.js";
-import { finishStep } from "../step-completion.js";
+import { completeStep, finishStep, fundStep } from "../step-completion.js";
 import {
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
   requireNativeTxMatchesCompactCbor,

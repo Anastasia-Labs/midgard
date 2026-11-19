@@ -3,15 +3,13 @@ import type { UTxO } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
 import type { PreparedNetworkIdAcceptedForced } from "../src/network-id/accepted-forced.js";
-import {
-  createNetworkIdWorkflowAdapter,
-  networkIdAcceptedForcedArtifactFromPrepared,
-  type NetworkIdWorkflowAdapterConfig,
-} from "../src/network-id/workflow-adapter.js";
+import { networkIdAcceptedForcedArtifactFromPrepared } from "../src/network-id/workflow-adapter.accepted-forced-artifact.js";
+import type { NetworkIdWorkflowAdapterConfig } from "../src/network-id/workflow-adapter.create-network-id-raw-l1-observation-port.js";
+import { createNetworkIdWorkflowAdapter } from "../src/network-id/workflow-adapter.create-network-id-workflow-adapter.js";
 import {
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   type FraudProofWorkflowIdentity,
-} from "../src/workflow/journal.js";
+} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import { workflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
 import {
   type Harness,
@@ -23,7 +21,7 @@ import {
   publishPlainReferenceScriptUtxo,
   publishRemovalReferenceScripts,
 } from "./support/emulator/reference-scripts.js";
-import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 
 /** Physical adapter/restart route over the emulator's normalized-provider surface. */
 export const runAcceptedForcedAdapter = async ({

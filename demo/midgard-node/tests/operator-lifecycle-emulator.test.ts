@@ -2,11 +2,15 @@ import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "effect";
 import "vitest";
-import "../src/transactions/initialization.js";
-import "../src/transactions/register-active-operator.js";
+import "../src/transactions/initialization.fetch-protocol-deployment-status.js";
+import "../src/transactions/initialization.derive-operator-da-params.js";
+import "../src/transactions/register-active-operator.activate-registered-operator-program.js";
+import "../src/transactions/reference-scripts.ensure-reference-script-targets-program.js";
+import "../src/transactions/register-active-operator.to-lifecycle-result.js";
 import "../src/transactions/register-active-operator/clock.js";
 import "../src/transactions/script-reward-registration.js";
-import "../src/transactions/utils.js";
+import "../src/transactions/utils.await-required-output-visibility.js";
+import "../src/transactions/utils.await-submitted-transaction-confirmation.js";
 import "./helpers/real-midgard-contracts.js";
 import "./operator-lifecycle-emulator.build-operator-lifecycle-snapshot.js";
 import "./operator-lifecycle-emulator.register-second-operator-behind-active-first.js";
@@ -22,16 +26,16 @@ import {
 import { Effect, Either } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
+import { deployReferenceScriptCommandProgram } from "../src/transactions/reference-scripts.ensure-reference-script-targets-program.js";
 import {
   activateOperatorProgram,
-  deployReferenceScriptCommandProgram,
   deregisterOperatorProgram,
-  OperatorRegistrationRefusal,
   registerAndActivateOperatorProgram,
   registerOperatorProgram,
-} from "../src/transactions/register-active-operator.js";
+} from "../src/transactions/register-active-operator.activate-registered-operator-program.js";
+import { OperatorRegistrationRefusal } from "../src/transactions/register-active-operator.to-lifecycle-result.js";
 import * as LifecycleClock from "../src/transactions/register-active-operator/clock.js";
-import { inspectSignedTxValidityInterval } from "../src/transactions/utils.js";
+import { inspectSignedTxValidityInterval } from "../src/transactions/utils.await-required-output-visibility.js";
 import { selectNodeWallet } from "../src/transactions/utils.wallet-view.js";
 import { observeEmulatorTip } from "./helpers/emulator-observed-tip.js";
 import { runWithoutFollower } from "./helpers/intent-journal.js";

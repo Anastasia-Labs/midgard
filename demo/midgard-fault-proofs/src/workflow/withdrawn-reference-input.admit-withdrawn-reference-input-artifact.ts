@@ -15,14 +15,17 @@ import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidenc
 import {
   type FaultProofFieldOpeningPlan,
   planFaultProofFieldOpening,
-} from "../field-opening.js";
+} from "../field-opening.plan-fault-proof-field-opening.js";
 import {
   prepareWithdrawnReferenceInput,
   verifyWithdrawnReferenceInputMembership,
 } from "../withdrawn-reference-input/prepare-withdrawn-reference-input.js";
 import type { CanonicalBlockClassification } from "./classification.js";
-import { CORE_WITNESS_ROLES } from "./family-definition.js";
-import { type JournalJsonObject, normalizeJournalJson } from "./journal.js";
+import { CORE_WITNESS_ROLES } from "./family-definition.family-adapter-arm.js";
+import {
+  type JournalJsonObject,
+  normalizeJournalJson,
+} from "./journal.fraud-proof-workflow-terminal.js";
 import {
   admitNativeInclusionArtifact,
   admitTxInputList,

@@ -17,13 +17,13 @@ import {
 } from "@lucid-evolution/lucid";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
-import { TRANSITION_TRACE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
+import { TRANSITION_TRACE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
+import { authenticatedStateQueueObservationDigest } from "../src/workflow/header-classifier.authenticated-state-queue-observation-digest.js";
+import { classifyHeader } from "../src/workflow/header-classifier.classify-header.js";
 import {
-  authenticatedStateQueueObservationDigest,
-  classifyHeader,
   createHeaderClassifier,
   headerDecisionReplayContext,
-} from "../src/workflow/header-classifier.js";
+} from "../src/workflow/header-classifier.create-header-classifier.js";
 
 const hooks = vi.hoisted(() => ({
   binding: undefined as unknown,
@@ -59,12 +59,12 @@ import {
   requireTransitionTraceL1Events,
   unsafeCreateTransitionTraceEventAuthorityFromRawForTest,
 } from "../src/transition-trace/l1-events.js";
-import { TRANSITION_TRACE_FINAL_REFERENCE_SCRIPT_ENTRIES } from "../src/transition-trace/submit.js";
+import { TRANSITION_TRACE_FINAL_REFERENCE_SCRIPT_ENTRIES } from "../src/transition-trace/submit.make-transition-trace-route-spend-redeemer.js";
 import {
   createManifestBoundTransitionTraceWorkflow,
   runOrResumeManifestBoundTransitionTraceWorkflow,
-} from "../src/transition-trace/workflow.js";
-import { DirectoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.js";
+} from "../src/transition-trace/workflow.run-or-resume-manifest-bound-transition-trace-workflow.js";
+import { DirectoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
 import {
   computeFraudProofReleaseEconomicsPolicyDigest,
   FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
@@ -91,7 +91,7 @@ import {
   publishFraudProofChainReferenceScripts,
   publishRemovalReferenceScripts,
 } from "./support/emulator/reference-scripts.js";
-import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import {
   submitSecondHeaderTx,
   submitSetupTx,

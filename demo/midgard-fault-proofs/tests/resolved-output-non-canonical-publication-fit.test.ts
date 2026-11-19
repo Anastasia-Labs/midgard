@@ -8,11 +8,11 @@ import {
   RESOLVED_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES,
 } from "../src/resolved-output-non-canonical/contracts.js";
 import {
-  makeFaultProofEmulatorHarness,
-  publishPlainReferenceScriptUtxo,
   readBlueprint,
   realBlueprintPath,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/emulator/blueprints.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
+import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 
 const blueprint = readBlueprint(realBlueprintPath);
 

@@ -9,14 +9,14 @@ import { join } from "node:path";
 import { supersededAttemptReadSchedule } from "@al-ft/midgard-fault-proofs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.js";
+import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
 import type { WatcherOperationsSink } from "../../src/runtime/operations-observability.js";
 import { openWatcherProverFundingRuntime } from "../../src/runtime/watcher-prover-funding-runtime.js";
+import { setupFundingRecoveryFixture } from "../support/fault-proof-funding-fixture.setup-funding-recovery-fixture.js";
 import {
   cleanupFundingRecoveryFixtures,
   deploymentIdentity,
-  setupFundingRecoveryFixture,
-} from "../support/fault-proof-funding-fixture.js";
+} from "../support/fault-proof-funding-fixture.sources-for.js";
 import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 import { expiredNotFound } from "./prover-funding-recovery.retirement-fixture.js";
 

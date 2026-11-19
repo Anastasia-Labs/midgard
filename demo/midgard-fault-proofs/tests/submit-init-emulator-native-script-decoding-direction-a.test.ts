@@ -30,30 +30,28 @@ import { Data, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { submitRemoveFraudulentBlock } from "../src/index.js";
 import {
-  buildNativeScriptDecodingScanPlan,
   type NativeScriptDecodingFinding,
-  NativeScriptDecodingPlanRoutes,
   NativeScriptDecodingProvability,
-} from "../src/native-script-decoding/index.js";
+} from "../src/native-script-decoding/finding.js";
+import { buildNativeScriptDecodingScanPlan } from "../src/native-script-decoding/scan-plan.build-native-script-decoding-scan-plan.js";
+import { NativeScriptDecodingPlanRoutes } from "../src/native-script-decoding/scan-plan.native-script-decoding-plan-costs.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
+import { decodingMalformedMultiChunkItem } from "./support/native-script-decoding-emulator.build-decoding-ledger-fixture.js";
 import {
-  decodingMalformedMultiChunkItem,
   makeDecodingEmulatorHarness,
   publishDecodingReferenceScripts,
   setupDecodingScenario,
-} from "./support/native-script-decoding-emulator.js";
+} from "./support/native-script-decoding-emulator.setup-decoding-scenario.js";
 import {
   NATIVE_SCRIPT_DECODING_PROVER_POLICY_DEFAULTS,
   type NativeScriptDecodingProverDeps,
-  proveNativeScriptDecodingFault,
-} from "./support/native-script-decoding-prover.js";
-import {
-  buildRemovalDeploymentInfo,
-  expectSingleUtxoWithUnit,
-  network,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/native-script-decoding-prover.locate-native-script-decoding-thread.js";
+import { proveNativeScriptDecodingFault } from "./support/native-script-decoding-prover.prove-native-script-decoding-fault.js";
 import { publishProofChunks } from "./support/submit-unjournaled.js";
 import {
   submitNativeScriptDecodingInit,

@@ -10,14 +10,14 @@ import {
 import { expect, it } from "vitest";
 
 import { getCompiledScript } from "../src/runtime.js";
-import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import {
-  captureEmulatorSubmission,
-  EMULATOR_PROTOCOL_PARAMETERS,
   network,
   readBlueprint,
   realBlueprintPath,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/emulator/blueprints.js";
+import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
+import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
+import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 
 // Pinned canonical roots shared with the Aiken compressed-prefix regressions.
 const vectors = [

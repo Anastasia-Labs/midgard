@@ -10,22 +10,20 @@ import { Effect, Ref } from "effect";
 import { Level } from "level";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { buildListenRouter } from "../src/commands/listen-router.js";
-import { readNativeRoot } from "../src/commands/state-reconciliation.js";
+import { buildListenRouter } from "../src/commands/http/router.js";
+import { readNativeRoot } from "../src/commands/state-reconciliation.state-reconciliation-program.js";
 import { ROOT_KEY } from "../src/mpf/store-primitives.js";
-import { NodeConfig } from "../src/services/config.js";
-import {
-  Globals,
-  nextL1ProviderHealthEvidence,
-} from "../src/services/globals.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
+import { Globals } from "../src/services/globals.globals.js";
+import { nextL1ProviderHealthEvidence } from "../src/services/globals.next-l1-provider-health-evidence.js";
 import { Lucid } from "../src/services/lucid.js";
 import {
   ContractDeploymentIdentity,
   MidgardContracts,
-} from "../src/services/midgard-contracts.js";
+} from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import type { NativeMpfOwnerService } from "../src/services/mpf-native-owner/index.js";
 import type { NativeMpfOwnerDiagnostics } from "../src/services/mpf-native-owner/protocol.js";
-import { ValidationPool } from "../src/services/validation-pool.js";
+import { ValidationPool } from "../src/services/validation-pool.bundled-worker-exec-argv.js";
 import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 import { provideDatabaseLayers } from "./utils.js";
 

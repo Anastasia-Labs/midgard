@@ -23,10 +23,10 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  SPEND_INPUT_SIGNER_MISSING_ID,
   SpendInputSignerStep01RedeemerSchema,
   SpendInputSignerStep02DatumSchema,
-} from "../src/spend-input-signer-missing/index.js";
+} from "../src/spend-input-signer-missing/schemas.js";
+import { SPEND_INPUT_SIGNER_MISSING_ID } from "../src/spend-input-signer-missing/spend-input-signer-missing.js";
 import {
   commitForcedBlock,
   publishReferences,

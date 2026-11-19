@@ -17,12 +17,12 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { isPrerequisiteTurn } from "../fault-proof-turn.js";
+import { reuseOrCertifyFaultProofFieldCarriage } from "../field-opening.certify-fault-proof-field-carriage.js";
+import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
 import {
   faultProofFieldOpening,
-  planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
-  reuseOrCertifyFaultProofFieldCarriage,
-} from "../field-opening.js";
+} from "../field-opening.publish-fault-proof-field-carriage.js";
 import {
   requireLinearFaultReferenceScript,
   requireLinearFaultStepState,

@@ -1,19 +1,17 @@
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 import type { FaultProofFieldGrammarDeployment } from "../field-grammar-certificate.js";
-import {
-  type FaultProofFieldOpeningPlan,
-  resolveFaultProofFieldCarriagePublications,
-  resolveFaultProofFieldPreimageCertificate,
-} from "../field-opening.js";
+import { resolveFaultProofFieldPreimageCertificate } from "../field-opening.certify-fault-proof-field-carriage.js";
+import type { FaultProofFieldOpeningPlan } from "../field-opening.plan-fault-proof-field-opening.js";
+import { resolveFaultProofFieldCarriagePublications } from "../field-opening.publish-fault-proof-field-carriage.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.build-remove-fraudulent-block.js";
 import { type StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
-import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import { buildInit } from "../submit-init.js";
+import { buildInit } from "../submit-init.submit-init.js";
 import { buildReferenceInputNoIdxStep01 } from "../submit-reference-input-no-idx-step-01.js";
-import { buildReferenceInputNoIdxStep02 } from "../submit-reference-input-no-idx-step-02.js";
+import { buildReferenceInputNoIdxStep02 } from "../submit-reference-input-no-idx-step-02.submit-reference-input-no-idx-step02.js";
 import { buildReferenceInputNoIdxStep03 } from "../submit-reference-input-no-idx-step-03.js";
-import { buildReferenceInputNoIdxStep04 } from "../submit-reference-input-no-idx-step-04.js";
+import { buildReferenceInputNoIdxStep04 } from "../submit-reference-input-no-idx-step-04.submit-reference-input-no-idx-step04.js";
 import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
 import {
   type FieldPreimageCertificateBinding,
@@ -28,7 +26,7 @@ import {
 import { exactJournalRecord } from "./native-index-artifact.js";
 import { type FraudProofWorkflowAction } from "./orchestrator.js";
 import type { OwnOutputJournal } from "./own-outputs.js";
-import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.js";
+import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.route-action-identity.js";
 import {
   admitReferenceInputNoIdxArtifact,
   type AssemblyContext,

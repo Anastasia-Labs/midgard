@@ -17,7 +17,7 @@ import { describe, expect, it } from "vitest";
 import {
   carriageFieldPreimages,
   reconstructTxOrderMaterial,
-} from "../src/forced-orders/index.js";
+} from "../src/forced-orders/carriage.js";
 import { makeOutRefCbor } from "./midgard-output-helpers.js";
 
 /** The mint admits only a transaction that spends something: field 0. */

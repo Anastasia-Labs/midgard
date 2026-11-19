@@ -1,7 +1,7 @@
 import "./mempool-ledger-cache.canonical-history-cache-retirement.js";
 
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import { runPhaseBValidationWithPatch } from "@al-ft/midgard-validation";
+import { runPhaseBValidationWithPatch } from "@al-ft/midgard-validation/phase-b";
 import { Deferred, Effect, Fiber, Metric, Ref } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -12,15 +12,12 @@ import {
   outRefFromByte,
 } from "../../midgard-validation/tests/validation-fixtures.js";
 import { MempoolLedgerDB } from "../src/database/index.js";
-import {
-  publishCommitMempoolLedgerMutation,
-  takeCommitWorkerOutput,
-} from "../src/fibers/block-commitment.js";
-import { Globals, publishMempoolLedgerDelta } from "../src/services/globals.js";
-import {
-  makeMempoolLedgerCacheService,
-  validationPhaseBLockWaitTimer,
-} from "../src/services/mempool-ledger-cache.js";
+import { publishCommitMempoolLedgerMutation } from "../src/fibers/block-commitment.should-skip-for-detailed-scheduler-due-work.js";
+import { Globals } from "../src/services/globals.globals.js";
+import { publishMempoolLedgerDelta } from "../src/services/globals.with-l1-control-plane-held.js";
+import { makeMempoolLedgerCacheService } from "../src/services/mempool-ledger-cache.make-mempool-ledger-cache-service.js";
+import { validationPhaseBLockWaitTimer } from "../src/services/mempool-ledger-cache.mempool-ledger-cache-service.js";
+import { takeCommitWorkerOutput } from "../src/workers/commit-worker-message.js";
 import type { WorkerOutput } from "../src/workers/utils/commit-block-header.js";
 import { row, snapshot } from "./mempool-ledger-cache.row.js";
 

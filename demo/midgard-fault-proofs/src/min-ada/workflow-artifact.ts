@@ -1,6 +1,7 @@
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type { CanonicalBlockClassification } from "../workflow/classification.js";
-import { admitMinAdaArtifact, prepareMinAdaArtifact } from "./artifact.js";
+import { admitMinAdaArtifact } from "./artifact.admit-min-ada-artifact.js";
+import { prepareMinAdaArtifact } from "./artifact.prepare-min-ada-artifact.js";
 import {
   admitMinAdaForcedArtifact,
   MIN_ADA_FORCED_ARTIFACT,

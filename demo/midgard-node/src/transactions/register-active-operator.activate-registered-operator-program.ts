@@ -4,8 +4,9 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { Lucid, MidgardContracts } from "../services/index.js";
 import type { IntentJournal } from "../services/intent-journal.js";
+import { Lucid } from "../services/lucid.js";
+import { MidgardContracts } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import { configuredOperatorEconomicsProgram } from "./operators/exit.js";
 import {
   OperatorFundingShortfall,
@@ -20,10 +21,10 @@ import {
 import { operatorLifecycleProgram } from "./register-active-operator.operator-lifecycle-program.js";
 import {
   TxConfirmError,
-  TxExpiredError,
   TxSignError,
   TxSubmitError,
-} from "./utils.js";
+} from "./utils.await-required-output-visibility.js";
+import { TxExpiredError } from "./utils.tx-expiry.js";
 
 export const registerAndActivateOperatorProgram = (
   lucid: LucidEvolution,

@@ -2,14 +2,14 @@ import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 
 import { WorkflowActionChangedError } from "./action-changed.js";
 import { type JournalJsonObject } from "./journal.js";
+import {
+  FRAUD_PROOF_WORKFLOW_ADAPTER,
+  FRAUD_PROOF_WORKFLOW_SAFETY,
+} from "./orchestrator.fraud-proof-family-workflow-adapter.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
   FraudProofWorkflowAction,
   FraudProofWorkflowPreflight,
-} from "./orchestrator.js";
-import {
-  FRAUD_PROOF_WORKFLOW_ADAPTER,
-  FRAUD_PROOF_WORKFLOW_SAFETY,
 } from "./orchestrator.js";
 import { workflowConfirmedTransactions } from "./own-outputs.js";
 import { cacheKey } from "./proof-chunk-prerequisite.cache-key.js";

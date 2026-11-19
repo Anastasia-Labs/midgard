@@ -5,23 +5,17 @@
  * stalled, and nothing more is sent. */
 import { describe, expect, it } from "vitest";
 
-import {
-  bindWorkflowActuationJournal,
-  isWorkflowActuationRevokedError,
-} from "../src/workflow/actuation-permit.js";
+import { bindWorkflowActuationJournal } from "../src/workflow/actuation-permit.assert-workflow-actuation-permit-identity.js";
+import { isWorkflowActuationRevokedError } from "../src/workflow/actuation-permit.create-workflow-reconciliation-permit-controller.js";
 import { grantValidationDisputeFundingAuthority } from "../src/workflow/funding-reservation-permit.assert-validation-dispute-funding.js";
-import { unsafeWorkflowFundingReservationSelectedOutRefsForTest } from "../src/workflow/funding-reservation-permit.js";
-import {
-  type FraudProofWorkflowJournalEntry,
-  MemoryFraudProofWorkflowJournalStore,
-} from "../src/workflow/journal.js";
-import {
-  createFraudProofWorkflowRegistry,
-  type FraudProofFamilyWorkflowAdapter,
-} from "../src/workflow/orchestrator.js";
+import { unsafeWorkflowFundingReservationSelectedOutRefsForTest } from "../src/workflow/funding-reservation-permit.restrict-workflow-funding-signer.js";
+import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
+import type { FraudProofWorkflowJournalEntry } from "../src/workflow/journal.fraud-proof-workflow-journal-event.js";
+import type { FraudProofFamilyWorkflowAdapter } from "../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
+import { createFraudProofWorkflowRegistry } from "../src/workflow/orchestrator.immutable-fraud-proof-workflow-registry.js";
 import { runAdmittedFraudProofWorkflow } from "../src/workflow/orchestrator.run-admitted-fraud-proof-workflow.js";
 import { bindWorkflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
-import { releaseFinality } from "./support/raw-l1-terminal-fixture.js";
+import { releaseFinality } from "./support/raw-l1-terminal-fixture.output.js";
 import { WALLET_ONLY_SEND_ALWAYS_OPEN_ON_PREVIEW } from "./support/wallet-only-send-always-open.js";
 import {
   makeAdapter,

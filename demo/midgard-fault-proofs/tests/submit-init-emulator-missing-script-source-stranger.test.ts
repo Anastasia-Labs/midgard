@@ -22,30 +22,30 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import type { DirectPurposeTransition } from "../src/direct-purpose-family/custody.js";
 import {
-  buildDirectPurposeInit,
-  buildDirectPurposeStep01Forced,
   type DirectPurposeRole,
   directPurposeRoleValidator,
-  type DirectPurposeTransition,
-} from "../src/direct-purpose-family/index.js";
-import { faultProofFieldOpening } from "../src/field-opening.js";
-import {
-  MISSING_SCRIPT_SOURCE_DIRECT_WALK,
-  MISSING_SCRIPT_SOURCE_FAMILY,
-} from "../src/missing-script-source/index.js";
+} from "../src/direct-purpose-family/family.js";
+import { buildDirectPurposeInit } from "../src/direct-purpose-family/init.js";
+import { buildDirectPurposeStep01Forced } from "../src/direct-purpose-family/step01.js";
+import { faultProofFieldOpening } from "../src/field-opening.publish-fault-proof-field-carriage.js";
+import { MISSING_SCRIPT_SOURCE_FAMILY } from "../src/missing-script-source/contracts.js";
+import { MISSING_SCRIPT_SOURCE_DIRECT_WALK } from "../src/missing-script-source/workflow.js";
 import {
   getCompiledScript,
   phasMembershipRewardAddress,
   resolveProverSigner,
 } from "../src/runtime.js";
 import { PHAS_MEMBERSHIP_WITHDRAW_TITLE } from "../src/step-support.js";
-import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
+import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
 import { computationThreadOutputPredicate } from "../src/tx-layout.js";
 import {
   makeDirectWalkHarness,
   publishDirectWalkRoles,
 } from "./support/direct-walk-emulator.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { scriptAddress } from "./support/missing-redeemer-emulator.purposes.js";
 import {
@@ -54,10 +54,6 @@ import {
   setupMissingRedeemerScenario,
 } from "./support/missing-redeemer-emulator.subject.js";
 import { driveMissingScriptSourceThread } from "./support/missing-script-source-emulator.js";
-import {
-  expectSingleUtxoWithUnit,
-  network,
-} from "./support/submit-init-emulator-shared.js";
 import { submitDirectPurposeTransition } from "./support/submit-unjournaled.direct-purpose.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 

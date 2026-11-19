@@ -1,11 +1,9 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
-import {
-  planFaultProofFieldOpening,
-  resolveFaultProofFieldCarriagePublications,
-  resolveFaultProofFieldPreimageCertificate,
-} from "../field-opening.js";
+import { resolveFaultProofFieldPreimageCertificate } from "../field-opening.certify-fault-proof-field-carriage.js";
+import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
+import { resolveFaultProofFieldCarriagePublications } from "../field-opening.publish-fault-proof-field-carriage.js";
 import { resolvePublishedProofChunks } from "../publish-proof-chunks.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { parseOutRef, type ResolvedProverSigner } from "../runtime.js";
@@ -13,14 +11,14 @@ import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
 } from "../step-support.js";
-import { buildInit } from "../submit-init.js";
+import { buildInit } from "../submit-init.submit-init.js";
 import { keyValuePhasProof } from "../transition-trace/phas.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import { type CompleteCanonicalReplayContext } from "../workflow/complete-replay.js";
 import {
   CURSOR_FAMILY_TRANSACTION_PORT,
   type CursorFamilyTransactionPort,
-} from "../workflow/cursor-family-adapter.js";
+} from "../workflow/cursor-family-adapter.admit-reference-scripts.js";
 import {
   captureCursorRemoval,
   cursorFamilyActionInput,
@@ -36,17 +34,15 @@ import {
   prepareNativeScriptDecodingWorkflowArtifact,
 } from "./artifact.js";
 import type { NativeScriptDecodingContracts } from "./contracts.js";
-import {
-  buildNativeScriptDecodingStep01BindNormal,
-  buildNativeScriptDecodingStep01RecordForced,
-} from "./submit-native-script-decoding-step-01.js";
+import { buildNativeScriptDecodingStep01BindNormal } from "./submit-native-script-decoding-step-01.submit-native-script-decoding-step01-bind-normal.js";
+import { buildNativeScriptDecodingStep01RecordForced } from "./submit-native-script-decoding-step-01.submit-native-script-decoding-step01-record-forced.js";
 import { buildNativeScriptDecodingStep02 } from "./submit-native-script-decoding-step-02.js";
 import {
   buildNativeScriptDecodingStep03AdvanceOrCloseClose,
   buildNativeScriptDecodingStep03AdvanceOrCloseSegment,
-  buildNativeScriptDecodingStep03BindDescriptor,
-  buildNativeScriptDecodingStep03OpenSubject,
-} from "./submit-native-script-decoding-step-03.js";
+} from "./submit-native-script-decoding-step-03.submit-native-script-decoding-step03-advance-or-close-close.js";
+import { buildNativeScriptDecodingStep03BindDescriptor } from "./submit-native-script-decoding-step-03.submit-native-script-decoding-step03-bind-descriptor.js";
+import { buildNativeScriptDecodingStep03OpenSubject } from "./submit-native-script-decoding-step-03.submit-native-script-decoding-step03-open-subject.js";
 import { buildNativeScriptDecodingStep04 } from "./submit-native-script-decoding-step-04.js";
 
 export type NativeScriptDecodingWorkflowReferenceScripts = Readonly<{

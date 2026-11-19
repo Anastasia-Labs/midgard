@@ -1,6 +1,6 @@
 /** The `unusedRedeemer` family's direct walk. */
 import { defineDirectWalkFamily } from "../direct-purpose-family/walk-family.js";
-import { UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
+import { UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import { UNUSED_REDEEMER_CURSOR_SPEC } from "../workflow/cursor-family-spec.js";
 import { UNUSED_REDEEMER_FAMILY } from "./contracts.js";
 import { UNUSED_REDEEMER_ARTIFACT_FAMILY } from "./replay.js";

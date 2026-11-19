@@ -4,15 +4,13 @@ import { Data, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildCountedRoot,
-  buildTransitionFaultProof,
-  buildTransitionTraceProof,
-  detectTransitionTraceFaults,
-  resolveTransitionTraceDeploymentContracts,
-  rootCountProof,
-  transitionTraceFinalIndex,
-} from "../src/index.js";
+import { resolveTransitionTraceDeploymentContracts } from "../src/runtime.resolve-category-deployment-contracts.js";
+import { detectTransitionTraceFaults } from "../src/transition-trace/detect.detect-single-ledger-transitions.js";
+import { buildCountedRoot } from "../src/transition-trace/phas.js";
+import { transitionTraceFinalIndex } from "../src/transition-trace/submit.make-transition-trace-final-spend-redeemer.js";
+import { buildTransitionTraceProof } from "../src/transition-trace/submit.submit-transition-trace-proof.js";
+import { buildTransitionFaultProof } from "../src/transition-trace/witnesses.build-out-of-window-source-event-fault.js";
+import { rootCountProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
 import {
   alignedHeaderStart,
   removeAndAssertPermanentProof,
@@ -24,13 +22,13 @@ import {
   setupChallenge,
   withdrawalInfo,
 } from "./submit-init-emulator-transition-trace-subvariants.setup-challenge.js";
+import { network } from "./support/emulator/blueprints.js";
+import { funderPaymentKeyHash } from "./support/emulator/emulator-context.js";
 import {
-  funderPaymentKeyHash,
   makeHeader,
-  network,
   transitionTraceDaEntry,
   transitionTraceOutRef,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/emulator/header-fixtures.js";
 import { submitTurnsUnjournaled } from "./support/submit-unjournaled.js";
 
 type ShortRoot = "withdrawals" | "transitionTrace" | "eventToStep";

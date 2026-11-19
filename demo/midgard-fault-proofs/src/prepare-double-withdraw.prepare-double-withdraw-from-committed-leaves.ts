@@ -10,7 +10,10 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
 import { stringifyJson } from "./json-file.js";
-import { buildTrieView, requireProof } from "./prepare-double-spend.js";
+import {
+  buildTrieView,
+  requireProof,
+} from "./prepare-double-spend.resolve-double-spend-pair.js";
 import {
   decodeLeaf,
   DOUBLE_WITHDRAW_EVIDENCE_SCHEMA_VERSION,
@@ -21,10 +24,8 @@ import {
   type PreparedDoubleWithdrawOutput,
   requireSelectedPair,
 } from "./prepare-double-withdraw.require-selected-pair.js";
-import {
-  fetchRetainedDaPayloadByHeaderHash,
-  type RetainedDaPayloadSource,
-} from "./transition-trace/fetch.js";
+import type { RetainedDaPayloadSource } from "./transition-trace/fetch.admit-retained-da-provenance.js";
+import { fetchRetainedDaPayloadByHeaderHash } from "./transition-trace/fetch.fetch-retained-da-payload-by-header-hash.js";
 import {
   commitCountedRoot,
   keyValuePhasRootWithCount,

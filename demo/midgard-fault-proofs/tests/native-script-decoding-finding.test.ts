@@ -10,7 +10,7 @@ import {
   assertNativeScriptDecodingFindingProvable,
   type NativeScriptDecodingFinding,
   NativeScriptDecodingProvability,
-} from "../src/native-script-decoding/index.js";
+} from "../src/native-script-decoding/finding.js";
 
 const TX_ID_HEX = "ab".repeat(32);
 const HEADER_HASH = "cd".repeat(28);

@@ -10,21 +10,19 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createWatcherFaultProofExecution } from "../../src/fault-proofs/fault-proof-execution.js";
-import {
-  createWatcherFaultProofSupervisor,
-  watcherFaultProofDeadline,
-  type WatcherFaultProofProgressRequest,
-} from "../../src/fault-proofs/fault-proof-supervisor.js";
+import type { WatcherFaultProofProgressRequest } from "../../src/fault-proofs/fault-proof-progress-authority.types.js";
+import { createWatcherFaultProofSupervisor } from "../../src/fault-proofs/fault-proof-supervisor.create-watcher-fault-proof-supervisor.js";
+import { watcherFaultProofDeadline } from "../../src/fault-proofs/fault-proof-supervisor.validate-job.js";
 import {
   closeWatcherJournalDatabase,
   openWatcherJournalDatabase,
 } from "../../src/fault-proofs/watcher-journal-database.js";
+import { setupFundingRecoveryFixture } from "../support/fault-proof-funding-fixture.setup-funding-recovery-fixture.js";
 import {
   cleanupFundingRecoveryFixtures,
   deploymentIdentity,
-  setupFundingRecoveryFixture,
   walletAddress,
-} from "../support/fault-proof-funding-fixture.js";
+} from "../support/fault-proof-funding-fixture.sources-for.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
 import { waitForFaultProofSupervisorIdle } from "../support/fault-proof-supervisor-idle.js";
 import { completedTerminalWriter } from "../support/funding-recovery-completed-terminal.js";

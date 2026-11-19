@@ -10,16 +10,20 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import type { IntentJournal } from "../services/intent-journal.js";
-import { unjournaledSubmission } from "../services/intent-journal.js";
+import {
+  type IntentJournal,
+  unjournaledSubmission,
+} from "../services/intent-journal.js";
 import { Lucid } from "../services/lucid.js";
-import { awaitRequiredOutputVisibility } from "../transactions/utils.await-required-output-visibility.js";
 import {
   awaitExactTransactionConfirmation,
-  awaitSubmittedTransactionConfirmation,
+  awaitRequiredOutputVisibility,
   BeforeSignedTransactionSubmission,
-  signSubmitTransaction,
   TxConfirmError,
+} from "../transactions/utils.await-required-output-visibility.js";
+import {
+  awaitSubmittedTransactionConfirmation,
+  signSubmitTransaction,
 } from "../transactions/utils.js";
 import {
   TX_OUTPUT_VISIBILITY_POLL_INTERVAL_MS,

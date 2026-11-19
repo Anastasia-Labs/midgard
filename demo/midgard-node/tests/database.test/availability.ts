@@ -15,11 +15,9 @@ import {
   PendingBlockFinalizationsDB,
 } from "../../src/database/index.js";
 import { landApplied } from "../helpers/own-block-facts.js";
-import {
-  daPayloadInsertFixture,
-  databaseFixtureBytes,
-  isolatedDb,
-} from "./fixtures.js";
+import { databaseFixtureBytes } from "./fixtures.bytes.js";
+import { isolatedDb } from "./fixtures.environment.js";
+import { daPayloadInsertFixture } from "./fixtures.events.js";
 
 export const registerAvailabilityTests = () => {
   describe("DaPayloadsDB", () => {

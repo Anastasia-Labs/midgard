@@ -8,7 +8,7 @@ import { parseSubmitStep01TxInclusion } from "../step-support.js";
 import {
   CURSOR_FAMILY_TRANSACTION_PORT,
   type CursorFamilyTransactionPort,
-} from "../workflow/cursor-family-adapter.js";
+} from "../workflow/cursor-family-adapter.admit-reference-scripts.js";
 import {
   captureCursorRemoval,
   cursorFamilyActionInput,

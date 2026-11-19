@@ -23,21 +23,20 @@ import {
   applyOutputReferenceScriptDecodingScripts,
   OUTPUT_REFERENCE_SCRIPT_DECODING_BLUEPRINT_TITLES,
   type OutputReferenceScriptDecodingContracts,
-} from "../../src/output-reference-script-decoding/index.js";
+} from "../../src/output-reference-script-decoding/contracts.js";
 import {
   nativeTxFromCoreCompact,
   type SubmitStep01TxInclusion,
 } from "../../src/step-support.js";
 import { makeFaultProofEmulatorHarness } from "./emulator/harness.js";
 import { type CompleteSignedTransactionMeasurement } from "./emulator/measurement.js";
-import { l2TransactionSourceCbor } from "./emulator/native-tx.js";
+import { l2TransactionSourceCbor, makeNativeTx } from "./emulator/native-tx.js";
 import {
   expectRegisteredChainParity,
   familyStepsFromRegisteredChain,
 } from "./emulator/registered-chain.js";
 import { TRACED_REFUSALS } from "./emulator/traced-refusals.js";
-import { setupFraudulentBlock } from "./submit-init-emulator-fixtures.js";
-import { makeNativeTx } from "./submit-init-emulator-shared.js";
+import { setupFraudulentBlock } from "./submit-init/removal.js";
 
 export const network = "Custom" as const;
 

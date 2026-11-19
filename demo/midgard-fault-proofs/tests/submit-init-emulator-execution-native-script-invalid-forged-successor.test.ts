@@ -25,15 +25,11 @@ import {
 } from "@lucid-evolution/lucid";
 import { afterAll, describe, expect, it } from "vitest";
 
-import {
-  buildDirectPurposeTransition,
-  type DirectPurposeRole,
-} from "../src/direct-purpose-family/index.js";
+import type { DirectPurposeRole } from "../src/direct-purpose-family/family.js";
+import { buildDirectPurposeTransition } from "../src/direct-purpose-family/submit.js";
 import type { ExecutionNativeScriptInvalidRole } from "../src/execution-native-script-invalid/index.js";
-import {
-  EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK,
-  prepareExecutionNativeScriptInvalidProof,
-} from "../src/execution-native-script-invalid/index.js";
+import { prepareExecutionNativeScriptInvalidProof } from "../src/execution-native-script-invalid/prover.js";
+import { EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK } from "../src/execution-native-script-invalid/workflow.js";
 import type { LedgerEntry } from "../src/ledger-at.js";
 import { buildNativeTxBinding } from "../src/native-tx-binding.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
@@ -45,6 +41,7 @@ import {
   makeDirectWalkHarness,
   publishDirectWalkRoles,
 } from "./support/direct-walk-emulator.js";
+import { network } from "./support/emulator/blueprints.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   admissibleNativeObservers,
@@ -61,7 +58,6 @@ import {
 } from "./support/execution-native-script-invalid-emulator.subject.js";
 import { scriptAddress } from "./support/missing-redeemer-emulator.purposes.js";
 import { rejectedFor } from "./support/script-integrity-hash-mismatch-emulator.subject.js";
-import { network } from "./support/submit-init-emulator-shared.js";
 import { submitDirectPurposeTransition } from "./support/submit-unjournaled.direct-purpose.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 

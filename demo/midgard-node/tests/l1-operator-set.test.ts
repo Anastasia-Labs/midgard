@@ -20,12 +20,12 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import {
   memoryActivityRecord,
-  OPERATOR_REMOVED,
   type OperatorActivityRecord,
-  type OperatorSet,
-  operatorSetProjection,
-  retiredInsertionAnchorIn,
-} from "../src/l1-operator-set/index.js";
+} from "../src/l1-operator-set/activity.js";
+import { OPERATOR_REMOVED } from "../src/l1-operator-set/membership.js";
+import { operatorSetProjection } from "../src/l1-operator-set/projection.js";
+import type { OperatorSet } from "../src/l1-operator-set/set.js";
+import { retiredInsertionAnchorIn } from "../src/l1-operator-set/snapshot.js";
 import { storeOpener, testDatabases } from "./helpers/l1-events-store.js";
 import {
   loadOperatorSetChainFixture,

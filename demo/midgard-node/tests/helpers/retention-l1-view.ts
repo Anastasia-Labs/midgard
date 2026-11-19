@@ -2,7 +2,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { MidgardContracts } from "../../src/services/index.js";
+import { MidgardContracts } from "../../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import { seedLandedStateQueue } from "./landed-state-queue.js";
 
 const policyId = "aa".repeat(28);

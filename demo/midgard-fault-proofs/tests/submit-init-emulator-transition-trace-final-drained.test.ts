@@ -1,4 +1,4 @@
-import { registerTransitionTraceFinalCases } from "./support/transition-trace-final-cases.js";
+import { registerTransitionTraceFinalCases } from "./support/transition-trace-final-cases.register-transition-trace-final-cases.js";
 
 // A transaction that spends the ledger's only entry (the case's one output
 // shape) and produces nothing. The honest block commits the drained ledger as

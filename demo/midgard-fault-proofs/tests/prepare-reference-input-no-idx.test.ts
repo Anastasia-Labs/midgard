@@ -18,12 +18,12 @@ import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import type { NodeTransactionPayload } from "../src/prepare-double-spend.encode-l2-transaction-source-value.js";
 import {
-  type NodeTransactionPayload,
   prepareReferenceInputNoIdxFromFile,
   prepareReferenceInputNoIdxFromNode,
-  prepareReferenceInputNoIdxFromTransactions,
-} from "../src/index.js";
+} from "../src/prepare-reference-input-no-idx.prepare-reference-input-no-idx-from-node.js";
+import { prepareReferenceInputNoIdxFromTransactions } from "../src/prepare-reference-input-no-idx.prepare-reference-input-no-idx-from-transactions.js";
 
 const EMPTY_CBOR_LIST = encodeCbor([]);
 const EMPTY_CBOR_NULL = encodeCbor(null);

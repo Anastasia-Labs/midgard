@@ -32,24 +32,26 @@ import { describe, expect, it } from "vitest";
 
 import { buildValueNotPreservedStep03 } from "../src/value-not-preserved/submit-value-not-preserved-step-03.js";
 import { buildValueNotPreservedStep04 } from "../src/value-not-preserved/submit-value-not-preserved-step-04.js";
-import { expectSingleUtxoWithUnit } from "./support/submit-init-emulator-shared.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,
 } from "./support/submit-unjournaled.js";
 import {
   buildValueNotPreservedFixture,
-  expectOnchainRefusal,
-  makeValueNotPreservedEmulatorHarness,
-  publishTamperedFieldPreimagePublication,
-  publishValueNotPreservedReferenceScripts,
-  runValueNotPreservedThread,
-  setupValueNotPreservedScenario,
-  submitRawValueNotPreservedFinalize,
   vnpOutput,
   vnpOutRef,
   vnpValue,
-} from "./support/value-not-preserved-emulator.js";
+} from "./support/value-not-preserved-emulator.build-value-not-preserved-fixture.js";
+import { makeValueNotPreservedEmulatorHarness } from "./support/value-not-preserved-emulator.commit-header-after-anchor-block.js";
+import {
+  publishValueNotPreservedReferenceScripts,
+  runValueNotPreservedThread,
+  setupValueNotPreservedScenario,
+} from "./support/value-not-preserved-emulator.run-value-not-preserved-thread.js";
+import { publishTamperedFieldPreimagePublication } from "./support/value-not-preserved-emulator.submit-raw-value-not-preserved-bind.js";
+import { submitRawValueNotPreservedFinalize } from "./support/value-not-preserved-emulator.submit-raw-value-not-preserved-finalize.js";
 
 const POLICY_ID_HEX = "cd".repeat(28);
 const ASSET_NAME_HEX = "746f6b32"; // "tok2"

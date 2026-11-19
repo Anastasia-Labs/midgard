@@ -11,7 +11,7 @@ import {
   FRAUD_PROOF_WORKFLOW_SAFETY,
   type FraudProofFamilyWorkflowAdapter,
   type FraudProofWorkflowPreflight,
-} from "./orchestrator.js";
+} from "./orchestrator.fraud-proof-family-workflow-adapter.js";
 import {
   isScriptDecodePrerequisiteAction,
   SCRIPT_DECODE_PREREQUISITE,

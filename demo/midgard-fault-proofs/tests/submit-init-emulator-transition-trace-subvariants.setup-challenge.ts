@@ -4,29 +4,27 @@ import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";
 
-import {
-  buildCountedRoot,
-  FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY,
-  reconstructDaPayload,
-} from "../src/index.js";
+import { FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY } from "../src/runtime.fraud-proof-deployment-entries-by-category.js";
+import { buildInit } from "../src/submit-init.submit-init.js";
+import { buildCountedRoot } from "../src/transition-trace/phas.js";
+import { reconstructDaPayload } from "../src/transition-trace/reconstruct.reconstruct-da-payload.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
 import {
   awaitHeaderCommitWindow,
   prepareFamilyHistory,
 } from "./support/emulator/family-history.js";
-import { measureCompleteSignedTransaction } from "./support/emulator/measurement.js";
-import { buildInit } from "./support/legacy-submit-emulator.js";
-import { sortedDaEntries } from "./support/submit-init-emulator-fixtures.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import {
-  buildRemovalDeploymentInfo,
-  expectSingleUtxoWithUnit,
-  makeFaultProofEmulatorHarness,
-  network,
-  publishFraudProofChainReferenceScripts,
-  publishRemovalReferenceScripts,
-  submitSetupTx,
   transitionTraceDaEntry,
   transitionTraceOutRef,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/emulator/header-fixtures.js";
+import { measureCompleteSignedTransaction } from "./support/emulator/measurement.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { publishFraudProofChainReferenceScripts } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
+import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
+import { sortedDaEntries } from "./support/submit-init/transaction-material.js";
 import {
   buildAndSubmitUnjournaled,
   type SubmittedStep,

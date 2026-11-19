@@ -13,8 +13,8 @@ import {
   authenticateFabricatedHistoryWitness,
   fetchFabricatedHistoryWitness,
 } from "../src/fabricated-history-witness.js";
-import { prepareFabricatedDepositFromCommittedLeaves } from "../src/prepare-fabricated-deposit.js";
-import { prepareFabricatedWithdrawalFromCommittedLeaves } from "../src/prepare-fabricated-withdrawal.js";
+import { prepareFabricatedDepositFromCommittedLeaves } from "../src/prepare-fabricated-deposit.prepare-fabricated-deposit-from-committed-leaves.js";
+import { prepareFabricatedWithdrawalFromCommittedLeaves } from "../src/prepare-fabricated-withdrawal.prepare-fabricated-withdrawal-from-committed-leaves.js";
 import { deriveFabricatedDepositStep03Handoff } from "../src/submit-fabricated-deposit-step-03.js";
 import { deriveFabricatedWithdrawalStep03Handoff } from "../src/submit-fabricated-withdrawal-step-03.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";

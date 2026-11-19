@@ -1,18 +1,18 @@
 import { expect, it, vi } from "vitest";
 
-import { MINT_ITEM_NON_CANONICAL_CURSOR_SPEC } from "../src/mint-item-non-canonical/workflow.js";
+import { MINT_ITEM_NON_CANONICAL_CURSOR_SPEC } from "../src/mint-item-non-canonical/workflow-spec.js";
 import {
   bindWorkflowActuationJournal,
   bindWorkflowActuationRecoveryIdentity,
-  createWorkflowReconciliationPermitController,
-} from "../src/workflow/actuation-permit.js";
+} from "../src/workflow/actuation-permit.assert-workflow-actuation-permit-identity.js";
+import { createWorkflowReconciliationPermitController } from "../src/workflow/actuation-permit.create-workflow-reconciliation-permit-controller.js";
 import * as funding from "../src/workflow/funding-reservation-permit.js";
+import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
 import {
   computeFraudProofWorkflowId,
   journalJsonDigest,
-  MemoryFraudProofWorkflowJournalStore,
   normalizeJournalJson,
-} from "../src/workflow/journal.js";
+} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import { runRegisteredFamilyReconciliation } from "./support/bound-family-recovery-fixture.js";
 import {
   customWorkflowRecoveryFixture,

@@ -8,13 +8,13 @@
  */
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { replayBlockEvents } from "@al-ft/midgard-fault-proofs/block-replay";
+import { validationMachineLedgerRoot } from "@al-ft/midgard-validation";
 import {
   evaluateMidgardCekVerdict,
   type MidgardCekVerdictRequest,
-  type MidgardCommittedScriptRun,
-  validationMachineLedgerRoot,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/phase-b";
 import { outRefFromTxId } from "@al-ft/midgard-validation/tests/validation-fixtures";
+import type { MidgardCommittedScriptRun } from "@al-ft/midgard-validation/types";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 

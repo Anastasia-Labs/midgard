@@ -5,7 +5,7 @@ import type {
   InputExistenceKind,
 } from "../input-existence/kind.js";
 import { buildInputExistenceStep } from "../input-existence/submit.js";
-import { buildInit } from "../submit-init.js";
+import { buildInit } from "../submit-init.submit-init.js";
 import {
   type ManifestBoundLinearFamilyWorkflow,
   type ManifestBoundLinearFamilyWorkflowConfig,

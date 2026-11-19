@@ -7,7 +7,7 @@ import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import { h28 } from "@al-ft/midgard-test-support/hex";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createWatcherFaultProofSupervisor } from "../../src/fault-proofs/fault-proof-supervisor.js";
+import { createWatcherFaultProofSupervisor } from "../../src/fault-proofs/fault-proof-supervisor.create-watcher-fault-proof-supervisor.js";
 import {
   closeWatcherJournalDatabase,
   openWatcherJournalDatabase,

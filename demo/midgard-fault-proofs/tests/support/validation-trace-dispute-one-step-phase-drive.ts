@@ -15,7 +15,7 @@ import { buildValidationOneStepArgument } from "@al-ft/midgard-validation";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import { reuseOrCertifyFaultProofFieldGrammar } from "../../src/field-grammar-certificate.js";
+import { reuseOrCertifyFaultProofFieldGrammar } from "../../src/field-grammar-certificate.certify-fault-proof-field-grammar.js";
 import { NO_AUXILIARY_WITNESS_CBOR } from "../../src/validation-trace-dispute/one-step-canonical-decode.js";
 import {
   validationTraceFieldGrammarPlan,

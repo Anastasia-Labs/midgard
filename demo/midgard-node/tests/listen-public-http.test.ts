@@ -37,10 +37,13 @@ import {
   createPublicLogRedactor,
   redactPublicLogger,
 } from "../src/commands/listen-public-logging.js";
-import { NodeConfig, type NodeConfigDep } from "../src/services/config.js";
+import {
+  NodeConfig,
+  type NodeConfigDep,
+} from "../src/services/config.make-config.js";
 import { seedPhraseAddress } from "../src/services/config.operational-wallets.js";
 import { DEFAULT_HTTP_RATE_LIMITS } from "../src/services/http-rate-limits.js";
-import { ValidationWorkerError } from "../src/services/validation-pool.js";
+import { ValidationWorkerError } from "../src/services/validation-pool.bundled-worker-exec-argv.js";
 import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
 const directory = mkdtempSync(join(tmpdir(), "midgard-r7-http-"));

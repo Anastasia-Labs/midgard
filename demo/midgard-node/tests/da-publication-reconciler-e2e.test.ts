@@ -24,22 +24,24 @@ import { describe, expect, it } from "vitest";
 
 import { makePayloadFixture } from "../../da-committee-node/tests/helpers.js";
 import { postgresTestDatabases } from "../../da-committee-node/tests/helpers/postgres-database.js";
+import { createDaLibp2pProducerTransport } from "../src/da/libp2p-producer.create-da-libp2p-producer-transport.js";
+import type {
+  DaProducerCommitteePeer,
+  DaProducerPublicationManifest,
+} from "../src/da/libp2p-producer.parse-committee-peers.js";
+import { parseDaProducerPublicationManifest } from "../src/da/libp2p-producer.parse-da-producer-publication-manifest.js";
+import { probeDaEnvelopeCapabilities } from "../src/da/libp2p-producer.probe-da-envelope-capabilities.js";
 import {
   closeDaLibp2pPublicationTransport,
-  createDaLibp2pProducerTransport,
-  type DaProducerCommitteePeer,
-  type DaProducerPublicationManifest,
   getDaPublicationTransportForTest,
-  parseDaProducerPublicationManifest,
-  probeDaEnvelopeCapabilities,
-} from "../src/da/libp2p-producer.js";
+} from "../src/da/libp2p-producer.publication-transport.js";
 import {
   DaPayloadPublicationsDB,
   DaPayloadsDB,
 } from "../src/database/index.js";
 import { reconcileDaPublicationsOnce } from "../src/fibers/da-publication-reconciler.js";
-import { Globals } from "../src/services/globals.js";
-import { computeDaPayloadRoots } from "../src/workers/commit-block-header/da-payload.js";
+import { Globals } from "../src/services/globals.globals.js";
+import { computeDaPayloadRoots } from "../src/workers/commit-block-header/da-payload.compute-da-payload-roots.js";
 import { TEST_DATABASE_PREFIX } from "./test-env.js";
 import { provideDatabaseLayers } from "./utils.js";
 

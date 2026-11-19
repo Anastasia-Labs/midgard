@@ -3,7 +3,7 @@ import type { EvidenceProvenance } from "@al-ft/midgard-sdk";
 import {
   CURSOR_FAMILY_TRANSACTION_PORT,
   type CursorFamilyTransactionPort,
-} from "../src/workflow/cursor-family-adapter.js";
+} from "../src/workflow/cursor-family-adapter.admit-reference-scripts.js";
 import { cursorFamilyObservation } from "../src/workflow/cursor-family-state.js";
 import {
   FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,

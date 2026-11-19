@@ -75,9 +75,10 @@ import {
   type SubmittedTxRules,
 } from "../../src/commands/http/transaction-admission.js";
 import { createHttpIngress } from "../../src/commands/listen-http-ingress.js";
-import { AdmissionWriter } from "../../src/services/admission-writer.js";
+import { AdmissionWriter } from "../../src/services/admission-writer.validate-options.js";
+import { NodeConfig } from "../../src/services/config.make-config.js";
+import { Globals } from "../../src/services/globals.globals.js";
 import { DEFAULT_HTTP_RATE_LIMITS } from "../../src/services/http-rate-limits.js";
-import { Globals, NodeConfig } from "../../src/services/index.js";
 import { createSubmitCheckPool } from "../../src/services/submit-check-pool.js";
 import { makeTestNodeConfig } from "../helpers/test-node-config.js";
 

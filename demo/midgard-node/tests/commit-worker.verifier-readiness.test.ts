@@ -23,13 +23,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { withStartupHttpServer } from "../src/commands/listen.startup-http.js";
 import { COMMIT_WORKER_SOURCE } from "../src/fibers/block-commitment.worker-readiness.js";
-import { Globals } from "../src/services/globals.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
+import { Globals } from "../src/services/globals.globals.js";
+import { IntentJournal } from "../src/services/intent-journal.js";
 import {
   ContractDeploymentIdentity,
   MidgardContracts,
-  NodeConfig,
-} from "../src/services/index.js";
-import { IntentJournal } from "../src/services/intent-journal.js";
+} from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import { findTransientBudgetExhausted } from "../src/services/transient-exhaustion.js";
 import type { CommitLucidFactory } from "../src/workers/commit-block-header.pending-user-event-counts-up-to.js";
 import {

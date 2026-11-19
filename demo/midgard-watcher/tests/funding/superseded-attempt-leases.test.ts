@@ -3,7 +3,7 @@ import { rm } from "node:fs/promises";
 import { computeFraudProofRawL1PointId } from "@al-ft/midgard-fault-proofs";
 import { afterEach, expect, it } from "vitest";
 
-import { unsafeOpenWatcherSqliteProverFundingReservationStoreForTest } from "../../src/funding/sqlite-prover-funding-reservation-store.js";
+import { unsafeOpenWatcherSqliteProverFundingReservationStoreForTest } from "../../src/funding/sqlite-prover-funding-reservation-store.unsafe-open-watcher-sqlite-prover-funding-reservation-store-for-test.js";
 import {
   openStore,
   plan,

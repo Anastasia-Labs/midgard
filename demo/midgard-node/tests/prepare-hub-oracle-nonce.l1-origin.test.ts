@@ -7,10 +7,8 @@ import type { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
-import {
-  loadPendingHubOracleNonceAttempt,
-  recordHubOracleNonce,
-} from "../src/commands/deployment-run-state.js";
+import { loadPendingHubOracleNonceAttempt } from "../src/commands/deployment-run-state.assert-deployment-identity-matches.js";
+import { recordHubOracleNonce } from "../src/commands/deployment-run-state.record-hub-oracle-nonce.js";
 import { hubOracleNonceCliOutput } from "../src/commands/prepare-hub-oracle-nonce.cli-output.js";
 import {
   type PrepareHubOracleNonceOptions,
@@ -23,9 +21,9 @@ import {
   ORIGIN_SETTLE_ATTEMPTS,
 } from "../src/commands/prepare-hub-oracle-nonce.l1-origin.js";
 import { hubOracleNonceRunStateHooks } from "../src/commands/prepare-hub-oracle-nonce.run-state-hooks.js";
-import { loadDeploymentRunState } from "../src/e2e/run-state.js";
+import { loadDeploymentRunState } from "../src/e2e/run-state.parse-deployment-run-state.js";
 import { Lucid as LucidService } from "../src/services/lucid.js";
-import { BeforeSignedTransactionSubmission } from "../src/transactions/utils.js";
+import { BeforeSignedTransactionSubmission } from "../src/transactions/utils.await-required-output-visibility.js";
 import { settledOriginSource } from "./helpers/hub-oracle-nonce-origin.js";
 import { runWithoutFollower } from "./helpers/intent-journal.js";
 import { signedNonceTx } from "./helpers/signed-hub-oracle-nonce-tx.js";

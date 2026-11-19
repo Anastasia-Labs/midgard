@@ -17,13 +17,13 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { h32 } from "@al-ft/midgard-test-support/hex";
 import { Effect } from "effect";
 
+import type { NodeTransactionPayload } from "../src/prepare-double-spend.encode-l2-transaction-source-value.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
-  type NodeTransactionPayload,
   transactionSourceTrieItem,
-} from "../src/prepare-double-spend.js";
-import { InputNoIdxRejection } from "../src/prepare-input-no-idx.js";
+} from "../src/prepare-double-spend.resolve-double-spend-pair.js";
+import { InputNoIdxRejection } from "../src/prepare-input-no-idx.read-value.js";
 
 const EMPTY_CBOR_LIST = encodeCbor([]);
 

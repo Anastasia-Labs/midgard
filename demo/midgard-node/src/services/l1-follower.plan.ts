@@ -22,7 +22,7 @@ import {
 import {
   type StateQueueProjectionConfig,
   stateQueueProjectionConfig,
-} from "../l1-state-queue/index.js";
+} from "../l1-state-queue/config.js";
 import type { NodeConfigDep } from "./config.js";
 
 /**

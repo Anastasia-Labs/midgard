@@ -10,12 +10,10 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 import { proofMaterialsAddress } from "../src/funding/proof-materials-address.js";
-import { parseContractDeploymentInfo } from "../src/inspect-contracts.js";
+import { parseContractDeploymentInfo } from "../src/inspect-contracts.parse-contract-deployment-info.js";
 import { REDEEMER_CANONICITY_BLUEPRINT_TITLES } from "../src/redeemer-canonicity/contracts.js";
-import {
-  createManifestBoundRedeemerCanonicityWorkflow,
-  type ManifestBoundRedeemerCanonicityWorkflowConfig,
-} from "../src/redeemer-canonicity/runtime.js";
+import type { ManifestBoundRedeemerCanonicityWorkflowConfig } from "../src/redeemer-canonicity/runtime.admit-redeemer-workflow-artifact.js";
+import { createManifestBoundRedeemerCanonicityWorkflow } from "../src/redeemer-canonicity/runtime.execute-manifest-bound-redeemer-canonicity-workflow.js";
 import { FRAUD_PROOF_L1_SOURCE } from "../src/workflow/l1-source.js";
 
 // This gate consumes a real finalized deployment. Manifest verification and

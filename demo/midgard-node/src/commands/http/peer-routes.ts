@@ -30,12 +30,10 @@ import {
   type PeerSigner,
   verifyPeerRequest,
 } from "../../l2-peer/protocol.js";
-import {
-  AdmissionWriter,
-  Globals,
-  MidgardContracts,
-  NodeConfig,
-} from "../../services/index.js";
+import { AdmissionWriter } from "../../services/admission-writer.validate-options.js";
+import { Globals } from "../../services/globals.globals.js";
+import { NodeConfig } from "../../services/index.js";
+import { MidgardContracts } from "../../services/midgard-contracts.make-midgard-contract-runtime.js";
 import type { SubmitCheckPool } from "../../services/submit-check-pool.js";
 import { failWith500 } from "../listen-response.js";
 import { admitCheckedTransactions } from "./checked-transaction-admission.js";

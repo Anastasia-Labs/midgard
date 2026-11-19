@@ -5,8 +5,8 @@ import { buildCanonicalDecodabilityInit } from "../canonical-decodability/submit
 import { buildCanonicalDecodabilityStep01 } from "../canonical-decodability/submit-canonical-decodability-step-01.js";
 import { buildCanonicalDecodabilityStep02 } from "../canonical-decodability/submit-canonical-decodability-step-02.js";
 import { resolvePublishedProofChunks } from "../publish-proof-chunks.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.build-remove-fraudulent-block.js";
 import { type StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
-import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import {
   admitCanonicalDecodabilityArtifact,
@@ -17,7 +17,7 @@ import {
 import {
   CURSOR_FAMILY_TRANSACTION_PORT,
   type CursorFamilyTransactionPort,
-} from "./cursor-family-adapter.js";
+} from "./cursor-family-adapter.admit-reference-scripts.js";
 import { CURSOR_FAMILY_ACTION } from "./cursor-family-state.js";
 import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
 import {
@@ -30,7 +30,7 @@ import {
   createRawCommittedFieldCarriagePlan,
   type FieldCarriagePrerequisitePort,
   type PreimageCarriageRequirement,
-} from "./field-carriage-prerequisite.js";
+} from "./field-carriage-prerequisite.field-carriage-prerequisite-port.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
 import { workflowConfirmedTransactions } from "./own-outputs.js";
 import { admitRemovalTransaction } from "./removal-admission.js";

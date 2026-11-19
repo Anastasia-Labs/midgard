@@ -2,7 +2,7 @@ import { Effect, Ref } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import { shouldSkipIdleCommitPipelineBeforeSchedulerAlignment } from "../src/fibers/block-commitment.should-skip-for-detailed-scheduler-due-work.js";
-import { Globals } from "../src/services/globals.js";
+import { Globals } from "../src/services/globals.globals.js";
 import {
   activeLivenessReasons,
   FIBER_HALT_SOURCES,

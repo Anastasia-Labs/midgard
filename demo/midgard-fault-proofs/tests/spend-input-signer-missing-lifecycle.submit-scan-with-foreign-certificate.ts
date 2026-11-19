@@ -12,7 +12,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import { faultProofFieldOpening } from "../src/field-opening.js";
+import { faultProofFieldOpening } from "../src/field-opening.publish-fault-proof-field-carriage.js";
 import {
   requireLinearFaultReferenceScript,
   requireLinearFaultThreadUtxo,

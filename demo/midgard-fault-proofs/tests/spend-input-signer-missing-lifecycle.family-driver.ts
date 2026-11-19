@@ -3,20 +3,18 @@ import { type UTxO } from "@lucid-evolution/lucid";
 import { buildCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
 import { requireLinearFaultThreadUtxo } from "../src/linear-fault-family.js";
 import { buildLinearFaultFinalize } from "../src/linear-fault-finalize.js";
-import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import { SignerWitnessTerminalRedeemerSchema } from "../src/signer-witness-scan/schemas.js";
 import {
   buildSignerWitnessScan,
   SIGNER_WITNESS_TERMINAL_STEP_INDEX,
 } from "../src/signer-witness-scan/submit-scan.js";
 import { buildSignerWitnessTerminal } from "../src/signer-witness-scan/submit-terminal.js";
-import {
-  buildSpendInputSignerMissingCancel,
-  buildSpendInputSignerMissingStep01Accepted,
-  buildSpendInputSignerMissingStep01Forced,
-  buildSpendInputSignerMissingStep02,
-  type SpendInputSignerMissingEvidence,
-} from "../src/spend-input-signer-missing/index.js";
+import type { SpendInputSignerMissingEvidence } from "../src/spend-input-signer-missing/spend-input-signer-missing.js";
+import { buildSpendInputSignerMissingCancel } from "../src/spend-input-signer-missing/submit-cancel.js";
+import { buildSpendInputSignerMissingStep01Accepted } from "../src/spend-input-signer-missing/submit-step-01-accepted.js";
+import { buildSpendInputSignerMissingStep01Forced } from "../src/spend-input-signer-missing/submit-step-01-forced.js";
+import { buildSpendInputSignerMissingStep02 } from "../src/spend-input-signer-missing/submit-step-02.js";
 import { type SubmitStep01TxInclusion } from "../src/step-support.js";
 import {
   FAMILY,
@@ -25,8 +23,8 @@ import {
   network,
 } from "./spend-input-signer-missing-lifecycle.registered-contracts.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
-import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
-import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,

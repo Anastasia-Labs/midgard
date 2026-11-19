@@ -2,34 +2,36 @@ import { outRefLabel } from "@al-ft/midgard-core";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import { expect } from "vitest";
 
+import { buildStep01 } from "../src/double-spend/submit-step-01.js";
+import { buildStep02 } from "../src/double-spend/submit-step-02.js";
 import {
-  buildInit,
-  buildStep01,
-  buildStep02,
   buildStep03,
-  buildStep04,
   parseSpendInputCbors,
-  parseSubmitStep01TxInclusion,
-} from "./support/legacy-submit-emulator.js";
-import {
-  buildTransactionInclusionFixture,
-  countedTransactionsRoot,
-} from "./support/submit-init-emulator-fixtures.js";
+} from "../src/double-spend/submit-step-03.js";
+import { buildStep04 } from "../src/double-spend/submit-step-04.submit-step04.js";
+import { parseSubmitStep01TxInclusion } from "../src/step-support.js";
+import { buildInit } from "../src/submit-init.submit-init.js";
+import { network } from "./support/emulator/blueprints.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
-  buildRemovalDeploymentInfo,
-  captureEmulatorSubmission,
-  type CompleteSignedTransactionMeasurement,
-  EMULATOR_PROTOCOL_PARAMETERS,
-  EXECUTION_RESERVE_FRACTION,
   expectSingleUtxoWithUnit,
   funderPaymentKeyHash,
-  makeFaultProofEmulatorHarness,
-  makeHeader,
-  network,
+} from "./support/emulator/emulator-context.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
+import { makeHeader } from "./support/emulator/header-fixtures.js";
+import {
+  captureEmulatorSubmission,
+  type CompleteSignedTransactionMeasurement,
+} from "./support/emulator/measurement.js";
+import {
+  EXECUTION_RESERVE_FRACTION,
   printProofFit,
-  submitSetupTx,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/emulator/proof-fit.js";
+import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
+import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
+import { buildTransactionInclusionFixture } from "./support/submit-init/inclusion.js";
+import { countedTransactionsRoot } from "./support/submit-init/transaction-material.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,

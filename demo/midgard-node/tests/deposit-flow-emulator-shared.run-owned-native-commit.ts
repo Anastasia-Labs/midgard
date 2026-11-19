@@ -1,17 +1,17 @@
 import type * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Ref } from "effect";
 
-import {
-  promoteOrRecoverNativeMpf,
-  publishCommitMempoolLedgerMutation,
-} from "../src/fibers/block-commitment.js";
+import { promoteOrRecoverNativeMpf } from "../src/fibers/block-commitment.promote-or-recover-native-mpf.js";
+import { publishCommitMempoolLedgerMutation } from "../src/fibers/block-commitment.should-skip-for-detailed-scheduler-due-work.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
 import {
   FollowerWrite,
   runAtFollowerView,
 } from "../src/services/follower-write-gate.js";
-import { Globals } from "../src/services/globals.js";
-import { Lucid, MidgardContracts, NodeConfig } from "../src/services/index.js";
-import { MempoolLedgerCache } from "../src/services/mempool-ledger-cache.js";
+import { Globals } from "../src/services/globals.globals.js";
+import { Lucid } from "../src/services/lucid.js";
+import { MempoolLedgerCache } from "../src/services/mempool-ledger-cache.mempool-ledger-cache-service.js";
+import { MidgardContracts } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import type { WorkerInput as CommitWorkerInput } from "../src/workers/utils/commit-block-header.js";
 import type {
   commitWorkerProgram,

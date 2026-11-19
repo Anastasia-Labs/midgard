@@ -1,23 +1,21 @@
 import {
   buildMidgardBoundedItem,
   buildMidgardLedgerOutputMaterial,
-  MIDGARD_LEDGER_OUTPUT_FIELD_INDEX,
-} from "@al-ft/midgard-core";
-import {
   computeHash28,
   computeMidgardNativeTxId,
   encodeMidgardSpendInputItem,
+  MIDGARD_LEDGER_OUTPUT_FIELD_INDEX,
 } from "@al-ft/midgard-core";
 import { decodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
 import { decodeSingleCbor } from "@al-ft/midgard-core/codec/cbor";
-import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core/codec/forced";
-import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
-import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
-import * as SDK from "@al-ft/midgard-sdk";
 import {
-  buildCanonicalMidgardLedgerEntryOutputMaterial,
-  commitMidgardScriptContextTxOut,
-} from "@al-ft/midgard-validation";
+  deriveMidgardForcedTxProofSource,
+  encodeMidgardForcedTxCanonical,
+  materializeMidgardForcedTxFromCanonical,
+} from "@al-ft/midgard-core/codec/forced";
+import * as SDK from "@al-ft/midgard-sdk";
+import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
+import { commitMidgardScriptContextTxOut } from "@al-ft/midgard-validation/script-context-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../../src/evidence/canonical-block-evidence.js";
@@ -25,7 +23,7 @@ import {
   buildCountedRoot,
   keyValuePhasRootWithCount,
 } from "../../src/transition-trace/phas.js";
-import { admitCompleteCanonicalReplayPredecessor } from "../../src/workflow/complete-replay.js";
+import { admitCompleteCanonicalReplayPredecessor } from "../../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
@@ -36,7 +34,7 @@ import { fixtureBlockSlot } from "./emulator/header-fixtures.js";
 import { recordFixtureLedger } from "./fixture-ledger.js";
 import { makeReferenceNativeTx as makeNativeTx } from "./no-reference-input-native.js";
 import { payloadLedgerAt } from "./predecessor-ledger.js";
-import { buildInvalidForcedTransitionTraceFixture } from "./submit-init-emulator-fixtures.js";
+import { buildInvalidForcedTransitionTraceFixture } from "./submit-init/forced-transitions.js";
 
 const provenance = {
   trustClass: "public_or_permissionless_da",

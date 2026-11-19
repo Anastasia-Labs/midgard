@@ -7,11 +7,9 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 import { CML } from "@lucid-evolution/lucid";
 
-import { watcherCanonicalJson } from "../storage/durable-store.js";
-import {
-  parseWatcherProverFundingReservationRecord,
-  type WatcherProverFundingReservationRecord,
-} from "./prover-funding-reservation.js";
+import { watcherCanonicalJson } from "../storage/durable-store.canonical-json.js";
+import { parseWatcherProverFundingReservationRecord } from "./prover-funding-reservation.parse-watcher-prover-funding-reservation-record.js";
+import type { WatcherProverFundingReservationRecord } from "./prover-funding-reservation.watcher-prover-funding-reservation-store.js";
 import { HEX_32 } from "./sqlite-prover-funding-reservation-store.derive-signed-transition.js";
 
 /** Row parsers of the prover funding store: each verifies one row against

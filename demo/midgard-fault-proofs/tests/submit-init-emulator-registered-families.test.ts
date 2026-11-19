@@ -36,27 +36,25 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  buildInvalidSignatureStep01,
-  buildReferenceInputNoIdxStep01,
-  submitNoReferenceInputStep01,
-} from "../src/index.js";
-import type { SubmitStep01TxInclusion } from "../src/step-support.js";
-import { nativeTxFromCoreCompact } from "../src/step-support.js";
-import { inputExistenceExecutionContext } from "./support/input-existence-execution-context.js";
-import { buildInit } from "./support/legacy-submit-emulator.js";
+  nativeTxFromCoreCompact,
+  type SubmitStep01TxInclusion,
+} from "../src/step-support.js";
+import { buildInit } from "../src/submit-init.submit-init.js";
+import { buildInvalidSignatureStep01 } from "../src/submit-invalid-signature-step-01.js";
+import { submitNoReferenceInputStep01 } from "../src/submit-no-reference-input-step-01.js";
+import { buildReferenceInputNoIdxStep01 } from "../src/submit-reference-input-no-idx-step-01.js";
+import { network } from "./support/emulator/blueprints.js";
+import { trieRootHex } from "./support/emulator/catalogue.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import {
-  expectStateQueueHeaderOrder,
-  setupFraudulentBlock as setupFraudulentBlock,
-} from "./support/submit-init-emulator-fixtures.js";
-import {
-  buildRemovalDeploymentInfo,
-  expectSingleUtxoWithUnit,
   l2TransactionSourceCbor as l2TransactionSourceCborV1,
-  makeFaultProofEmulatorHarness,
   makeNativeTx,
-  network,
-  trieRootHex,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/emulator/native-tx.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
+import { inputExistenceExecutionContext } from "./support/input-existence-execution-context.js";
+import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
+import { setupFraudulentBlock } from "./support/submit-init/removal.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 const inputCbor = (txId: string, outputIndex: bigint): Buffer =>

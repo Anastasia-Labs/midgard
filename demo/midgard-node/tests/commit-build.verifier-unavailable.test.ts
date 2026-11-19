@@ -12,7 +12,7 @@ import {
   LedgerSignatureVerifierUnavailableError,
   MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core";
-import { runPhaseAValidation } from "@al-ft/midgard-validation";
+import { runPhaseAValidation } from "@al-ft/midgard-validation/phase-a";
 import { Cause, Effect, Either } from "effect";
 import { describe, expect, it, vi } from "vitest";
 

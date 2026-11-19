@@ -1,10 +1,8 @@
 import { type SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import { Effect, Option, Ref } from "effect";
 
-import {
-  Globals,
-  type L1ProviderHealthEvidence,
-} from "../../services/index.js";
+import { Globals } from "../../services/globals.globals.js";
+import type { L1ProviderHealthEvidence } from "../../services/globals.next-l1-provider-health-evidence.js";
 import {
   l1ProviderEvidenceIsFresh,
   l1ProviderReadinessEvidenceIsFresh,

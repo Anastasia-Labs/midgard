@@ -5,11 +5,11 @@ import { Deferred, Effect, Ref, TestClock } from "effect";
 import { describe, expect } from "vitest";
 
 import * as TxAdmissionsDB from "../src/database/txAdmissions.js";
+import { makeAdmissionWriterWithOptions } from "../src/services/admission-writer.make-admission-writer-with-options.js";
 import {
   ADMISSION_WRITE_BATCH_MAX_ROWS,
   type AdmissionWriteRequest,
-  makeAdmissionWriterWithOptions,
-} from "../src/services/admission-writer.js";
+} from "../src/services/admission-writer.validate-options.js";
 
 const request = (label: string): AdmissionWriteRequest => {
   const txCanonicalCbor = Buffer.from(label);

@@ -16,14 +16,16 @@ import {
   requireTransitionTraceEventAuthority,
   type TransitionTraceL1Events,
 } from "../transition-trace/l1-events.js";
-import { classifyCanonicalBlockViolations } from "./classification.js";
+import { classifyCanonicalBlockViolations } from "./classification.classify-canonical-block-violations.js";
+import { admitCompleteCanonicalReplayPredecessor } from "./complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
-  admitCompleteCanonicalReplayPredecessor,
-  COMPLETE_CANONICAL_REPLAY,
-  type CompleteCanonicalReplayContext,
   completeCanonicalReplayDecisionDigest,
   requireCompleteCanonicalReplayDecision,
-} from "./complete-replay.js";
+} from "./complete-replay.create-complete-canonical-replay-union.js";
+import {
+  COMPLETE_CANONICAL_REPLAY,
+  type CompleteCanonicalReplayContext,
+} from "./complete-replay.replay-context-identity.js";
 import {
   admittedClassifiers,
   authenticatedStateQueueObservationDigest,

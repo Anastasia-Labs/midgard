@@ -13,7 +13,7 @@ import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { isPlainFundingOutput } from "../src/funding/plain-funding-output.js";
-import { expectOnchainRefusal } from "./support/submit-init-emulator-shared.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   buildCloseCase,
   closeTimedOutThread,

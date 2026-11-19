@@ -5,14 +5,12 @@ import {
 import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import {
-  type FaultProofFieldOpeningPlan,
-  resolveFaultProofFieldCarriagePublications,
-  resolveFaultProofFieldPreimageCertificate,
-} from "../field-opening.js";
+import { resolveFaultProofFieldPreimageCertificate } from "../field-opening.certify-fault-proof-field-carriage.js";
+import type { FaultProofFieldOpeningPlan } from "../field-opening.plan-fault-proof-field-opening.js";
+import { resolveFaultProofFieldCarriagePublications } from "../field-opening.publish-fault-proof-field-carriage.js";
 import { prepareWithdrawnInputFromCanonicalEvidence } from "../prepare-withdrawn-input.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.build-remove-fraudulent-block.js";
 import { type StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
-import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { WithdrawnInputContracts } from "../withdrawn-input/contracts.js";
 import type { CanonicalBlockClassification } from "./classification.js";
@@ -22,8 +20,8 @@ import {
   type FieldPreimageCertificateBinding,
   type LinearFamilyAssemblyContext,
   type LinearFamilyReferenceScripts,
-} from "./family-definition.js";
-import { normalizeJournalJson } from "./journal.js";
+} from "./family-definition.family-adapter-arm.js";
+import { normalizeJournalJson } from "./journal.fraud-proof-workflow-terminal.js";
 import { exactJournalRecord } from "./native-index-artifact.js";
 import { type FraudProofWorkflowAction } from "./orchestrator.js";
 import type { OwnOutputJournal } from "./own-outputs.js";

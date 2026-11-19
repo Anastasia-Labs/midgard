@@ -15,7 +15,7 @@ import {
 import { afterEach, expect, it, vi } from "vitest";
 
 import { IntentJournal } from "../src/services/intent-journal.js";
-import { publishReferenceScripts } from "../src/transactions/reference-publication.js";
+import { publishReferenceScripts } from "../src/transactions/reference-publication.publish-reference-scripts.js";
 import { selectNodeWallet } from "../src/transactions/utils.wallet-view.js";
 import { runWithoutFollower } from "./helpers/intent-journal.js";
 import { nodeLedgerDouble } from "./helpers/node-ledger-double.js";

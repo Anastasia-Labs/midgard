@@ -10,7 +10,7 @@ import {
   type IntentJournal,
   journaledIntent,
 } from "../../services/intent-journal.js";
-import { handleSignSubmit } from "../utils.js";
+import { handleSignSubmit } from "../utils.await-submitted-transaction-confirmation.js";
 import {
   exitValidityWindow,
   type OperatorEconomics,

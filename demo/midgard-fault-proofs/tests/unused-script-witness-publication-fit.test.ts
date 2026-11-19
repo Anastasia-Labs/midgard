@@ -1,7 +1,7 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { UNUSED_SCRIPT_WITNESS_DIRECT_WALK } from "../src/unused-script-witness/index.js";
+import { UNUSED_SCRIPT_WITNESS_DIRECT_WALK } from "../src/unused-script-witness/workflow.js";
 import {
   makeDirectWalkHarness,
   publishDirectWalkRoles,

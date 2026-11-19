@@ -1,6 +1,6 @@
 import type * as SDK from "@al-ft/midgard-sdk";
 
-import { eventKeyPhase } from "./reconstruct.js";
+import { eventKeyPhase } from "./reconstruct.transition-trace-reconstruction.js";
 
 type BandCounts = Pick<
   SDK.Header,

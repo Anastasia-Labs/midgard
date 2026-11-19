@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildWithdrawnInputStep03 } from "../src/index.js";
+import { buildWithdrawnInputStep03 } from "../src/withdrawn-input/submit-withdrawn-input-step-03.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 import {
   advanceWithdrawnInputToStep03,

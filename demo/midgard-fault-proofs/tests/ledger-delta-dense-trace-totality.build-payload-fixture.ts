@@ -4,11 +4,9 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import {
-  buildCountedRoot,
-  reconstructDaPayload,
-  type TransitionTraceReconstruction,
-} from "../src/transition-trace/index.js";
+import { buildCountedRoot } from "../src/transition-trace/phas.js";
+import { reconstructDaPayload } from "../src/transition-trace/reconstruct.reconstruct-da-payload.js";
+import type { TransitionTraceReconstruction } from "../src/transition-trace/reconstruct.transition-trace-reconstruction.js";
 import {
   canonicalPreimageByCommitment,
   encodedEntry,

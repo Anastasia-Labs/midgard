@@ -1,9 +1,7 @@
 import * as SDK from "@al-ft/midgard-sdk";
 
-import {
-  detectTransitionTraceFaults,
-  type TransitionTraceDetection,
-} from "../src/transition-trace/index.js";
+import type { TransitionTraceDetection } from "../src/transition-trace/detect.detect-count-faults.js";
+import { detectTransitionTraceFaults } from "../src/transition-trace/detect.detect-single-ledger-transitions.js";
 import {
   countFaultProbe,
   eventToStepMismatchProbe,

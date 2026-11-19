@@ -23,10 +23,8 @@ import {
 } from "../src/step-support.js";
 import { outputWithDatumAndUnitPredicate } from "../src/tx-layout.js";
 import { makeHarness } from "./submit-init-emulator-double-withdraw.setup-block.js";
-import {
-  expectSingleUtxoWithUnit,
-  network,
-} from "./support/submit-init-emulator-shared.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
 
 /** Terminal transaction without the submitter's decisive local rule check. */
 export const submitRawTerminal = async ({

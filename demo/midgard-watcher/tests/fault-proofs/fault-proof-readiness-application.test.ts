@@ -8,12 +8,10 @@ import {
 } from "@al-ft/midgard-core/atomic-write";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  createWatcherFaultProofReadinessApplication,
-  WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
-} from "../../src/fault-proofs/fault-proof-application.js";
+import { createWatcherFaultProofReadinessApplication } from "../../src/fault-proofs/fault-proof-application.create-watcher-fault-proof-readiness-application.js";
+import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
 import { authorWatcherDeploymentRelease } from "../../src/runtime/deployment-release-authoring.js";
-import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
+import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.build-watcher-deployment-authority-fixture.js";
 import {
   HEADER,
   rawConfig,

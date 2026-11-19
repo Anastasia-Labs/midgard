@@ -7,7 +7,7 @@ import { Effect } from "effect";
 import { expect } from "vitest";
 
 import { TxAdmissionsDB } from "../../src/database/index.js";
-import { admissionWriterShardForTxId } from "../../src/services/admission-writer.js";
+import { admissionWriterShardForTxId } from "../../src/services/admission-writer.validate-options.js";
 
 export const operatorEnabled =
   process.env.BENCH_PHASE1_GROUP_COMMIT_OPERATOR === "1";

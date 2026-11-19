@@ -10,12 +10,10 @@
 import { MIDGARD_FIELD_COUNT } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildFieldPreimageLengthForcedDispatch,
-  buildFieldPreimageLengthForcedOutOfDomain,
-  buildFieldPreimageLengthInit,
-  buildFieldPreimageLengthTerminal,
-} from "../src/field-preimage-length-mismatch/submit-lucid.js";
+import { buildFieldPreimageLengthForcedDispatch } from "../src/field-preimage-length-mismatch/submit-lucid.submit-field-preimage-length-accepted-authentication.js";
+import { buildFieldPreimageLengthInit } from "../src/field-preimage-length-mismatch/submit-lucid.submit-field-preimage-length-cancel.js";
+import { buildFieldPreimageLengthForcedOutOfDomain } from "../src/field-preimage-length-mismatch/submit-lucid.submit-field-preimage-length-forced-authentication.js";
+import { buildFieldPreimageLengthTerminal } from "../src/field-preimage-length-mismatch/submit-lucid.submit-field-preimage-length-terminal.js";
 import {
   VAN_ROSSEM_MAX_CPU_UNITS,
   VAN_ROSSEM_MAX_MEMORY_UNITS,

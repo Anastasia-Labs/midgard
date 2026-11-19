@@ -13,12 +13,12 @@ import { Data } from "@lucid-evolution/lucid";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { claimedFieldItems } from "../evidence/claimed-coordinate.js";
 import { daHashPreimageBlockEvidenceFromVerifiedPayload } from "../prepare-da-hash-preimage.js";
+import { requireTransactionsRootMatch } from "../prepare-double-spend.prepare-double-spend-from-transactions.js";
 import {
   buildTrieView,
   requireProof,
-  requireTransactionsRootMatch,
-} from "../prepare-double-spend.js";
-import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
+} from "../prepare-double-spend.resolve-double-spend-pair.js";
+import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.build-source-membership-proof.js";
 import {
   acceptedTransactionSubject,
   type DetectionSubject,
@@ -30,12 +30,14 @@ import {
   MintDeclaredAssetLimitForcedSourcePayloadSchema,
 } from "./artifact.js";
 import {
-  MINT_DECLARED_ASSET_LIMIT_CATEGORY,
-  MINT_DECLARED_ASSET_LIMIT_FIELD_INDEX,
   type MintDeclaredAssetLimitEvidence,
   mintDeclaredAssetLimitEvidenceCloses,
   prepareMintDeclaredAssetLimitEvidence,
-} from "./family.js";
+} from "./family.advance-mint-declared-fold.js";
+import {
+  MINT_DECLARED_ASSET_LIMIT_CATEGORY,
+  MINT_DECLARED_ASSET_LIMIT_FIELD_INDEX,
+} from "./family.begin-mint-declared-policy.js";
 
 export const MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID =
   "mint-declared-asset-limit" as const;

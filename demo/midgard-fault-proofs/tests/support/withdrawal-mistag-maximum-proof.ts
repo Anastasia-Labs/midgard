@@ -1,16 +1,16 @@
 import type { UTxO } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import { withdrawalMistagStepPayloadCbor } from "../../src/withdrawal-mistag/submit-withdrawal-mistag-steps.js";
+import { withdrawalMistagStepPayloadCbor } from "../../src/withdrawal-mistag/submit-withdrawal-mistag-steps.step-args.js";
 import { structuredDataPublicationPlan } from "../../src/workflow/structured-data-preimage.js";
 import { captureEmulatorSubmission } from "./emulator/measurement.js";
+import { makeWithdrawalMistagEmulatorHarness } from "./withdrawal-mistag-emulator.build-withdrawal-mistag-evidence-material.js";
 import {
   driveWithdrawalMistagToFraud,
-  makeWithdrawalMistagEmulatorHarness,
   publishWithdrawalMistagScripts,
   removeWithdrawalMistagBlock,
   setupWithdrawalMistagScenario,
-} from "./withdrawal-mistag-emulator.js";
+} from "./withdrawal-mistag-emulator.drive-withdrawal-mistag-to-fraud.js";
 
 export const runWithdrawalMistagMaximumProof = async (
   maximumAssetNames = false,

@@ -15,13 +15,11 @@ import { type UTxO } from "@lucid-evolution/lucid";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as family from "../src/missing-signature/index.js";
-import { buildRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
-import { normalizeJournalJson } from "../src/workflow/journal.js";
-import {
-  createMissingSignatureFieldPrerequisite,
-  MISSING_SIGNATURE_ARTIFACT,
-  unsafeCreateMissingSignatureTransactionPortForTest,
-} from "../src/workflow/missing-signature.js";
+import { buildRemoveFraudulentBlock } from "../src/remove-fraudulent-block.build-remove-fraudulent-block.js";
+import { normalizeJournalJson } from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
+import { unsafeCreateMissingSignatureTransactionPortForTest } from "../src/workflow/missing-signature.create-manifest-bound-missing-signature-workflow.js";
+import { createMissingSignatureFieldPrerequisite } from "../src/workflow/missing-signature.create-missing-signature-field-prerequisite.js";
+import { MISSING_SIGNATURE_ARTIFACT } from "../src/workflow/missing-signature.parse-artifact.js";
 import { missingSignatureObservation } from "../src/workflow/missing-signature-state.js";
 import type { FraudProofWorkflowAction } from "../src/workflow/orchestrator.js";
 import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../src/workflow/raw-l1-publication-observation.js";
@@ -41,7 +39,7 @@ import {
   type MissingSignatureScenario,
   publishMissingSignatureReferenceScripts,
   setupMissingSignatureScenario,
-} from "./support/missing-signature-emulator.js";
+} from "./support/missing-signature-emulator.build-missing-signature-subject.js";
 import { network } from "./support/missing-signature-forced-scenario.js";
 
 vi.mock("../src/field-opening.js", async (importOriginal) =>

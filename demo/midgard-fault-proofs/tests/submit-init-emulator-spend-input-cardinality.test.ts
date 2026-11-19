@@ -128,9 +128,26 @@
 import "@al-ft/midgard-core";
 import "@al-ft/midgard-core/consensus-profile";
 import "vitest";
-import "./support/legacy-submit-emulator.js";
-import "./support/submit-init-emulator-fixtures.js";
-import "./support/submit-init-emulator-shared.js";
+import "../src/submit-init.submit-init.js";
+import "../src/double-spend/submit-step-01.js";
+import "../src/double-spend/submit-step-02.js";
+import "../src/double-spend/submit-step-03.js";
+import "../src/double-spend/submit-step-04.submit-step04.js";
+import "../src/step-support.js";
+import "../src/non-existent-input/submit-step-01.js";
+import "../src/non-existent-input/submit-step-02.js";
+import "./support/submit-init/inclusion.js";
+import "./support/submit-init/transaction-material.js";
+import "./support/submit-init/non-existent-input.js";
+import "./support/emulator/protocol-parameters.js";
+import "./support/emulator/proof-fit.js";
+import "./support/emulator/emulator-context.js";
+import "./support/emulator/removal-deployment.build-removal-deployment-info.js";
+import "./support/emulator/measurement.js";
+import "./support/emulator/harness.js";
+import "./support/emulator/header-fixtures.js";
+import "./support/emulator/blueprints.js";
+import "./support/emulator/setup-tx.submit-setup-tx.js";
 import "./submit-init-emulator-spend-input-cardinality.run-double-spend-cardinality-journey.js";
 import "./submit-init-emulator-spend-input-cardinality.run-no-input-cardinality-journey.js";
 
@@ -149,11 +166,8 @@ import {
   TIER2_SIZE_SELECTED_CARDINALITY,
 } from "./submit-init-emulator-spend-input-cardinality.run-double-spend-cardinality-journey.js";
 import { runNoInputCardinalityJourney } from "./submit-init-emulator-spend-input-cardinality.run-no-input-cardinality-journey.js";
-import {
-  EMULATOR_PROTOCOL_PARAMETERS,
-  expectProofFit,
-  printProofFit,
-} from "./support/submit-init-emulator-shared.js";
+import { expectProofFit, printProofFit } from "./support/emulator/proof-fit.js";
+import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
 
 describe("fault-proof spend-input preimage cardinality", () => {
   it("derives the admissible spend-input cardinality from the consensus profile", () => {

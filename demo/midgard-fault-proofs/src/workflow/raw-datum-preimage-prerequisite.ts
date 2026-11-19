@@ -1,9 +1,5 @@
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 
-import {
-  createAuthenticatedFieldCarriagePrerequisitePort,
-  withFieldCarriagePrerequisite,
-} from "./field-carriage-prerequisite.js";
 import type { RawDatumPreimageRequirement } from "./raw-datum-preimage.js";
 export {
   createChunkedRawDatumPreimageRequirement,
@@ -12,6 +8,10 @@ export {
   rawDatumPreimagePublicationPlan,
   type RawDatumPreimageRequirement,
 } from "./raw-datum-preimage.js";
+import {
+  createAuthenticatedFieldCarriagePrerequisitePort,
+  withFieldCarriagePrerequisite,
+} from "./field-carriage-prerequisite.js";
 
 /** Exact-L1 observation, signed capture, and restart recovery share one implementation. */
 export const createAuthenticatedRawDatumPreimagePrerequisitePort = <

@@ -13,11 +13,11 @@ import type { FactStore, View } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
+import type { StateQueueProjectionConfig } from "../l1-state-queue/config.js";
 import {
   type LandedStateQueueElement,
   stateQueueHistoryIn,
-  type StateQueueProjectionConfig,
-} from "../l1-state-queue/index.js";
+} from "../l1-state-queue/landed.js";
 import type { MergePoint } from "./confirmed-merges.js";
 import { ViewMoved } from "./ports.js";
 

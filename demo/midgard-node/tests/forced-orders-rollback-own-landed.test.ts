@@ -25,7 +25,7 @@ import { refuseCommitForOrphanedOwnBlockEvent } from "../src/fibers/block-commit
 import {
   forcedOrderIngestionHook,
   type RunDatabase,
-} from "../src/forced-orders/index.js";
+} from "../src/forced-orders/ingest.js";
 import { readOwnLandedForcedOrphans } from "../src/forced-orders/own-landed-orphans.js";
 import { insertRow, setState } from "../src/landed-blocks/store.js";
 import { Globals } from "../src/services/globals.globals.js";

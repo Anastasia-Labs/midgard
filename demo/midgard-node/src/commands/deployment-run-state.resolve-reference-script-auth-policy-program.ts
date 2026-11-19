@@ -8,13 +8,15 @@ import type { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
-  createDeploymentRunState,
   type DeploymentRunState,
-  loadDeploymentRunState,
-  mutateDeploymentRunState,
   RunStateError,
+} from "../e2e/run-state.deployment-run-identity.js";
+import { mutateDeploymentRunState } from "../e2e/run-state.mutate-deployment-run-state.js";
+import {
+  createDeploymentRunState,
+  loadDeploymentRunState,
   transitionDeploymentStep,
-} from "../e2e/run-state.js";
+} from "../e2e/run-state.parse-deployment-run-state.js";
 import {
   assertDeploymentIdentityMatches,
   assertPolicyIdsMatch,

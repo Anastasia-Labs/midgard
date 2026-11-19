@@ -26,20 +26,20 @@ import {
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { watcherFaultProofSourceId } from "../../src/fault-proofs/fault-proof-application.build-common-infrastructure.js";
+import { unsafeCreateWatcherFaultProofApplicationForTest } from "../../src/fault-proofs/fault-proof-application.create-watcher-fault-proof-readiness-application.js";
 import {
-  unsafeCreateWatcherFaultProofApplicationForTest,
   WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
   WATCHER_PREDECESSOR_AUTHORITY_CATEGORIES,
   type WatcherFaultProofApplicationDependencies,
   type WatcherInstalledWorkflowCategory,
-} from "../../src/fault-proofs/fault-proof-application.js";
+} from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
 import type {
   WatcherAuthenticatedStateQueueObservation,
   WatcherStateQueueHeaderObservation,
 } from "../../src/indexers/authenticated-state-queue-observation.js";
-import { watcherDeploymentReleaseFinalityAuthority } from "../../src/runtime/deployment-identity.js";
+import { watcherDeploymentReleaseFinalityAuthority } from "../../src/runtime/deployment-identity.watcher-deployment-availability-challenge-authority.js";
 import { fundingTerminal } from "../funding/funding-handoff-fixture.js";
-import { WATCHER_HISTORY_FIXTURE_BOUNDS } from "../support/deployment-authority-fixture.js";
+import { WATCHER_HISTORY_FIXTURE_BOUNDS } from "../support/deployment-authority-fixture.build-watcher-authority-contracts.js";
 import {
   admittedWatcherConfig,
   AUTHORITY,

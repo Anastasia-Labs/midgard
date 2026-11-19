@@ -2,12 +2,12 @@ import { expect, it } from "vitest";
 
 import { FIELD_ITEM_WIDTH_ILLEGAL_CURSOR_SPEC } from "../src/field-item-width-illegal/workflow-spec.js";
 import { MINT_DECLARED_ASSET_LIMIT_FAMILY_DEFINITION } from "../src/mint-declared-asset-limit/v1.js";
-import { MINT_ITEM_NON_CANONICAL_CURSOR_SPEC } from "../src/mint-item-non-canonical/workflow.js";
+import { MINT_ITEM_NON_CANONICAL_CURSOR_SPEC } from "../src/mint-item-non-canonical/workflow-spec.js";
 import { OBSERVER_ORDER_INVALID_FAMILY_DEFINITION } from "../src/observer-order-invalid/v1.js";
 import { OBSERVERS_FORBIDDEN_FAMILY_DEFINITION } from "../src/observers-forbidden-on-untagged-network/v1.js";
 import { OUTPUT_REFERENCE_SCRIPT_DECODING_CURSOR_SPEC } from "../src/output-reference-script-decoding/workflow-spec.js";
 import { PROTECTED_OUTPUT_SIGNER_MISSING_CURSOR_SPEC } from "../src/protected-output-signer-missing/workflow-spec.js";
-import { REDEEMER_CANONICITY_FAMILY_DEFINITION } from "../src/redeemer-canonicity/runtime.js";
+import { REDEEMER_CANONICITY_FAMILY_DEFINITION } from "../src/redeemer-canonicity/runtime.capture-redeemer-action.js";
 import { RESOLVED_OUTPUT_NON_CANONICAL_CURSOR_SPEC } from "../src/resolved-output-non-canonical/workflow-spec.js";
 import { SCRIPT_INTEGRITY_HASH_MISSING_CURSOR_SPEC } from "../src/script-integrity-hash-missing/v1.js";
 import { SPEND_INPUT_SIGNER_MISSING_CURSOR_SPEC } from "../src/spend-input-signer-missing/workflow-spec.js";

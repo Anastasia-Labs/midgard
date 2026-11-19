@@ -5,11 +5,11 @@ import {
 } from "@al-ft/midgard-core/codec/forced";
 import { describe, expect, it } from "vitest";
 
+import type { ResolvedOutputAbsentInputEvidence } from "../src/resolved-output-non-canonical/resolved-output-non-canonical.prepare-resolved-output-non-canonical-evidence.js";
 import {
-  type ResolvedOutputAbsentInputEvidence,
   ResolvedOutputStep02RedeemerSchema,
   ResolvedOutputStep05DatumSchema,
-} from "../src/resolved-output-non-canonical/index.js";
+} from "../src/resolved-output-non-canonical/schemas.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { nodeForcedVerdict } from "./support/emulator/node-forced-verdict.js";
 import {
@@ -25,12 +25,12 @@ import {
   shapes,
 } from "./support/forced-reason-resolved-output-coordinate.js";
 import {
-  commitBlock,
   makeResolvedOutputContext,
-  makeResolvedOutputStages,
-  resolvedOutputEvidence,
   resolvedOutputReason,
-} from "./support/resolved-output-non-canonical-emulator.js";
+} from "./support/resolved-output-non-canonical-emulator.build-prior-ledger.js";
+import { commitBlock } from "./support/resolved-output-non-canonical-emulator.commit-block.js";
+import { makeResolvedOutputStages } from "./support/resolved-output-non-canonical-emulator.make-resolved-output-stages.js";
+import { resolvedOutputEvidence } from "./support/resolved-output-non-canonical-emulator.resolved-output-evidence.js";
 
 /**
  * A forced InputSpentOutputNonCanonical reason names an input by source kind

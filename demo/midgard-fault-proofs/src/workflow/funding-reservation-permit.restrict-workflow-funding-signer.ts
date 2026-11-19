@@ -9,10 +9,8 @@ import {
 
 import { isPlainFundingOutput } from "../funding/plain-funding-output.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import {
-  assertWorkflowActuationPermitIdentity,
-  type WorkflowActuationPermit,
-} from "./actuation-permit.js";
+import { assertWorkflowActuationPermitIdentity } from "./actuation-permit.assert-workflow-actuation-permit-identity.js";
+import type { WorkflowActuationPermit } from "./actuation-permit.create-workflow-reconciliation-permit-controller.js";
 import { balanceCbor } from "./funding-reservation-permit.apply-transition.js";
 import { assertFundingSubmissionAuthority } from "./funding-reservation-permit.begin-workflow-funding-reservation-action.js";
 import { stateForJournal } from "./funding-reservation-permit.create-workflow-funding-reservation-permit.js";

@@ -12,8 +12,8 @@ import { describe, expect, it } from "vitest";
 import type { TransitionTraceDetection } from "../src/transition-trace/detect.js";
 import { provenTransitionEventKeyCbor } from "../src/transition-trace/replay-authority.js";
 import { type CanonicalViolationDetection } from "../src/workflow/classification.js";
+import { createCompleteCanonicalReplayUnion } from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
 import { completeReplayer } from "../src/workflow/complete-replay.detect-double-withdraws.js";
-import { createCompleteCanonicalReplayUnion } from "../src/workflow/complete-replay.js";
 import {
   depositSubject,
   eventKeyCborSubject,

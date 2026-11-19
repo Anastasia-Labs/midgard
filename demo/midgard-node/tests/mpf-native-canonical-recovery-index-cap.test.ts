@@ -8,15 +8,13 @@ import { Level } from "level";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
-  encodeNativeMpfEventLog,
-  ProductionNativeMpfOwnerService,
-} from "../src/services/mpf-native-owner/index.js";
-import {
   NativeMpfFullIndexCapExceeded,
   NativeMpfRestoreReadFailed,
   NativeMpfRootNotRetained,
 } from "../src/services/mpf-native-owner/protocol.js";
 import { FULL_INDEX_HEADER_BYTES } from "../src/services/mpf-native-owner/service.normalize-owner-options.js";
+import { encodeNativeMpfEventLog } from "../src/services/mpf-native-owner/service.parse-promotion-records.js";
+import { ProductionNativeMpfOwnerService } from "../src/services/mpf-native-owner/service.production-native-mpf-owner-service.js";
 import { prepareEventFlatDigest } from "../src/workers/utils/mpf-event-flat-digest.js";
 import { nativeOwnerBinaryPath } from "./helpers/native-owner-binary.js";
 

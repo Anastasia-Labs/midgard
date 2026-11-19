@@ -8,7 +8,8 @@ import {
   deriveMidgardNativeTxCompact,
   encodeMidgardNativeTxCanonical,
 } from "@al-ft/midgard-core/codec";
-import { QueuedTx, runPhaseAValidation } from "@al-ft/midgard-validation";
+import { runPhaseAValidation } from "@al-ft/midgard-validation/phase-a";
+import { QueuedTx } from "@al-ft/midgard-validation/types";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 

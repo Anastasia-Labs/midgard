@@ -3,34 +3,30 @@ import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import { workflowActuationAuthorizingDecisionDigest } from "../workflow/actuation-permit.js";
-import { SCRIPT_INTEGRITY_HASH_MISSING_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
+import { workflowActuationAuthorizingDecisionDigest } from "../workflow/actuation-permit.assert-workflow-actuation-permit-identity.js";
+import { SCRIPT_INTEGRITY_HASH_MISSING_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import { type CursorFamilyTransactionPort } from "../workflow/cursor-family-adapter.js";
 import { STATE_QUEUE_REMOVAL_REFERENCE_SCRIPTS } from "../workflow/cursor-family-runtime.js";
 import type { CursorFamilySpec } from "../workflow/cursor-family-state.js";
 import {
+  type FamilyAssemblyContext,
+  MEMBERSHIP_WITNESS_ROLES,
+} from "../workflow/family-definition.family-adapter-arm.js";
+import {
   cursorStepContractNames,
   defineFamily,
-  type FamilyAssemblyContext,
   type ManifestBoundFamilyWorkflow,
-  MEMBERSHIP_WITNESS_ROLES,
-} from "../workflow/family-definition.js";
+} from "../workflow/family-definition.family-definition.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import { type FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
 import { type FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
-import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
-import {
-  createFraudProofWorkflowRegistry,
-  type FraudProofWorkflowRunResult,
-  runFraudProofWorkflowFromRetainedDa,
-} from "../workflow/orchestrator.js";
+import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
+import type { FraudProofWorkflowRunResult } from "../workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import { type WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
-import {
-  createScriptIntegrityHashMissingTransactionPort,
-  scriptIntegrityHashMissingFieldRequirement,
-  type ScriptIntegrityHashMissingWorkflowReferenceScripts,
-} from "./actuator.js";
+import { createScriptIntegrityHashMissingTransactionPort } from "./actuator.create-script-integrity-hash-missing-transaction-port.js";
+import type { ScriptIntegrityHashMissingWorkflowReferenceScripts } from "./actuator.resolve-field.js";
+import { scriptIntegrityHashMissingFieldRequirement } from "./actuator.script-integrity-hash-missing-field-requirement.js";
 import { admitScriptIntegrityHashMissingArtifact } from "./artifact.js";
 import type { ScriptIntegrityHashMissingContracts } from "./contracts.js";
 import { ScriptIntegrityStepDatums } from "./schemas.js";
@@ -63,6 +59,10 @@ export const SCRIPT_INTEGRITY_HASH_MISSING_CURSOR_SPEC: CursorFamilySpec<"script
 });
 
 export type { ScriptIntegrityHashMissingWorkflowReferenceScripts } from "./actuator.js";
+import {
+  createFraudProofWorkflowRegistry,
+  runFraudProofWorkflowFromRetainedDa,
+} from "../workflow/orchestrator.js";
 
 export type ScriptIntegrityHashMissingRemovalReferenceScripts = Readonly<{
   correctionLockSpend: UTxO;

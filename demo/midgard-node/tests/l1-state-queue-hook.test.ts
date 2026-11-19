@@ -22,15 +22,17 @@ import {
   type FollowerChange,
   type SinkResult,
 } from "../src/l1-events/driver.js";
+import { stateQueueTrackedSet } from "../src/l1-state-queue/config.js";
 import {
-  landedElements,
   landedStateQueueHook,
-  type LandedStateQueueRead,
   readLandedStateQueueFrom,
   STATE_QUEUE_UNHEALTHY,
-  stateQueueProjection,
-  stateQueueTrackedSet,
-} from "../src/l1-state-queue/index.js";
+} from "../src/l1-state-queue/hook.js";
+import {
+  landedElements,
+  type LandedStateQueueRead,
+} from "../src/l1-state-queue/landed.js";
+import { stateQueueProjection } from "../src/l1-state-queue/projection.js";
 import { failureHold } from "../src/services/l1-follower.failure-hold.js";
 import { l1FollowerReadiness } from "../src/services/l1-follower.readiness.js";
 import { EVENTS_CONFIG } from "./helpers/l1-events-chain.js";

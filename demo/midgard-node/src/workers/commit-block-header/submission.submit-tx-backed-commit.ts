@@ -10,9 +10,9 @@ import {
 import { DatabaseError } from "../../database/utils/common.js";
 import { Columns as TxColumns } from "../../database/utils/tx.js";
 import { reachCommitCrashCheckpoint } from "../../e2e/commit-crash-checkpoint.js";
-import { emptyRootHexProgram } from "../../mpf/index.js";
+import { emptyRootHexProgram } from "../../mpf/store.empty-root-hex-program.js";
+import { Database } from "../../services/database.js";
 import { configuredCommitAnchorClock } from "../../services/history-commit-window.js";
-import { Database } from "../../services/index.js";
 import type {
   CommitSubmitRefusal,
   WorkerOutput,

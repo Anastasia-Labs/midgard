@@ -12,13 +12,11 @@ import {
   createWatcherProtocolParameterRuntimeAuthority,
   refreshWatcherProtocolParameterRuntimeAuthority,
 } from "../../src/funding/prover-funding.js";
-import { WatcherProverFundingUnavailableError } from "../../src/funding/prover-funding-reservation.js";
+import { WatcherProverFundingUnavailableError } from "../../src/funding/prover-funding-reservation.watcher-prover-funding-reservation-store.js";
 import { isWatcherL1TransientFailure } from "../../src/l1/transient-failure.js";
 import { retryWatcherL1Transient } from "../../src/l1/transient-retry.js";
-import {
-  makeWatcherDeploymentAuthorityFixture,
-  WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS,
-} from "../support/deployment-authority-fixture.js";
+import { WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS } from "../support/deployment-authority-fixture.build-watcher-authority-contracts.js";
+import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.build-watcher-deployment-authority-fixture.js";
 import {
   ledgerParameterQuery,
   ledgerProtocolParameters,

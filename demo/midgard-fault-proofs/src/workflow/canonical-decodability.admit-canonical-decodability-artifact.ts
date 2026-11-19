@@ -18,11 +18,11 @@ import {
   type CanonicalDecodabilityRawArtifact,
   type CanonicalDecodabilityRawBlockEvidence,
 } from "../evidence/canonical-decodability-raw-evidence.js";
+import { requireTransactionsRootMatch } from "../prepare-double-spend.prepare-double-spend-from-transactions.js";
 import {
   buildTrieView,
   requireProof,
-  requireTransactionsRootMatch,
-} from "../prepare-double-spend.js";
+} from "../prepare-double-spend.resolve-double-spend-pair.js";
 import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
@@ -30,8 +30,11 @@ import {
 import {
   CHUNKED_VERIFY_WITNESS_ROLES,
   type FamilyAssemblyContext,
-} from "./family-definition.js";
-import { type JournalJsonObject, normalizeJournalJson } from "./journal.js";
+} from "./family-definition.family-adapter-arm.js";
+import {
+  type JournalJsonObject,
+  normalizeJournalJson,
+} from "./journal.fraud-proof-workflow-terminal.js";
 
 export type CanonicalDecodabilityArtifact = JournalJsonObject &
   CanonicalDecodabilityRawArtifact;

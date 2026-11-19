@@ -1,10 +1,10 @@
+import type { WirePhaseACandidateV1 } from "@al-ft/midgard-validation";
+import type { MidgardCekVerdictRequest } from "@al-ft/midgard-validation/phase-b";
 import type {
   LocalScriptEvalResult,
-  MidgardCekVerdictRequest,
   PhaseAConfig,
   RejectCode,
-  WirePhaseACandidateV1,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/types";
 
 export type ValidationWorkerInit = {
   readonly config: {

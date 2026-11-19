@@ -8,12 +8,12 @@ import {
   inputExistenceArtifact,
 } from "../src/input-existence/artifact.js";
 import { prepareInputExistence } from "../src/input-existence/prepare.js";
-import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
+import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
 import { detectLedgerRelativeMissingInputs } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
   NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
   NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY,
-} from "../src/workflow/complete-replay.js";
+} from "../src/workflow/complete-replay.detect-double-withdraws.js";
 import {
   admitLedgerAbsenceArtifact,
   type LedgerAbsenceCategory,

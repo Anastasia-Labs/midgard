@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createWatcherAvailabilityRuntime } from "../../src/availability/runtime.js";
+import { createWatcherAvailabilityRuntime } from "../../src/availability/runtime.create-watcher-availability-runtime.js";
 import type {
   WatcherAuthenticatedStateQueueObservation,
   WatcherMergedHeaderProof,

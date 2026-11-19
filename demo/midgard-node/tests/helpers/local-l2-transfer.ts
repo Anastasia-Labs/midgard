@@ -1,4 +1,4 @@
-import type { QueuedTx } from "@al-ft/midgard-validation";
+import type { QueuedTx } from "@al-ft/midgard-validation/types";
 import { Effect } from "effect";
 
 import {

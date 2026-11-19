@@ -4,8 +4,9 @@ import "node:path";
 import "@al-ft/midgard-fault-proofs";
 import "@lucid-evolution/lucid";
 import "vitest";
-import "../../src/funding/prover-funding-reservation.js";
-import "../../src/funding/sqlite-prover-funding-reservation-store.js";
+import "../../src/funding/prover-funding-reservation.parse-watcher-prover-funding-reservation-record.js";
+import "../../src/funding/sqlite-prover-funding-reservation-store.derive-signed-transition.js";
+import "../../src/funding/sqlite-prover-funding-reservation-store.unsafe-open-watcher-sqlite-prover-funding-reservation-store-for-test.js";
 import "./sqlite-prover-funding-reservation-store.signed-transition.js";
 
 import { createHash } from "node:crypto";
@@ -19,11 +20,9 @@ import {
 import { CML } from "@lucid-evolution/lucid";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { parseWatcherProverFundingReservationRecord } from "../../src/funding/prover-funding-reservation.js";
-import {
-  isWatcherProverFundingReservationConflict,
-  unsafeOpenWatcherSqliteProverFundingReservationStoreForTest,
-} from "../../src/funding/sqlite-prover-funding-reservation-store.js";
+import { parseWatcherProverFundingReservationRecord } from "../../src/funding/prover-funding-reservation.parse-watcher-prover-funding-reservation-record.js";
+import { isWatcherProverFundingReservationConflict } from "../../src/funding/sqlite-prover-funding-reservation-store.derive-signed-transition.js";
+import { unsafeOpenWatcherSqliteProverFundingReservationStoreForTest } from "../../src/funding/sqlite-prover-funding-reservation-store.unsafe-open-watcher-sqlite-prover-funding-reservation-store-for-test.js";
 import {
   attemptOf,
   openStore,

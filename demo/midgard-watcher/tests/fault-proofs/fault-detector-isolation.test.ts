@@ -9,10 +9,10 @@
 import {
   FraudProofL1RefusedError,
   FraudProofL1UnavailableError,
-  ReplayLocalFault,
   RetainedDaPayloadUnavailableError,
   ValidationTraceReplayHeldError,
 } from "@al-ft/midgard-fault-proofs";
+import { ReplayLocalFault } from "@al-ft/midgard-fault-proofs/block-replay";
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 

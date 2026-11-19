@@ -23,17 +23,17 @@ import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.
 import type { CompleteSignedTransactionMeasurement } from "./support/emulator/measurement.js";
 import {
   buildPriorLedger,
-  commitBlock,
   makeResolvedOutputContext,
-  makeResolvedOutputStages,
   MAXIMUM_DATUM_BYTES,
   outputWithDatumBytes,
   RESOLVED_OUTPUT_MAXIMUM_BYTES,
   RESOLVED_OUTPUT_REASON_ARM,
-  resolvedOutputEvidence,
   resolvedOutputReason,
   subjectTransactionFor,
-} from "./support/resolved-output-non-canonical-emulator.js";
+} from "./support/resolved-output-non-canonical-emulator.build-prior-ledger.js";
+import { commitBlock } from "./support/resolved-output-non-canonical-emulator.commit-block.js";
+import { makeResolvedOutputStages } from "./support/resolved-output-non-canonical-emulator.make-resolved-output-stages.js";
+import { resolvedOutputEvidence } from "./support/resolved-output-non-canonical-emulator.resolved-output-evidence.js";
 
 describe("resolvedOutputNonCanonical inline-datum verdict", () => {
   it("convicts the acceptance of an output whose inline datum is not canonical under a canonical envelope, refusing forged datum steps, and cancels a thread parked on the datum step", async () => {

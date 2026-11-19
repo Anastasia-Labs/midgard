@@ -16,11 +16,11 @@ import {
   watcherDaFetchAlertSubject,
   watcherValidationTraceReplayStuckAlertSubject,
 } from "../../src/runtime/operations-observability.alert-book.js";
+import { createWatcherRetainedDaRuntime } from "../../src/storage/retained-da-runtime.create-watcher-retained-da-runtime-owner.js";
 import {
   bindWatcherRetainedDaOperations,
-  createWatcherRetainedDaRuntime,
   registerWatcherDaFetcher,
-} from "../../src/storage/retained-da-runtime.js";
+} from "../../src/storage/retained-da-runtime.retained-da-request-permits.js";
 import {
   admittedConfig,
   transportFactory,

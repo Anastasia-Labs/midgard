@@ -14,17 +14,19 @@ import {
 import { describe, expect, it } from "vitest";
 
 import { FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY } from "../src/runtime.js";
+import { deriveTransactionOutputNonCanonicalEvidenceFromCanonicalBlock } from "../src/transaction-output-non-canonical/workflow.derive-transaction-output-non-canonical-authenticated-source.js";
+import {
+  createTransactionOutputNonCanonicalRawL1StageResolver,
+  detectTransactionOutputNonCanonicalCompleteReplay,
+} from "../src/transaction-output-non-canonical/workflow.detect-transaction-output-non-canonical-complete-replay.js";
 import {
   bindTransactionOutputNonCanonicalReferenceScripts,
-  createTransactionOutputNonCanonicalRawL1StageResolver,
-  deriveTransactionOutputNonCanonicalEvidenceFromCanonicalBlock,
-  detectTransactionOutputNonCanonicalCompleteReplay,
   TRANSACTION_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS,
   TRANSACTION_OUTPUT_NON_CANONICAL_VIOLATION_ID,
   type TransactionOutputNonCanonicalReferenceScripts,
-} from "../src/transaction-output-non-canonical/index.js";
+} from "../src/transaction-output-non-canonical/workflow.transaction-output-non-canonical-config-from-binding.js";
 import type { FraudProofWorkflowDeploymentBinding } from "../src/workflow/deployment-manifest-binding.js";
-import { committedFieldShapeScenarioMaterial } from "./support/committed-field-shape-emulator.js";
+import { committedFieldShapeScenarioMaterial } from "./support/committed-field-shape-emulator.committed-field-shape-scenario-material.js";
 
 const script = (byte: string): Script => ({
   type: "PlutusV3",

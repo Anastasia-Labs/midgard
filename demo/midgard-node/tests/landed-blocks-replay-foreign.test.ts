@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FOREIGN_DA_RETRY_MAX_MS } from "../src/da/foreign-retained-da.js";
 import { DaPayloadsDB } from "../src/database/index.js";
-import { FORCED_ORDERS_TABLE } from "../src/forced-orders/index.js";
+import { FORCED_ORDERS_TABLE } from "../src/forced-orders/schema.js";
 import { nodeLandedBlockPorts } from "../src/landed-blocks/node-ports.js";
 import { sha256 } from "../src/sha256.js";
 import {

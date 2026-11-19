@@ -2,14 +2,12 @@ import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deploym
 import { isPlainFundingOutput } from "@al-ft/midgard-fault-proofs";
 import { CML, getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
 
-import {
-  assertVerifiedWatcherDeploymentIdentity,
-  type VerifiedWatcherDeploymentIdentity,
-} from "../runtime/deployment-identity.js";
+import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.parse-trust-roots.js";
+import { assertVerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.verify-watcher-user-event-script-binding.js";
 import {
   assertWatcherRuntimeProverFundingCalculation,
   type WatcherRuntimeProverFundingCalculation,
-} from "./prover-funding-calculation.js";
+} from "./prover-funding-calculation.aggregate-watcher-prover-funding-sweep.js";
 import {
   assetEntries,
   type Candidate,

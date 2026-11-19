@@ -6,9 +6,9 @@ import {
 } from "@al-ft/midgard-sdk";
 import { type Network } from "@lucid-evolution/lucid";
 
+import type { ContractDeploymentInfo } from "./inspect-contracts.inspect-contracts-output.js";
 import {
   assertFraudProofCatalogueCategoryReady,
-  type ContractDeploymentInfo,
   parseContractDeploymentCaseConfigInitializationNonce,
   parseContractDeploymentDisputeBondLovelace,
   parseContractDeploymentInfo,

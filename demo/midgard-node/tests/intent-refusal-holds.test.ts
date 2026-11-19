@@ -27,10 +27,8 @@ import { SqlClient } from "@effect/sql";
 import { Effect, Either } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  stateQueueProjection,
-  stateQueueTrackedSet,
-} from "../src/l1-state-queue/index.js";
+import { stateQueueTrackedSet } from "../src/l1-state-queue/config.js";
+import { stateQueueProjection } from "../src/l1-state-queue/projection.js";
 import {
   INTENT_BYTES_MISMATCH,
   INTENT_CONTENT_REF_MISSING,

@@ -25,8 +25,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runNode } from "../src/commands/listen.run-node.js";
 import { withStartupHttpServer } from "../src/commands/listen.startup-http.js";
-import { NodeConfig } from "../src/services/config.js";
-import { Globals } from "../src/services/globals.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
+import { Globals } from "../src/services/globals.globals.js";
 import { nodeDatabaseConnectionString } from "../src/services/l1-provider.js";
 import {
   acquireNodeInstanceLock,

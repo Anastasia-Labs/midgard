@@ -42,13 +42,13 @@ import {
   vi,
 } from "vitest";
 
-import { ensureProtocolInitializedOnStartup } from "../src/commands/listen-startup.js";
+import { ensureProtocolInitializedOnStartup } from "../src/commands/listen-startup.ensure-protocol-initialized-on-startup.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
+import { Lucid } from "../src/services/lucid.js";
 import {
   ContractDeploymentIdentity,
-  Lucid,
   MidgardContracts,
-  NodeConfig,
-} from "../src/services/index.js";
+} from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   AVAILABILITY_REWARD_ACCOUNT_UNREGISTERED,
   DEPLOYMENT_MANIFEST_MISSING,

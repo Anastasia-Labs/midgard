@@ -4,22 +4,22 @@ import { describe, expect, it } from "vitest";
 
 import { buildLinearFaultCancel } from "../src/linear-fault-cancel.js";
 import { WITHDRAWAL_MISTAG_CATEGORY_LABEL } from "../src/withdrawal-mistag/contracts.js";
+import { buildWithdrawalMistagStep05 } from "../src/withdrawal-mistag/submit-withdrawal-mistag-step-05.js";
 import {
   buildWithdrawalMistagStep01,
   buildWithdrawalMistagStep02,
   buildWithdrawalMistagStep03,
   buildWithdrawalMistagStep04,
-  buildWithdrawalMistagStep05,
-} from "../src/withdrawal-mistag/index.js";
+} from "../src/withdrawal-mistag/submit-withdrawal-mistag-steps.submit-withdrawal-mistag-intermediate-step.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { makeWithdrawalMistagEmulatorHarness } from "./support/withdrawal-mistag-emulator.build-withdrawal-mistag-evidence-material.js";
 import {
   initWithdrawalMistagThread,
-  makeWithdrawalMistagEmulatorHarness,
   publishWithdrawalMistagScripts,
   setupWithdrawalMistagScenario,
   withdrawalMistagBlockUtxo,
-} from "./support/withdrawal-mistag-emulator.js";
+} from "./support/withdrawal-mistag-emulator.drive-withdrawal-mistag-to-fraud.js";
 
 describe("withdrawal-mistag cancel and resume", () => {
   it("burns a cancelled thread, re-initialises, and resumes from only its committed out-ref", async () => {

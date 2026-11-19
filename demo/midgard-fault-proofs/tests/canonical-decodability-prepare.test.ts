@@ -11,7 +11,7 @@ import {
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { prepareCanonicalDecodability } from "../src/canonical-decodability/index.js";
+import { prepareCanonicalDecodability } from "../src/canonical-decodability/prepare-canonical-decodability.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 
 const bodyFixture = (preimage: Buffer) => {

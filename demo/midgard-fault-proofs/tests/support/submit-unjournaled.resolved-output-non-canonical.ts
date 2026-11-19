@@ -4,16 +4,14 @@
  * generic helpers of ./submit-unjournaled.ts, so a test takes both from one
  * module.
  */
-import {
-  buildResolvedOutputNonCanonicalCancel,
-  buildResolvedOutputNonCanonicalStep01Accepted,
-  buildResolvedOutputNonCanonicalStep01Forced,
-  buildResolvedOutputNonCanonicalStep02,
-  buildResolvedOutputNonCanonicalStep03,
-  buildResolvedOutputNonCanonicalStep04,
-  buildResolvedOutputNonCanonicalStep04Datum,
-  buildResolvedOutputNonCanonicalStep05,
-} from "../../src/resolved-output-non-canonical/index.js";
+import { buildResolvedOutputNonCanonicalCancel } from "../../src/resolved-output-non-canonical/submit-cancel.js";
+import { buildResolvedOutputNonCanonicalStep01Accepted } from "../../src/resolved-output-non-canonical/submit-step-01-accepted.js";
+import { buildResolvedOutputNonCanonicalStep01Forced } from "../../src/resolved-output-non-canonical/submit-step-01-forced.js";
+import { buildResolvedOutputNonCanonicalStep02 } from "../../src/resolved-output-non-canonical/submit-step-02.js";
+import { buildResolvedOutputNonCanonicalStep03 } from "../../src/resolved-output-non-canonical/submit-step-03.js";
+import { buildResolvedOutputNonCanonicalStep04 } from "../../src/resolved-output-non-canonical/submit-step-04.js";
+import { buildResolvedOutputNonCanonicalStep04Datum } from "../../src/resolved-output-non-canonical/submit-step-04-datum.js";
+import { buildResolvedOutputNonCanonicalStep05 } from "../../src/resolved-output-non-canonical/submit-step-05.js";
 import { unjournaled, unjournaledTurns } from "./submit-unjournaled.js";
 
 export const submitResolvedOutputNonCanonicalCancel = unjournaled(

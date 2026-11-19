@@ -2,23 +2,21 @@ import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 import type { CommittedFieldShapeContracts } from "../committed-field-shape/contracts.js";
 import { buildCommittedFieldShapeInit } from "../committed-field-shape/submit-committed-field-shape-init.js";
-import { buildCommittedFieldShapeStep01 } from "../committed-field-shape/submit-committed-field-shape-step-01.js";
+import { buildCommittedFieldShapeStep01 } from "../committed-field-shape/submit-committed-field-shape-step-01.submit-committed-field-shape-step01.js";
 import { buildCommittedFieldShapeStep02 } from "../committed-field-shape/submit-committed-field-shape-step-02.js";
 import {
   admitCanonicalEvidenceForProofBuild,
   type CanonicalEvidenceBuilderInput,
 } from "../evidence/prepare-from-evidence.js";
+import { requireTransactionsRootMatch } from "../prepare-double-spend.prepare-double-spend-from-transactions.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
   requireProof,
-  requireTransactionsRootMatch,
   transactionSourceTrieItem,
-} from "../prepare-double-spend.js";
-import {
-  buildRemoveFraudulentBlock,
-  type StateQueueMutationLeaseCoordinator,
-} from "../remove-fraudulent-block.js";
+} from "../prepare-double-spend.resolve-double-spend-pair.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.build-remove-fraudulent-block.js";
+import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.remove-fraudulent-block-explicit-category.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import {
@@ -31,7 +29,7 @@ import {
 import {
   CURSOR_FAMILY_TRANSACTION_PORT,
   type CursorFamilyTransactionPort,
-} from "./cursor-family-adapter.js";
+} from "./cursor-family-adapter.admit-reference-scripts.js";
 import { CURSOR_FAMILY_ACTION } from "./cursor-family-state.js";
 import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
 import {
@@ -39,15 +37,15 @@ import {
   type FamilyAssemblyContext,
   type FamilyReferenceScripts,
   type LinearFamilyPrerequisiteInput,
-  type ManifestBoundFamilyWorkflow,
   type ManifestBoundFamilyWorkflowConfig,
-} from "./family-definition.js";
+} from "./family-definition.family-adapter-arm.js";
+import type { ManifestBoundFamilyWorkflow } from "./family-definition.family-definition.js";
 import {
   createRawCommittedFieldCarriagePlan,
   type FieldCarriagePrerequisitePort,
   type PreimageCarriageRequirement,
-} from "./field-carriage-prerequisite.js";
-import { normalizeJournalJson } from "./journal.js";
+} from "./field-carriage-prerequisite.field-carriage-prerequisite-port.js";
+import { normalizeJournalJson } from "./journal.fraud-proof-workflow-terminal.js";
 import { type FraudProofWorkflowAction } from "./orchestrator.js";
 import { admitRemovalTransaction } from "./removal-admission.js";
 import { journaledStepTransaction } from "./step-transaction.js";

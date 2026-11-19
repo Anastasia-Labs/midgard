@@ -19,7 +19,7 @@ import {
   scriptHashToCredential,
 } from "@lucid-evolution/lucid";
 
-import { parseWatcherStrictJsonValue } from "./config.js";
+import { parseWatcherStrictJsonValue } from "./config.strict-json-reader.js";
 import {
   fail,
   plainRecord,

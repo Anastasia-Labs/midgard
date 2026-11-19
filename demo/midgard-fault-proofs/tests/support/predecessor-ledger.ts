@@ -11,10 +11,8 @@ import {
   type LedgerEntry,
   singleLedgerAt,
 } from "../../src/ledger-at.js";
-import {
-  reconstructDaPayload,
-  type TransitionTraceReconstruction,
-} from "../../src/transition-trace/reconstruct.js";
+import { reconstructDaPayload } from "../../src/transition-trace/reconstruct.reconstruct-da-payload.js";
+import type { TransitionTraceReconstruction } from "../../src/transition-trace/reconstruct.transition-trace-reconstruction.js";
 import { fixtureLedgerEntriesByRoot } from "./fixture-ledger.js";
 
 type Block = CanonicalBlockEvidence | TransitionTraceReconstruction;

@@ -18,7 +18,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data, type TxSigned, type UTxO } from "@lucid-evolution/lucid";
 
 import { fraudSlashFeeLovelace } from "../remove-fraudulent-block.assert-exact-fraud-slash-lovelace-conservation.js";
-import { assertWorkflowActuationPermitIdentity } from "./actuation-permit.js";
+import { assertWorkflowActuationPermitIdentity } from "./actuation-permit.assert-workflow-actuation-permit-identity.js";
 import {
   actionKind,
   exactResolvedOutputCbor,

@@ -9,15 +9,15 @@ import {
   createReplayedLedger,
   type ReplayedLedgerRefusal,
 } from "../src/replayed-ledger.js";
-import { reconstructDaPayload } from "../src/transition-trace/reconstruct.js";
-import { classifyHeader } from "../src/workflow/header-classifier.js";
+import { reconstructDaPayload } from "../src/transition-trace/reconstruct.reconstruct-da-payload.js";
+import { classifyHeader } from "../src/workflow/header-classifier.classify-header.js";
 import {
   replayBudget,
   setup,
   transport,
 } from "./support/catalogue-retained-classification.setup.js";
 import { ledgerEntriesAfter } from "./support/predecessor-ledger.js";
-import { buildRetainedPlutusIdentityFixture } from "./support/retained-reason-classifier.js";
+import { buildRetainedPlutusIdentityFixture } from "./support/retained-reason-classifier.build-retained-plutus-fixture.js";
 
 afterEach(() => {
   transport.raw = undefined;

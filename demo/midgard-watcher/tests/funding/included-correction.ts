@@ -1,12 +1,12 @@
 import { deriveFraudProofRawL1CompletedTerminal } from "@al-ft/midgard-fault-proofs";
 import { fixture as terminalFixture } from "@al-ft/midgard-fault-proofs/test-support/raw-l1-terminal-fixture";
 
-import { watcherDeploymentReleaseEconomicsAuthority } from "../../src/runtime/deployment-identity.js";
+import { watcherDeploymentReleaseEconomicsAuthority } from "../../src/runtime/deployment-identity.watcher-deployment-availability-challenge-authority.js";
 import {
   deploymentIdentity,
   finality,
   key,
-} from "../support/fault-proof-funding-fixture.js";
+} from "../support/fault-proof-funding-fixture.sources-for.js";
 import { type Fixture } from "./superseded-attempt-replacement.js";
 
 /** The correction's terminal, created by `createdBy`, at `confirmationDepth`

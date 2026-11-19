@@ -34,7 +34,7 @@ import { VALIDATION_TRACE_STAGING_RECLAIM } from "../src/validation-trace-disput
 import { VALIDATION_TRACE_STAGING_OUTSTANDING } from "../src/validation-trace-dispute/one-step-staging-sweep.js";
 import { VALIDATION_TRACE_ONE_STEP_REQUIRED } from "../src/validation-trace-dispute/threads.js";
 import { validationTraceDefenseDeadlineMs } from "../src/validation-trace-dispute/waiting.js";
-import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.js";
+import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import { WorkflowActionUnbuiltError } from "../src/workflow/orchestrator.unbuilt-actions.js";
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";

@@ -28,15 +28,15 @@ import {
   SCREEN_FAILED,
 } from "../src/forced-orders/admission-divergence.js";
 import { localLedgerDivergenceCounter } from "../src/mpf/local-ledger-divergence.js";
-import { Globals } from "../src/services/globals.js";
+import { Globals } from "../src/services/globals.globals.js";
 import { livenessReasonAgeGauge } from "../src/services/globals.liveness-reasons.js";
 import {
   IntentJournal,
   IntentJournalWithoutFollower,
 } from "../src/services/intent-journal.js";
-import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.js";
+import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import { mergeFailureCounter } from "../src/transactions/state-queue/merge-to-confirmed-state.merge-options.js";
-import { txExpiredCounter } from "../src/transactions/utils.js";
+import { txExpiredCounter } from "../src/transactions/utils.tx-expiry.js";
 import {
   applyCommitPlanningNotice,
   makeCommitPlanningNotice,

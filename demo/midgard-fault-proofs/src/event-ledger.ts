@@ -38,7 +38,7 @@ import {
   eventKeyPhase,
   type SourceEventRecord,
   type TransitionTraceReconstruction,
-} from "./transition-trace/reconstruct.js";
+} from "./transition-trace/reconstruct.transition-trace-reconstruction.js";
 import {
   type ReplayPrerequisite,
   replayPrerequisiteFailure,

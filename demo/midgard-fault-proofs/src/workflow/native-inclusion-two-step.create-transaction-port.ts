@@ -3,8 +3,8 @@ import {
   buildInvalidRangeStep02V1,
 } from "../invalid-range/submit.js";
 import { requireLinearFaultThreadUtxo } from "../linear-fault-family.js";
-import { buildInit } from "../submit-init.js";
-import { buildInvalidRangeStep01 } from "../submit-invalid-range-step-01.js";
+import { buildInit } from "../submit-init.submit-init.js";
+import { buildInvalidRangeStep01 } from "../submit-invalid-range-step-01.submit-invalid-range-step01.js";
 import type { ZeroInputContracts } from "../zero-input/contracts.js";
 import {
   buildZeroInputStep01Accepted,
@@ -33,7 +33,7 @@ import {
   prepareNativeInclusionTwoStepArtifact,
   type WitnessRole,
 } from "./native-inclusion-two-step.prepare-native-inclusion-two-step-artifact.js";
-import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.js";
+import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.route-action-identity.js";
 import { journaledStepTransaction } from "./step-transaction.js";
 
 export const createTransactionPort = <

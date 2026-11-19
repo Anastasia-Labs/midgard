@@ -5,7 +5,7 @@ import { Emulator, Lucid } from "@lucid-evolution/lucid";
 import { Effect, TestClock } from "effect";
 import { describe, expect } from "vitest";
 
-import { retryAfterRetirementProtection } from "../src/commands/reserve-payout.js";
+import { retryAfterRetirementProtection } from "../src/commands/reserve-payout.retry-after-retirement-protection.js";
 
 const PROTECTION_DURATION_MS = 120_000n;
 

@@ -10,12 +10,13 @@ import { Effect } from "effect";
 import {
   defaultDeploymentRunStatePath,
   loadDeploymentRunState,
-} from "../e2e/run-state.js";
-import { Lucid, MidgardContracts } from "../services/index.js";
+} from "../e2e/run-state.parse-deployment-run-state.js";
+import { Lucid } from "../services/lucid.js";
+import { MidgardContracts } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   buildFraudProofCatalogueDeploymentInfo,
   fraudProofsToIndexedValidators,
-} from "../transactions/initialization.js";
+} from "../transactions/initialization.atomic-protocol-init-reference-scripts-from-publications.js";
 import {
   normalizeOutputPath,
   readDeploymentManifestFile,

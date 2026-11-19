@@ -15,19 +15,21 @@ import {
   readDeploymentManifestFile,
 } from "../commands/contract-deployment-info.build-deployment-manifest.js";
 import {
-  defaultDeploymentRunStatePath,
-  loadDeploymentRunState,
   recordedInitProtocolAttempts,
   recordInitProtocolSubmission,
-} from "../e2e/run-state.js";
+} from "../e2e/run-state.mutate-deployment-run-state.js";
+import {
+  defaultDeploymentRunStatePath,
+  loadDeploymentRunState,
+} from "../e2e/run-state.parse-deployment-run-state.js";
 import { NodeConfig } from "../services/config.js";
 import { type IntentJournal, openPlan } from "../services/intent-journal.js";
 import { Lucid } from "../services/lucid.js";
 import {
   type ContractDeploymentIdentityValue,
-  MidgardContracts,
-} from "../services/midgard-contracts.js";
-import { loadRealBlueprint } from "../services/midgard-contracts.load-reference-script-auth-validator.js";
+  loadRealBlueprint,
+} from "../services/midgard-contracts.load-reference-script-auth-validator.js";
+import { MidgardContracts } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import { ensureAvailabilityChallengeRewardAccountsRegisteredProgram } from "./availability-challenge-registration.js";
 import {
   type AtomicProtocolInitReferenceScripts,
@@ -56,7 +58,7 @@ import {
   ensureEventHistoryRewardAccountsRegisteredProgram,
   ensureRuntimeRewardAccountsRegisteredProgram,
 } from "./script-reward-registration.js";
-import { rebuildOnTxExpiry } from "./utils.js";
+import { rebuildOnTxExpiry } from "./utils.tx-expiry.js";
 
 export type ProtocolDeploymentKeys = {
   /** The configured hub-oracle one-shot nonce. */

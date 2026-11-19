@@ -6,7 +6,7 @@ import {
   type MidgardTxOutput,
 } from "@al-ft/midgard-sdk";
 
-import { midgardTxOutputFromCanonicalCbor } from "../prepare-input-no-idx.js";
+import { midgardTxOutputFromCanonicalCbor } from "../prepare-input-no-idx.midgard-tx-output-from-canonical-cbor.js";
 import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,

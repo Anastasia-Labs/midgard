@@ -16,15 +16,15 @@ import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-valida
 import { Constr, Data, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { planFaultProofFieldOpening } from "../../src/field-opening.js";
-import { submitRemoveFraudulentBlock } from "../../src/index.js";
-import { buildResolvedInit } from "../../src/submit-init.js";
+import { planFaultProofFieldOpening } from "../../src/field-opening.plan-fault-proof-field-opening.js";
+import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import { buildResolvedInit } from "../../src/submit-init.submit-resolved-init.js";
 import { commitCountedRoot } from "../../src/transition-trace/phas.js";
 import {
   buildEventToStepMembershipProof,
   buildForcedTransactionLeafMembershipProof,
   buildIndexedTraceProof,
-} from "../../src/transition-trace/witnesses.js";
+} from "../../src/transition-trace/witnesses.build-source-membership-proof.js";
 import {
   admitValueConservationArtifact,
   VALUE_CONSERVATION_ARTIFACT,
@@ -43,7 +43,7 @@ import {
   buildConservationCancel,
   conservationStep,
 } from "../../src/value-not-preserved/submit-union.js";
-import { planConservationFold } from "../../src/value-not-preserved/union-plan.js";
+import { planConservationFold } from "../../src/value-not-preserved/union-plan.plan-conservation-fold.js";
 import {
   ConservationClaim,
   ConservationTerminalArgs,
@@ -52,19 +52,19 @@ import {
 import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../../src/workflow/raw-l1-publication-observation.js";
 import { createConfirmedActionJournal } from "./confirmed-action-journal.js";
-import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.js";
-import { registerChunkedVerifyRewardAccount } from "./submit-init-emulator-shared.js";
+import { network } from "./emulator/blueprints.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
-  buildRemovalDeploymentInfo,
-  captureEmulatorSubmission,
-  expectProofFit,
   funderPaymentKeyHash,
-  network,
-  publishPlainReferenceScriptUtxo,
-  publishRemovalReferenceScripts,
-  submitSetupTx,
-} from "./submit-init-emulator-shared.js";
+  registerChunkedVerifyRewardAccount,
+} from "./emulator/emulator-context.js";
+import { captureEmulatorSubmission } from "./emulator/measurement.js";
+import { expectProofFit } from "./emulator/proof-fit.js";
+import { publishRemovalReferenceScripts } from "./emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.build-removal-deployment-info.js";
+import { submitSetupTx } from "./emulator/setup-tx.submit-setup-tx.js";
+import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.build-decoding-block-fixture.js";
 import {
   buildAndSubmitUnjournaled,
   certifyCarriageUnjournaled,
@@ -74,11 +74,11 @@ import {
 import { syntheticDeepMembershipProof } from "./synthetic-deep-proof.js";
 import {
   buildValueNotPreservedFixture,
-  makeValueNotPreservedEmulatorHarness,
   vnpOutput,
   vnpOutRef,
   vnpValue,
-} from "./value-not-preserved-emulator.js";
+} from "./value-not-preserved-emulator.build-value-not-preserved-fixture.js";
+import { makeValueNotPreservedEmulatorHarness } from "./value-not-preserved-emulator.commit-header-after-anchor-block.js";
 
 const VALUE_CONSERVATION_CASES = [
   {

@@ -16,7 +16,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { assertWorkflowActuationPermitIdentity } from "./actuation-permit.js";
+import { assertWorkflowActuationPermitIdentity } from "./actuation-permit.assert-workflow-actuation-permit-identity.js";
 import { exactResolvedOutputCbor } from "./funding-reservation-permit.create-workflow-funding-reservation-permit.js";
 import { workflowFundingExclusiveProtocolInput } from "./funding-reservation-permit.excluded-by-protocol-input.js";
 import { addMintedAssets } from "./funding-reservation-permit.ledger-accounting.js";

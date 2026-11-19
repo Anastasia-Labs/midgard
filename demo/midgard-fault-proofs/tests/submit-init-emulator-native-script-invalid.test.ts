@@ -3,31 +3,27 @@ import { FraudProofTokenDatum } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildNativeScriptInvalidInit,
-  buildNativeScriptInvalidStep01,
-  buildNativeScriptInvalidStep02,
-  buildNativeScriptInvalidStep03,
-  buildNativeScriptInvalidStep03StartSignerScan,
-  buildNativeScriptInvalidStep04,
-  buildNativeScriptInvalidStep05,
-  submitRemoveFraudulentBlock,
-} from "../src/index.js";
+import { buildNativeScriptInvalidInit } from "../src/native-script-invalid/submit-init.js";
+import { buildNativeScriptInvalidStep01 } from "../src/native-script-invalid/submit-step-01.js";
+import { buildNativeScriptInvalidStep02 } from "../src/native-script-invalid/submit-step-02.js";
+import { buildNativeScriptInvalidStep03 } from "../src/native-script-invalid/submit-step-03.js";
+import { buildNativeScriptInvalidStep03StartSignerScan } from "../src/native-script-invalid/submit-step-03-staged.js";
+import { buildNativeScriptInvalidStep04 } from "../src/native-script-invalid/submit-step-04.js";
+import { buildNativeScriptInvalidStep05 } from "../src/native-script-invalid/submit-step-05.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import { parseSubmitStep01TxInclusion } from "../src/step-support.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { VAN_ROSSEM_TRANSACTION_LIMITS } from "./support/emulator/protocol-parameters.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import {
-  buildNativeScriptInvalidEmulatorFixture,
   makeNativeScriptInvalidEmulatorHarness,
   publishFinalFamilyReferenceScripts,
-} from "./support/final-catalogue-emulator.js";
-import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
-import {
-  buildRemovalDeploymentInfo,
-  expectSingleUtxoWithUnit,
-  network,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/final-catalogue-emulator.build-min-ada-tx-emulator-fixture.js";
+import { buildNativeScriptInvalidEmulatorFixture } from "./support/final-catalogue-emulator.build-native-script-invalid-emulator-fixture.js";
+import { setupFraudulentBlock } from "./support/submit-init/removal.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,

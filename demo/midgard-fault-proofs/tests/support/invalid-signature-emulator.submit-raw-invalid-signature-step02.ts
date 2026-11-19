@@ -6,10 +6,8 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import {
-  faultProofFieldOpening,
-  planFaultProofFieldOpening,
-} from "../../src/field-opening.js";
+import { planFaultProofFieldOpening } from "../../src/field-opening.plan-fault-proof-field-opening.js";
+import { faultProofFieldOpening } from "../../src/field-opening.publish-fault-proof-field-carriage.js";
 import {
   requireFaultProofStepReferenceScript,
   resolveInvalidSignatureDeploymentContracts,
@@ -21,11 +19,11 @@ import {
 import { outputWithDatumAndUnitPredicate } from "../../src/tx-layout.js";
 import { witnessMintingPolicyCarriage } from "../../src/witness-reference-scripts.js";
 import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
+import { network } from "./emulator/blueprints.js";
 import {
   type InvalidSignatureEmulatorHarness,
   type InvalidSignatureSubject,
 } from "./invalid-signature-emulator.build-invalid-signature-subject.js";
-import { network } from "./submit-init-emulator-shared.js";
 import { publishCarriageUnjournaled } from "./submit-unjournaled.js";
 
 /**

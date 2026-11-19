@@ -1,13 +1,13 @@
 import { encodeCborBytes } from "@al-ft/midgard-core/codec/cbor";
+import { encodeMidgardCekPlutusData } from "@al-ft/midgard-validation/cek-constant";
+import { encodeMidgardCekCardanoFlatProgram } from "@al-ft/midgard-validation/cek-program";
 import {
-  encodeMidgardCekCardanoFlatProgram,
   evaluateMidgardCekVerdict,
   type MidgardCekVerdictRequest,
-} from "@al-ft/midgard-validation";
-import { encodeMidgardCekPlutusData } from "@al-ft/midgard-validation/cek-constant";
-import { DataI } from "@al-ft/midgard-validation/uplc";
+} from "@al-ft/midgard-validation/phase-b";
 import {
   Application,
+  DataI,
   ErrorUPLC,
   Lambda,
   UPLCConst,
@@ -20,10 +20,10 @@ import { describe, expect, it } from "vitest";
 
 import { pooledCekVerdictEvaluator } from "../src/fibers/tx-queue-processor.pooled-cek-verdict.js";
 import {
-  FixedValidationWorkerPool,
   type ValidationPoolService,
   ValidationWorkerError,
-} from "../src/services/validation-pool.js";
+} from "../src/services/validation-pool.bundled-worker-exec-argv.js";
+import { FixedValidationWorkerPool } from "../src/services/validation-pool.fixed-validation-worker-pool.js";
 import { packPhaseAJob } from "../src/workers/utils/validation-pool.js";
 import {
   init,

@@ -3,9 +3,10 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
 import { loadPhasMembershipWithdrawalScript } from "../phas-membership.js";
-import { Lucid, MidgardContracts } from "../services/index.js";
 import type { IntentJournal } from "../services/intent-journal.js";
 import { landedStateQueueUTxOs } from "../services/landed-state-queue.js";
+import { Lucid } from "../services/lucid.js";
+import { MidgardContracts } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   ensurePhasMembershipRewardAccountRegisteredProgram,
   queryPhasMembershipRewardAccountRegisteredProgram,

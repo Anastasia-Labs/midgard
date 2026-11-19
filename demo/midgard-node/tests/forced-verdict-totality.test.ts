@@ -22,10 +22,8 @@ import { describe, expect, it } from "vitest";
 
 import { FUNDED_OUTPUT_LOVELACE } from "../../midgard-validation/tests/validation-fixtures.js";
 import { ForcedTransactionsDB } from "../src/database/index.js";
-import {
-  buildPlaceholderValidationTraceMembers,
-  classifyForcedTransactions,
-} from "../src/mpf/index.js";
+import { classifyForcedTransactions } from "../src/mpf/event-window.classify-forced-transactions.js";
+import { buildPlaceholderValidationTraceMembers } from "../src/mpf/validation-trace.js";
 import {
   makeOutput,
   TEST_ADDRESS,

@@ -1,6 +1,8 @@
 import { computeMidgardNativeTxId } from "@al-ft/midgard-core";
-import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
-import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
+import {
+  deriveMidgardForcedTxProofSource,
+  materializeMidgardForcedTxFromCanonical,
+} from "@al-ft/midgard-core/codec/forced";
 import {
   acceptedVerdictSubject,
   forcedVerdictSubject,
@@ -14,7 +16,7 @@ import {
 } from "../src/invalid-range/family.js";
 import { detectInvalidRangeForcedReplay } from "../src/invalid-range/replay.js";
 import type { InvalidRangeForcedInput } from "../src/invalid-range/v1.js";
-import { INVALID_RANGE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
+import { INVALID_RANGE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.detect-double-withdraws.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 
 const tx = "11".repeat(32);

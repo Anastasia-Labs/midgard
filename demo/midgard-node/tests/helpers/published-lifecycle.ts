@@ -4,7 +4,7 @@ import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-id
 import { paymentCredentialOf } from "@lucid-evolution/lucid";
 import { expect, vi } from "vitest";
 
-import { ContractDeploymentIdentity } from "../../src/services/midgard-contracts.js";
+import { ContractDeploymentIdentity } from "../../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   configureEmulatorDaRuntimeManifest,
   type EmulatorFixture,

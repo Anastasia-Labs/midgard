@@ -5,36 +5,33 @@ import {
   Proof,
   ROOT_DOMAINS,
 } from "@al-ft/midgard-sdk";
-import { Data } from "@lucid-evolution/lucid";
-import { getAddressDetails } from "@lucid-evolution/lucid";
+import { Data, getAddressDetails } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import { planFaultProofFieldOpening } from "../src/field-opening.js";
+import { planFaultProofFieldOpening } from "../src/field-opening.plan-fault-proof-field-opening.js";
 import { type BoundDuplicateInput } from "../src/input-set-uniqueness/index.js";
-import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
+import { network } from "./support/emulator/blueprints.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import {
   captureEmulatorSubmission,
   type CompleteSignedTransactionMeasurement,
 } from "./support/emulator/measurement.js";
+import { expectProofFit } from "./support/emulator/proof-fit.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
-import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
 import {
   buildInputSetUniquenessFixture,
   makeInputSetUniquenessEmulatorHarness,
   publishInputSetUniquenessReferenceScripts,
-} from "./support/input-set-uniqueness-emulator.js";
+} from "./support/input-set-uniqueness-emulator.build-input-set-uniqueness-fixture.js";
 import { expectRawScanFinalizeRefused } from "./support/input-set-uniqueness-raw.submit-scan-finalize-raw.js";
 import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
-import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
-import {
-  expectProofFit,
-  network,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
+import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init/forced-transitions.js";
 import {
   submitInputSetUniquenessForcedStep01,
   submitInputSetUniquenessInit,

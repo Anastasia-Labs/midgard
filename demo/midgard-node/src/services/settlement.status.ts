@@ -21,7 +21,7 @@ import { Effect } from "effect";
 
 import * as Journal from "../database/settlement.js";
 import { readIntentStatus } from "./intent-journal.js";
-import { ContractDeploymentIdentity } from "./midgard-contracts.js";
+import { ContractDeploymentIdentity } from "./midgard-contracts.make-midgard-contract-runtime.js";
 import { settlementNextPhase } from "./settlement.reconcile-attempt.js";
 
 export type SettlementLevel = "final" | "safe" | "open";

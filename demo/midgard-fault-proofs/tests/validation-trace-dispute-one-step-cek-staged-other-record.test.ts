@@ -20,7 +20,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { VALIDATION_TRACE_STAGING_OUTSTANDING } from "../src/validation-trace-dispute/one-step-staging-sweep.js";
 import { VALIDATION_TRACE_ONE_STEP_REQUIRED } from "../src/validation-trace-dispute/threads.js";
-import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.js";
+import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { emulatorSignedTransactionRecovery } from "./support/emulator-signed-recovery.js";
 import { threadPlace } from "./support/validation-trace-dispute-one-step-play.js";

@@ -2,14 +2,16 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
 import { isRetryableProviderError } from "../provider-retry.js";
+import { NodeConfig } from "../services/index.js";
+import { Lucid } from "../services/lucid.js";
 import {
   assertLucidL1SlotConfigMatchesDeployment,
-  ContractDeploymentIdentity,
   deploymentL1SlotConfig,
-  Lucid,
+} from "../services/midgard-contracts.load-reference-script-auth-validator.js";
+import {
+  ContractDeploymentIdentity,
   MidgardContracts,
-  NodeConfig,
-} from "../services/index.js";
+} from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   AVAILABILITY_REWARD_ACCOUNT_UNREGISTERED,
   DEPLOYMENT_MANIFEST_MISMATCH,

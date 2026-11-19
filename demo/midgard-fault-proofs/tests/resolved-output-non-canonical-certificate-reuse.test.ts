@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { buildResolvedOutputNonCanonicalStep02 } from "../src/resolved-output-non-canonical/index.js";
+import { buildResolvedOutputNonCanonicalStep02 } from "../src/resolved-output-non-canonical/submit-step-02.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
   driveCapturedStep,
@@ -14,14 +14,14 @@ import {
 } from "./support/captured-step-turns.js";
 import {
   buildPriorLedger,
-  commitBlock,
   makeResolvedOutputContext,
-  makeResolvedOutputStages,
   MAXIMUM_INPUT_ITEM_COUNT,
-  resolvedOutputEvidence,
   smallMalformedOutput,
   subjectTransactionFor,
-} from "./support/resolved-output-non-canonical-emulator.js";
+} from "./support/resolved-output-non-canonical-emulator.build-prior-ledger.js";
+import { commitBlock } from "./support/resolved-output-non-canonical-emulator.commit-block.js";
+import { makeResolvedOutputStages } from "./support/resolved-output-non-canonical-emulator.make-resolved-output-stages.js";
+import { resolvedOutputEvidence } from "./support/resolved-output-non-canonical-emulator.resolved-output-evidence.js";
 
 describe("resolvedOutputNonCanonical step 02 built turn by turn", () => {
   it("reuses the field certificate already on chain, so the next built transaction is the step", async () => {

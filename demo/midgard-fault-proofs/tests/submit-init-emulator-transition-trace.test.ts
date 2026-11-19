@@ -19,41 +19,39 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import { FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY } from "../src/runtime.fraud-proof-deployment-entries-by-category.js";
+import { resolveProverSigner } from "../src/runtime.resolve-prover-signer.js";
+import { buildInit } from "../src/submit-init.submit-init.js";
+import { buildTransitionTraceProof } from "../src/transition-trace/submit.submit-transition-trace-proof.js";
 import {
-  buildTransitionTraceProof,
-  FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY,
-  resolveProverSigner,
-  submitRemoveFraudulentBlock,
-} from "../src/index.js";
-import { alignEmulatorToWholeSecond } from "./support/emulator/emulator-context.js";
+  alwaysSucceedsBlueprintPath,
+  network,
+  readBlueprint,
+  realBlueprintPath,
+} from "./support/emulator/blueprints.js";
+import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
+import { buildMinimalFaultProofContracts } from "./support/emulator/contracts.build-minimal-fault-proof-contracts.js";
+import {
+  alignEmulatorToWholeSecond,
+  alignUnixTimeToEmulatorSlotBoundary,
+  expectSingleUtxoWithUnit,
+  fundedProverEmulatorAccount,
+  registerPhasMembershipRewardAccount,
+} from "./support/emulator/emulator-context.js";
+import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
 import { createReferenceScriptPublisher } from "./support/emulator/reference-script-publisher.js";
 import {
   publishFaultProofWitnessReferenceScripts,
   publishOperatorLifecycleReferenceScripts,
 } from "./support/emulator/reference-scripts.js";
-import { buildInit } from "./support/legacy-submit-emulator.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { publishFraudProofChainReferenceScripts } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
+import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
-import {
-  buildInvalidForcedTransitionTraceFixture,
-  expectStateQueueHeaderOrder,
-} from "./support/submit-init-emulator-fixtures.js";
-import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  alwaysSucceedsBlueprintPath,
-  buildCatalogueDeploymentInfo,
-  buildMinimalFaultProofContracts,
-  buildRemovalDeploymentInfo,
-  EMULATOR_PROTOCOL_PARAMETERS,
-  expectSingleUtxoWithUnit,
-  fundedProverEmulatorAccount,
-  network,
-  publishFraudProofChainReferenceScripts,
-  publishRemovalReferenceScripts,
-  readBlueprint,
-  realBlueprintPath,
-  registerPhasMembershipRewardAccount,
-  submitSetupTx,
-} from "./support/submit-init-emulator-shared.js";
+import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init/forced-transitions.js";
+import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,

@@ -23,8 +23,8 @@ import {
 import type { FollowerPlanRead } from "../../src/services/l1-follower.readiness.js";
 import { makeDriverRecompute } from "../../src/services/l1-follower.recompute.js";
 import { Lucid } from "../../src/services/lucid.js";
-import { mempoolLedgerCacheLayer } from "../../src/services/mempool-ledger-cache.js";
-import { MidgardContracts } from "../../src/services/midgard-contracts.js";
+import { mempoolLedgerCacheLayer } from "../../src/services/mempool-ledger-cache.make-mempool-ledger-cache.js";
+import { MidgardContracts } from "../../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import { modelSlotTime, writeFollowerView } from "./follower-view.js";
 
 /** The named hold of a refused write, if it was refused by one. */

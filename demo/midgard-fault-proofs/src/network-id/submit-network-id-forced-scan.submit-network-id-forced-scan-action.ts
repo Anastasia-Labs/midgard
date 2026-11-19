@@ -13,11 +13,11 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
+import { resolveFaultProofFieldPreimageCertificate } from "../field-opening.certify-fault-proof-field-carriage.js";
 import {
   faultProofFieldOpening,
   resolveFaultProofFieldCarriagePublications,
-  resolveFaultProofFieldPreimageCertificate,
-} from "../field-opening.js";
+} from "../field-opening.publish-fault-proof-field-carriage.js";
 import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import { fetchUtxoByOutRef, outRefLabel, parseOutRef } from "../runtime.js";
 import { requireComputationThreadToken } from "../step-support.js";
@@ -27,13 +27,15 @@ import { NETWORK_ID_CATEGORY_LABEL } from "./contracts.js";
 import {
   encodeNetworkIdForcedScanGrammarCheckpoint,
   encodeNetworkIdForcedScanWalkCheckpoint,
+  type NetworkIdForcedScanStep,
+} from "./forced-scan-plan.advance-grammar-by.js";
+import {
   networkIdForcedScanPriorGrammar,
   networkIdForcedScanPriorWalk,
-  type NetworkIdForcedScanStep,
-} from "./forced-scan-plan.js";
+} from "./forced-scan-plan.plan-network-id-forced-scan.js";
 import { networkIdSubmitError } from "./submit-common.js";
-import type { NetworkIdForcedScanBuild } from "./submit-network-id-forced-scan.require-scan-state.js";
 import {
+  type NetworkIdForcedScanBuild,
   requireForcedScanContract,
   requireScanState,
   STEP_LABEL,

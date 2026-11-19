@@ -3,7 +3,7 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { placeholderValidationTraceDescriptorVector } from "../../midgard-validation/tests/placeholder-validation-trace-descriptor-v1.vectors.js";
-import { buildPlaceholderValidationTraceMembers } from "../src/mpf/index.js";
+import { buildPlaceholderValidationTraceMembers } from "../src/mpf/validation-trace.js";
 
 const normal = placeholderValidationTraceDescriptorVector(
   "normal-transaction-accepted",

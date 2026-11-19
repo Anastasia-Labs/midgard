@@ -28,14 +28,16 @@ import {
 } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
+import { fetchUtxoByOutRef } from "../../../src/runtime.require-fault-proof-step-reference-script.js";
+import { requireSingletonUtxo } from "../../../src/runtime.resolve-category-deployment-contracts.js";
 import {
-  fetchUtxoByOutRef,
-  parseOutRef,
   phasMembershipRewardAddress,
-  requireSingletonUtxo,
   resolveFraudulentHeaderHash,
+} from "../../../src/runtime.resolve-fraudulent-header-hash.js";
+import {
+  parseOutRef,
   resolveProverSigner,
-} from "../../../src/index.js";
+} from "../../../src/runtime.resolve-prover-signer.js";
 import { type FabricatedDepositContracts } from "../../../src/submit-fabricated-deposit-step-01.js";
 import { type FabricatedWithdrawalContracts } from "../../../src/submit-fabricated-withdrawal-step-01.js";
 import { computationThreadOutputPredicate } from "../../../src/tx-layout.js";

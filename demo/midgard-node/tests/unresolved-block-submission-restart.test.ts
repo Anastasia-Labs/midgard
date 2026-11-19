@@ -2,12 +2,12 @@ import { SqlClient } from "@effect/sql";
 import { Effect, Ref } from "effect";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { hydratePendingBlockFinalizationOnStartup } from "../src/commands/listen-startup.js";
+import { hydratePendingBlockFinalizationOnStartup } from "../src/commands/listen-startup.seed-latest-local-block-boundary-on-startup.js";
 import { classifyCommitWorkerOutputAgainstLeaseJournal } from "../src/fibers/commit-worker-failure-classification.js";
 import { Frontier } from "../src/landed-blocks/store.js";
 import { Database } from "../src/services/database.js";
-import { Globals } from "../src/services/globals.js";
-import { MidgardContracts } from "../src/services/midgard-contracts.js";
+import { Globals } from "../src/services/globals.globals.js";
+import { MidgardContracts } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   BASE_HEADER,
   BASE_OUT,

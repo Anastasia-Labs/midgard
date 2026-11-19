@@ -11,47 +11,51 @@ import type { FaultProofFieldGrammarDeployment } from "../src/field-grammar-cert
 import {
   type FaultProofFieldOpeningPlan,
   planFaultProofFieldOpening,
-} from "../src/field-opening.js";
-import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
+} from "../src/field-opening.plan-fault-proof-field-opening.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import type { SubmitStep01TxInclusion } from "../src/step-support.js";
-import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
+import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
 import {
   applyWitnessScriptDecodingScripts,
-  buildWitnessScriptDecodingCancel,
-  buildWitnessScriptDecodingInit,
-  buildWitnessScriptDecodingStep01Accepted,
-  buildWitnessScriptDecodingStep01Forced,
-  buildWitnessScriptDecodingStep02,
-  buildWitnessScriptDecodingStep03,
-  buildWitnessScriptDecodingStep04,
-  planWitnessScriptDecodingStep03Transition,
   WITNESS_SCRIPT_DECODING_BLUEPRINT_TITLES,
   type WitnessScriptDecodingContracts,
-  type WitnessScriptDecodingEvidence,
-} from "../src/witness-script-decoding/index.js";
+} from "../src/witness-script-decoding/contracts.js";
+import { buildWitnessScriptDecodingCancel } from "../src/witness-script-decoding/submit-cancel.js";
+import { buildWitnessScriptDecodingInit } from "../src/witness-script-decoding/submit-init.js";
+import {
+  buildWitnessScriptDecodingStep01Accepted,
+  buildWitnessScriptDecodingStep01Forced,
+} from "../src/witness-script-decoding/submit-step-01.js";
+import { buildWitnessScriptDecodingStep02 } from "../src/witness-script-decoding/submit-step-02.js";
+import {
+  buildWitnessScriptDecodingStep03,
+  planWitnessScriptDecodingStep03Transition,
+} from "../src/witness-script-decoding/submit-step-03.js";
+import { buildWitnessScriptDecodingStep04 } from "../src/witness-script-decoding/submit-step-04.js";
+import type { WitnessScriptDecodingEvidence } from "../src/witness-script-decoding/witness-script-decoding.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
+import { network } from "./support/emulator/blueprints.js";
+import {
+  alignUnixTimeToEmulatorSlotBoundary,
+  funderPaymentKeyHash,
+} from "./support/emulator/emulator-context.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import {
   captureEmulatorSubmission,
   type CompleteSignedTransactionMeasurement,
 } from "./support/emulator/measurement.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 import {
   expectRegisteredChainParity,
   familyStepsFromRegisteredChain,
 } from "./support/emulator/registered-chain.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
+import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
 import { TRACED_REFUSALS } from "./support/emulator/traced-refusals.js";
-import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
+import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.build-decoding-block-fixture.js";
 import { recordPlutusItem } from "./support/script-decode-emulator.js";
-import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  buildRemovalDeploymentInfo,
-  funderPaymentKeyHash,
-  makeFaultProofEmulatorHarness,
-  network,
-  publishPlainReferenceScriptUtxo,
-  publishRemovalReferenceScripts,
-  submitSetupTx,
-} from "./support/submit-init-emulator-shared.js";
 import {
   buildAndSubmitUnjournaled,
   certifyCarriageUnjournaled,
@@ -62,11 +66,15 @@ import {
   ADJACENT_FIELD_BYTES,
   overBoundFieldCarriagePlan,
   scriptWitnessField,
+} from "./support/witness-script-decoding-raw.over-bound-field-carriage-plan.js";
+import {
   submitWitnessScriptDecodingStep01ForcedRaw,
   submitWitnessScriptDecodingStep02Raw,
+} from "./support/witness-script-decoding-raw.submit-witness-script-decoding-step02-raw.js";
+import {
   submitWitnessScriptDecodingStep03Raw,
   submitWitnessScriptDecodingStep04Raw,
-} from "./support/witness-script-decoding-raw.js";
+} from "./support/witness-script-decoding-raw.submit-witness-script-decoding-step03-raw.js";
 import {
   CANCELLABLE_STEPS,
   CATEGORY_ID,

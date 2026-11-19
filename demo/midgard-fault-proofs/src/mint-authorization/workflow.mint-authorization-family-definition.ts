@@ -8,18 +8,16 @@ import {
   MintAuthorizationWitnessScanDatum,
 } from "@al-ft/midgard-sdk";
 
-import { MINT_AUTHORIZATION_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
+import { MINT_AUTHORIZATION_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.create-complete-canonical-replay-union.js";
 import { cursorFamilyActionInput } from "../workflow/cursor-family-runtime.js";
 import { MINT_AUTHORIZATION_CURSOR_SPEC } from "../workflow/cursor-family-spec.js";
+import { MEMBERSHIP_WITNESS_ROLES } from "../workflow/family-definition.family-adapter-arm.js";
 import {
   cursorStepContractNames,
   defineFamily,
-  MEMBERSHIP_WITNESS_ROLES,
-} from "../workflow/family-definition.js";
-import {
-  assembleManifestBoundFamilyWorkflow,
-  runOrResumeManifestBoundFamilyWorkflow,
-} from "../workflow/manifest-bound-family-assembly.js";
+} from "../workflow/family-definition.family-definition.js";
+import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
+import { runOrResumeManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.run-or-resume-manifest-bound-family-workflow.js";
 import { admitMintAuthorizationWorkflowArtifact } from "./artifact.js";
 import type { MintAuthorizationContracts } from "./contracts.js";
 import {

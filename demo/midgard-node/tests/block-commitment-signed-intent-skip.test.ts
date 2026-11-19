@@ -7,9 +7,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as PendingBlockFinalizationsDB from "../src/database/pendingBlockFinalizations.js";
 import { Frontier } from "../src/landed-blocks/store.js";
-import { Globals, NodeConfig } from "../src/services/index.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
+import { Globals } from "../src/services/globals.globals.js";
 import { Lucid } from "../src/services/lucid.js";
-import { MidgardContracts } from "../src/services/midgard-contracts.js";
+import { MidgardContracts } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import { simCommitAnchor } from "./helpers/landed-blocks-sim.own.js";
 import {
   prepareUnderTestLease,

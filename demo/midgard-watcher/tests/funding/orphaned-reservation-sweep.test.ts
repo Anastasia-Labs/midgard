@@ -2,10 +2,8 @@ import { supersededAttemptReadSchedule } from "@al-ft/midgard-fault-proofs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WATCHER_PROVER_FUNDING_ORPHANED_RESERVATION } from "../../src/funding/prover-funding-recovery.orphaned-reservation.js";
-import {
-  cleanupFundingRecoveryFixtures,
-  setupFundingRecoveryFixture,
-} from "../support/fault-proof-funding-fixture.js";
+import { setupFundingRecoveryFixture } from "../support/fault-proof-funding-fixture.setup-funding-recovery-fixture.js";
+import { cleanupFundingRecoveryFixtures } from "../support/fault-proof-funding-fixture.sources-for.js";
 import { orphanReadingFactory } from "./orphaned-reservation-fixture.js";
 import { expiredNotFound } from "./prover-funding-recovery.retirement-fixture.js";
 import { retirementFixture } from "./sqlite-prover-funding-reservation-store.signed-transition.js";

@@ -4,7 +4,7 @@ import { type LucidEvolution, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { Effect, Either, Ref } from "effect";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 
-import { observeAndRecordAttestationTimeoutQueue } from "../src/fibers/attestation-timeout-correction.js";
+import { observeAndRecordAttestationTimeoutQueue } from "../src/fibers/attestation-timeout-correction.reconcile-state-queue-corrections.js";
 import {
   observeAttestationTimeoutQueue,
   timeoutCorrectionJournalNeedsRecovery,

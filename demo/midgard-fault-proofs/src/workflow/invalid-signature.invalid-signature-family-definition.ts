@@ -4,8 +4,8 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import { INVALID_SIGNATURE_FORCED_ARTIFACT } from "../invalid-signature/artifact.js";
-import { INVALID_SIGNATURE_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
-import { defineLinearFamily } from "./family-definition.js";
+import { INVALID_SIGNATURE_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
+import { defineLinearFamily } from "./family-definition.family-definition.js";
 import type { FieldCarriageRequirement } from "./field-carriage-prerequisite.js";
 import {
   admitWorkflowArtifact,
@@ -20,10 +20,8 @@ import {
   record,
   witnessSetCbor,
 } from "./invalid-signature.parse-address-witnesses.js";
-import {
-  assembleManifestBoundFamilyWorkflow,
-  runOrResumeManifestBoundFamilyWorkflow,
-} from "./manifest-bound-family-assembly.js";
+import { assembleManifestBoundFamilyWorkflow } from "./manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
+import { runOrResumeManifestBoundFamilyWorkflow } from "./manifest-bound-family-assembly.run-or-resume-manifest-bound-family-workflow.js";
 
 export const INVALID_SIGNATURE_FAMILY_DEFINITION = defineLinearFamily({
   category: "invalidSignature",

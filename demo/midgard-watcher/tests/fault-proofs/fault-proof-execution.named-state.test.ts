@@ -14,7 +14,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { WATCHER_FAULT_PROOF_CONTINUATION_STALLED } from "../../src/fault-proofs/fault-proof-continuation-stall.js";
 import { WATCHER_PROVER_FUNDING_UNAVAILABLE } from "../../src/fault-proofs/fault-proof-funding-hold.js";
 import { setupFaultProofExecution } from "../support/fault-proof-execution-fixture.js";
-import { cleanupFundingRecoveryFixtures } from "../support/fault-proof-funding-fixture.js";
+import { cleanupFundingRecoveryFixtures } from "../support/fault-proof-funding-fixture.sources-for.js";
 
 afterEach(cleanupFundingRecoveryFixtures);
 

@@ -1,10 +1,8 @@
 import { DOUBLE_WITHDRAW_VIOLATION_ID } from "@al-ft/midgard-sdk";
 
 import { parseSubmitDoubleWithdrawInclusion } from "../double-withdraw/submit-double-withdraw-step-01.js";
-import {
-  type PreparedDoubleWithdrawOutput,
-  prepareDoubleWithdrawFromCommittedLeaves,
-} from "../prepare-double-withdraw.js";
+import { prepareDoubleWithdrawFromCommittedLeaves } from "../prepare-double-withdraw.prepare-double-withdraw-from-committed-leaves.js";
+import type { PreparedDoubleWithdrawOutput } from "../prepare-double-withdraw.require-selected-pair.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import { type JournalJsonObject } from "./journal.js";
 

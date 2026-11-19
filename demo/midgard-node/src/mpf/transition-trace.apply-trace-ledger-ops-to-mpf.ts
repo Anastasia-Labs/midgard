@@ -6,7 +6,7 @@ import {
   type NativeMpfGenerationHandle,
   type NativeMpfOwnerClient,
 } from "../services/mpf-native-owner/index.js";
-import { keyValuePhasRootWithCount } from "../workers/utils/mpf/phas.js";
+import { keyValuePhasRootWithCount } from "../workers/utils/mpf/phas.key-value-phas-non-membership-proof.js";
 import {
   buildCountedMpfRootInWorker,
   shouldBuildMpfRootInWorker,

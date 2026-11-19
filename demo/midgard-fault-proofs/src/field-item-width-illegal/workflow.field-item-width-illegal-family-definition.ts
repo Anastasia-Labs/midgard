@@ -5,23 +5,21 @@ import {
 import { decodeMidgardForcedTxCompact } from "@al-ft/midgard-core/codec/forced";
 import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk";
 
-import { planFaultProofFieldOpening } from "../field-opening.js";
-import { FIELD_ITEM_WIDTH_ILLEGAL_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
-import { CURSOR_FAMILY_TRANSACTION_PORT } from "../workflow/cursor-family-adapter.js";
+import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
+import { FIELD_ITEM_WIDTH_ILLEGAL_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
+import { CURSOR_FAMILY_TRANSACTION_PORT } from "../workflow/cursor-family-adapter.admit-reference-scripts.js";
 import {
   captureCursorRemoval,
   cursorFamilyActionInput,
   cursorStringField,
 } from "../workflow/cursor-family-runtime.js";
+import { assertManifestBoundWorkflowSigner } from "../workflow/deployment-manifest-binding.assert-deployment-info-matches-manifest.js";
+import { bindFraudProofWorkflowDeployment } from "../workflow/deployment-manifest-binding.js";
+import { CORE_WITNESS_ROLES } from "../workflow/family-definition.family-adapter-arm.js";
 import {
-  assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
-} from "../workflow/deployment-manifest-binding.js";
-import {
-  CORE_WITNESS_ROLES,
   cursorStepContractNames,
   defineFamily,
-} from "../workflow/family-definition.js";
+} from "../workflow/family-definition.family-definition.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import { journaledStepTransaction } from "../workflow/step-transaction.js";
 import { workflowTransactionInputOutRefs } from "../workflow/transaction-boundary.js";

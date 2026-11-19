@@ -21,8 +21,8 @@ import {
 } from "../../database/utils/common.js";
 import { forcedOrderHorizon } from "../../forced-orders/horizon.js";
 import { type UtxoPayloadEntry } from "../../mpf/index.js";
+import { Database } from "../../services/database.js";
 import { requireCandidateView } from "../../services/follower-write-gate.js";
-import { Database } from "../../services/index.js";
 
 /** True when both lists hold the same ids, each exactly once. */
 const sameSourceIdSet = (

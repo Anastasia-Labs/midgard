@@ -25,17 +25,17 @@ import {
   fetchKupoAncestorPoint,
   fetchKupoCreationPoint,
   fetchKupoSpend,
-  type FetchLike,
-  readLocalOgmiosTip,
-  readOgmiosBlockTransaction,
-  type WebSocketFactory,
-} from "./kupmios-history.js";
+} from "./kupmios-history.fetch-kupo-spend.js";
 import {
   DEFAULT_L1_READ_TIMEOUT_MS,
   fetchJsonWithTimeout,
+  type FetchLike,
   joinUrl,
   normalizeKupoHttpUrl,
+  type WebSocketFactory,
 } from "./kupmios-history.l1-chain-point.js";
+import { readLocalOgmiosTip } from "./kupmios-history.ogmios-tip.js";
+import { readOgmiosBlockTransaction } from "./kupmios-history.read-ogmios-block-transaction.js";
 
 export type KupmiosAvailabilitySourceInput = Readonly<{
   lucid: LucidEvolution;

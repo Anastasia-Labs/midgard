@@ -4,7 +4,7 @@
 import type * as SDK from "@al-ft/midgard-sdk";
 import { Data, type RedeemerContext, type UTxO } from "@lucid-evolution/lucid";
 
-import { createDirectFieldPlan } from "../direct-script-derivation/index.js";
+import { createDirectFieldPlan } from "../direct-script-derivation/field-plan.js";
 import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
 import type { DirectPurposeRole } from "./family.js";
 

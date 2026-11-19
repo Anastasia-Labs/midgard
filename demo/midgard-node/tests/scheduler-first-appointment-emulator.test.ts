@@ -27,12 +27,14 @@ import {
 } from "../src/transactions/reference-scripts.js";
 import { COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/workers/utils/commit-end-time.js";
 import {
-  captureSchedulerSlotSnapshot,
   resolveRefreshedSchedulerStartTime,
   resolveSchedulerFirstAppointmentValidityWindow,
   resolveSchedulerRefreshWitnessSelection,
+} from "../src/workers/utils/scheduler-refresh.resolve-scheduler-refresh-witness-selection.js";
+import {
+  captureSchedulerSlotSnapshot,
   schedulerStateCoversCommitTarget,
-} from "../src/workers/utils/scheduler-refresh.js";
+} from "../src/workers/utils/scheduler-refresh.scheduler-refresh-due-work-from-no-inline-submit-defer.js";
 import {
   fetchInactivityDirectorySnapshot,
   fetchSchedulerDatum,

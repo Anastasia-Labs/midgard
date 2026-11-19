@@ -1,13 +1,13 @@
 import { createHash, type Hash } from "node:crypto";
 
-import * as SDK from "@al-ft/midgard-sdk";
-
-import { Columns as TxColumns } from "../../database/utils/tx.js";
 import {
   encodeEventToStepValueCbor,
   encodeTransitionIntegerCbor,
   encodeTransitionStepCbor,
-} from "../../mpf/transition-cbor.js";
+} from "@al-ft/midgard-fault-proofs/block-replay";
+import * as SDK from "@al-ft/midgard-sdk";
+
+import { Columns as TxColumns } from "../../database/utils/tx.js";
 import type { CommitDaFrameMeasurement } from "../utils/commit-block-planner.js";
 import type { DaPayloadBlockContent } from "./submission.assert-pre-submit-da-payload-size.js";
 

@@ -1,17 +1,15 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
-import {
-  classifyHeader,
-  createHeaderClassifier,
-} from "../src/workflow/header-classifier.js";
+import { NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
+import { classifyHeader } from "../src/workflow/header-classifier.classify-header.js";
+import { createHeaderClassifier } from "../src/workflow/header-classifier.create-header-classifier.js";
 import { INSTALLED_FRAUD_PROOF_CATEGORY_ORDER } from "../src/workflow/installed-categories.js";
 import {
   replayBudget,
   setup,
   transport,
 } from "./support/catalogue-retained-classification.setup.js";
-import { buildRetainedPlutusIdentityFixture } from "./support/retained-reason-classifier.js";
+import { buildRetainedPlutusIdentityFixture } from "./support/retained-reason-classifier.build-retained-plutus-fixture.js";
 
 afterEach(() => {
   transport.raw = undefined;

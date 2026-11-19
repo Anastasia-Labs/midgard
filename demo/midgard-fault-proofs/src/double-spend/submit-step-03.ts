@@ -39,11 +39,11 @@ import {
   type FaultProofTurn,
   isPrerequisiteTurn,
 } from "../fault-proof-turn.js";
+import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
 import {
   faultProofFieldOpening,
-  planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
-} from "../field-opening.js";
+} from "../field-opening.publish-fault-proof-field-carriage.js";
 import { parseHex } from "../json-file.js";
 import {
   fetchUtxoByOutRef,
@@ -53,8 +53,7 @@ import {
   type ResolvedProverSigner,
 } from "../runtime.js";
 import { spendInputsWitnessFromCbors } from "../spend-input-witness.js";
-import { completeStep, fundStep } from "../step-completion.js";
-import { finishStep } from "../step-completion.js";
+import { completeStep, finishStep, fundStep } from "../step-completion.js";
 import { requireComputationThreadToken } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts.js";
@@ -62,10 +61,10 @@ import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
-import { workflowReferenceScript } from "../workflow/transaction-boundary.js";
 import {
   type LocallyEvaluatedTransaction,
   type UnjournaledSubmission,
+  workflowReferenceScript,
 } from "../workflow/transaction-boundary.js";
 
 export type Step03Build = {

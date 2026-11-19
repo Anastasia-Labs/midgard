@@ -3,26 +3,24 @@ import type { SqlClient } from "@effect/sql";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { NodeConfig } from "../../services/config.make-config.js";
 import {
   HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
   historyCommitTimingBudget,
 } from "../../services/history-commit-window.js";
 import {
-  type ContractDeploymentIdentityValue,
-  Lucid,
-  NodeConfig,
-} from "../../services/index.js";
-import {
   IntentJournal,
   journaledIntent,
 } from "../../services/intent-journal.js";
+import { Lucid } from "../../services/lucid.js";
+import type { ContractDeploymentIdentityValue } from "../../services/midgard-contracts.load-reference-script-auth-validator.js";
 import {
-  handleSignSubmitNoConfirmation,
   type NoInlineSubmitDefer,
-  type NoInlineSubmitRecoveryOptions,
   type TxSignError,
   TxSubmitError,
-} from "../../transactions/utils.js";
+} from "../../transactions/utils.await-required-output-visibility.js";
+import { handleSignSubmitNoConfirmation } from "../../transactions/utils.await-submitted-transaction-confirmation.js";
+import type { NoInlineSubmitRecoveryOptions } from "../../transactions/utils.submit-recovery-options.js";
 import {
   COMMIT_MINIMUM_FUTURE_BUFFER_MS,
   type CommitTimingBudget,
@@ -32,11 +30,11 @@ import {
   resolveAlignedCommitEndTime,
   resolveCommitValidityInterval,
 } from "../utils/commit-end-time.js";
-import {
-  type CommitTimingDueWork,
-  fetchRealStateQueueWitnessContext,
-  type RealStateQueueWitnessContext,
-} from "../utils/scheduler-refresh.js";
+import { fetchRealStateQueueWitnessContext } from "../utils/scheduler-refresh.fetch-real-state-queue-witness-context.js";
+import type {
+  CommitTimingDueWork,
+  RealStateQueueWitnessContext,
+} from "../utils/scheduler-refresh.scheduler-refresh-due-work-from-no-inline-submit-defer.js";
 import {
   getLatestBlockDatumEndTime,
   hashBlockHeaderLocal,

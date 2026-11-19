@@ -23,7 +23,7 @@ import {
   validationTraceDefendersProof,
 } from "../../src/validation-trace-dispute/defend.js";
 import { validationTraceMoveWindow } from "../../src/validation-trace-dispute/move-builders.js";
-import { network } from "./submit-init-emulator-shared.js";
+import { network } from "./emulator/blueprints.js";
 import { sparseTrace } from "./validation-game-deep-traces.js";
 import { machineState } from "./validation-game-traces.js";
 import { type Scene } from "./validation-trace-dispute-open-scene.js";

@@ -12,11 +12,11 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
+import { assertWatcherStateQueueObservation } from "../indexers/authenticated-state-queue-observation.js";
 import {
-  assertWatcherStateQueueObservation,
   type WatcherAuthenticatedStateQueueObservation,
   type WatcherStateQueueHeaderObservation,
-} from "../indexers/authenticated-state-queue-observation.js";
+} from "../indexers/authenticated-state-queue-observation.parse-persisted-header.js";
 import type { WatcherDeploymentProtocolScriptAuthority } from "../runtime/deployment-identity.js";
 import {
   readWatcherUserEventAuthority,
@@ -29,12 +29,12 @@ import { replayEventIds } from "./replay-events.js";
 import { watcherReplayMaterial } from "./replay-material.js";
 import type { WatcherReplayRetention } from "./replay-retention.js";
 import { WATCHER_QUEUE_OUTPUTS_TABLE } from "./tables.js";
-import type {
-  WatcherUserEventIdentity,
-  WatcherUserEvents,
-  WatcherUserEventScripts,
+import {
+  type WatcherUserEventIdentity,
+  type WatcherUserEvents,
+  type WatcherUserEventScripts,
+  WatcherUserEventUnavailable,
 } from "./user-events.js";
-import { WatcherUserEventUnavailable } from "./user-events.js";
 
 type OneShot = ReturnType<typeof parseHubOracleOneShot>;
 

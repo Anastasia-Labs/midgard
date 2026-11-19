@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { transitionOutputIsWhole } from "../src/transition-trace/output-phases.js";
-import { registerTransitionTraceFinalCases } from "./support/transition-trace-final-cases.js";
+import { registerTransitionTraceFinalCases } from "./support/transition-trace-final-cases.register-transition-trace-final-cases.js";
 
 const enterprise = `581d60${"aa".repeat(28)}`;
 const base = `583900${"ab".repeat(56)}`;

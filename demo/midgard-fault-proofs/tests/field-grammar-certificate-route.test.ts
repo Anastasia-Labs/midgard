@@ -13,7 +13,7 @@ import {
   fieldGrammarRoute,
   routeFaultProofFieldGrammar,
   WALKED_FIELD_GRAMMAR_ROUTE,
-} from "../src/field-grammar-certificate.js";
+} from "../src/field-grammar-certificate.route-fault-proof-field-grammar.js";
 
 const utxo = (txHashByte: string, outputIndex: number): UTxO => ({
   txHash: txHashByte.repeat(32),

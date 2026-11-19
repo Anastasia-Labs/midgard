@@ -9,12 +9,12 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
-import { fabricatedWithdrawalBlockEvidenceFromVerifiedPayload } from "../src/prepare-fabricated-withdrawal.js";
+import { fabricatedWithdrawalBlockEvidenceFromVerifiedPayload } from "../src/prepare-fabricated-withdrawal.prepare-fabricated-withdrawal-from-committed-leaves.js";
 import {
   createFabricatedWithdrawalEvidenceAuthority,
   requireFabricatedWithdrawalArtifact,
 } from "../src/workflow/fabricated-withdrawal-evidence.js";
-import { normalizeJournalJson } from "../src/workflow/journal.js";
+import { normalizeJournalJson } from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import {
   buildWithdrawalsBlockFixture,
   DA_PROVENANCE,

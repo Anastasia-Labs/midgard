@@ -20,7 +20,7 @@ import { describe, expect, it } from "vitest";
 import {
   QUEUE_TERMINAL_TABLES,
   queueTerminalMigrations,
-} from "../src/l1-queue-terminals/index.js";
+} from "../src/l1-queue-terminals/schema.js";
 
 /**
  * What runs in the writer transaction (`queueTerminalDerivation`) and every

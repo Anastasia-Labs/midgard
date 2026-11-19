@@ -1,23 +1,22 @@
 import { encodeMidgardFieldPreimage } from "@al-ft/midgard-core";
-import { MintAuthorizationStep04Datum } from "@al-ft/midgard-sdk";
 import {
   MIDGARD_FIELD_INDEX,
+  MintAuthorizationStep04Datum,
   type MintAuthorizationStep04State,
   Proof,
 } from "@al-ft/midgard-sdk";
-import { type LucidEvolution } from "@lucid-evolution/lucid";
-import { Data } from "@lucid-evolution/lucid";
+import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
 
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { type ResolvedProverSigner } from "../runtime.js";
 import { parseSubmitStep01TxInclusion } from "../step-support.js";
-import { buildInit } from "../submit-init.js";
+import { buildInit } from "../submit-init.submit-init.js";
 import { keyValuePhasMembershipProofs } from "../transition-trace/phas.js";
 import type { CompleteCanonicalReplayContext } from "../workflow/complete-replay.js";
 import {
   CURSOR_FAMILY_TRANSACTION_PORT,
   type CursorFamilyTransactionPort,
-} from "../workflow/cursor-family-adapter.js";
+} from "../workflow/cursor-family-adapter.admit-reference-scripts.js";
 import {
   captureCursorRemoval,
   cursorFamilyActionInput,
@@ -38,11 +37,9 @@ import {
 } from "./submit-common.js";
 import { buildMintAuthorizationEvaluate } from "./submit-mint-authorization-evaluate.js";
 import { buildMintAuthorizationStep01 } from "./submit-mint-authorization-step-01.js";
-import { buildMintAuthorizationStep02 } from "./submit-mint-authorization-step-02.js";
-import {
-  buildMintAuthorizationStep03EvaluateUnsatisfied,
-  buildMintAuthorizationStep03WitnessAbsence,
-} from "./submit-mint-authorization-step-03.js";
+import { buildMintAuthorizationStep02 } from "./submit-mint-authorization-step-02.submit-mint-authorization-step02.js";
+import { buildMintAuthorizationStep03EvaluateUnsatisfied } from "./submit-mint-authorization-step-03.submit-mint-authorization-step03-evaluate-unsatisfied.js";
+import { buildMintAuthorizationStep03WitnessAbsence } from "./submit-mint-authorization-step-03.submit-mint-authorization-step03-witness-absence.js";
 import {
   buildMintAuthorizationStep04AdvanceComplete,
   buildMintAuthorizationStep04ResolveNext,

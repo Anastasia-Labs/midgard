@@ -51,16 +51,16 @@ import {
   SemanticBuiltinWitness,
   StagedMaterialV1,
 } from "@al-ft/midgard-sdk";
+import { midgardCekSemanticGroup } from "@al-ft/midgard-validation";
 import {
   hashMidgardCekDirectArguments,
   hashMidgardCekDirectValueWitness,
-  type MidgardCekCoreStepWitness,
   midgardCekDirectBuiltinBudget,
-  midgardCekDirectValueData,
   type MidgardCekDirectValueWitness,
-  midgardCekSemanticGroup,
   semanticizeMidgardCekDirectConstant,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/cek-builtin";
+import { midgardCekDirectValueData } from "@al-ft/midgard-validation/cek-data";
+import type { MidgardCekCoreStepWitness } from "@al-ft/midgard-validation/cek-machine";
 import { Constr, Data } from "@lucid-evolution/lucid";
 
 import {

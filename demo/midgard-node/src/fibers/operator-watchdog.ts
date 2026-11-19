@@ -44,26 +44,22 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Ref, type Schedule } from "effect";
 
 import { errorMessage } from "../commands/cli-options.js";
-import { verifyConfiguredDeploymentManifestProgram } from "../commands/contract-deployment-info.js";
+import { verifyConfiguredDeploymentManifestProgram } from "../commands/contract-deployment-info.build-deployment-manifest.js";
 import { l1SlotNow } from "../l1-heads.js";
 import {
   publishedDirectoryOf,
   publishedRetiredAnchorProgram,
-} from "../l1-operator-set/index.js";
+} from "../l1-operator-set/snapshot.js";
 import { slotToUnixTimeForLucidOrEmulatorFallback } from "../lucid-time.js";
-import {
-  Globals,
-  Lucid,
-  MidgardContracts,
-  NodeConfig,
-  withL1ControlPlaneIfAvailable,
-} from "../services/index.js";
+import { Globals } from "../services/globals.globals.js";
+import { withL1ControlPlaneIfAvailable } from "../services/globals.with-l1-control-plane-held.js";
+import { NodeConfig } from "../services/index.js";
 import { intentPlanAt } from "../services/intent-journal.intent.js";
 import type { IntentJournal } from "../services/intent-journal.js";
-import {
-  configuredOperatorEconomicsProgram,
-  retireOperatorProgram,
-} from "../transactions/operators/exit.js";
+import { Lucid } from "../services/lucid.js";
+import { MidgardContracts } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
+import { configuredOperatorEconomicsProgram } from "../transactions/operators/exit.js";
+import { retireOperatorProgram } from "../transactions/operators/exit.retire-operator-program.js";
 import { unfundedSkipReason } from "../transactions/operators/funding-preflight.js";
 import {
   planTakeoverFrom,

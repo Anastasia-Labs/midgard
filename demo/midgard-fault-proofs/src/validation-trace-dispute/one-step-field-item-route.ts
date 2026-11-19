@@ -24,7 +24,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { findCompleteFaultProofFieldGrammarCertificate } from "../field-grammar-certificate.js";
+import { findCompleteFaultProofFieldGrammarCertificate } from "../field-grammar-certificate.certify-fault-proof-field-grammar.js";
 import type { ValidationTraceClaimMaterial } from "./claim-material.js";
 import { constr, integer } from "./one-step-data.js";
 import type { ValidationTracePhaseYield } from "./one-step-phase-yields.js";

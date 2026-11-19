@@ -15,7 +15,7 @@ import { describe, expect, it } from "vitest";
 import {
   submitAbsorbAfterProtectionProgram,
   submitInitializePayoutAfterProtectionProgram,
-} from "../src/commands/reserve-payout.js";
+} from "../src/commands/reserve-payout.retry-after-retirement-protection.js";
 import { openL1Access } from "../src/l1-access.js";
 import { openPlan } from "../src/services/intent-journal.js";
 import {
@@ -26,8 +26,8 @@ import { awaitLedgerTipAtLowerBound } from "../src/transactions/ledger-tip-lower
 import {
   recoverOperatorBondProgram,
   retireOperatorProgram,
-} from "../src/transactions/operators/exit.js";
-import { registerAndActivateOperatorProgram } from "../src/transactions/register-active-operator.js";
+} from "../src/transactions/operators/exit.retire-operator-program.js";
+import { registerAndActivateOperatorProgram } from "../src/transactions/register-active-operator.activate-registered-operator-program.js";
 import { observeEmulatorTip } from "./helpers/emulator-observed-tip.js";
 import { runWithoutFollower } from "./helpers/intent-journal.js";
 import {

@@ -6,22 +6,32 @@ import "@lucid-evolution/lucid";
 import "effect";
 import "vitest";
 import "../src/committed-field-shape/submit-committed-field-shape-init.js";
-import "../src/remove-fraudulent-block.js";
+import "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import "../src/step-support.js";
 import "../src/testing/complete-lifecycle.js";
-import "../src/transaction-output-non-canonical/index.js";
-import "../src/transition-trace/witnesses.js";
+import "../src/transaction-output-non-canonical/contracts.js";
+import "../src/transaction-output-non-canonical/submit-cancel.js";
+import "../src/transaction-output-non-canonical/transaction-output-non-canonical.js";
+import "../src/transaction-output-non-canonical/schemas.js";
+import "../src/transaction-output-non-canonical/submit-step-03.js";
+import "../src/transaction-output-non-canonical/submit-step-03-datum.js";
+import "../src/transition-trace/witnesses.build-source-membership-proof.js";
 import "./support/emulator/expect-onchain-refusal.js";
 import "./support/emulator/harness.js";
 import "./support/emulator/measurement.js";
 import "./support/emulator/native-tx.js";
 import "./support/emulator/reference-scripts.js";
 import "./support/emulator/registered-chain.js";
-import "./support/emulator/removal-deployment.js";
+import "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import "./support/lifecycle-coverage.js";
-import "./support/submit-init-emulator-fixtures.js";
-import "./support/submit-init-emulator-shared.js";
-import "./support/transaction-output-non-canonical-emulator.js";
+import "./support/submit-init/removal.js";
+import "./support/emulator/emulator-context.js";
+import "./support/emulator/setup-tx.submit-setup-tx.js";
+import "./support/emulator/header-fixtures.js";
+import "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import "./support/transaction-output-non-canonical-emulator.build-forced-output-fixture.js";
+import "./support/transaction-output-non-canonical-emulator.continue-raw.js";
+import "./support/transaction-output-non-canonical-emulator.publish-output-field-carriage.js";
 import "./transaction-output-non-canonical-lifecycle.registered-contracts.js";
 import "./transaction-output-non-canonical-lifecycle.scan-to-terminal.js";
 
@@ -33,17 +43,15 @@ import { getAddressDetails } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
-import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
+import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
+import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
+import { transitionTraceOutRef } from "./support/emulator/header-fixtures.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
-import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
-import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  submitSetupTx,
-  transitionTraceOutRef,
-} from "./support/submit-init-emulator-shared.js";
+import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
+import { setupFraudulentBlock } from "./support/submit-init/removal.js";
 import {
   submitTransactionOutputNonCanonicalStep01Accepted,
   submitTransactionOutputNonCanonicalStep01Forced,
@@ -51,22 +59,24 @@ import {
   submitTransactionOutputNonCanonicalStep03,
   submitTransactionOutputNonCanonicalStep04,
 } from "./support/submit-unjournaled.transaction-output-non-canonical.js";
+import { buildForcedOutputFixture } from "./support/transaction-output-non-canonical-emulator.build-forced-output-fixture.js";
 import {
-  buildForcedOutputFixture,
   canonicalOutputOfLength,
   initialScanStateOfItem,
   MALFORMED_OUTPUT,
-  outputFieldOpening,
-  type PublishedOutputFieldCarriage,
-  publishOutputFieldCarriage,
   readOutputScanState,
   scanStateOf,
   scanWindowAt,
   submitOutputStep01ForcedRaw,
+} from "./support/transaction-output-non-canonical-emulator.continue-raw.js";
+import {
+  outputFieldOpening,
+  type PublishedOutputFieldCarriage,
+  publishOutputFieldCarriage,
   submitOutputStep02Raw,
   submitOutputStep03Raw,
   submitOutputStep04Raw,
-} from "./support/transaction-output-non-canonical-emulator.js";
+} from "./support/transaction-output-non-canonical-emulator.publish-output-field-carriage.js";
 import {
   record,
   recordAll,

@@ -1,15 +1,15 @@
 import { formatUnknownError } from "@al-ft/midgard-core";
 
-import { assertWorkflowJournalActuation } from "./actuation-permit.js";
+import { assertWorkflowJournalActuation } from "./actuation-permit.assert-workflow-actuation-permit-identity.js";
 import { isCollateralForfeitureEvent } from "./collateral-forfeiture.js";
 import { isFinalWorkflowCompletion } from "./completion-finality.js";
 import {
-  readWorkflowFundingRecordedSignedTransaction,
   readWorkflowFundingRecovery,
   reobserveWorkflowFundingReservationTransaction,
-  type WorkflowJournalWriter,
 } from "./funding-reservation-permit.js";
+import { readWorkflowFundingRecordedSignedTransaction } from "./funding-reservation-permit.read-workflow-funding-recovery.js";
 import { recordBothAttemptsLanded } from "./funding-reservation-permit.reconcile-superseded-attempts.js";
+import type { WorkflowJournalWriter } from "./funding-reservation-permit.workflow-journal-writer.js";
 import type {
   FraudProofWorkflowJournalEntry,
   FraudProofWorkflowJournalEvent,

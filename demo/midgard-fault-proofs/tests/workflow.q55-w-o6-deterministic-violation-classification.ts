@@ -2,14 +2,14 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import { type CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
-import { eventKeyFingerprint } from "../src/transition-trace/reconstruct.js";
+import { eventKeyFingerprint } from "../src/transition-trace/reconstruct.transition-trace-reconstruction.js";
 import { withdrawalMistagDetectionId } from "../src/withdrawal-mistag/replay.js";
 import {
   type CanonicalViolationDetection,
   classifyCanonicalBlockViolations,
-  FRAUD_PROOF_CLASSIFICATION_RULES,
-} from "../src/workflow/classification.js";
-import { DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
+} from "../src/workflow/classification.classify-canonical-block-violations.js";
+import { FRAUD_PROOF_CLASSIFICATION_RULES } from "../src/workflow/classification.fraud-proof-classification-rules.js";
+import { DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import {
   acceptedTransactionSubject,
   withdrawalSubject,

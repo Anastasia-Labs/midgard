@@ -5,22 +5,24 @@ import {
   evaluateMidgardCekVerdict,
   evaluateMidgardTxRedeemers,
   type MidgardCekVerdictRequest,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/phase-b";
 import { HttpServerRequest, HttpServerResponse } from "@effect/platform";
 import { Deferred, Effect, Fiber } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { makeEvaluateDraft } from "../../midgard-validation/tests/phase-b.evaluate-tx-redeemers.fixture.js";
 import { postTxEvaluateHandler } from "../src/commands/http/evaluate.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
+import { Lucid } from "../src/services/lucid.js";
 import {
-  Lucid,
   MempoolLedgerCache,
   type MempoolLedgerCacheService,
-  NodeConfig,
+} from "../src/services/mempool-ledger-cache.mempool-ledger-cache-service.js";
+import {
   ValidationPool,
   type ValidationPoolService,
   ValidationWorkerError,
-} from "../src/services/index.js";
+} from "../src/services/validation-pool.bundled-worker-exec-argv.js";
 import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
 const SLOT_CONFIG = NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod;

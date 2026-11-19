@@ -17,16 +17,16 @@ import { Effect } from "effect";
 import { expect } from "vitest";
 
 import { buildCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
-import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import { nativeTxFromCoreCompact } from "../src/step-support.js";
 import {
   applyTransactionOutputNonCanonicalScripts,
-  buildTransactionOutputNonCanonicalCancel,
-  prepareTransactionOutputEvidence,
   TRANSACTION_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES,
   type TransactionOutputNonCanonicalContracts,
-  TransactionOutputScanControlSchema,
-} from "../src/transaction-output-non-canonical/index.js";
+} from "../src/transaction-output-non-canonical/contracts.js";
+import { TransactionOutputScanControlSchema } from "../src/transaction-output-non-canonical/schemas.js";
+import { buildTransactionOutputNonCanonicalCancel } from "../src/transaction-output-non-canonical/submit-cancel.js";
+import { prepareTransactionOutputEvidence } from "../src/transaction-output-non-canonical/transaction-output-non-canonical.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import {
   captureEmulatorSubmission,
@@ -37,13 +37,13 @@ import {
   makeNativeTx,
 } from "./support/emulator/native-tx.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
 import {
   expectRegisteredChainParity,
   familyStepsFromRegisteredChain,
 } from "./support/emulator/registered-chain.js";
-import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { createLifecycleCoverageRecorder } from "./support/lifecycle-coverage.js";
-import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 import { type Common } from "./support/transaction-output-non-canonical-emulator.js";
 

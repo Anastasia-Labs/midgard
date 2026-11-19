@@ -5,11 +5,11 @@ import { credentialToAddress, Data, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { authenticateFabricatedHistoryWitness } from "../src/fabricated-history-witness.js";
-import { prepareFabricatedWithdrawalFromCommittedLeaves } from "../src/prepare-fabricated-withdrawal.js";
+import { prepareFabricatedWithdrawalFromCommittedLeaves } from "../src/prepare-fabricated-withdrawal.prepare-fabricated-withdrawal-from-committed-leaves.js";
 import {
   deriveFabricatedWithdrawalStep01Handoff,
   parseSubmitFabricatedWithdrawalInclusion,
-} from "../src/submit-fabricated-withdrawal-step-01.js";
+} from "../src/submit-fabricated-withdrawal-step-01.derive-fabricated-withdrawal-step01-handoff.js";
 import { deriveFabricatedWithdrawalStep03Handoff } from "../src/submit-fabricated-withdrawal-step-03.js";
 import { assertFabricatedWithdrawalStep04Finalizable } from "../src/submit-fabricated-withdrawal-step-04.js";
 import {

@@ -6,16 +6,16 @@ import { L2TxMistagStep02Datum } from "../l2-tx-mistag/schemas.js";
 import { buildL2TxMistagInit } from "../l2-tx-mistag/submit-l2-tx-mistag-init.js";
 import { buildL2TxMistagStep01 } from "../l2-tx-mistag/submit-l2-tx-mistag-step-01.js";
 import { buildL2TxMistagStep02 } from "../l2-tx-mistag/submit-l2-tx-mistag-step-02.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.build-remove-fraudulent-block.js";
 import { type StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
-import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import { L2_TX_MISTAG_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
+import { L2_TX_MISTAG_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
+import type { ManifestBoundLinearFamilyWorkflowConfig } from "./family-definition.family-adapter-arm.js";
 import {
   defineLinearFamily,
   type ManifestBoundLinearFamilyWorkflow,
-  type ManifestBoundLinearFamilyWorkflowConfig,
-} from "./family-definition.js";
+} from "./family-definition.family-definition.js";
 import {
   admitL2TxMistagArtifact,
   type AssemblyContext,
@@ -31,12 +31,10 @@ import {
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyTransactionPort,
 } from "./linear-family-adapter.js";
-import {
-  assembleManifestBoundFamilyWorkflow,
-  runOrResumeManifestBoundFamilyWorkflow,
-} from "./manifest-bound-family-assembly.js";
+import { assembleManifestBoundFamilyWorkflow } from "./manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
+import { runOrResumeManifestBoundFamilyWorkflow } from "./manifest-bound-family-assembly.run-or-resume-manifest-bound-family-workflow.js";
 import { type FraudProofWorkflowAction } from "./orchestrator.js";
-import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.js";
+import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.route-action-identity.js";
 import { admitRemovalTransaction } from "./removal-admission.js";
 import { journaledStepTransaction } from "./step-transaction.js";
 import {

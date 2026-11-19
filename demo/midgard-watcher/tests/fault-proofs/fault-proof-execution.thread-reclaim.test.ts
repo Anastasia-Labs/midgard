@@ -14,7 +14,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { setupFaultProofExecution } from "../support/fault-proof-execution-fixture.js";
-import { cleanupFundingRecoveryFixtures } from "../support/fault-proof-funding-fixture.js";
+import { cleanupFundingRecoveryFixtures } from "../support/fault-proof-funding-fixture.sources-for.js";
 
 afterEach(cleanupFundingRecoveryFixtures);
 

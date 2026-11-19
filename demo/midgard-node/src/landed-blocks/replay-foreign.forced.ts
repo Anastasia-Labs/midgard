@@ -10,12 +10,10 @@ import type { FactStore, View } from "@al-ft/midgard-l1-follower";
 import type * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
-import {
-  type ForcedOrderConfig,
-  forcedOrderEntry,
-  forcedOrdersAdmittedAt,
-  outRefLabel,
-} from "../forced-orders/index.js";
+import type { ForcedOrderConfig } from "../forced-orders/config.js";
+import { outRefLabel } from "../forced-orders/derive.js";
+import { forcedOrderEntry } from "../forced-orders/entry.js";
+import { forcedOrdersAdmittedAt } from "../forced-orders/reads.js";
 import { missing, Verdict } from "./replay-foreign.verdict.js";
 
 /**

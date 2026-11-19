@@ -1,20 +1,14 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { paymentCredentialOf } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import {
-  createPublishedWorkflowDeploymentAccounts,
-  publishWorkflowDeployment,
-} from "midgard-node/tests/helpers/published-workflow-deployment";
+import { publishWorkflowDeployment } from "midgard-node/tests/helpers/published-workflow-deployment.publish-workflow-deployment";
+import { createPublishedWorkflowDeploymentAccounts } from "midgard-node/tests/helpers/published-workflow-deployment.submit-published-initialization";
 import { expect, it, vi } from "vitest";
 
-import {
-  createPublishedWatcherBlockActor,
-  type PublishedWatcherBlock,
-} from "../support/published-block-actor.js";
-import {
-  DEPOSIT_BLOCK_INTERVAL_MS,
-  stagePublishedDepositTrace,
-} from "../support/published-deposit-trace.js";
+import { createPublishedWatcherBlockActor } from "../support/published-block-actor.create-published-watcher-block-actor.js";
+import type { PublishedWatcherBlock } from "../support/published-block-actor.is-unanswered-submission.js";
+import { DEPOSIT_BLOCK_INTERVAL_MS } from "../support/published-deposit-trace.published-deposit-trace-checkpoint.js";
+import { stagePublishedDepositTrace } from "../support/published-deposit-trace.stage-published-deposit-trace.js";
 
 /** Every state-queue entry in list order: the root's confirmed hash, then each header. */
 const queueOrder = async (

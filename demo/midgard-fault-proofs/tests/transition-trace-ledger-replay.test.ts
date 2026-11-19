@@ -15,8 +15,8 @@ import { checkLedgerAgainstRoot } from "../src/ledger-at.js";
 import {
   mpfProofFromWitness,
   normalizedMpfRoot,
-} from "../src/transition-trace/detect.js";
-import { requireDeletionKeepsTwoChildren } from "../src/transition-trace/detect.mpf-proof-from-witness.js";
+  requireDeletionKeepsTwoChildren,
+} from "../src/transition-trace/detect.mpf-proof-from-witness.js";
 import { createTransitionTraceLedgerReplay } from "../src/transition-trace/ledger-replay.js";
 import { keyValuePhasRootWithCount } from "../src/transition-trace/phas.js";
 import { deriveTransitionTraceReplayEvidence } from "../src/transition-trace/replay.js";

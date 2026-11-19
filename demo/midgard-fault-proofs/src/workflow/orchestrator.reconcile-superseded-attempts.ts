@@ -1,4 +1,4 @@
-import { assertWorkflowJournalActuation } from "./actuation-permit.js";
+import { assertWorkflowJournalActuation } from "./actuation-permit.assert-workflow-actuation-permit-identity.js";
 import { reconcileWorkflowFundingSupersededAttempts } from "./funding-reservation-permit.reconcile-superseded-attempts.js";
 import type { WorkflowJournalWriter } from "./funding-reservation-permit.workflow-journal-writer.js";
 import type { FraudProofWorkflowJournalEvent } from "./journal.js";

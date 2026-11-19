@@ -7,23 +7,23 @@ import { Effect, Layer } from "effect";
 
 import { MIGRATIONS } from "../src/database/migrations/index.js";
 import * as TxAdmissionsDB from "../src/database/txAdmissions.js";
+import { AdmissionWriterLive } from "../src/services/admission-writer.make-admission-writer.js";
+import { makeAdmissionWriterWithOptions } from "../src/services/admission-writer.make-admission-writer-with-options.js";
 import {
   ADMISSION_WRITE_BATCH_MAX_ROWS,
   ADMISSION_WRITE_QUEUE_BYTES,
   ADMISSION_WRITE_QUEUE_CAPACITY,
   ADMISSION_WRITE_SHARD_COUNT,
   AdmissionWriter,
-  AdmissionWriterLive,
-  makeAdmissionWriterWithOptions,
-} from "../src/services/admission-writer.js";
-import { NodeConfig } from "../src/services/config.js";
+} from "../src/services/admission-writer.validate-options.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
 import {
   AdmissionSql,
   Database,
   HttpReadSqlLive,
 } from "../src/services/database.js";
 import { FollowerWriteFixture } from "../src/services/follower-write-gate.js";
-import { WriteBehindLive } from "../src/services/write-behind.js";
+import { WriteBehindLive } from "../src/services/write-behind.make-write-behind.js";
 import { testDatabaseName } from "./test-env.js";
 
 const AdmissionWriterTestLive = Layer.scoped(

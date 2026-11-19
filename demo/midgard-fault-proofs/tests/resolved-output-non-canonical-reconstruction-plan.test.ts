@@ -13,19 +13,21 @@ import { describe, expect, it } from "vitest";
 
 import {
   planResolvedOutputReconstructionTransition,
-  prepareResolvedOutputNonCanonicalEvidence,
   RESOLVED_OUTPUT_CHUNK_BYTES,
+} from "../src/resolved-output-non-canonical/reconstruction-plan.js";
+import {
+  prepareResolvedOutputNonCanonicalEvidence,
   type ResolvedOutputEvidence,
   resolvedOutputScanControlData,
-} from "../src/resolved-output-non-canonical/index.js";
+} from "../src/resolved-output-non-canonical/resolved-output-non-canonical.prepare-resolved-output-non-canonical-evidence.js";
+import { makeNativeTx } from "./support/emulator/native-tx.js";
 import {
   descriptorFor,
   maximumCanonicalOutput,
   maximumMalformedOutput,
   smallCanonicalOutput,
   smallMalformedOutput,
-} from "./support/resolved-output-non-canonical-emulator.js";
-import { makeNativeTx } from "./support/submit-init-emulator-shared.js";
+} from "./support/resolved-output-non-canonical-emulator.build-prior-ledger.js";
 
 const priorTxId = "ab".repeat(32);
 const priorRoot = "44".repeat(32);

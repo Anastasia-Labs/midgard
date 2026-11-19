@@ -40,11 +40,9 @@ import type { OwnJournal } from "../src/landed-blocks/ports.js";
 import { processLandedQueue } from "../src/landed-blocks/process.js";
 import { Frontier, markApplied } from "../src/landed-blocks/store.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../src/mpf/ledger-hydration.js";
-import {
-  diagnoseMissingBlockTxs,
-  preflightDecodeBlockTxs,
-} from "../src/transactions/state-queue/merge-to-confirmed-state.js";
-import { fetchFirstBlockTxs } from "../src/transactions/utils.js";
+import { preflightDecodeBlockTxs } from "../src/transactions/state-queue/merge-to-confirmed-state.fetch-canonical-merge-candidate-readiness.js";
+import { diagnoseMissingBlockTxs } from "../src/transactions/state-queue/merge-to-confirmed-state.merge-options.js";
+import { fetchFirstBlockTxs } from "../src/transactions/utils.fetch-first-block-txs.js";
 import { databaseFixtureBytes } from "./database.test/fixtures.bytes.js";
 import {
   makeDepositEntry,

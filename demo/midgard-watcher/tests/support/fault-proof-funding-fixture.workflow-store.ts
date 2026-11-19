@@ -8,7 +8,7 @@ import type {
 import type { WatcherProofObjective } from "../../src/fault-proofs/fault-proof-objective-journal.js";
 import type { WatcherWorkflowJournal } from "../../src/fault-proofs/watcher-workflow-journal.js";
 import type { WatcherProverFundingReservationStore } from "../../src/funding/prover-funding-reservation.js";
-import { openWatcherSqliteProverFundingReservationStore } from "../../src/funding/sqlite-prover-funding-reservation-store.js";
+import { openWatcherSqliteProverFundingReservationStore } from "../../src/funding/sqlite-prover-funding-reservation-store.unsafe-open-watcher-sqlite-prover-funding-reservation-store-for-test.js";
 import { deploymentIdentity } from "./fault-proof-funding-fixture.sources-for.js";
 
 /** Opens the fixture's watcher.sqlite as the watcher does. */

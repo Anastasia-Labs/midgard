@@ -11,7 +11,7 @@ import {
 
 import type { CanonicalBlockEvidence } from "./evidence/canonical-block-evidence.js";
 import { forcedTxFromCoreCompact } from "./step-support.js";
-import { buildForcedTransactionLeafMembershipProof } from "./transition-trace/witnesses.js";
+import { buildForcedTransactionLeafMembershipProof } from "./transition-trace/witnesses.build-source-membership-proof.js";
 import { forcedTransactionSubject } from "./workflow/detection-subject.js";
 
 export const detectMinFeeForcedReplay = (block: CanonicalBlockEvidence) => {

@@ -11,7 +11,7 @@ import type { MintDeclaredAssetLimitContracts } from "./contracts.js";
 import {
   type MintDeclaredAssetLimitEvidence,
   mintDeclaredAssetLimitEvidenceCloses,
-} from "./family.js";
+} from "./family.advance-mint-declared-fold.js";
 import {
   MintDeclaredAssetLimitStep04DatumSchema,
   MintDeclaredAssetLimitStep04RedeemerSchema,

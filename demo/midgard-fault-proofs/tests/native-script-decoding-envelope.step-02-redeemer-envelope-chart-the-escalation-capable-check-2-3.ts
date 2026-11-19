@@ -12,17 +12,14 @@ import {
   proofFromCbor,
   STEP_TX_OVERHEAD_ALLOWANCE_BYTES,
 } from "./native-script-decoding-envelope.step-01-redeemer-envelope-chart-both-carriages-q4.js";
+import { h32, makeHeader } from "./support/emulator/header-fixtures.js";
+import { makeNativeTx } from "./support/emulator/native-tx.js";
 import {
   ADVERSARIAL_MEMBERSHIP_PROOF_BRANCH_LEVELS,
   insertAdversarialMembershipSiblings,
   membershipProofBranchLevelsReachableWithWork,
-  outputReferenceCbor,
-} from "./support/submit-init-emulator-fixtures.js";
-import {
-  h32,
-  makeHeader,
-  makeNativeTx,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/submit-init/membership.js";
+import { outputReferenceCbor } from "./support/submit-init/transaction-material.js";
 
 describe("step-02 redeemer envelope chart (THE escalation-capable check, §2.3)", () => {
   /**

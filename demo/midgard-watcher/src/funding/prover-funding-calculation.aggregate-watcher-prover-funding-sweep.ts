@@ -8,12 +8,12 @@ import {
   type FraudProofCatalogueCategoryName,
 } from "@al-ft/midgard-sdk";
 
+import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.parse-trust-roots.js";
+import { assertVerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.verify-watcher-user-event-script-binding.js";
 import {
-  assertVerifiedWatcherDeploymentIdentity,
-  type VerifiedWatcherDeploymentIdentity,
   watcherDeploymentAvailabilityChallengeAuthority,
   watcherDeploymentReleaseEconomicsAuthority,
-} from "../runtime/deployment-identity.js";
+} from "../runtime/deployment-identity.watcher-deployment-availability-challenge-authority.js";
 import {
   assertWatcherProtocolParameterRuntimeAuthority,
   type WatcherProtocolParameterRuntimeAuthority,

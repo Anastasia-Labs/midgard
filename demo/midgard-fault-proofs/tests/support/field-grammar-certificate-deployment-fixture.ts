@@ -9,7 +9,7 @@ import {
   FIELD_GRAMMAR_CERTIFICATE_MINT,
   FIELD_GRAMMAR_CERTIFICATE_SPEND,
   resolveFaultProofFieldGrammarDeployment,
-} from "../../src/field-grammar-certificate.js";
+} from "../../src/field-grammar-certificate.resolve-fault-proof-field-grammar-deployment.js";
 import {
   type Blueprint,
   readBlueprint,

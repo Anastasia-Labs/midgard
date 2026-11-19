@@ -12,11 +12,9 @@ import {
 import { Effect } from "effect";
 import { expect } from "vitest";
 
-import {
-  buildDirectReceiveEvidence,
-  buildDirectSourceIndexEvidence,
-  createDirectFieldPlan,
-} from "../../src/direct-script-derivation/index.js";
+import { createDirectFieldPlan } from "../../src/direct-script-derivation/field-plan.js";
+import { buildDirectReceiveEvidence } from "../../src/direct-script-derivation/receive-evidence.js";
+import { buildDirectSourceIndexEvidence } from "../../src/direct-script-derivation/source-index.js";
 import {
   directCarriagePublisherFunding,
   publishDirectReceiveFieldCarriage,
@@ -24,12 +22,12 @@ import {
 import { directReceiveLifecycleMaterial } from "./direct-receive-max-fixture.js";
 import { createDirectReceiveStepper } from "./direct-receive-stepper.js";
 import {
-  EMULATOR_PROTOCOL_PARAMETERS,
   network,
-  publishPlainReferenceScriptUtxo,
   readBlueprint,
   realBlueprintPath,
-} from "./submit-init-emulator-shared.js";
+} from "./emulator/blueprints.js";
+import { EMULATOR_PROTOCOL_PARAMETERS } from "./emulator/protocol-parameters.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 
 export const driveDirectReceiveLifecycle = async (
   options: {

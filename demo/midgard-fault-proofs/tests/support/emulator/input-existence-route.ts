@@ -13,21 +13,19 @@ import { expect } from "vitest";
 
 import type { PreparedInputExistence } from "../../../src/input-existence/prepare.js";
 import { buildInputExistenceStep } from "../../../src/input-existence/submit.js";
-import { buildInit } from "../../../src/submit-init.js";
-import {
-  buildRemovalDeploymentInfo,
-  network,
-  publishPlainReferenceScriptUtxo,
-} from "../submit-init-emulator-shared.js";
+import { buildInit } from "../../../src/submit-init.submit-init.js";
 import {
   buildAndSubmitUnjournaled,
   type SubmittedStep,
 } from "../submit-unjournaled.js";
+import { network } from "./blueprints.js";
 import type { makeFaultProofEmulatorHarness } from "./harness.js";
 import {
   captureEmulatorSubmission,
   type CompleteSignedTransactionMeasurement,
 } from "./measurement.js";
+import { publishPlainReferenceScriptUtxo } from "./reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./removal-deployment.build-removal-deployment-info.js";
 import { TRACED_REFUSALS } from "./traced-refusals.js";
 
 type Harness = Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>;

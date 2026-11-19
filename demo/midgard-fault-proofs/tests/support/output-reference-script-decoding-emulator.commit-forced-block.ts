@@ -1,7 +1,7 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { computeMidgardNativeTxId } from "@al-ft/midgard-core";
-import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
 import {
+  deriveMidgardForcedTxProofSource,
   encodeMidgardForcedTxCanonical,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
@@ -28,9 +28,18 @@ import {
   buildCountedRoot,
   keyValuePhasRootWithCount,
 } from "../../src/transition-trace/phas.js";
-import { reconstructDaPayload } from "../../src/transition-trace/reconstruct.js";
-import { buildForcedTransactionLeafMembershipProof } from "../../src/transition-trace/witnesses.js";
+import { reconstructDaPayload } from "../../src/transition-trace/reconstruct.reconstruct-da-payload.js";
+import { buildForcedTransactionLeafMembershipProof } from "../../src/transition-trace/witnesses.build-source-membership-proof.js";
+import { alignUnixTimeToEmulatorSlotBoundary } from "./emulator/emulator-context.js";
+import {
+  h32,
+  makeHeader,
+  transitionTraceDaEntry,
+  transitionTraceOutRef,
+  withCommitSlot,
+} from "./emulator/header-fixtures.js";
 import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.js";
+import { submitSetupTx } from "./emulator/setup-tx.submit-setup-tx.js";
 import { recordFixtureLedger } from "./fixture-ledger.js";
 import {
   type ForcedLeafSpec,
@@ -41,16 +50,7 @@ import {
   outputReferenceCbor,
   sortedDaEntries,
   transitionTraceRawEntry,
-} from "./submit-init-emulator-fixtures.js";
-import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  h32,
-  makeHeader,
-  submitSetupTx,
-  transitionTraceDaEntry,
-  transitionTraceOutRef,
-  withCommitSlot,
-} from "./submit-init-emulator-shared.js";
+} from "./submit-init/transaction-material.js";
 
 /**
  * Commits forced leaves under one header: every leaf is an operator rejection

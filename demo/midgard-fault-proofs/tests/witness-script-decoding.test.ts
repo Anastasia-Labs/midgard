@@ -25,8 +25,8 @@ import {
   witnessScriptDecodingCheckpoint,
   witnessScriptDecodingEvidenceCloses,
   WitnessScriptDecodingResultClasses,
-  witnessScriptDecodingViolationId,
-} from "../src/witness-script-decoding/index.js";
+} from "../src/witness-script-decoding/witness-script-decoding.js";
+import { witnessScriptDecodingViolationId } from "../src/witness-script-decoding/workflow.witness-script-decoding-config-from-binding.js";
 
 const txId = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
 const witnessSetHash = "11".repeat(32);

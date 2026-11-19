@@ -1,12 +1,12 @@
 import { createWatcherFaultDetectorAlert } from "../fault-proofs/fault-detector-isolation.js";
+import { createWatcherFaultProofApplication } from "../fault-proofs/fault-proof-application.create-watcher-fault-proof-readiness-application.js";
+import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../fault-proofs/fault-proof-application.js";
 import {
-  createWatcherFaultProofApplication,
-  WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
   WATCHER_STARTUP_READINESS_HEADER_HASH,
   type WatcherFaultProofApplication,
   type WatcherFaultProofL1,
   type WatcherFaultProofStartupReadiness,
-} from "../fault-proofs/fault-proof-application.js";
+} from "../fault-proofs/fault-proof-application.production-dependencies.js";
 import type { WatcherReplayedLedger } from "../fault-proofs/replayed-ledger.js";
 import { createWatcherValidationTraceReplayStuckAlert } from "../fault-proofs/validation-trace-replay-stuck-alert.js";
 import { type WatcherFollowerRuntime } from "../l1-follower/follower-runtime.js";

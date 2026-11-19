@@ -17,12 +17,12 @@ import {
   referenceScriptByName,
 } from "./reference-scripts.js";
 import {
-  handleSignSubmit,
   TxConfirmError,
-  TxExpiredError,
   TxSignError,
   TxSubmitError,
-} from "./utils.js";
+} from "./utils.await-required-output-visibility.js";
+import { handleSignSubmit } from "./utils.await-submitted-transaction-confirmation.js";
+import { TxExpiredError } from "./utils.tx-expiry.js";
 import { readSelectedWalletViewInputs } from "./utils.wallet-view.js";
 
 const UTXO_VISIBILITY_RETRY_DELAY = "2 seconds";

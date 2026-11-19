@@ -9,8 +9,8 @@ import type { FaultProofFieldOpeningPlan } from "../field-opening.js";
 import {
   fieldGrammarCheckpointIsComplete,
   initialFieldGrammarCheckpoint,
-  initialFieldSemanticCheckpoint,
-} from "../staged-field-walk/index.js";
+} from "../staged-field-walk/grammar-checkpoint.js";
+import { initialFieldSemanticCheckpoint } from "../staged-field-walk/semantic-checkpoint.js";
 import {
   advanceGrammarBy,
   advanceWalkBy,

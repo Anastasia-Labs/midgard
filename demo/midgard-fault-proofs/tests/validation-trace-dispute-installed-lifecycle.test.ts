@@ -58,10 +58,8 @@ import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adap
 import { validationTraceFraudProofUnit } from "../src/validation-trace-dispute/close.js";
 import { validationTraceDefenseDeadlineMs } from "../src/validation-trace-dispute/waiting.js";
 import { CURSOR_FAMILY_ACTION } from "../src/workflow/cursor-family-state.js";
-import {
-  DirectoryFraudProofWorkflowJournalStore,
-  type FraudProofWorkflowJournalEntry,
-} from "../src/workflow/journal.js";
+import { DirectoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
+import type { FraudProofWorkflowJournalEntry } from "../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { recordCrossBlockRawEmulator } from "./support/cross-block-raw-emulator.js";
@@ -71,7 +69,7 @@ import { installedWorkflowEmulatorClock } from "./support/installed-workflow.adv
 import { scratchDirectory } from "./support/scratch-directory.js";
 import { scriptDecodeDeploymentOf } from "./support/script-decode-emulator.js";
 import { installApplicationClock } from "./support/script-decode-installed-host.js";
-import { expectStateQueueHeaderOrder } from "./support/submit-init-emulator-fixtures.js";
+import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
 import {
   type InstalledApplication,
   installValidationTraceApplication,

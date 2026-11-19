@@ -14,13 +14,13 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { submitRemoveFraudulentBlock } from "../src/index.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import {
   prepareScriptIntegrityHashMismatchProof,
   requireConvictingScriptIntegrityHashMismatchProof,
-  SCRIPT_INTEGRITY_HASH_MISMATCH_DIRECT_WALK,
   ScriptIntegrityHashMismatchHonestLeaf,
-} from "../src/script-integrity-hash-mismatch/index.js";
+} from "../src/script-integrity-hash-mismatch/prover.js";
+import { SCRIPT_INTEGRITY_HASH_MISMATCH_DIRECT_WALK } from "../src/script-integrity-hash-mismatch/workflow.js";
 import {
   DIRECT_WALK_STEP_BOUNDS,
   type DirectWalkHarness,
@@ -29,7 +29,11 @@ import {
   publishDirectWalkRoles,
   stepTable,
 } from "./support/direct-walk-emulator.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import {
   buildIntegritySubject,
   expectedHash,
@@ -44,12 +48,6 @@ import {
   setupIntegrityScenario,
   WRONG_HASH,
 } from "./support/script-integrity-hash-mismatch-emulator.subject.js";
-import {
-  buildRemovalDeploymentInfo,
-  expectSingleUtxoWithUnit,
-  network,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
 
 const expectWithinBounds = (steps: Parameters<typeof stepTable>[0]): void => {
   for (const { label, measurement } of steps) {

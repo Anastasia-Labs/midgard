@@ -19,11 +19,12 @@
  *   live own intent spends it.
  */
 import {
+  CML,
+  Lucid,
   type LucidEvolution,
   type UTxO,
   walletFromSeed,
 } from "@lucid-evolution/lucid";
-import { CML, Lucid } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
@@ -36,7 +37,7 @@ import { fetchConfiguredNonceUtxo } from "../src/transactions/initialization.fet
 import {
   handleSignSubmit,
   handleSignSubmitNoConfirmation,
-} from "../src/transactions/utils.js";
+} from "../src/transactions/utils.await-submitted-transaction-confirmation.js";
 import {
   readSelectedWalletView,
   requireWalletViewInputs,

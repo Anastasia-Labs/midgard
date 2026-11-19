@@ -30,12 +30,21 @@ import { Data, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { planFaultProofFieldOpening } from "../src/field-opening.js";
+import { planFaultProofFieldOpening } from "../src/field-opening.plan-fault-proof-field-opening.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import { buildInit } from "../src/submit-init.submit-init.js";
+import { buildInvalidSignatureStep01 } from "../src/submit-invalid-signature-step-01.js";
+import { buildInvalidSignatureStep02 } from "../src/submit-invalid-signature-step-02.submit-invalid-signature-step02.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
-  buildInvalidSignatureStep01,
-  buildInvalidSignatureStep02,
-  submitRemoveFraudulentBlock,
-} from "../src/index.js";
+  captureEmulatorSubmission,
+  type CompleteSignedTransactionMeasurement,
+} from "./support/emulator/measurement.js";
+import { expectProofFit } from "./support/emulator/proof-fit.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import {
   buildInvalidSignatureSubject,
   INVALID_SIGNATURE_ADDRESS_WITNESS_STRIDE,
@@ -43,21 +52,10 @@ import {
   makeInvalidSignatureEmulatorHarness,
   publishInvalidSignatureReferenceScripts,
   setupInvalidSignatureScenario,
-  submitRawInvalidSignatureStep02,
-} from "./support/invalid-signature-emulator.js";
-import { buildInit } from "./support/legacy-submit-emulator.js";
+} from "./support/invalid-signature-emulator.build-invalid-signature-subject.js";
+import { submitRawInvalidSignatureStep02 } from "./support/invalid-signature-emulator.submit-raw-invalid-signature-step02.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
-import { expectStateQueueHeaderOrder } from "./support/submit-init-emulator-fixtures.js";
-import {
-  buildRemovalDeploymentInfo,
-  captureEmulatorSubmission,
-  type CompleteSignedTransactionMeasurement,
-  expectOnchainRefusal,
-  expectProofFit,
-  expectSingleUtxoWithUnit,
-  network,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
+import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,

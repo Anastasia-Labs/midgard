@@ -19,12 +19,12 @@ import {
   type FraudProofL1Source,
 } from "../workflow/l1-source.js";
 import {
-  admitFraudProofRawL1Snapshot,
   computeFraudProofRawL1SnapshotEvidenceDigest,
   type FraudProofRawL1SnapshotAuthority,
   type FraudProofRawL1SnapshotRequest,
   type FraudProofRawL1Utxo,
-} from "../workflow/raw-l1-snapshot.js";
+} from "../workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
+import { admitFraudProofRawL1Snapshot } from "../workflow/raw-l1-snapshot.js";
 
 export type TransitionTraceL1Events = Readonly<{
   headerHash: string;

@@ -1,10 +1,8 @@
 import {
+  FraudProofComputationThreadStepDatum,
   MissingSignatureForcedSignerDatum,
   MissingSignatureForcedStepDatum,
   MissingSignatureForcedWitnessDatum,
-} from "@al-ft/midgard-sdk";
-import {
-  FraudProofComputationThreadStepDatum,
   MissingSignatureStep02Datum,
   MissingSignatureStep03Datum,
   MissingSignatureStep04Datum,
@@ -12,18 +10,20 @@ import {
 
 import type { MissingSignatureContracts } from "../missing-signature/contracts.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import { MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
+import { MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.detect-double-withdraws.js";
 import {
   assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
   releaseFinalityAuthorityFromDeploymentBinding,
+} from "./deployment-manifest-binding.assert-deployment-info-matches-manifest.js";
+import {
+  bindFraudProofWorkflowDeployment,
   requireManifestBoundReferenceScriptUtxo,
 } from "./deployment-manifest-binding.js";
 import {
   createFraudProofFamilyAuthenticatedL1TerminalVerifier,
   createFraudProofFamilyL1ObservationPort,
+  observeFraudProofWorkflowHeader,
 } from "./family-l1-observation.js";
-import { observeFraudProofWorkflowHeader } from "./family-l1-observation.js";
 import { withFieldCarriagePrerequisite } from "./field-carriage-prerequisite.js";
 import { type FraudProofWorkflowJournalStore } from "./journal.js";
 import {
@@ -42,9 +42,9 @@ import {
   createMissingSignatureWorkflowAdapter,
   type MissingSignatureTransactionPort,
 } from "./missing-signature-adapter.js";
+import type { FraudProofWorkflowRunResult } from "./orchestrator.fraud-proof-workflow-run-result.js";
 import {
   createFraudProofWorkflowRegistry,
-  type FraudProofWorkflowRunResult,
   runFraudProofWorkflowFromRetainedDa,
 } from "./orchestrator.js";
 import { type WalletOnlySend } from "./wallet-only-send-gate.js";

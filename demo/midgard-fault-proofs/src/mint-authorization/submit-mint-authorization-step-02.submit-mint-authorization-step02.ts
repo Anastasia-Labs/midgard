@@ -1,6 +1,5 @@
 import { decodeMidgardMintFieldPreimage } from "@al-ft/midgard-core";
 import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
-import type { MintAuthorizationStep03State } from "@al-ft/midgard-sdk";
 import {
   hashHexWithBlake2b,
   Header,
@@ -14,6 +13,7 @@ import {
   MintAuthorizationStep02SpendRedeemer,
   MintAuthorizationStep02ThreadDatum,
   MintAuthorizationStep03Datum,
+  type MintAuthorizationStep03State,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
@@ -39,8 +39,7 @@ import {
   publishFaultProofFieldCarriage,
 } from "../field-opening.js";
 import { type ResolvedProverSigner } from "../runtime.js";
-import { completeStep, fundStep } from "../step-completion.js";
-import { finishStep } from "../step-completion.js";
+import { completeStep, finishStep, fundStep } from "../step-completion.js";
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts.js";
@@ -66,8 +65,10 @@ import {
   requireMintAuthorizationStepState,
   requireMintAuthorizationThreadUtxo,
 } from "./submit-common.js";
-import type { MintAuthorizationStep02Build } from "./submit-mint-authorization-step-02.submit-mint-authorization-step02-result.js";
-import { STEP_LABEL } from "./submit-mint-authorization-step-02.submit-mint-authorization-step02-result.js";
+import {
+  type MintAuthorizationStep02Build,
+  STEP_LABEL,
+} from "./submit-mint-authorization-step-02.submit-mint-authorization-step02-result.js";
 
 export type BuildMintAuthorizationStep02Args = {
   readonly lucid: LucidEvolution;

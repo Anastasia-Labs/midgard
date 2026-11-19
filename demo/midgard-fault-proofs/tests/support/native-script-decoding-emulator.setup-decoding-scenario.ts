@@ -16,6 +16,15 @@ import {
 
 import type { NativeScriptDecodingContracts } from "../../src/native-script-decoding/contracts.js";
 import { resolveProverSigner } from "../../src/runtime.js";
+import { network as emulatorNetwork } from "./emulator/blueprints.js";
+import {
+  alignUnixTimeToEmulatorSlotBoundary,
+  funderPaymentKeyHash,
+  registerChunkedVerifyRewardAccount,
+} from "./emulator/emulator-context.js";
+import { makeFaultProofEmulatorHarness } from "./emulator/harness.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { submitSetupTx } from "./emulator/setup-tx.submit-setup-tx.js";
 import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.build-decoding-block-fixture.js";
 import {
   buildDecodingLedgerFixture,
@@ -28,16 +37,7 @@ import {
   type NativeScriptDecodingProverDeps,
   type NativeScriptDecodingProverEvent,
   type NativeScriptDecodingProverPolicy,
-} from "./native-script-decoding-prover.js";
-import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  funderPaymentKeyHash,
-  makeFaultProofEmulatorHarness,
-  network as emulatorNetwork,
-  publishPlainReferenceScriptUtxo,
-  registerChunkedVerifyRewardAccount,
-  submitSetupTx,
-} from "./submit-init-emulator-shared.js";
+} from "./native-script-decoding-prover.locate-native-script-decoding-thread.js";
 
 // ---------------------------------------------------------------------------
 // Harness

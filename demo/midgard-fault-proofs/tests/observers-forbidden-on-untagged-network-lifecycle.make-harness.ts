@@ -4,7 +4,7 @@ import { Effect } from "effect";
 import { expect } from "vitest";
 
 import { buildCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
-import { planFaultProofFieldOpening } from "../src/field-opening.js";
+import { planFaultProofFieldOpening } from "../src/field-opening.plan-fault-proof-field-opening.js";
 import {
   applyObserversForbiddenScripts,
   OBSERVERS_FORBIDDEN_BLUEPRINT_TITLES,
@@ -19,7 +19,7 @@ import {
   buildObserversForbiddenStep01Forced,
 } from "../src/observers-forbidden-on-untagged-network/submit-step-01.js";
 import { buildObserversForbiddenStep02 } from "../src/observers-forbidden-on-untagged-network/submit-step-02.js";
-import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import type { SubmitStep01TxInclusion } from "../src/step-support.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
@@ -33,11 +33,12 @@ import {
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
 import {
   expectRegisteredChainParity,
   familyStepsFromRegisteredChain,
 } from "./support/emulator/registered-chain.js";
-import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
 import {
   compactCborHex,
@@ -48,7 +49,6 @@ import {
   transactionIdOf,
   witnessSetCompactCborHex,
 } from "./support/observers-forbidden-on-untagged-network-raw.js";
-import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
 import {
   buildAndSubmitUnjournaled,
   certifyCarriageUnjournaled,

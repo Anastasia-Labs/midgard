@@ -18,23 +18,21 @@ import type { SlotConfig } from "@lucid-evolution/lucid";
 import { Effect, Ref } from "effect";
 import { expect, vi } from "vitest";
 
-import { buildListenRouter } from "../src/commands/listen-router.js";
-import { NodeConfig } from "../src/services/config.js";
+import { buildListenRouter } from "../src/commands/http/router.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
 import { HttpReadSql } from "../src/services/database.js";
-import {
-  Globals,
-  nextL1ProviderHealthEvidence,
-} from "../src/services/globals.js";
+import { Globals } from "../src/services/globals.globals.js";
+import { nextL1ProviderHealthEvidence } from "../src/services/globals.next-l1-provider-health-evidence.js";
 import type { L1FollowerState } from "../src/services/l1-follower.readiness.js";
 import { ledgerSubmitSlotSnapshot } from "../src/services/l1-provider.js";
 import { Lucid } from "../src/services/lucid.js";
 import {
   ContractDeploymentIdentity,
   MidgardContracts,
-} from "../src/services/midgard-contracts.js";
+} from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import type { NativeMpfOwnerService } from "../src/services/mpf-native-owner/protocol.js";
 import { parseReadinessLine } from "../src/services/readiness-catalogue.js";
-import { ValidationPool } from "../src/services/validation-pool.js";
+import { ValidationPool } from "../src/services/validation-pool.bundled-worker-exec-argv.js";
 import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 import { seedCaughtUpL1Follower } from "./readiness-l1-follower.fixture.js";
 import { withFailingStatements } from "./sql-fault-injection.js";

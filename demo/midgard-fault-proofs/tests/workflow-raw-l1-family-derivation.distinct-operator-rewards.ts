@@ -1,10 +1,8 @@
 import { expect, it } from "vitest";
 
-import { deriveFraudProofRawL1FamilyStage } from "../src/workflow/index.js";
-import {
-  fixture,
-  releaseEconomics,
-} from "./support/raw-l1-terminal-fixture.js";
+import { deriveFraudProofRawL1FamilyStage } from "../src/workflow/raw-l1-family-derivation.derive-fraud-proof-raw-l1-family-stage.js";
+import { fixture } from "./support/raw-l1-terminal-fixture.fixture.js";
+import { releaseEconomics } from "./support/raw-l1-terminal-fixture.output.js";
 
 it("pairs the target reward with its operator bond after another operator's descendant slash", async () => {
   const value = await fixture({

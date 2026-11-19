@@ -1,12 +1,10 @@
 import { type LucidEvolution } from "@lucid-evolution/lucid";
 
-import {
-  type FaultProofFieldOpeningPlan,
-  resolveFaultProofFieldCarriagePublications,
-  resolveFaultProofFieldPreimageCertificate,
-} from "../field-opening.js";
+import { resolveFaultProofFieldPreimageCertificate } from "../field-opening.certify-fault-proof-field-carriage.js";
+import type { FaultProofFieldOpeningPlan } from "../field-opening.plan-fault-proof-field-opening.js";
+import { resolveFaultProofFieldCarriagePublications } from "../field-opening.publish-fault-proof-field-carriage.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.build-remove-fraudulent-block.js";
 import { type StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
-import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { WithdrawnReferenceInputContracts } from "../withdrawn-reference-input/contracts.js";
 import { buildWithdrawnReferenceInputInit } from "../withdrawn-reference-input/submit-withdrawn-reference-input-init.js";

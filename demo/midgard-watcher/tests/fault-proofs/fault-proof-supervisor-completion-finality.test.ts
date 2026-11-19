@@ -5,7 +5,7 @@ import { createWorkflowActuationPermitController } from "@al-ft/midgard-fault-pr
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { listWatcherProofObjectives } from "../../src/fault-proofs/fault-proof-objective-table.js";
-import { unsafeCreateWatcherFaultProofSupervisorForTest } from "../../src/fault-proofs/fault-proof-supervisor.js";
+import { unsafeCreateWatcherFaultProofSupervisorForTest } from "../../src/fault-proofs/fault-proof-supervisor.create-watcher-fault-proof-supervisor.js";
 import { openWatcherJournalDatabase } from "../../src/fault-proofs/watcher-journal-database.js";
 import {
   classifyDoubleSpend,

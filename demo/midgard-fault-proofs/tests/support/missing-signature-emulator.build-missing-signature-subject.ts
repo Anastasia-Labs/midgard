@@ -14,26 +14,24 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { type Script, type UTxO } from "@lucid-evolution/lucid";
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 
+import { MissingSignatureProvability } from "../../src/missing-signature/finding.js";
 import type { MissingSignatureFinding } from "../../src/missing-signature/index.js";
-import { MissingSignatureProvability } from "../../src/missing-signature/index.js";
+import { network } from "./emulator/blueprints.js";
+import {
+  alignUnixTimeToEmulatorSlotBoundary,
+  funderPaymentKeyHash,
+} from "./emulator/emulator-context.js";
+import { makeFaultProofEmulatorHarness } from "./emulator/harness.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { submitSetupTx } from "./emulator/setup-tx.submit-setup-tx.js";
 import {
   MISSING_SIGNATURE_PROVER_POLICY_DEFAULTS,
   type MissingSignatureProverDeps,
   type MissingSignatureProverEvent,
   type MissingSignatureProverPolicy,
-} from "./missing-signature-prover.js";
-import {
-  buildDecodingBlockFixture,
-  type DecodingBlockFixture,
-} from "./native-script-decoding-emulator.js";
-import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  funderPaymentKeyHash,
-  makeFaultProofEmulatorHarness,
-  network,
-  publishPlainReferenceScriptUtxo,
-  submitSetupTx,
-} from "./submit-init-emulator-shared.js";
+} from "./missing-signature-prover.assert-evidence-coherent.js";
+import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.build-decoding-block-fixture.js";
+import type { DecodingBlockFixture } from "./native-script-decoding-emulator.build-decoding-ledger-fixture.js";
 
 export const MISSING_SIGNATURE_TARGET_VKEY = "11".repeat(32);
 

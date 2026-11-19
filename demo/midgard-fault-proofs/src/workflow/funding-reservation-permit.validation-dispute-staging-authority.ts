@@ -45,7 +45,7 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
-import { assertWorkflowActuationPermitIdentity } from "./actuation-permit.js";
+import { assertWorkflowActuationPermitIdentity } from "./actuation-permit.assert-workflow-actuation-permit-identity.js";
 import { readValidationDisputeFundingAuthority } from "./funding-reservation-permit.assert-validation-dispute-funding.js";
 import {
   actionKind,

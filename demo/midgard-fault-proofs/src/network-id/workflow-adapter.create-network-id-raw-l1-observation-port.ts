@@ -26,27 +26,27 @@ import {
 import {
   FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
   type FraudProofWorkflowTerminalVerifier,
-} from "../workflow/orchestrator.js";
+} from "../workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
+import { deriveFraudProofRawL1FamilyStage } from "../workflow/raw-l1-family-derivation.derive-fraud-proof-raw-l1-family-stage.js";
 import {
   deriveAuthenticatedStateQueueHeaderObservationFromRawL1,
-  deriveFraudProofRawL1FamilyStage,
   deriveRetainedStateQueueHeaderObservationFromRawL1,
-  type FraudProofRawL1FamilyDefinition,
-  fraudProofRawL1SnapshotRequestForFamily,
-} from "../workflow/raw-l1-family-derivation.js";
+} from "../workflow/raw-l1-family-derivation.derive-retained-state-queue-header-observation-from-raw-l1.js";
+import { fraudProofRawL1SnapshotRequestForFamily } from "../workflow/raw-l1-family-derivation.derive-terminal.js";
 import {
   deriveFraudProofRawL1OwnThreadsAtPositions,
   type FraudProofThreadPosition,
 } from "../workflow/raw-l1-family-derivation.own-thread-positions.js";
+import type { FraudProofRawL1FamilyDefinition } from "../workflow/raw-l1-family-derivation.state-queue-topology.js";
 import {
   createFraudProofAuthenticatedPublicationObserver,
   type FraudProofAuthenticatedPublicationObserver,
 } from "../workflow/raw-l1-publication-observation.js";
+import { admitFraudProofRawL1Snapshot } from "../workflow/raw-l1-snapshot.admit-fraud-proof-raw-l1-snapshot.js";
 import {
-  admitFraudProofRawL1Snapshot,
   FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
   type FraudProofRawL1SnapshotAuthority,
-} from "../workflow/raw-l1-snapshot.js";
+} from "../workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
 import type { VerifiedFraudProofReleaseEconomicsPolicy } from "../workflow/release-economics-policy.js";
 import type { VerifiedFraudProofReleaseFinalityPolicy } from "../workflow/release-finality-policy.js";
 import type { NetworkIdContracts } from "./contracts.js";

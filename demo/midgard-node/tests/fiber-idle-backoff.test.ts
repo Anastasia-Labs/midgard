@@ -6,9 +6,9 @@ import {
   recordMergeTickIdleness,
   skipIdleMergeTick,
 } from "../src/fibers/merge.idle-backoff.js";
+import { Globals } from "../src/services/globals.globals.js";
 import { nextIdleBackoffState } from "../src/services/globals.idle-backoff.js";
 import { logOnStateChange } from "../src/services/globals.liveness-reasons.js";
-import { Globals } from "../src/services/index.js";
 
 const runWithGlobals = <A, E>(effect: Effect.Effect<A, E, Globals>) =>
   Effect.runPromise(effect.pipe(Effect.provide(Globals.Default)));

@@ -1,4 +1,4 @@
-import { watcherSha256CanonicalJson } from "../storage/durable-store.js";
+import { watcherSha256CanonicalJson } from "../storage/durable-store.canonical-json.js";
 import type { WatcherInstalledWorkflowCategory } from "./fault-proof-application.js";
 import { openWatcherProofObjective } from "./fault-proof-objective-table.js";
 import {

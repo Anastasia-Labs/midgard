@@ -5,14 +5,16 @@ import { describe, expect, it } from "vitest";
 import {
   blockTransactionsFromCanonicalEvidence,
   type CanonicalBlockEvidence,
+} from "../src/evidence/canonical-block-evidence.js";
+import {
   executeCanonicalPrepareCommand,
   prepareDoubleSpendFromCanonicalEvidence,
   prepareInvalidRangeFromCanonicalEvidence,
   prepareMinFeeFromCanonicalEvidence,
   prepareNonExistentInputFromCanonicalEvidence,
   prepareZeroInputFromCanonicalEvidence,
-} from "../src/evidence/index.js";
-import { decodeTransactionMaterial } from "../src/prepare-double-spend.js";
+} from "../src/evidence/prepare-from-evidence.js";
+import { decodeTransactionMaterial } from "../src/prepare-double-spend.resolve-double-spend-pair.js";
 import {
   doubleSpendBlock,
   evidenceFor,

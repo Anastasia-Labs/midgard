@@ -7,20 +7,36 @@ import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "effect";
 import "vitest";
-import "../src/field-opening.js";
-import "../src/remove-fraudulent-block.js";
+import "../src/field-opening.plan-fault-proof-field-opening.js";
+import "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import "../src/testing/complete-lifecycle.js";
-import "../src/transition-trace/witnesses.js";
-import "../src/witness-script-decoding/index.js";
+import "../src/transition-trace/witnesses.build-source-membership-proof.js";
+import "../src/witness-script-decoding/submit-step-03.js";
+import "../src/witness-script-decoding/witness-script-decoding.js";
+import "../src/witness-script-decoding/contracts.js";
+import "../src/witness-script-decoding/submit-cancel.js";
+import "../src/witness-script-decoding/submit-init.js";
+import "../src/witness-script-decoding/submit-step-01.js";
+import "../src/witness-script-decoding/submit-step-02.js";
+import "../src/witness-script-decoding/submit-step-04.js";
+import "../src/witness-script-decoding/workflow.derive-witness-script-decoding-authenticated-source.js";
+import "../src/witness-script-decoding/workflow.detect-witness-script-decoding-complete-replay.js";
 import "./support/emulator/blueprints.js";
 import "./support/emulator/emulator-context.js";
 import "./support/emulator/expect-onchain-refusal.js";
 import "./support/emulator/measurement.js";
 import "./support/emulator/registered-chain.js";
 import "./support/lifecycle-coverage.js";
-import "./support/native-script-decoding-emulator.js";
-import "./support/submit-init-emulator-shared.js";
-import "./support/witness-script-decoding-raw.js";
+import "./support/native-script-decoding-emulator.build-decoding-block-fixture.js";
+import "./support/native-script-decoding-emulator.build-decoding-ledger-fixture.js";
+import "./support/emulator/removal-deployment.build-removal-deployment-info.js";
+import "./support/emulator/harness.js";
+import "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import "./support/emulator/setup-tx.submit-setup-tx.js";
+import "./support/witness-script-decoding-raw.over-bound-field-carriage-plan.js";
+import "./support/witness-script-decoding-raw.submit-witness-script-decoding-step03-raw.js";
+import "./support/witness-script-decoding-raw.submit-witness-script-decoding-step02-raw.js";
 import "./witness-script-decoding-lifecycle.authentication-seams.js";
 import "./witness-script-decoding-lifecycle.make-harness.js";
 import "./witness-script-decoding-lifecycle.scan-honest-accepted-to-close.js";
@@ -29,22 +45,22 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
-import {
-  planWitnessScriptDecodingStep03Transition,
-  WitnessScriptDecodingResultClasses,
-} from "../src/witness-script-decoding/index.js";
+import { planWitnessScriptDecodingStep03Transition } from "../src/witness-script-decoding/submit-step-03.js";
+import { WitnessScriptDecodingResultClasses } from "../src/witness-script-decoding/witness-script-decoding.js";
 import { runEmulatorLifecycleStage } from "./support/emulator/emulator-context.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   DEEP_MAXIMUM_DEPTH,
   MAXIMUM_FIELD_BYTES,
+  scriptWitnessField,
+} from "./support/witness-script-decoding-raw.over-bound-field-carriage-plan.js";
+import { submitWitnessScriptDecodingStep01ForcedRaw } from "./support/witness-script-decoding-raw.submit-witness-script-decoding-step02-raw.js";
+import {
   mutateWitnessCertifiedCarriage,
   mutateWitnessCompactSource,
   mutateWitnessRawUtxoCarriage,
   mutateWitnessSet,
-  scriptWitnessField,
-  submitWitnessScriptDecodingStep01ForcedRaw,
-} from "./support/witness-script-decoding-raw.js";
+} from "./support/witness-script-decoding-raw.submit-witness-script-decoding-step03-raw.js";
 import {
   AUTHENTICATION_SEAMS,
   CANCELLABLE_STEPS,

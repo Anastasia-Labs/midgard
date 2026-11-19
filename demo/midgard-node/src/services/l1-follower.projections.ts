@@ -17,13 +17,11 @@ import {
 import { eventProjection } from "@al-ft/midgard-l1-follower/events";
 import type { Effect } from "effect";
 
-import { forcedOrderProjection } from "../forced-orders/index.js";
-import {
-  type OperatorActivityRecord,
-  operatorSetProjection,
-} from "../l1-operator-set/index.js";
-import { queueTerminalProjection } from "../l1-queue-terminals/index.js";
-import { landedStateQueueProjection } from "../landed-blocks/index.js";
+import { forcedOrderProjection } from "../forced-orders/projection.js";
+import type { OperatorActivityRecord } from "../l1-operator-set/activity.js";
+import { operatorSetProjection } from "../l1-operator-set/projection.js";
+import { queueTerminalProjection } from "../l1-queue-terminals/projection.js";
+import { landedStateQueueProjection } from "../landed-blocks/prune-floor.js";
 import type { Database } from "./database.js";
 import type { NodeIndexPlan } from "./l1-follower.plan.js";
 import { settlementProjection } from "./settlement.final-hook.js";

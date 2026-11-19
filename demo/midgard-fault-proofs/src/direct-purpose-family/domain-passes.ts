@@ -5,10 +5,8 @@
 import { decodeMidgardMintPolicyItem } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 
-import {
-  buildDirectReceiveEvidence,
-  directSpendEvidence,
-} from "../direct-script-derivation/index.js";
+import { directSpendEvidence } from "../direct-script-derivation/claimed-purpose.js";
+import { buildDirectReceiveEvidence } from "../direct-script-derivation/receive-evidence.js";
 import {
   type DirectPurposeFieldPlan,
   type DirectPurposeRedeemerArgs,

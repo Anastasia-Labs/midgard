@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { commitUserEventSourceIdSetsAreExact } from "../src/workers/commit-block-header/submission.js";
+import { commitUserEventSourceIdSetsAreExact } from "../src/workers/commit-block-header/submission.commit-event-sources.js";
 
 const exactSources = {
   pendingDepositIds: ["deposit-a"],

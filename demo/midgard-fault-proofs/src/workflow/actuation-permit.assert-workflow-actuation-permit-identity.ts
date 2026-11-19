@@ -11,11 +11,11 @@ import {
   WorkflowActuationRevokedError,
 } from "./actuation-permit.create-workflow-reconciliation-permit-controller.js";
 import { type HeaderFaultDecision } from "./header-classifier.js";
+import type { FraudProofWorkflowJournalStore } from "./journal.fraud-proof-workflow-journal-event.js";
 import {
-  type FraudProofWorkflowJournalStore,
   journalJsonDigest,
   normalizeJournalJson,
-} from "./journal.js";
+} from "./journal.fraud-proof-workflow-terminal.js";
 
 /**
  * Cross-check used by the funding reservation controller. It exposes only the

@@ -26,12 +26,12 @@ import {
 } from "@al-ft/midgard-l1-follower/testing";
 import * as SDK from "@al-ft/midgard-sdk";
 
+import { readLandedStateQueueFrom } from "../../src/l1-state-queue/hook.js";
 import {
   landedElements,
   type LandedStateQueue,
-  readLandedStateQueueFrom,
-  stateQueueProjection,
-} from "../../src/l1-state-queue/index.js";
+} from "../../src/l1-state-queue/landed.js";
+import { stateQueueProjection } from "../../src/l1-state-queue/projection.js";
 import {
   GENESIS_HASH,
   hex32,

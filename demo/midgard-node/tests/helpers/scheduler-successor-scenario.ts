@@ -25,14 +25,10 @@ import {
   BLOCK_COMMITMENT_DUE_WORK_KIND,
 } from "../../src/fibers/block-commitment.promote-or-recover-native-mpf.js";
 import { peekSlotAwareDueWork } from "../../src/fibers/slot-aware-due-work.js";
+import { NodeConfig } from "../../src/services/config.make-config.js";
+import { Globals } from "../../src/services/globals.globals.js";
 import { livenessReasonAgeGauge } from "../../src/services/globals.liveness-reasons.js";
 import { HISTORY_COMMIT_LANDING_MARGIN_MS } from "../../src/services/history-commit-window.js";
-import {
-  Globals,
-  Lucid,
-  MidgardContracts,
-  NodeConfig,
-} from "../../src/services/index.js";
 import {
   IntentJournalWithoutFollower,
   openPlan,
@@ -41,12 +37,14 @@ import {
   type ActiveLivenessReason,
   activeLivenessReasons,
 } from "../../src/services/liveness-halt.js";
+import { Lucid } from "../../src/services/lucid.js";
+import { MidgardContracts } from "../../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   fetchReferenceScriptUtxosProgram,
   referenceScriptByName,
 } from "../../src/transactions/reference-scripts.js";
 import { ensureSchedulerAlignedForCommit } from "../../src/workers/utils/scheduler-refresh.ensure-scheduler-aligned-for-commit.js";
-import { schedulerStateCoversCommitTarget } from "../../src/workers/utils/scheduler-refresh.js";
+import { schedulerStateCoversCommitTarget } from "../../src/workers/utils/scheduler-refresh.scheduler-refresh-due-work-from-no-inline-submit-defer.js";
 import { provideDatabaseLayers, resetApplicationTables } from "../utils.js";
 import { syncEmulatorChain } from "./emulator-l1-follower.js";
 import {

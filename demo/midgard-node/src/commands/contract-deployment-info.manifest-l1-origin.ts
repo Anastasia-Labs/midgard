@@ -9,7 +9,7 @@ import { formatL1Origin, type L1Origin } from "@al-ft/midgard-core/l1-origin";
 import { findOrigin, type FindOriginResult } from "@al-ft/midgard-l1-follower";
 import { Effect, type Scope } from "effect";
 
-import { loadDeploymentRunState } from "../e2e/run-state.js";
+import { loadDeploymentRunState } from "../e2e/run-state.parse-deployment-run-state.js";
 import { NATIVE_LEDGER_SETTING_NAMES } from "../services/native-ledger.js";
 import {
   type LocalNodeConfig,

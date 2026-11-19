@@ -44,9 +44,9 @@ import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.f
 import type { FraudProofFamilyWorkflowAdapter } from "../src/workflow/orchestrator.js";
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { recordCrossBlockRawEmulator } from "./support/cross-block-raw-emulator.js";
+import { network } from "./support/emulator/blueprints.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
-import { expectStateQueueHeaderOrder } from "./support/submit-init-emulator-fixtures.js";
-import { network } from "./support/submit-init-emulator-shared.js";
+import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
 import {
   BOND_LOVELACE,
   type Scene,

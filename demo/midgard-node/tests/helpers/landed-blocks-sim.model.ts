@@ -20,7 +20,7 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
 import { DepositsDB } from "../../src/database/index.js";
-import { REBASE_REJECTIONS } from "../../src/landed-blocks/index.js";
+import { REBASE_REJECTIONS } from "../../src/landed-blocks/rebase.js";
 import type { SimMempool } from "./landed-blocks-sim.mempool.js";
 import type { SimRegistry } from "./landed-blocks-sim.traffic.js";
 import type { SimUniverse } from "./landed-blocks-sim.universe.js";

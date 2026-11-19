@@ -15,14 +15,15 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  MISSING_SCRIPT_SOURCE_DIRECT_WALK,
   MissingScriptSourceHonestLeaf,
   requireConvictingMissingScriptSourceProof,
-} from "../src/missing-script-source/index.js";
+} from "../src/missing-script-source/prover.js";
+import { MISSING_SCRIPT_SOURCE_DIRECT_WALK } from "../src/missing-script-source/workflow.js";
 import {
   makeDirectWalkHarness,
   publishDirectWalkRoles,
 } from "./support/direct-walk-emulator.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
 import { scriptAddress } from "./support/missing-redeemer-emulator.purposes.js";
 import {
   buildMissingRedeemerSubject,
@@ -42,7 +43,6 @@ import {
   expectTerminalRefusal,
   removeConvictedBlock,
 } from "./support/missing-script-source-emulator.rows.js";
-import { expectSingleUtxoWithUnit } from "./support/submit-init-emulator-shared.js";
 
 /** A forced spend of an output locked by a Plutus script that nothing
  * sources: no witness, no reference input, no redeemer. */

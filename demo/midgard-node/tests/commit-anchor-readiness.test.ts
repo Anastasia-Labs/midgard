@@ -7,8 +7,8 @@ import {
   COMMIT_ANCHOR_UNAVAILABLE,
   publishCommitAnchorReadiness,
 } from "../src/fibers/block-commitment.commit-anchor-readiness.js";
-import { NodeConfig } from "../src/services/config.js";
-import { Globals } from "../src/services/globals.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
+import { Globals } from "../src/services/globals.globals.js";
 import { activeLivenessReasons } from "../src/services/liveness-halt.js";
 import {
   FOLLOWER_GENERATION,

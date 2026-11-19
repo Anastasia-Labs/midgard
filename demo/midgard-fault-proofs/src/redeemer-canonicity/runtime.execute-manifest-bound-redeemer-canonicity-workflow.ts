@@ -1,12 +1,12 @@
 import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import { workflowActuationAuthorizingDecisionDigest } from "../workflow/actuation-permit.js";
-import { REDEEMER_CANONICITY_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
+import { workflowActuationAuthorizingDecisionDigest } from "../workflow/actuation-permit.assert-workflow-actuation-permit-identity.js";
+import { REDEEMER_CANONICITY_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.create-complete-canonical-replay-union.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import { type FraudProofWorkflowJournalStore } from "../workflow/journal.js";
-import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
+import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
+import type { FraudProofWorkflowRunResult } from "../workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import {
   createFraudProofWorkflowRegistry,
-  type FraudProofWorkflowRunResult,
   runFraudProofWorkflowFromRetainedDa,
 } from "../workflow/orchestrator.js";
 import { type WalletOnlySend } from "../workflow/wallet-only-send-gate.js";

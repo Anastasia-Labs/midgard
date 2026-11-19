@@ -9,17 +9,17 @@ import {
   canonicalTransitionEffectFromStatePatch,
   commitValidationTraceV1,
   DirectValidationTraceUnavailable,
-  RejectCodes,
   replayValidationVerdictEvent,
   requiresRealValidationDescriptorV1,
   transitionEffectToLedgerOps,
-  type UTxOStatePatch,
   type ValidationMachineLedgerMutationStep,
   type ValidationMachineLedgerOp,
   type ValidationMachineReplayInput,
   ValidationTraceStopped,
   type ValidationVerdictEvent,
 } from "@al-ft/midgard-validation";
+import type { UTxOStatePatch } from "@al-ft/midgard-validation/phase-b";
+import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

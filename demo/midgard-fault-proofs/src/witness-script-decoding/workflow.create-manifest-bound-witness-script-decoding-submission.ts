@@ -5,8 +5,8 @@ import {
 import { PROOF_THREAD_SOURCE_KIND_ACCEPTED } from "@al-ft/midgard-sdk";
 
 import { isPrerequisiteTurn } from "../fault-proof-turn.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.build-remove-fraudulent-block.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
-import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import { requireScriptDecodeRecordForItem } from "../script-decode/record.js";
 import {
   createOwnOutputJournal,
@@ -15,8 +15,10 @@ import {
 import { WITNESS_SCRIPT_DECODING_CATEGORY_LABEL } from "./contracts.js";
 import { buildWitnessScriptDecodingCancel } from "./submit-cancel.js";
 import { buildWitnessScriptDecodingInit } from "./submit-init.js";
-import { buildWitnessScriptDecodingStep01Accepted } from "./submit-step-01.js";
-import { buildWitnessScriptDecodingStep01Forced } from "./submit-step-01.js";
+import {
+  buildWitnessScriptDecodingStep01Accepted,
+  buildWitnessScriptDecodingStep01Forced,
+} from "./submit-step-01.js";
 import { buildWitnessScriptDecodingStep02 } from "./submit-step-02.js";
 import { buildWitnessScriptDecodingStep03 } from "./submit-step-03.js";
 import { buildWitnessScriptDecodingStep04 } from "./submit-step-04.js";

@@ -44,7 +44,7 @@ import {
   witnessSpendingValidatorCarriage,
   witnessWithdrawalValidatorCarriage,
 } from "../../src/witness-reference-scripts.js";
-import { network as emulatorNetwork } from "./submit-init-emulator-shared.js";
+import { network as emulatorNetwork } from "./emulator/blueprints.js";
 import { type ValueNotPreservedHarness } from "./value-not-preserved-emulator.commit-header-after-anchor-block.js";
 
 // ---------------------------------------------------------------------------

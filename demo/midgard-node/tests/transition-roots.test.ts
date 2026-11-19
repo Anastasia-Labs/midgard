@@ -5,22 +5,24 @@ import { Effect } from "effect";
 import { describe, expect } from "vitest";
 
 import {
-  buildAdjacentTraceProof,
   buildAuthenticatedRootFromDataEntries,
+  buildRootMembershipProof,
+  buildRootNonMembershipProof,
+  verifyRootCountProof,
+} from "../src/workers/commit-block-header/transition-roots.validate-count-proof.js";
+import { verifyEventToStepProof } from "../src/workers/commit-block-header/transition-roots.verify-event-to-step-proof.js";
+import {
+  buildAdjacentTraceProof,
   buildEventToStepMembershipProof,
   buildEventToStepNonMembershipProof,
   buildEventToStepRoot,
   buildIndexedTraceProof,
-  buildRootMembershipProof,
-  buildRootNonMembershipProof,
   buildTransitionTraceRoot,
   verifyAdjacentTraceProof,
-  verifyEventToStepProof,
   verifyIndexedTraceProof,
-  verifyRootCountProof,
   verifyRootMembershipProof,
   verifyRootNonMembershipProof,
-} from "../src/workers/commit-block-header/transition-roots.js";
+} from "../src/workers/commit-block-header/transition-roots.verify-indexed-trace-proof.js";
 import {
   depositEventKey,
   h28,

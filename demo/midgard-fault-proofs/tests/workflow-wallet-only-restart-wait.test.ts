@@ -10,17 +10,15 @@ import { describe, expect, it, vi } from "vitest";
 import { proofMaterialsAddressOfFundingAddress } from "../src/funding/proof-materials-address.js";
 import { WALLET_ONLY_VALIDITY_MS } from "../src/wallet-only-validity.js";
 import { runFraudProofWorkflowCli } from "../src/workflow/cli.js";
-import { bindWorkflowFundingReservationJournal } from "../src/workflow/funding-reservation-permit.js";
-import { unsafeWorkflowFundingReservationSelectedOutRefsForTest } from "../src/workflow/funding-reservation-permit.js";
-import {
-  type FraudProofWorkflowJournalEntry,
-  MemoryFraudProofWorkflowJournalStore,
-} from "../src/workflow/journal.js";
-import {
-  createFraudProofWorkflowRegistry,
-  type FraudProofFamilyWorkflowAdapter,
-  type FraudProofWorkflowPreflight,
-} from "../src/workflow/orchestrator.js";
+import { bindWorkflowFundingReservationJournal } from "../src/workflow/funding-reservation-permit.begin-workflow-funding-reservation-action.js";
+import { unsafeWorkflowFundingReservationSelectedOutRefsForTest } from "../src/workflow/funding-reservation-permit.restrict-workflow-funding-signer.js";
+import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
+import type { FraudProofWorkflowJournalEntry } from "../src/workflow/journal.fraud-proof-workflow-journal-event.js";
+import type {
+  FraudProofFamilyWorkflowAdapter,
+  FraudProofWorkflowPreflight,
+} from "../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
+import { createFraudProofWorkflowRegistry } from "../src/workflow/orchestrator.immutable-fraud-proof-workflow-registry.js";
 import { runAdmittedFraudProofWorkflow } from "../src/workflow/orchestrator.run-admitted-fraud-proof-workflow.js";
 import { readWorkflowRuntimeFundingPolicy } from "../src/workflow/runtime-funding-policy.js";
 import { bindWorkflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
@@ -29,7 +27,7 @@ import {
   WALLET_ONLY_BOUND_ROUNDING_SLOTS,
   type WalletOnlySend,
 } from "../src/workflow/wallet-only-send-gate.js";
-import { releaseFinality } from "./support/raw-l1-terminal-fixture.js";
+import { releaseFinality } from "./support/raw-l1-terminal-fixture.output.js";
 import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
 import {
   makeAdapter,

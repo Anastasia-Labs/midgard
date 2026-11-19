@@ -4,13 +4,13 @@ import { DatabaseSync } from "node:sqlite";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { unsafeCreateWatcherFaultProofSupervisorForTest } from "../../src/fault-proofs/fault-proof-supervisor.js";
+import { unsafeCreateWatcherFaultProofSupervisorForTest } from "../../src/fault-proofs/fault-proof-supervisor.create-watcher-fault-proof-supervisor.js";
 import {
   warnWatcherLegacyJournalDirectories,
   type WatcherLegacyJournalIgnored,
 } from "../../src/runtime/legacy-journal-directories.js";
 import { createWatcherOperationsObservability } from "../../src/runtime/operations-observability.js";
-import { createWatcherRuntime } from "../../src/runtime/watcher-runtime.js";
+import { createWatcherRuntime } from "../../src/runtime/watcher-runtime.startup-hold.js";
 import { freeOperationsEndpoint } from "../support/free-port.js";
 import {
   journalDirectory,

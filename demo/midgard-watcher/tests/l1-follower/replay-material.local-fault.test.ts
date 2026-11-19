@@ -3,7 +3,7 @@ import {
   encodeMidgardTxOutput,
   midgardAddressFromText,
 } from "@al-ft/midgard-core/codec";
-import { isReplayLocalFault } from "@al-ft/midgard-fault-proofs";
+import { isReplayLocalFault } from "@al-ft/midgard-fault-proofs/block-replay";
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data, walletFromSeed } from "@lucid-evolution/lucid";
 import { Cause, Effect, Exit } from "effect";

@@ -15,7 +15,7 @@ import {
   type FraudProofFamilyWorkflowAdapter,
   type FraudProofWorkflowAction,
   type FraudProofWorkflowPreflight,
-} from "./orchestrator.js";
+} from "./orchestrator.fraud-proof-family-workflow-adapter.js";
 import {
   bindWorkflowPreflightTransaction,
   LOCAL_UPLC_EVALUATOR,

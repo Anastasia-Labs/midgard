@@ -10,7 +10,7 @@ import { importCheckFiber } from "../src/import-check/fiber.js";
 import {
   ValidationPool,
   type ValidationPoolService,
-} from "../src/services/validation-pool.js";
+} from "../src/services/validation-pool.bundled-worker-exec-argv.js";
 import {
   blockOf,
   db,

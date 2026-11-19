@@ -6,20 +6,21 @@ import {
   prepareDaHashPreimageFromCommittedLeaves,
   type PreparedDaHashPreimageOutput,
 } from "../prepare-da-hash-preimage.js";
-import {
-  buildRemoveFraudulentBlock,
-  type StateQueueMutationLeaseCoordinator,
-} from "../remove-fraudulent-block.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.build-remove-fraudulent-block.js";
+import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.remove-fraudulent-block-explicit-category.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import { buildDaHashPreimageStep01 } from "../submit-da-hash-preimage-step-01.js";
+import { buildDaHashPreimageStep01 } from "../submit-da-hash-preimage-step-01.submit-da-hash-preimage-step01.js";
 import { buildDaHashPreimageStep02 } from "../submit-da-hash-preimage-step-02.js";
-import { buildInit } from "../submit-init.js";
+import { buildInit } from "../submit-init.submit-init.js";
 import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
 import {
   CORE_WITNESS_ROLES,
   type LinearFamilyReferenceScripts,
-} from "./family-definition.js";
-import { type JournalJsonObject, normalizeJournalJson } from "./journal.js";
+} from "./family-definition.family-adapter-arm.js";
+import {
+  type JournalJsonObject,
+  normalizeJournalJson,
+} from "./journal.fraud-proof-workflow-terminal.js";
 import { type FraudProofWorkflowAction } from "./orchestrator.js";
 
 export const DA_HASH_PREIMAGE_ARTIFACT =

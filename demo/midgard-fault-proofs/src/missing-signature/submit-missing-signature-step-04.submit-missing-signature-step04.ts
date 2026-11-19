@@ -35,8 +35,7 @@ import {
   resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening.js";
 import { type ResolvedProverSigner } from "../runtime.js";
-import { completeStep, fundStep } from "../step-completion.js";
-import { finishStep } from "../step-completion.js";
+import { completeStep, finishStep, fundStep } from "../step-completion.js";
 import {
   computationThreadOutputPredicate,
   outputWithDatumAndUnitPredicate,

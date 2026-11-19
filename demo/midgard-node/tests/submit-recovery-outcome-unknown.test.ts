@@ -9,7 +9,7 @@ import { L1SubmitOutcomeUnknownError } from "@al-ft/midgard-l1-follower/provider
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import { submitSignedTxWithRecovery } from "../src/transactions/utils.js";
+import { submitSignedTxWithRecovery } from "../src/transactions/utils.submit-signed-tx-with-recovery.js";
 import { runWithoutFollower, TEST_INTENT } from "./helpers/intent-journal.js";
 import { signedTxCbor } from "./transactions-utils.parse-outside-validity-interval-details.js";
 

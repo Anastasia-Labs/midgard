@@ -8,10 +8,8 @@ import {
 } from "@lucid-evolution/lucid";
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 
-import {
-  assertWatcherStateQueueObservation,
-  type WatcherAuthenticatedStateQueueObservation,
-} from "../indexers/authenticated-state-queue-observation.js";
+import { assertWatcherStateQueueObservation } from "../indexers/authenticated-state-queue-observation.js";
+import { type WatcherAuthenticatedStateQueueObservation } from "../indexers/authenticated-state-queue-observation.parse-persisted-header.js";
 import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
 import {
   loadWatcherSecretText,

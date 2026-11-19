@@ -25,20 +25,19 @@ import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk";
 import type { UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { planFaultProofFieldOpening } from "../src/field-opening.js";
+import { planFaultProofFieldOpening } from "../src/field-opening.plan-fault-proof-field-opening.js";
 import { MINT_AUTHORIZATION_CATEGORY_LABEL } from "../src/mint-authorization/contracts.js";
 import { mintAuthorizationEvaluationPreimage } from "../src/mint-authorization/evaluate.js";
-import {
-  buildMintAuthorizationEvaluate,
-  buildMintAuthorizationStep01,
-  buildMintAuthorizationStep02,
-  buildMintAuthorizationStep03EvaluateUnsatisfied,
-  buildMintAuthorizationStep03WitnessAbsence,
-  buildMintAuthorizationStep04AdvanceComplete,
-  buildMintAuthorizationStep05,
-} from "../src/mint-authorization/index.js";
-import { buildResolvedInit } from "../src/submit-init.js";
+import { buildMintAuthorizationEvaluate } from "../src/mint-authorization/submit-mint-authorization-evaluate.js";
+import { buildMintAuthorizationStep01 } from "../src/mint-authorization/submit-mint-authorization-step-01.js";
+import { buildMintAuthorizationStep02 } from "../src/mint-authorization/submit-mint-authorization-step-02.submit-mint-authorization-step02.js";
+import { buildMintAuthorizationStep03EvaluateUnsatisfied } from "../src/mint-authorization/submit-mint-authorization-step-03.submit-mint-authorization-step03-evaluate-unsatisfied.js";
+import { buildMintAuthorizationStep03WitnessAbsence } from "../src/mint-authorization/submit-mint-authorization-step-03.submit-mint-authorization-step03-witness-absence.js";
+import { buildMintAuthorizationStep04AdvanceComplete } from "../src/mint-authorization/submit-mint-authorization-step-04.js";
+import { buildMintAuthorizationStep05 } from "../src/mint-authorization/submit-mint-authorization-step-05.js";
+import { buildResolvedInit } from "../src/submit-init.submit-resolved-init.js";
 import { createRawDatumPreimageRequirement } from "../src/workflow/raw-datum-preimage-prerequisite.js";
+import { network } from "./support/emulator/blueprints.js";
 import {
   buildMintAuthorizationSubject,
   directionBNativeScript,
@@ -48,7 +47,6 @@ import {
   publishMintAuthorizationReferenceScripts,
   setupMintAuthorizationScenario,
 } from "./support/mint-authorization-emulator.js";
-import { network } from "./support/submit-init-emulator-shared.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,

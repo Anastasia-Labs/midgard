@@ -52,13 +52,12 @@ import {
   resolveProverSigner,
   type SubmitProviderConfig,
 } from "./runtime.js";
-import { completeStep, fundStep } from "./step-completion.js";
-import { finishStep } from "./step-completion.js";
+import { completeStep, finishStep, fundStep } from "./step-completion.js";
 import { requireComputationThreadToken } from "./step-support.js";
 import {
   FABRICATED_WITHDRAWAL_CATEGORY_LABEL,
   type FabricatedWithdrawalContracts,
-} from "./submit-fabricated-withdrawal-step-01.js";
+} from "./submit-fabricated-withdrawal-step-01.derive-fabricated-withdrawal-step01-handoff.js";
 import { submitFaultProofTurns } from "./submit-fault-proof-turns.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
 import {

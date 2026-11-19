@@ -8,7 +8,10 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import { mpfProofFromWitness, normalizedMpfRoot } from "./detect.js";
+import {
+  mpfProofFromWitness,
+  normalizedMpfRoot,
+} from "./detect.mpf-proof-from-witness.js";
 import type { TransitionTraceReconstruction } from "./reconstruct.js";
 
 /**

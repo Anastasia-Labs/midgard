@@ -36,19 +36,18 @@ import {
   resolveProverSigner,
   type SubmitProviderConfig,
 } from "./runtime.js";
-import { completeStep, fundStep } from "./step-completion.js";
-import { finishStep } from "./step-completion.js";
+import { completeStep, finishStep, fundStep } from "./step-completion.js";
 import { requireComputationThreadToken } from "./step-support.js";
 import {
   FABRICATED_DEPOSIT_CATEGORY_LABEL,
   type FabricatedDepositContracts,
-} from "./submit-fabricated-deposit-step-01.js";
+} from "./submit-fabricated-deposit-step-01.derive-fabricated-deposit-step01-handoff.js";
 import { submitFaultProofTurns } from "./submit-fault-proof-turns.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
-import { workflowReferenceScript } from "./workflow/transaction-boundary.js";
 import {
   type LocallyEvaluatedTransaction,
   type UnjournaledSubmission,
+  workflowReferenceScript,
 } from "./workflow/transaction-boundary.js";
 
 /** Expected semantic arm. An old pointer hint is never used as L1 authority. */

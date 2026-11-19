@@ -5,8 +5,8 @@ import {
 import type * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
-import { AlwaysSucceedsContract } from "../../src/services/always-succeeds.js";
-import { withRealStateQueueAndOperatorContracts } from "../../src/services/midgard-contracts.js";
+import { AlwaysSucceedsContract } from "../../src/services/always-succeeds.always-succeeds-contract.js";
+import { withRealStateQueueAndOperatorContracts } from "../../src/services/midgard-contracts.with-real-state-queue-and-operator-contracts.js";
 import { TEST_AVAILABILITY_PARAMETERS } from "./availability-challenge.js";
 
 export type TestOneShotOutRef = {

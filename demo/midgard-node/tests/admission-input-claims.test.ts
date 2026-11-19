@@ -13,7 +13,7 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { TxAdmissionsDB } from "../src/database/index.js";
 import { PEER_TXS_PATH } from "../src/l2-peer/protocol.js";
-import { MempoolLedgerCache } from "../src/services/index.js";
+import { MempoolLedgerCache } from "../src/services/mempool-ledger-cache.mempool-ledger-cache-service.js";
 import {
   buildTransfer,
   l2Output,

@@ -28,19 +28,21 @@ import {
   nativeTxFromCoreCompact,
   type SubmitStep01TxInclusion,
 } from "../../src/step-support.js";
-import { publishFaultProofWitnessReferenceScripts } from "./emulator/reference-scripts.js";
-import { countedTransactionsRoot } from "./submit-init-emulator-fixtures.js";
+import { trieRootHex } from "./emulator/catalogue.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   funderPaymentKeyHash,
+} from "./emulator/emulator-context.js";
+import { makeFaultProofEmulatorHarness } from "./emulator/harness.js";
+import { makeHeader } from "./emulator/header-fixtures.js";
+import {
   l2TransactionSourceCbor as l2TransactionSourceCborV1,
-  makeFaultProofEmulatorHarness,
-  makeHeader,
   makeNativeTx,
-  publishPlainReferenceScriptUtxo,
-  submitSetupTx,
-  trieRootHex,
-} from "./submit-init-emulator-shared.js";
+} from "./emulator/native-tx.js";
+import { publishFaultProofWitnessReferenceScripts } from "./emulator/reference-scripts.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { submitSetupTx } from "./emulator/setup-tx.submit-setup-tx.js";
+import { countedTransactionsRoot } from "./submit-init/transaction-material.js";
 
 // ---------------------------------------------------------------------------
 // The committed transaction and its MPF inclusion

@@ -18,10 +18,9 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../../src/evidence/canonical-block-evidence.js";
-import type { LedgerEntry } from "../../src/ledger-at.js";
-import { ledgerEntriesRoot } from "../../src/ledger-at.js";
+import { ledgerEntriesRoot, type LedgerEntry } from "../../src/ledger-at.js";
 import { buildCountedRoot } from "../../src/transition-trace/phas.js";
-import { admitCompleteCanonicalReplayPredecessor } from "../../src/workflow/complete-replay.js";
+import { admitCompleteCanonicalReplayPredecessor } from "../../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,

@@ -11,19 +11,17 @@ import { type Script } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { prepareFieldItemWidthEvidence } from "../src/field-item-width-illegal/field-item-width-illegal.js";
+import { detectFieldItemWidthIllegalCompleteReplay } from "../src/field-item-width-illegal/replay.js";
 import {
   deriveFieldItemWidthIllegalAuthenticatedSource,
   deriveFieldItemWidthIllegalEvidenceFromCanonicalBlock,
-  detectFieldItemWidthIllegalCompleteReplay,
-  FIELD_ITEM_WIDTH_ILLEGAL_FAMILY_DEFINITION,
   prepareFieldItemWidthIllegalRecoveryMaterial,
-} from "../src/field-item-width-illegal/workflow.js";
-import {
-  buildTrieView,
-  encodeL2TransactionSourceValue,
-} from "../src/prepare-double-spend.js";
-import { committedFieldShapeScenarioMaterial } from "./support/committed-field-shape-emulator.js";
-import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
+} from "../src/field-item-width-illegal/workflow.derive-field-item-width-illegal-authenticated-source.js";
+import { FIELD_ITEM_WIDTH_ILLEGAL_FAMILY_DEFINITION } from "../src/field-item-width-illegal/workflow.field-item-width-illegal-family-definition.js";
+import { encodeL2TransactionSourceValue } from "../src/prepare-double-spend.encode-l2-transaction-source-value.js";
+import { buildTrieView } from "../src/prepare-double-spend.resolve-double-spend-pair.js";
+import { committedFieldShapeScenarioMaterial } from "./support/committed-field-shape-emulator.committed-field-shape-scenario-material.js";
+import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init/forced-transitions.js";
 
 const script = (byte: string): Script => ({
   type: "PlutusV3",

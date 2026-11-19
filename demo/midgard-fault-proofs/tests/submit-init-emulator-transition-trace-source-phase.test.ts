@@ -3,14 +3,12 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildSourcePhaseMismatchFault,
-  buildTransitionFaultProof,
-  buildTransitionTraceProof,
-  detectTransitionTraceFaults,
-  resolveTransitionTraceDeploymentContracts,
-  transitionTraceFinalIndex,
-} from "../src/index.js";
+import { resolveTransitionTraceDeploymentContracts } from "../src/runtime.resolve-category-deployment-contracts.js";
+import { detectTransitionTraceFaults } from "../src/transition-trace/detect.detect-single-ledger-transitions.js";
+import { transitionTraceFinalIndex } from "../src/transition-trace/submit.make-transition-trace-final-spend-redeemer.js";
+import { buildTransitionTraceProof } from "../src/transition-trace/submit.submit-transition-trace-proof.js";
+import { buildTransitionFaultProof } from "../src/transition-trace/witnesses.build-out-of-window-source-event-fault.js";
+import { buildSourcePhaseMismatchFault } from "../src/transition-trace/witnesses.build-source-non-membership-proof.js";
 import {
   alignedHeaderStart,
   removeAndAssertPermanentProof,
@@ -20,10 +18,8 @@ import {
   makeHarness,
   setupChallenge,
 } from "./submit-init-emulator-transition-trace-subvariants.setup-challenge.js";
-import {
-  funderPaymentKeyHash,
-  network,
-} from "./support/submit-init-emulator-shared.js";
+import { network } from "./support/emulator/blueprints.js";
+import { funderPaymentKeyHash } from "./support/emulator/emulator-context.js";
 import { submitTurnsUnjournaled } from "./support/submit-unjournaled.js";
 import { buildForcedAndL2Block } from "./support/transition-trace-phase-band.forced-and-l2-block.js";
 

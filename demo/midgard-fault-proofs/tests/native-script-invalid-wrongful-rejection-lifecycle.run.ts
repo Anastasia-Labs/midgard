@@ -1,25 +1,23 @@
 import { expect } from "vitest";
 
-import { planFaultProofFieldOpening } from "../src/field-opening.js";
+import { planFaultProofFieldOpening } from "../src/field-opening.plan-fault-proof-field-opening.js";
 import { admitNativeScriptInvalidForcedArtifact } from "../src/native-script-invalid/forced-artifact.js";
 import { buildNativeScriptInvalidStep02 } from "../src/native-script-invalid/submit-step-02.js";
 import { buildNativeScriptInvalidStep03 } from "../src/native-script-invalid/submit-step-03.js";
 import { buildNativeScriptInvalidStep03StartSignerScan } from "../src/native-script-invalid/submit-step-03-staged.js";
 import { buildNativeScriptInvalidStep04 } from "../src/native-script-invalid/submit-step-04.js";
 import { buildNativeScriptInvalidStep05 } from "../src/native-script-invalid/submit-step-05.js";
-import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../src/workflow/own-outputs.js";
 import { setup } from "./native-script-invalid-wrongful-rejection-lifecycle.setup.js";
+import { network } from "./support/emulator/blueprints.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
-import {
-  buildRemovalDeploymentInfo,
-  network,
-  publishPlainReferenceScriptUtxo,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
 import {
   buildAndSubmitUnjournaled,
   certifyCarriageUnjournaled,

@@ -20,7 +20,7 @@ import {
   decodeTransactionMaterial,
   requireProof,
   transactionSourceTrieItem,
-} from "../prepare-double-spend.js";
+} from "../prepare-double-spend.resolve-double-spend-pair.js";
 import {
   parseSubmitStep01TxInclusion,
   type SubmitStep01TxInclusion,
@@ -28,8 +28,8 @@ import {
 import {
   eventKeyFingerprint,
   type TransitionTraceReconstruction,
-} from "../transition-trace/reconstruct.js";
-import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
+} from "../transition-trace/reconstruct.transition-trace-reconstruction.js";
+import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.build-source-membership-proof.js";
 import {
   acceptedTransactionSubject,
   type DetectionSubject,

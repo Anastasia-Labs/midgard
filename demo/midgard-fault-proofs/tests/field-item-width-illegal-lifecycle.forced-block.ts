@@ -15,8 +15,8 @@ import {
   fieldItemWidthCoordinateIsSupported,
   type FieldItemWidthEvidence,
   prepareFieldItemWidthEvidence,
-} from "../src/field-item-width-illegal/index.js";
-import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
+} from "../src/field-item-width-illegal/field-item-width-illegal.evidence.js";
+import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
 import { makeHarness } from "./field-item-width-illegal-lifecycle.make-harness.js";
 import {
   coverage,
@@ -28,10 +28,10 @@ import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
 import {
   buildAcceptedWidthInclusions,
-  buildWidthForcedFixture,
   type WidthShape,
-} from "./support/field-item-width-illegal-shapes.js";
-import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
+} from "./support/field-item-width-illegal-shapes.build-accepted-width-inclusions.js";
+import { buildWidthForcedFixture } from "./support/field-item-width-illegal-shapes.build-width-forced-fixture.js";
+import { setupFraudulentBlock } from "./support/submit-init/removal.js";
 
 export const widthReason = (
   fieldIndex: number,

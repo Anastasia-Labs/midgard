@@ -5,16 +5,19 @@ import { describe, expect, it, vi } from "vitest";
 
 import { TxUtils as TxTable } from "../src/database/index.js";
 import type { EntryWithTimeStamp } from "../src/database/utils/tx.js";
-import { type NativeMpfBuildContext, processMpfs } from "../src/mpf/index.js";
+import { processMpfs } from "../src/mpf/index.js";
+import type { NativeMpfBuildContext } from "../src/mpf/transition-trace.apply-trace-ledger-ops-to-mpf.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
 import { FollowerWriteFixture } from "../src/services/follower-write-gate.js";
+import type { Lucid } from "../src/services/lucid.js";
 import {
   ContractDeploymentIdentity,
-  type Lucid,
   MidgardContracts,
-  NodeConfig,
-} from "../src/services/index.js";
-import { runCommitBlockHeaderWorkerProgram } from "../src/workers/commit-block-header.js";
-import { captureCommitWorkerFailure } from "../src/workers/commit-block-header.run-commit-block-header-worker-program.js";
+} from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
+import {
+  captureCommitWorkerFailure,
+  runCommitBlockHeaderWorkerProgram,
+} from "../src/workers/commit-block-header.run-commit-block-header-worker-program.js";
 import type { WorkerOutput } from "../src/workers/utils/commit-block-header.js";
 import {
   COMMIT_DA_FRAME_IDLE_NOTICE,

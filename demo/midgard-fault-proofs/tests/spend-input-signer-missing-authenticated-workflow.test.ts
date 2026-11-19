@@ -7,11 +7,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   bindSpendInputSignerMissingReferenceScripts,
-  createSpendInputSignerMissingRawL1StageResolver,
   SPEND_INPUT_SIGNER_MISSING_MANIFEST_CONTRACTS,
   type SpendInputSignerMissingDeploymentBinding,
   type SpendInputSignerMissingReferenceScripts,
-} from "../src/spend-input-signer-missing/index.js";
+} from "../src/spend-input-signer-missing/authenticated-workflow.create-spend-input-signer-missing-bound-config.js";
+import { createSpendInputSignerMissingRawL1StageResolver } from "../src/spend-input-signer-missing/authenticated-workflow.create-spend-input-signer-missing-raw-l1-stage-resolver.js";
 
 const script = (byte: string): Script => ({
   type: "PlutusV3",

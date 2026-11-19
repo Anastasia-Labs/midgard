@@ -27,9 +27,9 @@ import { createWatcherFollowerUserEvents } from "../../src/l1-follower/user-even
 import {
   readWatcherUserEventScriptBinding,
   verifyWatcherUserEventScriptBinding,
-  watcherDeploymentAppliedScriptHashes,
   watcherDeploymentProtocolScriptAuthority,
-} from "../../src/runtime/deployment-identity.js";
+} from "../../src/runtime/deployment-identity.verify-watcher-user-event-script-binding.js";
+import { watcherDeploymentAppliedScriptHashes } from "../../src/runtime/deployment-identity.watcher-deployment-availability-challenge-authority.js";
 import { buildBlock } from "./user-event-origin-fixture.build-block.js";
 import {
   blueprintBytes,

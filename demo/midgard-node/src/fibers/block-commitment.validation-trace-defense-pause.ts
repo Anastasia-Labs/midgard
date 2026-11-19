@@ -17,7 +17,7 @@
 import { MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS } from "@al-ft/midgard-core";
 import { Effect, Ref } from "effect";
 
-import { Globals } from "../services/index.js";
+import { Globals } from "../services/globals.globals.js";
 import type { ValidationTraceDefenseHealth } from "../validation-trace-defense/health.js";
 
 /** How long a due Defend pauses commits, past when it could first be played. */

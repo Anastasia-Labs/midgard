@@ -12,18 +12,18 @@ import {
   createWithdrawalMistagTransactionPort,
   withdrawalMistagEvidenceRequirement,
 } from "../src/withdrawal-mistag/workflow.js";
-import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
-import { WITHDRAWAL_MISTAG_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
-import { createCursorFamilyWorkflowAdapter } from "../src/workflow/cursor-family-adapter.js";
+import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
+import { WITHDRAWAL_MISTAG_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
+import { createCursorFamilyWorkflowAdapter } from "../src/workflow/cursor-family-adapter.create-cursor-family-workflow-adapter.js";
 import { WITHDRAWAL_MISTAG_CURSOR_SPEC } from "../src/workflow/cursor-family-spec.js";
 import { createFraudProofFamilyRawL1ObservationPort } from "../src/workflow/family-l1-observation.js";
+import { DirectoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
+import type { FraudProofWorkflowJournalEvent } from "../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import {
   computeFraudProofWorkflowId,
-  DirectoryFraudProofWorkflowJournalStore,
   type FraudProofWorkflowIdentity,
-  type FraudProofWorkflowJournalEvent,
   journalJsonDigest,
-} from "../src/workflow/journal.js";
+} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import {
   createAuthenticatedRawDatumPreimagePrerequisitePort,
   withRawDatumPreimagePrerequisite,
@@ -39,17 +39,15 @@ import {
 import { recordCrossBlockRawEmulator } from "./support/cross-block-raw-emulator.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
-import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import {
   submitSecondHeaderTx,
   submitSetupTx,
 } from "./support/emulator/setup-tx.js";
 import { installedWorkflowEmulatorClock } from "./support/installed-workflow.advance-emulator-observation.js";
-import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
-import {
-  makeWithdrawalMistagEmulatorHarness,
-  publishWithdrawalMistagScripts,
-} from "./support/withdrawal-mistag-emulator.js";
+import { makeWithdrawalMistagEmulatorHarness } from "./support/withdrawal-mistag-emulator.build-withdrawal-mistag-evidence-material.js";
+import { publishWithdrawalMistagScripts } from "./support/withdrawal-mistag-emulator.drive-withdrawal-mistag-to-fraud.js";
 import { runWithdrawalMistagMaximumProof } from "./support/withdrawal-mistag-maximum-proof.js";
 import { withdrawalMistagRetainedFixture } from "./support/withdrawal-mistag-retained.js";
 const finalityPolicy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };

@@ -1,4 +1,4 @@
-import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.build-remove-fraudulent-block.js";
 import {
   type NativeInclusionTwoStepCategory,
   record,

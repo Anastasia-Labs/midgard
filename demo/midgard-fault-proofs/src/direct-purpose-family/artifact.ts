@@ -12,17 +12,15 @@ import {
   parseSubmitStep01TxInclusion,
 } from "../step-support.js";
 import { keyValuePhasProof } from "../transition-trace/phas.js";
-import { reconstructDaPayload } from "../transition-trace/reconstruct.js";
+import { reconstructDaPayload } from "../transition-trace/reconstruct.reconstruct-da-payload.js";
 import type { CanonicalBlockClassification } from "../workflow/classification.js";
-import {
-  type CompleteCanonicalReplayContext,
-  completeCanonicalReplayPredecessorLedger,
-} from "../workflow/complete-replay.js";
+import { completeCanonicalReplayPredecessorLedger } from "../workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import type { CompleteCanonicalReplayContext } from "../workflow/complete-replay.replay-context-identity.js";
 import {
   journalJsonDigest,
   type JournalJsonObject,
   normalizeJournalJson,
-} from "../workflow/journal.js";
+} from "../workflow/journal.fraud-proof-workflow-terminal.js";
 import type {
   DirectPurposeAdmitted,
   DirectPurposeArtifactAdmission,

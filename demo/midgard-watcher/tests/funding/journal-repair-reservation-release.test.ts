@@ -4,18 +4,18 @@ import { join } from "node:path";
 import { supersededAttemptReadSchedule } from "@al-ft/midgard-fault-proofs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.js";
+import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
 import {
   closeWatcherJournalDatabase,
   WATCHER_JOURNAL_DATABASE_FILE,
 } from "../../src/fault-proofs/watcher-journal-database.js";
 import { WATCHER_PROVER_FUNDING_ORPHANED_RESERVATION } from "../../src/funding/prover-funding-recovery.orphaned-reservation.js";
 import { openWatcherProverFundingRuntime } from "../../src/runtime/watcher-prover-funding-runtime.js";
+import { setupFundingRecoveryFixture } from "../support/fault-proof-funding-fixture.setup-funding-recovery-fixture.js";
 import {
   cleanupFundingRecoveryFixtures,
   deploymentIdentity,
-  setupFundingRecoveryFixture,
-} from "../support/fault-proof-funding-fixture.js";
+} from "../support/fault-proof-funding-fixture.sources-for.js";
 import { expiredNotFound } from "./prover-funding-recovery.retirement-fixture.js";
 
 afterEach(async () => {

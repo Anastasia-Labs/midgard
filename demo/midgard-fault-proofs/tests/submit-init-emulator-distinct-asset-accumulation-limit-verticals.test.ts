@@ -15,13 +15,13 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
   distinctAssetAccumulationLimitDetection,
   DistinctAssetAccumulationLimitHonestLeaf,
   prepareDistinctAssetAccumulationLimitProof,
   requireConvictingDistinctAssetAccumulationLimitProof,
-} from "../src/distinct-asset-accumulation-limit/index.js";
-import { submitRemoveFraudulentBlock } from "../src/index.js";
+} from "../src/distinct-asset-accumulation-limit/prover.js";
+import { DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK } from "../src/distinct-asset-accumulation-limit/workflow.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import {
   DIRECT_WALK_STEP_BOUNDS,
   type DirectWalkHarness,
@@ -39,13 +39,11 @@ import {
   rejectedFor,
   setupDistinctAssetScenario,
 } from "./support/distinct-asset-accumulation-limit-emulator.subject.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
-import {
-  buildRemovalDeploymentInfo,
-  expectSingleUtxoWithUnit,
-  network,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 
 const SPENT = Array.from({ length: 10 }, () => 1_536);
 

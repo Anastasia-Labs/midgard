@@ -5,28 +5,33 @@ import "@al-ft/midgard-sdk";
 import "@al-ft/midgard-validation";
 import "@lucid-evolution/lucid";
 import "vitest";
-import "../src/field-opening.js";
+import "../src/field-opening.plan-fault-proof-field-opening.js";
 import "../src/min-ada/forced-artifact.js";
 import "../src/linear-fault-cancel.js";
 import "../src/min-ada/contracts.js";
 import "../src/min-ada/submit-init.js";
 import "../src/min-ada/submit-step-01.js";
 import "../src/min-ada/submit-step-01-forced.js";
-import "../src/min-ada/submit-step-02.js";
+import "../src/min-ada/submit-step-02.submit-min-ada-tx-step02.js";
 import "../src/min-ada/submit-step-03.js";
 import "../src/min-ada/submit-step-04.js";
 import "../src/min-ada/workflow-artifact.js";
 import "../src/publish-proof-chunks.js";
-import "../src/remove-fraudulent-block.js";
+import "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import "../src/transition-trace/phas.js";
-import "../src/transition-trace/reconstruct.js";
-import "../src/workflow/complete-replay.js";
+import "../src/transition-trace/reconstruct.transition-trace-reconstruction.js";
+import "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import "./support/emulator/measurement.js";
 import "./support/emulator/native-tx.js";
 import "./support/emulator/setup-tx.js";
-import "./support/final-catalogue-emulator.js";
-import "./support/submit-init-emulator-fixtures.js";
-import "./support/submit-init-emulator-shared.js";
+import "./support/final-catalogue-emulator.build-min-ada-tx-emulator-fixture.js";
+import "./support/submit-init/forced-transitions.js";
+import "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import "./support/emulator/removal-deployment.build-removal-deployment-info.js";
+import "./support/emulator/blueprints.js";
+import "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import "./support/emulator/emulator-context.js";
+import "./support/emulator/setup-tx.submit-setup-tx.js";
 import "./support/synthetic-deep-proof.js";
 import "./min-ada-wrongful-rejection-lifecycle.setup.js";
 
@@ -34,23 +39,21 @@ import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import { isContinuationTurn } from "../src/fault-proof-turn.js";
-import { planFaultProofFieldOpening } from "../src/field-opening.js";
+import { planFaultProofFieldOpening } from "../src/field-opening.plan-fault-proof-field-opening.js";
 import { admitMinAdaForcedArtifact } from "../src/min-ada/forced-artifact.js";
 import { buildMinAdaStep01Forced } from "../src/min-ada/submit-step-01-forced.js";
-import { buildMinAdaTxStep02 } from "../src/min-ada/submit-step-02.js";
+import { buildMinAdaTxStep02 } from "../src/min-ada/submit-step-02.submit-min-ada-tx-step02.js";
 import { buildMinAdaStep03 } from "../src/min-ada/submit-step-03.js";
 import { buildMinAdaStep04 } from "../src/min-ada/submit-step-04.js";
 import { admitMinAdaWorkflowArtifact } from "../src/min-ada/workflow-artifact.js";
-import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { setup } from "./min-ada-wrongful-rejection-lifecycle.setup.js";
+import { network } from "./support/emulator/blueprints.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
-import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
-import {
-  buildRemovalDeploymentInfo,
-  network,
-  publishPlainReferenceScriptUtxo,
-} from "./support/submit-init-emulator-shared.js";
 import {
   buildAndSubmitUnjournaled,
   certifyCarriageUnjournaled,

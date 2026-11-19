@@ -7,7 +7,7 @@ import {
   journalJsonDigest,
   type JournalJsonObject,
   normalizeJournalJson,
-} from "./journal.js";
+} from "./journal.fraud-proof-workflow-terminal.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
 
 export const BOUND_DATA_PUBLICATION_PREREQUISITE =

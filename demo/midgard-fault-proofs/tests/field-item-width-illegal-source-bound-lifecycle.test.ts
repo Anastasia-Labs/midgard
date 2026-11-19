@@ -17,8 +17,8 @@ import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.
 import {
   buildAcceptedWidthInclusions,
   widthNativeTx,
-} from "./support/field-item-width-illegal-shapes.js";
-import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
+} from "./support/field-item-width-illegal-shapes.build-accepted-width-inclusions.js";
+import { setupFraudulentBlock } from "./support/submit-init/removal.js";
 
 // Same independent signed vectors as the FIWI witness-order oracle in
 // midgard-validation/tests/signature-order.test.ts (public fixed seeds 01/02).

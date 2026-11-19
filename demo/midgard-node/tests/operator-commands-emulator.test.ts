@@ -21,9 +21,11 @@ import { openPlan } from "../src/services/intent-journal.js";
 import {
   type OperatorEconomics,
   OperatorExitRefusal,
+} from "../src/transactions/operators/exit.resolve-operator-script-refs-program.js";
+import {
   recoverOperatorBondProgram,
   retireOperatorProgram,
-} from "../src/transactions/operators/exit.js";
+} from "../src/transactions/operators/exit.retire-operator-program.js";
 import { OperatorFundingShortfall } from "../src/transactions/operators/funding-preflight.js";
 import { deriveOperatorStatusReport } from "../src/transactions/operators/status.js";
 import {

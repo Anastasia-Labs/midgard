@@ -5,15 +5,16 @@ import "@al-ft/midgard-core/da-transport";
 import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "../prepare-da-hash-preimage.js";
-import "../prepare-double-spend.js";
-import "../transition-trace/witnesses.js";
+import "../prepare-double-spend.resolve-double-spend-pair.js";
+import "../prepare-double-spend.prepare-double-spend-from-transactions.js";
+import "../transition-trace/witnesses.build-source-membership-proof.js";
 import "../workflow/detection-subject.js";
 import "./artifact.js";
 import "./family.js";
 import "./replay.observer-order-invalid-raw-block-evidence-from-verified-payload.js";
 import "./replay.prepare-observer-order-invalid-forced-artifact.js";
 
-import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
+import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.build-source-membership-proof.js";
 export {
   type AuthenticatedObserverOrderInvalidRawTransaction,
   detectObserverOrderInvalidAcceptedRawReplay,

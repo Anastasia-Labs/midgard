@@ -15,8 +15,8 @@ import {
 import * as Ledger from "../database/utils/ledger.js";
 import * as Tx from "../database/utils/tx.js";
 import { resolveTxDeltaForCommit } from "../mpf/commit-rejection.js";
-import { computeLedgerMpfRootFromLedgerEntries } from "../mpf/index.js";
-import { Database } from "../services/index.js";
+import { computeLedgerMpfRootFromLedgerEntries } from "../mpf/ledger-hydration.js";
+import { Database } from "../services/database.js";
 import {
   depositPayloadOf,
   withdrawalPayloadOf,

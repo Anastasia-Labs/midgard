@@ -15,11 +15,13 @@ import { captureTransitionTraceL1Events } from "../../src/transition-trace/l1-ev
 import {
   computeFraudProofRawL1PointId,
   computeFraudProofRawL1RollbackCursor,
+} from "../../src/workflow/raw-l1-snapshot.admit-fraud-proof-raw-l1-transaction.js";
+import {
   FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
   FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION,
   type FraudProofRawL1Snapshot,
   type FraudProofRawL1SnapshotAuthority,
-} from "../../src/workflow/raw-l1-snapshot.js";
+} from "../../src/workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
 import {
   computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,

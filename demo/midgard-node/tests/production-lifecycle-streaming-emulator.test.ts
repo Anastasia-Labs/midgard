@@ -14,7 +14,7 @@ import * as DepositsDB from "../src/database/deposits.js";
 import * as WithdrawalsDB from "../src/database/withdrawals.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/services/history-commit-window.js";
 import { COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/workers/utils/commit-end-time.js";
-import { resolveCurrentOperatorSchedulerWindow } from "../src/workers/utils/scheduler-refresh.js";
+import { resolveCurrentOperatorSchedulerWindow } from "../src/workers/utils/scheduler-refresh.fetch-fresh-active-operator-input-for-commit.js";
 import {
   advanceEmulatorPastLatestBlockEndTime,
   advanceHistoryAdmissionClock,

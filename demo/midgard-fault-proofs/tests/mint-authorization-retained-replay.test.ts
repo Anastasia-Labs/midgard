@@ -11,13 +11,13 @@ import {
   mintAuthorizationDetectionId,
   prepareMintAuthorizationReplay,
 } from "../src/mint-authorization/replay.js";
-import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.js";
+import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
   buildMintAuthorizationSubject,
   directionBNativeScript,
 } from "./support/mint-authorization-emulator.js";
 import { mintAuthorizationRetainedReferenceFixture } from "./support/mint-authorization-retained-reference.js";
-import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
+import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.build-decoding-block-fixture.js";
 
 const fixture = async (present: boolean) => {
   const policy = directionBNativeScript();

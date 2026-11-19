@@ -5,25 +5,23 @@
  * leaves the block waiting on the hold. Evaluator failures are injected at
  * the validation package, per transaction. */
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import {
-  RejectCodes,
-  ScriptEvaluationIndeterminateError,
-  ValidationTraceStopped,
-} from "@al-ft/midgard-validation";
+import { ValidationTraceStopped } from "@al-ft/midgard-validation";
+import { ScriptEvaluationIndeterminateError } from "@al-ft/midgard-validation/phase-b";
+import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   VALIDATION_TRACE_REPLAY_HELD,
   ValidationTraceReplayHeldError,
 } from "../src/validation-trace-dispute/replay-hold.js";
-import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
+import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
 import {
-  type CompleteCanonicalReplay,
   createCompleteCanonicalReplayUnion,
   createValidationTraceDisputeCompleteCanonicalReplay,
-  MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY,
   requireCompleteCanonicalReplayDecision,
-} from "../src/workflow/complete-replay.js";
+} from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
+import { MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.detect-double-withdraws.js";
+import type { CompleteCanonicalReplay } from "../src/workflow/complete-replay.replay-context-identity.js";
 import {
   type EventSpend,
   plutusExecutionEventsBlockFixture,

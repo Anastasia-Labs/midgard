@@ -55,13 +55,13 @@ vi.mock("../src/workflow/family-l1-observation.js", async (load) => {
 });
 
 import {
-  MINT_ITEM_NON_CANONICAL_MANIFEST_CONTRACTS,
   MintItemStep02DatumSchema,
   MintItemStep03DatumSchema,
   MintItemStep04DatumSchema,
-} from "../src/mint-item-non-canonical/index.js";
-import { MINT_ITEM_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
-import { WORKFLOW_FUNDING_SHORTFALL } from "../src/workflow/funding-reservation-permit.js";
+} from "../src/mint-item-non-canonical/schemas.js";
+import { MINT_ITEM_NON_CANONICAL_MANIFEST_CONTRACTS } from "../src/mint-item-non-canonical/workflow.load-manifest-bound-mint-item-non-canonical-config.js";
+import { MINT_ITEM_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
+import { WORKFLOW_FUNDING_SHORTFALL } from "../src/workflow/funding-reservation-permit.workflow-funding-shortfall.js";
 import {
   drainProverToOneCoin,
   sendTokenCoin,

@@ -5,16 +5,16 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { type MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
 import { aikenSerialisedPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
-import { Data as LucidData } from "@lucid-evolution/lucid";
-
-import { encodeTransactionRootValue } from "../../mpf/ledger-hydration.js";
 import {
   encodeEventToStepValueCbor,
   encodeTransitionEventKeyCbor,
   encodeTransitionIntegerCbor,
   encodeTransitionStepCbor,
-} from "../../mpf/transition-cbor.js";
+} from "@al-ft/midgard-fault-proofs/block-replay";
+import * as SDK from "@al-ft/midgard-sdk";
+import { Data as LucidData } from "@lucid-evolution/lucid";
+
+import { encodeTransactionRootValue } from "../../mpf/ledger-hydration.js";
 import {
   DA_PAYLOAD_UPPER_BOUND_HEADER,
   DA_PAYLOAD_UPPER_BOUND_HEADER_HASH,

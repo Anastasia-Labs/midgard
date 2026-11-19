@@ -41,17 +41,16 @@ import {
   resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening.js";
 import { type ResolvedProverSigner } from "../runtime.js";
-import { completeStep, fundStep } from "../step-completion.js";
-import { finishStep } from "../step-completion.js";
+import { completeStep, finishStep, fundStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
-import { workflowReferenceScript } from "../workflow/transaction-boundary.js";
 import {
   type LocallyEvaluatedTransaction,
   type UnjournaledSubmission,
+  workflowReferenceScript,
 } from "../workflow/transaction-boundary.js";
 import type { MissingSignatureContracts } from "./contracts.js";
 import { planMissingSignatureRequiredSignersOpening } from "./evidence.js";

@@ -22,7 +22,7 @@ import { buildCommittedFieldShapeInit } from "../src/committed-field-shape/submi
 import {
   type MintDeclaredAssetLimitEvidence,
   prepareMintDeclaredAssetLimitEvidence,
-} from "../src/mint-declared-asset-limit/family.js";
+} from "../src/mint-declared-asset-limit/family.advance-mint-declared-fold.js";
 import {
   planMintDeclaredAbsentPolicy,
   planMintDeclaredAssetLimitField,
@@ -34,7 +34,7 @@ import {
   VAN_ROSSEM_MAX_CPU_UNITS,
   VAN_ROSSEM_MAX_MEMORY_UNITS,
 } from "../src/proof-fit/van-rossem.js";
-import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
+import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
   network,
@@ -50,7 +50,7 @@ import {
   type CompleteSignedTransactionMeasurement,
 } from "./support/emulator/measurement.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
-import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
+import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init/forced-transitions.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 /** A one-asset policy item whose policy id encodes `index`. */

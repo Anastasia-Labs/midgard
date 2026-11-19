@@ -26,36 +26,34 @@ import type { UTxO } from "@lucid-evolution/lucid";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { openWatcherFaultDecisionJournal } from "../../src/fault-proofs/fault-decision-journal.js";
-import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.js";
+import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
 import { createWatcherFaultProofExecution } from "../../src/fault-proofs/fault-proof-execution.js";
 import { listWatcherProofObjectives } from "../../src/fault-proofs/fault-proof-objective-table.js";
-import {
-  createWatcherFaultProofSupervisor,
-  watcherFaultProofDeadline,
-} from "../../src/fault-proofs/fault-proof-supervisor.js";
+import { createWatcherFaultProofSupervisor } from "../../src/fault-proofs/fault-proof-supervisor.create-watcher-fault-proof-supervisor.js";
+import { watcherFaultProofDeadline } from "../../src/fault-proofs/fault-proof-supervisor.validate-job.js";
 import { openWatcherJournalDatabase } from "../../src/fault-proofs/watcher-journal-database.js";
 import { WatcherJournalUnavailableError } from "../../src/fault-proofs/watcher-journal-database.types.js";
-import { unsafeAdmitWatcherStateQueueObservationForReplayTest } from "../../src/indexers/authenticated-state-queue-observation.js";
+import { unsafeAdmitWatcherStateQueueObservationForReplayTest } from "../../src/indexers/authenticated-state-queue-observation.parse-persisted-observation.js";
 import { WatcherFaultProofL1RefusedError } from "../../src/l1-follower/fault-proof-l1-source.chain.js";
 import type {
   WatcherProofRetention,
   WatcherProofRetentionTarget,
 } from "../../src/l1-follower/proof-retention.js";
-import { watcherDeploymentReleaseEconomicsAuthority } from "../../src/runtime/deployment-identity.js";
+import { watcherDeploymentReleaseEconomicsAuthority } from "../../src/runtime/deployment-identity.watcher-deployment-availability-challenge-authority.js";
 import { handleWatcherOperationsHttpRequest } from "../../src/runtime/operations-observability.handle-http-request.js";
 import {
   createWatcherOperationsObservability,
   type WatcherOperationsSink,
 } from "../../src/runtime/operations-observability.js";
-import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.js";
+import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.canonical-json.js";
+import { setupFundingRecoveryFixture } from "../support/fault-proof-funding-fixture.setup-funding-recovery-fixture.js";
 import {
   cleanupFundingRecoveryFixtures,
   deploymentIdentity,
   finality,
   key,
-  setupFundingRecoveryFixture,
   walletAddress,
-} from "../support/fault-proof-funding-fixture.js";
+} from "../support/fault-proof-funding-fixture.sources-for.js";
 import { stageWorkflowRows } from "../support/fault-proof-funding-fixture.workflow-store.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
 import { waitForFaultProofSupervisorIdle } from "../support/fault-proof-supervisor-idle.js";

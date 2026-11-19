@@ -6,19 +6,19 @@ import {
 } from "@al-ft/midgard-sdk";
 import { type LucidEvolution } from "@lucid-evolution/lucid";
 
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.build-remove-fraudulent-block.js";
 import { type StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
-import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import { type ResolvedProverSigner } from "../runtime.js";
 import {
-  buildFabricatedDepositStep01,
   type FabricatedDepositContracts,
   parseSubmitFabricatedDepositInclusion,
-} from "../submit-fabricated-deposit-step-01.js";
+} from "../submit-fabricated-deposit-step-01.derive-fabricated-deposit-step01-handoff.js";
+import { buildFabricatedDepositStep01 } from "../submit-fabricated-deposit-step-01.submit-fabricated-deposit-step01.js";
 import { buildFabricatedDepositStep02 } from "../submit-fabricated-deposit-step-02.js";
 import { buildFabricatedDepositStep03 } from "../submit-fabricated-deposit-step-03.js";
 import { buildFabricatedDepositStep04 } from "../submit-fabricated-deposit-step-04.js";
-import { buildInit } from "../submit-init.js";
-import { createFabricatedDepositCompleteCanonicalReplay } from "./complete-replay.js";
+import { buildInit } from "../submit-init.submit-init.js";
+import { createFabricatedDepositCompleteCanonicalReplay } from "./complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
 import {
   createFabricatedDepositEvidenceAuthority,
@@ -27,10 +27,10 @@ import {
 } from "./fabricated-deposit-evidence.js";
 import {
   CORE_WITNESS_ROLES,
-  defineLinearFamily,
   type LinearFamilyAssemblyContext,
   type LinearFamilyReferenceScripts,
-} from "./family-definition.js";
+} from "./family-definition.family-adapter-arm.js";
+import { defineLinearFamily } from "./family-definition.family-definition.js";
 import {
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyTransactionPort,

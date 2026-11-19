@@ -11,17 +11,18 @@ import {
   MpfEngineStateDB,
   StateQueueMutationLeasesDB,
 } from "../database/index.js";
-import { MidgardMpf, type NativeMpfBuildContext } from "../mpf/index.js";
+import { MidgardMpf } from "../mpf/store.midgard-mpf.js";
+import type { NativeMpfBuildContext } from "../mpf/transition-trace.apply-trace-ledger-ops-to-mpf.js";
+import { NodeConfig } from "../services/config.make-config.js";
+import { Database } from "../services/database.js";
 import { FollowerWrite } from "../services/follower-write-gate.js";
-import {
-  ContractDeploymentIdentity,
-  Database,
-  MidgardContracts,
-  NativeMpfWorkerPortClient,
-  NodeConfig,
-} from "../services/index.js";
 import type { IntentJournal } from "../services/intent-journal.js";
 import { FollowerL1ChainParametersLive } from "../services/l1-adapter.js";
+import {
+  ContractDeploymentIdentity,
+  MidgardContracts,
+} from "../services/midgard-contracts.make-midgard-contract-runtime.js";
+import { NativeMpfWorkerPortClient } from "../services/mpf-native-owner/client.js";
 import {
   type NotifyCommitWorkerParent,
   shouldPreserveCommitMpfRoots,

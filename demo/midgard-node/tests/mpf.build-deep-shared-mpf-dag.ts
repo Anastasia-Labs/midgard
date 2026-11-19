@@ -3,7 +3,7 @@ import { Level } from "level";
 
 import * as Ledger from "../src/database/utils/ledger.js";
 import * as Tx from "../src/database/utils/tx.js";
-import { DecodedMempoolTxForCommit } from "../src/mpf/index.js";
+import { DecodedMempoolTxForCommit } from "../src/mpf/mempool-order.js";
 
 export const TEST_DB = "test-mpf-db";
 

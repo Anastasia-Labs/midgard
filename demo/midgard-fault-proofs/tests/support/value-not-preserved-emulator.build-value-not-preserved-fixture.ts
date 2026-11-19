@@ -28,11 +28,11 @@ import {
   type SubmitStep01TxInclusion,
 } from "../../src/step-support.js";
 import { type ValueNotPreservedLedgerTrieHandle } from "../../src/value-not-preserved/evidence.js";
+import { trieRootHex } from "./emulator/catalogue.js";
 import {
   l2TransactionSourceCbor as l2TransactionSourceCborV1,
   makeNativeTx,
-  trieRootHex,
-} from "./submit-init-emulator-shared.js";
+} from "./emulator/native-tx.js";
 
 // ---------------------------------------------------------------------------
 // Building blocks: out-refs, values, outputs

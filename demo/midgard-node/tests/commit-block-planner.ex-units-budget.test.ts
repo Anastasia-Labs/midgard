@@ -8,12 +8,14 @@ import {
 } from "../src/database/utils/tx.js";
 import { blockExUnitsBudgetConfig } from "../src/services/config.block-ex-units-budget.js";
 import {
-  declaredTxExUnits,
   DEFAULT_BLOCK_EX_UNITS_BUDGET,
   DEFAULT_COMMIT_BATCH_BUDGET_LIMITS,
+} from "../src/workers/utils/commit-block-planner.commit-scheduler-evidence-key.js";
+import { declaredTxExUnits } from "../src/workers/utils/commit-block-planner.declared-ex-units.js";
+import {
   planCommitBatchBudgets,
   selectCommitTxCandidates,
-} from "../src/workers/utils/commit-block-planner.js";
+} from "../src/workers/utils/commit-block-planner.select-commit-tx-candidates.js";
 import { buildNativeTx } from "./native-transaction-integration.build-native-tx.js";
 import { makeRedeemersPreimageCbor } from "./native-transaction-integration.make-mint-preimage.js";
 

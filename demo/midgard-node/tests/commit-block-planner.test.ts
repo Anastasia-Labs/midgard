@@ -2,23 +2,29 @@ import { Option } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { Columns as TxColumns } from "../src/database/utils/tx.js";
-import { establishEffectiveEndTimeFromDecodedMempool } from "../src/mpf/index.js";
+import { establishEffectiveEndTimeFromDecodedMempool } from "../src/mpf/mempool-order.js";
 import { HISTORY_COMMIT_LANDING_MARGIN_MS } from "../src/services/history-commit-window.js";
-import { shouldShortCircuitIdleCommitAttempt } from "../src/workers/commit-block-header.js";
+import { shouldShortCircuitIdleCommitAttempt } from "../src/workers/commit-block-header.commit-explicit-block-header-program.js";
 import {
-  buildSuccessfulCommitBatches,
   calibratedCommitBuildMsPerTx,
   clampCommitBuildMsPerTx,
   DEFAULT_BLOCK_EX_UNITS_BUDGET,
+  updateCommitBuildEwma,
+} from "../src/workers/utils/commit-block-planner.commit-scheduler-evidence-key.js";
+import {
   establishEndTimeFromTxRequests,
-  planCommitBatchBudgets,
   planEarliestCommitSchedulerDueWork,
+} from "../src/workers/utils/commit-block-planner.plan-earliest-commit-scheduler-due-work.js";
+import {
+  buildSuccessfulCommitBatches,
   planSchedulerAwareCommitSelection,
   schedulerAwareCommitWindowBudgets,
   selectCommitRoots,
+} from "../src/workers/utils/commit-block-planner.plan-scheduler-aware-commit-selection.js";
+import {
+  planCommitBatchBudgets,
   selectCommitTxCandidates,
-  updateCommitBuildEwma,
-} from "../src/workers/utils/commit-block-planner.js";
+} from "../src/workers/utils/commit-block-planner.select-commit-tx-candidates.js";
 import { registerCatchUpEventWindowCases } from "./commit-block-planner.catch-up-cases.js";
 import {
   fitExceedingSchedulerWindow,

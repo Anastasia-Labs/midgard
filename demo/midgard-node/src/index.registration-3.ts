@@ -16,12 +16,12 @@ import { parseEventId, parseHexBytes } from "./commands/command-utils.js";
 import * as ContractDeploymentInfo from "./commands/contract-deployment-info.js";
 import * as ReconcileCommand from "./commands/reconcile.js";
 import * as MigrationRunner from "./database/migrations/runner.js";
-import { defaultDeploymentRunStatePath } from "./e2e/run-state.js";
+import { defaultDeploymentRunStatePath } from "./e2e/run-state.parse-deployment-run-state.js";
 import {
   parseOptionalHeaderHashOption,
   program,
 } from "./index.registration.js";
-import { NodeConfig } from "./services/index.js";
+import { NodeConfig } from "./services/config.make-config.js";
 import { backfillMissingDaPayloadsFromAppliedJournals } from "./workers/commit-block-header/da-payload-backfill.js";
 
 program

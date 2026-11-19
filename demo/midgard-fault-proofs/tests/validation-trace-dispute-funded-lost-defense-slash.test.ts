@@ -31,7 +31,7 @@ import { fraudSlashEconomicsFromDeploymentManifest } from "../src/remove-fraudul
 import { VALIDATION_TRACE_MOVE_UNBUILT } from "../src/validation-trace-dispute/threads.js";
 import { validationTraceRunState } from "../src/validation-trace-dispute/waiting.js";
 import { workflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
-import { network } from "./support/submit-init-emulator-shared.js";
+import { network } from "./support/emulator/blueprints.js";
 import {
   confirmed,
   defenderNodes,

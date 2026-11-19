@@ -30,10 +30,8 @@ import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import { ledgerEntriesRoot, singleLedgerAt } from "../src/ledger-at.js";
-import {
-  admitCompleteCanonicalReplayPredecessor,
-  MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY,
-} from "../src/workflow/complete-replay.js";
+import { admitCompleteCanonicalReplayPredecessor } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import { CanonicalReplayPrerequisiteError } from "../src/workflow/replay-prerequisite.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
 import {
@@ -48,10 +46,8 @@ import {
   plutusScript,
   redeemerMissingVerdict,
 } from "./support/missing-redeemer-emulator.subject.js";
-import {
-  buildDecodingBlockFixture,
-  decodingSubjectTransaction,
-} from "./support/native-script-decoding-emulator.js";
+import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.build-decoding-block-fixture.js";
+import { decodingSubjectTransaction } from "./support/native-script-decoding-emulator.build-decoding-ledger-fixture.js";
 
 const daProvenance = {
   trustClass: "public_or_permissionless_da",

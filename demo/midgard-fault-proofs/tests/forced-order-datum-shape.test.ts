@@ -21,6 +21,16 @@ import {
 import { Effect } from "effect";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
+import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
+import {
+  makeHeader,
+  withPlaceholderDeposit,
+} from "./support/emulator/header-fixtures.js";
+import { makeNativeTx } from "./support/emulator/native-tx.js";
+import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
 import {
   type OrderDatumRewrite,
   orderRefundAddress,
@@ -30,16 +40,6 @@ import {
   makeForcedOrderSettlementScenario,
   publishForcedOrderCarriage,
 } from "./support/forced-order-settlement.js";
-import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  expectOnchainRefusal,
-  makeFaultProofEmulatorHarness,
-  makeHeader,
-  makeNativeTx,
-  publishPlainReferenceScriptUtxo,
-  submitSetupTx,
-  withPlaceholderDeposit,
-} from "./support/submit-init-emulator-shared.js";
 
 /** An order the SDK admits: one spend input, every other field empty. */
 const submitted = materializeMidgardForcedTxFromCanonical(

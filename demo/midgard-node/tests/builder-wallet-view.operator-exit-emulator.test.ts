@@ -23,11 +23,11 @@ import { Effect } from "effect";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import type { IntentJournal } from "../src/services/intent-journal.js";
+import type { OperatorEconomics } from "../src/transactions/operators/exit.resolve-operator-script-refs-program.js";
 import {
-  type OperatorEconomics,
   recoverOperatorBondProgram,
   retireOperatorProgram,
-} from "../src/transactions/operators/exit.js";
+} from "../src/transactions/operators/exit.retire-operator-program.js";
 import { slashDuplicateOperatorProgram } from "../src/transactions/operators/exit.slash-duplicate-operator-program.js";
 import { OperatorFundingShortfall } from "../src/transactions/operators/funding-preflight.js";
 import {

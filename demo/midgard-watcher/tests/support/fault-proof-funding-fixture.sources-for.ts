@@ -2,8 +2,8 @@ import { rm } from "node:fs/promises";
 
 import { CML } from "@lucid-evolution/lucid";
 
-import { watcherDeploymentReleaseFinalityAuthority } from "../../src/runtime/deployment-identity.js";
-import { makeWatcherDeploymentAuthorityFixture } from "./deployment-authority-fixture.js";
+import { watcherDeploymentReleaseFinalityAuthority } from "../../src/runtime/deployment-identity.watcher-deployment-availability-challenge-authority.js";
+import { makeWatcherDeploymentAuthorityFixture } from "./deployment-authority-fixture.build-watcher-deployment-authority-fixture.js";
 
 export const directories: string[] = [];
 

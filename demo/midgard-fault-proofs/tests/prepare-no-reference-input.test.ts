@@ -17,13 +17,13 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  keyValuePhasRootWithCount,
   LedgerRootMismatchError,
-  type NodeTransactionPayload,
   predecessorLedger,
-  prepareNoReferenceInputFromTransactions,
   singleLedgerAt,
-} from "../src/index.js";
+} from "../src/ledger-at.js";
+import type { NodeTransactionPayload } from "../src/prepare-double-spend.encode-l2-transaction-source-value.js";
+import { prepareNoReferenceInputFromTransactions } from "../src/prepare-no-reference-input.js";
+import { keyValuePhasRootWithCount } from "../src/transition-trace/phas.js";
 
 const EMPTY_CBOR_LIST = encodeCbor([]);
 const EMPTY_CBOR_NULL = encodeCbor(null);

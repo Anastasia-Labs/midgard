@@ -4,12 +4,14 @@ import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  type CanonicalDaAttestationObservation,
   classifyCanonicalDaAttestation,
   reconcileDaAttestedProgram,
-} from "../src/commands/reconcile.js";
-import { Lucid, MidgardContracts, NodeConfig } from "../src/services/index.js";
+} from "../src/commands/reconcile.reconcile-da-attested-program.js";
+import type { CanonicalDaAttestationObservation } from "../src/commands/reconcile.reconcile-reference-scripts-complete-program.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
 import { landedStateQueueUTxOs } from "../src/services/landed-state-queue.js";
+import { Lucid } from "../src/services/lucid.js";
+import { MidgardContracts } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
 // The canonical queue is the landed state queue (P1); the stub stands in for

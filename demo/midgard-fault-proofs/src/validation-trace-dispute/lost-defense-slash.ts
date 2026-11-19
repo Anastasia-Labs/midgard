@@ -24,7 +24,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { parseContractDeploymentInfo } from "../inspect-contracts.js";
+import { parseContractDeploymentInfo } from "../inspect-contracts.parse-contract-deployment-info.js";
 import { buildRemovalContracts } from "../remove-fraudulent-block.assemble-removal-contracts.js";
 import {
   fraudSlashEconomicsFromDeploymentManifest,

@@ -2,7 +2,7 @@ import { Emulator, Lucid } from "@lucid-evolution/lucid";
 import { expect, it } from "vitest";
 
 import { proofMaterialsAddressOfFundingAddress } from "../src/funding/proof-materials-address.js";
-import { restrictWorkflowFundingSigner } from "../src/workflow/funding-reservation-permit.js";
+import { restrictWorkflowFundingSigner } from "../src/workflow/funding-reservation-permit.restrict-workflow-funding-signer.js";
 import {
   fundingAddress,
   fundingKey,

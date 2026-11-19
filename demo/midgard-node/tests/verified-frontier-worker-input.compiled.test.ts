@@ -15,7 +15,7 @@ import { Effect, Ref } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { recordConfirmedLedgerVerification } from "../src/mpf/confirmed-ledger-verification.js";
-import { Globals } from "../src/services/globals.js";
+import { Globals } from "../src/services/globals.globals.js";
 
 const codecUrl = new URL(
   "../dist/utils/commit-block-header.js",

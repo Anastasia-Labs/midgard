@@ -10,15 +10,15 @@ import {
 import { type SimTx, simUniverse } from "@al-ft/midgard-l1-follower/testing";
 import { Effect, Ref } from "effect";
 
+import type { OperatorActivityRecord } from "../../src/l1-operator-set/activity.js";
+import { operatorSetTrackedSet } from "../../src/l1-operator-set/config.js";
 import {
-  createOperatorSetMirror,
-  type OperatorActivityRecord,
   operatorSetHook,
   type OperatorSetRun,
-  operatorSetTrackedSet,
-  publishOperatorMembership,
-} from "../../src/l1-operator-set/index.js";
-import { Globals } from "../../src/services/globals.js";
+} from "../../src/l1-operator-set/hook.js";
+import { publishOperatorMembership } from "../../src/l1-operator-set/membership.js";
+import { createOperatorSetMirror } from "../../src/l1-operator-set/set.js";
+import { Globals } from "../../src/services/globals.globals.js";
 import { HaltSource } from "../../src/services/liveness-halt.js";
 import { ChainDriver } from "./l1-events-store.js";
 import {

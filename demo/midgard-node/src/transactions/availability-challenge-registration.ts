@@ -6,7 +6,7 @@ import {
 import { Data, Effect } from "effect";
 
 import { journaledIntent, openPlan } from "../services/intent-journal.js";
-import { handleSignSubmit } from "./utils.js";
+import { handleSignSubmit } from "./utils.await-submitted-transaction-confirmation.js";
 import { buildRewardRegistrationsTx } from "./utils.reward-registration-funding.js";
 import { readSelectedWalletFunding } from "./utils.wallet-view.js";
 

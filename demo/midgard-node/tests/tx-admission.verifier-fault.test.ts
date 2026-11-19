@@ -9,11 +9,11 @@ import {
   ledgerEd25519SignatureReady,
   MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core";
-import { RejectCodes } from "@al-ft/midgard-validation";
 import {
   makeNativeTx,
   makeQueued,
 } from "@al-ft/midgard-validation/tests/validation-fixtures";
+import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { Cause, Effect, Exit } from "effect";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 

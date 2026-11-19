@@ -5,11 +5,11 @@
  * the family's explicit contracts record and catalogue category: the
  * `withdrawnReferenceInput` entry in the production `buildInit` category
  * union is deliberately deferred to the registration wave (plan §2.2).
- */ import {
-  buildResolvedInit,
-  type ResolvedInitBuild,
-  type SubmitResolvedInitParams,
-} from "../submit-init.js";
+ */ import type {
+  ResolvedInitBuild,
+  SubmitResolvedInitParams,
+} from "../submit-init.resolve-non-existent-input-no-index-init.js";
+import { buildResolvedInit } from "../submit-init.submit-resolved-init.js";
 import {
   WITHDRAWN_REFERENCE_INPUT_CATEGORY_LABEL,
   type WithdrawnReferenceInputContracts,

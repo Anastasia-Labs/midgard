@@ -21,16 +21,20 @@ import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import { type LedgerEntry, singleLedgerAt } from "../src/ledger-at.js";
+import { admitCompleteCanonicalReplayPredecessor } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
-  admitCompleteCanonicalReplayPredecessor,
-  COMMITTED_FIELD_SHAPE_COMPLETE_CANONICAL_REPLAY,
-  type CompleteCanonicalReplay,
   createCompleteCanonicalReplayUnion,
-  EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY,
   MINT_ITEM_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
+} from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
+import {
+  COMMITTED_FIELD_SHAPE_COMPLETE_CANONICAL_REPLAY,
   NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
+} from "../src/workflow/complete-replay.detect-double-withdraws.js";
+import type { CompleteCanonicalReplay } from "../src/workflow/complete-replay.replay-context-identity.js";
+import {
+  EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY,
   TRANSACTION_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
-} from "../src/workflow/complete-replay.js";
+} from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
 import {
   admissibleNativeObservers,

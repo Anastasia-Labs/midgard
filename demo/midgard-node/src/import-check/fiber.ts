@@ -1,6 +1,7 @@
 import { Effect, Schedule } from "effect";
 
-import { Database, NodeConfig, ValidationPool } from "../services/index.js";
+import { Database, NodeConfig } from "../services/index.js";
+import { ValidationPool } from "../services/validation-pool.bundled-worker-exec-argv.js";
 import { logImportCheckAlarm } from "./alarms.js";
 import {
   makeImportCheckRuns,

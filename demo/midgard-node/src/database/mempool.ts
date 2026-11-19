@@ -3,7 +3,7 @@ import { Duration, Effect, Metric } from "effect";
 
 import { Database } from "../services/database.js";
 import { withFollowerWrite } from "../services/follower-write-gate.js";
-import { WriteBehind } from "../services/write-behind.js";
+import { WriteBehind } from "../services/write-behind.summarize-write-behind-telemetry.js";
 import { ProcessedTx } from "../utils.js";
 import type * as AddressHistoryDB from "./addressHistory.js";
 import * as DepositsDB from "./deposits.js";

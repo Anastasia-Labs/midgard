@@ -17,15 +17,13 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import {
-  directPurposeRoleValidator,
-  type DirectPurposeTransition,
-} from "../src/direct-purpose-family/index.js";
+import type { DirectPurposeTransition } from "../src/direct-purpose-family/custody.js";
+import { directPurposeRoleValidator } from "../src/direct-purpose-family/family.js";
 import {
   EXECUTION_SOURCE_SCRIPT_DECODING_DIRECT_WALK,
   EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY,
 } from "../src/execution-source-script-decoding/index.js";
-import { faultProofFieldOpening } from "../src/field-opening.js";
+import { faultProofFieldOpening } from "../src/field-opening.publish-fault-proof-field-carriage.js";
 import {
   getCompiledScript,
   phasMembershipRewardAddress,
@@ -38,13 +36,13 @@ import {
   makeDirectWalkHarness,
   publishDirectWalkRoles,
 } from "./support/direct-walk-emulator.js";
+import { network } from "./support/emulator/blueprints.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { prepareExecutionSourceScriptDecodingPlan } from "./support/execution-source-script-decoding-emulator.js";
 import {
   honestForcedObserverShape,
   setupMissingRedeemerScenario,
 } from "./support/missing-redeemer-emulator.subject.js";
-import { network } from "./support/submit-init-emulator-shared.js";
 import { submitDirectPurposeTransition } from "./support/submit-unjournaled.direct-purpose.js";
 
 const STRANGER_FUNDING_LOVELACE = 1_000_000_000n;

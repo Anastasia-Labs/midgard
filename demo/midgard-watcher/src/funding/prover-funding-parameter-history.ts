@@ -7,7 +7,7 @@ import {
   parseDeploymentManifestCardanoProtocolParameters,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 
-import { watcherCanonicalJson } from "../storage/durable-store.js";
+import { watcherCanonicalJson } from "../storage/durable-store.canonical-json.js";
 import type { WatcherProverFundingReservationRecord } from "./prover-funding-reservation.js";
 
 /** Persistence contains historical facts, never live transaction authority. */

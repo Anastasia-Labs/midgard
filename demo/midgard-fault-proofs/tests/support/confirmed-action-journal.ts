@@ -1,11 +1,11 @@
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 
+import type { FraudProofWorkflowJournalEntry } from "../../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import {
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-  type FraudProofWorkflowJournalEntry,
   type JournalJsonObject,
-} from "../../src/workflow/journal.js";
+} from "../../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import type { FraudProofWorkflowAction } from "../../src/workflow/orchestrator.js";
 
 /**

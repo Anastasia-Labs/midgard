@@ -8,10 +8,8 @@
 import { acceptedVerdictSubject } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildProtectedOutputSignerMissingStep02,
-  PROTECTED_OUTPUT_SIGNER_MAX_WITNESSES,
-} from "../src/protected-output-signer-missing/index.js";
+import { PROTECTED_OUTPUT_SIGNER_MAX_WITNESSES } from "../src/protected-output-signer-missing/protected-output-signer-missing.js";
+import { buildProtectedOutputSignerMissingStep02 } from "../src/protected-output-signer-missing/submit-step-02.js";
 import { buildSignerWitnessScan } from "../src/signer-witness-scan/index.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { makeScenario } from "./protected-output-signer-missing-lifecycle.make-scenario.js";

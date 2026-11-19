@@ -9,12 +9,12 @@ import { type UTxO } from "@lucid-evolution/lucid";
 
 import type { WatcherDecisionHold } from "../fault-proofs/watcher-decision-hold.js";
 import { type VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
-import {
-  parseWatcherProverFundingReservationRecord,
-  type WatcherProverFundingReservationPlan,
-  type WatcherProverFundingReservationRecord,
-  type WatcherProverFundingReservationStore,
-} from "./prover-funding-reservation.js";
+import { parseWatcherProverFundingReservationRecord } from "./prover-funding-reservation.parse-watcher-prover-funding-reservation-record.js";
+import type {
+  WatcherProverFundingReservationPlan,
+  WatcherProverFundingReservationRecord,
+  WatcherProverFundingReservationStore,
+} from "./prover-funding-reservation.watcher-prover-funding-reservation-store.js";
 
 export const WATCHER_PROVER_FUNDING_AUTHORITY =
   "midgard-watcher-production-prover-funding-authority-v1" as const;

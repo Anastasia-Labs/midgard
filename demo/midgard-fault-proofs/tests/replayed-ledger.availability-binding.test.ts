@@ -23,10 +23,8 @@ import {
   type RetainedPayloadReleases,
   retainedPayloadReplaySource,
 } from "../src/retained-payload-replay-source.js";
-import {
-  type RetainedDaPayloadSource,
-  RetainedDaPayloadUnavailableError,
-} from "../src/transition-trace/fetch.js";
+import type { RetainedDaPayloadSource } from "../src/transition-trace/fetch.admit-retained-da-provenance.js";
+import { RetainedDaPayloadUnavailableError } from "../src/transition-trace/fetch.retained-da-payload-unavailable.js";
 import { buildCanonicalBlockFixture } from "./helpers/canonical-block-evidence-fixture.js";
 
 const AUTHORITY: SDK.DaPayloadAvailabilityAuthority = {

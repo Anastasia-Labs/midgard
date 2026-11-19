@@ -12,15 +12,10 @@ import {
 } from "effect";
 
 import { FollowerWriteFixture } from "../services/follower-write-gate.js";
-import {
-  Database,
-  Globals,
-  L1ControlPlaneTimeoutError,
-  Lucid,
-  MidgardContracts,
-  NodeConfig,
-  withL1ControlPlane,
-} from "../services/index.js";
+import { Globals } from "../services/globals.globals.js";
+import { withL1ControlPlane } from "../services/globals.l1-control-plane.js";
+import { L1ControlPlaneTimeoutError } from "../services/globals.next-l1-provider-health-evidence.js";
+import { Database, NodeConfig } from "../services/index.js";
 import { type IntentJournal, openPlan } from "../services/intent-journal.js";
 import {
   awaitPostMergeSnapshot,
@@ -31,6 +26,8 @@ import {
   requireLandedStateQueue,
   type StateQueueSnapshot,
 } from "../services/landed-state-queue.js";
+import { Lucid } from "../services/lucid.js";
+import { MidgardContracts } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   mergeBlockCounter,
   mergeDurationTimer,

@@ -11,15 +11,13 @@ import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import * as ContractDeploymentInfo from "../src/commands/contract-deployment-info.js";
-import {
-  type DeploymentRunCliOptions,
-  resolveReferenceScriptAuthPolicyProgram,
-} from "../src/commands/deployment-run-state.js";
+import type { DeploymentRunCliOptions } from "../src/commands/deployment-run-state.record-hub-oracle-nonce.js";
+import { resolveReferenceScriptAuthPolicyProgram } from "../src/commands/deployment-run-state.resolve-reference-script-auth-policy-program.js";
 import {
   createDeploymentRunState,
   loadDeploymentRunState,
   writeDeploymentRunStateAtomic,
-} from "../src/e2e/run-state.js";
+} from "../src/e2e/run-state.parse-deployment-run-state.js";
 import { lucid, makeTempDir } from "./deployment-run-state.lucid.js";
 
 describe("deployment run-state command identity guards", () => {

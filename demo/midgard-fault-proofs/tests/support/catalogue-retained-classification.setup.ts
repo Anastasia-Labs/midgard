@@ -16,14 +16,12 @@ import {
 } from "../../src/transition-trace/l1-events.js";
 import { createCatalogueCompleteCanonicalReplay } from "../../src/workflow/catalogue-replay.js";
 import type { CompleteCanonicalReplayIsolation } from "../../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
-import {
-  authenticatedStateQueueObservationDigest,
-  createHeaderClassifier,
-} from "../../src/workflow/header-classifier.js";
+import { authenticatedStateQueueObservationDigest } from "../../src/workflow/header-classifier.authenticated-state-queue-observation-digest.js";
+import { createHeaderClassifier } from "../../src/workflow/header-classifier.create-header-classifier.js";
 import {
   FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
   type FraudProofRawL1SnapshotAuthority,
-} from "../../src/workflow/raw-l1-snapshot.js";
+} from "../../src/workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
 import {
   computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
@@ -34,10 +32,8 @@ import { authenticatedHeaderObservation } from "../helpers/canonical-block-evide
 import { TRANSITION_HISTORY_FIXTURE_PARAMETERS } from "../helpers/transition-history-fixture.js";
 import { fixtureLedgerAt } from "./fixture-ledger.js";
 import { fraudProofL1SourceForTest } from "./fraud-proof-l1-source.js";
-import {
-  type buildRetainedPlutusIdentityFixture,
-  captureRetainedPlutusIdentityOrigins,
-} from "./retained-reason-classifier.js";
+import type { buildRetainedPlutusIdentityFixture } from "./retained-reason-classifier.build-retained-plutus-fixture.js";
+import { captureRetainedPlutusIdentityOrigins } from "./retained-reason-classifier.capture-retained-plutus-identity-origins.js";
 
 /** The raw L1 snapshot authority the current case installed; reset after each. */
 export const transport = { raw: undefined as unknown };

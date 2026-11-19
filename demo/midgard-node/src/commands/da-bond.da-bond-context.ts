@@ -10,7 +10,7 @@ import {
 import { Effect, Either } from "effect";
 
 import { findSubmitOutcomeUnknown } from "../provider-retry.js";
-import { awaitExactTransactionConfirmation } from "../transactions/utils.js";
+import { awaitExactTransactionConfirmation } from "../transactions/utils.await-required-output-visibility.js";
 
 /** Everything the chain-facing `da-bond` commands read or call. */
 export type DaBondContext = Readonly<{

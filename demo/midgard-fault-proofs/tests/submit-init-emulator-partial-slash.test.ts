@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
+import { buildProvedDoubleSpendFixture } from "./support/submit-init/double-spend.js";
+import { retireFixtureOperatorAfterInactivity } from "./support/submit-init/operator-retirement.js";
 import {
-  buildProvedDoubleSpendFixture,
   expectRemovedFraudProofState,
-  retireFixtureOperatorAfterInactivity,
   submitRemovalForFixture,
-} from "./support/submit-init-emulator-fixtures.js";
+} from "./support/submit-init/removal.js";
 
 describe("fault-proof partial-slash emulator integration", () => {
   it("removes a tail block from the exact partially inactivity-slashed retired tranche", async () => {

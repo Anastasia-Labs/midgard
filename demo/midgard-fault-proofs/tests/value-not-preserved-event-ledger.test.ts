@@ -27,12 +27,12 @@ import { makeOutput } from "@al-ft/midgard-validation/tests/validation-fixtures"
 import { describe, expect, it } from "vitest";
 
 import { ledgerEntriesRoot, type LedgerEntry } from "../src/ledger-at.js";
+import { VALUE_NOT_PRESERVED_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
 import {
   NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
   OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
   RESOLVED_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
-  VALUE_NOT_PRESERVED_COMPLETE_CANONICAL_REPLAY,
-} from "../src/workflow/complete-replay.js";
+} from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import {
   buildFixtureTransaction,
   type FixtureTransactionInput,

@@ -2,13 +2,13 @@ import { Effect } from "effect";
 
 import * as TxAdmissionsDB from "../../src/database/txAdmissions.js";
 import type * as Ledger from "../../src/database/utils/ledger.js";
-import { NodeConfig } from "../../src/services/config.js";
+import { NodeConfig } from "../../src/services/config.make-config.js";
 import { Database } from "../../src/services/database.js";
 import { FollowerWriteFixture } from "../../src/services/follower-write-gate.js";
 import {
   WriteBehind,
   type WriteBehindService,
-} from "../../src/services/write-behind.js";
+} from "../../src/services/write-behind.summarize-write-behind-telemetry.js";
 import type { ProcessedTx } from "../../src/utils.js";
 
 type CrashInput = {

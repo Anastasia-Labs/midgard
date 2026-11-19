@@ -9,7 +9,7 @@ import { Effect, type ManagedRuntime, Option } from "effect";
 
 import { FollowerWriteFixture } from "../../src/services/follower-write-gate.js";
 import type { IntentJournalService } from "../../src/services/intent-journal.js";
-import { BeforeSignedTransactionSubmission } from "../../src/transactions/utils.js";
+import { BeforeSignedTransactionSubmission } from "../../src/transactions/utils.await-required-output-visibility.js";
 import { submitWithDurableIntent } from "../../src/workers/commit-block-header/submission.submit-with-durable-intent.js";
 import { type RecordedIntent, SEND_AT_TIP } from "./intent-journal.js";
 import {

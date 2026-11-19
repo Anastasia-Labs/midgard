@@ -7,20 +7,18 @@ import {
   NativeScriptDecodingStep04DatumSchema,
 } from "@al-ft/midgard-sdk";
 
-import { NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
+import { NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import { cursorFamilyActionInput } from "../workflow/cursor-family-runtime.js";
 import { NATIVE_SCRIPT_DECODING_CURSOR_SPEC } from "../workflow/cursor-family-spec.js";
+import { MEMBERSHIP_WITNESS_ROLES } from "../workflow/family-definition.family-adapter-arm.js";
 import {
   cursorStepContractNames,
   defineFamily,
   type ManifestBoundFamilyWorkflow,
-  MEMBERSHIP_WITNESS_ROLES,
-} from "../workflow/family-definition.js";
+} from "../workflow/family-definition.family-definition.js";
 import { type FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
-import {
-  assembleManifestBoundFamilyWorkflow,
-  runOrResumeManifestBoundFamilyWorkflow,
-} from "../workflow/manifest-bound-family-assembly.js";
+import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
+import { runOrResumeManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.run-or-resume-manifest-bound-family-workflow.js";
 import { admitNativeScriptDecodingWorkflowArtifact } from "./artifact.js";
 import type { NativeScriptDecodingContracts } from "./contracts.js";
 import {

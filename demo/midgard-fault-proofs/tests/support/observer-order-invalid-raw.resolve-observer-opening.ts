@@ -9,8 +9,10 @@ import {
   materializeMidgardNativeTxFromCanonical,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
-import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
-import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
+import {
+  deriveMidgardForcedTxProofSource,
+  materializeMidgardForcedTxFromCanonical,
+} from "@al-ft/midgard-core/codec/forced";
 import {
   type FieldOpening,
   ForcedInclusionTxV1Schema,
@@ -21,12 +23,12 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
+import { resolveFaultProofFieldPreimageCertificate } from "../../src/field-opening.certify-fault-proof-field-carriage.js";
+import { planFaultProofFieldOpening } from "../../src/field-opening.plan-fault-proof-field-opening.js";
 import {
   faultProofFieldOpening,
-  planFaultProofFieldOpening,
   resolveFaultProofFieldCarriagePublications,
-  resolveFaultProofFieldPreimageCertificate,
-} from "../../src/field-opening.js";
+} from "../../src/field-opening.publish-fault-proof-field-carriage.js";
 import type { ObserverOrderInvalidContracts } from "../../src/observer-order-invalid/contracts.js";
 import { type ObserverOrderInvalidEvidence } from "../../src/observer-order-invalid/family.js";
 import type { ResolvedProverSigner } from "../../src/runtime.js";

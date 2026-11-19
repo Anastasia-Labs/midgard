@@ -27,8 +27,8 @@ import {
   CHUNKED_VERIFY_WITNESS_ROLES,
   type LinearFamilyAssemblyContext,
   type LinearFamilyReferenceScripts,
-} from "./family-definition.js";
-import { normalizeJournalJson } from "./journal.js";
+} from "./family-definition.family-adapter-arm.js";
+import { normalizeJournalJson } from "./journal.fraud-proof-workflow-terminal.js";
 import { admitNativeInclusionTwoStepArtifact } from "./native-inclusion-two-step.admit-native-inclusion-two-step-artifact.js";
 import {
   HEX_32,

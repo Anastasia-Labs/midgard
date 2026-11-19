@@ -2,7 +2,7 @@ import "./da-libp2p-runtime-manifest.da-libp2p-runtime-manifest-profiles.js";
 
 import { describe, expect, it } from "vitest";
 
-import { parseDaProducerPublicationManifest } from "../src/da/libp2p-producer.js";
+import { parseDaProducerPublicationManifest } from "../src/da/libp2p-producer.parse-da-producer-publication-manifest.js";
 import { generateDaLibp2pRuntimeManifest } from "../src/da/libp2p-runtime-manifest.js";
 import {
   COMMITTEE_KEY,

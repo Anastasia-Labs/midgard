@@ -12,8 +12,8 @@ import {
 import {
   computeWatcherRuleBundleCommitment,
   makeWatcherCanonicalRuleBundle,
-} from "../../src/verification/rule-bundle.js";
-import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
+} from "../../src/verification/rule-bundle.parse-watcher-rule-bundle.js";
+import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.build-watcher-deployment-authority-fixture.js";
 
 const directories: string[] = [];
 

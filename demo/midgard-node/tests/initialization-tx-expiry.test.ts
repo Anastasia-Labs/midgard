@@ -14,13 +14,15 @@ import { CML } from "@lucid-evolution/lucid";
 import { Effect, Exit, Layer } from "effect";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 
-import { Lucid, MidgardContracts, NodeConfig } from "../src/services/index.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
+import { Lucid } from "../src/services/lucid.js";
+import { MidgardContracts } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   configuredProtocolDeploymentKeys,
   fetchProtocolDeploymentStatus,
   hubOraclePolicyOfNonce,
   program as initializeProtocol,
-} from "../src/transactions/initialization.js";
+} from "../src/transactions/initialization.fetch-protocol-deployment-status.js";
 import { runWithoutFollower } from "./helpers/intent-journal.js";
 import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 import {

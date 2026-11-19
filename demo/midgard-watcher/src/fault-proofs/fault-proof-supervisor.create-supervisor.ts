@@ -8,11 +8,9 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 
 import type { WatcherProofRetention } from "../l1-follower/proof-retention.js";
-import { watcherSha256CanonicalJson } from "../storage/durable-store.js";
-import {
-  WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
-  type WatcherInstalledWorkflowCategory,
-} from "./fault-proof-application.js";
+import { watcherSha256CanonicalJson } from "../storage/durable-store.canonical-json.js";
+import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "./fault-proof-application.js";
+import { type WatcherInstalledWorkflowCategory } from "./fault-proof-application.production-dependencies.js";
 import { isWatcherFaultProofContinuationStall } from "./fault-proof-continuation-stall.js";
 import type { WatcherFaultProofExecutionAdmission } from "./fault-proof-execution.js";
 import { readWatcherProofExecution } from "./fault-proof-objective-journal.js";

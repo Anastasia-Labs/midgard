@@ -13,7 +13,7 @@ import {
   slotToBeginUnixTime,
 } from "@lucid-evolution/lucid";
 
-import { WATCHER_EMULATOR_HISTORY_RECIPE } from "./deployment-authority-fixture.js";
+import { WATCHER_EMULATOR_HISTORY_RECIPE } from "./deployment-authority-fixture.build-watcher-authority-contracts.js";
 import type { FollowerUserEventsDeployment } from "./follower-user-events-fixture.js";
 import type { GenuineUserEventForcedPayload } from "./user-event-forced-order-fixture.js";
 

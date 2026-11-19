@@ -26,32 +26,32 @@ import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk";
 import { type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { planFaultProofFieldOpening } from "../src/field-opening.plan-fault-proof-field-opening.js";
 import {
   faultProofFieldCarriage,
   faultProofFieldOpening,
-  planFaultProofFieldOpening,
-} from "../src/field-opening.js";
+} from "../src/field-opening.publish-fault-proof-field-carriage.js";
 import {
-  buildInputSetUniquenessInit,
-  buildInputSetUniquenessStep01,
-  buildInputSetUniquenessStep02,
   requireInputSetUniquenessClaim,
   scanInputSetUniqueness,
-} from "../src/input-set-uniqueness/index.js";
+} from "../src/input-set-uniqueness/scan.js";
+import { buildInputSetUniquenessInit } from "../src/input-set-uniqueness/submit-input-set-uniqueness-init.js";
+import { buildInputSetUniquenessStep01 } from "../src/input-set-uniqueness/submit-input-set-uniqueness-step-01.js";
+import { buildInputSetUniquenessStep02 } from "../src/input-set-uniqueness/submit-input-set-uniqueness-step-02.submit-input-set-uniqueness-step02.js";
 import type { FaultProofWitnessReferenceScripts } from "../src/witness-reference-scripts.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   buildInputSetUniquenessFixture,
-  expectOnchainRefusal,
   type InputSetUniquenessFixture,
   type InputSetUniquenessHarness,
   isuOutRef,
   makeInputSetUniquenessEmulatorHarness,
   publishInputSetUniquenessReferenceScripts,
   setupInputSetUniquenessScenario,
-  submitRawInputSetUniquenessBind,
-  submitRawInputSetUniquenessFinalize,
-} from "./support/input-set-uniqueness-emulator.js";
-import { network } from "./support/submit-init-emulator-shared.js";
+} from "./support/input-set-uniqueness-emulator.build-input-set-uniqueness-fixture.js";
+import { submitRawInputSetUniquenessBind } from "./support/input-set-uniqueness-emulator.submit-raw-input-set-uniqueness-bind.js";
+import { submitRawInputSetUniquenessFinalize } from "./support/input-set-uniqueness-emulator.submit-raw-input-set-uniqueness-finalize.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,

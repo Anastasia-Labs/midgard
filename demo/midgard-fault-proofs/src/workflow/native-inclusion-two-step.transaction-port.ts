@@ -8,16 +8,12 @@ import { ZeroInputStep02DatumSchema } from "../zero-input/schemas.js";
 import {
   INVALID_RANGE_COMPLETE_CANONICAL_REPLAY,
   ZERO_INPUT_COMPLETE_CANONICAL_REPLAY,
-} from "./complete-replay.js";
-import {
-  defineLinearFamily,
-  type LinearFamilyPrerequisiteInput,
-} from "./family-definition.js";
+} from "./complete-replay.detect-double-withdraws.js";
+import type { LinearFamilyPrerequisiteInput } from "./family-definition.family-adapter-arm.js";
+import { defineLinearFamily } from "./family-definition.family-definition.js";
 import { type LinearFamilyTransactionPort } from "./linear-family-adapter.js";
-import {
-  assembleManifestBoundFamilyWorkflow,
-  runOrResumeManifestBoundFamilyWorkflow,
-} from "./manifest-bound-family-assembly.js";
+import { assembleManifestBoundFamilyWorkflow } from "./manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
+import { runOrResumeManifestBoundFamilyWorkflow } from "./manifest-bound-family-assembly.run-or-resume-manifest-bound-family-workflow.js";
 import { admitNativeInclusionTwoStepArtifact } from "./native-inclusion-two-step.admit-native-inclusion-two-step-artifact.js";
 import {
   createTransactionPort,

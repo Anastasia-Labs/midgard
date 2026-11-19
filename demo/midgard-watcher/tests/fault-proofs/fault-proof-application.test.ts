@@ -4,12 +4,14 @@ import "node:path";
 import "@al-ft/midgard-core/deployment-manifest-identity";
 import "@al-ft/midgard-fault-proofs";
 import "vitest";
-import "../../src/fault-proofs/fault-proof-application.js";
+import "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
+import "../../src/fault-proofs/fault-proof-application.create-watcher-fault-proof-readiness-application.js";
 import "../../src/funding/workflow-funding-profile-overlay.js";
-import "../../src/runtime/config.js";
+import "../../src/runtime/config.parse-watcher-config.js";
+import "../../src/runtime/config.watcher-config.js";
 import "../../src/storage/public-da-libp2p-transport.js";
 import "../funding/funding-handoff-fixture.js";
-import "../support/deployment-authority-fixture.js";
+import "../support/deployment-authority-fixture.build-watcher-deployment-authority-fixture.js";
 import "./fault-proof-application.raw-config.js";
 
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -31,22 +33,22 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 import { describe, expect, it, vi } from "vitest";
 
+import { unsafeCreateWatcherFaultProofApplicationForTest } from "../../src/fault-proofs/fault-proof-application.create-watcher-fault-proof-readiness-application.js";
 import {
   installedLaunchScope,
-  unsafeCreateWatcherFaultProofApplicationForTest,
   WATCHER_FAULT_PROOF_APPLICATION,
   WATCHER_FAULT_PROOF_STARTUP_READINESS,
   WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
   WATCHER_MISSING_WORKFLOW_CATEGORIES,
   WATCHER_PREDECESSOR_AUTHORITY_CATEGORIES,
-} from "../../src/fault-proofs/fault-proof-application.js";
+} from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
 import {
   createWatcherWorkflowFundingProfileBundle,
   loadWatcherWorkflowFundingProfileOverlay,
 } from "../../src/funding/workflow-funding-profile-overlay.js";
-import { parseWatcherConfig } from "../../src/runtime/config.js";
+import { parseWatcherConfig } from "../../src/runtime/config.parse-watcher-config.js";
 import { fundingTerminal } from "../funding/funding-handoff-fixture.js";
-import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
+import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.build-watcher-deployment-authority-fixture.js";
 import {
   admittedWatcherConfig,
   AUTHORITY,

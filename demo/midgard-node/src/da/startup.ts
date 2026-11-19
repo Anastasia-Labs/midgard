@@ -5,27 +5,27 @@ import {
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Effect } from "effect";
 
+import { DatabaseInitializationError } from "../services/database.js";
+import { NodeConfig } from "../services/index.js";
+import { Lucid } from "../services/lucid.js";
+import type { ContractDeploymentIdentityValue } from "../services/midgard-contracts.load-reference-script-auth-validator.js";
 import {
   ContractDeploymentIdentity,
-  type ContractDeploymentIdentityValue,
-  DatabaseInitializationError,
-  Lucid,
   MidgardContracts,
-  NodeConfig,
-} from "../services/index.js";
+} from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   DA_CAPABILITY_QUORUM_PENDING,
   DA_PROVIDER_ASSERTIONS_UNAVAILABLE,
 } from "../services/startup-waiting.js";
-import { fetchDaParamsUtxo } from "../transactions/da-attestation.js";
-import {
-  createDaLibp2pProducerProbeTransport,
-  type DaEnvelopeCapabilityMode,
-  type DaEnvelopeCapabilityPeerResult,
-  type DaProducerPublicationManifest,
-  loadDaProducerPublicationManifestFromEnv,
-  probeDaEnvelopeCapabilities,
-} from "./libp2p-producer.js";
+import { fetchDaParamsUtxo } from "../transactions/da-attestation.fetch-da-attestation-reference-scripts.js";
+import type {
+  DaEnvelopeCapabilityMode,
+  DaEnvelopeCapabilityPeerResult,
+  DaProducerPublicationManifest,
+} from "./libp2p-producer.parse-committee-peers.js";
+import { loadDaProducerPublicationManifestFromEnv } from "./libp2p-producer.parse-da-producer-publication-manifest.js";
+import { probeDaEnvelopeCapabilities } from "./libp2p-producer.probe-da-envelope-capabilities.js";
+import { createDaLibp2pProducerProbeTransport } from "./libp2p-producer.run-da-libp2p-preflight.js";
 
 export const assertDaThresholdCompatible = (
   transportThreshold: number,

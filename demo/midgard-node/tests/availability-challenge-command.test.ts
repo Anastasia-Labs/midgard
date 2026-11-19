@@ -8,17 +8,17 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
+import { buildAvailabilityCommandTransaction } from "../src/commands/availability-challenge.build-availability-command-transaction.js";
 import {
   assertAvailabilityCommandRemovalCapital,
   assertAvailabilityTimeoutCollateral,
   availabilityTimeoutCollateralLovelace,
   availabilityTimeoutRentRefundAddress,
-  buildAvailabilityCommandTransaction,
   parseAvailabilityOutRef,
   planAvailabilityCommandAction,
   recoverAvailabilityOpenCommitment,
-  runAvailabilityChallengeCommand,
-} from "../src/commands/availability-challenge.js";
+} from "../src/commands/availability-challenge.plan-availability-command-action.js";
+import { runAvailabilityChallengeCommand } from "../src/commands/availability-challenge.run-availability-challenge-command.js";
 import { TEST_AVAILABILITY_PARAMETERS as parameters } from "./helpers/availability-challenge.js";
 import {
   attestAvailability,

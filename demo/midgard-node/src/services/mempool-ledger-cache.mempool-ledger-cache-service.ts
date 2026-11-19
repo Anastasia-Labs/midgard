@@ -1,4 +1,4 @@
-import { type UTxOStatePatch } from "@al-ft/midgard-validation";
+import type { UTxOStatePatch } from "@al-ft/midgard-validation/phase-b";
 import { Context, Data, Effect, Metric } from "effect";
 
 import type { DatabaseError } from "../database/utils/common.js";

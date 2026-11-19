@@ -18,7 +18,7 @@ import {
   LANDED_BLOCK_REBASE_PENDING,
   LANDED_BLOCKS_WAITING,
 } from "../../src/landed-blocks/holds.js";
-import { Globals } from "../../src/services/index.js";
+import { Globals } from "../../src/services/globals.globals.js";
 import { IntentJournal } from "../../src/services/intent-journal.js";
 import { driverSink } from "../../src/services/l1-follower.driver-sink.js";
 import { failureHold } from "../../src/services/l1-follower.failure-hold.js";

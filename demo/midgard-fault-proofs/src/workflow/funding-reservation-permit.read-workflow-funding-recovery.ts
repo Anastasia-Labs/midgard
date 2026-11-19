@@ -29,10 +29,8 @@ import {
   commitWithJournal,
   type WorkflowJournalWriter,
 } from "./funding-reservation-permit.workflow-journal-writer.js";
-import {
-  type FraudProofWorkflowJournalEvent,
-  journalJsonDigest,
-} from "./journal.js";
+import type { FraudProofWorkflowJournalEvent } from "./journal.fraud-proof-workflow-journal-event.js";
+import { journalJsonDigest } from "./journal.fraud-proof-workflow-terminal.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
 import { supersededAttemptReadSchedule } from "./superseded-attempt-read-schedule.js";
 import {

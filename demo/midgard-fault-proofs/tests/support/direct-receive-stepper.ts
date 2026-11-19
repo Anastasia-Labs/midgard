@@ -8,13 +8,11 @@ import {
 } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import { createDirectFieldPlan } from "../../src/direct-script-derivation/index.js";
-import { faultProofFieldOpening } from "../../src/field-opening.js";
+import { createDirectFieldPlan } from "../../src/direct-script-derivation/field-plan.js";
+import { faultProofFieldOpening } from "../../src/field-opening.publish-fault-proof-field-carriage.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
-import {
-  expectOnchainRefusal,
-  measureCompleteSignedTransaction,
-} from "./submit-init-emulator-shared.js";
+import { expectOnchainRefusal } from "./emulator/expect-onchain-refusal.js";
+import { measureCompleteSignedTransaction } from "./emulator/measurement.js";
 
 /** One physical receive-lifecycle transition per call: every refused datum is
  * rejected on-chain first, then the honest successor is signed, measured,

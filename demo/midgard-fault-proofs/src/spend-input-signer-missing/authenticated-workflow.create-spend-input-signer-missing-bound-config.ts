@@ -10,10 +10,8 @@ import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { type SubmitStep01TxInclusion } from "../step-support.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import {
-  type FraudProofWorkflowDeploymentBinding,
-  requireManifestBoundReferenceScriptUtxo,
-} from "../workflow/deployment-manifest-binding.js";
+import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.assert-deployment-info-matches-manifest.js";
+import { requireManifestBoundReferenceScriptUtxo } from "../workflow/deployment-manifest-binding.js";
 import {
   SPEND_INPUT_SIGNER_MISSING_BLUEPRINT_TITLES,
   type SpendInputSignerMissingContracts,

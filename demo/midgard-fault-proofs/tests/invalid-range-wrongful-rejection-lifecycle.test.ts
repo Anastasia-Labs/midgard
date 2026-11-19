@@ -1,7 +1,9 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { computeMidgardNativeTxId } from "@al-ft/midgard-core";
-import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
-import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
+import {
+  deriveMidgardForcedTxProofSource,
+  materializeMidgardForcedTxFromCanonical,
+} from "@al-ft/midgard-core/codec/forced";
 import {
   ForcedInclusionTxV1Schema,
   forcedVerdictSubject,
@@ -22,14 +24,12 @@ import {
   buildInvalidRangeStep01Forced,
   buildInvalidRangeStep02V1,
 } from "../src/invalid-range/submit.js";
-import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import { forcedTxFromCoreCompact } from "../src/step-support.js";
-import { buildInit } from "../src/submit-init.js";
+import { buildInit } from "../src/submit-init.submit-init.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
-import {
-  admitNativeInclusionTwoStepArtifact,
-  NATIVE_INCLUSION_TWO_STEP_ARTIFACT,
-} from "../src/workflow/native-inclusion-two-step.js";
+import { admitNativeInclusionTwoStepArtifact } from "../src/workflow/native-inclusion-two-step.admit-native-inclusion-two-step-artifact.js";
+import { NATIVE_INCLUSION_TWO_STEP_ARTIFACT } from "../src/workflow/native-inclusion-two-step.parse-artifact.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
@@ -37,12 +37,12 @@ import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { commitSlotForBlockTime } from "./support/emulator/header-fixtures.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
-import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
 import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
-import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
-import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
+import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init/forced-transitions.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 const network = "Custom" as const;

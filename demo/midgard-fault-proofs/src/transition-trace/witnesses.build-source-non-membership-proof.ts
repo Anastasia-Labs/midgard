@@ -4,7 +4,7 @@ import { transitionTraceError } from "./errors.js";
 import {
   encodeData,
   type TransitionTraceReconstruction,
-} from "./reconstruct.js";
+} from "./reconstruct.transition-trace-reconstruction.js";
 import {
   buildAdjacentTraceProof,
   buildEventToStepMembershipProof,

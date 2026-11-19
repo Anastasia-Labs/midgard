@@ -1,9 +1,7 @@
 import { expect, it } from "vitest";
 
-import {
-  confirmWorkflowFundingReservationTransaction,
-  readWorkflowFundingRecovery,
-} from "../src/workflow/funding-reservation-permit.js";
+import { confirmWorkflowFundingReservationTransaction } from "../src/workflow/funding-reservation-permit.apply-transition.js";
+import { readWorkflowFundingRecovery } from "../src/workflow/funding-reservation-permit.read-workflow-funding-recovery.js";
 import { createWorkflowRuntimeFundingPolicy } from "../src/workflow/runtime-funding-policy.js";
 import { bindWorkflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
 import {

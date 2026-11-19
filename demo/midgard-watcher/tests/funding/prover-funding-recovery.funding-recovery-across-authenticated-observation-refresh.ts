@@ -18,13 +18,13 @@ import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
 import { authorizeWatcherProverFundingRecovery } from "../../src/funding/prover-funding-recovery.js";
+import { FixtureProcessStop } from "../support/fault-proof-funding-fixture.process-stop.js";
+import { setupFundingRecoveryFixture as setup } from "../support/fault-proof-funding-fixture.setup-funding-recovery-fixture.js";
 import {
   deploymentIdentity,
-  FixtureProcessStop,
   key,
-  setupFundingRecoveryFixture as setup,
   walletAddress,
-} from "../support/fault-proof-funding-fixture.js";
+} from "../support/fault-proof-funding-fixture.sources-for.js";
 import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 import { fundingTerminal } from "./funding-handoff-fixture.js";
 import { registerConfirmedFundingRefillTest } from "./prover-funding-recovery.authenticated-confirmed-refill.js";

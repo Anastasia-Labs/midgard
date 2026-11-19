@@ -12,7 +12,7 @@ import {
   COMMIT_MINIMUM_FUTURE_BUFFER_MS,
   resolveHistoryCommitBlockTime,
 } from "../src/workers/utils/commit-end-time.js";
-import { resolveCurrentOperatorSchedulerWindow } from "../src/workers/utils/scheduler-refresh.js";
+import { resolveCurrentOperatorSchedulerWindow } from "../src/workers/utils/scheduler-refresh.fetch-fresh-active-operator-input-for-commit.js";
 import {
   advanceEmulatorPastLatestBlockEndTime,
   advanceEmulatorPastUnixTime,

@@ -1,24 +1,20 @@
 /** Honest-commitment polarity: local gates plus raw on-chain fold refusal. */
 import { describe, expect, it } from "vitest";
 
-import {
-  buildMissingSignatureInit,
-  buildMissingSignatureStep01,
-  buildMissingSignatureStep02,
-  buildMissingSignatureStep03,
-  buildMissingSignatureStep04,
-} from "../src/missing-signature/index.js";
+import { buildMissingSignatureInit } from "../src/missing-signature/submit-missing-signature-init.js";
+import { buildMissingSignatureStep01 } from "../src/missing-signature/submit-missing-signature-step-01.js";
+import { buildMissingSignatureStep02 } from "../src/missing-signature/submit-missing-signature-step-02.js";
+import { buildMissingSignatureStep03 } from "../src/missing-signature/submit-missing-signature-step-03.js";
+import { buildMissingSignatureStep04 } from "../src/missing-signature/submit-missing-signature-step-04.submit-missing-signature-step04.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   makeMissingSignatureEmulatorHarness,
   MISSING_SIGNATURE_TARGET_VKEY,
   publishMissingSignatureReferenceScripts,
   setupMissingSignatureScenario,
-  submitRawMissingSignatureStep04,
-} from "./support/missing-signature-emulator.js";
-import {
-  expectOnchainRefusal,
-  network,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/missing-signature-emulator.build-missing-signature-subject.js";
+import { submitRawMissingSignatureStep04 } from "./support/missing-signature-emulator.submit-raw-missing-signature-step04.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,

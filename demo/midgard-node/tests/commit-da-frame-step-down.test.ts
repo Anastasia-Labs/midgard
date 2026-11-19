@@ -3,14 +3,16 @@ import { Effect, Either } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import { Columns as TxColumns } from "../src/database/utils/tx.js";
+import type { CommitDaFrameMeasurement } from "../src/workers/utils/commit-block-planner.commit-scheduler-evidence-key.js";
 import {
-  type CommitDaFrameMeasurement,
   commitDaFrameStepDownPassBound,
-  planCommitBatchBudgets,
   planCommitDaFrameStepDown,
+} from "../src/workers/utils/commit-block-planner.da-frame-decision.js";
+import {
+  planCommitBatchBudgets,
   selectCommitTxCandidates,
   stepDownCommitSelectionToDaFrame,
-} from "../src/workers/utils/commit-block-planner.js";
+} from "../src/workers/utils/commit-block-planner.select-commit-tx-candidates.js";
 import { registerEventPrefixCases } from "./commit-da-frame-step-down.event-prefix-cases.js";
 import {
   HEAVY_TRANSFER,

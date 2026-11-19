@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   type CanonicalBlockEvidence,
   canonicalBlockEvidenceFromVerifiedPayload,
-} from "../src/evidence/index.js";
+} from "../src/evidence/canonical-block-evidence.js";
 import * as FaultProofs from "../src/index.js";
 import type {
   RetainedDaPayloadSource,

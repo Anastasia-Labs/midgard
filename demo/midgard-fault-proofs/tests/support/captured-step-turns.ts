@@ -14,7 +14,7 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { isPrerequisiteTurn } from "../../src/fault-proof-turn.js";
-import { fieldPreimageCertificateAddress } from "../../src/field-opening.js";
+import { fieldPreimageCertificateAddress } from "../../src/field-opening.certify-fault-proof-field-carriage.js";
 import {
   type LocallyEvaluatedTransaction,
   submitCapturedTransaction,

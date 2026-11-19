@@ -5,8 +5,8 @@ import {
 
 import { buildCommittedFieldShapeInit } from "../committed-field-shape/submit-committed-field-shape-init.js";
 import { isPrerequisiteTurn } from "../fault-proof-turn.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.build-remove-fraudulent-block.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
-import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import { requireScriptDecodeRecordForItem } from "../script-decode/record.js";
 import {
   createOwnOutputJournal,

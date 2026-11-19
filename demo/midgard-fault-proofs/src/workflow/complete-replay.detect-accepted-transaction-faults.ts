@@ -28,7 +28,7 @@ import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidenc
 import { isCommittedInvalidNormalLeaf } from "../evidence/committed-normal-leaf-validity.js";
 import { detectInvalidRangeForcedReplay } from "../invalid-range/replay.js";
 import { type CheckedLedger } from "../ledger-at.js";
-import { decodeTransactionMaterial } from "../prepare-double-spend.js";
+import { decodeTransactionMaterial } from "../prepare-double-spend.resolve-double-spend-pair.js";
 import {
   type CommittedL2Event,
   eventRunsPlutus,

@@ -19,11 +19,11 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { isPrerequisiteTurn } from "../fault-proof-turn.js";
+import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
 import {
   faultProofFieldOpening,
-  planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
-} from "../field-opening.js";
+} from "../field-opening.publish-fault-proof-field-carriage.js";
 import {
   linearFaultStepLabel,
   requireLinearFaultReferenceScript,
@@ -45,7 +45,7 @@ import {
   NATIVE_SCRIPT_INVALID_SIGNER_START_BATCH,
   nativeScriptInvalidSignerScanState,
   nativeScriptInvalidUsesDirectRoute,
-} from "./evidence-machine.js";
+} from "./evidence-machine.native-script-invalid-signer-set.js";
 
 type State = NonNullable<
   Data.Static<typeof NativeScriptInvalidStep03DatumSchema>["data"]

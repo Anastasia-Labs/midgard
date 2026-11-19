@@ -17,18 +17,22 @@ import {
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
-  daBondAssembleCommand,
   daBondChainSubmit,
   type DaBondContext,
-  type DaBondL1Access,
-  daBondLucid,
-  DaBondSlotMappingError,
   daBondStatusCommand,
   daBondSubmitAndConfirm,
-  daBondTopUpCommand,
+} from "../src/commands/da-bond.da-bond-context.js";
+import {
+  daBondAssembleCommand,
+  DaBondSlotMappingError,
   daBondWithdrawBuildCommand,
+} from "../src/commands/da-bond.da-bond-withdraw-build-command.js";
+import {
+  type DaBondL1Access,
+  daBondLucid,
   loadDaBondContext,
-} from "../src/commands/da-bond.js";
+} from "../src/commands/da-bond.load-da-bond-context.js";
+import { daBondTopUpCommand } from "../src/commands/da-bond.refusal-message.js";
 import {
   daBondSigningKeyFromSecret,
   type DaBondUnsignedFile,

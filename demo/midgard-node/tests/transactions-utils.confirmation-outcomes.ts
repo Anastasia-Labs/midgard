@@ -11,7 +11,7 @@ import { Emulator } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import { awaitSubmittedTransactionConfirmation } from "../src/transactions/utils.js";
+import { awaitSubmittedTransactionConfirmation } from "../src/transactions/utils.await-submitted-transaction-confirmation.js";
 import { signedTxCbor } from "./transactions-utils.parse-outside-validity-interval-details.js";
 
 /** The slot at which a bound at slot 3 lies the confirmation depth deep. */

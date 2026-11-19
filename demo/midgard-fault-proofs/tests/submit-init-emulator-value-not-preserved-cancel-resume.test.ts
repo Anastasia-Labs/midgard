@@ -3,20 +3,22 @@ import { outRefLabel } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
 import { buildLinearFaultCancel } from "../src/linear-fault-cancel.js";
-import { buildResolvedInit } from "../src/submit-init.js";
+import { buildResolvedInit } from "../src/submit-init.submit-resolved-init.js";
 import { VALUE_NOT_PRESERVED_CATEGORY_LABEL } from "../src/value-not-preserved/contracts.js";
-import { network } from "./support/submit-init-emulator-shared.js";
+import { network } from "./support/emulator/blueprints.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 import {
   buildValueNotPreservedFixture,
-  makeValueNotPreservedEmulatorHarness,
-  publishValueNotPreservedReferenceScripts,
-  runValueNotPreservedThread,
-  setupValueNotPreservedScenario,
   vnpOutput,
   vnpOutRef,
   vnpValue,
-} from "./support/value-not-preserved-emulator.js";
+} from "./support/value-not-preserved-emulator.build-value-not-preserved-fixture.js";
+import { makeValueNotPreservedEmulatorHarness } from "./support/value-not-preserved-emulator.commit-header-after-anchor-block.js";
+import {
+  publishValueNotPreservedReferenceScripts,
+  runValueNotPreservedThread,
+  setupValueNotPreservedScenario,
+} from "./support/value-not-preserved-emulator.run-value-not-preserved-thread.js";
 
 describe("value-not-preserved cancellation and restart", () => {
   it("cancels through the public submitter after the full input fold and starts a fresh thread", async () => {

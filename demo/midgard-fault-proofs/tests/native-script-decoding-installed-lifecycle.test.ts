@@ -6,33 +6,31 @@ import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import { getAddressDetails, toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import {
-  createNativeScriptDecodingTransactionPort,
-  NATIVE_SCRIPT_DECODING_FAMILY_DEFINITION,
-} from "../src/native-script-decoding/workflow.js";
-import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
-import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
-import { NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
-import { createCursorFamilyWorkflowAdapter } from "../src/workflow/cursor-family-adapter.js";
+import { createNativeScriptDecodingTransactionPort } from "../src/native-script-decoding/workflow.create-native-script-decoding-transaction-port.js";
+import { NATIVE_SCRIPT_DECODING_FAMILY_DEFINITION } from "../src/native-script-decoding/workflow.native-script-decoding-family-definition.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
+import { NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
+import { createCursorFamilyWorkflowAdapter } from "../src/workflow/cursor-family-adapter.create-cursor-family-workflow-adapter.js";
 import { NATIVE_SCRIPT_DECODING_CURSOR_SPEC } from "../src/workflow/cursor-family-spec.js";
 import {
   FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
   type FraudProofFamilyL1ObservationPort,
 } from "../src/workflow/family-l1-observation.js";
-import {
-  createAuthenticatedFieldCarriagePrerequisitePort,
-  withFieldCarriagePrerequisite,
-} from "../src/workflow/field-carriage-prerequisite.js";
+import { createAuthenticatedFieldCarriagePrerequisitePort } from "../src/workflow/field-carriage-prerequisite.create-authenticated-field-carriage-prerequisite-port.js";
+import { withFieldCarriagePrerequisite } from "../src/workflow/field-carriage-prerequisite.with-field-carriage-prerequisite.js";
+import { DirectoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
+import type { FraudProofWorkflowJournalEvent } from "../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import {
   computeFraudProofWorkflowId,
-  DirectoryFraudProofWorkflowJournalStore,
   type FraudProofWorkflowIdentity,
-  type FraudProofWorkflowJournalEvent,
   journalJsonDigest,
-} from "../src/workflow/journal.js";
+} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
-import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import {
   submitSecondHeaderTx,
   submitSetupTx,
@@ -41,13 +39,9 @@ import { emulatorPublicationObserver } from "./support/install-field-carriage.js
 import {
   makeDecodingEmulatorHarness,
   publishDecodingReferenceScripts,
-} from "./support/native-script-decoding-emulator.js";
+} from "./support/native-script-decoding-emulator.setup-decoding-scenario.js";
 import { nativeDecodingFixture } from "./support/native-script-decoding-retained.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
-import {
-  publishPlainReferenceScriptUtxo,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
 
 const maximumItem = encodeCbor([
   0n,

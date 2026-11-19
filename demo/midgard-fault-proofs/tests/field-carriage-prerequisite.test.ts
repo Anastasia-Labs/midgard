@@ -1,7 +1,9 @@
 import "vitest";
 import "../src/workflow/action-changed.js";
-import "../src/workflow/field-carriage-prerequisite.js";
-import "../src/workflow/orchestrator.js";
+import "../src/workflow/field-carriage-prerequisite.create-authenticated-field-carriage-prerequisite-port.js";
+import "../src/workflow/field-carriage-prerequisite.with-field-carriage-prerequisite.js";
+import "../src/workflow/field-carriage-prerequisite.field-carriage-prerequisite-port.js";
+import "../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import "../src/workflow/raw-datum-preimage.js";
 import "../src/workflow/raw-datum-preimage-prerequisite.js";
 import "../src/workflow/raw-l1-publication-observation.js";

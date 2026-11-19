@@ -3,7 +3,7 @@ import {
   type JournalJsonObject,
   type JournalJsonValue,
   normalizeJournalJson,
-} from "./journal.js";
+} from "./journal.fraud-proof-workflow-terminal.js";
 
 const ENCODING = "midgard-workflow-artifact-v1";
 

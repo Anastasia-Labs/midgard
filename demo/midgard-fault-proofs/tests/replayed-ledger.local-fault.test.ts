@@ -18,7 +18,7 @@ import {
   type ReplayedLedgerRefusal,
   type ReplayedLedgerSource,
 } from "../src/replayed-ledger.js";
-import { reconstructDaPayload } from "../src/transition-trace/reconstruct.js";
+import { reconstructDaPayload } from "../src/transition-trace/reconstruct.reconstruct-da-payload.js";
 import { plutusExecutionBlockFixture } from "./helpers/plutus-execution-block-fixture.js";
 
 /** The injected evaluator failure, and how often the evaluator ran. */

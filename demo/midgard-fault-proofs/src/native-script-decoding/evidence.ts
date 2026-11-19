@@ -48,7 +48,7 @@ import {
   buildEventToStepMembershipProof,
   buildForcedTransactionLeafMembershipProof,
   buildIndexedTraceProof,
-} from "../transition-trace/witnesses.js";
+} from "../transition-trace/witnesses.build-source-membership-proof.js";
 import { NATIVE_SCRIPT_DECODING_CATEGORY_LABEL } from "./contracts.js";
 import type {
   NativeScriptDecodingPlanWindow,

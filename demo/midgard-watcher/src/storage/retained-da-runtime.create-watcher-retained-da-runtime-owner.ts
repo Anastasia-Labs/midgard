@@ -6,7 +6,8 @@ import {
   type WorkflowRuntimeLoader,
 } from "@al-ft/midgard-fault-proofs";
 
-import { parseWatcherConfig, type WatcherConfig } from "../runtime/config.js";
+import { parseWatcherConfig } from "../runtime/config.parse-watcher-config.js";
+import type { WatcherConfig } from "../runtime/config.watcher-config.js";
 import {
   createWatcherPublicDaLibp2pTransport,
   WatcherPublicDaLibp2pTransport,

@@ -15,21 +15,23 @@ import {
   type OutputReferenceScriptDecodingEvidence,
   OutputReferenceScriptResultClasses,
   prepareOutputReferenceScriptDecodingEvidence,
-  readOutputReferenceScriptScanState,
-} from "../src/output-reference-script-decoding/index.js";
+} from "../src/output-reference-script-decoding/output-reference-script-decoding.js";
+import { readOutputReferenceScriptScanState } from "../src/output-reference-script-decoding/submit-step-05.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   commitAcceptedBlock,
-  commitForcedBlock,
   createMeasurementRecorder,
-  type ForcedLeaf,
   makeOutputReferenceHarness,
-  makeOutputReferenceStages,
   type OutputReferenceContext,
   outputWithPlutusScript,
-  publishFamilyReferences,
   subjectTransaction,
-} from "./support/output-reference-script-decoding-emulator.js";
+} from "./support/output-reference-script-decoding-emulator.commit-accepted-block.js";
+import {
+  commitForcedBlock,
+  type ForcedLeaf,
+  publishFamilyReferences,
+} from "./support/output-reference-script-decoding-emulator.commit-forced-block.js";
+import { makeOutputReferenceStages } from "./support/output-reference-script-decoding-emulator.make-output-reference-stages.js";
 import { recordPlutusItem } from "./support/script-decode-emulator.js";
 
 const UNDECODABLE = Buffer.from("4401020304", "hex");

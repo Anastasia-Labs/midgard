@@ -13,7 +13,6 @@ import * as SDK from "@al-ft/midgard-sdk";
 import {
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
-  RejectCodes,
 } from "@al-ft/midgard-validation";
 import {
   encodeByteList,
@@ -23,6 +22,7 @@ import {
   outRefFromByte,
   outRefFromTxId,
 } from "@al-ft/midgard-validation/tests/validation-fixtures";
+import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { CML, Data } from "@lucid-evolution/lucid";
 import {
   computeDaPayloadRoots,

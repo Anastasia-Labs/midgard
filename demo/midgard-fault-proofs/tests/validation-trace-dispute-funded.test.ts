@@ -23,10 +23,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
 import { WorkflowActionChangedError } from "../src/workflow/action-changed.js";
 import { readValidationDisputeFundingAuthority } from "../src/workflow/funding-reservation-permit.assert-validation-dispute-funding.js";
-import {
-  isWorkflowFundingPauseReason,
-  WORKFLOW_FUNDING_SHORTFALL,
-} from "../src/workflow/funding-reservation-permit.js";
+import { isWorkflowFundingPauseReason } from "../src/workflow/funding-reservation-permit.is-workflow-funding-pause-reason.js";
+import { WORKFLOW_FUNDING_SHORTFALL } from "../src/workflow/funding-reservation-permit.workflow-funding-shortfall.js";
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { workflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
 import {

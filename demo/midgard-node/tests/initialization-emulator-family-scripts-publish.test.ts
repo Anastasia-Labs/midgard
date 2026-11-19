@@ -21,7 +21,7 @@ import { CML, validatorToScriptHash } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { fetchProtocolDeploymentStatus } from "../src/transactions/initialization.js";
+import { fetchProtocolDeploymentStatus } from "../src/transactions/initialization.fetch-protocol-deployment-status.js";
 import { verifyNodeRuntimeReferenceScriptsProgram } from "../src/transactions/reference-scripts.js";
 import { ensureRuntimeRewardAccountsRegisteredProgram } from "../src/transactions/script-reward-registration.js";
 import { runWithoutFollower } from "./helpers/intent-journal.js";

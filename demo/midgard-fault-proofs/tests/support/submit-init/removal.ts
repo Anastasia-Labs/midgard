@@ -9,23 +9,23 @@ import { Data, Emulator, Lucid, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";
 
-import {
-  buildRemoveFraudulentBlock,
-  type StateQueueMutationLeaseCoordinator,
-  submitRemoveFraudulentBlock,
-} from "../../../src/index.js";
+import { buildRemoveFraudulentBlock } from "../../../src/remove-fraudulent-block.build-remove-fraudulent-block.js";
+import type { StateQueueMutationLeaseCoordinator } from "../../../src/remove-fraudulent-block.remove-fraudulent-block-explicit-category.js";
+import { submitRemoveFraudulentBlock } from "../../../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import type { LocallyEvaluatedTransaction } from "../../../src/workflow/transaction-boundary.js";
+import { network } from "../emulator/blueprints.js";
+import { buildCatalogueDeploymentInfo } from "../emulator/catalogue.js";
+import { buildMinimalFaultProofContracts } from "../emulator/contracts.build-minimal-fault-proof-contracts.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
-  buildCatalogueDeploymentInfo,
-  buildMinimalFaultProofContracts,
   expectSingleUtxoWithUnit,
   funderPaymentKeyHash,
+} from "../emulator/emulator-context.js";
+import {
   makeHeader,
-  network,
-  submitSetupTx,
   withPlaceholderDeposit,
-} from "../submit-init-emulator-shared.js";
+} from "../emulator/header-fixtures.js";
+import { submitSetupTx } from "../emulator/setup-tx.submit-setup-tx.js";
 import { type ProvedDoubleSpendFixture } from "./double-spend.js";
 import { expectStateQueueHeaderOrder } from "./queue-assertions.js";
 import { countedTransactionsRoot } from "./transaction-material.js";

@@ -4,12 +4,10 @@ import { Effect, Option } from "effect";
 
 import { DatabaseError } from "../database/utils/common.js";
 import * as WithdrawalsDB from "../database/withdrawals.js";
-import {
-  Database,
-  Lucid,
-  MidgardContracts,
-  NodeConfig,
-} from "../services/index.js";
+import { NodeConfig } from "../services/config.make-config.js";
+import { Database } from "../services/database.js";
+import { Lucid } from "../services/lucid.js";
+import { MidgardContracts } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import { valueToAssets } from "../transactions/reserve-payout.js";
 import { outRefLabel } from "../tx-context.js";
 import { parseEventId, parseHexBytes } from "./command-utils.js";

@@ -4,7 +4,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { awaitExactTransactionConfirmation } from "../../transactions/utils.js";
+import { awaitExactTransactionConfirmation } from "../../transactions/utils.await-required-output-visibility.js";
 import { outRefLabel } from "../../tx-context.js";
 import {
   type ActiveSchedulerState,

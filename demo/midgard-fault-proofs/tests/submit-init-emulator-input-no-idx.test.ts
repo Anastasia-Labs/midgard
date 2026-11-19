@@ -25,10 +25,25 @@ import "@al-ft/midgard-core/codec";
 import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "vitest";
-import "../src/index.js";
-import "./support/legacy-submit-emulator.js";
-import "./support/submit-init-emulator-fixtures.js";
-import "./support/submit-init-emulator-shared.js";
+import "../src/submit-input-no-idx-step-01.js";
+import "../src/submit-input-no-idx-step-02.submit-input-no-idx-step02.js";
+import "../src/submit-input-no-idx-step-03.js";
+import "../src/submit-input-no-idx-step-04.submit-input-no-idx-step04.js";
+import "../src/prepare-input-no-idx.midgard-tx-output-from-canonical-cbor.js";
+import "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import "../src/runtime.resolve-prover-signer.js";
+import "../src/submit-init.submit-init.js";
+import "../src/step-support.js";
+import "./support/submit-init/queue-assertions.js";
+import "./support/submit-init/removal.js";
+import "./support/emulator/removal-deployment.build-removal-deployment-info.js";
+import "./support/emulator/measurement.js";
+import "./support/emulator/emulator-context.js";
+import "./support/emulator/blueprints.js";
+import "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import "./support/emulator/native-tx.js";
+import "./support/emulator/harness.js";
+import "./support/emulator/catalogue.js";
 import "./submit-init-emulator-input-no-idx.build-input-no-idx-block-fixture.js";
 import "./submit-init-emulator-input-no-idx.measure-step02-proof-transaction.js";
 
@@ -55,14 +70,13 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildInputNoIdxStep01,
-  buildInputNoIdxStep02,
-  buildInputNoIdxStep03,
-  buildInputNoIdxStep04,
-  midgardTxOutputFromCanonicalCbor,
-  submitRemoveFraudulentBlock,
-} from "../src/index.js";
+import { midgardTxOutputFromCanonicalCbor } from "../src/prepare-input-no-idx.midgard-tx-output-from-canonical-cbor.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import { buildInit } from "../src/submit-init.submit-init.js";
+import { buildInputNoIdxStep01 } from "../src/submit-input-no-idx-step-01.js";
+import { buildInputNoIdxStep02 } from "../src/submit-input-no-idx-step-02.submit-input-no-idx-step02.js";
+import { buildInputNoIdxStep03 } from "../src/submit-input-no-idx-step-03.js";
+import { buildInputNoIdxStep04 } from "../src/submit-input-no-idx-step-04.submit-input-no-idx-step04.js";
 import {
   buildInputNoIdxBlockFixture,
   CHALLENGED_OUTPUT_INDEX,
@@ -76,19 +90,14 @@ import {
   measureStep02ProofTransaction,
   startInputNoIdxStep02Thread,
 } from "./submit-init-emulator-input-no-idx.measure-step02-proof-transaction.js";
-import { buildInit } from "./support/legacy-submit-emulator.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
+import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
-import {
-  expectStateQueueHeaderOrder,
-  setupFraudulentBlock as setupFraudulentBlock,
-} from "./support/submit-init-emulator-fixtures.js";
-import {
-  buildRemovalDeploymentInfo,
-  captureEmulatorSubmission,
-  expectSingleUtxoWithUnit,
-  network,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
+import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
+import { setupFraudulentBlock } from "./support/submit-init/removal.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,

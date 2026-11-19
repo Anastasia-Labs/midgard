@@ -2,7 +2,8 @@ import { Effect, Exit, Ref } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { txQueueProcessorDrainOnce } from "../src/fibers/tx-queue-processor.tx-queue-processor-drain-once.js";
-import { Globals, NodeConfig } from "../src/services/index.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
+import { Globals } from "../src/services/globals.globals.js";
 import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
 // Each case fails or stalls right after the slot claim, so the drain loop and

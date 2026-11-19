@@ -4,7 +4,10 @@ import type { WorkflowFundingPreparedTransition } from "@al-ft/midgard-fault-pro
 import { CML } from "@lucid-evolution/lucid";
 
 import type { WatcherProverFundingReservationRecord } from "../../src/funding/prover-funding-reservation.js";
-import { key, walletAddress } from "../support/fault-proof-funding-fixture.js";
+import {
+  key,
+  walletAddress,
+} from "../support/fault-proof-funding-fixture.sources-for.js";
 
 /**
  * A signed step that spends the reservation's first coin and posts the next

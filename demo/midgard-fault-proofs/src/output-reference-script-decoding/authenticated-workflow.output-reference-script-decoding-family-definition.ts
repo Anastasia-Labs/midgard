@@ -5,10 +5,10 @@ import {
 } from "@al-ft/midgard-sdk";
 import type { UTxO } from "@lucid-evolution/lucid";
 
-import { planFaultProofFieldOpening } from "../field-opening.js";
+import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
-import { OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
-import { CURSOR_FAMILY_TRANSACTION_PORT } from "../workflow/cursor-family-adapter.js";
+import { OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
+import { CURSOR_FAMILY_TRANSACTION_PORT } from "../workflow/cursor-family-adapter.admit-reference-scripts.js";
 import {
   captureCursorRemoval,
   cursorFamilyActionInput,
@@ -16,14 +16,16 @@ import {
 } from "../workflow/cursor-family-runtime.js";
 import {
   CORE_WITNESS_ROLES,
+  type FamilyDeploymentContext,
+} from "../workflow/family-definition.family-adapter-arm.js";
+import {
   cursorStepContractNames,
   defineFamily,
-  type FamilyDeploymentContext,
-} from "../workflow/family-definition.js";
+} from "../workflow/family-definition.family-definition.js";
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
-import { SCRIPT_DECODE_REFERENCE_SCRIPTS } from "../workflow/script-decode-prerequisite.js";
+import { SCRIPT_DECODE_REFERENCE_SCRIPTS } from "../workflow/script-decode-prerequisite.deployment.js";
 import { journaledStepTransaction } from "../workflow/step-transaction.js";
 import { workflowTransactionInputOutRefs } from "../workflow/transaction-boundary.js";
 import { createManifestBoundOutputReferenceScriptDecodingSubmission } from "./authenticated-workflow.create-manifest-bound-output-reference-script-decoding-submission.js";

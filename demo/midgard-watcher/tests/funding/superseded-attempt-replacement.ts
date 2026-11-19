@@ -8,11 +8,9 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 import { CML } from "@lucid-evolution/lucid";
 
-import {
-  type setupFundingRecoveryFixture,
-  walletAddress,
-} from "../support/fault-proof-funding-fixture.js";
+import type { setupFundingRecoveryFixture } from "../support/fault-proof-funding-fixture.setup-funding-recovery-fixture.js";
 import { signFundingRecoveryFixtureBody } from "../support/fault-proof-funding-fixture.sign-body.js";
+import { walletAddress } from "../support/fault-proof-funding-fixture.sources-for.js";
 
 export type Fixture = Awaited<ReturnType<typeof setupFundingRecoveryFixture>>;
 

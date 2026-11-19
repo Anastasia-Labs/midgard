@@ -1,6 +1,8 @@
 import { midgardFieldCommitment } from "@al-ft/midgard-core";
-import type { VerdictSubject } from "@al-ft/midgard-sdk";
-import { ProofThreadForcedSourcePayloadSchema } from "@al-ft/midgard-sdk";
+import {
+  ProofThreadForcedSourcePayloadSchema,
+  type VerdictSubject,
+} from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
@@ -12,7 +14,7 @@ import {
   type MintDeclaredAssetLimitEvidence,
   MintDeclaredAssetLimitVerdictSubjectSchema,
   prepareMintDeclaredAssetLimitEvidence,
-} from "./family.js";
+} from "./family.advance-mint-declared-fold.js";
 import {
   type MintDeclaredAssetLimitGrammarPlan,
   type MintDeclaredAssetLimitStagedPlan,

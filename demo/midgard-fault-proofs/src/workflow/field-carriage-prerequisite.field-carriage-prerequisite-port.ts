@@ -12,11 +12,14 @@ import {
   boundDataPublicationPlan,
   type BoundDataPublicationRequirement,
 } from "./bound-data-publication.js";
+import {
+  journalJsonDigest,
+  normalizeJournalJson,
+} from "./journal.fraud-proof-workflow-terminal.js";
 import type {
   FraudProofWorkflowJournalEntry,
   JournalJsonObject,
 } from "./journal.js";
-import { journalJsonDigest, normalizeJournalJson } from "./journal.js";
 import {
   type FraudProofWorkflowAction,
   type FraudProofWorkflowReconcileResult,

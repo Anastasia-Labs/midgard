@@ -52,7 +52,7 @@ vi.mock("../src/workflow/family-l1-observation.js", async (load) => {
 });
 
 import { SCRIPT_DECODE_WALK_SUBMIT_ATTEMPTS } from "../src/script-decode/record.js";
-import { WORKFLOW_FUNDING_SHORTFALL } from "../src/workflow/funding-reservation-permit.js";
+import { WORKFLOW_FUNDING_SHORTFALL } from "../src/workflow/funding-reservation-permit.workflow-funding-shortfall.js";
 import { SCRIPT_DECODE_RECORD_HELD } from "../src/workflow/script-decode-prerequisite.port.js";
 import {
   drainProverToOneCoin,

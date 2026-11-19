@@ -7,24 +7,22 @@ import { type HttpBodyError } from "@effect/platform/HttpBody";
 import { SqlClient } from "@effect/sql/SqlClient";
 import { Effect } from "effect";
 
-import { requestTxQueueProcessorWakeup } from "../../fibers/index.js";
+import { requestTxQueueProcessorWakeup } from "../../fibers/tx-queue-processor.tx-queue-processor-drain-once.js";
 import { PEER_INVENTORY_PATH, PEER_TXS_PATH } from "../../l2-peer/protocol.js";
-import {
-  AdmissionWriter,
-  BatchSql,
-  ContractDeploymentIdentity,
-  Database,
-  Globals,
-  HttpReadSql,
-  Lucid,
-  MempoolLedgerCache,
-  MidgardContracts,
-  NodeConfig,
-  ValidationPool,
-  WriteBehind,
-} from "../../services/index.js";
+import { AdmissionWriter } from "../../services/admission-writer.validate-options.js";
+import { BatchSql, HttpReadSql } from "../../services/database.js";
+import { Globals } from "../../services/globals.globals.js";
+import { Database, NodeConfig } from "../../services/index.js";
 import { type IntentJournal } from "../../services/intent-journal.js";
+import { Lucid } from "../../services/lucid.js";
+import { MempoolLedgerCache } from "../../services/mempool-ledger-cache.mempool-ledger-cache-service.js";
+import {
+  ContractDeploymentIdentity,
+  MidgardContracts,
+} from "../../services/midgard-contracts.make-midgard-contract-runtime.js";
 import type { SubmitCheckPool } from "../../services/submit-check-pool.js";
+import { ValidationPool } from "../../services/validation-pool.bundled-worker-exec-argv.js";
+import { WriteBehind } from "../../services/write-behind.summarize-write-behind-telemetry.js";
 import {
   getAdminSessionHandler,
   withAdminAccess,

@@ -5,9 +5,9 @@ import type {
 } from "./family-definition.js";
 import { observeFraudProofWorkflowHeader } from "./family-l1-observation.js";
 import type { FraudProofWorkflowJournalStore } from "./journal.js";
+import type { FraudProofWorkflowRunResult } from "./orchestrator.fraud-proof-workflow-run-result.js";
 import {
   createFraudProofWorkflowRegistry,
-  type FraudProofWorkflowRunResult,
   runFraudProofWorkflowFromRetainedDa,
 } from "./orchestrator.js";
 import { type WalletOnlySend } from "./wallet-only-send-gate.js";

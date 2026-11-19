@@ -17,7 +17,7 @@ import { Data } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { buildValidationClaimWitness } from "../src/validation-trace-dispute/claim-material.js";
-import { expectOnchainRefusal } from "./support/submit-init-emulator-shared.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { sparseTrace } from "./support/validation-game-deep-traces.js";
 import {
   BOND_LOVELACE,

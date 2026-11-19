@@ -2,7 +2,12 @@ import "node:fs";
 import "node:path";
 import "@al-ft/midgard-core/cek-proof";
 import "@al-ft/midgard-core/codec";
-import "@al-ft/midgard-validation";
+import "@al-ft/midgard-validation/types";
+import "@al-ft/midgard-validation/phase-a";
+import "@al-ft/midgard-validation/ledger-tx/codec";
+import "@al-ft/midgard-validation/plutus-data";
+import "@al-ft/midgard-validation/tx-out-ref";
+import "@al-ft/midgard-validation/phase-b";
 import "@al-ft/midgard-validation/cek-program";
 import "@al-ft/midgard-validation/midgard-redeemers";
 import "@lucid-evolution/lucid";
@@ -23,8 +28,9 @@ import {
   type MidgardNativeTxFull,
   type MidgardNativeTxWitnessSetCanonical,
 } from "@al-ft/midgard-core/codec";
-import { RejectCodes, runPhaseAValidation } from "@al-ft/midgard-validation";
 import { MidgardRedeemerTag } from "@al-ft/midgard-validation/midgard-redeemers";
+import { runPhaseAValidation } from "@al-ft/midgard-validation/phase-a";
+import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";

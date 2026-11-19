@@ -1,7 +1,8 @@
 import { outRefLabel } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
-import { buildL2TxMistagInit, buildL2TxMistagStep01 } from "../src/index.js";
+import { buildL2TxMistagInit } from "../src/l2-tx-mistag/submit-l2-tx-mistag-init.js";
+import { buildL2TxMistagStep01 } from "../src/l2-tx-mistag/submit-l2-tx-mistag-step-01.js";
 import { network } from "./support/emulator/blueprints.js";
 import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
@@ -11,10 +12,8 @@ import {
   l2TxMistagCategory,
   publishL2TxMistagReferenceScripts,
 } from "./support/l2-tx-mistag-emulator.js";
-import {
-  expectStateQueueHeaderOrder,
-  setupFraudulentBlock,
-} from "./support/submit-init-emulator-fixtures.js";
+import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
+import { setupFraudulentBlock } from "./support/submit-init/removal.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 describe("l2-tx-mistag adversarial refusal", () => {

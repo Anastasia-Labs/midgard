@@ -7,11 +7,9 @@
 import * as SDK from "@al-ft/midgard-sdk";
 
 import type { LedgerAt, LedgerEntry } from "../../src/ledger-at.js";
-import {
-  fetchRetainedDaPayloadByHeaderHash,
-  type RetainedDaPayloadSource,
-} from "../../src/transition-trace/fetch.js";
-import { reconstructDaPayload } from "../../src/transition-trace/reconstruct.js";
+import type { RetainedDaPayloadSource } from "../../src/transition-trace/fetch.admit-retained-da-provenance.js";
+import { fetchRetainedDaPayloadByHeaderHash } from "../../src/transition-trace/fetch.fetch-retained-da-payload-by-header-hash.js";
+import { reconstructDaPayload } from "../../src/transition-trace/reconstruct.reconstruct-da-payload.js";
 
 type FixtureLedgerEntry =
   | SDK.DaPayloadEntry

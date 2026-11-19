@@ -26,7 +26,7 @@ import {
   transitionOutputIsWhole,
 } from "../src/transition-trace/output-phases.js";
 import { TRANSITION_OUTPUTS_GRAMMAR_BATCH } from "../src/transition-trace/phases.js";
-import { transitionTraceFinalCaseRunner } from "./support/transition-trace-final-cases.js";
+import { transitionTraceFinalCaseRunner } from "./support/transition-trace-final-cases.register-transition-trace-final-cases.js";
 import {
   densestStaged,
   MAXIMUM,

@@ -29,7 +29,7 @@ import {
 } from "../src/mpf/confirmed-ledger-verification.js";
 import { localLedgerDivergenceCounter } from "../src/mpf/local-ledger-divergence.js";
 import { withFollowerWrite } from "../src/services/follower-write-gate.js";
-import { Globals } from "../src/services/globals.js";
+import { Globals } from "../src/services/globals.globals.js";
 import { activeLivenessReasons } from "../src/services/liveness-halt.js";
 import {
   E0,

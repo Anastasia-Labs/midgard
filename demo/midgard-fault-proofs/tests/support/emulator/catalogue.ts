@@ -13,7 +13,7 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 
-import { encodePhasMembershipProofRedeemer } from "../../../src/index.js";
+import { encodePhasMembershipProofRedeemer } from "../../../src/runtime.resolve-fraudulent-header-hash.js";
 
 export const categoryIdSchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,

@@ -30,7 +30,7 @@ import type { TestProject } from "vitest/node";
 
 import { MigrationRunner } from "../src/database/index.js";
 import { MigrationError } from "../src/database/migrations/runner.js";
-import { NodeConfig } from "../src/services/config.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
 import { Database } from "../src/services/database.js";
 import {
   nativeOwnerBinaryPath,

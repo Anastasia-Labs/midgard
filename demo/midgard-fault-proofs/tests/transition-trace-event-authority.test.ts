@@ -5,7 +5,7 @@ import {
   requireTransitionTraceL1Events,
   unsafeCreateTransitionTraceEventAuthorityFromRawForTest,
 } from "../src/transition-trace/l1-events.js";
-import { FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY } from "../src/workflow/raw-l1-snapshot.js";
+import { FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY } from "../src/workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
 import {
   computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
@@ -17,7 +17,7 @@ import {
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
 import { TRANSITION_HISTORY_FIXTURE_PARAMETERS } from "./helpers/transition-history-fixture.js";
-import { captureRetainedPlutusIdentityOrigins } from "./support/retained-reason-classifier.js";
+import { captureRetainedPlutusIdentityOrigins } from "./support/retained-reason-classifier.capture-retained-plutus-identity-origins.js";
 
 describe("transition event authority raw test transport", () => {
   it("admits raw observations on every capture and rejects malformed hub output bytes", async () => {

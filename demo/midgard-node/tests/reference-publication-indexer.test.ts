@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 
-import { synchronizePublicationIndexer } from "./helpers/reference-publication-chain.js";
+import { synchronizePublicationIndexer } from "./helpers/publication-indexer-barrier.js";
 
 const blockHash = "ab".repeat(32);
 const tip = { result: { slot: 100, id: blockHash } };

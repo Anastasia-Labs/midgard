@@ -21,13 +21,11 @@ import {
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { faultProofRawFieldCarriage } from "../src/field-opening.js";
-import {
-  buildCanonicalDecodabilityInit,
-  buildCanonicalDecodabilityStep01,
-  buildCanonicalDecodabilityStep02,
-  submitRemoveFraudulentBlock,
-} from "../src/index.js";
+import { buildCanonicalDecodabilityInit } from "../src/canonical-decodability/submit-canonical-decodability-init.js";
+import { buildCanonicalDecodabilityStep01 } from "../src/canonical-decodability/submit-canonical-decodability-step-01.js";
+import { buildCanonicalDecodabilityStep02 } from "../src/canonical-decodability/submit-canonical-decodability-step-02.js";
+import { faultProofRawFieldCarriage } from "../src/field-opening.publish-fault-proof-field-carriage.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import {
   buildCanonicalDecodabilityBodyFixture,
   type CanonicalDecodabilityCommittedFieldFixture,
@@ -48,13 +46,11 @@ import {
   expectStageFit,
   publishCertifiedCommittedField,
 } from "./support/certified-committed-field.js";
-import { expectOnchainRefusal } from "./support/native-script-decoding-emulator.js";
-import {
-  buildRemovalDeploymentInfo,
-  captureEmulatorSubmission,
-  expectSingleUtxoWithUnit,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 const LABEL = "canonical-decodability-max";

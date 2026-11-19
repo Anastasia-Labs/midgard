@@ -23,14 +23,12 @@ import {
   toUnit,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import {
-  createPublishedWorkflowDeploymentAccounts,
-  publishWorkflowDeployment,
-} from "midgard-node/tests/helpers/published-workflow-deployment";
+import { publishWorkflowDeployment } from "midgard-node/tests/helpers/published-workflow-deployment.publish-workflow-deployment";
+import { createPublishedWorkflowDeploymentAccounts } from "midgard-node/tests/helpers/published-workflow-deployment.submit-published-initialization";
 import { expect, it, vi } from "vitest";
 
-import { readWatcherFaultDecisionEvidence } from "../../src/fault-proofs/fault-decision-journal.js";
-import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.js";
+import { readWatcherFaultDecisionEvidence } from "../../src/fault-proofs/fault-decision-journal.create-journal.js";
+import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
 import {
   closeWatcherJournalDatabase,
   WATCHER_JOURNAL_DATABASE_FILE,
@@ -39,18 +37,16 @@ import {
   parseWatcherProcessConfig,
   WATCHER_PROCESS_CONFIG_SCHEMA_VERSION,
 } from "../../src/runtime/process-config.js";
-import {
-  createWatcherRuntime,
-  type WatcherRuntime,
-} from "../../src/runtime/watcher-runtime.js";
-import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.js";
+import type { WatcherRuntime } from "../../src/runtime/watcher-runtime.launch-checks.js";
+import { createWatcherRuntime } from "../../src/runtime/watcher-runtime.startup-hold.js";
+import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.canonical-json.js";
 import { createEmulatorChainTransport } from "../support/emulator-chain-transport.js";
 import { serveEmulatorRetainedDa } from "../support/emulator-retained-da.js";
 import { operationsVerifiedHeader } from "../support/operations-verified-header.js";
 import { createPublishedWatcherDeploymentAuthority } from "../support/published-deployment-authority.js";
-import { stagePublishedDepositTrace } from "../support/published-deposit-trace.js";
+import { stagePublishedDepositTrace } from "../support/published-deposit-trace.stage-published-deposit-trace.js";
 import { createTerminalRelease } from "../support/terminal-release.js";
-import { createSyntheticUserEventOriginFixture } from "../support/user-event-origin-fixture.js";
+import { createSyntheticUserEventOriginFixture } from "../support/user-event-origin-fixture.create-synthetic-user-event-origin-fixture.js";
 import { assertPublishedFundingCustodyRoles } from "./watcher-installed-journey.funding-policy-fixture.js";
 
 /** The fields of an operations response these probes read. */

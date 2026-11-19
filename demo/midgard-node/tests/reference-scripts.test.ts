@@ -3,7 +3,7 @@ import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "effect";
 import "vitest";
-import "../src/services/always-succeeds.js";
+import "../src/services/always-succeeds.always-succeeds-contract.js";
 import "../src/transactions/reference-scripts.js";
 import "./helpers/event-history.js";
 import "./helpers/real-midgard-contracts.js";

@@ -7,20 +7,18 @@ import {
   READINESS_L1_PROVIDER_PROBE_TIMEOUT_MS,
   runCombinedL1ReadinessProbe,
 } from "../l1-provider-readiness-probe.js";
+import { Globals } from "../services/globals.globals.js";
 import {
   DEFAULT_L1_CONTROL_PLANE_MAX_HOLD_MS,
-  Globals,
   type L1ProviderHealthEvidence,
-  Lucid,
-  MidgardContracts,
   nextL1ProviderHealthEvidence,
-  NodeConfig,
-  withL1ControlPlaneWaitTimeout,
-} from "../services/index.js";
-import {
-  configuredInitTxHash,
-  fetchHubOracleWitness,
-} from "../transactions/initialization.js";
+} from "../services/globals.next-l1-provider-health-evidence.js";
+import { withL1ControlPlaneWaitTimeout } from "../services/globals.with-l1-control-plane-held.js";
+import { NodeConfig } from "../services/index.js";
+import { Lucid } from "../services/lucid.js";
+import { MidgardContracts } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
+import { configuredInitTxHash } from "../transactions/initialization.fetch-hub-oracle-witness.js";
+import { fetchHubOracleWitness } from "../transactions/initialization.js";
 
 /**
  * How often the exact HubOracle + local-ledger readiness probe runs. Exact

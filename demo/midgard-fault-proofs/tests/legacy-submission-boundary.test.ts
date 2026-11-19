@@ -12,11 +12,11 @@ import {
   RETIRED_UNAUTHENTICATED_SUBMISSION_ERROR_PREFIX,
   UNADMITTED_SUBMISSION_ROUTE_ERROR_PREFIX,
 } from "../src/legacy-submission-boundary.js";
-import { submitInitFromFiles } from "../src/submit-init.js";
-import { submitInvalidRangeStep01FromFiles } from "../src/submit-invalid-range-step-01.js";
-import { submitInvalidRangeStep02FromFiles } from "../src/submit-invalid-range-step-02.js";
-import { submitZeroInputStep01FromFiles } from "../src/submit-zero-input-step-01.js";
-import { submitZeroInputStep02FromFiles } from "../src/submit-zero-input-step-02.js";
+import { submitInitFromFiles } from "../src/submit-init.submit-init.js";
+import { submitInvalidRangeStep01FromFiles } from "../src/submit-invalid-range-step-01.submit-invalid-range-step01-from-files.js";
+import { submitInvalidRangeStep02FromFiles } from "../src/submit-invalid-range-step-02.submit-invalid-range-step02-v1.js";
+import { submitZeroInputStep01FromFiles } from "../src/submit-zero-input-step-01.submit-zero-input-step01-from-files.js";
+import { submitZeroInputStep02FromFiles } from "../src/submit-zero-input-step-02.submit-zero-input-step02-v1.js";
 
 const retiredCommands = [
   "submit-step-01",

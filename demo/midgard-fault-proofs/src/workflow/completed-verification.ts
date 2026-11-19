@@ -1,22 +1,20 @@
 import type { FraudProofTerminalDeploymentBinding } from "./deployment-manifest-binding.js";
+import { validateFraudProofWorkflowJournal } from "./journal.directory-fraud-proof-workflow-journal-store.js";
+import type { FraudProofWorkflowJournalEntry } from "./journal.fraud-proof-workflow-journal-event.js";
 import {
-  type FraudProofWorkflowJournalEntry,
   type FraudProofWorkflowTerminal,
   journalJsonDigest,
   normalizeJournalJson,
-  validateFraudProofWorkflowJournal,
-} from "./journal.js";
-import { normalizeWorkflowTerminal } from "./orchestrator.js";
+} from "./journal.fraud-proof-workflow-terminal.js";
+import { normalizeWorkflowTerminal } from "./orchestrator.normalize-workflow-terminal.js";
+import { deriveFraudProofRawL1CompletedTerminal } from "./raw-l1-family-derivation.derive-fraud-proof-raw-l1-family-stage.js";
+import { fraudProofRawL1SnapshotRequestForFamily } from "./raw-l1-family-derivation.derive-terminal.js";
+import { fraudProofRawL1HistoryReader } from "./raw-l1-family-derivation.lost-defense-slash.js";
+import { admitFraudProofRawL1Snapshot } from "./raw-l1-snapshot.admit-fraud-proof-raw-l1-snapshot.js";
 import {
-  deriveFraudProofRawL1CompletedTerminal,
-  fraudProofRawL1HistoryReader,
-  fraudProofRawL1SnapshotRequestForFamily,
-} from "./raw-l1-family-derivation.js";
-import {
-  admitFraudProofRawL1Snapshot,
   FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
   type FraudProofRawL1SnapshotAuthority,
-} from "./raw-l1-snapshot.js";
+} from "./raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
 
 export type FraudProofCompletedVerification =
   | Readonly<{ kind: "applicable"; terminal: FraudProofWorkflowTerminal }>

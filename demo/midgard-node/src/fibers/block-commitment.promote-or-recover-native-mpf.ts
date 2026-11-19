@@ -1,7 +1,6 @@
 import { Effect, Metric, Option } from "effect";
 
 import { PendingBlockFinalizationsDB } from "../database/index.js";
-import { Database } from "../services/index.js";
 import type {
   NativeMpfGenerationHandle,
   NativeMpfOwnerService,
@@ -13,6 +12,7 @@ export {
   publishFullMempoolLedgerReload,
   takeCommitWorkerOutput,
 } from "../workers/commit-worker-message.js";
+import { Database } from "../services/index.js";
 
 /**
  * Background block-commitment loop that packages processed L2 transactions into

@@ -1,6 +1,6 @@
 import { describe, it } from "vitest";
 
-import { runInvalidSignatureWrongfulRejectionScenario } from "./support/invalid-signature-wrongful-emulator.js";
+import { runInvalidSignatureWrongfulRejectionScenario } from "./support/invalid-signature-wrongful-emulator.run-invalid-signature-wrongful-rejection-scenario.js";
 
 describe("invalidSignature wrongful-rejection real lifecycle", () => {
   it.each([

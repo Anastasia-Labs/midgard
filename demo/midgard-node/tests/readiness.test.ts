@@ -2,7 +2,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import { evaluateReadiness } from "../src/commands/readiness.js";
-import { attestationTimeoutCorrectionReadinessBounds } from "../src/fibers/attestation-timeout-correction.js";
+import { attestationTimeoutCorrectionReadinessBounds } from "../src/fibers/attestation-timeout-correction.reconcile-state-queue-corrections.js";
 import { readinessDurableAdmissionBacklogLimit } from "../src/services/config.admission-backlog.js";
 
 const now = 1_000_000;

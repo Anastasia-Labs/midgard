@@ -20,34 +20,31 @@ import {
   makeTransitionProofMaterial,
   transitionProofHistorySource,
 } from "../src/transition-trace/proof-material.js";
-import { reconstructDaPayload } from "../src/transition-trace/reconstruct.js";
+import { reconstructDaPayload } from "../src/transition-trace/reconstruct.reconstruct-da-payload.js";
 import { deriveTransitionTraceReplayEvidence } from "../src/transition-trace/replay.js";
-import {
-  buildTransitionFaultProof,
-  buildValidDepositTransitionWitness,
-} from "../src/transition-trace/witnesses.js";
+import { buildValidDepositTransitionWitness } from "../src/transition-trace/witnesses.build-omitted-due-l1-event-fault.js";
+import { buildTransitionFaultProof } from "../src/transition-trace/witnesses.build-out-of-window-source-event-fault.js";
 import { transitionTraceYieldData } from "../src/transition-trace/yield-data.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
-import { realBlueprintPath } from "./support/emulator/blueprints.js";
+import { network, realBlueprintPath } from "./support/emulator/blueprints.js";
+import {
+  alignUnixTimeToEmulatorSlotBoundary,
+  expectSingleUtxoWithUnit,
+  funderPaymentKeyHash,
+} from "./support/emulator/emulator-context.js";
 import {
   awaitHeaderCommitWindow,
   FAMILY_HISTORY_HEADER_LEAD_MS,
   prepareFamilyHistory,
   writeFamilyHistoryEvidence,
 } from "./support/emulator/family-history.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { measureCompleteSignedTransaction } from "./support/emulator/measurement.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
+import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
 import { fixtureLedgerAfter } from "./support/fixture-ledger.js";
-import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  buildRemovalDeploymentInfo,
-  expectSingleUtxoWithUnit,
-  funderPaymentKeyHash,
-  makeFaultProofEmulatorHarness,
-  network,
-  publishRemovalReferenceScripts,
-  submitSetupTx,
-} from "./support/submit-init-emulator-shared.js";
 import { submitInit } from "./support/submit-unjournaled.init.js";
 import {
   buildTransitionTraceFinalHop,

@@ -7,7 +7,7 @@ import {
   estimatedTxDaPayloadBytes,
   planCommitBatchBudgets,
   selectCommitTxCandidates,
-} from "../src/workers/utils/commit-block-planner.js";
+} from "../src/workers/utils/commit-block-planner.select-commit-tx-candidates.js";
 import {
   CANONICAL_TX,
   mkCandidate,

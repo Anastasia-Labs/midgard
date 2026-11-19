@@ -4,20 +4,18 @@ import { SqlClient } from "@effect/sql";
 import { Effect, Ref } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { buildListenRouter } from "../src/commands/listen-router.js";
-import { NodeConfig } from "../src/services/config.js";
-import {
-  Globals,
-  nextL1ProviderHealthEvidence,
-} from "../src/services/globals.js";
+import { buildListenRouter } from "../src/commands/http/router.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
+import { Globals } from "../src/services/globals.globals.js";
+import { nextL1ProviderHealthEvidence } from "../src/services/globals.next-l1-provider-health-evidence.js";
 import { Lucid } from "../src/services/lucid.js";
 import {
   ContractDeploymentIdentity,
   MidgardContracts,
-} from "../src/services/midgard-contracts.js";
+} from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import type { SettlementHealth } from "../src/services/settlement.js";
 import { SETTLEMENT_JOB_FAILURE_CAP } from "../src/services/settlement-retry.js";
-import { ValidationPool } from "../src/services/validation-pool.js";
+import { ValidationPool } from "../src/services/validation-pool.bundled-worker-exec-argv.js";
 import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 

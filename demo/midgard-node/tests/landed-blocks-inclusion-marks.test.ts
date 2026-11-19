@@ -25,7 +25,7 @@ import {
   type MidgardNativeTxBodyCanonical,
   type MidgardNativeTxWitnessSetCanonical,
 } from "@al-ft/midgard-core/codec";
-import { computeMidgardTxIdFromCanonicalCbor } from "@al-ft/midgard-validation";
+import { computeMidgardTxIdFromCanonicalCbor } from "@al-ft/midgard-validation/ledger-tx/codec";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";

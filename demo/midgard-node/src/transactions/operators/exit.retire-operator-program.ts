@@ -10,7 +10,7 @@ import {
 } from "../../services/intent-journal.js";
 import { awaitLedgerTipAtLowerBound } from "../ledger-tip-lower-bound.js";
 import { resolveL1NowMs } from "../register-active-operator/clock.js";
-import { handleSignSubmit } from "../utils.js";
+import { handleSignSubmit } from "../utils.await-submitted-transaction-confirmation.js";
 import {
   deriveWitnesses,
   exitValidityWindow,

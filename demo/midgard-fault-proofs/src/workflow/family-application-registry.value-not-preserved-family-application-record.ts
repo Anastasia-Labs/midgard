@@ -5,28 +5,30 @@ import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 
 import {
   createManifestBoundNetworkIdWorkflow,
-  type ManifestBoundNetworkIdWorkflow,
-  type ManifestBoundNetworkIdWorkflowConfig,
   runOrResumeManifestBoundNetworkIdWorkflow,
-} from "../network-id/workflow-adapter.js";
-import { REMOVE_FRAUDULENT_BLOCK_REFERENCE_SCRIPT_NAMES } from "../remove-fraudulent-block.js";
+} from "../network-id/workflow-adapter.create-manifest-bound-network-id-workflow.js";
+import type {
+  ManifestBoundNetworkIdWorkflow,
+  ManifestBoundNetworkIdWorkflowConfig,
+} from "../network-id/workflow-adapter.seal-manifest-bound-network-id-runtime.js";
+import { REMOVE_FRAUDULENT_BLOCK_REFERENCE_SCRIPT_NAMES } from "../remove-fraudulent-block.assert-exact-fraud-slash-lovelace-conservation.js";
 import { NETWORK_ID_FORCED_SCAN_DEPLOYMENT_ENTRY } from "../runtime.js";
 import {
   CONSERVATION_POSITIONS,
   conservationManifestName,
 } from "../value-not-preserved/contracts.js";
+import { createManifestBoundValueConservationWorkflow } from "../value-not-preserved/workflow.create-manifest-bound-value-conservation-workflow.js";
 import {
-  createManifestBoundValueConservationWorkflow,
   type ManifestBoundValueConservationWorkflow,
-  type ManifestBoundValueConservationWorkflowConfig,
   runOrResumeManifestBoundValueConservationWorkflow,
-} from "../value-not-preserved/workflow.js";
+} from "../value-not-preserved/workflow.run-or-resume-manifest-bound-value-conservation-workflow.js";
+import type { ManifestBoundValueConservationWorkflowConfig } from "../value-not-preserved/workflow.value-conservation-references.js";
 import { STATE_QUEUE_REMOVAL_REFERENCE_SCRIPTS } from "./cursor-family-runtime.js";
 import {
   defineFamilyApplication,
   type FamilyApplicationRecord,
   type FamilyApplicationWorkflowIdentity,
-} from "./family-application.js";
+} from "./family-application.assert-family-definition-roster.js";
 import { commonBoundConfigFields } from "./family-application-registry.linear-family-application-record.js";
 import {
   requiredReference,
@@ -38,13 +40,15 @@ import {
 import {
   CORE_WITNESS_ROLES,
   MEMBERSHIP_WITNESS_ROLES,
-} from "./family-definition.js";
+} from "./family-definition.family-adapter-arm.js";
+import type {
+  ManifestBoundMissingSignatureWorkflow,
+  ManifestBoundMissingSignatureWorkflowConfig,
+} from "./missing-signature.create-bound-transaction-port.js";
 import {
   createManifestBoundMissingSignatureWorkflow,
-  type ManifestBoundMissingSignatureWorkflow,
-  type ManifestBoundMissingSignatureWorkflowConfig,
   runOrResumeManifestBoundMissingSignatureWorkflow,
-} from "./missing-signature.js";
+} from "./missing-signature.create-manifest-bound-missing-signature-workflow.js";
 import {
   withMissingSignatureOwnThreadReclaim,
   withValueConservationOwnThreadReclaim,

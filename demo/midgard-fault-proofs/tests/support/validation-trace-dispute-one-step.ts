@@ -72,8 +72,8 @@ import {
   realBlueprintPath,
 } from "./emulator/blueprints.js";
 import { publishAuthenticatedValidationDisputeControl } from "./emulator/reference-scripts.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 import { scriptDecodeDeploymentOf } from "./script-decode-emulator.js";
-import { publishPlainReferenceScriptUtxo } from "./submit-init-emulator-shared.js";
 import type {
   Scene,
   SceneContracts,

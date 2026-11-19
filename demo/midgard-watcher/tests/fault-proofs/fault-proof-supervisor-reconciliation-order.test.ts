@@ -4,9 +4,9 @@ import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import { h28 } from "@al-ft/midgard-test-support/hex";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { openWatcherFaultDecisionJournal } from "../../src/fault-proofs/fault-decision-journal.js";
-import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.js";
-import { unsafeCreateWatcherFaultProofSupervisorForTest } from "../../src/fault-proofs/fault-proof-supervisor.js";
+import { openWatcherFaultDecisionJournal } from "../../src/fault-proofs/fault-decision-journal.create-journal.js";
+import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
+import { unsafeCreateWatcherFaultProofSupervisorForTest } from "../../src/fault-proofs/fault-proof-supervisor.create-watcher-fault-proof-supervisor.js";
 import {
   classifyDoubleSpend,
   deploymentIdentity,

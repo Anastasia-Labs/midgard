@@ -3,7 +3,7 @@ import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";
 
-import { submitRemoveFraudulentBlock } from "../../../src/remove-fraudulent-block.js";
+import { submitRemoveFraudulentBlock } from "../../../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import { outRefLabel } from "../../../src/runtime.js";
 import { buildFabricatedDepositStep04 } from "../../../src/submit-fabricated-deposit-step-04.js";
 import { buildFabricatedWithdrawalStep04 } from "../../../src/submit-fabricated-withdrawal-step-04.js";

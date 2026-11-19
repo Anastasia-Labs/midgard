@@ -9,10 +9,9 @@ import {
 } from "@lucid-evolution/lucid";
 import { expect, it } from "vitest";
 
-import {
-  resolveProverSigner,
-  workflowTransactionInputOutRefs,
-} from "../src/index.js";
+import { resolveProverSigner } from "../src/runtime.resolve-prover-signer.js";
+import { workflowTransactionInputOutRefs } from "../src/workflow/transaction-boundary.js";
+import { network } from "./support/emulator/blueprints.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { preparePermissionlessSlashSqlite } from "./support/permissionless-slash-sqlite.js";
 import {
@@ -21,12 +20,9 @@ import {
   liveSchedulerOf,
   retireOperator,
 } from "./support/rotated-successor-operator.js";
-import {
-  buildProvedDoubleSpendFixture,
-  expectStateQueueHeaderOrder,
-  submitRemovalForFixture,
-} from "./support/submit-init-emulator-fixtures.js";
-import { network } from "./support/submit-init-emulator-shared.js";
+import { buildProvedDoubleSpendFixture } from "./support/submit-init/double-spend.js";
+import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
+import { submitRemovalForFixture } from "./support/submit-init/removal.js";
 
 it("a distinct caller prunes active and retired rotated descendants and pays the authenticated prover without their signature", async () => {
   for (const descendantStatus of ["active", "retired"] as const) {

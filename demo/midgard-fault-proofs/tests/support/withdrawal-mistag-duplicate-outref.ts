@@ -19,13 +19,13 @@ import {
   keyValuePhasProof,
   keyValuePhasRootWithCount,
 } from "../../src/transition-trace/phas.js";
-import { prepareWithdrawalMistag } from "../../src/withdrawal-mistag/index.js";
+import { prepareWithdrawalMistag } from "../../src/withdrawal-mistag/prepare-withdrawal-mistag.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   funderPaymentKeyHash,
-  makeHeader,
-  submitSetupTx,
-} from "./submit-init-emulator-shared.js";
+} from "./emulator/emulator-context.js";
+import { makeHeader } from "./emulator/header-fixtures.js";
+import { submitSetupTx } from "./emulator/setup-tx.submit-setup-tx.js";
 import { type makeWithdrawalMistagEmulatorHarness } from "./withdrawal-mistag-emulator.js";
 
 type Harness = Awaited<ReturnType<typeof makeWithdrawalMistagEmulatorHarness>>;

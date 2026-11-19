@@ -34,24 +34,26 @@ import { describe, expect, it } from "vitest";
 import {
   OutputReferenceScriptResultClasses,
   prepareOutputReferenceScriptDecodingEvidence,
-} from "../src/output-reference-script-decoding/index.js";
+} from "../src/output-reference-script-decoding/output-reference-script-decoding.js";
+import { plutusItemScriptDecode } from "../src/script-decode/item-record.js";
 import {
-  plutusItemScriptDecode,
   recordScriptDecode,
   type ScriptDecodeWalkReport,
-} from "../src/script-decode/index.js";
+} from "../src/script-decode/record.js";
 import {
   commitAcceptedBlock,
-  commitForcedBlock,
   createMeasurementRecorder,
   makeOutputReferenceHarness,
-  makeOutputReferenceStages,
   OUTPUT_REFERENCE_CATEGORY_ID,
   OUTPUT_REFERENCE_MAX_OUTPUT_BYTES,
   outputWithPlutusScript,
-  publishFamilyReferences,
   subjectTransaction,
-} from "./support/output-reference-script-decoding-emulator.js";
+} from "./support/output-reference-script-decoding-emulator.commit-accepted-block.js";
+import {
+  commitForcedBlock,
+  publishFamilyReferences,
+} from "./support/output-reference-script-decoding-emulator.commit-forced-block.js";
+import { makeOutputReferenceStages } from "./support/output-reference-script-decoding-emulator.make-output-reference-stages.js";
 import { scriptDecodeDeploymentOf } from "./support/script-decode-emulator.js";
 import {
   createTransactionJournal,

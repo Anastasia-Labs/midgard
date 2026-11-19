@@ -47,7 +47,7 @@ import {
   type NodeL1Access,
   nodeL1AccessOver,
 } from "../src/services/l1-provider.js";
-import { fetchDaParamsUtxo } from "../src/transactions/da-attestation.js";
+import { fetchDaParamsUtxo } from "../src/transactions/da-attestation.fetch-da-attestation-reference-scripts.js";
 import { emulatorFollowerPlan } from "./helpers/follower-emulator.host.js";
 import { testDatabases } from "./helpers/l1-events-store.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";

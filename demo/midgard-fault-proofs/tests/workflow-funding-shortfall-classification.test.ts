@@ -18,11 +18,11 @@ import {
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { selectFeeInput } from "../src/step-support.js";
+import { WorkflowFundingReservationUnavailableError } from "../src/workflow/funding-reservation-permit.workflow-funding-reservation-port.js";
 import {
   asWorkflowFundingShortfall,
-  WorkflowFundingReservationUnavailableError,
   WorkflowFundingShortfallError,
-} from "../src/workflow/funding-reservation-permit.js";
+} from "../src/workflow/funding-reservation-permit.workflow-funding-shortfall.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
 
 const ACTION = "init:00#0";

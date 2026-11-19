@@ -6,7 +6,7 @@ import type { SettlementWorkerData } from "../fibers/settlement.js";
 import {
   settlementProgram,
   settlementWorkerLayer,
-} from "../services/settlement.js";
+} from "../services/settlement.build-job.js";
 import { runSettlementWorker } from "./settlement.run-settlement-worker.js";
 
 if (parentPort !== null) {

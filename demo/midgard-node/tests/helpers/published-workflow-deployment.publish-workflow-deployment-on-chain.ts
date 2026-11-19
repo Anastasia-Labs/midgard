@@ -25,20 +25,18 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import {
-  buildContractDeploymentInfoFromContracts,
-  buildDeploymentManifest,
-} from "../../src/commands/contract-deployment-info.js";
+import { buildContractDeploymentInfoFromContracts } from "../../src/commands/contract-deployment-info.build-contract-deployment-info-from-contracts.js";
+import { buildDeploymentManifest } from "../../src/commands/contract-deployment-info.build-deployment-manifest.js";
 import { canonicalSlotConfigForLucid } from "../../src/lucid-time.js";
 import { IntentJournalWithoutFollower } from "../../src/services/intent-journal.js";
 import { ensureAvailabilityChallengeRewardAccountsRegisteredProgram } from "../../src/transactions/availability-challenge-registration.js";
 import {
   atomicProtocolInitReferenceScriptsFromPublications,
-  buildAtomicProtocolInitTxProgram,
   buildFraudProofCatalogueDeploymentInfo,
-  deriveOperatorDaParams,
   fraudProofsToIndexedValidators,
-} from "../../src/transactions/initialization.js";
+} from "../../src/transactions/initialization.atomic-protocol-init-reference-scripts-from-publications.js";
+import { deriveOperatorDaParams } from "../../src/transactions/initialization.derive-operator-da-params.js";
+import { buildAtomicProtocolInitTxProgram } from "../../src/transactions/initialization.fetch-protocol-deployment-status.js";
 import { ensurePhasMembershipRewardAccountRegisteredProgram } from "../../src/transactions/phas-membership-registration.js";
 import { nodeRuntimeReferenceScriptTargets } from "../../src/transactions/reference-scripts.js";
 import {
@@ -58,8 +56,8 @@ import { loadRealMidgardContractsForTest } from "./real-midgard-contracts.js";
 import {
   publicationAuthorityLifetime,
   type PublicationSchedule,
-  publishReferenceChain,
-} from "./reference-publication-chain.js";
+} from "./reference-publication-chain.publication-journal.js";
+import { publishReferenceChain } from "./reference-publication-chain.publish-reference-chain.js";
 
 export const publishWorkflowDeploymentOnChain = async ({
   network,

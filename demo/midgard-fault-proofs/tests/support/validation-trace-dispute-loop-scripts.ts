@@ -5,7 +5,7 @@
  * that core group 7 proves through the writeBits loop or the staged failure
  * hop. Large values are built at run time, so each script stays well within
  * the script field. */
-import { encodeMidgardCekCardanoFlatProgram } from "@al-ft/midgard-validation";
+import { encodeMidgardCekCardanoFlatProgram } from "@al-ft/midgard-validation/cek-program";
 
 /** A term as the Flat encoder reads it. */
 type FlatTerm = Parameters<

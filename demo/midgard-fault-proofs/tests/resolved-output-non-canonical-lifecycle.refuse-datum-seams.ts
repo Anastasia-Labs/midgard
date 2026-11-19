@@ -3,9 +3,9 @@ import { buildMidgardBoundedItem } from "@al-ft/midgard-core";
 import {
   RESOLVED_OUTPUT_DATUM_CHUNK_BYTES,
   resolvedOutputDatumState,
-  resolvedOutputDatumStepArgs,
-  type ResolvedOutputEvidence,
-} from "../src/resolved-output-non-canonical/index.js";
+} from "../src/resolved-output-non-canonical/datum-plan.js";
+import type { ResolvedOutputEvidence } from "../src/resolved-output-non-canonical/resolved-output-non-canonical.prepare-resolved-output-non-canonical-evidence.js";
+import { resolvedOutputDatumStepArgs } from "../src/resolved-output-non-canonical/submit-step-04-datum.js";
 import { coverage } from "./resolved-output-non-canonical-lifecycle.record-carriage.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import type { makeResolvedOutputStages } from "./support/resolved-output-non-canonical-emulator.js";

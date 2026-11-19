@@ -44,15 +44,15 @@ import {
   makeCheckedTransactionsAdmitter,
 } from "../../src/commands/http/checked-transaction-admission.js";
 import { MigrationRunner, TxAdmissionsDB } from "../../src/database/index.js";
+import { makeAdmissionWriterWithOptions } from "../../src/services/admission-writer.make-admission-writer-with-options.js";
 import {
   AdmissionWriter,
   type AdmissionWriterOptions,
   type AdmissionWriterService,
-  makeAdmissionWriterWithOptions,
-} from "../../src/services/admission-writer.js";
-import { DEFAULT_OPTIONS } from "../../src/services/admission-writer.validate-options.js";
+  DEFAULT_OPTIONS,
+} from "../../src/services/admission-writer.validate-options.js";
 import { AdmissionSql } from "../../src/services/database.js";
-import { Globals } from "../../src/services/globals.js";
+import { Globals } from "../../src/services/globals.globals.js";
 import { testDatabaseName } from "../test-env.js";
 import { provideDatabaseLayers, resetApplicationTables } from "../utils.js";
 

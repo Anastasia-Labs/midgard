@@ -2,8 +2,8 @@ import {
   DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
   DA_TRANSPORT_LIMITS,
   DA_TRANSPORT_PROTOCOL_VERSION,
+  deploymentDaRetentionDays,
 } from "@al-ft/midgard-core/da-transport";
-import { deploymentDaRetentionDays } from "@al-ft/midgard-core/da-transport";
 import {
   computeDeploymentManifestDaCommitteeSignersHash,
   computeDeploymentManifestJsonDigest,
@@ -18,14 +18,14 @@ import { Effect } from "effect";
 
 import { deploymentEconomicsFromEnvironment } from "../environment.js";
 import { canonicalSlotConfigForLucid } from "../lucid-time.js";
+import { type NodeConfigDep } from "../services/config.make-config.js";
+import { NodeConfig } from "../services/index.js";
+import { Lucid } from "../services/lucid.js";
 import {
   derivedDeploymentL1SlotConfig,
   loadRealBlueprintSha256,
-  Lucid,
-  NodeConfig,
-  type NodeConfigDep,
-} from "../services/index.js";
-import { deriveOperatorDaParams } from "../transactions/initialization.js";
+} from "../services/midgard-contracts.load-reference-script-auth-validator.js";
+import { deriveOperatorDaParams } from "../transactions/initialization.derive-operator-da-params.js";
 import { compareOutRefs } from "../tx-context.js";
 import {
   configuredAvailabilityChallenge,

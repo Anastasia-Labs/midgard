@@ -43,13 +43,15 @@ import { Effect } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
-  FORCED_ORDER_CARRIAGE_PENDING,
-  FORCED_ORDER_INGESTION_FAILED,
   type ForcedOrderConfig,
   forcedOrderConfigFromContracts,
-  forcedOrderProjection,
-} from "../src/forced-orders/index.js";
-import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
+} from "../src/forced-orders/config.js";
+import {
+  FORCED_ORDER_CARRIAGE_PENDING,
+  FORCED_ORDER_INGESTION_FAILED,
+} from "../src/forced-orders/ingest.js";
+import { forcedOrderProjection } from "../src/forced-orders/projection.js";
+import { AlwaysSucceedsContract } from "../src/services/always-succeeds.always-succeeds-contract.js";
 import { spendingTransactionCbor } from "./helpers/forced-orders-chain.js";
 import {
   db,

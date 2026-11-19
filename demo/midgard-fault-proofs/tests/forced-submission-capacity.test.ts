@@ -9,11 +9,9 @@ import {
 } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
+import type { CompleteSignedTransactionMeasurement } from "./support/emulator/measurement.js";
+import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { makeForcedOrderSettlementScenario } from "./support/forced-order-settlement.js";
-import {
-  type CompleteSignedTransactionMeasurement,
-  makeNativeTx,
-} from "./support/submit-init-emulator-shared.js";
 
 /** SDK-admitted counterpart of tx_order_mint_variable_width_aggregate_maximum.
  * It uses a canonical output, filling the remaining aggregate space with

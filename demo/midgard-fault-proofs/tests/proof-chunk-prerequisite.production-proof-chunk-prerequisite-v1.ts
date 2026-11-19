@@ -6,22 +6,20 @@ import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
 import { splitProofIntoChunkDatums } from "../src/publish-proof-chunks.js";
-import {
-  type FraudProofWorkflowJournalEntry,
-  normalizeJournalJson,
-} from "../src/workflow/journal.js";
+import type { FraudProofWorkflowJournalEntry } from "../src/workflow/journal.fraud-proof-workflow-journal-event.js";
+import { normalizeJournalJson } from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import {
   type FraudProofFamilyWorkflowAdapter,
   type FraudProofWorkflowAction,
 } from "../src/workflow/orchestrator.js";
+import { createAuthenticatedProofChunkPrerequisitePort } from "../src/workflow/proof-chunk-prerequisite.create-authenticated-proof-chunk-prerequisite-port.js";
 import {
-  createAuthenticatedProofChunkPrerequisitePort,
   PROOF_CHUNK_PREREQUISITE,
   PROOF_CHUNK_PUBLICATION_RECOVERY,
   type ProofChunkPrerequisitePort,
   resolveDirectFirstProofChunks,
-  withProofChunkPrerequisite,
-} from "../src/workflow/proof-chunk-prerequisite.js";
+} from "../src/workflow/proof-chunk-prerequisite.route-action-identity.js";
+import { withProofChunkPrerequisite } from "../src/workflow/proof-chunk-prerequisite.with-proof-chunk-prerequisite.js";
 import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../src/workflow/raw-l1-publication-observation.js";
 import {
   base,

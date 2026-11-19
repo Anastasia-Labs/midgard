@@ -4,7 +4,7 @@ import { isPrerequisiteTurn } from "../fault-proof-turn.js";
 import {
   type FaultProofFieldGrammarDeployment,
   routeFaultProofFieldGrammar,
-} from "../field-grammar-certificate.js";
+} from "../field-grammar-certificate.route-fault-proof-field-grammar.js";
 import {
   requireLinearFaultReferenceScript,
   requireLinearFaultStepState,

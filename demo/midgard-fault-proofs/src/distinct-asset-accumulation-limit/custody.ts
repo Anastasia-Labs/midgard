@@ -5,7 +5,7 @@ import type {
   DirectPurposeFieldPlan,
   DirectPurposeTransition,
 } from "../direct-purpose-family/custody.js";
-import { createDirectFieldPlan } from "../direct-script-derivation/index.js";
+import { createDirectFieldPlan } from "../direct-script-derivation/field-plan.js";
 import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
 import { DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_LABEL } from "./contracts.js";
 

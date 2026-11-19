@@ -7,21 +7,16 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 
-import { openWatcherFaultDecisionJournal } from "../fault-proofs/fault-decision-journal.js";
 import {
   installedLaunchScope,
   type WatcherInstalledWorkflowCategory,
-} from "../fault-proofs/fault-proof-application.js";
+} from "../fault-proofs/fault-proof-application.production-dependencies.js";
 import { WatcherProofDecisionMissingError } from "../fault-proofs/watcher-decision-hold.js";
 import type { WatcherWorkflowJournal } from "../fault-proofs/watcher-workflow-journal.js";
-import {
-  type VerifiedWatcherDeploymentIdentity,
-  watcherDeploymentReleaseFinalityAuthority,
-} from "../runtime/deployment-identity.js";
-import {
-  parseWatcherProverFundingReservationRecord,
-  type WatcherProverFundingReservationStore,
-} from "./prover-funding-reservation.js";
+import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.parse-trust-roots.js";
+import { watcherDeploymentReleaseFinalityAuthority } from "../runtime/deployment-identity.watcher-deployment-availability-challenge-authority.js";
+import { parseWatcherProverFundingReservationRecord } from "./prover-funding-reservation.parse-watcher-prover-funding-reservation-record.js";
+import type { WatcherProverFundingReservationStore } from "./prover-funding-reservation.watcher-prover-funding-reservation-store.js";
 
 /** Resolve the existing execution before selecting wallet inputs. Permission
  * remains bound to the fresh decision; journals and leases retain their
@@ -153,3 +148,4 @@ export {
   releaseUnusedDecisionReservations,
   releaseUnusedWatcherProverFundingReservations,
 } from "./prover-funding-recovery.release-unused.js";
+import { openWatcherFaultDecisionJournal } from "../fault-proofs/fault-decision-journal.js";

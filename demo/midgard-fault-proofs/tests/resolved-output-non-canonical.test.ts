@@ -26,8 +26,8 @@ import {
   RESOLVED_OUTPUT_NON_CANONICAL_CATEGORY,
   RESOLVED_OUTPUT_NON_CANONICAL_ID,
 } from "../src/resolved-output-non-canonical/resolved-output-non-canonical.js";
+import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { buildRegisteredChainFixture } from "./support/emulator/registered-chain.js";
-import { makeNativeTx } from "./support/submit-init-emulator-shared.js";
 
 const txId = "11".repeat(32);
 const accepted = acceptedVerdictSubject(txId);

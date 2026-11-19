@@ -5,7 +5,7 @@ import {
   resolveFaultProofFieldGrammarDeployment,
 } from "./field-grammar-certificate.resolve-fault-proof-field-grammar-deployment.js";
 import type { FaultProofFieldGrammarDeployment } from "./field-grammar-certificate.route-fault-proof-field-grammar.js";
-import { parseContractDeploymentInfo } from "./inspect-contracts.js";
+import { parseContractDeploymentInfo } from "./inspect-contracts.parse-contract-deployment-info.js";
 import { fetchUtxoByOutRef } from "./runtime.js";
 
 /**

@@ -1,7 +1,7 @@
 /** The fields the `scriptIntegrityHashMismatch` thread opens. Its custody
  * transitions are the kit's `DirectPurposeTransition`. */
 import type { DirectPurposeFieldPlan } from "../direct-purpose-family/custody.js";
-import { createDirectFieldPlan } from "../direct-script-derivation/index.js";
+import { createDirectFieldPlan } from "../direct-script-derivation/field-plan.js";
 import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
 import { SCRIPT_INTEGRITY_HASH_MISMATCH_CATEGORY_LABEL } from "./contracts.js";
 

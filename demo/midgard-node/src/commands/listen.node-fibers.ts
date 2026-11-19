@@ -1,33 +1,41 @@
 import { Duration, Effect, Schedule } from "effect";
 
+import { admissionBacklogGaugeFiber } from "../fibers/admission-backlog-gauge.js";
 import {
   ADMISSION_RETENTION_SWEEP_INTERVAL_MS,
-  admissionBacklogGaugeFiber,
   admissionRetentionFiber,
+} from "../fibers/admission-retention.js";
+import {
   ALERT_SIGNALS_SAMPLE_INTERVAL_MS,
   alertSignalsFiber,
-  attestationTimeoutCorrectionFiber,
+} from "../fibers/alert-signals.js";
+import { nodeRoleWallets } from "../fibers/alert-signals.wallet-balances.js";
+import { attestationTimeoutCorrectionFiber } from "../fibers/attestation-timeout-correction.attestation-timeout-correction-fiber.js";
+import { daPublicationReconcilerFiber } from "../fibers/da-publication-reconciler.js";
+import {
   blockCommitmentFiber,
-  daPublicationReconcilerFiber,
+  mergeFiber,
+  operatorWatchdogFiber,
+} from "../fibers/index.js";
+import {
   L1_PROVIDER_EXACT_REFRESH_INTERVAL_MS,
   l1ProviderReadinessRefresherFiber,
-  l2TxPeerForwarderFiber,
-  mergeFiber,
-  monitorMempoolFiber,
-  mpfPayloadAuditFiber,
-  nativeMpfOwnerSupervisorFiber,
-  nodeRoleWallets,
-  operatorWatchdogFiber,
-  retentionSweeperFiber,
-  txQueueProcessorFiber,
+} from "../fibers/l1-provider-readiness-refresher.js";
+import { l2TxPeerForwarderFiber } from "../fibers/l2-tx-peer-forwarder.js";
+import { monitorMempoolFiber } from "../fibers/monitor-mempool.js";
+import { mpfPayloadAuditFiber } from "../fibers/mpf-payload-audit.js";
+import { nativeMpfOwnerSupervisorFiber } from "../fibers/native-mpf-owner-supervisor.js";
+import { retentionSweeperFiber } from "../fibers/retention-sweeper.js";
+import { settlementFiber } from "../fibers/settlement.js";
+import { txQueueProcessorFiber } from "../fibers/tx-queue-processor.tx-queue-processor-drain-once.js";
+import {
   VALIDATION_TRACE_DEFENSE_TICK_MS,
   validationTraceDefenseFiber,
-} from "../fibers/index.js";
-import { settlementFiber } from "../fibers/settlement.js";
+} from "../fibers/validation-trace-defense-fiber.js";
 import { importCheckFiber } from "../import-check/fiber.js";
 import { confirmedLedgerVerificationFiber } from "../mpf/confirmed-ledger-verification.js";
-import { Globals } from "../services/globals.js";
-import { type NodeConfigDep, writeBehindFiber } from "../services/index.js";
+import type { NodeConfigDep } from "../services/config.make-config.js";
+import { Globals } from "../services/globals.globals.js";
 import { onL1HeadChange } from "../services/l1-head-trigger.js";
 import {
   awaitHaltCleared,
@@ -36,6 +44,7 @@ import {
   pausedWhileHalted,
   restartedAcrossHalts,
 } from "../services/liveness-halt.js";
+import { writeBehindFiber } from "../services/write-behind.write-behind-fiber.js";
 
 /**
  * Builds a fixed Effect schedule from a millisecond interval.

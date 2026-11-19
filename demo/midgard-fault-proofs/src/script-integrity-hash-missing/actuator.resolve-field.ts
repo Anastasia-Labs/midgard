@@ -9,12 +9,12 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { type FaultProofTurn } from "../fault-proof-turn.js";
+import { resolveFaultProofFieldPreimageCertificate } from "../field-opening.certify-fault-proof-field-carriage.js";
+import type { FaultProofFieldOpeningPlan } from "../field-opening.plan-fault-proof-field-opening.js";
 import {
   faultProofFieldOpening,
-  type FaultProofFieldOpeningPlan,
   resolveFaultProofFieldCarriagePublications,
-  resolveFaultProofFieldPreimageCertificate,
-} from "../field-opening.js";
+} from "../field-opening.publish-fault-proof-field-carriage.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";

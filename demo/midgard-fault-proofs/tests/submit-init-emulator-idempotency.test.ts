@@ -5,30 +5,30 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
+import { prepareMinFeeFromTransactions } from "../src/prepare-min-fee.js";
+import { buildRemoveFraudulentBlock } from "../src/remove-fraudulent-block.build-remove-fraudulent-block.js";
+import { parseSubmitStep01TxInclusion } from "../src/step-support.js";
+import { buildMinFeeInit } from "../src/submit-min-fee-init.js";
+import { buildMinFeeStep01 } from "../src/submit-min-fee-step-01.js";
 import {
-  buildMinFeeInit,
-  buildMinFeeStep01,
   buildMinFeeStep02,
-  buildRemoveFraudulentBlock,
-  prepareMinFeeFromTransactions,
+  type MinFeeFieldItemCbors,
+} from "../src/submit-min-fee-step-02.js";
+import {
+  type LocallyEvaluatedTransaction,
   submitCapturedTransaction,
   workflowTransactionInputOutRefs,
-} from "../src/index.js";
-import { parseSubmitStep01TxInclusion } from "../src/step-support.js";
-import type { MinFeeFieldItemCbors } from "../src/submit-min-fee-step-02.js";
-import type { LocallyEvaluatedTransaction } from "../src/workflow/transaction-boundary.js";
+} from "../src/workflow/transaction-boundary.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { publishFraudProofChainReferenceScripts } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
+import { buildProvedDoubleSpendFixture } from "./support/submit-init/double-spend.js";
 import {
-  buildProvedDoubleSpendFixture,
   buildRemovalForFixture,
   expectRemovedFraudProofState,
-} from "./support/submit-init-emulator-fixtures.js";
-import {
-  buildRemovalDeploymentInfo,
-  expectSingleUtxoWithUnit,
-  network,
-  publishFraudProofChainReferenceScripts,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/submit-init/removal.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,

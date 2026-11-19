@@ -9,12 +9,12 @@ import * as Journal from "../../src/database/settlement.js";
 import * as L1View from "../../src/l1-provider-view.js";
 import * as IntentJournal from "../../src/services/intent-journal.js";
 import { Lucid } from "../../src/services/lucid.js";
+import { settlementTick } from "../../src/services/settlement.build-job.js";
+import type { SettlementHealth } from "../../src/services/settlement.reconcile-attempt.js";
 import {
-  type SettlementHealth,
+  settlementDepthParameters,
   settlementLevel,
-  settlementTick,
-} from "../../src/services/settlement.js";
-import { settlementDepthParameters } from "../../src/services/settlement.status.js";
+} from "../../src/services/settlement.status.js";
 import { followerBlockHash } from "./follower-view.js";
 import { withoutFollowerJournal } from "./intent-journal.js";
 import type { ProductionLifecycle } from "./production-lifecycle.js";

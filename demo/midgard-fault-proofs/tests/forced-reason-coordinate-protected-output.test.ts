@@ -21,12 +21,12 @@ import {
   VAN_ROSSEM_MAX_CPU_UNITS,
   VAN_ROSSEM_MAX_MEMORY_UNITS,
 } from "../src/proof-fit/van-rossem.js";
+import { prepareProtectedOutputSignerMissingEvidence } from "../src/protected-output-signer-missing/protected-output-signer-missing.js";
 import {
-  prepareProtectedOutputSignerMissingEvidence,
   ProtectedOutputSignerStep01RedeemerSchema,
   ProtectedOutputSignerStep02DatumSchema,
-} from "../src/protected-output-signer-missing/index.js";
-import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
+} from "../src/protected-output-signer-missing/schemas.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import { makeScenario } from "./protected-output-signer-missing-lifecycle.make-scenario.js";
 import {
   FORCED_ORDER_KEY,
@@ -35,17 +35,15 @@ import {
   validWitness,
 } from "./protected-output-signer-missing-lifecycle.registered-contracts.js";
 import { scanToTerminal } from "./protected-output-signer-missing-lifecycle.with-swapped-certificate-slot.js";
+import { network } from "./support/emulator/blueprints.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { nodeForcedVerdict } from "./support/emulator/node-forced-verdict.js";
 import { submitRawForcedStep01 } from "./support/emulator/raw-forced-step-01.js";
-import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { deployHarnessFieldGrammarCertificate } from "./support/field-grammar-certificate-deployment-fixture.js";
-import {
-  network,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
 
 /**
  * A forced ProtectedOutputSignerMissing reason names an output by its field

@@ -15,10 +15,8 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import {
-  faultProofFieldOpening,
-  planFaultProofFieldOpening,
-} from "../../src/field-opening.js";
+import { planFaultProofFieldOpening } from "../../src/field-opening.plan-fault-proof-field-opening.js";
+import { faultProofFieldOpening } from "../../src/field-opening.publish-fault-proof-field-carriage.js";
 import {
   requireLinearFaultReferenceScript,
   requireLinearFaultStepState,

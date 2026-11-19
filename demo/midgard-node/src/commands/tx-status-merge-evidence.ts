@@ -3,8 +3,8 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
 import { PendingBlockFinalizationsDB } from "../database/index.js";
-import { followerCoveredTipHeight } from "../l1-queue-terminals/index.js";
-import { ContractDeploymentIdentity } from "../services/midgard-contracts.js";
+import { followerCoveredTipHeight } from "../l1-queue-terminals/reads.js";
+import { ContractDeploymentIdentity } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import { settlementDepthParameters } from "../services/settlement.status.js";
 
 export type TxStatusMergeEvidence = Readonly<{

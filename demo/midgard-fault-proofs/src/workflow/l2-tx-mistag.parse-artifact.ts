@@ -20,12 +20,12 @@ import {
   CHUNKED_VERIFY_WITNESS_ROLES,
   type LinearFamilyAssemblyContext,
   type LinearFamilyReferenceScripts,
-} from "./family-definition.js";
+} from "./family-definition.family-adapter-arm.js";
 import {
   journalJsonDigest,
   type JournalJsonObject,
   normalizeJournalJson,
-} from "./journal.js";
+} from "./journal.fraud-proof-workflow-terminal.js";
 import type { WorkflowRawFamilyEvidence } from "./orchestrator.fraud-proof-family-workflow-adapter.js";
 
 export const L2_TX_MISTAG_ARTIFACT =

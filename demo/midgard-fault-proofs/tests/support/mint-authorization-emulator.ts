@@ -29,13 +29,19 @@ import "../../src/step-support.js";
 import "../../src/tx-layout.js";
 import "./emulator/emulator-context.js";
 import "./emulator/reference-scripts.js";
-import "./native-script-decoding-emulator.js";
-import "./submit-init-emulator-shared.js";
+import "./emulator/expect-onchain-refusal.js";
+import "./native-script-decoding-emulator.build-decoding-block-fixture.js";
+import "./native-script-decoding-emulator.build-decoding-ledger-fixture.js";
+import "./emulator/blueprints.js";
+import "./emulator/harness.js";
+import "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import "./emulator/setup-tx.submit-setup-tx.js";
 import "./mint-authorization-emulator.large-mint-item-cbors.js";
 import "./mint-authorization-emulator.build-mint-authorization-subject.js";
 import "./mint-authorization-emulator.submit-raw-mint-authorization-step02-tampered-mint.js";
 
-import { network } from "./submit-init-emulator-shared.js";
+import { network } from "./emulator/blueprints.js";
+export { expectOnchainRefusal } from "./emulator/expect-onchain-refusal.js";
 export {
   buildMintAuthorizationLedgerFixture,
   buildMintAuthorizationSubject,
@@ -61,6 +67,5 @@ export {
   smallMintItemCbors,
 } from "./mint-authorization-emulator.large-mint-item-cbors.js";
 export { submitRawMintAuthorizationStep02TamperedMint } from "./mint-authorization-emulator.submit-raw-mint-authorization-step02-tampered-mint.js";
-export { expectOnchainRefusal } from "./native-script-decoding-emulator.js";
 
 export { network };

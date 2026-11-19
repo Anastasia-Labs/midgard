@@ -8,12 +8,14 @@ import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import {
-  type CompleteCanonicalReplay,
   createCompleteCanonicalReplayUnion,
-  DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY,
   MINT_ITEM_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
+} from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
+import type { CompleteCanonicalReplay } from "../src/workflow/complete-replay.replay-context-identity.js";
+import {
+  DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY,
   TRANSACTION_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
-} from "../src/workflow/complete-replay.js";
+} from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,

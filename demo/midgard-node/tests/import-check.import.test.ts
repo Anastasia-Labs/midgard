@@ -8,7 +8,7 @@
 import {
   evaluateMidgardCekVerdict,
   type MidgardCekVerdictRequest,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/phase-b";
 import { describe, expect, it } from "vitest";
 
 import {

@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core/codec";
 
 import { MempoolLedgerDB } from "../../src/database/index.js";
-import { ledgerEntry2 } from "./fixtures.js";
+import { ledgerEntry2 } from "./fixtures.ledger.js";
 
 /** Real address2 output rows make the address1 page meaningfully selective. */
 export const populateUnrelatedWalletViewEntries = (count: number) =>

@@ -4,9 +4,9 @@ import "@al-ft/midgard-fault-proofs";
 import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "vitest";
-import "../../src/fault-proofs/fault-decision-bridge.js";
-import "../../src/fault-proofs/fault-proof-application.js";
-import "../../src/indexers/authenticated-state-queue-observation.js";
+import "../../src/fault-proofs/fault-decision-bridge.create-watcher-fault-decision-bridge.js";
+import "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
+import "../../src/indexers/authenticated-state-queue-observation.parse-persisted-header.js";
 import "../../src/runtime/operations-observability.js";
 import "./fault-decision-bridge.observation.js";
 import "./fault-decision-bridge.harness.js";
@@ -19,7 +19,7 @@ import type { WatcherFaultProofSupervisor } from "../../src/fault-proofs/fault-p
 import {
   type WatcherAuthenticatedStateQueueObservation,
   WatcherRetainedHeaderAttestationPendingError,
-} from "../../src/indexers/authenticated-state-queue-observation.js";
+} from "../../src/indexers/authenticated-state-queue-observation.parse-persisted-header.js";
 import { createWatcherOperationsObservability } from "../../src/runtime/operations-observability.js";
 import { harness } from "./fault-decision-bridge.harness.js";
 import {

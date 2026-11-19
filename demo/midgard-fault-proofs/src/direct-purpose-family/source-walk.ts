@@ -4,12 +4,12 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
-  buildDirectSourceIndexEvidence,
   directBindEventRedeemer,
   directBindingStates,
   directBindPreStateRedeemer,
-} from "../direct-script-derivation/index.js";
+} from "../direct-script-derivation/binding-plan.js";
 import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
+import { buildDirectSourceIndexEvidence } from "../direct-script-derivation/source-index.js";
 import {
   type DirectPurposeFieldPlan,
   type DirectPurposeTransition,

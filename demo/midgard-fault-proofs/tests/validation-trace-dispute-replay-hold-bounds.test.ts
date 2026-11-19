@@ -7,7 +7,7 @@
  * Evaluator failures are injected at the validation package, per
  * transaction. */
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import { ScriptEvaluationIndeterminateError } from "@al-ft/midgard-validation";
+import { ScriptEvaluationIndeterminateError } from "@al-ft/midgard-validation/phase-b";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
@@ -17,12 +17,12 @@ import {
   ValidationTraceReplayHeldError,
   type ValidationTraceReplayHold,
 } from "../src/validation-trace-dispute/replay-hold.js";
-import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
+import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
 import {
-  type CompleteCanonicalReplayContext,
   createValidationTraceDisputeCompleteCanonicalReplay,
   requireCompleteCanonicalReplayDecision,
-} from "../src/workflow/complete-replay.js";
+} from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
+import type { CompleteCanonicalReplayContext } from "../src/workflow/complete-replay.replay-context-identity.js";
 import { plutusExecutionBlockFixture } from "./helpers/plutus-execution-block-fixture.js";
 import { plutusExecutionEventsBlockFixture } from "./helpers/plutus-execution-events-fixture.js";
 

@@ -33,7 +33,7 @@ import {
   positionalContractScriptCbor,
   positionalContractScriptHash,
 } from "../canonical-fraud-proof-catalogue.js";
-import { addWatcherHistoryFixtureMetadata } from "../support/deployment-authority-fixture.js";
+import { addWatcherHistoryFixtureMetadata } from "../support/deployment-authority-fixture.build-watcher-authority-contracts.js";
 
 const NATIVE_SCRIPT_CBOR = "820501";
 

@@ -21,13 +21,15 @@ import {
   type ManifestBoundObserversForbiddenWorkflowConfig,
   OBSERVERS_FORBIDDEN_FAMILY_DEFINITION,
 } from "../observers-forbidden-on-untagged-network/v1.js";
+import type {
+  ManifestBoundRedeemerCanonicityWorkflow,
+  ManifestBoundRedeemerCanonicityWorkflowConfig,
+} from "../redeemer-canonicity/runtime.admit-redeemer-workflow-artifact.js";
+import { REDEEMER_CANONICITY_FAMILY_DEFINITION } from "../redeemer-canonicity/runtime.capture-redeemer-action.js";
 import {
   createManifestBoundRedeemerCanonicityWorkflow,
   executeManifestBoundRedeemerCanonicityWorkflow,
-  type ManifestBoundRedeemerCanonicityWorkflow,
-  type ManifestBoundRedeemerCanonicityWorkflowConfig,
-  REDEEMER_CANONICITY_FAMILY_DEFINITION,
-} from "../redeemer-canonicity/runtime.js";
+} from "../redeemer-canonicity/runtime.execute-manifest-bound-redeemer-canonicity-workflow.js";
 import { type StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { type ResolvedProverSigner } from "../runtime.js";
 import {
@@ -48,7 +50,7 @@ import {
   type FamilyResolvedReferenceScripts,
   type FamilyRosterDefinition,
   familyStepRole,
-} from "./family-application.js";
+} from "./family-application.assert-family-definition-roster.js";
 import {
   commonBoundConfigFields,
   type DecisionDigestCursorFamilyConfig,

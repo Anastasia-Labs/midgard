@@ -14,11 +14,9 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 import { availabilityValidityWindow } from "../src/commands/availability-challenge.availability-validity-window.js";
-import {
-  availabilityPreparationAmounts,
-  buildAvailabilityCommandTransaction,
-  prepareAvailabilityOpeningInput,
-} from "../src/commands/availability-challenge.js";
+import { buildAvailabilityCommandTransaction } from "../src/commands/availability-challenge.build-availability-command-transaction.js";
+import { availabilityPreparationAmounts } from "../src/commands/availability-challenge.plan-availability-command-action.js";
+import { prepareAvailabilityOpeningInput } from "../src/commands/availability-challenge.prepare-availability-opening-input.js";
 import {
   attestationHistory,
   expectPreparation,

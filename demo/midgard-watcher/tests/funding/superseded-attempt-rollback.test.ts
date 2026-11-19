@@ -5,12 +5,12 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 import { afterEach, expect, it, vi } from "vitest";
 
+import { setupFundingRecoveryFixture } from "../support/fault-proof-funding-fixture.setup-funding-recovery-fixture.js";
 import {
   cleanupFundingRecoveryFixtures,
   deploymentIdentity,
   finality,
-  setupFundingRecoveryFixture,
-} from "../support/fault-proof-funding-fixture.js";
+} from "../support/fault-proof-funding-fixture.sources-for.js";
 import { correctionOn } from "./included-correction.js";
 import { retirementFixture } from "./sqlite-prover-funding-reservation-store.signed-transition.js";
 import {

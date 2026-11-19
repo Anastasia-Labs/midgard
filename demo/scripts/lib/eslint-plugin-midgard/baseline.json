@@ -567,6 +567,56 @@
       "sites": ["left.outRef.localeCompare(right.outRef),"]
     }
   },
+  "midgard/no-own-package-barrel": {
+    "midgard-fault-proofs/tests/canonical-evidence-source.q03-provenance-admission.ts": {
+      "reason": "Asserts the names the package root publishes, so it imports the root barrel on purpose.",
+      "sites": ["import * as FaultProofs from \"../src/index.js\";"]
+    },
+    "midgard-fault-proofs/tests/canonical-evidence-source.test.ts": {
+      "reason": "Evaluation-order preamble of a split suite whose part asserts the names the package root publishes; that part imports the root barrel on purpose.",
+      "sites": ["import \"../src/index.js\";"]
+    },
+    "midgard-fault-proofs/tests/legacy-submission-boundary.test.ts": {
+      "reason": "Asserts the names the package root publishes, so it imports the root barrel on purpose.",
+      "sites": ["const exports = await import(\"../src/index.js\");"]
+    },
+    "midgard-fault-proofs/tests/prepare-input-no-idx.q13-input-no-idx-q03-evidence-gates.ts": {
+      "reason": "Asserts the names the package root publishes, so it imports the root barrel on purpose.",
+      "sites": ["import * as FaultProofs from \"../src/index.js\";"]
+    },
+    "midgard-fault-proofs/tests/prepare-input-no-idx.test.ts": {
+      "reason": "Evaluation-order preamble of a split suite whose part asserts the names the package root publishes; that part imports the root barrel on purpose.",
+      "sites": ["import \"../src/index.js\";"]
+    },
+    "midgard-fault-proofs/tests/submit-init-emulator-fabricated-deposit.test.ts": {
+      "reason": "At its recorded module-size cap: one import per declaring module would push it past the cap, so it keeps the root barrel until the suite is split.",
+      "sites": [
+        "import { submitRemoveFraudulentBlock } from \"../src/index.js\";"
+      ]
+    },
+    "midgard-fault-proofs/tests/submit-init-emulator-fabricated-withdrawal.test.ts": {
+      "reason": "At its recorded module-size cap: one import per declaring module would push it past the cap, so it keeps the root barrel until the suite is split.",
+      "sites": [
+        "import { submitRemoveFraudulentBlock } from \"../src/index.js\";"
+      ]
+    },
+    "midgard-fault-proofs/tests/submit-init-emulator-ledger-rules.test.ts": {
+      "reason": "At its recorded module-size cap: one import per declaring module would push it past the cap, so it keeps the root barrel until the suite is split.",
+      "sites": [
+        "import { submitRemoveFraudulentBlock } from \"../src/index.js\";"
+      ]
+    },
+    "midgard-fault-proofs/tests/submit-init-emulator-transition-trace-subvariants.test.ts": {
+      "reason": "At its recorded module-size cap: one import per declaring module would push it past the cap, so it keeps the root barrel until the suite is split.",
+      "sites": ["import \"../src/index.js\";", "} from \"../src/index.js\";"]
+    },
+    "midgard-fault-proofs/tests/submit-init-emulator.test.ts": {
+      "reason": "At its recorded module-size cap: one import per declaring module would push it past the cap, so it keeps the root barrel until the suite is split.",
+      "sites": [
+        "import { submitRemoveFraudulentBlock } from \"../src/index.js\";"
+      ]
+    }
+  },
   "midgard/no-recursive-plutus-data": {
     "midgard-core/src/cek-proof.commit-semantic-data.ts": {
       "reason": "Bounded scalar sites: the constant type CBOR is capped at MIDGARD_CEK_MAX_CONSTANT_TYPE_CBOR_BYTES, and the other two encode a single integer (a leaf value and a constructor index).",

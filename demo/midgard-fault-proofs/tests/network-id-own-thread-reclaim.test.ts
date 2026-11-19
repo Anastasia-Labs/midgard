@@ -11,20 +11,20 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { CML, generateEmulatorAccount, Lucid } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { resolveProverSigner } from "../src/index.js";
+import { networkIdForcedArtifactFromPrepared } from "../src/network-id/workflow-adapter.admit-network-id-forced-artifact.js";
 import {
   createNetworkIdRawL1ObservationPort,
-  createNetworkIdWorkflowAdapter,
-  networkIdForcedArtifactFromPrepared,
-  networkIdOwnThreadPositions,
   type NetworkIdWorkflowAdapterConfig,
-  withNetworkIdOwnThreadReclaim,
-} from "../src/network-id/workflow-adapter.js";
-import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.js";
+} from "../src/network-id/workflow-adapter.create-network-id-raw-l1-observation-port.js";
+import { createNetworkIdWorkflowAdapter } from "../src/network-id/workflow-adapter.create-network-id-workflow-adapter.js";
 import {
-  createFraudProofWorkflowRegistry,
-  type FraudProofWorkflowRunResult,
-} from "../src/workflow/orchestrator.js";
+  networkIdOwnThreadPositions,
+  withNetworkIdOwnThreadReclaim,
+} from "../src/network-id/workflow-adapter.own-thread-reclaim.js";
+import { resolveProverSigner } from "../src/runtime.resolve-prover-signer.js";
+import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
+import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
+import { createFraudProofWorkflowRegistry } from "../src/workflow/orchestrator.immutable-fraud-proof-workflow-registry.js";
 import { runAdmittedFraudProofWorkflow } from "../src/workflow/orchestrator.run-admitted-fraud-proof-workflow.js";
 import {
   computeFraudProofReleaseEconomicsPolicyDigest,
@@ -47,12 +47,12 @@ import {
 } from "./network-id-wrongful-rejection-lifecycle.make-stages.js";
 import { recordCrossBlockRawEmulator } from "./support/cross-block-raw-emulator.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
-import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import {
   expectResolvedWithReclaim,
   walletLovelace,
 } from "./support/own-thread-reclaim-expectations.js";
-import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
 import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
 import {
   DEPLOYMENT_FINGERPRINT,

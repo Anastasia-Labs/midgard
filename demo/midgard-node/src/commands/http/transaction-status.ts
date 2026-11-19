@@ -7,7 +7,7 @@ import { Effect, Option } from "effect";
 import { publicTxCborByHash } from "../../database/http-read-lookups.js";
 import { readHttpTxStatusFacts } from "../../database/http-tx-status-facts.js";
 import { TxAdmissionsDB } from "../../database/index.js";
-import { AdmissionWriter } from "../../services/index.js";
+import { AdmissionWriter } from "../../services/admission-writer.validate-options.js";
 import { publicReadDataLimitResponse } from "../listen-http-read.js";
 import {
   includePrivateHttpDiagnosticDetails,

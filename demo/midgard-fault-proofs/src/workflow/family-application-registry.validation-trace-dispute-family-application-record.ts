@@ -6,14 +6,14 @@ import {
   runOrResumeManifestBoundValidationTraceDisputeWorkflow,
   VALIDATION_TRACE_DISPUTE_REFERENCE_SCRIPTS,
 } from "../validation-trace-dispute/workflow.js";
-import { defineFamilyApplication } from "./family-application.js";
+import { defineFamilyApplication } from "./family-application.assert-family-definition-roster.js";
 import { commonBoundConfigFields } from "./family-application-registry.linear-family-application-record.js";
 import {
   optionalReplayContext,
   resolvedRoles,
   rolesOf,
 } from "./family-application-registry.resolve-roster-parts.js";
-import { CORE_WITNESS_ROLES } from "./family-definition.js";
+import { CORE_WITNESS_ROLES } from "./family-definition.family-adapter-arm.js";
 
 const WITNESS_ROLES = CORE_WITNESS_ROLES;
 

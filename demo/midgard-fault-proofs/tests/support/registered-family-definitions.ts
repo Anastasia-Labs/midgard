@@ -1,4 +1,4 @@
-import { FAMILY_APPLICATION_REGISTRY } from "../../src/workflow/family-application-registry.js";
+import { FAMILY_APPLICATION_REGISTRY } from "../../src/workflow/family-application-registry.family-application-registry.js";
 import type {
   FamilyCategory,
   FamilyDefinition,

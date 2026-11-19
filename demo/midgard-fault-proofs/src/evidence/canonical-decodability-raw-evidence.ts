@@ -11,7 +11,10 @@ import {
   type DaHashPreimageBlockEvidence,
   daHashPreimageBlockEvidenceFromVerifiedPayload,
 } from "../prepare-da-hash-preimage.js";
-import { buildTrieView, requireProof } from "../prepare-double-spend.js";
+import {
+  buildTrieView,
+  requireProof,
+} from "../prepare-double-spend.resolve-double-spend-pair.js";
 import {
   commitCountedRoot,
   keyValuePhasRootWithCount,

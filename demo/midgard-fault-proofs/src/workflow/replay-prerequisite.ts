@@ -12,12 +12,12 @@ import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidenc
 import {
   eventKeyFingerprint,
   type SourceEventRecord,
-} from "../transition-trace/reconstruct.js";
+} from "../transition-trace/reconstruct.transition-trace-reconstruction.js";
 import {
   admittedCanonicalViolationDetections,
   type CanonicalViolationDetection,
-  FRAUD_PROOF_CLASSIFICATION_RULES,
-} from "./classification.js";
+} from "./classification.classify-canonical-block-violations.js";
+import { FRAUD_PROOF_CLASSIFICATION_RULES } from "./classification.fraud-proof-classification-rules.js";
 import {
   compareEventOrder,
   detectionEventOrder,

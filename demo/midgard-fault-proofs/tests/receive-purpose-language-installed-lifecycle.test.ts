@@ -22,29 +22,27 @@ import { describe, expect, it } from "vitest";
 import {
   createDirectWalkTransactionPort,
   type DirectWalkReferenceScripts,
-} from "../src/direct-purpose-family/index.js";
+} from "../src/direct-purpose-family/transaction-port.js";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import { singleLedgerAt } from "../src/ledger-at.js";
 import { RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK } from "../src/receive-purpose-language/index.js";
-import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
-import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
-import {
-  admitCompleteCanonicalReplayPredecessor,
-  RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY,
-} from "../src/workflow/complete-replay.js";
-import { createCursorFamilyWorkflowAdapter } from "../src/workflow/cursor-family-adapter.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
+import { admitCompleteCanonicalReplayPredecessor } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
+import { createCursorFamilyWorkflowAdapter } from "../src/workflow/cursor-family-adapter.create-cursor-family-workflow-adapter.js";
 import { RECEIVE_PURPOSE_LANGUAGE_CURSOR_SPEC } from "../src/workflow/cursor-family-spec.js";
 import {
   FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
   type FraudProofFamilyL1ObservationPort,
 } from "../src/workflow/family-l1-observation.js";
+import { DirectoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
+import type { FraudProofWorkflowJournalEvent } from "../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import {
   computeFraudProofWorkflowId,
-  DirectoryFraudProofWorkflowJournalStore,
   type FraudProofWorkflowIdentity,
-  type FraudProofWorkflowJournalEvent,
   journalJsonDigest,
-} from "../src/workflow/journal.js";
+} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
 import { deepSourceInputs } from "./support/direct-purpose-deep-source.js";
 import {
@@ -52,7 +50,9 @@ import {
   makeDirectWalkHarness,
   publishDirectWalkRoles,
 } from "./support/direct-walk-emulator.js";
-import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import {
   buildMissingRedeemerSubject,
   honestForcedObserverShape,
@@ -67,10 +67,6 @@ import {
   forcedReceiving,
   receivePurposeLanguageVerdict,
 } from "./support/receive-purpose-language-emulator.js";
-import {
-  publishPlainReferenceScriptUtxo,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
 
 const daProvenance = {
   trustClass: "public_or_permissionless_da",

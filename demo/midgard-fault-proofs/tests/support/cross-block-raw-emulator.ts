@@ -13,13 +13,15 @@ import {
 import {
   computeFraudProofRawL1PointId,
   computeFraudProofRawL1RollbackCursor,
+} from "../../src/workflow/raw-l1-snapshot.admit-fraud-proof-raw-l1-transaction.js";
+import {
   FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
   FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION,
   type FraudProofRawL1Snapshot,
   type FraudProofRawL1SnapshotAuthority,
   type FraudProofRawL1Transaction,
   type FraudProofRawL1Utxo,
-} from "../../src/workflow/raw-l1-snapshot.js";
+} from "../../src/workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
 // Emulator exposes no native header hash. This encoder belongs only to this
 // mocked raw-authority test domain; height/slot come from its real public API.
 export const syntheticEmulatorPoint = (blockHeight: number, slot: number) => {

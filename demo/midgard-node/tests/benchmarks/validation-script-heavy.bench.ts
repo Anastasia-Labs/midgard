@@ -7,16 +7,18 @@ import { pathToFileURL } from "node:url";
 
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
+import { deserializePhaseACandidate } from "@al-ft/midgard-validation";
+import { MidgardRedeemerTag } from "@al-ft/midgard-validation/midgard-redeemers";
+import { runPhaseAValidation } from "@al-ft/midgard-validation/phase-a";
 import {
-  deserializePhaseACandidate,
-  MidgardRedeemerTag,
-  type PhaseAResult,
-  type PhaseAValidatedTx,
   type PhaseBResultWithPatch,
-  type QueuedTx,
-  runPhaseAValidation,
   runPhaseBValidationWithPatch,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/phase-b";
+import type {
+  PhaseAResult,
+  PhaseAValidatedTx,
+  QueuedTx,
+} from "@al-ft/midgard-validation/types";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -29,7 +31,7 @@ import {
   outRefFromByte,
   plutusV3ScriptWitness,
 } from "../../../midgard-validation/tests/validation-fixtures.js";
-import { FixedValidationWorkerPool } from "../../src/services/validation-pool.js";
+import { FixedValidationWorkerPool } from "../../src/services/validation-pool.fixed-validation-worker-pool.js";
 import { packPhaseAJob } from "../../src/workers/utils/validation-pool.js";
 import {
   readPhase2ContainerIdentity,

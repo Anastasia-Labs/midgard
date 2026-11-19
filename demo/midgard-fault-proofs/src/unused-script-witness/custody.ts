@@ -1,7 +1,7 @@
 /** The fields the `unusedScriptWitness` thread opens. Its custody
  * transitions are the kit's `DirectPurposeTransition`. */
 import type { DirectPurposeFieldPlan } from "../direct-purpose-family/custody.js";
-import { createDirectFieldPlan } from "../direct-script-derivation/index.js";
+import { createDirectFieldPlan } from "../direct-script-derivation/field-plan.js";
 import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
 import { UNUSED_SCRIPT_WITNESS_CATEGORY_LABEL } from "./contracts.js";
 

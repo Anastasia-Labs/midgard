@@ -4,7 +4,7 @@ import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import { createWorkflowActuationPermitController } from "@al-ft/midgard-fault-proofs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { unsafeCreateWatcherFaultProofSupervisorForTest } from "../../src/fault-proofs/fault-proof-supervisor.js";
+import { unsafeCreateWatcherFaultProofSupervisorForTest } from "../../src/fault-proofs/fault-proof-supervisor.create-watcher-fault-proof-supervisor.js";
 import {
   classifyDoubleSpend,
   deploymentIdentity,

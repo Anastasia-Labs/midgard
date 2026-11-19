@@ -32,13 +32,13 @@ import { outRefToCbor } from "@al-ft/lucid-midgard";
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { reconstructMidgardTransaction } from "@al-ft/midgard-core/consensus-validation";
-import {
-  attributeWithdrawalClassificationFault,
-  forcedVerdictForRejection,
-} from "@al-ft/midgard-fault-proofs";
+import { forcedVerdictForRejection } from "@al-ft/midgard-fault-proofs";
+import { attributeWithdrawalClassificationFault } from "@al-ft/midgard-fault-proofs/block-replay";
 import type { FactStore, OutRef } from "@al-ft/midgard-l1-follower";
-import type { EventProjectionConfig } from "@al-ft/midgard-l1-follower/events";
-import { eventsAt } from "@al-ft/midgard-l1-follower/events";
+import {
+  type EventProjectionConfig,
+  eventsAt,
+} from "@al-ft/midgard-l1-follower/events";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";

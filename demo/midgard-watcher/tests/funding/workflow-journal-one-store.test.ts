@@ -10,16 +10,14 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { parseWatcherProverFundingReservationRecord } from "../../src/funding/prover-funding-reservation.js";
+import { parseWatcherProverFundingReservationRecord } from "../../src/funding/prover-funding-reservation.parse-watcher-prover-funding-reservation-record.js";
 import {
   alertWatcherLegacyProofLayout,
   type WatcherLegacyProofsNotCarriedOver,
 } from "../../src/runtime/legacy-journal-directories.js";
-import {
-  cleanupFundingRecoveryFixtures,
-  FixtureProcessStop,
-  setupFundingRecoveryFixture as setup,
-} from "../support/fault-proof-funding-fixture.js";
+import { FixtureProcessStop } from "../support/fault-proof-funding-fixture.process-stop.js";
+import { setupFundingRecoveryFixture as setup } from "../support/fault-proof-funding-fixture.setup-funding-recovery-fixture.js";
+import { cleanupFundingRecoveryFixtures } from "../support/fault-proof-funding-fixture.sources-for.js";
 import { openFixtureFundingStore } from "../support/fault-proof-funding-fixture.workflow-store.js";
 import {
   type Fixture,

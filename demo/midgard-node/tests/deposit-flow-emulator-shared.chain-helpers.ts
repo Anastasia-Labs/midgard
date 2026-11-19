@@ -13,8 +13,8 @@ import {
   DaPayloadsDB,
   PendingBlockFinalizationsDB,
 } from "../src/database/index.js";
-import { buildDaPayloadInsert } from "../src/workers/commit-block-header/da-payload.js";
-import { buildAuthenticatedRootFromEncodedEntries } from "../src/workers/commit-block-header/transition-roots.js";
+import { buildDaPayloadInsert } from "../src/workers/commit-block-header/da-payload.build-da-payload-insert.js";
+import { buildAuthenticatedRootFromEncodedEntries } from "../src/workers/commit-block-header/transition-roots.validate-count-proof.js";
 import { getStateQueueDatumEndTime } from "./deposit-flow-emulator-shared.commit-worker-program.js";
 import {
   type EmulatorFixture,

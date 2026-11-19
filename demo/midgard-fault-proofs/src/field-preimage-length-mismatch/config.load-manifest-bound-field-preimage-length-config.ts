@@ -8,8 +8,10 @@ import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 import type { ResolvedProverSigner } from "../runtime.js";
 import {
   assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
   type FraudProofWorkflowDeploymentBinding,
+} from "../workflow/deployment-manifest-binding.assert-deployment-info-matches-manifest.js";
+import {
+  bindFraudProofWorkflowDeployment,
   requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding.js";
 import { type LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";

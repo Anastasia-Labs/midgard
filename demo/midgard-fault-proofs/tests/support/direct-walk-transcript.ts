@@ -10,36 +10,32 @@ import { expect } from "vitest";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../../src/evidence/canonical-block-evidence.js";
 import { type LedgerEntry, singleLedgerAt } from "../../src/ledger-at.js";
 import type { StateQueueMutationLeaseCoordinator } from "../../src/remove-fraudulent-block.js";
-import { classifyCanonicalBlockViolations } from "../../src/workflow/classification.js";
-import {
-  admitCompleteCanonicalReplayPredecessor,
-  type CompleteCanonicalReplay,
-  type CompleteCanonicalReplayContext,
-} from "../../src/workflow/complete-replay.js";
-import {
-  createCursorFamilyWorkflowAdapter,
-  type CursorFamilyTransactionPort,
-} from "../../src/workflow/cursor-family-adapter.js";
+import { classifyCanonicalBlockViolations } from "../../src/workflow/classification.classify-canonical-block-violations.js";
+import { admitCompleteCanonicalReplayPredecessor } from "../../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import type {
+  CompleteCanonicalReplay,
+  CompleteCanonicalReplayContext,
+} from "../../src/workflow/complete-replay.replay-context-identity.js";
+import type { CursorFamilyTransactionPort } from "../../src/workflow/cursor-family-adapter.admit-reference-scripts.js";
+import { createCursorFamilyWorkflowAdapter } from "../../src/workflow/cursor-family-adapter.create-cursor-family-workflow-adapter.js";
 import type { CursorFamilySpec } from "../../src/workflow/cursor-family-state.js";
 import {
   FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
   type FraudProofFamilyL1ObservationPort,
 } from "../../src/workflow/family-l1-observation.js";
+import { MemoryFraudProofWorkflowJournalStore } from "../../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
+import type { FraudProofWorkflowJournalEvent } from "../../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import {
   computeFraudProofWorkflowId,
   type FraudProofWorkflowIdentity,
-  type FraudProofWorkflowJournalEvent,
   journalJsonDigest,
-  MemoryFraudProofWorkflowJournalStore,
-} from "../../src/workflow/journal.js";
+} from "../../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import { authenticatedHeaderObservation } from "../helpers/canonical-block-evidence-fixture.js";
 import type { DirectWalkCategory } from "./direct-walk-emulator.js";
-import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.js";
+import type { FaultProofEmulatorHarness } from "./emulator/harness.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.build-removal-deployment-info.js";
 import { recordStepSubmissions, sha256 } from "./step-transcript.js";
-import {
-  type FaultProofEmulatorHarness,
-  publishPlainReferenceScriptUtxo,
-} from "./submit-init-emulator-shared.js";
 
 /** The installed lifecycle's bound on cursor actions. */
 const MAX_ACTIONS = 120;

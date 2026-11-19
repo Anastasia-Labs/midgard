@@ -26,16 +26,12 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildWithdrawnReferenceInputInit,
-  buildWithdrawnReferenceInputStep01,
-  buildWithdrawnReferenceInputStep02,
-  buildWithdrawnReferenceInputStep03,
-} from "../src/index.js";
-import {
-  expectSingleUtxoWithUnit,
-  network,
-} from "./support/submit-init-emulator-shared.js";
+import { buildWithdrawnReferenceInputInit } from "../src/withdrawn-reference-input/submit-withdrawn-reference-input-init.js";
+import { buildWithdrawnReferenceInputStep01 } from "../src/withdrawn-reference-input/submit-withdrawn-reference-input-step-01.js";
+import { buildWithdrawnReferenceInputStep02 } from "../src/withdrawn-reference-input/submit-withdrawn-reference-input-step-02.js";
+import { buildWithdrawnReferenceInputStep03 } from "../src/withdrawn-reference-input/submit-withdrawn-reference-input-step-03.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,
@@ -44,7 +40,7 @@ import {
   makeWithdrawnReferenceInputEmulatorHarness,
   publishWithdrawnReferenceInputReferenceScripts,
   setupWithdrawnReferenceInputScenario,
-} from "./support/withdrawn-reference-input-emulator.js";
+} from "./support/withdrawn-reference-input-emulator.setup-withdrawn-reference-input-unchecked-scenario.js";
 
 /**
  * 364 decoys plus the accused reference input (constant §5.3 stride of 40

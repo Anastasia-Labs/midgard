@@ -14,7 +14,7 @@ import {
   commitStageInputPostState,
   commitTxDeltaFallbackDecodedCounter,
   resolveTxDeltaForCommit,
-} from "../src/mpf/index.js";
+} from "../src/mpf/commit-rejection.js";
 import { makeCardanoSignedMapOutputTxBytes } from "./helpers/cardano-native-fixtures.js";
 
 describe("resolveTxDeltaForCommit", () => {

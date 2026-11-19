@@ -21,20 +21,20 @@ import { forcedVerdictSubject } from "@al-ft/midgard-sdk";
 import { getAddressDetails } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { FIELD_GRAMMAR_WALKED_COUNT_LIMIT } from "../src/field-grammar-certificate.js";
+import { FIELD_GRAMMAR_WALKED_COUNT_LIMIT } from "../src/field-grammar-certificate.route-fault-proof-field-grammar.js";
 import {
   VAN_ROSSEM_MAX_CPU_UNITS,
   VAN_ROSSEM_MAX_MEMORY_UNITS,
 } from "../src/proof-fit/van-rossem.js";
 import {
-  buildRedeemerCanonicityStep01Forced,
-  buildRedeemerCanonicityStep02,
-  buildRedeemerCanonicityStep03,
   prepareRedeemerCanonicityEvidence,
   REDEEMER_CANONICITY_EXECUTION_FAILED_INDEX,
   type RedeemerCanonicityEvidence,
-} from "../src/redeemer-canonicity/index.js";
-import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
+} from "../src/redeemer-canonicity/family.js";
+import { buildRedeemerCanonicityStep01Forced } from "../src/redeemer-canonicity/submit-step-01.js";
+import { buildRedeemerCanonicityStep02 } from "../src/redeemer-canonicity/submit-step-02.js";
+import { buildRedeemerCanonicityStep03 } from "../src/redeemer-canonicity/submit-step-03.js";
+import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
 import {
   familyContracts,
   initThread,
@@ -47,7 +47,7 @@ import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
 import { deployHarnessFieldGrammarCertificate } from "./support/field-grammar-certificate-deployment-fixture.js";
-import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
+import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init/forced-transitions.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,

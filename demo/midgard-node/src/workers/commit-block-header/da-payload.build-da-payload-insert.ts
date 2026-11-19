@@ -1,5 +1,6 @@
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
+import { encodeTransactionRootValue } from "@al-ft/midgard-fault-proofs/block-replay";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Duration, Effect, Metric } from "effect";
 
@@ -9,7 +10,7 @@ import {
   PendingBlockFinalizationsDB,
 } from "../../database/index.js";
 import { DatabaseError } from "../../database/utils/common.js";
-import { encodeTransactionRootValue, type MpfError } from "../../mpf/index.js";
+import type { MpfError } from "../../mpf/errors.js";
 import { NodeConfig } from "../../services/config.js";
 import {
   bufferEntry,

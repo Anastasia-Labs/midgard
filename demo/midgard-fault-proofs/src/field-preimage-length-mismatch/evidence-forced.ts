@@ -6,7 +6,10 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { buildTrieView, requireProof } from "../prepare-double-spend.js";
+import {
+  buildTrieView,
+  requireProof,
+} from "../prepare-double-spend.resolve-double-spend-pair.js";
 import type { AuthenticatedFieldPreimageLengthEvidence } from "./evidence.js";
 import { fieldPreimageLengthCommittedClaim } from "./prepare-accepted.js";
 import { prepareFieldPreimageLengthWorkflow } from "./workflow.js";

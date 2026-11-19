@@ -7,17 +7,15 @@ import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-id
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import { readFinalizedDeploymentIdentity } from "../src/commands/contract-deployment-info.js";
-import { parseDaProducerPublicationManifest } from "../src/da/libp2p-producer.js";
+import { readFinalizedDeploymentIdentity } from "../src/commands/contract-deployment-info.build-deployment-manifest.js";
+import { parseDaProducerPublicationManifest } from "../src/da/libp2p-producer.parse-da-producer-publication-manifest.js";
 import {
   generateDaLibp2pRuntimeManifest,
   writeDaLibp2pRuntimeManifest,
 } from "../src/da/libp2p-runtime-manifest.js";
 import { prepareDaHardeningStartup } from "../src/da/startup.js";
-import {
-  ContractDeploymentIdentity,
-  NodeConfig,
-} from "../src/services/index.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
+import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   COMMITTEE_KEY,
   DA_VKEY,

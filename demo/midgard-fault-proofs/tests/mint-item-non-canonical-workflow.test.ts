@@ -13,18 +13,18 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { detectMintItemNonCanonicalCompleteReplay } from "../src/mint-item-non-canonical/replay.js";
+import { createMintItemNonCanonicalRawL1StageResolver } from "../src/mint-item-non-canonical/workflow.derive-mint-item-non-canonical-authenticated-source.js";
 import {
   bindMintItemNonCanonicalReferenceScripts,
-  createMintItemNonCanonicalRawL1StageResolver,
   deriveMintItemNonCanonicalEvidenceFromCanonicalBlock,
-  detectMintItemNonCanonicalCompleteReplay,
   MINT_ITEM_NON_CANONICAL_MANIFEST_CONTRACTS,
   MINT_ITEM_NON_CANONICAL_VIOLATION_ID,
   type MintItemNonCanonicalReferenceScripts,
-} from "../src/mint-item-non-canonical/index.js";
+} from "../src/mint-item-non-canonical/workflow.load-manifest-bound-mint-item-non-canonical-config.js";
 import { FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY } from "../src/runtime.js";
 import type { FraudProofWorkflowDeploymentBinding } from "../src/workflow/deployment-manifest-binding.js";
-import { committedFieldShapeScenarioMaterial } from "./support/committed-field-shape-emulator.js";
+import { committedFieldShapeScenarioMaterial } from "./support/committed-field-shape-emulator.committed-field-shape-scenario-material.js";
 
 const script = (byte: string): Script => ({
   type: "PlutusV3",

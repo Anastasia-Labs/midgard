@@ -11,12 +11,12 @@
 import { toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import { OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_DEFINITION } from "../../src/output-reference-script-decoding/authenticated-workflow.js";
-import { WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION } from "../../src/witness-script-decoding/workflow.js";
+import { OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_DEFINITION } from "../../src/output-reference-script-decoding/authenticated-workflow.output-reference-script-decoding-family-definition.js";
+import { WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION } from "../../src/witness-script-decoding/workflow.create-manifest-bound-witness-script-decoding-workflow.js";
 import {
   OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
   WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
-} from "../../src/workflow/complete-replay.js";
+} from "../../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
 import { makeFaultProofEmulatorHarness } from "./emulator/harness.js";
 import { emulatorSignedTransactionRecovery } from "./emulator-signed-recovery.js";

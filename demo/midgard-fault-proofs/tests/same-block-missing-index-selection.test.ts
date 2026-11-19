@@ -16,49 +16,49 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildInputNoIdxStep01,
-  buildInputNoIdxStep02,
-  buildInputNoIdxStep03,
-  buildInputNoIdxStep04,
-  buildReferenceInputNoIdxStep01,
-  buildReferenceInputNoIdxStep02,
-  buildReferenceInputNoIdxStep03,
-  buildReferenceInputNoIdxStep04,
-} from "../src/index.js";
-import { buildInit } from "../src/submit-init.js";
+import { buildInit } from "../src/submit-init.submit-init.js";
+import { buildInputNoIdxStep01 } from "../src/submit-input-no-idx-step-01.js";
+import { buildInputNoIdxStep02 } from "../src/submit-input-no-idx-step-02.submit-input-no-idx-step02.js";
+import { buildInputNoIdxStep03 } from "../src/submit-input-no-idx-step-03.js";
+import { buildInputNoIdxStep04 } from "../src/submit-input-no-idx-step-04.submit-input-no-idx-step04.js";
+import { buildReferenceInputNoIdxStep01 } from "../src/submit-reference-input-no-idx-step-01.js";
+import { buildReferenceInputNoIdxStep02 } from "../src/submit-reference-input-no-idx-step-02.submit-reference-input-no-idx-step02.js";
+import { buildReferenceInputNoIdxStep03 } from "../src/submit-reference-input-no-idx-step-03.js";
+import { buildReferenceInputNoIdxStep04 } from "../src/submit-reference-input-no-idx-step-04.submit-reference-input-no-idx-step04.js";
 import {
   type CanonicalBlockClassification,
   classifyCanonicalBlockViolations,
-} from "../src/workflow/classification.js";
+} from "../src/workflow/classification.classify-canonical-block-violations.js";
 import {
-  INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY,
   NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
   NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY,
+} from "../src/workflow/complete-replay.detect-double-withdraws.js";
+import {
+  INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY,
   REFERENCE_INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY,
-} from "../src/workflow/complete-replay.js";
+} from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import {
   admitInputNoIdxArtifact,
   prepareInputNoIdxArtifact,
-} from "../src/workflow/input-no-idx.js";
+} from "../src/workflow/input-no-idx.admit-input-no-idx-artifact.js";
 import {
   admitReferenceInputNoIdxArtifact,
   prepareReferenceInputNoIdxArtifact,
-} from "../src/workflow/reference-input-no-idx.js";
+} from "../src/workflow/reference-input-no-idx.admit-reference-input-no-idx-artifact.js";
 import { inputExistenceChronologyFixture } from "./helpers/input-existence-chronology-fixture.js";
 import { chronologySeedDeposits } from "./helpers/input-existence-chronology-seed.js";
-import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
-import { EMULATOR_DEPLOYMENT_L1_SLOT_CONFIG } from "./support/emulator/header-fixtures.js";
-import { submitSecondHeaderTx } from "./support/emulator/setup-tx.js";
+import { network } from "./support/emulator/blueprints.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
-  buildRemovalDeploymentInfo,
   expectSingleUtxoWithUnit,
   funderPaymentKeyHash,
-  network,
-  publishPlainReferenceScriptUtxo,
-  submitSetupTx,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/emulator/emulator-context.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
+import { EMULATOR_DEPLOYMENT_L1_SLOT_CONFIG } from "./support/emulator/header-fixtures.js";
+import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
+import { submitSecondHeaderTx } from "./support/emulator/setup-tx.js";
+import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,

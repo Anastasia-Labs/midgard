@@ -36,4 +36,4 @@ export {
 export {
   readWatcherUserEventScriptBinding,
   verifyWatcherUserEventScriptBinding,
-} from "./runtime/deployment-identity.js";
+} from "./runtime/deployment-identity.verify-watcher-user-event-script-binding.js";

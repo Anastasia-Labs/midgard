@@ -12,11 +12,11 @@ import { deriveMidgardNativeTxFaultEvidenceMaterial } from "@al-ft/midgard-core/
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import { eventKeyPhase } from "../transition-trace/reconstruct.js";
+import { eventKeyPhase } from "../transition-trace/reconstruct.transition-trace-reconstruction.js";
 import {
   type JournalJsonObject,
   normalizeJournalJson,
-} from "../workflow/journal.js";
+} from "../workflow/journal.fraud-proof-workflow-terminal.js";
 import {
   admitNativeInclusionArtifact,
   canonicalHex,

@@ -21,14 +21,14 @@ import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import { spendProofMaterials } from "../funding/proof-materials-address.js";
 import type { ResolvedProverSigner } from "../runtime.js";
+import { createAuthenticatedFieldCarriagePrerequisitePort } from "../workflow/field-carriage-prerequisite.create-authenticated-field-carriage-prerequisite-port.js";
 import {
-  createAuthenticatedFieldCarriagePrerequisitePort,
   createRawCommittedFieldCarriagePlan,
   FIELD_CARRIAGE_PREREQUISITE,
   type PreimageCarriageRequirement,
   RAW_DATUM_PREIMAGE_PREREQUISITE,
-  withFieldCarriagePrerequisite,
-} from "../workflow/field-carriage-prerequisite.js";
+} from "../workflow/field-carriage-prerequisite.field-carriage-prerequisite-port.js";
+import { withFieldCarriagePrerequisite } from "../workflow/field-carriage-prerequisite.js";
 import { recordedCarriageRecovery } from "../workflow/field-carriage-prerequisite.recorded-carriage-recovery.js";
 import type {
   FraudProofWorkflowJournalEntry,

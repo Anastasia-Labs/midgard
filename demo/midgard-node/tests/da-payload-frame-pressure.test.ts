@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import * as DepositsDB from "../src/database/deposits.js";
 import { DatabaseError } from "../src/database/utils/common.js";
-import { NodeConfig } from "../src/services/config.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
 import { assertPreSubmitDaPayloadSize } from "../src/workers/commit-block-header/submission.assert-pre-submit-da-payload-size.js";
 import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 

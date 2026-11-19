@@ -14,7 +14,7 @@ import {
   type WatcherStateQueueHeaderObservation,
 } from "../indexers/authenticated-state-queue-observation.parse-persisted-header.js";
 import type { WatcherDeploymentProtocolScriptAuthority } from "../runtime/deployment-identity.js";
-import { watcherSha256CanonicalJson } from "../storage/durable-store.js";
+import { watcherSha256CanonicalJson } from "../storage/durable-store.canonical-json.js";
 import { readWatcherCheckpoints } from "./checkpoints.read.js";
 import {
   readDepartedAttestedHeader,

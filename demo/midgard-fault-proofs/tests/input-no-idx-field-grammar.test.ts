@@ -17,35 +17,29 @@ import {
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import {
-  FIELD_GRAMMAR_WALKED_COUNT_LIMIT,
-  fieldGrammarCertificateAddress,
-} from "../src/field-grammar-certificate.js";
-import { planFaultProofFieldOpening } from "../src/field-opening.js";
-import {
-  buildInputNoIdxStep04,
-  midgardTxOutputFromCanonicalCbor,
-} from "../src/index.js";
+import { fieldGrammarCertificateAddress } from "../src/field-grammar-certificate.certify-fault-proof-field-grammar.js";
+import { FIELD_GRAMMAR_WALKED_COUNT_LIMIT } from "../src/field-grammar-certificate.route-fault-proof-field-grammar.js";
+import { planFaultProofFieldOpening } from "../src/field-opening.plan-fault-proof-field-opening.js";
+import { midgardTxOutputFromCanonicalCbor } from "../src/prepare-input-no-idx.midgard-tx-output-from-canonical-cbor.js";
 import {
   VAN_ROSSEM_MAX_CPU_UNITS,
   VAN_ROSSEM_MAX_MEMORY_UNITS,
 } from "../src/proof-fit/van-rossem.js";
+import { buildInputNoIdxStep04 } from "../src/submit-input-no-idx-step-04.submit-input-no-idx-step04.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
   buildInputNoIdxBlockFixture,
   makeEmulatorHarness,
   TIER2_PRODUCING_OUTPUT_COUNT,
 } from "./submit-init-emulator-input-no-idx.build-input-no-idx-block-fixture.js";
+import { network } from "./support/emulator/blueprints.js";
+import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
+import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 import { deployHarnessFieldGrammarCertificate } from "./support/field-grammar-certificate-deployment-fixture.js";
 import {
   advanceInputNoIdxToStep04,
   expectInputNoIdxConviction,
 } from "./support/input-no-idx-step04-thread.js";
-import {
-  captureEmulatorSubmission,
-  network,
-  publishPlainReferenceScriptUtxo,
-} from "./support/submit-init-emulator-shared.js";
 import {
   certifyCarriageUnjournaled,
   publishCarriageUnjournaled,

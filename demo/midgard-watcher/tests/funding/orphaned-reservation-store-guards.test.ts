@@ -1,10 +1,8 @@
 import { supersededAttemptReadSchedule } from "@al-ft/midgard-fault-proofs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  cleanupFundingRecoveryFixtures,
-  setupFundingRecoveryFixture,
-} from "../support/fault-proof-funding-fixture.js";
+import { setupFundingRecoveryFixture } from "../support/fault-proof-funding-fixture.setup-funding-recovery-fixture.js";
+import { cleanupFundingRecoveryFixtures } from "../support/fault-proof-funding-fixture.sources-for.js";
 import { fundWallet } from "./orphaned-reservation-fixture.js";
 import { retirementFixture } from "./sqlite-prover-funding-reservation-store.signed-transition.js";
 import type { Fixture } from "./superseded-attempt-replacement.js";

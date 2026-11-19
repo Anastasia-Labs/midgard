@@ -3,15 +3,13 @@ import { Effect, Metric, Ref, Schedule } from "effect";
 
 import { TxAdmissionsDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
-import {
-  BatchSql,
-  Globals,
-  Lucid,
-  MempoolLedgerCache,
-  NodeConfig,
-  ValidationPool,
-  WriteBehind,
-} from "../services/index.js";
+import { BatchSql } from "../services/database.js";
+import { Globals } from "../services/globals.globals.js";
+import { NodeConfig } from "../services/index.js";
+import { Lucid } from "../services/lucid.js";
+import { MempoolLedgerCache } from "../services/mempool-ledger-cache.mempool-ledger-cache-service.js";
+import { ValidationPool } from "../services/validation-pool.bundled-worker-exec-argv.js";
+import { WriteBehind } from "../services/write-behind.summarize-write-behind-telemetry.js";
 import {
   validationCoalescedWakeupCounter,
   validationDrainLoopsActiveGauge,

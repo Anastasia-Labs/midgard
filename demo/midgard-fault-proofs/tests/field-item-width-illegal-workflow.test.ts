@@ -19,23 +19,25 @@ import {
 import { describe, expect, it } from "vitest";
 
 import { prepareFieldItemWidthEvidence } from "../src/field-item-width-illegal/field-item-width-illegal.js";
+import { detectFieldItemWidthIllegalCompleteReplay } from "../src/field-item-width-illegal/replay.js";
 import {
   bindFieldItemWidthIllegalReferenceScripts,
   createFieldItemWidthIllegalRawL1StageResolver,
-  deriveFieldItemWidthIllegalAuthenticatedSource,
-  deriveFieldItemWidthIllegalEvidenceFromCanonicalBlock,
-  detectFieldItemWidthIllegalCompleteReplay,
   FIELD_ITEM_WIDTH_ILLEGAL_MANIFEST_CONTRACTS,
   type FieldItemWidthIllegalReferenceScripts,
-} from "../src/field-item-width-illegal/workflow.js";
+} from "../src/field-item-width-illegal/workflow.create-field-item-width-illegal-raw-l1-stage-resolver.js";
+import {
+  deriveFieldItemWidthIllegalAuthenticatedSource,
+  deriveFieldItemWidthIllegalEvidenceFromCanonicalBlock,
+} from "../src/field-item-width-illegal/workflow.derive-field-item-width-illegal-authenticated-source.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
   transactionSourceTrieItem,
-} from "../src/prepare-double-spend.js";
+} from "../src/prepare-double-spend.resolve-double-spend-pair.js";
 import type { FraudProofWorkflowDeploymentBinding } from "../src/workflow/deployment-manifest-binding.js";
-import { committedFieldShapeScenarioMaterial } from "./support/committed-field-shape-emulator.js";
-import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
+import { committedFieldShapeScenarioMaterial } from "./support/committed-field-shape-emulator.committed-field-shape-scenario-material.js";
+import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init/forced-transitions.js";
 
 const script = (byte: string): Script => ({
   type: "PlutusV3",

@@ -12,12 +12,12 @@ import {
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { calculateWatcherProverFunding } from "../../src/funding/prover-funding-calculation.js";
+import { calculateWatcherProverFunding } from "../../src/funding/prover-funding-calculation.calculate-watcher-prover-funding.js";
 import {
   watcherDeploymentAvailabilityChallengeAuthority,
   watcherDeploymentReleaseEconomicsAuthority,
-} from "../../src/runtime/deployment-identity.js";
-import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
+} from "../../src/runtime/deployment-identity.watcher-deployment-availability-challenge-authority.js";
+import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.build-watcher-deployment-authority-fixture.js";
 import { runtimeAuthority } from "./prover-funding-calculation.runtime-authority.js";
 
 const CATEGORY = "validationTraceDispute" as const;

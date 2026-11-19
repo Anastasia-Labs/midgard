@@ -24,11 +24,11 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
+import { requireTransactionsRootMatch } from "../prepare-double-spend.prepare-double-spend-from-transactions.js";
 import {
   buildTrieView,
   requireProof,
-  requireTransactionsRootMatch,
-} from "../prepare-double-spend.js";
+} from "../prepare-double-spend.resolve-double-spend-pair.js";
 import { nativeTxFromCoreCompact } from "../step-support.js";
 import {
   type PreparedFieldPreimageLengthWorkflow,

@@ -16,7 +16,7 @@ import { VALIDATION_TRACE_DEFENDER_WON } from "../src/validation-trace-dispute/a
 import { validationTraceChallengerDeadlineMs } from "../src/validation-trace-dispute/threads.js";
 import { validationTraceRunState } from "../src/validation-trace-dispute/waiting.js";
 import { continuePendingWorkflow } from "../src/workflow/pending-continuation.js";
-import { network } from "./support/submit-init-emulator-shared.js";
+import { network } from "./support/emulator/blueprints.js";
 import {
   awaitLastSlotAtOrBefore,
   defenderClosesItsWin,

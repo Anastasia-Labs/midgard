@@ -8,7 +8,7 @@ import {
   awaitSubmittedTransactionConfirmation,
   handleSignSubmitNoConfirmation,
   signSubmitTransaction,
-} from "../src/transactions/utils.js";
+} from "../src/transactions/utils.await-submitted-transaction-confirmation.js";
 import { runWithoutFollower, TEST_INTENT } from "./helpers/intent-journal.js";
 import {
   fakeSignBuilder,

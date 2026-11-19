@@ -16,23 +16,21 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import type { Effect } from "effect";
 
-import {
-  forcedOrderConfigFromContracts,
-  forcedOrderProjection,
-} from "../../src/forced-orders/index.js";
+import { forcedOrderConfigFromContracts } from "../../src/forced-orders/config.js";
+import { forcedOrderProjection } from "../../src/forced-orders/projection.js";
 import type { DriverHold } from "../../src/l1-events/driver.js";
-import { queueTerminalProjection } from "../../src/l1-queue-terminals/index.js";
-import { stateQueueProjectionConfig } from "../../src/l1-state-queue/index.js";
+import { queueTerminalProjection } from "../../src/l1-queue-terminals/projection.js";
+import { stateQueueProjectionConfig } from "../../src/l1-state-queue/config.js";
+import { landedBlockHook } from "../../src/landed-blocks/hook.js";
 import {
-  landedBlockHook,
+  type NodeLandedBlockContext,
   nodeLandedBlockPorts,
-} from "../../src/landed-blocks/index.js";
-import type { NodeLandedBlockContext } from "../../src/landed-blocks/node-ports.js";
+} from "../../src/landed-blocks/node-ports.js";
 import type { NodeConfigDep } from "../../src/services/config.js";
 import type { Database } from "../../src/services/database.js";
 import { withDriverView } from "../../src/services/follower-write-gate.driver.js";
 import type { Globals } from "../../src/services/globals.js";
-import { availabilityParametersFromExplicitEnvironment } from "../../src/services/midgard-contracts.js";
+import { availabilityParametersFromExplicitEnvironment } from "../../src/services/midgard-contracts.load-reference-script-auth-validator.js";
 import type { EmulatorLandedBlocks } from "./emulator-l1-follower.driver.js";
 
 export const openLandedBlocks = async (args: {

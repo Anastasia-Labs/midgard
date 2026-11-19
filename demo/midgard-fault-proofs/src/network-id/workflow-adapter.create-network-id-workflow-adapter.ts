@@ -10,14 +10,16 @@ import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidenc
 import { isPrerequisiteTurn } from "../fault-proof-turn.js";
 import {
   certifyFaultProofFieldCarriage,
-  type FaultProofFieldOpeningPlan,
   fieldPreimageCertificateAddress,
+  resolveFaultProofFieldPreimageCertificate,
+} from "../field-opening.certify-fault-proof-field-carriage.js";
+import type { FaultProofFieldOpeningPlan } from "../field-opening.plan-fault-proof-field-opening.js";
+import {
   publishFaultProofFieldCarriage,
   resolveFaultProofFieldCarriagePublications,
-  resolveFaultProofFieldPreimageCertificate,
-} from "../field-opening.js";
+} from "../field-opening.publish-fault-proof-field-carriage.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.build-remove-fraudulent-block.js";
 import type { StateQueueMutationLease } from "../remove-fraudulent-block.js";
-import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import { NETWORK_ID_FORCED_SCAN_DEPLOYMENT_ENTRY } from "../runtime.js";
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
 import {
@@ -36,7 +38,7 @@ import {
   type FraudProofWorkflowObservation,
   type FraudProofWorkflowPreflight,
   type FraudProofWorkflowReconcileResult,
-} from "../workflow/orchestrator.js";
+} from "../workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import {
   createOwnOutputJournal,
   workflowConfirmedTransactions,
@@ -54,23 +56,23 @@ import {
   workflowTransactionReferenceInputOutRefs,
 } from "../workflow/transaction-boundary.js";
 import type { PreparedNetworkIdAcceptedForced } from "./accepted-forced.js";
+import type { NetworkIdForcedScanStep } from "./forced-scan-plan.advance-grammar-by.js";
 import {
-  type NetworkIdForcedScanStep,
   networkIdForcedScanStepForState,
   networkIdForcedScanStepOrdinal,
   planNetworkIdForcedScan,
-} from "./forced-scan-plan.js";
+} from "./forced-scan-plan.plan-network-id-forced-scan.js";
 import {
   planNetworkIdOutputsOpening,
   type PreparedNetworkIdProof,
 } from "./prepare.js";
 import { buildNetworkIdAcceptedForcedBind } from "./submit-network-id-accepted-forced-bind.js";
 import { buildNetworkIdForcedBind } from "./submit-network-id-forced-bind.js";
-import { buildNetworkIdForcedScanAction } from "./submit-network-id-forced-scan.js";
+import { buildNetworkIdForcedScanAction } from "./submit-network-id-forced-scan.submit-network-id-forced-scan-action.js";
 import { buildNetworkIdForcedStep01 } from "./submit-network-id-forced-step-01.js";
 import { buildNetworkIdInit } from "./submit-network-id-init.js";
 import { buildNetworkIdStep01 } from "./submit-network-id-step-01.js";
-import { buildNetworkIdStep02 } from "./submit-network-id-step-02.js";
+import { buildNetworkIdStep02 } from "./submit-network-id-step-02.submit-network-id-step02.js";
 import {
   admitNetworkIdWorkflowArtifact,
   type AdmittedNetworkIdArtifact,

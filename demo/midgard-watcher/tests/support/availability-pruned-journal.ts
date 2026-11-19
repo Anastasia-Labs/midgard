@@ -14,11 +14,11 @@ import { CML } from "@lucid-evolution/lucid";
 
 import { reconcileWatcherAvailabilityJournal } from "../../src/availability/journal-pins.js";
 import { createWatcherAvailabilityObservation } from "../../src/availability/observation.js";
-import { unsafeAdmitWatcherStateQueueObservationForReplayTest } from "../../src/indexers/authenticated-state-queue-observation.js";
 import { RELEASE_FINALITY_DEPTH } from "../../src/indexers/authenticated-state-queue-observation.parse-persisted-header.js";
+import { unsafeAdmitWatcherStateQueueObservationForReplayTest } from "../../src/indexers/authenticated-state-queue-observation.parse-persisted-observation.js";
 import { watcherAvailabilityTransactionPins } from "../../src/l1-follower/availability-pins.js";
 import type { VerifiedWatcherDeploymentIdentity } from "../../src/runtime/deployment-identity.js";
-import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.js";
+import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.canonical-json.js";
 import {
   type harness,
   okValue,

@@ -1,11 +1,11 @@
 import type {
   CommittedFieldClaim,
+  FieldPreimageLengthMismatchFaultProofContracts,
   ForcedInclusionTxV1,
   Header,
   OutputReference,
   RootMembershipProof,
 } from "@al-ft/midgard-sdk";
-import { type FieldPreimageLengthMismatchFaultProofContracts } from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import type { ResolvedProverSigner } from "../runtime.js";
@@ -23,8 +23,8 @@ import {
   buildFieldPreimageLengthForcedOutOfDomain,
   buildFieldPreimageLengthInit,
   buildFieldPreimageLengthTerminal,
-  type FieldPreimageLengthClaimResolver,
 } from "./submit-lucid.js";
+import { type FieldPreimageLengthClaimResolver } from "./submit-lucid.submit-field-preimage-length-cancel.js";
 import {
   type FieldPreimageLengthAction,
   fieldPreimageLengthOutOfDomain,

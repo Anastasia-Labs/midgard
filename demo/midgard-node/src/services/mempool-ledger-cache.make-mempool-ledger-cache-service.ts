@@ -1,16 +1,16 @@
 import {
   applyUTxOStatePatch,
   type UTxOStatePatch,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/phase-b";
 import { Deferred, Duration, Effect, Metric, Ref } from "effect";
 
 import { MempoolLedgerDB } from "../database/index.js";
 import type { DatabaseError } from "../database/utils/common.js";
-import {
-  Globals,
-  type MempoolLedgerDelta,
-  type MempoolLedgerDeltaLog,
-} from "./globals.js";
+import { Globals } from "./globals.globals.js";
+import type {
+  MempoolLedgerDelta,
+  MempoolLedgerDeltaLog,
+} from "./globals.next-l1-provider-health-evidence.js";
 import {
   type CanonicalCacheRecovery,
   type MempoolLedgerCacheService,

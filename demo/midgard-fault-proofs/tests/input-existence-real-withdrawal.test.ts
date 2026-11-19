@@ -24,6 +24,10 @@ import {
   chronologySeedDeposits,
   chronologySeedEntries,
 } from "./helpers/input-existence-chronology-seed.js";
+import {
+  alignUnixTimeToEmulatorSlotBoundary,
+  funderPaymentKeyHash,
+} from "./support/emulator/emulator-context.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   awaitHeaderCommitWindow,
@@ -37,12 +41,8 @@ import {
   submitChronologyWithdrawal,
 } from "./support/emulator/real-chronology-withdrawal.js";
 import { submitSecondHeaderTx } from "./support/emulator/setup-tx.js";
-import { registerPexcludesExclusionRewardAccount } from "./support/submit-init-emulator-fixtures.js";
-import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  funderPaymentKeyHash,
-  submitSetupTx,
-} from "./support/submit-init-emulator-shared.js";
+import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
+import { registerPexcludesExclusionRewardAccount } from "./support/submit-init/wallet.js";
 import { depositEventsRetainedBlock } from "./support/transition-trace-retained.deposit-events-retained-block.js";
 
 /** The control's step 04 holds a ledger proof that its selected input is

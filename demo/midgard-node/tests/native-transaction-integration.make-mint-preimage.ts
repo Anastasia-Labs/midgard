@@ -8,7 +8,8 @@ import {
   midgardRedeemerPurposeFromTag,
   sortMidgardMintItems,
 } from "@al-ft/midgard-core/codec";
-import { plutusDataToCborHex, txOutRefData } from "@al-ft/midgard-validation";
+import { plutusDataToCborHex } from "@al-ft/midgard-validation/plutus-data";
+import { txOutRefData } from "@al-ft/midgard-validation/tx-out-ref";
 import { CML, Constr } from "@lucid-evolution/lucid";
 
 import {

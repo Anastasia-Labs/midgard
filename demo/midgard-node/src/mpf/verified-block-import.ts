@@ -12,9 +12,9 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   decodeMidgardLedgerTxFromCanonicalCbor,
-  type MidgardCommittedScriptRun,
   midgardOutRefToCborHex,
 } from "@al-ft/midgard-validation";
+import type { MidgardCommittedScriptRun } from "@al-ft/midgard-validation/types";
 import { Data, Effect } from "effect";
 
 import * as Ledger from "../database/utils/ledger.js";

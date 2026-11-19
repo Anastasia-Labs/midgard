@@ -6,16 +6,12 @@ import {
 } from "@al-ft/midgard-validation";
 import { describe, expect, it } from "vitest";
 
-import {
-  createCompleteCanonicalReplayUnion,
-  MIN_ADA_COMPLETE_CANONICAL_REPLAY,
-  NETWORK_ID_COMPLETE_CANONICAL_REPLAY,
-} from "../src/workflow/complete-replay.js";
-import {
-  authenticatedStateQueueObservationDigest,
-  classifyHeader,
-  createHeaderClassifier,
-} from "../src/workflow/header-classifier.js";
+import { createCompleteCanonicalReplayUnion } from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
+import { NETWORK_ID_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.detect-double-withdraws.js";
+import { MIN_ADA_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
+import { authenticatedStateQueueObservationDigest } from "../src/workflow/header-classifier.authenticated-state-queue-observation-digest.js";
+import { classifyHeader } from "../src/workflow/header-classifier.classify-header.js";
+import { createHeaderClassifier } from "../src/workflow/header-classifier.create-header-classifier.js";
 import {
   computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,

@@ -10,7 +10,7 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 
 import { createWatcherWorkflowJournal } from "../fault-proofs/watcher-workflow-journal.js";
-import { watcherCanonicalJson } from "../storage/durable-store.js";
+import { watcherCanonicalJson } from "../storage/durable-store.canonical-json.js";
 import {
   type WatcherProverFundingReservationPlan,
   type WatcherProverFundingReservationRecord,

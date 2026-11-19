@@ -3,12 +3,12 @@ import {
   type WorkflowActuationPermitController,
 } from "@al-ft/midgard-fault-proofs";
 
+import { WatcherRetainedHeaderAttestationPendingError } from "../indexers/authenticated-state-queue-observation.js";
 import {
   type WatcherAuthenticatedStateQueueObservation,
-  WatcherRetainedHeaderAttestationPendingError,
   type WatcherStateQueueHeaderObservation,
-} from "../indexers/authenticated-state-queue-observation.js";
-import { watcherSameCanonicalJson } from "../storage/durable-store.js";
+} from "../indexers/authenticated-state-queue-observation.parse-persisted-header.js";
+import { watcherSameCanonicalJson } from "../storage/durable-store.canonical-json.js";
 import { classificationMissRecorder } from "./fault-decision-bridge.classification-miss.js";
 import { verificationRecorder } from "./fault-decision-bridge.classification-record.js";
 import { decisionHolds } from "./fault-decision-bridge.decision-holds.js";

@@ -3,17 +3,15 @@ import { HttpServerRequest, HttpServerResponse } from "@effect/platform";
 import { Effect, Ref } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { buildListenRouter } from "../src/commands/listen-router.js";
-import { NodeConfig } from "../src/services/config.js";
-import {
-  Globals,
-  nextL1ProviderHealthEvidence,
-} from "../src/services/globals.js";
+import { buildListenRouter } from "../src/commands/http/router.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
+import { Globals } from "../src/services/globals.globals.js";
+import { nextL1ProviderHealthEvidence } from "../src/services/globals.next-l1-provider-health-evidence.js";
 import { Lucid } from "../src/services/lucid.js";
 import {
   ContractDeploymentIdentity,
   MidgardContracts,
-} from "../src/services/midgard-contracts.js";
+} from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import type {
   NativeMpfFullIndexHealth,
   NativeMpfOwnerDiagnostics,
@@ -27,7 +25,7 @@ import {
   FULL_INDEX_MAX_BYTES,
   FULL_INDEX_MAX_RECORDS,
 } from "../src/services/mpf-native-owner/service.normalize-owner-options.js";
-import { ValidationPool } from "../src/services/validation-pool.js";
+import { ValidationPool } from "../src/services/validation-pool.bundled-worker-exec-argv.js";
 import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 import { provideDatabaseLayers } from "./utils.js";
 

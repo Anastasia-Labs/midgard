@@ -18,7 +18,8 @@ import { expect, it, vi } from "vitest";
 import { ForcedTransactionsDB } from "../src/database/index.js";
 import { Columns as LedgerColumns } from "../src/database/utils/ledger.js";
 import { forcedOrderEntry } from "../src/forced-orders/entry.js";
-import { MidgardMpf, processMpfs } from "../src/mpf/index.js";
+import { processMpfs } from "../src/mpf/process.process-mpfs.js";
+import { MidgardMpf } from "../src/mpf/store.midgard-mpf.js";
 import { FollowerWriteFixture } from "../src/services/follower-write-gate.js";
 import { resolveForcedTransactionsRoot } from "../src/workers/commit-block-header/event-roots.js";
 import {

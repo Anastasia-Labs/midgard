@@ -21,7 +21,7 @@ import { describe, expect, it } from "vitest";
 import {
   FORCED_ORDER_TABLES,
   forcedOrderMigrations,
-} from "../src/forced-orders/index.js";
+} from "../src/forced-orders/schema.js";
 
 /**
  * What runs in the writer transaction (`forcedOrderDerivation`) and every

@@ -1,9 +1,9 @@
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 
-import { DaLibp2pRetainedDaSource } from "../../src/transition-trace/fetch.js";
+import { DaLibp2pRetainedDaSource } from "../../src/transition-trace/fetch.da-libp2p-retained-da-source.js";
 import type { WorkflowActuationPermit } from "../../src/workflow/actuation-permit.js";
-import { defineFamilyApplication } from "../../src/workflow/family-application.js";
-import { unsafeCreateWorkflowFundingReservationPermitForTest } from "../../src/workflow/funding-reservation-permit.js";
+import { defineFamilyApplication } from "../../src/workflow/family-application.assert-family-definition-roster.js";
+import { unsafeCreateWorkflowFundingReservationPermitForTest } from "../../src/workflow/funding-reservation-permit.restrict-workflow-funding-signer.js";
 import type { FraudProofWorkflowJournalStore } from "../../src/workflow/journal.js";
 import type {
   FraudProofFamilyWorkflowAdapter,

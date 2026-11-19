@@ -12,11 +12,11 @@ import { forcedTxFromCoreCompact } from "../step-support.js";
 import {
   eventKeyFingerprint,
   type TransitionTraceReconstruction,
-} from "../transition-trace/reconstruct.js";
+} from "../transition-trace/reconstruct.transition-trace-reconstruction.js";
 import {
   buildEventToStepMembershipProof,
   buildIndexedTraceProof,
-} from "../transition-trace/witnesses.js";
+} from "../transition-trace/witnesses.build-source-membership-proof.js";
 
 /** Preparation authority is the committed source plus its root-checked event
  * ledger. The on-chain custody stages reauthenticate both counted openings;

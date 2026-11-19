@@ -3,32 +3,32 @@ import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import { workflowActuationAuthorizingDecisionDigest } from "../workflow/actuation-permit.js";
-import { OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
+import { workflowActuationAuthorizingDecisionDigest } from "../workflow/actuation-permit.assert-workflow-actuation-permit-identity.js";
+import { OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import {
   CURSOR_FAMILY_TRANSACTION_PORT,
   type CursorFamilyTransactionPort,
-} from "../workflow/cursor-family-adapter.js";
+} from "../workflow/cursor-family-adapter.admit-reference-scripts.js";
 import { STATE_QUEUE_REMOVAL_REFERENCE_SCRIPTS } from "../workflow/cursor-family-runtime.js";
+import {
+  type FamilyAssemblyContext,
+  MEMBERSHIP_WITNESS_ROLES,
+} from "../workflow/family-definition.family-adapter-arm.js";
 import {
   cursorStepContractNames,
   defineFamily,
-  type FamilyAssemblyContext,
   type ManifestBoundFamilyWorkflow,
-  MEMBERSHIP_WITNESS_ROLES,
-} from "../workflow/family-definition.js";
+} from "../workflow/family-definition.family-definition.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import { type FieldCarriagePrerequisitePort } from "../workflow/field-carriage-prerequisite.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
-import {
-  type FraudProofWorkflowJournalStore,
-  journalJsonDigest,
-} from "../workflow/journal.js";
+import type { FraudProofWorkflowJournalStore } from "../workflow/journal.fraud-proof-workflow-journal-event.js";
+import { journalJsonDigest } from "../workflow/journal.fraud-proof-workflow-terminal.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
-import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
+import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
+import type { FraudProofWorkflowRunResult } from "../workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import {
   createFraudProofWorkflowRegistry,
-  type FraudProofWorkflowRunResult,
   runFraudProofWorkflowFromRetainedDa,
 } from "../workflow/orchestrator.js";
 import type { FraudProofRawL1FamilyStage } from "../workflow/raw-l1-family-derivation.js";

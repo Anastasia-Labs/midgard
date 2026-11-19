@@ -15,13 +15,10 @@ import {
 import { Effect } from "effect";
 import { expect } from "vitest";
 
-import { workflowTransactionReferenceInputOutRefs } from "../../../src/index.js";
-import {
-  type Blueprint,
-  type CompleteSignedTransactionMeasurement,
-  EMULATOR_PROTOCOL_PARAMETERS,
-  getCompiledScript,
-} from "../submit-init-emulator-shared.js";
+import { workflowTransactionReferenceInputOutRefs } from "../../../src/workflow/transaction-boundary.js";
+import { type Blueprint, getCompiledScript } from "../emulator/blueprints.js";
+import type { CompleteSignedTransactionMeasurement } from "../emulator/measurement.js";
+import { EMULATOR_PROTOCOL_PARAMETERS } from "../emulator/protocol-parameters.js";
 
 export const registerPexcludesExclusionRewardAccount = async (
   lucid: Awaited<ReturnType<typeof Lucid>>,

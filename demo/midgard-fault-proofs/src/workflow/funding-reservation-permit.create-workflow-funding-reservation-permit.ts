@@ -2,10 +2,8 @@ import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deploym
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import { CML, type UTxO, utxoToCore } from "@lucid-evolution/lucid";
 
-import {
-  assertWorkflowActuationPermitIdentity,
-  type WorkflowActuationPermit,
-} from "./actuation-permit.js";
+import { assertWorkflowActuationPermitIdentity } from "./actuation-permit.assert-workflow-actuation-permit-identity.js";
+import type { WorkflowActuationPermit } from "./actuation-permit.create-workflow-reconciliation-permit-controller.js";
 import type { WorkflowAdapterRunner } from "./adapters.js";
 import {
   exactUtxos,

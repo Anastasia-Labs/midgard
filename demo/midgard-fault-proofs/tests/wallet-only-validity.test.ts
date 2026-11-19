@@ -26,12 +26,12 @@ import { isPrerequisiteTurn } from "../src/fault-proof-turn.js";
 import { publishFaultProofFieldCarriage } from "../src/field-opening.publish-fault-proof-field-carriage.js";
 import { buildProofChunkPublication } from "../src/publish-proof-chunks.js";
 import { resolveProverSigner } from "../src/runtime.js";
+import { stageScriptDecodeBytes } from "../src/script-decode/stage.js";
 import {
   buildScriptDecodeBindTx,
   buildScriptDecodeStageTx,
   scriptDecodeStagingDatums,
-  stageScriptDecodeBytes,
-} from "../src/script-decode/index.js";
+} from "../src/script-decode/submit.js";
 import { resolveTransitionTraceDataCarriage } from "../src/transition-trace/proof-carriage.js";
 import {
   WALLET_ONLY_VALIDITY_MS,

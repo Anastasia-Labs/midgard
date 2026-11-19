@@ -1,14 +1,13 @@
 import { Effect, Schedule } from "effect";
 
+import { Globals } from "../services/globals.globals.js";
+import { Database, NodeConfig } from "../services/index.js";
+import type { IntentJournal } from "../services/intent-journal.js";
+import { Lucid } from "../services/lucid.js";
 import {
   ContractDeploymentIdentity,
-  Database,
-  Globals,
-  Lucid,
   MidgardContracts,
-  NodeConfig,
-} from "../services/index.js";
-import type { IntentJournal } from "../services/intent-journal.js";
+} from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   attestationTimeoutCorrectionAction,
   attestationTimeoutCorrectionStep,

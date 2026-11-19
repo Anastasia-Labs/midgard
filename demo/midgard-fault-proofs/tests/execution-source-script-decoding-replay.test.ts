@@ -14,13 +14,11 @@ import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import { type LedgerEntry, singleLedgerAt } from "../src/ledger-at.js";
-import {
-  admitCompleteCanonicalReplayPredecessor,
-  type CompleteCanonicalReplay,
-  createCompleteCanonicalReplayUnion,
-  EXECUTION_SOURCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
-  NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY,
-} from "../src/workflow/complete-replay.js";
+import { admitCompleteCanonicalReplayPredecessor } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { createCompleteCanonicalReplayUnion } from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
+import { NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.detect-double-withdraws.js";
+import type { CompleteCanonicalReplay } from "../src/workflow/complete-replay.replay-context-identity.js";
+import { EXECUTION_SOURCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
 import {
   buildMissingRedeemerBlock,

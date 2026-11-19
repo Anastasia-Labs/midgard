@@ -3,7 +3,7 @@ import { setTimeout as pause } from "node:timers/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { MAX_OPEN_OBJECTIVES } from "../../src/fault-proofs/fault-proof-objective-table.js";
-import { unsafeCreateWatcherFaultProofSupervisorForTest } from "../../src/fault-proofs/fault-proof-supervisor.js";
+import { unsafeCreateWatcherFaultProofSupervisorForTest } from "../../src/fault-proofs/fault-proof-supervisor.create-watcher-fault-proof-supervisor.js";
 import {
   closeWatcherJournalDatabase,
   openWatcherJournalDatabase,

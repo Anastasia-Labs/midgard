@@ -28,9 +28,9 @@ import {
   prepareSpendInputSignerMissingEvidence,
   SPEND_INPUT_SIGNER_MAX_WITNESSES,
   SPEND_INPUT_SIGNER_MISSING_ID,
-} from "../src/spend-input-signer-missing/index.js";
+} from "../src/spend-input-signer-missing/spend-input-signer-missing.js";
+import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { buildRegisteredChainFixture } from "./support/emulator/registered-chain.js";
-import { makeNativeTx } from "./support/submit-init-emulator-shared.js";
 
 // The ledger's Ed25519 check is libsodium's, which initialises
 // asynchronously; production entry points await it, and so does this file.

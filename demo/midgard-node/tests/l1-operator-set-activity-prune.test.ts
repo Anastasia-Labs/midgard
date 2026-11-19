@@ -20,12 +20,12 @@ import { Effect, Redacted } from "effect";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import {
-  type ActivityRecordBinding,
   databaseActivityRecord,
   memoryActivityRecord,
   type OperatorActivityRecord,
-  operatorSetProjection,
-} from "../src/l1-operator-set/index.js";
+} from "../src/l1-operator-set/activity.js";
+import type { ActivityRecordBinding } from "../src/l1-operator-set/activity-prune.js";
+import { operatorSetProjection } from "../src/l1-operator-set/projection.js";
 import { storeOpener, testDatabases } from "./helpers/l1-events-store.js";
 import {
   loadOperatorSetChainFixture,

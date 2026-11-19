@@ -23,9 +23,9 @@ import * as SDK from "@al-ft/midgard-sdk";
 import {
   MIDGARD_COINS_PER_UTXO_BYTE,
   minAdaLovelace,
-  RejectCodes,
   replayValidationVerdictEvent,
 } from "@al-ft/midgard-validation";
+import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { Data } from "@lucid-evolution/lucid";
 import { decodeDaPayloadStrict } from "da-committee-node/da/payload";
 import { Effect } from "effect";
@@ -37,11 +37,9 @@ import {
   longAssetNameValue,
 } from "../../midgard-fault-proofs/tests/support/long-asset-name-value.js";
 import { ForcedTransactionsDB } from "../src/database/index.js";
-import {
-  buildPlaceholderValidationTraceMembers,
-  classifyForcedTransactions,
-  computeUtxoPayloadRoot,
-} from "../src/mpf/index.js";
+import { classifyForcedTransactions } from "../src/mpf/event-window.classify-forced-transactions.js";
+import { computeUtxoPayloadRoot } from "../src/mpf/payload-size.js";
+import { buildPlaceholderValidationTraceMembers } from "../src/mpf/validation-trace.js";
 import {
   forcedEntry,
   makeOutput,

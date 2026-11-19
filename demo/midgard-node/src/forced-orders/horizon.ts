@@ -17,7 +17,7 @@
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
-import { tableName as forcedTransactionsTable } from "../database/forcedTransactions.js";
+import { tableName as forcedTransactionsTable } from "../database/forcedTransactions.exact-forced-transaction-journal-member.js";
 import { canonicalForcedAdmission } from "../database/l1-admission-identity.js";
 import {
   DatabaseError,

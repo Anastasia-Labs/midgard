@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { fraudSlashEconomicsFromDeploymentManifest } from "../src/remove-fraudulent-block.js";
+import { fraudSlashEconomicsFromDeploymentManifest } from "../src/remove-fraudulent-block.assert-exact-fraud-slash-lovelace-conservation.js";
+import { buildProvedDoubleSpendFixture } from "./support/submit-init/double-spend.js";
 import {
-  buildProvedDoubleSpendFixture,
   expectRemovedFraudProofState,
   submitRemovalForFixture,
-} from "./support/submit-init-emulator-fixtures.js";
+} from "./support/submit-init/removal.js";
 
 describe("fault-proof slash of an operator node holding more than its bond", () => {
   it("removes the block and keeps the node's excess in the directory anchor", async () => {

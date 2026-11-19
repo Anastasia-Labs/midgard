@@ -12,8 +12,7 @@
  */
 import { Effect, Layer } from "effect";
 
-import type { ConfigError } from "./config.js";
-import type { NodeConfigDep } from "./config.js";
+import type { ConfigError, NodeConfigDep } from "./config.js";
 import {
   L1_INDEX_UNCONFIGURED,
   L1Adapter,
@@ -31,7 +30,7 @@ import {
   ContractDeploymentIdentity,
   FollowerMidgardContractServices,
   MidgardContracts,
-} from "./midgard-contracts.js";
+} from "./midgard-contracts.make-midgard-contract-runtime.js";
 
 /**
  * The follower store's view of L1 over the node's index, after `refuseFirst`,

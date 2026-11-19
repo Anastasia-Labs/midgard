@@ -14,7 +14,7 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { type L1ViewPoint, openL1Access } from "../src/l1-access.js";
-import { awaitSubmittedTransactionConfirmation } from "../src/transactions/utils.js";
+import { awaitSubmittedTransactionConfirmation } from "../src/transactions/utils.await-submitted-transaction-confirmation.js";
 import { signedTxCbor } from "./transactions-utils.parse-outside-validity-interval-details.js";
 
 const DEPTH = DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth;

@@ -1,9 +1,6 @@
 import { findLedgerSignatureVerifierUnavailable } from "@al-ft/midgard-core";
-import {
-  deserializePhaseACandidate,
-  type PhaseAResult,
-  type RejectedTx,
-} from "@al-ft/midgard-validation";
+import { deserializePhaseACandidate } from "@al-ft/midgard-validation";
+import type { PhaseAResult, RejectedTx } from "@al-ft/midgard-validation/types";
 import { Duration, Effect, Either, Layer, Metric } from "effect";
 
 import {
@@ -17,7 +14,7 @@ import {
   type ValidationWorkerResponse,
 } from "../workers/utils/validation-pool.js";
 import { NodeConfig } from "./config.js";
-import { ContractDeploymentIdentity } from "./midgard-contracts.js";
+import { ContractDeploymentIdentity } from "./midgard-contracts.make-midgard-contract-runtime.js";
 import { retryStartupStep, startupStepFailed } from "./startup-waiting.js";
 import {
   busyWorkersGauge,

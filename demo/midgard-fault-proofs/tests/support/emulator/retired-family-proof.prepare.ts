@@ -5,24 +5,22 @@ import { expect } from "vitest";
 
 import { parseOutRef } from "../../../src/runtime.js";
 import {
-  buildFabricatedDepositStep01,
   deriveFabricatedDepositStep01Handoff,
   parseSubmitFabricatedDepositInclusion,
-} from "../../../src/submit-fabricated-deposit-step-01.js";
+} from "../../../src/submit-fabricated-deposit-step-01.derive-fabricated-deposit-step01-handoff.js";
+import { buildFabricatedDepositStep01 } from "../../../src/submit-fabricated-deposit-step-01.submit-fabricated-deposit-step01.js";
 import { buildFabricatedDepositStep02 } from "../../../src/submit-fabricated-deposit-step-02.js";
 import { buildFabricatedDepositStep03 } from "../../../src/submit-fabricated-deposit-step-03.js";
 import {
-  buildFabricatedWithdrawalStep01,
   deriveFabricatedWithdrawalStep01Handoff,
   parseSubmitFabricatedWithdrawalInclusion,
-} from "../../../src/submit-fabricated-withdrawal-step-01.js";
+} from "../../../src/submit-fabricated-withdrawal-step-01.derive-fabricated-withdrawal-step01-handoff.js";
+import { buildFabricatedWithdrawalStep01 } from "../../../src/submit-fabricated-withdrawal-step-01.submit-fabricated-withdrawal-step01.js";
 import { buildFabricatedWithdrawalStep02 } from "../../../src/submit-fabricated-withdrawal-step-02.js";
 import { buildFabricatedWithdrawalStep03 } from "../../../src/submit-fabricated-withdrawal-step-03.js";
-import { buildInit } from "../../../src/submit-init.js";
-import {
-  bindFraudProofWorkflowDeployment,
-  requireManifestBoundReferenceScriptUtxo,
-} from "../../../src/workflow/deployment-manifest-binding.js";
+import { buildInit } from "../../../src/submit-init.submit-init.js";
+import { requireManifestBoundReferenceScriptUtxo } from "../../../src/workflow/deployment-manifest-binding.assert-deployment-info-matches-manifest.js";
+import { bindFraudProofWorkflowDeployment } from "../../../src/workflow/deployment-manifest-binding.bind-fraud-proof-deployment.js";
 import type { LocallyEvaluatedTransaction } from "../../../src/workflow/transaction-boundary.js";
 import { buildAndSubmitUnjournaled } from "../submit-unjournaled.js";
 import { measureCompleteSignedTransaction } from "./measurement.js";

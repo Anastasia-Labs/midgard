@@ -1,7 +1,8 @@
 import "node:fs/promises";
 import "node:path";
 import "@al-ft/midgard-core/deployment-manifest-identity";
-import "./config.js";
+import "./config.parse-watcher-config.js";
+import "./config.strict-json-reader.js";
 import "./process-config.fault-proof-infrastructure.js";
 import "./process-config.parse-watcher-process-config.js";
 export {

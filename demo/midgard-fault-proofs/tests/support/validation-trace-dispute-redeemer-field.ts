@@ -1,7 +1,7 @@
 /** A failing transaction's redeemer sized so the transaction's redeemer
  * field preimage is a given length: the field a canonical-decode step's
  * observe stage opens whole. */
-import { MidgardRedeemerTag } from "@al-ft/midgard-validation";
+import { MidgardRedeemerTag } from "@al-ft/midgard-validation/midgard-redeemers";
 import { makeRedeemersCbor } from "@al-ft/midgard-validation/tests/validation-fixtures";
 import { Constr, Data } from "@lucid-evolution/lucid";
 

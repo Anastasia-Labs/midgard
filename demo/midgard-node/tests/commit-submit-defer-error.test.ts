@@ -4,7 +4,7 @@ import {
   NoInlineSubmitDefer,
   type NoInlineSubmitDeferKind,
   TxSubmitError,
-} from "../src/transactions/utils.js";
+} from "../src/transactions/utils.await-required-output-visibility.js";
 import { commitSubmitDeferError } from "../src/workers/commit-block-header/build-unsigned-tx.js";
 
 const HEADER_HASH = "ab".repeat(28);

@@ -9,7 +9,7 @@ import { Clock, Effect } from "effect";
 
 import { DaPayloadsDB } from "../database/index.js";
 import { ForeignBlockVerificationError } from "../mpf/verified-block-import.js";
-import { ContractDeploymentIdentity } from "../services/index.js";
+import { ContractDeploymentIdentity } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import { sha256 } from "../sha256.js";
 import {
   computeDaPayloadRoots,

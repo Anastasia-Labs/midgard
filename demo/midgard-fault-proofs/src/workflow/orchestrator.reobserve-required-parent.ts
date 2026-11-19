@@ -1,11 +1,11 @@
 import { formatUnknownError } from "@al-ft/midgard-core";
 
-import { assertWorkflowJournalActuation } from "./actuation-permit.js";
+import { assertWorkflowJournalActuation } from "./actuation-permit.assert-workflow-actuation-permit-identity.js";
 import {
   readWorkflowFundingRecovery,
   reobserveWorkflowFundingReservationTransaction,
-  type WorkflowJournalWriter,
 } from "./funding-reservation-permit.js";
+import type { WorkflowJournalWriter } from "./funding-reservation-permit.workflow-journal-writer.js";
 import type {
   FraudProofWorkflowJournalEvent,
   FraudProofWorkflowJournalStore,

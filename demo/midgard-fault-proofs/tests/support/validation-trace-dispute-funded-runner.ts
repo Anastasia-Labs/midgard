@@ -40,33 +40,27 @@ import {
 } from "../../src/validation-trace-dispute/case-history.js";
 import type { ValidationTraceRemovalConfig } from "../../src/validation-trace-dispute/removal.js";
 import type { ValidationTraceOneStepReferences } from "../../src/validation-trace-dispute/transactions.js";
+import { bindWorkflowActuationJournal } from "../../src/workflow/actuation-permit.assert-workflow-actuation-permit-identity.js";
 import {
-  bindWorkflowActuationJournal,
   createWorkflowActuationPermitController,
   createWorkflowReconciliationPermitController,
-} from "../../src/workflow/actuation-permit.js";
-import { createValidationTraceDisputeCompleteCanonicalReplay } from "../../src/workflow/complete-replay.js";
-import {
-  bindWorkflowFundingReservationJournal,
-  restrictWorkflowFundingSigner,
-} from "../../src/workflow/funding-reservation-permit.js";
-import {
-  authenticatedStateQueueObservationDigest,
-  classifyHeader,
-  createHeaderClassifier,
-} from "../../src/workflow/header-classifier.js";
+} from "../../src/workflow/actuation-permit.create-workflow-reconciliation-permit-controller.js";
+import { createValidationTraceDisputeCompleteCanonicalReplay } from "../../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
+import { bindWorkflowFundingReservationJournal } from "../../src/workflow/funding-reservation-permit.begin-workflow-funding-reservation-action.js";
+import { restrictWorkflowFundingSigner } from "../../src/workflow/funding-reservation-permit.restrict-workflow-funding-signer.js";
+import { authenticatedStateQueueObservationDigest } from "../../src/workflow/header-classifier.authenticated-state-queue-observation-digest.js";
+import { classifyHeader } from "../../src/workflow/header-classifier.classify-header.js";
+import { createHeaderClassifier } from "../../src/workflow/header-classifier.create-header-classifier.js";
 import {
   computeFraudProofWorkflowId,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   normalizeFraudProofWorkflowIdentity,
-} from "../../src/workflow/journal.js";
+} from "../../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import type { FraudProofSignedTransactionRecovery } from "../../src/workflow/l1-source.js";
+import type { FraudProofFamilyWorkflowAdapter } from "../../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import type { FraudProofWorkflowRunResult } from "../../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
-import {
-  createFraudProofWorkflowRegistry,
-  type FraudProofFamilyWorkflowAdapter,
-  runFraudProofWorkflow,
-} from "../../src/workflow/orchestrator.js";
+import { createFraudProofWorkflowRegistry } from "../../src/workflow/orchestrator.immutable-fraud-proof-workflow-registry.js";
+import { runFraudProofWorkflow } from "../../src/workflow/orchestrator.run-da-hash-preimage-workflow-from-retained-da.js";
 import { createAdmittedWorkflowRunner } from "../../src/workflow/runner-admission.js";
 import { validationDisputeWalletMoveReserve } from "../../src/workflow/runtime-funding-fee.js";
 import { authenticatedHeaderObservation } from "../helpers/canonical-block-evidence-fixture.js";

@@ -9,11 +9,9 @@ import {
 } from "../database/index.js";
 import type { DatabaseError } from "../database/utils/common.js";
 import type * as Ledger from "../database/utils/ledger.js";
-import {
-  computeLedgerMpfRootFromLedgerEntries,
-  MidgardMpf,
-  setMpfScratchBuild,
-} from "../mpf/index.js";
+import { setMpfScratchBuild } from "../mpf/engine-config.js";
+import { computeLedgerMpfRootFromLedgerEntries } from "../mpf/ledger-hydration.js";
+import { MidgardMpf } from "../mpf/store.midgard-mpf.js";
 import { Database, NodeConfig } from "../services/index.js";
 import { materializeLedgerDeltaSuffix } from "../transactions/state-queue/confirmed-ledger-snapshot.js";
 import * as AuditLeases from "./mpf-audit-leases.js";

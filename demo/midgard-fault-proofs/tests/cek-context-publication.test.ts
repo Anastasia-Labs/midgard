@@ -12,12 +12,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   alwaysSucceedsBlueprintPath,
-  buildMinimalFaultProofContracts,
-  EMULATOR_PROTOCOL_PARAMETERS,
-  publishPlainReferenceScriptUtxo,
   readBlueprint,
   realBlueprintPath,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/emulator/blueprints.js";
+import { buildMinimalFaultProofContracts } from "./support/emulator/contracts.build-minimal-fault-proof-contracts.js";
+import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
+import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 
 describe("CEK context tail publication", () => {
   it("publishes each parameterized continuation under the real L1 limit", async () => {

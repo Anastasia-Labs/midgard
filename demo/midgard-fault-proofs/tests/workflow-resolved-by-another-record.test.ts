@@ -7,10 +7,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import * as fundingAuthority from "../src/workflow/funding-reservation-permit.js";
-import {
-  type FraudProofWorkflowJournalEntry,
-  MemoryFraudProofWorkflowJournalStore,
-} from "../src/workflow/journal.js";
+import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
+import type { FraudProofWorkflowJournalEntry } from "../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import type { FraudProofFamilyWorkflowAdapter } from "../src/workflow/orchestrator.js";
 import { FraudProofResolvedByAnotherRecordError } from "../src/workflow/resolved-by-another-record.js";
 import {

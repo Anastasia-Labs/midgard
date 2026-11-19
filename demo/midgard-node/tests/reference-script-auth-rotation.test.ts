@@ -19,8 +19,8 @@ import {
 import { Effect, Either } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { resolvePublishableReferenceScriptAuthPolicyProgram } from "../src/commands/deployment-run-state.js";
-import { loadDeploymentRunState } from "../src/e2e/run-state.js";
+import { resolvePublishableReferenceScriptAuthPolicyProgram } from "../src/commands/deployment-run-state.resolve-publishable-reference-script-auth-policy-program.js";
+import { loadDeploymentRunState } from "../src/e2e/run-state.parse-deployment-run-state.js";
 import {
   ensureReferenceScriptTargetsProgram,
   nodeRuntimeReferenceScriptTargets,

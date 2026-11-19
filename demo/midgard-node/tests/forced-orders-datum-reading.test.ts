@@ -24,12 +24,12 @@ import { Effect } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { ForcedTransactionsDB } from "../src/database/index.js";
+import { forcedOrderHorizon } from "../src/forced-orders/horizon.js";
 import {
-  FORCED_ORDERS_TABLE,
-  forcedOrderHorizon,
   forcedOrdersAdmittedAt,
   forcedOrdersAt,
-} from "../src/forced-orders/index.js";
+} from "../src/forced-orders/reads.js";
+import { FORCED_ORDERS_TABLE } from "../src/forced-orders/schema.js";
 import { FORCED_CONFIG } from "./helpers/forced-orders-chain.js";
 import {
   db,

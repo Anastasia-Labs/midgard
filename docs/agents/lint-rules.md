@@ -118,3 +118,13 @@ every stale site and adds none (`--check` only reports).
   and blind spots: the rule file's header. [eslint: midgard/tests-observe-behavior]
 - **Redeemer ledger indices come from the builder callback.** Scope and blind
   spots: the rule file's header. [eslint: midgard/redeemer-index-from-builder]
+- **Inside midgard-fault-proofs, -node and -watcher, import a name from the
+  module that declares it, not from the package's own barrel** (`src/index.ts`
+  or the package's own name). `contrib test --related` and `--cached` follow
+  the import graph, and the barrel reaches every module of the package, so
+  whatever imports it reruns on every edit. The barrel stays the entry point
+  for other packages. The baselined sites assert the names the root publishes
+  or sit at their module-size cap. A name a test stubs through a re-exporting
+  module (`vi.spyOn` on its namespace, or `vi.mock` of it) stays imported
+  from that module: the stub replaces only that module's binding. Scope and
+  blind spots: the rule file's header. [eslint: midgard/no-own-package-barrel]

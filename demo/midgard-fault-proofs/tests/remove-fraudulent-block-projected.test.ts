@@ -16,10 +16,8 @@ import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 import { expect, it, vi } from "vitest";
 
 import { proofMaterialsAddressOfFundingAddress } from "../src/funding/proof-materials-address.js";
-import {
-  RegisteredOperatorActivationRequiredError,
-  submitRemoveFraudulentBlock,
-} from "../src/remove-fraudulent-block.js";
+import { RegisteredOperatorActivationRequiredError } from "../src/remove-fraudulent-block.resolve-registered-operator-removal-witness.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 
 const runDirectory = process.env.MIDGARD_FINALIZED_RUN_DIR;
 type EvaluationInput = Parameters<

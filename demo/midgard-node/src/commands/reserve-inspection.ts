@@ -14,12 +14,9 @@ import {
 import { Effect, Option } from "effect";
 
 import * as WithdrawalsDB from "../database/withdrawals.js";
-import {
-  Database,
-  Lucid,
-  MidgardContracts,
-  NodeConfig,
-} from "../services/index.js";
+import { Database, NodeConfig } from "../services/index.js";
+import { Lucid } from "../services/lucid.js";
+import { MidgardContracts } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import { outRefLabel } from "../tx-context.js";
 import { parseEventId } from "./command-utils.js";
 import { addressDataToBech32 } from "./withdrawal-utils.js";

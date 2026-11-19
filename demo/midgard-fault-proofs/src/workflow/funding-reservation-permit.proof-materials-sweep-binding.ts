@@ -2,7 +2,7 @@ import { CML, type TxSigned, type UTxO } from "@lucid-evolution/lucid";
 
 import { isPlainFundingOutput } from "../funding/plain-funding-output.js";
 import { proofMaterialsAddressOfFundingAddress } from "../funding/proof-materials-address.js";
-import { workflowActuationPermitIsReconciliationOnly } from "./actuation-permit.js";
+import { workflowActuationPermitIsReconciliationOnly } from "./actuation-permit.assert-workflow-actuation-permit-identity.js";
 import {
   exactResolvedOutputCbor,
   parseConfirmedActionOutput,

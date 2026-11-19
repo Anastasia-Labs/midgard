@@ -46,7 +46,7 @@ import {
 } from "../fibers/block-commitment.worker-readiness.js";
 import { Frontier, type GeneratedFrontier } from "../landed-blocks/store.js";
 import type { Database } from "../services/database.js";
-import { Globals } from "../services/globals.js";
+import { Globals } from "../services/globals.globals.js";
 import {
   clearLivenessIncident,
   raiseLivenessIncident,

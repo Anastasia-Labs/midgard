@@ -1,8 +1,8 @@
 import { generateSeedPhrase, Lucid } from "@lucid-evolution/lucid";
-import { publishWorkflowDeployment } from "midgard-node/tests/helpers/published-workflow-deployment";
+import { publishWorkflowDeployment } from "midgard-node/tests/helpers/published-workflow-deployment.publish-workflow-deployment";
 import { expect, it } from "vitest";
 
-import { createPublishedWatcherBlockActor } from "./support/published-block-actor.js";
+import { createPublishedWatcherBlockActor } from "./support/published-block-actor.create-published-watcher-block-actor.js";
 
 // On an attached stack the drill's funding wallet pays for the journey, while
 // the stack published its reference scripts from its own reference wallet,

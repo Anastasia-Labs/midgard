@@ -1,6 +1,6 @@
 /** The `scriptIntegrityHashMismatch` family's direct walk. */
 import { defineDirectWalkFamily } from "../direct-purpose-family/walk-family.js";
-import { SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
+import { SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import { SCRIPT_INTEGRITY_HASH_MISMATCH_CURSOR_SPEC } from "../workflow/cursor-family-spec.js";
 import { SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY } from "./contracts.js";
 import { SCRIPT_INTEGRITY_HASH_MISMATCH_FIELDS } from "./custody.js";

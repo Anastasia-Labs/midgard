@@ -4,12 +4,12 @@ import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import { LedgerRootMismatchError, singleLedgerAt } from "../src/ledger-at.js";
+import { admitCompleteCanonicalReplayPredecessor } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
-  admitCompleteCanonicalReplayPredecessor,
-  COMPLETE_CANONICAL_REPLAY_PREDECESSOR,
   NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
   NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY,
-} from "../src/workflow/complete-replay.js";
+} from "../src/workflow/complete-replay.detect-double-withdraws.js";
+import { COMPLETE_CANONICAL_REPLAY_PREDECESSOR } from "../src/workflow/complete-replay.replay-context-identity.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,

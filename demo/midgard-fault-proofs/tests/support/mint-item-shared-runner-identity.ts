@@ -5,33 +5,37 @@ import {
 import type { UTxO } from "@lucid-evolution/lucid";
 import { expect, vi } from "vitest";
 
+import { createManifestBoundMintItemNonCanonicalSubmission } from "../../src/mint-item-non-canonical/workflow.create-manifest-bound-mint-item-non-canonical-submission.js";
+import { createMintItemNonCanonicalRawL1StageResolver } from "../../src/mint-item-non-canonical/workflow.derive-mint-item-non-canonical-authenticated-source.js";
 import {
-  createManifestBoundMintItemNonCanonicalSubmission,
-  createMintItemNonCanonicalRawL1StageResolver,
   type ManifestBoundMintItemNonCanonicalConfig,
   MINT_ITEM_NON_CANONICAL_WORKFLOW,
-} from "../../src/mint-item-non-canonical/index.js";
+} from "../../src/mint-item-non-canonical/workflow.load-manifest-bound-mint-item-non-canonical-config.js";
 import { MINT_ITEM_NON_CANONICAL_FAMILY_DEFINITION } from "../../src/mint-item-non-canonical/workflow.mint-item-non-canonical-family-definition.js";
 import { loadStateQueueTopology } from "../../src/remove-fraudulent-block.load-state-queue-topology.js";
 import * as deployment from "../../src/workflow/deployment-manifest-binding.js";
 import * as observations from "../../src/workflow/family-l1-observation.js";
+import type {
+  FraudProofWorkflowJournalEntry,
+  FraudProofWorkflowJournalEvent,
+} from "../../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import {
   computeFraudProofWorkflowId,
   type FraudProofWorkflowIdentity,
-  type FraudProofWorkflowJournalEntry,
-  type FraudProofWorkflowJournalEvent,
-} from "../../src/workflow/journal.js";
+} from "../../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import {
   assembleBoundManifestBoundFamilyWorkflow,
   bindManifestBoundFamilyWorkflow,
-} from "../../src/workflow/manifest-bound-family-assembly.js";
+} from "../../src/workflow/manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
 import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../../src/workflow/raw-l1-publication-observation.js";
-import { FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY } from "../../src/workflow/raw-l1-snapshot.js";
+import { FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY } from "../../src/workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
 import { workflowPreflightTransaction } from "../../src/workflow/transaction-boundary.js";
 import { makeFaultProofEmulatorHarness } from "./emulator/harness.js";
 import { makeHeader } from "./emulator/header-fixtures.js";
 import { makeNativeTx } from "./emulator/native-tx.js";
+import { publishRemovalReferenceScripts } from "./emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.build-removal-deployment-info.js";
 import {
   committedInclusions,
   evidenceOf,
@@ -40,16 +44,12 @@ import {
 } from "./mint-item-non-canonical-lifecycle.js";
 import { mintField } from "./mint-item-vectors.js";
 import { fixtureLeaseCoordinator } from "./script-decode-installed-host.js";
+import { setupFraudulentBlock } from "./submit-init/removal.js";
 import {
-  countedTransactionsRoot,
   emulatorSuccessorHeaderStart,
-  setupFraudulentBlock,
   submitSuccessorBlockTx,
-} from "./submit-init-emulator-fixtures.js";
-import {
-  buildRemovalDeploymentInfo,
-  publishRemovalReferenceScripts,
-} from "./submit-init-emulator-shared.js";
+} from "./submit-init/successor.js";
+import { countedTransactionsRoot } from "./submit-init/transaction-material.js";
 
 const category = "mintItemNonCanonical" as const;
 const provenance = {

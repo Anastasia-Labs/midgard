@@ -3,11 +3,9 @@ import "./workflow.canonical-reobservation-with-pending-descendants.js";
 import { expect, it, vi } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
-import {
-  type FraudProofWorkflowJournalStore,
-  journalJsonDigest,
-  MemoryFraudProofWorkflowJournalStore,
-} from "../src/workflow/journal.js";
+import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
+import type { FraudProofWorkflowJournalStore } from "../src/workflow/journal.fraud-proof-workflow-journal-event.js";
+import { journalJsonDigest } from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,

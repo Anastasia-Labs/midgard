@@ -12,21 +12,25 @@ import { expect } from "vitest";
 import { planFaultProofFieldOpening } from "../../src/field-opening.js";
 import { MINT_AUTHORIZATION_CATEGORY_LABEL } from "../../src/mint-authorization/contracts.js";
 import { buildMintAuthorizationStep02Evidence } from "../../src/mint-authorization/evidence.js";
+import { buildMintAuthorizationStep01 } from "../../src/mint-authorization/submit-mint-authorization-step-01.js";
+import { buildMintAuthorizationStep02 } from "../../src/mint-authorization/submit-mint-authorization-step-02.submit-mint-authorization-step02.js";
+import { buildMintAuthorizationStep03WitnessAbsence } from "../../src/mint-authorization/submit-mint-authorization-step-03.submit-mint-authorization-step03-witness-absence.js";
 import {
-  buildMintAuthorizationStep01,
-  buildMintAuthorizationStep02,
-  buildMintAuthorizationStep03WitnessAbsence,
   buildMintAuthorizationStep04AdvanceComplete,
   buildMintAuthorizationStep04ResolveNext,
-  buildMintAuthorizationStep05,
-} from "../../src/mint-authorization/index.js";
-import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.js";
-import { buildResolvedInit } from "../../src/submit-init.js";
+} from "../../src/mint-authorization/submit-mint-authorization-step-04.js";
+import { buildMintAuthorizationStep05 } from "../../src/mint-authorization/submit-mint-authorization-step-05.js";
+import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import { buildResolvedInit } from "../../src/submit-init.submit-resolved-init.js";
 import { commitCountedRoot } from "../../src/transition-trace/phas.js";
 import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { createStructuredDataPreimageRequirement } from "../../src/workflow/raw-datum-preimage.js";
+import { network } from "./emulator/blueprints.js";
 import { captureEmulatorSubmission } from "./emulator/measurement.js";
 import { publishFaultProofWitnessReferenceScripts } from "./emulator/reference-scripts.js";
+import { publishRemovalReferenceScripts } from "./emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.build-removal-deployment-info.js";
 import {
   buildMintAuthorizationLedgerFixture,
   buildMintAuthorizationSubject,
@@ -36,12 +40,6 @@ import {
   setupMintAuthorizationScenario,
 } from "./mint-authorization-emulator.js";
 import { mintAuthorizationMaximumMintField } from "./mint-authorization-maxima.js";
-import {
-  buildRemovalDeploymentInfo,
-  network,
-  publishPlainReferenceScriptUtxo,
-  publishRemovalReferenceScripts,
-} from "./submit-init-emulator-shared.js";
 import {
   buildAndSubmitUnjournaled,
   certifyCarriageUnjournaled,

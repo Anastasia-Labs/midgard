@@ -26,7 +26,7 @@ import {
 import {
   eventKeyFingerprint,
   eventKeyPhase,
-} from "../../src/transition-trace/reconstruct.js";
+} from "../../src/transition-trace/reconstruct.transition-trace-reconstruction.js";
 import { requireReplayPredecessorLedger } from "../../src/workflow/replay-predecessor-ledger.js";
 
 const rank = (phase: SDK.TransitionPhase): number =>

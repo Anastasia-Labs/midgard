@@ -21,13 +21,13 @@ import {
   RETENTION_HISTORY_PRUNE_TIMEOUT_MS,
   withRetentionHistoryProducer,
 } from "../src/fibers/retention-sweeper.history-producer.js";
-import { NodeConfig } from "../src/services/config.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
 import { Database } from "../src/services/database.js";
 import {
   FollowerWrite,
   FollowerWriteFixture,
 } from "../src/services/follower-write-gate.js";
-import { Globals } from "../src/services/index.js";
+import { Globals } from "../src/services/globals.globals.js";
 import { openFollowerWriteGate } from "./helpers/follower-write-gate.js";
 import { resetApplicationTables } from "./utils.js";
 

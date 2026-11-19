@@ -8,25 +8,25 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { openWatcherFaultDecisionJournal } from "../../src/fault-proofs/fault-decision-journal.js";
-import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.js";
+import { openWatcherFaultDecisionJournal } from "../../src/fault-proofs/fault-decision-journal.create-journal.js";
+import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
 import { listWatcherProofObjectives } from "../../src/fault-proofs/fault-proof-objective-table.js";
 import { createWatcherFaultProofProgressAuthority } from "../../src/fault-proofs/fault-proof-progress-authority.js";
 import {
   openWatcherFaultProofQueueJournal,
   watcherFaultProofQueueIdentityDigest,
 } from "../../src/fault-proofs/fault-proof-queue-journal.js";
-import { watcherFaultProofDeadline } from "../../src/fault-proofs/fault-proof-supervisor.js";
+import { watcherFaultProofDeadline } from "../../src/fault-proofs/fault-proof-supervisor.validate-job.js";
 import { openWatcherJournalDatabase } from "../../src/fault-proofs/watcher-journal-database.js";
 import { WATCHER_PROVER_FUNDING_ORPHANED_RESERVATION } from "../../src/funding/prover-funding-recovery.orphaned-reservation.js";
 import { orphanReadingFactory } from "../funding/orphaned-reservation-fixture.js";
 import { expiredNotFound } from "../funding/prover-funding-recovery.retirement-fixture.js";
 import { retirementFixture } from "../funding/sqlite-prover-funding-reservation-store.signed-transition.js";
+import { setupFundingRecoveryFixture } from "../support/fault-proof-funding-fixture.setup-funding-recovery-fixture.js";
 import {
   cleanupFundingRecoveryFixtures,
   deploymentIdentity,
-  setupFundingRecoveryFixture,
-} from "../support/fault-proof-funding-fixture.js";
+} from "../support/fault-proof-funding-fixture.sources-for.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
 import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";

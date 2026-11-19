@@ -1,7 +1,7 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { Duration, Effect } from "effect";
 
-import { startDaLibp2pRetainedPayloadServerFromEnv } from "../da/libp2p-producer.js";
+import { startDaLibp2pRetainedPayloadServerFromEnv } from "../da/libp2p-producer.create-da-libp2p-producer-transport.js";
 import { DaPayloadsDB } from "../database/index.js";
 import { isRetryableProviderError } from "../provider-retry.js";
 import {

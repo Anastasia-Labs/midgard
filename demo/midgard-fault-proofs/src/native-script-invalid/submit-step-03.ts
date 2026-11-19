@@ -13,11 +13,11 @@ import {
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import { isPrerequisiteTurn } from "../fault-proof-turn.js";
+import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
 import {
   faultProofFieldOpening,
-  planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
-} from "../field-opening.js";
+} from "../field-opening.publish-fault-proof-field-carriage.js";
 import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
@@ -33,8 +33,10 @@ import {
   NATIVE_SCRIPT_INVALID_CATEGORY_LABEL as FAMILY,
   type NativeScriptInvalidContracts,
 } from "./contracts.js";
-import { nativeScriptInvalidSignerSet } from "./evidence-machine.js";
-import { assertNativeScriptInvalidDirectRoute } from "./evidence-machine.js";
+import {
+  assertNativeScriptInvalidDirectRoute,
+  nativeScriptInvalidSignerSet,
+} from "./evidence-machine.native-script-invalid-signer-set.js";
 import { NATIVE_SCRIPT_INVALID_ABSENT_SCRIPT_ITEM_HASH } from "./submit-step-02.js";
 
 type State = NonNullable<

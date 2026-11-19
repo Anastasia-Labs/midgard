@@ -14,11 +14,12 @@ import {
 } from "../input-existence/prepare.js";
 import { ledgerKeyBytesHex } from "../step-support.js";
 import type { CanonicalBlockClassification } from "./classification.js";
+import { completeCanonicalReplayPredecessorLedger } from "./complete-replay.admit-complete-canonical-replay-predecessor.js";
+import type { CompleteCanonicalReplayContext } from "./complete-replay.replay-context-identity.js";
 import {
-  type CompleteCanonicalReplayContext,
-  completeCanonicalReplayPredecessorLedger,
-} from "./complete-replay.js";
-import { type JournalJsonObject, normalizeJournalJson } from "./journal.js";
+  type JournalJsonObject,
+  normalizeJournalJson,
+} from "./journal.fraud-proof-workflow-terminal.js";
 import {
   exactJournalRecord,
   safeNaturalNumber,

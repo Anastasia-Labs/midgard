@@ -8,10 +8,10 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  faultProofFieldOpening,
   parseNativeTxCompactCbor,
   planFaultProofFieldOpening,
-} from "./field-opening.js";
+} from "./field-opening.plan-fault-proof-field-opening.js";
+import { faultProofFieldOpening } from "./field-opening.publish-fault-proof-field-carriage.js";
 import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary.js";
 import {
   fetchUtxoByOutRef,
@@ -29,7 +29,6 @@ import {
   selectFeeInput,
 } from "./step-support.js";
 import { submitFaultProofTurns } from "./submit-fault-proof-turns.js";
-import type { ZeroInputStep02Build } from "./submit-zero-input-step-02.make-zero-input-step02-spend-redeemer.js";
 import {
   makeComputationThreadSuccessRedeemer,
   makeFraudProofMintRedeemer,
@@ -37,6 +36,7 @@ import {
   requireStep02Datum,
   type SubmitZeroInputStep02CliConfig,
   type SubmitZeroInputStep02Result,
+  type ZeroInputStep02Build,
   type ZeroInputStep02ResolvedLayout,
   type ZeroInputStep02SpendLayout,
 } from "./submit-zero-input-step-02.make-zero-input-step02-spend-redeemer.js";

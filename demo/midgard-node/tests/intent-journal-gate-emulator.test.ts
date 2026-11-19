@@ -41,10 +41,8 @@ import {
   journaledIntent,
   type JournalInsert,
 } from "../src/services/intent-journal.js";
-import {
-  BeforeSignedTransactionSubmission,
-  handleSignSubmitNoConfirmation,
-} from "../src/transactions/utils.js";
+import { BeforeSignedTransactionSubmission } from "../src/transactions/utils.await-required-output-visibility.js";
+import { handleSignSubmitNoConfirmation } from "../src/transactions/utils.await-submitted-transaction-confirmation.js";
 import {
   type IntentEmulator,
   openIntentEmulator,

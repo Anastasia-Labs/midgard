@@ -4,7 +4,7 @@ import type { WatcherAvailabilityRuntime } from "../availability/runtime.js";
 import {
   type WatcherFaultDecisionBridge,
   WatcherFaultDecisionRetired,
-} from "../fault-proofs/fault-decision-bridge.js";
+} from "../fault-proofs/fault-decision-bridge.selected-target.js";
 import type { WatcherAuthenticatedStateQueueObservation } from "../indexers/authenticated-state-queue-observation.js";
 import {
   readHandledFollowerGeneration,
@@ -64,11 +64,11 @@ import {
  * on the L1 source and the store a running watcher rides out, so they have
  * no deadline.
  */
-export type { WatcherDecisionReadiness } from "./watcher-runtime.decision-readiness.js";
 export {
   WATCHER_DECISION_PASS_FAILED,
   WATCHER_FOLLOWER_NOT_STARTED,
   WATCHER_RELEASE_OBSERVATION_PENDING,
+  type WatcherDecisionReadiness,
   watcherFollowerStarted,
 } from "./watcher-runtime.decision-readiness.js";
 

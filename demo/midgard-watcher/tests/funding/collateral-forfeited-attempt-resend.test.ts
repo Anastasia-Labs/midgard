@@ -16,11 +16,9 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 import { afterEach, expect, it, vi } from "vitest";
 
-import {
-  cleanupFundingRecoveryFixtures,
-  FixtureProcessStop,
-  setupFundingRecoveryFixture,
-} from "../support/fault-proof-funding-fixture.js";
+import { FixtureProcessStop } from "../support/fault-proof-funding-fixture.process-stop.js";
+import { setupFundingRecoveryFixture } from "../support/fault-proof-funding-fixture.setup-funding-recovery-fixture.js";
+import { cleanupFundingRecoveryFixtures } from "../support/fault-proof-funding-fixture.sources-for.js";
 
 afterEach(async () => {
   vi.restoreAllMocks();

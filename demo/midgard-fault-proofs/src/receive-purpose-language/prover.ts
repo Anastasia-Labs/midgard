@@ -27,12 +27,10 @@ import {
   type DirectPurposeSourceEvidence,
   directPurposeSourceTransitions,
 } from "../direct-purpose-family/source-walk.js";
-import {
-  buildDirectSourceIndexEvidence,
-  directReceiveCredentials,
-  directRedeemerAt,
-} from "../direct-script-derivation/index.js";
 import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
+import { directReceiveCredentials } from "../direct-script-derivation/purposes.js";
+import { directRedeemerAt } from "../direct-script-derivation/redeemers.js";
+import { buildDirectSourceIndexEvidence } from "../direct-script-derivation/source-index.js";
 import {
   RECEIVE_PURPOSE_LANGUAGE_CATEGORY_LABEL,
   receivePurposeLanguageContractRoles,

@@ -14,27 +14,25 @@ import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
 import { isContinuationTurn } from "../src/fault-proof-turn.js";
-import { planFaultProofFieldOpening } from "../src/field-opening.js";
+import { planFaultProofFieldOpening } from "../src/field-opening.plan-fault-proof-field-opening.js";
 import { buildMinAdaStep01Forced } from "../src/min-ada/submit-step-01-forced.js";
-import { buildMinAdaTxStep02 } from "../src/min-ada/submit-step-02.js";
+import { buildMinAdaTxStep02 } from "../src/min-ada/submit-step-02.submit-min-ada-tx-step02.js";
 import { buildMinAdaStep03 } from "../src/min-ada/submit-step-03.js";
 import { buildMinAdaStep04 } from "../src/min-ada/submit-step-04.js";
 import {
   VAN_ROSSEM_MAX_CPU_UNITS,
   VAN_ROSSEM_MAX_MEMORY_UNITS,
 } from "../src/proof-fit/van-rossem.js";
-import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { setup } from "./min-ada-wrongful-rejection-lifecycle.setup.js";
+import { network } from "./support/emulator/blueprints.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { submitRawMinAdaAbsentOutputStep02 } from "./support/min-ada-raw.submit-absent-output-step02-raw.js";
-import {
-  buildRemovalDeploymentInfo,
-  network,
-  publishPlainReferenceScriptUtxo,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
 import {
   buildAndSubmitUnjournaled,
   buildPastPrerequisitesUnjournaled,

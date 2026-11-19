@@ -13,7 +13,7 @@ import { commitCountedRoot } from "./transition-trace/phas.js";
 import {
   type JournalJsonObject,
   normalizeJournalJson,
-} from "./workflow/journal.js";
+} from "./workflow/journal.fraud-proof-workflow-terminal.js";
 
 export const MIN_FEE_FORCED_ARTIFACT = "midgard-min-fee-forced-artifact-v1";
 export type MinFeeForcedArtifact = JournalJsonObject &

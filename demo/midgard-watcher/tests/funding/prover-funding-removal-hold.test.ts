@@ -14,11 +14,11 @@ import {
 import { credentialToAddress } from "@lucid-evolution/lucid";
 import { afterEach, expect, it, vi } from "vitest";
 
-import { calculateWatcherRuntimeProverFunding } from "../../src/funding/prover-funding-calculation.js";
-import { planWatcherProverFundingReservation } from "../../src/funding/prover-funding-reservation.js";
-import { isWatcherProverFundingReservationConflict } from "../../src/funding/sqlite-prover-funding-reservation-store.js";
-import { watcherDeploymentReleaseEconomicsAuthority } from "../../src/runtime/deployment-identity.js";
-import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
+import { calculateWatcherRuntimeProverFunding } from "../../src/funding/prover-funding-calculation.aggregate-watcher-prover-funding-sweep.js";
+import { planWatcherProverFundingReservation } from "../../src/funding/prover-funding-reservation.plan-watcher-prover-funding-reservation.js";
+import { isWatcherProverFundingReservationConflict } from "../../src/funding/sqlite-prover-funding-reservation-store.derive-signed-transition.js";
+import { watcherDeploymentReleaseEconomicsAuthority } from "../../src/runtime/deployment-identity.watcher-deployment-availability-challenge-authority.js";
+import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.build-watcher-deployment-authority-fixture.js";
 import { runtimeAuthority } from "./prover-funding-calculation.runtime-authority.js";
 import {
   fundingPaymentKeyHash,

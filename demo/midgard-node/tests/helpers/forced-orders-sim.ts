@@ -26,12 +26,10 @@ import {
   simTxHash,
 } from "@al-ft/midgard-l1-follower/testing";
 
-import {
-  decodeFieldPreimages,
-  FORCED_ORDERS_TABLE,
-  forcedOrderProjection,
-  forcedOrdersAt,
-} from "../../src/forced-orders/index.js";
+import { decodeFieldPreimages } from "../../src/forced-orders/carriage.js";
+import { forcedOrderProjection } from "../../src/forced-orders/projection.js";
+import { forcedOrdersAt } from "../../src/forced-orders/reads.js";
+import { FORCED_ORDERS_TABLE } from "../../src/forced-orders/schema.js";
 import {
   FORCED_CONFIG,
   orderTx,

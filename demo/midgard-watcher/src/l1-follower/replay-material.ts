@@ -1,8 +1,8 @@
-import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core/codec";
 import {
   computeMidgardNativeTxId,
   decodeMidgardForcedTxFullFromCanonicalCbor,
   deriveMidgardForcedTxProofSource,
+  encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core/codec";
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import { reconstructMidgardTransaction } from "@al-ft/midgard-core/consensus-validation";
@@ -12,20 +12,20 @@ import {
   plutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
-  attributeWithdrawalClassificationFault,
   type BlockReplayMaterial,
   forcedVerdictForRejection,
 } from "@al-ft/midgard-fault-proofs";
+import { attributeWithdrawalClassificationFault } from "@al-ft/midgard-fault-proofs/block-replay";
 import * as SDK from "@al-ft/midgard-sdk";
 import { deriveCanonicalOriginalDepositTransitionEffect } from "@al-ft/midgard-validation";
 import { Data, type Network } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import type {
-  WatcherUserEvent,
-  WatcherUserEventKind,
+import {
+  watcherOriginalDepositAssets,
+  type WatcherUserEvent,
+  type WatcherUserEventKind,
 } from "../verification/user-event.js";
-import { watcherOriginalDepositAssets } from "../verification/user-event.js";
 
 const canonicalField = (cbor: string, path: readonly number[]) =>
   aikenSerialisedPlutusDataCborPreservingMapOrder(

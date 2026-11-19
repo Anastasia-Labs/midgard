@@ -10,20 +10,20 @@
  *
  * The bench's slot configuration maps slot `s` to `s * 1000` ms.
  */
-import type {
-  FactStore,
-  FollowerProjection,
-  OutRef,
+import {
+  type FactStore,
+  type FollowerProjection,
+  intentJournalProjection,
+  type OutRef,
 } from "@al-ft/midgard-l1-follower";
-import { intentJournalProjection } from "@al-ft/midgard-l1-follower";
 import type { SimOutput } from "@al-ft/midgard-l1-follower/testing";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { stateQueueProjection } from "../src/l1-state-queue/index.js";
-import { landedFrontierPruneFloor } from "../src/landed-blocks/index.js";
+import { stateQueueProjection } from "../src/l1-state-queue/projection.js";
+import { landedFrontierPruneFloor } from "../src/landed-blocks/prune-floor.js";
 import { db } from "./helpers/forced-orders-node-store.js";
 import { insertCommitIntent } from "./helpers/own-block-facts.js";
 import {

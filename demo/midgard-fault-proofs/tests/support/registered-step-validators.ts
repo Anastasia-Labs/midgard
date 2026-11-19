@@ -8,11 +8,11 @@ import {
   parseBlueprintAbi,
 } from "@al-ft/midgard-sdk/blueprint-abi";
 
+import type { FamilyCategory } from "../../src/workflow/family-definition.family-adapter-arm.js";
 import {
-  type FamilyCategory,
   type FamilyDefinition,
   familyStepContractNames,
-} from "../../src/workflow/family-definition.js";
+} from "../../src/workflow/family-definition.family-definition.js";
 import { readBlueprint, realBlueprintPath } from "./emulator/blueprints.js";
 import { REGISTERED_FAMILY_DEFINITIONS } from "./registered-family-definitions.js";
 

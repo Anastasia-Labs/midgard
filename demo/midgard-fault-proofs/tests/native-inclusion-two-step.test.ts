@@ -4,9 +4,11 @@ import {
   encodeMidgardSpendInputItem,
   midgardFieldCommitment,
 } from "@al-ft/midgard-core";
-import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
-import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core/codec/forced";
-import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
+import {
+  deriveMidgardForcedTxFaultEvidenceMaterial,
+  encodeMidgardForcedTxCanonical,
+  materializeMidgardForcedTxFromCanonical,
+} from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -14,18 +16,16 @@ import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
-import { eventKeyFingerprint } from "../src/transition-trace/reconstruct.js";
-import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
+import { eventKeyFingerprint } from "../src/transition-trace/reconstruct.transition-trace-reconstruction.js";
+import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
 import {
   INVALID_RANGE_COMPLETE_CANONICAL_REPLAY,
   ZERO_INPUT_COMPLETE_CANONICAL_REPLAY,
-} from "../src/workflow/complete-replay.js";
+} from "../src/workflow/complete-replay.detect-double-withdraws.js";
 import { BLOCK_SUBJECT } from "../src/workflow/detection-subject.js";
-import {
-  admitNativeInclusionTwoStepArtifact,
-  NATIVE_INCLUSION_TWO_STEP_ARTIFACT,
-  prepareNativeInclusionTwoStepArtifact,
-} from "../src/workflow/native-inclusion-two-step.js";
+import { admitNativeInclusionTwoStepArtifact } from "../src/workflow/native-inclusion-two-step.admit-native-inclusion-two-step-artifact.js";
+import { NATIVE_INCLUSION_TWO_STEP_ARTIFACT } from "../src/workflow/native-inclusion-two-step.parse-artifact.js";
+import { prepareNativeInclusionTwoStepArtifact } from "../src/workflow/native-inclusion-two-step.prepare-native-inclusion-two-step-artifact.js";
 import {
   prepareZeroInputEvidence,
   ZeroInputVerdictSubjectSchema,

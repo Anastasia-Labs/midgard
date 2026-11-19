@@ -4,23 +4,21 @@
 import type * as SDK from "@al-ft/midgard-sdk";
 import { expect } from "vitest";
 
-import { submitRemoveFraudulentBlock } from "../../src/index.js";
 import { RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK } from "../../src/receive-purpose-language/index.js";
+import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import {
   DIRECT_WALK_STEP_BOUNDS,
   type DirectWalkHarness,
   publishDirectWalkRoles,
   stepTable,
 } from "./direct-walk-emulator.js";
+import { network } from "./emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "./emulator/emulator-context.js";
 import { expectOnchainRefusal } from "./emulator/expect-onchain-refusal.js";
+import { publishRemovalReferenceScripts } from "./emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.build-removal-deployment-info.js";
 import type { MissingRedeemerScenario } from "./missing-redeemer-emulator.subject.js";
 import { driveReceivePurposeLanguageThread } from "./receive-purpose-language-emulator.js";
-import {
-  buildRemovalDeploymentInfo,
-  expectSingleUtxoWithUnit,
-  network,
-  publishRemovalReferenceScripts,
-} from "./submit-init-emulator-shared.js";
 
 export const expectWithinBounds = (
   steps: Parameters<typeof stepTable>[0],

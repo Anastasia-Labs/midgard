@@ -6,7 +6,7 @@ import {
 import {
   CURSOR_FAMILY_TRANSACTION_PORT,
   type CursorFamilyTransactionPort,
-} from "../workflow/cursor-family-adapter.js";
+} from "../workflow/cursor-family-adapter.admit-reference-scripts.js";
 import {
   captureCursorRemoval,
   cursorFamilyActionInput,
@@ -18,7 +18,7 @@ import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prer
 import {
   journalJsonDigest,
   type JournalJsonObject,
-} from "../workflow/journal.js";
+} from "../workflow/journal.fraud-proof-workflow-terminal.js";
 import {
   workflowTransactionInputOutRefs,
   workflowTransactionReferenceInputOutRefs,
@@ -28,10 +28,8 @@ import {
   planFieldPreimageLengthCarriage,
   resolveFieldPreimageLengthCarriage,
 } from "./carriage.js";
-import {
-  createConcreteFieldPreimageLengthLucidBuilders,
-  createFieldPreimageLengthLucidSubmission,
-} from "./config.js";
+import { createConcreteFieldPreimageLengthLucidBuilders } from "./config.create-concrete-field-preimage-length-lucid-builders.js";
+import { createFieldPreimageLengthLucidSubmission } from "./config.load-manifest-bound-field-preimage-length-config.js";
 import {
   fieldPreimageLengthEvidenceFromCanonicalBlock,
   type FieldPreimageLengthWorkflowEvidence,

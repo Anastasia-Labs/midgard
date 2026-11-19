@@ -21,10 +21,12 @@ import { describe, expect, it } from "vitest";
 import {
   fetchNodeBlockTransactions,
   type NodeTransactionPayload,
+} from "../src/prepare-double-spend.encode-l2-transaction-source-value.js";
+import {
   prepareDoubleSpendFromFile,
   prepareDoubleSpendFromTransactions,
   prepareSampleDoubleSpend,
-} from "../src/index.js";
+} from "../src/prepare-double-spend.prepare-double-spend-from-transactions.js";
 
 const EMPTY_CBOR_LIST = encodeCbor([]);
 const EMPTY_CBOR_NULL = encodeCbor(null);

@@ -8,7 +8,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../../src/evidence/canonical-block-evidence.js";
 import type { LedgerEntry } from "../../src/ledger-at.js";
-import { admitCompleteCanonicalReplayPredecessor } from "../../src/workflow/complete-replay.js";
+import { admitCompleteCanonicalReplayPredecessor } from "../../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,

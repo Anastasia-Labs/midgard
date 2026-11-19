@@ -9,7 +9,7 @@ import { WALLET_ONLY_VALIDITY_MS } from "@al-ft/midgard-fault-proofs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { WatcherFaultProofExecutionAdmission } from "../../src/fault-proofs/fault-proof-execution.js";
-import { unsafeCreateWatcherFaultProofSupervisorForTest } from "../../src/fault-proofs/fault-proof-supervisor.js";
+import { unsafeCreateWatcherFaultProofSupervisorForTest } from "../../src/fault-proofs/fault-proof-supervisor.create-watcher-fault-proof-supervisor.js";
 import {
   createWalletOnlySend,
   isWalletOnlySendOpen,

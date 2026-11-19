@@ -1,18 +1,16 @@
 import { expect, it, vi } from "vitest";
 
-import {
-  releaseIdleWorkflowFundingReservation,
-  type WorkflowFundingReservationSnapshot,
-} from "../src/workflow/funding-reservation-permit.js";
+import { releaseIdleWorkflowFundingReservation } from "../src/workflow/funding-reservation-permit.apply-transition.js";
+import type { WorkflowFundingReservationSnapshot } from "../src/workflow/funding-reservation-permit.workflow-funding-reservation-port.js";
+import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
+import type { FraudProofWorkflowJournalEvent } from "../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import {
   computeFraudProofWorkflowId,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
   type FraudProofWorkflowIdentity,
-  type FraudProofWorkflowJournalEvent,
   journalJsonDigest,
-  MemoryFraudProofWorkflowJournalStore,
-} from "../src/workflow/journal.js";
+} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import { reconcileSignedWorkflowTransaction } from "../src/workflow/signed-transaction-reconciliation.js";
 import {
   signedRecoveryObservation,

@@ -6,10 +6,11 @@ import {
   COMMIT_ANCHOR_SOURCE,
   COMMIT_ANCHOR_UNAVAILABLE,
 } from "../src/fibers/block-commitment.commit-anchor-readiness.js";
-import { Globals, NodeConfig } from "../src/services/index.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
+import { Globals } from "../src/services/globals.globals.js";
 import { activeLivenessReasons } from "../src/services/liveness-halt.js";
 import { Lucid } from "../src/services/lucid.js";
-import { MidgardContracts } from "../src/services/midgard-contracts.js";
+import { MidgardContracts } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   FOLLOWER_GENERATION,
   writeFollowerTip,

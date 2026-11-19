@@ -8,14 +8,12 @@ import { Effect, Ref } from "effect";
 
 import { MempoolDB, TxAdmissionsDB } from "../../database/index.js";
 import { l1NowUnixTimeMs } from "../../l1-heads.js";
-import { landedElements } from "../../l1-state-queue/index.js";
-import {
-  Globals,
-  Lucid,
-  MidgardContracts,
-  NodeConfig,
-} from "../../services/index.js";
+import { landedElements } from "../../l1-state-queue/landed.js";
+import { Globals } from "../../services/globals.globals.js";
+import { NodeConfig } from "../../services/index.js";
 import { readLandedStateQueue } from "../../services/landed-state-queue.js";
+import { Lucid } from "../../services/lucid.js";
+import { MidgardContracts } from "../../services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   operatorStatusCommand,
   parseOperatorKeyHashOption,

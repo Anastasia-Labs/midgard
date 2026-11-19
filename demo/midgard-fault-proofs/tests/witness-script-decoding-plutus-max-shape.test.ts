@@ -20,10 +20,8 @@
 import { scriptDecodeRecordOfScript } from "@al-ft/midgard-validation";
 import { describe, expect, it } from "vitest";
 
-import {
-  plutusItemScriptDecode,
-  recordScriptDecode,
-} from "../src/script-decode/index.js";
+import { plutusItemScriptDecode } from "../src/script-decode/item-record.js";
+import { recordScriptDecode } from "../src/script-decode/record.js";
 import { scriptDecodeDeploymentOf } from "./support/script-decode-emulator.js";
 import {
   createTransactionJournal,
@@ -35,7 +33,7 @@ import {
   WALK_CEILING,
   witnessSubject,
 } from "./support/script-decode-plutus-max-shape.js";
-import { scriptWitnessField } from "./support/witness-script-decoding-raw.js";
+import { scriptWitnessField } from "./support/witness-script-decoding-raw.over-bound-field-carriage-plan.js";
 import { makeHarness } from "./witness-script-decoding-lifecycle.make-harness.js";
 import {
   acceptedEvidence,

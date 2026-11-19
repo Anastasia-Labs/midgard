@@ -5,7 +5,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { h32 } from "@al-ft/midgard-test-support/hex";
 import { describe, expect, it } from "vitest";
 
-import { detectTransitionTraceFaults } from "../src/transition-trace/index.js";
+import { detectTransitionTraceFaults } from "../src/transition-trace/detect.detect-single-ledger-transitions.js";
 import {
   buildPayloadFixture,
   depositEventKey,

@@ -18,10 +18,8 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import {
-  faultProofFieldOpening,
-  planFaultProofFieldOpening,
-} from "../../src/field-opening.js";
+import { planFaultProofFieldOpening } from "../../src/field-opening.plan-fault-proof-field-opening.js";
+import { faultProofFieldOpening } from "../../src/field-opening.publish-fault-proof-field-carriage.js";
 import {
   fetchUtxoByOutRef,
   outRefLabel,
@@ -36,11 +34,9 @@ import {
 } from "../../src/step-support.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
 import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
+import { network } from "./emulator/blueprints.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 import { type ReferenceInputNoIdxHarness } from "./reference-input-no-idx-emulator.build-reference-input-no-idx-block-fixture.js";
-import {
-  network,
-  publishPlainReferenceScriptUtxo,
-} from "./submit-init-emulator-shared.js";
 import { publishCarriageUnjournaled } from "./submit-unjournaled.js";
 
 /**

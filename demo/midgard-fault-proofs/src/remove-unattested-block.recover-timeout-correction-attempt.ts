@@ -14,8 +14,8 @@ import {
 import {
   STATE_QUEUE_REMOVAL_VALIDITY_BACKDATE_MS,
   STATE_QUEUE_REMOVAL_VALIDITY_WINDOW_MS,
-  type StateQueueMutationLeaseCoordinator,
-} from "./remove-fraudulent-block.js";
+} from "./remove-fraudulent-block.assert-exact-fraud-slash-lovelace-conservation.js";
+import type { StateQueueMutationLeaseCoordinator } from "./remove-fraudulent-block.remove-fraudulent-block-explicit-category.js";
 import {
   type TimeoutCorrectionJournal,
   type TimeoutCorrectionJournalStore,

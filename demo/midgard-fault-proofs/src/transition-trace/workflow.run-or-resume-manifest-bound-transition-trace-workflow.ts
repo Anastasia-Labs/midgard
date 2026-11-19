@@ -2,23 +2,23 @@ import { type UTxO } from "@lucid-evolution/lucid";
 
 import { fetchCanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
+import { completeCanonicalReplayPredecessorLedger } from "../workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
-  completeCanonicalReplayPredecessorLedger,
   createTransitionTraceCompleteCanonicalReplayFromRetainedHistory,
   requireCompleteCanonicalReplayDecision,
-} from "../workflow/complete-replay.js";
+} from "../workflow/complete-replay.create-complete-canonical-replay-union.js";
 import {
   CORE_WITNESS_ROLES,
+  type FamilyReferenceScripts,
+} from "../workflow/family-definition.family-adapter-arm.js";
+import {
   cursorStepContractNames,
   defineFamily,
-  type FamilyReferenceScripts,
-} from "../workflow/family-definition.js";
+} from "../workflow/family-definition.family-definition.js";
 import type { FraudProofWorkflowJournalStore } from "../workflow/journal.js";
-import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.js";
-import {
-  createFraudProofWorkflowRegistry,
-  runFraudProofWorkflow,
-} from "../workflow/orchestrator.js";
+import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
+import { createFraudProofWorkflowRegistry } from "../workflow/orchestrator.js";
+import { runFraudProofWorkflow } from "../workflow/orchestrator.run-da-hash-preimage-workflow-from-retained-da.js";
 import { type WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
 import type { RetainedDaPayloadSource } from "./fetch.js";
 import {
@@ -30,10 +30,8 @@ import {
   replayTransitionTraceFromRetainedHistory,
   transitionTraceDetectionId,
 } from "./replay-authority.js";
-import {
-  TRANSITION_TRACE_FINAL_REFERENCE_SCRIPT_ENTRIES,
-  transitionTraceFinalIndex,
-} from "./submit.js";
+import { transitionTraceFinalIndex } from "./submit.make-transition-trace-final-spend-redeemer.js";
+import { TRANSITION_TRACE_FINAL_REFERENCE_SCRIPT_ENTRIES } from "./submit.make-transition-trace-route-spend-redeemer.js";
 import { runFor } from "./workflow.bind-run.js";
 import {
   cells,

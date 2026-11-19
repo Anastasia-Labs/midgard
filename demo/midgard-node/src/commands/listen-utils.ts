@@ -1,10 +1,8 @@
 import { timingSafeEqual } from "node:crypto";
 
 import type { MidgardNativeTxFull } from "@al-ft/midgard-core/codec";
-import {
-  decodeMidgardSubmittedNativeTxFromCanonicalCbor,
-  type MidgardSubmittedTx,
-} from "@al-ft/midgard-validation";
+import { decodeMidgardSubmittedNativeTxFromCanonicalCbor } from "@al-ft/midgard-validation/ledger-tx/codec";
+import type { MidgardSubmittedTx } from "@al-ft/midgard-validation/ledger-tx/types";
 
 /**
  * Paths that require explicit admin-key authorization.

@@ -1,10 +1,10 @@
 import { CML, coreToTxOutput } from "@lucid-evolution/lucid";
 
 import {
-  admitFraudProofRawL1Snapshot,
   FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
   type FraudProofRawL1SnapshotAuthority,
-} from "./raw-l1-snapshot.js";
+} from "./raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
+import { admitFraudProofRawL1Snapshot } from "./raw-l1-snapshot.js";
 import type { VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
 import type {
   SignedTransactionRecoveryObservation,

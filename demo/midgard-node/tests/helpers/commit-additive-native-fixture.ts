@@ -10,7 +10,7 @@ import {
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
-import { encodeMidgardCekCardanoFlatProgram } from "@al-ft/midgard-validation";
+import { encodeMidgardCekCardanoFlatProgram } from "@al-ft/midgard-validation/cek-program";
 import {
   Delay,
   ErrorUPLC,
@@ -35,12 +35,11 @@ import {
   Columns as TxColumns,
   type EntryWithTimeStamp,
 } from "../../src/database/utils/tx.js";
-import { MidgardMpf, processMpfs } from "../../src/mpf/index.js";
+import { processMpfs } from "../../src/mpf/process.process-mpfs.js";
+import { MidgardMpf } from "../../src/mpf/store.midgard-mpf.js";
 import type { Lucid } from "../../src/services/index.js";
-import {
-  encodeNativeMpfEventLog,
-  ProductionNativeMpfOwnerService,
-} from "../../src/services/mpf-native-owner/index.js";
+import { encodeNativeMpfEventLog } from "../../src/services/mpf-native-owner/service.parse-promotion-records.js";
+import { ProductionNativeMpfOwnerService } from "../../src/services/mpf-native-owner/service.production-native-mpf-owner-service.js";
 import { assertExactCommitRescueDaFrame } from "../../src/workers/commit-block-header.assert-rescue-frame.js";
 import {
   buildNativeTx,

@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { installWorkflowApplicationRegistry } from "../src/workflow/adapters.js";
 import { runFraudProofWorkflowCli } from "../src/workflow/cli.js";
-import { FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED } from "../src/workflow/orchestrator.js";
+import { FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import {
   WORKFLOW_CONTINUATION_QUIET_BOUND_MS,
   WORKFLOW_CONTINUATION_QUIET_BOUND_POLLS,

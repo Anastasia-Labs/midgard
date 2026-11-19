@@ -16,9 +16,9 @@ import {
   decodeTransactionMaterial,
   requireProof,
   transactionSourceTrieItem,
-} from "../prepare-double-spend.js";
+} from "../prepare-double-spend.resolve-double-spend-pair.js";
 import { parseSubmitStep01TxInclusion } from "../step-support.js";
-import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
+import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.build-source-membership-proof.js";
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import {
   type LoadManifestBoundResolvedOutputNonCanonicalConfig,

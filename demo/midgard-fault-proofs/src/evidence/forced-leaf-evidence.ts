@@ -2,8 +2,8 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
-import { eventKeyFingerprint } from "../transition-trace/reconstruct.js";
-import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
+import { eventKeyFingerprint } from "../transition-trace/reconstruct.transition-trace-reconstruction.js";
+import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.build-source-membership-proof.js";
 
 export type ForcedLeafEvidence = {
   readonly eventKey: SDK.EventKey;

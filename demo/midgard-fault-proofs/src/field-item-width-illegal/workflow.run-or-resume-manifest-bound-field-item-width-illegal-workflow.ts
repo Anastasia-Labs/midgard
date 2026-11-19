@@ -8,7 +8,7 @@ import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import {
   assembleBoundManifestBoundFamilyWorkflow,
   bindManifestBoundFamilyWorkflow,
-} from "../workflow/manifest-bound-family-assembly.js";
+} from "../workflow/manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
 import {
   createCanonicalFamilyArtifactPort,
   executeManifestBoundFamilyRecovery,

@@ -20,7 +20,7 @@ import {
   type RouteInputs,
 } from "../direct-purpose-family/pointer-scan.js";
 import { directPurposeObservedSelection } from "../direct-purpose-family/purpose-routes.js";
-import { directPurposeAt } from "../direct-script-derivation/index.js";
+import { directPurposeAt } from "../direct-script-derivation/purposes.js";
 import { executionNativeScriptInvalidAbsentSelection } from "./absent-selection.js";
 import {
   type ExecutionNativeScriptInvalidWalk,

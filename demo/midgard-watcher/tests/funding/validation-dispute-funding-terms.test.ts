@@ -10,9 +10,9 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { watcherValidationDisputeFundingTerms } from "../../src/funding/prover-funding-authority.js";
-import { watcherDeploymentAppliedScriptHashes } from "../../src/runtime/deployment-identity.js";
-import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
+import { watcherValidationDisputeFundingTerms } from "../../src/funding/prover-funding-authority.create-watcher-prover-funding-authority-factory.js";
+import { watcherDeploymentAppliedScriptHashes } from "../../src/runtime/deployment-identity.watcher-deployment-availability-challenge-authority.js";
+import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.build-watcher-deployment-authority-fixture.js";
 
 const identity = makeWatcherDeploymentAuthorityFixture().result;
 

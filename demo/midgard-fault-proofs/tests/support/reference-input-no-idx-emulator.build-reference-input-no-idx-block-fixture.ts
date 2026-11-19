@@ -21,16 +21,14 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import { midgardTxOutputFromCanonicalCbor } from "../../src/prepare-input-no-idx.js";
+import { midgardTxOutputFromCanonicalCbor } from "../../src/prepare-input-no-idx.midgard-tx-output-from-canonical-cbor.js";
 import {
   nativeTxFromCoreCompact,
   type SubmitStep01TxInclusion,
 } from "../../src/step-support.js";
-import {
-  l2TransactionSourceCbor as l2TransactionSourceCborV1,
-  makeFaultProofEmulatorHarness,
-  trieRootHex,
-} from "./submit-init-emulator-shared.js";
+import { trieRootHex } from "./emulator/catalogue.js";
+import { makeFaultProofEmulatorHarness } from "./emulator/harness.js";
+import { l2TransactionSourceCbor as l2TransactionSourceCborV1 } from "./emulator/native-tx.js";
 
 // ---------------------------------------------------------------------------
 // §8.4 tier selection arithmetic — the counts below are DERIVED from the

@@ -14,11 +14,11 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { isPrerequisiteTurn } from "../fault-proof-turn.js";
+import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
 import {
   faultProofFieldOpening,
-  planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
-} from "../field-opening.js";
+} from "../field-opening.publish-fault-proof-field-carriage.js";
 import { buildLinearFaultFinalize } from "../linear-fault-finalize.js";
 import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";

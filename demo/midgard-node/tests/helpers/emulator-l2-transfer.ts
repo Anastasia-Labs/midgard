@@ -10,12 +10,12 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
 import type { NodeUtxo } from "../../src/commands/command-utils.js";
-import { buildTransferTxWithMinFee } from "../../src/commands/submit-l2-transfer.js";
+import { buildTransferTxWithMinFee } from "../../src/commands/transfer-build-core.build-terminal-drain-tx.js";
 import type { BuiltTransferTx } from "../../src/commands/transfer-build-core.js";
 import { TxAdmissionsDB } from "../../src/database/index.js";
-import { txQueueProcessorDrainOnce } from "../../src/fibers/tx-queue-processor.js";
+import { txQueueProcessorDrainOnce } from "../../src/fibers/tx-queue-processor.tx-queue-processor-drain-once.js";
 import { Database } from "../../src/services/database.js";
-import { validationPoolLayer } from "../../src/services/validation-pool.js";
+import { validationPoolLayer } from "../../src/services/validation-pool.make-validation-pool.js";
 import { walletFromSeed } from "../deposit-flow-emulator-shared.js";
 import type { Lifecycle } from "./correction-admission-scenario.js";
 import { fetchLocalUtxos, toQueuedTx } from "./local-l2-transfer.js";

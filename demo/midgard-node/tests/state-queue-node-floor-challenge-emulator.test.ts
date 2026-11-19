@@ -9,9 +9,9 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
-import { availabilityParametersFromExplicitEnvironment } from "../src/services/index.js";
+import { availabilityParametersFromExplicitEnvironment } from "../src/services/midgard-contracts.load-reference-script-auth-validator.js";
 import { ensureAvailabilityChallengeRewardAccountsRegisteredProgram } from "../src/transactions/availability-challenge-registration.js";
-import { attestStateQueueOnceProgram } from "../src/transactions/da-attestation.js";
+import { attestStateQueueOnceProgram } from "../src/transactions/da-attestation.attest-state-queue-once-program.js";
 import {
   advanceEmulatorPastLatestBlockEndTime,
   DaPayloadsDB,

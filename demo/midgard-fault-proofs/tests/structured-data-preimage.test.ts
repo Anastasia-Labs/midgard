@@ -20,11 +20,9 @@ import {
   structuredDataTreeData,
 } from "../src/workflow/structured-data-preimage.js";
 import { createConfirmedActionJournal } from "./support/confirmed-action-journal.js";
-import {
-  captureEmulatorSubmission,
-  EMULATOR_PROTOCOL_PARAMETERS,
-  network,
-} from "./support/submit-init-emulator-shared.js";
+import { network } from "./support/emulator/blueprints.js";
+import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
+import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
 
 it("journals bounded structured Data publications and re-admits every exact output after restart", async () => {
   const account = generateEmulatorAccount({ lovelace: 5_000_000_000n });

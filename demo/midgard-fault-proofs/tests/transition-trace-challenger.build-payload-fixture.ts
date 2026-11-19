@@ -10,11 +10,9 @@ import {
   detectAuthenticatedFieldPreimageLengthEvidence,
   inDomainFieldPreimageLengthEvidence,
 } from "../src/field-preimage-length-mismatch/evidence.js";
-import {
-  buildCountedRoot,
-  reconstructDaPayload,
-  type TransitionTraceReconstruction,
-} from "../src/transition-trace/index.js";
+import { buildCountedRoot } from "../src/transition-trace/phas.js";
+import { reconstructDaPayload } from "../src/transition-trace/reconstruct.reconstruct-da-payload.js";
+import type { TransitionTraceReconstruction } from "../src/transition-trace/reconstruct.transition-trace-reconstruction.js";
 import { recordFixtureLedger } from "./support/fixture-ledger.js";
 import {
   canonicalPreimageByCommitment,

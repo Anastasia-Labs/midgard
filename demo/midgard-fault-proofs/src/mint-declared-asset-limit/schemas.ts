@@ -8,9 +8,9 @@ import { Data } from "@lucid-evolution/lucid";
 
 import {
   MintDeclaredAssetLimitAuthenticationStateSchema,
-  MintDeclaredAssetLimitDecisionStateSchema,
   MintDeclaredAssetLimitFoldStateSchema,
-} from "./family.js";
+} from "./family.advance-mint-declared-fold.js";
+import { MintDeclaredAssetLimitDecisionStateSchema } from "./family.mint-declared-fold-state-data.js";
 
 export const MintDeclaredAssetLimitStep01ArgsSchema = Data.Object({
   source: ProofThreadSubjectSourceSchema,

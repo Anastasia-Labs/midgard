@@ -50,7 +50,6 @@ import { Context, Effect, Layer, Option } from "effect";
 
 import { followerSqlTx } from "../database/follower-schema.js";
 import type { DriverHold } from "../l1-events/driver.js";
-import { NodeConfig } from "./config.js";
 import {
   refusalHoldsOver,
   type UnwrittenHold,
@@ -120,6 +119,7 @@ export {
   IntentJournalRefused,
   IntentSubmitHeld,
 } from "./intent-journal.refusals.js";
+import { NodeConfig } from "./config.js";
 
 /**
  * The journal's insert of one intent, recorded in the caller's transaction:

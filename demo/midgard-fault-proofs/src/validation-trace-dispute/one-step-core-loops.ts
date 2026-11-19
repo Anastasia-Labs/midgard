@@ -23,7 +23,6 @@ import {
   parseMidgardCekCanonicalIntegerCbor,
 } from "@al-ft/midgard-core";
 import {
-  type MidgardCekCoreStepWitness,
   midgardCekSerialiseHopData,
   midgardCekSerialiseLoopOf,
   midgardCekSerialiseStateData,
@@ -39,6 +38,7 @@ import {
   planMidgardCekStagedProductHop,
   planMidgardCekWriteBitsHops,
 } from "@al-ft/midgard-validation";
+import type { MidgardCekCoreStepWitness } from "@al-ft/midgard-validation/cek-machine";
 import type { Data } from "@lucid-evolution/lucid";
 
 /** The loop arms, by the semantic stage each is. */

@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
 
 import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
-import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
-import { Proof } from "@al-ft/midgard-sdk";
+import {
+  type FraudProofCatalogueCategoryName,
+  Proof,
+} from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
 
 import {
@@ -10,12 +12,12 @@ import {
   resolvePublishedProofChunks,
   splitProofIntoChunkDatums,
 } from "../publish-proof-chunks.js";
+import type { FraudProofWorkflowJournalEntry } from "./journal.fraud-proof-workflow-journal-event.js";
 import {
-  type FraudProofWorkflowJournalEntry,
   journalJsonDigest,
   type JournalJsonObject,
   normalizeJournalJson,
-} from "./journal.js";
+} from "./journal.fraud-proof-workflow-terminal.js";
 import type {
   FraudProofWorkflowAction,
   FraudProofWorkflowReconcileResult,

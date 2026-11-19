@@ -40,7 +40,7 @@ import {
   defensePocketAddress,
   nodeOwnWallets,
 } from "../src/services/intent-journal.tracked-set.js";
-import { handleSignSubmit } from "../src/transactions/utils.js";
+import { handleSignSubmit } from "../src/transactions/utils.await-submitted-transaction-confirmation.js";
 import {
   readSelectedWalletView,
   readWalletView,

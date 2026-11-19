@@ -7,7 +7,7 @@ import {
   type ProjectedEventTable,
   retrievePendingHeaderInstantCounts,
 } from "../../src/database/utils/projected-events.js";
-import { isolatedDb } from "./fixtures.js";
+import { isolatedDb } from "./fixtures.environment.js";
 export const registerPendingInstantCountCase = () => {
   it.effect(
     "retrieves complete pending inclusion instants before applying the group limit",

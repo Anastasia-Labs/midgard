@@ -4,23 +4,21 @@ import { vi } from "vitest";
 
 import { type SlotAwareDueWork } from "../src/fibers/slot-aware-due-work.js";
 import type { NodeConfigDep } from "../src/services/config.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
 import {
   FollowerWriteFixture,
   type FollowerWritePermit,
 } from "../src/services/follower-write-gate.js";
-import {
-  Globals,
-  MidgardContracts,
-  NodeConfig,
-} from "../src/services/index.js";
+import { Globals } from "../src/services/globals.globals.js";
 import { type IntentJournalService } from "../src/services/intent-journal.js";
 import { type MempoolLedgerCacheService } from "../src/services/mempool-ledger-cache.js";
-import { runCommitBlockHeaderWorkerProgram } from "../src/workers/commit-block-header.js";
+import { MidgardContracts } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
+import { runCommitBlockHeaderWorkerProgram } from "../src/workers/commit-block-header.run-commit-block-header-worker-program.js";
 import {
   type WorkerInput as CommitWorkerInput,
   type WorkerOutput as CommitWorkerOutput,
 } from "../src/workers/utils/commit-block-header.js";
-import { fetchRealStateQueueWitnessContext } from "../src/workers/utils/scheduler-refresh.js";
+import { fetchRealStateQueueWitnessContext } from "../src/workers/utils/scheduler-refresh.fetch-real-state-queue-witness-context.js";
 import { type EmulatorFixture } from "./deposit-flow-emulator-shared.make-fixture.js";
 import { runUserSubmissionOnEmulator } from "./deposit-flow-emulator-shared.submit-with-wallet.js";
 import { deriveEmulatorSubmitSlotSnapshot } from "./helpers/emulator-submit-slot-snapshot.js";

@@ -21,7 +21,7 @@ import {
   buildFaultProofFieldGrammarBatch,
   fieldGrammarCertificateAddress,
   resumeFaultProofFieldGrammar,
-} from "../field-grammar-certificate.js";
+} from "../field-grammar-certificate.certify-fault-proof-field-grammar.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
 import type { FraudProofSignedTransactionRecovery } from "../workflow/l1-source.js";

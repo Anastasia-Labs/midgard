@@ -12,7 +12,7 @@ import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { type TransitionDepositOpening } from "./history-opening.js";
 import { captureTransitionTraceL1Events } from "./l1-events.js";
 import { type TransitionProofInput } from "./proof-material.js";
-import { TRANSITION_TRACE_FINAL_REFERENCE_SCRIPT_ENTRIES } from "./submit.js";
+import { TRANSITION_TRACE_FINAL_REFERENCE_SCRIPT_ENTRIES } from "./submit.make-transition-trace-route-spend-redeemer.js";
 import { TRANSITION_TRACE_YIELD_REFERENCES } from "./yield-references.js";
 
 export const TRANSITION_TRACE_WORKFLOW_DATUM_SCHEMAS = Object.freeze([

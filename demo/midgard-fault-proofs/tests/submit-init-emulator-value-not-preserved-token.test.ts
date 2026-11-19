@@ -29,25 +29,25 @@ import { Data, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { submitRemoveFraudulentBlock } from "../src/index.js";
-import { expectStateQueueHeaderOrder } from "./support/submit-init-emulator-fixtures.js";
-import {
-  buildRemovalDeploymentInfo,
-  expectProofFit,
-  expectSingleUtxoWithUnit,
-  network,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
+import { expectProofFit } from "./support/emulator/proof-fit.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
+import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
 import {
   buildValueNotPreservedFixture,
-  makeValueNotPreservedEmulatorHarness,
-  publishValueNotPreservedReferenceScripts,
-  runValueNotPreservedThread,
-  setupValueNotPreservedScenario,
   vnpOutput,
   vnpOutRef,
   vnpValue,
-} from "./support/value-not-preserved-emulator.js";
+} from "./support/value-not-preserved-emulator.build-value-not-preserved-fixture.js";
+import { makeValueNotPreservedEmulatorHarness } from "./support/value-not-preserved-emulator.commit-header-after-anchor-block.js";
+import {
+  publishValueNotPreservedReferenceScripts,
+  runValueNotPreservedThread,
+  setupValueNotPreservedScenario,
+} from "./support/value-not-preserved-emulator.run-value-not-preserved-thread.js";
 
 const POLICY_ID_HEX = "ab".repeat(28);
 const ASSET_NAME_HEX = "746f6b"; // "tok"

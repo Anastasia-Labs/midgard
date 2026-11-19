@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { prepareWithdrawalMistagReplay } from "../src/withdrawal-mistag/replay.js";
-import { WITHDRAWAL_MISTAG_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
+import { WITHDRAWAL_MISTAG_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
 import { checkedLedgerAfter } from "./support/predecessor-ledger.js";
 import { withdrawalMistagRetainedFixture } from "./support/withdrawal-mistag-retained.js";
 

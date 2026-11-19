@@ -3,7 +3,7 @@ import { assetsToValue, type UTxO } from "@lucid-evolution/lucid";
 import {
   assertWorkflowActuationPermitIdentity,
   workflowActuationPermitIsReconciliationOnly,
-} from "./actuation-permit.js";
+} from "./actuation-permit.assert-workflow-actuation-permit-identity.js";
 import { isFinalWorkflowCompletion } from "./completion-finality.js";
 import { stateForJournal } from "./funding-reservation-permit.create-workflow-funding-reservation-permit.js";
 import { parseSnapshot } from "./funding-reservation-permit.parse-workflow-funding-snapshot.js";
@@ -16,12 +16,12 @@ import {
   commitWithJournal,
   type WorkflowJournalWriter,
 } from "./funding-reservation-permit.workflow-journal-writer.js";
-import {
-  type FraudProofWorkflowJournalEntry,
-  type FraudProofWorkflowJournalEvent,
-  type FraudProofWorkflowJournalStore,
-  validateFraudProofWorkflowJournal,
-} from "./journal.js";
+import { validateFraudProofWorkflowJournal } from "./journal.directory-fraud-proof-workflow-journal-store.js";
+import type {
+  FraudProofWorkflowJournalEntry,
+  FraudProofWorkflowJournalEvent,
+  FraudProofWorkflowJournalStore,
+} from "./journal.fraud-proof-workflow-journal-event.js";
 import type { SignedWorkflowTransactionRetirement } from "./signed-transaction-retirement.js";
 
 const clearAction = (state: PermitState): void => {

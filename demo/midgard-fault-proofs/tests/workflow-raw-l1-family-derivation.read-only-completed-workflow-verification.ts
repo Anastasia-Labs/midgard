@@ -2,27 +2,27 @@ import { FraudProofTokenDatum } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { verifyCompletedFraudProofWorkflow } from "../src/workflow/completed-verification.js";
+import type { FraudProofWorkflowJournalEntry } from "../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import {
-  computeFraudProofRawL1PointId,
   computeFraudProofWorkflowId,
-  deriveFraudProofRawL1CompletedTerminal,
-  FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-  type FraudProofWorkflowJournalEntry,
   type FraudProofWorkflowTerminal,
   journalJsonDigest,
-  verifyCompletedFraudProofWorkflow,
-} from "../src/workflow/index.js";
+} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
+import { deriveFraudProofRawL1CompletedTerminal } from "../src/workflow/raw-l1-family-derivation.derive-fraud-proof-raw-l1-family-stage.js";
+import { computeFraudProofRawL1PointId } from "../src/workflow/raw-l1-snapshot.admit-fraud-proof-raw-l1-transaction.js";
+import { FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY } from "../src/workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
+import { fixture } from "./support/raw-l1-terminal-fixture.fixture.js";
 import {
   DEPLOYMENT,
-  fixture,
   hash32,
   policy,
   releaseEconomics,
   releaseFinality,
-} from "./support/raw-l1-terminal-fixture.js";
-import { rollBackTerminalFixture } from "./support/raw-l1-terminal-fixture.js";
+} from "./support/raw-l1-terminal-fixture.output.js";
+import { rollBackTerminalFixture } from "./support/raw-l1-terminal-fixture.roll-back-terminal-fixture.js";
 
 describe("read-only completed workflow verification", () => {
   const completed = async () => {

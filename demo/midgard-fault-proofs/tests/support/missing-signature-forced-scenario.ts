@@ -19,7 +19,7 @@ import {
 import { buildMissingSignatureForcedAction } from "../../src/missing-signature/submit-forced.js";
 import { buildMissingSignatureInit } from "../../src/missing-signature/submit-missing-signature-init.js";
 import type { PreparedMissingSignatureWrongfulRejection } from "../../src/missing-signature/wrongful-rejection.js";
-import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.js";
+import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import { requireComputationThreadToken } from "../../src/step-support.js";
 import { buildCountedRoot } from "../../src/transition-trace/phas.js";
 import { forcedTransactionSubject } from "../../src/workflow/detection-subject.js";
@@ -31,12 +31,12 @@ import { alignUnixTimeToEmulatorSlotBoundary } from "./emulator/emulator-context
 import { captureEmulatorSubmission } from "./emulator/measurement.js";
 import { expectProofFit } from "./emulator/proof-fit.js";
 import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.js";
-import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.js";
+import { publishRemovalReferenceScripts } from "./emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.build-removal-deployment-info.js";
 import { submitSetupTx } from "./emulator/setup-tx.js";
-import { makeMissingSignatureEmulatorHarness } from "./missing-signature-emulator.js";
+import { makeMissingSignatureEmulatorHarness } from "./missing-signature-emulator.build-missing-signature-subject.js";
 import { buildMissingSignatureForcedTransaction as transactionFor } from "./missing-signature-forced-shapes.js";
-import { buildInvalidForcedTransitionTraceFixture } from "./submit-init-emulator-fixtures.js";
-import { publishRemovalReferenceScripts } from "./submit-init-emulator-shared.js";
+import { buildInvalidForcedTransitionTraceFixture } from "./submit-init/forced-transitions.js";
 import {
   buildAndSubmitUnjournaled,
   certifyCarriageUnjournaled,

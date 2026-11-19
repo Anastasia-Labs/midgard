@@ -22,14 +22,14 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { ForcedTransactionsDB } from "../src/database/index.js";
+import { forcedOrderTrackedSet } from "../src/forced-orders/config.js";
 import {
   FORCED_ORDER_CARRIAGE_PENDING,
   FORCED_ORDER_INGESTION_FAILED,
-  FORCED_ORDERS_TABLE,
-  forcedOrderProjection,
-  forcedOrderTrackedSet,
   NO_CONTENT_SOURCE,
-} from "../src/forced-orders/index.js";
+} from "../src/forced-orders/ingest.js";
+import { forcedOrderProjection } from "../src/forced-orders/projection.js";
+import { FORCED_ORDERS_TABLE } from "../src/forced-orders/schema.js";
 import {
   createFollowerDriver,
   type FollowerEventSink,

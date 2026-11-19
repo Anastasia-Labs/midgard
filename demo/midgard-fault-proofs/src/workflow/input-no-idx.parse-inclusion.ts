@@ -9,11 +9,11 @@ import {
 import {
   parseSubmitInputNoIdxInputsPreimage,
   type SubmitInputNoIdxInputsPreimage,
-} from "../submit-input-no-idx-step-02.js";
+} from "../submit-input-no-idx-step-02.parse-submit-input-no-idx-inputs-preimage.js";
 import {
   parseSubmitInputNoIdxOutputsPreimage,
   type SubmitInputNoIdxOutputsPreimage,
-} from "../submit-input-no-idx-step-04.js";
+} from "../submit-input-no-idx-step-04.make-input-no-idx-step04-spend-redeemer.js";
 import { type JournalJsonObject } from "./journal.js";
 
 export const INPUT_NO_IDX_ARTIFACT =

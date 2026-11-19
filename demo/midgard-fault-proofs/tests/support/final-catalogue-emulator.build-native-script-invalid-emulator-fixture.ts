@@ -13,12 +13,12 @@ import { missingSignatureVkeyHash } from "@al-ft/midgard-sdk";
 
 import type { PreparedNativeScriptInvalid } from "../../src/native-script-invalid/prepare.js";
 import { nativeTxFromCoreCompact } from "../../src/step-support.js";
-import { nativeWitnessSet } from "./final-catalogue-emulator.build-min-ada-tx-emulator-fixture.js";
+import { trieRootHex } from "./emulator/catalogue.js";
 import {
   l2TransactionSourceCbor as l2TransactionSourceCborV1,
   makeNativeTx,
-  trieRootHex,
-} from "./submit-init-emulator-shared.js";
+} from "./emulator/native-tx.js";
+import { nativeWitnessSet } from "./final-catalogue-emulator.build-min-ada-tx-emulator-fixture.js";
 
 const sortedAddressWitnesses = (count: number) =>
   Array.from({ length: count }, (_, index) => {

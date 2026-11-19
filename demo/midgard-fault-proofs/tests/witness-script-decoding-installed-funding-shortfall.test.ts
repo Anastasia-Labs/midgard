@@ -47,7 +47,7 @@ vi.mock("../src/workflow/family-l1-observation.js", async (load) => {
   };
 });
 
-import { WORKFLOW_FUNDING_SHORTFALL } from "../src/workflow/funding-reservation-permit.js";
+import { WORKFLOW_FUNDING_SHORTFALL } from "../src/workflow/funding-reservation-permit.workflow-funding-shortfall.js";
 import {
   drainProverToOneCoin,
   sendTokenCoin,

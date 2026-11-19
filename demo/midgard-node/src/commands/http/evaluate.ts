@@ -3,19 +3,19 @@ import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile
 import {
   evaluateMidgardTxRedeemers,
   type MidgardTxRedeemerEvaluation,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/phase-b";
 import { HttpServerRequest, HttpServerResponse } from "@effect/platform";
 import { Effect, Option } from "effect";
 
 import { canonicalSlotConfigForLucid } from "../../lucid-time.js";
+import { NodeConfig } from "../../services/index.js";
+import { Lucid } from "../../services/lucid.js";
+import { MempoolLedgerCache } from "../../services/mempool-ledger-cache.mempool-ledger-cache-service.js";
 import {
-  Lucid,
-  MempoolLedgerCache,
-  NodeConfig,
   ValidationPool,
   type ValidationPoolService,
   ValidationWorkerError,
-} from "../../services/index.js";
+} from "../../services/validation-pool.bundled-worker-exec-argv.js";
 import {
   readSubmitBodyWithProtocolLimit,
   requestMediaType,

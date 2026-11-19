@@ -13,9 +13,11 @@ import {
   OPERATOR_REMOVED,
   type OperatorMembership,
   publishOperatorMembership,
-} from "../src/l1-operator-set/index.js";
-import { withL1ControlPlane } from "../src/services/globals.globals.js";
-import { Globals } from "../src/services/globals.js";
+} from "../src/l1-operator-set/membership.js";
+import {
+  Globals,
+  withL1ControlPlane,
+} from "../src/services/globals.globals.js";
 import {
   activeLivenessReasons,
   FIBER_HALT_SOURCES,

@@ -2,9 +2,9 @@ import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "@al-ft/midgard-sdk";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { WATCHER_FAULT_PROOF_QUARANTINED } from "../../src/fault-proofs/fault-proof-quarantine.js";
-import { WatcherRetainedHeaderAttestationPendingError } from "../../src/indexers/authenticated-state-queue-observation.js";
+import { WatcherRetainedHeaderAttestationPendingError } from "../../src/indexers/authenticated-state-queue-observation.parse-persisted-header.js";
 import { setupFaultProofExecution } from "../support/fault-proof-execution-fixture.js";
-import { cleanupFundingRecoveryFixtures } from "../support/fault-proof-funding-fixture.js";
+import { cleanupFundingRecoveryFixtures } from "../support/fault-proof-funding-fixture.sources-for.js";
 import { harness } from "./fault-decision-bridge.harness.js";
 import {
   type decision,

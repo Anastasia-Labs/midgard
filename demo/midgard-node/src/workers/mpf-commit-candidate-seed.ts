@@ -16,7 +16,8 @@ import {
 } from "../database/index.js";
 import * as Ledger from "../database/utils/ledger.js";
 import * as Tx from "../database/utils/tx.js";
-import { Database, NodeConfig } from "../services/index.js";
+import { NodeConfig } from "../services/config.make-config.js";
+import { Database } from "../services/database.js";
 import { sha256Hex } from "../sha256.js";
 import { batchProgram, breakDownTx } from "../utils.js";
 import {

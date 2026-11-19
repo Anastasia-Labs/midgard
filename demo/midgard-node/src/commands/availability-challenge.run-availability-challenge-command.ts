@@ -24,7 +24,7 @@ import {
   assertAvailabilityAccessServed,
   availabilityCommandCanonicalSource,
 } from "./availability-challenge-source.js";
-import { readDeploymentManifestFile } from "./contract-deployment-info.js";
+import { readDeploymentManifestFile } from "./contract-deployment-info.build-deployment-manifest.js";
 import {
   commandLucid,
   selectToolL1Access,

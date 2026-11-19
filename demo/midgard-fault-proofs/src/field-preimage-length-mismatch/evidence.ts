@@ -11,11 +11,9 @@ import {
   canonicalBlockEvidenceFromVerifiedPayload,
 } from "../evidence/canonical-block-evidence.js";
 import { claimedIndex } from "../evidence/claimed-coordinate.js";
-import {
-  fetchRetainedDaPayloadByHeaderHash,
-  type RetainedDaPayloadSource,
-} from "../transition-trace/fetch.js";
-import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
+import type { RetainedDaPayloadSource } from "../transition-trace/fetch.admit-retained-da-provenance.js";
+import { fetchRetainedDaPayloadByHeaderHash } from "../transition-trace/fetch.fetch-retained-da-payload-by-header-hash.js";
+import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.build-source-membership-proof.js";
 import type { CanonicalViolationDetection } from "../workflow/classification.js";
 import { forcedTransactionSubject } from "../workflow/detection-subject.js";
 import type { FieldPreimageLengthStage } from "./config.js";

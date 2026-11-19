@@ -16,7 +16,7 @@
  * A queue the follower cannot read throws: S6 keeps the intent live and
  * raises its transient hold.
  */
-import { landedStateQueueIn } from "../l1-state-queue/index.js";
+import { landedStateQueueIn } from "../l1-state-queue/landed.js";
 import {
   count,
   keyRest,

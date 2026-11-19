@@ -19,8 +19,8 @@ import * as OperatorCommands from "./transactions/operators/commands.js";
 import {
   liveReferenceScriptDeployment,
   referenceScriptSweepLimitsFromProtocolParameters,
-  sweepRetiredReferenceScriptsProgram,
-} from "./transactions/reference-script-sweep.js";
+} from "./transactions/reference-script-sweep.reference-script-fee.js";
+import { sweepRetiredReferenceScriptsProgram } from "./transactions/reference-script-sweep.sweep-retired-reference-scripts-program.js";
 import * as RegisterActiveOperator from "./transactions/register-active-operator.js";
 
 /** The current protocol parameters as the sweep and strip batch limits. */

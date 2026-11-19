@@ -6,7 +6,6 @@ import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
-import { STATE_QUEUE_NODE_ASSET_NAME_PREFIX } from "@al-ft/midgard-sdk";
 import {
   EMPTY_MERKLE_TREE_ROOT,
   type FaultProofBlueprint,
@@ -17,6 +16,7 @@ import {
   parseFaultProofBlueprint,
   REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
   ScriptHashSchema,
+  STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
 } from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -29,10 +29,8 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import {
-  resolveFraudulentHeaderHash,
-  resolveProverSigner,
-} from "../src/index.js";
+import { resolveFraudulentHeaderHash } from "../src/runtime.resolve-fraudulent-header-hash.js";
+import { resolveProverSigner } from "../src/runtime.resolve-prover-signer.js";
 
 const seedPhrase =
   "test test test test test test test test test test test junk";

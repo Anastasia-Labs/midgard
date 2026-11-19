@@ -9,8 +9,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   createWatcherFaultProofSupervisor,
   unsafeCreateWatcherFaultProofSupervisorForTest,
-  type WatcherFaultProofJob,
-} from "../../src/fault-proofs/fault-proof-supervisor.js";
+} from "../../src/fault-proofs/fault-proof-supervisor.create-watcher-fault-proof-supervisor.js";
+import type { WatcherFaultProofJob } from "../../src/fault-proofs/fault-proof-supervisor.validate-job.js";
 import { WatcherProofDecisionMissingError } from "../../src/fault-proofs/watcher-decision-hold.js";
 import { createWatcherWorkflowJournal } from "../../src/fault-proofs/watcher-workflow-journal.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";

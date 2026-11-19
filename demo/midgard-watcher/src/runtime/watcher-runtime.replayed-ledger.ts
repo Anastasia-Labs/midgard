@@ -16,11 +16,9 @@ import { createWatcherFollowerReplaySource } from "../l1-follower/replay-source.
 import { createWatcherFollowerUserEvents } from "../l1-follower/user-events.js";
 import { registerWatcherDaFetcher } from "../storage/retained-da-runtime.js";
 import type { VerifiedWatcherDeploymentAuthority } from "./deployment-authority.js";
-import {
-  readWatcherUserEventScriptBinding,
-  watcherDeploymentProtocolScriptAuthority,
-  watcherDeploymentReleaseFinalityPolicy,
-} from "./deployment-identity.js";
+import { readWatcherUserEventScriptBinding } from "./deployment-identity.js";
+import { watcherDeploymentProtocolScriptAuthority } from "./deployment-identity.verify-watcher-user-event-script-binding.js";
+import { watcherDeploymentReleaseFinalityPolicy } from "./deployment-identity.watcher-deployment-availability-challenge-authority.js";
 import type { WatcherOperationsSink } from "./operations-observability.js";
 
 /**

@@ -1,9 +1,7 @@
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 
-import {
-  admitFraudProofRawL1Point,
-  type FraudProofRawL1Point,
-} from "./raw-l1-snapshot.js";
+import { admitFraudProofRawL1Point } from "./raw-l1-snapshot.admit-fraud-proof-raw-l1-transaction.js";
+import type { FraudProofRawL1Point } from "./raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
 
 /** Persisted receipt of the authenticated canonical observation that retired exact bytes. */
 export type SignedWorkflowTransactionRetirement = Readonly<{

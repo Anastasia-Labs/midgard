@@ -7,11 +7,11 @@ import {
   type MinFeeCatalogueCategory,
   minFeeSubmitError,
 } from "./min-fee-submit-common.js";
-import {
-  buildResolvedInit,
-  type ResolvedInitBuild,
-  type SubmitResolvedInitParams,
-} from "./submit-init.js";
+import type {
+  ResolvedInitBuild,
+  SubmitResolvedInitParams,
+} from "./submit-init.resolve-non-existent-input-no-index-init.js";
+import { buildResolvedInit } from "./submit-init.submit-resolved-init.js";
 
 export type MinFeeInitBuild = ResolvedInitBuild;
 

@@ -1,6 +1,6 @@
 /** The `executionSourceScriptDecoding` family's emulator prover: its plan
  * with the kit's field plans, as the walk-keyed driver takes it. */
-import { directPurposeFieldPlans } from "../../src/direct-purpose-family/index.js";
+import { directPurposeFieldPlans } from "../../src/direct-purpose-family/custody.js";
 import {
   type ExecutionSourceScriptDecodingProofPlan,
   prepareExecutionSourceScriptDecodingProof,

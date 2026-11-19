@@ -14,14 +14,14 @@ import { describe, expect, it } from "vitest";
 
 import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
 import { authenticateFabricatedHistoryWitness } from "../src/fabricated-history-witness.js";
-import { fabricatedDepositBlockEvidenceFromVerifiedPayload } from "../src/prepare-fabricated-deposit.js";
+import { fabricatedDepositBlockEvidenceFromVerifiedPayload } from "../src/prepare-fabricated-deposit.prepare-fabricated-deposit-from-committed-leaves.js";
 import {
   createFabricatedDepositEvidenceAuthority,
   FABRICATED_DEPOSIT_ARTIFACT,
   type FabricatedDepositArtifact,
   requireFabricatedDepositArtifact,
 } from "../src/workflow/fabricated-deposit-evidence.js";
-import { normalizeJournalJson } from "../src/workflow/journal.js";
+import { normalizeJournalJson } from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import {
   AUTHENTIC_DEPOSIT_ID,
   buildDepositsBlockFixture,

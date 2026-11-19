@@ -5,10 +5,10 @@ import { CML } from "@lucid-evolution/lucid";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
-import { createWorkflowReconciliationPermitController } from "../src/workflow/actuation-permit.js";
-import { COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
-import { createCursorFamilyWorkflowAdapter } from "../src/workflow/cursor-family-adapter.js";
-import { CURSOR_FAMILY_TRANSACTION_PORT } from "../src/workflow/cursor-family-adapter.js";
+import { createWorkflowReconciliationPermitController } from "../src/workflow/actuation-permit.create-workflow-reconciliation-permit-controller.js";
+import { COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.replay-context-identity.js";
+import { CURSOR_FAMILY_TRANSACTION_PORT } from "../src/workflow/cursor-family-adapter.admit-reference-scripts.js";
+import { createCursorFamilyWorkflowAdapter } from "../src/workflow/cursor-family-adapter.create-cursor-family-workflow-adapter.js";
 import { BLOCK_SUBJECT } from "../src/workflow/detection-subject.js";
 import { FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT } from "../src/workflow/family-l1-observation.js";
 import * as funding from "../src/workflow/funding-reservation-permit.js";
@@ -16,26 +16,24 @@ import {
   HEADER_CLASSIFIER,
   HEADER_DECISION,
   type HeaderFaultDecision,
-} from "../src/workflow/header-classifier.js";
+} from "../src/workflow/header-classifier.authenticated-state-queue-observation-digest.js";
+import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
+import type { FraudProofWorkflowJournalEvent } from "../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import {
   computeFraudProofWorkflowId,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-  type FraudProofWorkflowJournalEvent,
   journalJsonDigest,
   type JournalJsonObject,
-  MemoryFraudProofWorkflowJournalStore,
   normalizeJournalJson,
-} from "../src/workflow/journal.js";
-import {
-  createFraudProofWorkflowRegistry,
-  runFraudProofWorkflow,
-} from "../src/workflow/orchestrator.js";
+} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
   type FraudProofFamilyWorkflowAdapter,
-} from "../src/workflow/orchestrator.js";
+} from "../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
+import { createFraudProofWorkflowRegistry } from "../src/workflow/orchestrator.immutable-fraud-proof-workflow-registry.js";
+import { runFraudProofWorkflow } from "../src/workflow/orchestrator.run-da-hash-preimage-workflow-from-retained-da.js";
 import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../src/workflow/raw-l1-publication-observation.js";
 import {
   computeFraudProofReleaseFinalityPolicyDigest,

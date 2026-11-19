@@ -22,6 +22,7 @@ import {
   makeDirectWalkHarness,
   publishDirectWalkRoles,
 } from "./support/direct-walk-emulator.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
 import { scriptAddress } from "./support/missing-redeemer-emulator.purposes.js";
 import {
   honestForcedObserverShape,
@@ -31,7 +32,6 @@ import {
   plutusScript,
   setupMissingRedeemerScenario,
 } from "./support/missing-redeemer-emulator.subject.js";
-import { expectSingleUtxoWithUnit } from "./support/submit-init-emulator-shared.js";
 import {
   driveUnusedRedeemerThread,
   unusedRedeemerVerdict,

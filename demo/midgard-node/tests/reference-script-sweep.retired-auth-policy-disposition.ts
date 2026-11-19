@@ -8,7 +8,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { decideRetiredAuthPolicyDisposition } from "../src/transactions/reference-script-sweep.js";
+import { decideRetiredAuthPolicyDisposition } from "../src/transactions/reference-script-sweep.select-retired-reference-script-utxos.js";
 import {
   plan,
   refusalCheck,

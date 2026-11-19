@@ -6,8 +6,8 @@
  */
 import type { HeaderFaultDecision } from "@al-ft/midgard-fault-proofs";
 
-import { openWatcherFaultDecisionJournal } from "../../src/fault-proofs/fault-decision-journal.js";
-import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.js";
+import { openWatcherFaultDecisionJournal } from "../../src/fault-proofs/fault-decision-journal.create-journal.js";
+import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
 import { TEST_JOURNAL_KEY } from "./watcher-journal-fixture.js";
 
 export { authorizeWatcherProverFundingRecovery } from "../../src/funding/prover-funding-recovery.js";

@@ -37,10 +37,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import {
   createCompleteCanonicalReplayUnion,
-  TRANSACTION_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
   VALUE_NOT_PRESERVED_COMPLETE_CANONICAL_REPLAY,
-} from "../src/workflow/complete-replay.js";
-import { classifyHeader } from "../src/workflow/header-classifier.js";
+} from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
+import { TRANSACTION_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
+import { classifyHeader } from "../src/workflow/header-classifier.classify-header.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,

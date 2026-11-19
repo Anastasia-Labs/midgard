@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import { type HeaderDecision } from "@al-ft/midgard-fault-proofs";
 
-import { watcherCanonicalJson } from "../storage/durable-store.js";
+import { watcherCanonicalJson } from "../storage/durable-store.canonical-json.js";
 import type { WatcherInstalledWorkflowCategory } from "./fault-proof-application.js";
 
 export const WATCHER_FAULT_DECISION_JOURNAL_SCHEMA_VERSION =

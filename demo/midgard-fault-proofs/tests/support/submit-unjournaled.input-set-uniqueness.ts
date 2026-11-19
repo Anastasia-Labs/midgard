@@ -3,15 +3,15 @@
  * that builds its step and submits it with no journal (see
  * ./submit-unjournaled.ts).
  */
+import { buildInputSetUniquenessForcedStep01 } from "../../src/input-set-uniqueness/submit-input-set-uniqueness-forced-step-01.js";
+import { buildInputSetUniquenessInit } from "../../src/input-set-uniqueness/submit-input-set-uniqueness-init.js";
+import { buildInputSetUniquenessStep01 } from "../../src/input-set-uniqueness/submit-input-set-uniqueness-step-01.js";
+import { buildInputSetUniquenessStep02 } from "../../src/input-set-uniqueness/submit-input-set-uniqueness-step-02.submit-input-set-uniqueness-step02.js";
+import { buildInputSetUniquenessStep03 } from "../../src/input-set-uniqueness/submit-input-set-uniqueness-step-03.js";
 import {
-  buildInputSetUniquenessForcedStep01,
-  buildInputSetUniquenessInit,
-  buildInputSetUniquenessStep01,
-  buildInputSetUniquenessStep02,
-  buildInputSetUniquenessStep03,
   buildInputSetUniquenessStep04Advance,
   buildInputSetUniquenessStep04Finalize,
-} from "../../src/input-set-uniqueness/index.js";
+} from "../../src/input-set-uniqueness/submit-input-set-uniqueness-step-04.js";
 import { unjournaled, unjournaledTurns } from "./submit-unjournaled.js";
 
 export const submitInputSetUniquenessForcedStep01 = unjournaled(

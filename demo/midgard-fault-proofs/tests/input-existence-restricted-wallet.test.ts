@@ -11,20 +11,20 @@ import { prepareInputExistence } from "../src/input-existence/prepare.js";
 import { buildInputExistenceStep } from "../src/input-existence/submit.js";
 import { checkLedgerAgainstRoot } from "../src/ledger-at.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
+import {
+  alignUnixTimeToEmulatorSlotBoundary,
+  funderPaymentKeyHash,
+} from "./support/emulator/emulator-context.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { runInputExistenceRoute } from "./support/emulator/input-existence-route.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
-import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
+import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
+import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.build-decoding-block-fixture.js";
 import {
   fundReservedCoin,
   restrictedProverFunding,
 } from "./support/restricted-prover-funding.js";
-import { registerPexcludesExclusionRewardAccount } from "./support/submit-init-emulator-fixtures.js";
-import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  funderPaymentKeyHash,
-  submitSetupTx,
-} from "./support/submit-init-emulator-shared.js";
+import { registerPexcludesExclusionRewardAccount } from "./support/submit-init/wallet.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 describe("non-existent-input steps under the watcher's restricted wallet", () => {

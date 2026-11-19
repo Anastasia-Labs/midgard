@@ -2,10 +2,8 @@
  * The startup rebuild of the first-seen input claims
  * (`admission-input-claims.ts`) from the durable admission backlog.
  */
-import {
-  decodeMidgardSubmittedNativeTxFromCanonicalCbor,
-  midgardOutRefToCborHex,
-} from "@al-ft/midgard-validation";
+import { midgardOutRefToCborHex } from "@al-ft/midgard-validation";
+import { decodeMidgardSubmittedNativeTxFromCanonicalCbor } from "@al-ft/midgard-validation/ledger-tx/codec";
 import { Effect } from "effect";
 
 import * as TxAdmissionsDB from "../database/txAdmissions.js";
@@ -16,7 +14,7 @@ import {
   UNKNOWN_SPENDABLE_VIEW,
 } from "./admission-input-claims.js";
 import { Database } from "./database.js";
-import { Globals } from "./globals.js";
+import { Globals } from "./globals.globals.js";
 import {
   ADMISSION_BACKLOG_UNREAD,
   retryStartupStep,

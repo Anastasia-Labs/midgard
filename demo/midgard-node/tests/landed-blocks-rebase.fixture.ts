@@ -22,7 +22,7 @@ import {
 } from "../src/landed-blocks/store.js";
 import type { NodeConfig } from "../src/services/config.js";
 import type { Database } from "../src/services/database.js";
-import { Globals } from "../src/services/globals.js";
+import { Globals } from "../src/services/globals.globals.js";
 import { currentLivenessReasons } from "../src/services/globals.liveness-reasons.js";
 import {
   type NativeMpfOwnerService,

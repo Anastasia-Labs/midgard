@@ -16,13 +16,12 @@ import {
   type HeaderRoot,
   retrieveRows,
 } from "../landed-blocks/store.js";
-import {
-  computeLedgerMpfRootFromLedgerEntries,
-  utxoToLedgerInsertMaterial,
-} from "../mpf/index.js";
+import { computeLedgerMpfRootFromLedgerEntries } from "../mpf/index.js";
+import { utxoToLedgerInsertMaterial } from "../mpf/ledger-hydration.js";
 import { checkLedgerRoot } from "../mpf/local-ledger-divergence.js";
 import { ForeignBlockVerificationError } from "../mpf/verified-block-import.js";
-import { Database, NodeConfig } from "../services/index.js";
+import { NodeConfig } from "../services/config.make-config.js";
+import { Database } from "../services/database.js";
 import { verifiedLandedLedgerAt } from "./commit-block-header.landed-commit-base.js";
 import {
   deserializeStateQueueUTxO,

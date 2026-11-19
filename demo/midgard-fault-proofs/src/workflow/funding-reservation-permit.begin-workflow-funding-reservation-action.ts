@@ -4,7 +4,7 @@ import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deploym
 import { type TxSigned } from "@lucid-evolution/lucid";
 
 import { proofMaterialsAddressOfFundingAddress } from "../funding/proof-materials-address.js";
-import { workflowActuationPermitIsReconciliationOnly } from "./actuation-permit.js";
+import { workflowActuationPermitIsReconciliationOnly } from "./actuation-permit.assert-workflow-actuation-permit-identity.js";
 import {
   actionKind,
   refresh,

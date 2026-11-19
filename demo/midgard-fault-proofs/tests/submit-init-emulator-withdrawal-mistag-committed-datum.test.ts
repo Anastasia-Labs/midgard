@@ -7,26 +7,28 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it, vi } from "vitest";
 
+import { prepareWithdrawalMistag } from "../src/withdrawal-mistag/prepare-withdrawal-mistag.js";
 import {
   buildWithdrawalMistagStep01,
   buildWithdrawalMistagStep02,
   buildWithdrawalMistagStep03,
   buildWithdrawalMistagStep04,
-  prepareWithdrawalMistag,
-} from "../src/withdrawal-mistag/index.js";
+} from "../src/withdrawal-mistag/submit-withdrawal-mistag-steps.submit-withdrawal-mistag-intermediate-step.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
-import { expectSingleUtxoWithUnit } from "./support/submit-init-emulator-shared.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 import {
   buildWithdrawalMistagEvidenceMaterial,
+  makeWithdrawalMistagEmulatorHarness,
+} from "./support/withdrawal-mistag-emulator.build-withdrawal-mistag-evidence-material.js";
+import {
   driveWithdrawalMistagToFraud,
   initWithdrawalMistagThread,
-  makeWithdrawalMistagEmulatorHarness,
   publishWithdrawalMistagScripts,
   removeWithdrawalMistagBlock,
   setupWithdrawalMistagScenario,
   withdrawalMistagBlockUtxo,
-} from "./support/withdrawal-mistag-emulator.js";
+} from "./support/withdrawal-mistag-emulator.drive-withdrawal-mistag-to-fraud.js";
 
 // The preparer refuses honest evidence off-chain. To reach the validator with
 // it, the honest case lets the preparer label it instead of throwing; every

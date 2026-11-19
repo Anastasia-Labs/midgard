@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { WatcherPublicDaLibp2pTransport } from "../../src/storage/public-da-libp2p-transport.js";
-import { watcherRetainedDaTransportRetryDelayMs } from "../../src/storage/retained-da-runtime.create-watcher-retained-da-runtime-owner.js";
-import { createWatcherRetainedDaRuntimeOwner } from "../../src/storage/retained-da-runtime.js";
-import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
+import {
+  createWatcherRetainedDaRuntimeOwner,
+  watcherRetainedDaTransportRetryDelayMs,
+} from "../../src/storage/retained-da-runtime.create-watcher-retained-da-runtime-owner.js";
+import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.build-watcher-deployment-authority-fixture.js";
 import {
   admittedConfig,
   PEER_ID,

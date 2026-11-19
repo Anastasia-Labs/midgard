@@ -8,6 +8,11 @@
 import { outRefToCbor } from "@al-ft/lucid-midgard";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  encodeEventToStepValueCbor,
+  encodeTransitionIntegerCbor,
+  encodeTransitionStepCbor,
+} from "@al-ft/midgard-fault-proofs/block-replay";
 import type {
   FactStore,
   FactStoreOptions,
@@ -17,9 +22,9 @@ import type {
 } from "@al-ft/midgard-l1-follower";
 import {
   eventProjection,
+  eventsAt,
   eventTrackedSet,
 } from "@al-ft/midgard-l1-follower/events";
-import { eventsAt } from "@al-ft/midgard-l1-follower/events";
 import type { SimTx } from "@al-ft/midgard-l1-follower/testing";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
@@ -27,26 +32,19 @@ import { Effect } from "effect";
 
 import { foreignRetainedDaInsert } from "../src/da/foreign-retained-da.js";
 import { DaPayloadsDB } from "../src/database/index.js";
-import {
-  forcedOrderProjection,
-  forcedOrderTrackedSet,
-} from "../src/forced-orders/index.js";
+import { forcedOrderTrackedSet } from "../src/forced-orders/config.js";
+import { forcedOrderProjection } from "../src/forced-orders/projection.js";
 import { readUserEvent } from "../src/l1-events/entries.js";
 import type { ReplayInput } from "../src/landed-blocks/replay.js";
 import { replayForeignBlock } from "../src/landed-blocks/replay-foreign.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../src/mpf/ledger-hydration.js";
 import { eventKeyCbor } from "../src/mpf/trace-events.js";
-import {
-  encodeEventToStepValueCbor,
-  encodeTransitionIntegerCbor,
-  encodeTransitionStepCbor,
-} from "../src/mpf/transition-cbor.js";
-import { NodeConfig } from "../src/services/config.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
 import type { Database } from "../src/services/database.js";
 import { withFollowerWrite } from "../src/services/follower-write-gate.js";
-import { Globals } from "../src/services/globals.js";
+import { Globals } from "../src/services/globals.globals.js";
 import { Lucid } from "../src/services/lucid.js";
-import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.js";
+import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   countsFromLengths,
   headerFor,

@@ -3,22 +3,26 @@ import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
-  buildTransactionsSourceRoot,
-  buildTransitionTraceResult,
   configureMpfPathHydration,
   getMpfPathHydrationConfig,
+  setMpfScratchBuild,
+} from "../mpf/engine-config.js";
+import type { MpfReplayCorpusBlock } from "../mpf/replay-corpus.js";
+import { MidgardMpf } from "../mpf/store.midgard-mpf.js";
+import type { TransitionTraceSourceEvent } from "../mpf/trace-events.js";
+import { buildTransactionsSourceRoot } from "../mpf/transition-trace.apply-trace-ledger-ops-to-mpf.js";
+import { buildTransitionTraceResult } from "../mpf/transition-trace.build-transition-trace-result.js";
+import type { MpfBatchOp } from "../mpf/types.js";
+import { buildAuthenticatedRootFromEncodedEntries } from "../workers/commit-block-header/transition-roots.validate-count-proof.js";
+import {
   keyValuePhasNonMembershipProof,
   keyValuePhasProof,
   keyValuePhasRoot,
-  MidgardMpf,
-  type MpfBatchOp,
-  type MpfReplayCorpusBlock,
-  setMpfScratchBuild,
-  type TransitionTraceSourceEvent,
+} from "../workers/utils/mpf/phas.key-value-phas-non-membership-proof.js";
+import {
   verifyKeyValuePhasMembershipProof,
   verifyKeyValuePhasNonMembershipProof,
-} from "../mpf/index.js";
-import { buildAuthenticatedRootFromEncodedEntries } from "../workers/commit-block-header/transition-roots.js";
+} from "../workers/utils/mpf/phas.traverse-phas-proof.js";
 
 export type ReplayRoots = MpfReplayCorpusBlock["expected"];
 

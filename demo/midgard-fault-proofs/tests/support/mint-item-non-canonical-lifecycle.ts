@@ -19,25 +19,25 @@ import { expect } from "vitest";
 import { buildCommittedFieldShapeInit } from "../../src/committed-field-shape/submit-committed-field-shape-init.js";
 import {
   applyMintItemNonCanonicalScripts,
-  buildMintItemNonCanonicalCancel,
-  createManifestBoundMintItemNonCanonicalSubmission,
   MINT_ITEM_NON_CANONICAL_BLUEPRINT_TITLES,
   type MintItemNonCanonicalContracts,
-  prepareMintItemEvidence,
-} from "../../src/mint-item-non-canonical/index.js";
-import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.js";
+} from "../../src/mint-item-non-canonical/contracts.js";
+import { prepareMintItemEvidence } from "../../src/mint-item-non-canonical/mint-item-non-canonical.js";
+import { buildMintItemNonCanonicalCancel } from "../../src/mint-item-non-canonical/submit-cancel.js";
+import { createManifestBoundMintItemNonCanonicalSubmission } from "../../src/mint-item-non-canonical/workflow.create-manifest-bound-mint-item-non-canonical-submission.js";
+import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import { nativeTxFromCoreCompact } from "../../src/step-support.js";
 import { makeFaultProofEmulatorHarness } from "./emulator/harness.js";
 import { captureEmulatorSubmission } from "./emulator/measurement.js";
 import { l2TransactionSourceCbor, makeNativeTx } from "./emulator/native-tx.js";
 import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.js";
+import { publishRemovalReferenceScripts } from "./emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
 import {
   expectRegisteredChainParity,
   familyStepsFromRegisteredChain,
 } from "./emulator/registered-chain.js";
-import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.js";
+import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.build-removal-deployment-info.js";
 import type { Common } from "./mint-item-non-canonical-emulator.js";
-import { publishRemovalReferenceScripts } from "./submit-init-emulator-shared.js";
 import {
   buildAndSubmitUnjournaled,
   submitBoundUnjournaled,

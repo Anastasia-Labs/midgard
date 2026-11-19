@@ -8,13 +8,13 @@ import {
   DA_TRANSPORT_LIMITS,
   DA_TRANSPORT_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
-import type { DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   computeDeploymentManifestDaCommitteeSignersHash,
   computeDeploymentManifestId,
   computeDeploymentManifestJsonDigest,
   DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+  type DeploymentManifest,
   normalizeDeploymentManifestJsonValue,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
@@ -27,16 +27,14 @@ import { validatorToScriptHash } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { afterEach } from "vitest";
 
-import {
-  buildContractDeploymentInfoFromContracts,
-  buildDeploymentManifest,
-  type DeploymentManifestIdentityContext,
-} from "../src/commands/contract-deployment-info.js";
-import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
+import { buildContractDeploymentInfoFromContracts } from "../src/commands/contract-deployment-info.build-contract-deployment-info-from-contracts.js";
+import { buildDeploymentManifest } from "../src/commands/contract-deployment-info.build-deployment-manifest.js";
+import type { DeploymentManifestIdentityContext } from "../src/commands/contract-deployment-info.build-reference-script-out-ref-map.js";
+import { AlwaysSucceedsContract } from "../src/services/always-succeeds.always-succeeds-contract.js";
 import {
   buildFraudProofCatalogueDeploymentInfo,
   fraudProofsToIndexedValidators,
-} from "../src/transactions/initialization.js";
+} from "../src/transactions/initialization.atomic-protocol-init-reference-scripts-from-publications.js";
 import { TEST_AVAILABILITY_CHALLENGE } from "./helpers/availability-challenge.js";
 import { TEST_CARDANO_PROTOCOL_PARAMETERS } from "./helpers/cardano-protocol-parameters.js";
 import { withRealEventHistoryForTest } from "./helpers/event-history.js";

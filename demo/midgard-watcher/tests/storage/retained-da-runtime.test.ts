@@ -22,7 +22,7 @@ import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "@al-ft/midgard-fault-proofs/test-s
 import { describe, expect, it, vi } from "vitest";
 
 import type { WatcherFaultProofSupervisor } from "../../src/fault-proofs/fault-proof-supervisor.js";
-import { parseWatcherConfig } from "../../src/runtime/config.js";
+import { parseWatcherConfig } from "../../src/runtime/config.parse-watcher-config.js";
 import type { VerifiedWatcherDeploymentIdentity } from "../../src/runtime/deployment-identity.js";
 import {
   createWatcherOperationsObservability,
@@ -31,15 +31,17 @@ import {
 import { type WatcherPublicDaRequest } from "../../src/storage/public-da-client.js";
 import { WatcherPublicDaLibp2pTransport } from "../../src/storage/public-da-libp2p-transport.js";
 import {
-  bindWatcherRetainedDaOperations,
   createWatcherRetainedDaRuntime,
   createWatcherRetainedDaRuntimeOwner,
   createWatcherWorkflowRuntimeLoader,
-  WATCHER_RETAINED_DA_RUNTIME,
-  WatcherRetainedDaSourceWithL1Fallback,
   type WatcherWorkflowInfrastructure,
-} from "../../src/storage/retained-da-runtime.js";
-import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
+} from "../../src/storage/retained-da-runtime.create-watcher-retained-da-runtime-owner.js";
+import {
+  bindWatcherRetainedDaOperations,
+  WATCHER_RETAINED_DA_RUNTIME,
+} from "../../src/storage/retained-da-runtime.retained-da-request-permits.js";
+import { WatcherRetainedDaSourceWithL1Fallback } from "../../src/storage/retained-da-runtime.watcher-retained-da-libp2p-transport.js";
+import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.build-watcher-deployment-authority-fixture.js";
 import {
   admittedConfig,
   libp2pTransportFixture,

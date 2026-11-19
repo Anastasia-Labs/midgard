@@ -1,6 +1,6 @@
 import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk";
 
-import { planFaultProofFieldOpening } from "../field-opening.js";
+import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
 import { resolvePublishedProofChunks } from "../publish-proof-chunks.js";
 import { addressFieldCarriageOwnOutputs } from "./bespoke-adapter-field-carriage.js";
 import type {

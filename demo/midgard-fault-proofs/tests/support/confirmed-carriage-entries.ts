@@ -1,10 +1,10 @@
 import type { UTxO } from "@lucid-evolution/lucid";
 
+import type { FraudProofWorkflowJournalEntry } from "../../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import {
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
   type FraudProofWorkflowIdentity,
-  type FraudProofWorkflowJournalEntry,
-} from "../../src/workflow/journal.js";
+} from "../../src/workflow/journal.fraud-proof-workflow-terminal.js";
 
 /**
  * A journal that confirmed every transaction with an output among `utxos`,

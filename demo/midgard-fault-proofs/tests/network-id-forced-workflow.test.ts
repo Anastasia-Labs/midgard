@@ -13,27 +13,27 @@ import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canon
 import {
   hashNetworkIdForcedScanWalkCheckpoint,
   type NetworkIdForcedScanPlan,
-  planNetworkIdForcedScan,
-} from "../src/network-id/forced-scan-plan.js";
+} from "../src/network-id/forced-scan-plan.advance-grammar-by.js";
+import { planNetworkIdForcedScan } from "../src/network-id/forced-scan-plan.plan-network-id-forced-scan.js";
 import { planNetworkIdOutputsOpening } from "../src/network-id/prepare.js";
 import { buildNetworkIdInit } from "../src/network-id/submit-network-id-init.js";
 import {
   admitNetworkIdForcedArtifact,
   admitNetworkIdWorkflowArtifact,
   networkIdForcedArtifactFromPrepared,
-} from "../src/network-id/workflow-adapter.js";
+} from "../src/network-id/workflow-adapter.admit-network-id-forced-artifact.js";
 import { NETWORK_ID_WRONGFUL_REJECTION_VIOLATION_ID } from "../src/network-id/wrongful-rejection.js";
 import { WorkflowActionChangedError } from "../src/workflow/action-changed.js";
 import {
   type CanonicalViolationDetection,
   classifyCanonicalBlockViolations,
-} from "../src/workflow/classification.js";
+} from "../src/workflow/classification.classify-canonical-block-violations.js";
 import { BLOCK_SUBJECT } from "../src/workflow/detection-subject.js";
 import { type JournalJsonObject } from "../src/workflow/journal.js";
 import {
   FraudProofRawL1DerivationError,
   type FraudProofRawL1FamilyStage,
-} from "../src/workflow/raw-l1-family-derivation.js";
+} from "../src/workflow/raw-l1-family-derivation.state-queue-topology.js";
 import {
   type LocallyEvaluatedTransaction,
   workflowPreflightTransaction,

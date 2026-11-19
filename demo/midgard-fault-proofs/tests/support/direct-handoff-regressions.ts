@@ -9,8 +9,8 @@ import {
 } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import { createDirectFieldPlan } from "../../src/direct-script-derivation/index.js";
-import { faultProofFieldOpening } from "../../src/field-opening.js";
+import { createDirectFieldPlan } from "../../src/direct-script-derivation/field-plan.js";
+import { faultProofFieldOpening } from "../../src/field-opening.publish-fault-proof-field-carriage.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
 import {
   directHandoffContext,
@@ -18,14 +18,14 @@ import {
   directHandoffMaterial,
 } from "./direct-handoff-fixture.js";
 import {
-  EMULATOR_PROTOCOL_PARAMETERS,
-  expectOnchainRefusal,
-  measureCompleteSignedTransaction,
   network,
-  publishPlainReferenceScriptUtxo,
   readBlueprint,
   realBlueprintPath,
-} from "./submit-init-emulator-shared.js";
+} from "./emulator/blueprints.js";
+import { expectOnchainRefusal } from "./emulator/expect-onchain-refusal.js";
+import { measureCompleteSignedTransaction } from "./emulator/measurement.js";
+import { EMULATOR_PROTOCOL_PARAMETERS } from "./emulator/protocol-parameters.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 
 /** Actual applied scripts, independent wallets and authentic door transitions.
  * The component prefix is seeded; this is not Init/proof-mint/SQ acceptance. */

@@ -38,8 +38,8 @@ import {
   getTxStatusHandler,
   postTxStatusBatchHandler,
 } from "../src/commands/http/transaction-status.js";
-import { Globals } from "../src/services/globals.js";
-import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.js";
+import { Globals } from "../src/services/globals.globals.js";
+import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import { canonicalManifest } from "./deployment-manifest.canonical-identity.js";
 import { provideDatabaseLayers } from "./utils.js";
 

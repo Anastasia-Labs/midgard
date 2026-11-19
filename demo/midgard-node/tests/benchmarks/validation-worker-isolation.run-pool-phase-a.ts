@@ -3,12 +3,9 @@ import { performance } from "node:perf_hooks";
 import { pathToFileURL } from "node:url";
 
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import {
-  deserializePhaseACandidate,
-  type PhaseAResult,
-  type PhaseBResultWithPatch,
-  type QueuedTx,
-} from "@al-ft/midgard-validation";
+import { deserializePhaseACandidate } from "@al-ft/midgard-validation";
+import type { PhaseBResultWithPatch } from "@al-ft/midgard-validation/phase-b";
+import type { PhaseAResult, QueuedTx } from "@al-ft/midgard-validation/types";
 
 import {
   ledgerEntry,
@@ -18,7 +15,7 @@ import {
   outRefFromByte,
 } from "../../../midgard-validation/tests/validation-fixtures.js";
 import { MempoolLedgerDB } from "../../src/database/index.js";
-import { FixedValidationWorkerPool } from "../../src/services/validation-pool.js";
+import { FixedValidationWorkerPool } from "../../src/services/validation-pool.fixed-validation-worker-pool.js";
 import { packPhaseAJob } from "../../src/workers/utils/validation-pool.js";
 
 export const quick = process.env.BENCH_QUICK === "1";

@@ -2,10 +2,8 @@ import { encodeMidgardProofSubmission } from "@al-ft/midgard-core/cek-proof";
 import { getAddressDetails, walletFromSeed } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import {
-  ContractDeploymentIdentity,
-  NodeConfig as NodeConfigService,
-} from "../services/index.js";
+import { NodeConfig as NodeConfigService } from "../services/config.make-config.js";
+import { ContractDeploymentIdentity } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import { sleep } from "../sleep.js";
 import { outRefLabel } from "../tx-context.js";
 import {
@@ -25,7 +23,7 @@ import {
   toError,
   validateRetryPolicy,
 } from "./submit-l2-transfer.compare-assets-by-coverage.js";
-import { buildTransferTxWithMinFee } from "./transfer-build-core.js";
+import { buildTransferTxWithMinFee } from "./transfer-build-core.build-terminal-drain-tx.js";
 
 /**
  * Submits a Midgard-native transfer through the node's public `/submit`

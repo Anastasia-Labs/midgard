@@ -3,7 +3,7 @@ import { afterEach, expect, vi } from "vitest";
 import {
   FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
   type FraudProofWorkflowTerminalVerifier,
-} from "../../src/workflow/orchestrator.js";
+} from "../../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 
 /**
  * A read of a superseded attempt's signed bytes no row here expects. The

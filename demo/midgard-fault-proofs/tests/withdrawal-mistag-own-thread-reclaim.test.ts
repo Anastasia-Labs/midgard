@@ -20,22 +20,20 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
-import { resolveProverSigner } from "../src/index.js";
 import type { ResolvedProverSigner } from "../src/runtime.js";
+import { resolveProverSigner } from "../src/runtime.resolve-prover-signer.js";
 import {
   createWithdrawalMistagTransactionPort,
   withdrawalMistagEvidenceRequirement,
 } from "../src/withdrawal-mistag/workflow.js";
-import { WITHDRAWAL_MISTAG_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
-import { createCursorFamilyWorkflowAdapter } from "../src/workflow/cursor-family-adapter.js";
+import { WITHDRAWAL_MISTAG_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
+import { createCursorFamilyWorkflowAdapter } from "../src/workflow/cursor-family-adapter.create-cursor-family-workflow-adapter.js";
 import { WITHDRAWAL_MISTAG_CURSOR_SPEC } from "../src/workflow/cursor-family-spec.js";
 import { createFraudProofFamilyRawL1ObservationPort } from "../src/workflow/family-l1-observation.js";
-import { DirectoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.js";
-import {
-  createFraudProofWorkflowRegistry,
-  type FraudProofWorkflowRunResult,
-  runFraudProofWorkflow,
-} from "../src/workflow/orchestrator.js";
+import { DirectoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
+import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
+import { createFraudProofWorkflowRegistry } from "../src/workflow/orchestrator.immutable-fraud-proof-workflow-registry.js";
+import { runFraudProofWorkflow } from "../src/workflow/orchestrator.run-da-hash-preimage-workflow-from-retained-da.js";
 import { createLinearCancelReclaimPort } from "../src/workflow/own-thread-reclaim.linear-cancel-port.js";
 import { withOwnThreadReclaim } from "../src/workflow/own-thread-reclaim.with-own-thread-reclaim.js";
 import {
@@ -54,8 +52,10 @@ import {
   observeEmulatorSubmissions,
   recordCrossBlockRawEmulator,
 } from "./support/cross-block-raw-emulator.js";
+import { network } from "./support/emulator/blueprints.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
-import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import {
   submitSecondHeaderTx,
   submitSetupTx,
@@ -64,13 +64,9 @@ import {
   expectResolvedWithReclaim,
   walletLovelace,
 } from "./support/own-thread-reclaim-expectations.js";
-import { network } from "./support/submit-init-emulator-shared.js";
-import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
 import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
-import {
-  makeWithdrawalMistagEmulatorHarness,
-  publishWithdrawalMistagScripts,
-} from "./support/withdrawal-mistag-emulator.js";
+import { makeWithdrawalMistagEmulatorHarness } from "./support/withdrawal-mistag-emulator.build-withdrawal-mistag-evidence-material.js";
+import { publishWithdrawalMistagScripts } from "./support/withdrawal-mistag-emulator.drive-withdrawal-mistag-to-fraud.js";
 import { withdrawalMistagRetainedFixture } from "./support/withdrawal-mistag-retained.js";
 import {
   DEPLOYMENT_FINGERPRINT,

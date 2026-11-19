@@ -12,13 +12,13 @@ import {
 import { Entry as LedgerEntry } from "../../database/utils/ledger.js";
 import { emitQueueStateMetrics } from "../../fibers/queue-metrics.js";
 import { l1NowUnixTimeMs } from "../../l1-heads.js";
-import { Globals } from "../../services/index.js";
+import { Globals } from "../../services/globals.globals.js";
 import {
   requireLandedStateQueue,
   stateQueueContractOf,
 } from "../../services/landed-state-queue.js";
 import { breakDownTx } from "../../utils.js";
-import { BlockTxPayload } from "../utils.js";
+import { BlockTxPayload } from "../utils.submit-recovery-options.js";
 import {
   classifyOldestQueuedBlockCandidateReadiness,
   mergeMaturityWindow,

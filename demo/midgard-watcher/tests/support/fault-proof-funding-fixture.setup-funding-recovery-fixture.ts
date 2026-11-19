@@ -40,21 +40,17 @@ import {
 import { expect, vi } from "vitest";
 
 import { openWatcherFaultDecisionJournal } from "../../src/fault-proofs/fault-decision-journal.js";
-import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.js";
-import {
-  createWatcherProverFundingAuthority,
-  createWatcherProverFundingAuthorityFactory,
-} from "../../src/funding/prover-funding-authority.js";
+import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
+import { createWatcherProverFundingAuthority } from "../../src/funding/prover-funding-authority.create-watcher-prover-funding-authority.js";
+import { createWatcherProverFundingAuthorityFactory } from "../../src/funding/prover-funding-authority.create-watcher-prover-funding-authority-factory.js";
 import { calculateWatcherRuntimeProverFunding } from "../../src/funding/prover-funding-calculation.js";
-import {
-  parseWatcherProverFundingReservationRecord,
-  type WatcherProverFundingReservationPlan,
-} from "../../src/funding/prover-funding-reservation.js";
+import { parseWatcherProverFundingReservationRecord } from "../../src/funding/prover-funding-reservation.parse-watcher-prover-funding-reservation-record.js";
+import type { WatcherProverFundingReservationPlan } from "../../src/funding/prover-funding-reservation.watcher-prover-funding-reservation-store.js";
+import { watcherDeploymentProtocolScriptAuthority } from "../../src/runtime/deployment-identity.verify-watcher-user-event-script-binding.js";
 import {
   watcherDeploymentAppliedScriptHashes,
-  watcherDeploymentProtocolScriptAuthority,
   watcherDeploymentReleaseEconomicsAuthority,
-} from "../../src/runtime/deployment-identity.js";
+} from "../../src/runtime/deployment-identity.watcher-deployment-availability-challenge-authority.js";
 import { runtimeAuthority } from "../funding/prover-funding-calculation.runtime-authority.js";
 import { fixtureAttemptJournal } from "./fault-proof-funding-fixture.attempt-journal.js";
 import { createFixtureProcessStops } from "./fault-proof-funding-fixture.process-stop.js";

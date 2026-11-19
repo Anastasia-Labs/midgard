@@ -28,21 +28,23 @@ import {
 import { walletOnlyValidTo } from "../../src/wallet-only-validity.js";
 import { settleOldestCrossBlockHeader } from "./cross-block-settlement-emulator.js";
 import {
+  alignUnixTimeToEmulatorSlotBoundary,
+  runEmulatorLifecycleStage,
+} from "./emulator/emulator-context.js";
+import { makeFaultProofEmulatorHarness } from "./emulator/harness.js";
+import { makeHeader } from "./emulator/header-fixtures.js";
+import {
+  type CompleteSignedTransactionMeasurement,
+  measureCompleteSignedTransaction,
+} from "./emulator/measurement.js";
+import { makeNativeTx } from "./emulator/native-tx.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { submitSetupTx } from "./emulator/setup-tx.submit-setup-tx.js";
+import {
   type OrderDatumRewrite,
   payOrderCloseOut,
   withOrderDatumRewrite,
 } from "./forced-order-close-out.js";
-import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  type CompleteSignedTransactionMeasurement,
-  makeFaultProofEmulatorHarness,
-  makeHeader,
-  makeNativeTx,
-  measureCompleteSignedTransaction,
-  publishPlainReferenceScriptUtxo,
-  runEmulatorLifecycleStage,
-  submitSetupTx,
-} from "./submit-init-emulator-shared.js";
 
 /** Publish the SDK-selected carriage through the real certificate validator.
  * Keep every signed transaction measurement, including when later order

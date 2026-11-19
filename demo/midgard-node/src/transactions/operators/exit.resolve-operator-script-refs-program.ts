@@ -11,7 +11,7 @@ import {
   configuredContractDeploymentInfoPath,
   readFinalizedDeploymentIdentity,
   verifyConfiguredDeploymentManifestProgram,
-} from "../../commands/contract-deployment-info.js";
+} from "../../commands/contract-deployment-info.build-deployment-manifest.js";
 import { type NodeConfig } from "../../services/index.js";
 import {
   type IntentJournal,

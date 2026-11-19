@@ -2,7 +2,7 @@ import { credentialToAddress, type UTxO } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
 import { type FamilyCommonInfrastructure } from "../src/workflow/family-application.js";
-import { FAMILY_APPLICATION_REGISTRY } from "../src/workflow/family-application-registry.js";
+import { FAMILY_APPLICATION_REGISTRY } from "../src/workflow/family-application-registry.family-application-registry.js";
 
 /**
  * The reference-script shapes a bound config carries: the bundle shape

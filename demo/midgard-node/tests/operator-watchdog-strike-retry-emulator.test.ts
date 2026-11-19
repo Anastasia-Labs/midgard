@@ -28,13 +28,11 @@ import {
   clearSlotAwareDueWork,
   listSlotAwareDueWork,
 } from "../src/fibers/slot-aware-due-work.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
 import { Database } from "../src/services/database.js";
-import {
-  Globals,
-  Lucid,
-  MidgardContracts,
-  NodeConfig,
-} from "../src/services/index.js";
+import { Globals } from "../src/services/globals.globals.js";
+import { Lucid } from "../src/services/lucid.js";
+import { MidgardContracts } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import { planTakeoverProgram } from "../src/transactions/operators/takeover.js";
 import { publishEmulatorOperatorSet } from "./helpers/emulator-operator-set.js";
 import { runWithoutFollower } from "./helpers/intent-journal.js";

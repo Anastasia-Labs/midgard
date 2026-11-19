@@ -7,18 +7,15 @@ import {
   TxAdmissionsDB,
 } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
-import {
-  Database,
-  Globals,
-  Lucid,
-  MidgardContracts,
-  NodeConfig,
-} from "../services/index.js";
+import { Globals } from "../services/globals.globals.js";
+import { Database, NodeConfig } from "../services/index.js";
 import type { IntentJournal } from "../services/intent-journal.js";
 import {
   landedStateQueueSnapshot,
   refreshStateQueueGlobalsFromSnapshot,
 } from "../services/landed-state-queue.js";
+import { Lucid } from "../services/lucid.js";
+import { MidgardContracts } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING,
   mergeSubmitValidityEvidence,
@@ -28,14 +25,14 @@ import {
   buildAndSubmitMergeTx,
   captureMergeLocalLedgerGate,
   fetchCanonicalMergeCandidateReadiness,
-  type SubmittedMergeTx,
 } from "../transactions/state-queue/merge-to-confirmed-state.js";
+import type { SubmittedMergeTx } from "../transactions/state-queue/merge-to-confirmed-state.merge-options.js";
 import {
   TxConfirmError,
-  TxExpiredError,
   TxSignError,
   TxSubmitError,
-} from "../transactions/utils.js";
+} from "../transactions/utils.await-required-output-visibility.js";
+import { TxExpiredError } from "../transactions/utils.tx-expiry.js";
 import {
   changedCandidateResult,
   logSemanticSkip,

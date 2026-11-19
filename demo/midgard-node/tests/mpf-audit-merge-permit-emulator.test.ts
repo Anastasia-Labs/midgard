@@ -10,10 +10,8 @@ import { Effect, Either, Option, Ref } from "effect";
 import { expect, it, vi } from "vitest";
 
 import { type MpfAuditResult, runMpfAudit } from "../src/commands/mpf-audit.js";
-import {
-  reconcileMergeCompleteProgram,
-  type ReconciliationResult,
-} from "../src/commands/reconcile.js";
+import type { ReconciliationResult } from "../src/commands/reconcile.parse-reconciliation-result.js";
+import { reconcileMergeCompleteProgram } from "../src/commands/reconcile.reconcile-merge-complete-program.js";
 import {
   ConfirmedLedgerDB,
   MpfEngineStateDB,
@@ -22,7 +20,7 @@ import {
 import {
   mergeAction,
   MergeIntentJournalUnavailable,
-} from "../src/fibers/merge.js";
+} from "../src/fibers/merge.merge-action.js";
 import { runLedgerPayloadAudit } from "../src/fibers/mpf-payload-audit.js";
 import { listSlotAwareDueWork } from "../src/fibers/slot-aware-due-work.js";
 import { hydrateLedgerMpfFromLedgerEntries } from "../src/mpf/ledger-hydration.js";
@@ -32,7 +30,7 @@ import {
   IntentJournal,
   IntentJournalWithoutFollower,
 } from "../src/services/intent-journal.js";
-import { MempoolLedgerCache } from "../src/services/mempool-ledger-cache.js";
+import { MempoolLedgerCache } from "../src/services/mempool-ledger-cache.mempool-ledger-cache-service.js";
 import { deserializeStateQueueUTxO } from "../src/workers/utils/commit-block-header.js";
 import {
   advanceEmulatorPastLatestBlockEndTime,

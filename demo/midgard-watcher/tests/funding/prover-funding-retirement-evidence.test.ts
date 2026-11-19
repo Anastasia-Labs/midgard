@@ -3,7 +3,7 @@ import "./prover-funding-recovery.registration.js";
 import { computeFraudProofRawL1PointId } from "@al-ft/midgard-fault-proofs";
 import { expect, it } from "vitest";
 
-import { setupFundingRecoveryFixture as setup } from "../support/fault-proof-funding-fixture.js";
+import { setupFundingRecoveryFixture as setup } from "../support/fault-proof-funding-fixture.setup-funding-recovery-fixture.js";
 import { expiredNotFound } from "./prover-funding-recovery.retirement-fixture.js";
 
 it.each(["status_only", "shallow"] as const)(

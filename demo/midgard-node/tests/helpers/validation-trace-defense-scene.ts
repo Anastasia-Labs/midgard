@@ -51,8 +51,8 @@ import { Effect, Ref } from "effect";
 import { NODE_PROCESS_STATE_QUEUE_LEASE_HOLDERS } from "../../src/commands/listen-startup.release-state-queue-leases-of-previous-node-process.js";
 import { followerSqlTx } from "../../src/database/follower-schema.js";
 import { StateQueueMutationLeasesDB } from "../../src/database/index.js";
-import { Globals } from "../../src/services/globals.js";
-import { withL1ControlPlane } from "../../src/services/index.js";
+import { Globals } from "../../src/services/globals.globals.js";
+import { withL1ControlPlane } from "../../src/services/globals.l1-control-plane.js";
 import {
   IntentJournal,
   readIntentStatus,

@@ -20,27 +20,29 @@ import {
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { prepareWithdrawnInputFromMaterial } from "../../src/prepare-withdrawn-input.js";
 import {
-  buildWithdrawnInputInit,
-  buildWithdrawnInputStep01,
-  buildWithdrawnInputStep02,
-  prepareWithdrawnInputFromMaterial,
-  type WithdrawnInputCatalogueCategory,
-} from "../../src/index.js";
-import type { SubmitStep01TxInclusion } from "../../src/step-support.js";
-import { nativeTxFromCoreCompact } from "../../src/step-support.js";
+  nativeTxFromCoreCompact,
+  type SubmitStep01TxInclusion,
+} from "../../src/step-support.js";
+import type { WithdrawnInputCatalogueCategory } from "../../src/withdrawn-input/submit-common.js";
+import { buildWithdrawnInputInit } from "../../src/withdrawn-input/submit-withdrawn-input-init.js";
+import { buildWithdrawnInputStep01 } from "../../src/withdrawn-input/submit-withdrawn-input-step-01.js";
+import { buildWithdrawnInputStep02 } from "../../src/withdrawn-input/submit-withdrawn-input-step-02.js";
+import { network } from "./emulator/blueprints.js";
+import { trieRootHex } from "./emulator/catalogue.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   funderPaymentKeyHash,
+} from "./emulator/emulator-context.js";
+import { makeFaultProofEmulatorHarness } from "./emulator/harness.js";
+import { makeHeader } from "./emulator/header-fixtures.js";
+import {
   l2TransactionSourceCbor as l2TransactionSourceCborV1,
-  makeFaultProofEmulatorHarness,
-  makeHeader,
   makeNativeTx,
-  network,
-  publishPlainReferenceScriptUtxo,
-  submitSetupTx,
-  trieRootHex,
-} from "./submit-init-emulator-shared.js";
+} from "./emulator/native-tx.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { submitSetupTx } from "./emulator/setup-tx.submit-setup-tx.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,

@@ -6,22 +6,20 @@ import {
   WithdrawalsDB,
 } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
-import {
-  ConfigError,
-  ContractDeploymentIdentity,
-  Database,
-  DatabaseInitializationError,
-  Lucid,
-  MidgardContracts,
-  MidgardContractServices,
-  NodeConfig,
-} from "../services/index.js";
+import { ConfigError, NodeConfig } from "../services/config.make-config.js";
+import { Database, DatabaseInitializationError } from "../services/database.js";
 import {
   type IntentJournal,
   IntentJournalLive,
 } from "../services/intent-journal.js";
 import { FollowerLucidLive } from "../services/l1-adapter.follower.js";
 import type { L1ChainParameters } from "../services/l1-adapter.js";
+import { Lucid } from "../services/lucid.js";
+import {
+  ContractDeploymentIdentity,
+  MidgardContracts,
+  MidgardContractServices,
+} from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 
 export const EXPLICIT_COMMIT_CONFIRMATION_TIMEOUT_MS = 120_000;
 

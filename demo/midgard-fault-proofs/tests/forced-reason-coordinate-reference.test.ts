@@ -18,8 +18,8 @@ import {
   noReferenceInputForcedSourceMaterial,
   type PreparedNoReferenceInputWrongfulRejection,
 } from "../src/no-reference-input/wrongful-rejection.js";
-import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
-import { buildInit } from "../src/submit-init.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import { buildInit } from "../src/submit-init.submit-init.js";
 import {
   buildCountedRoot,
   keyValuePhasProof,
@@ -31,15 +31,13 @@ import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { withCommitSlot } from "./support/emulator/header-fixtures.js";
 import { nodeForcedVerdict } from "./support/emulator/node-forced-verdict.js";
-import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
 import { makeReferenceNativeTx } from "./support/no-reference-input-native.js";
 import { submitRawNoReferenceInputForcedStep } from "./support/no-reference-input-raw-step.js";
-import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
-import {
-  publishPlainReferenceScriptUtxo,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
+import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init/forced-transitions.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 /**

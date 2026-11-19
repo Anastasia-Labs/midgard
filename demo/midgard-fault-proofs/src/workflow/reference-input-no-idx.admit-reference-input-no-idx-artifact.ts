@@ -8,23 +8,26 @@ import {
 import {
   type FaultProofFieldOpeningPlan,
   planFaultProofFieldOpening,
-} from "../field-opening.js";
-import { prepareReferenceInputNoIdxFromCanonicalEvidence } from "../prepare-reference-input-no-idx.js";
+} from "../field-opening.plan-fault-proof-field-opening.js";
+import { prepareReferenceInputNoIdxFromCanonicalEvidence } from "../prepare-reference-input-no-idx.prepare-reference-input-no-idx-from-node.js";
 import {
   parseSubmitReferenceInputNoIdxReferenceInputsPreimage,
   type SubmitReferenceInputNoIdxReferenceInputsPreimage,
-} from "../submit-reference-input-no-idx-step-02.js";
+} from "../submit-reference-input-no-idx-step-02.parse-submit-reference-input-no-idx-reference-inputs-preimage.js";
 import {
   parseSubmitReferenceInputNoIdxOutputsPreimage,
   type SubmitReferenceInputNoIdxOutputsPreimage,
-} from "../submit-reference-input-no-idx-step-04.js";
+} from "../submit-reference-input-no-idx-step-04.make-reference-input-no-idx-step04-spend-redeemer.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import {
   CHUNKED_VERIFY_WITNESS_ROLES,
   type LinearFamilyAssemblyContext,
   type LinearFamilyReferenceScripts,
-} from "./family-definition.js";
-import { type JournalJsonObject, normalizeJournalJson } from "./journal.js";
+} from "./family-definition.family-adapter-arm.js";
+import {
+  type JournalJsonObject,
+  normalizeJournalJson,
+} from "./journal.fraud-proof-workflow-terminal.js";
 import {
   admitNativeInclusionArtifact,
   admitOutputCborList,

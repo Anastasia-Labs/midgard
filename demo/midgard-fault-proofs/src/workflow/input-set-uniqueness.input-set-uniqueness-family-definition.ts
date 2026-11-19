@@ -6,11 +6,9 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import { type FaultProofFieldOpeningPlan } from "../field-opening.js";
-import { INPUT_SET_UNIQUENESS_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
-import {
-  defineLinearFamily,
-  type LinearFamilyFieldCarriageRequirement,
-} from "./family-definition.js";
+import { INPUT_SET_UNIQUENESS_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
+import type { LinearFamilyFieldCarriageRequirement } from "./family-definition.family-adapter-arm.js";
+import { defineLinearFamily } from "./family-definition.family-definition.js";
 import type { FieldCarriageRequirement } from "./field-carriage-prerequisite.js";
 import { type AdmittedArtifact } from "./input-set-uniqueness.admit-accepted-input-set-uniqueness-artifact.js";
 import { admitAnyInputSetUniquenessArtifact } from "./input-set-uniqueness.admit-input-set-uniqueness-forced-artifact.js";
@@ -24,10 +22,8 @@ import {
   actionInput,
   WITNESS_ROLES,
 } from "./input-set-uniqueness.prepare-input-set-uniqueness-artifact.js";
-import {
-  assembleManifestBoundFamilyWorkflow,
-  runOrResumeManifestBoundFamilyWorkflow,
-} from "./manifest-bound-family-assembly.js";
+import { assembleManifestBoundFamilyWorkflow } from "./manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
+import { runOrResumeManifestBoundFamilyWorkflow } from "./manifest-bound-family-assembly.run-or-resume-manifest-bound-family-workflow.js";
 
 /**
  * One field-carriage requirement per input field. The accepted artifact opens

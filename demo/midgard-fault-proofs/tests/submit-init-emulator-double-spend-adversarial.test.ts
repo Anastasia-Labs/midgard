@@ -32,43 +32,43 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { buildStep01 } from "../src/double-spend/submit-step-01.js";
+import { buildStep02 } from "../src/double-spend/submit-step-02.js";
 import {
-  faultProofFieldOpening,
-  planFaultProofFieldOpening,
-} from "../src/field-opening.js";
+  buildStep03,
+  parseSpendInputCbors,
+} from "../src/double-spend/submit-step-03.js";
+import { planFaultProofFieldOpening } from "../src/field-opening.plan-fault-proof-field-opening.js";
+import { faultProofFieldOpening } from "../src/field-opening.publish-fault-proof-field-carriage.js";
 import {
   encodeRawPhasMembershipProofRedeemer,
   getCompiledScript,
   phasMembershipRewardAddress,
   resolveProverSigner,
 } from "../src/runtime.js";
-import { PHAS_MEMBERSHIP_WITHDRAW_TITLE } from "../src/step-support.js";
-import { computationThreadOutputPredicate } from "../src/tx-layout.js";
 import {
-  buildInit,
-  buildStep01,
-  buildStep02,
-  buildStep03,
-  parseSpendInputCbors,
   parseSubmitStep01TxInclusion,
-} from "./support/legacy-submit-emulator.js";
-import {
-  buildTransactionInclusionFixture,
-  countedTransactionsRoot,
-  EMULATOR_HEADER_CLOCK_HEADROOM_MS,
-  midgardTxInput,
-} from "./support/submit-init-emulator-fixtures.js";
+  PHAS_MEMBERSHIP_WITHDRAW_TITLE,
+} from "../src/step-support.js";
+import { buildInit } from "../src/submit-init.submit-init.js";
+import { computationThreadOutputPredicate } from "../src/tx-layout.js";
+import { network } from "./support/emulator/blueprints.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
-  buildRemovalDeploymentInfo,
-  expectOnchainRefusal,
   expectSingleUtxoWithUnit,
   funderPaymentKeyHash,
-  makeFaultProofEmulatorHarness,
-  makeHeader,
-  network,
-  submitSetupTx,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/emulator/emulator-context.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
+import { makeHeader } from "./support/emulator/header-fixtures.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
+import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
+import { buildTransactionInclusionFixture } from "./support/submit-init/inclusion.js";
+import { EMULATOR_HEADER_CLOCK_HEADROOM_MS } from "./support/submit-init/successor.js";
+import {
+  countedTransactionsRoot,
+  midgardTxInput,
+} from "./support/submit-init/transaction-material.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,

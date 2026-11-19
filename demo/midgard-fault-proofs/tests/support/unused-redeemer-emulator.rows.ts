@@ -3,7 +3,7 @@
  * of an honest leaf, and removal of the convicted block. */
 import { expect } from "vitest";
 
-import { submitRemoveFraudulentBlock } from "../../src/index.js";
+import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import { UNUSED_REDEEMER_DIRECT_WALK } from "../../src/unused-redeemer/index.js";
 import {
   DIRECT_WALK_STEP_BOUNDS,
@@ -11,14 +11,12 @@ import {
   publishDirectWalkRoles,
   stepTable,
 } from "./direct-walk-emulator.js";
+import { network } from "./emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "./emulator/emulator-context.js";
 import { expectOnchainRefusal } from "./emulator/expect-onchain-refusal.js";
+import { publishRemovalReferenceScripts } from "./emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.build-removal-deployment-info.js";
 import type { MissingRedeemerScenario } from "./missing-redeemer-emulator.subject.js";
-import {
-  buildRemovalDeploymentInfo,
-  expectSingleUtxoWithUnit,
-  network,
-  publishRemovalReferenceScripts,
-} from "./submit-init-emulator-shared.js";
 import { driveUnusedRedeemerThread } from "./unused-redeemer-emulator.js";
 
 export const expectWithinBounds = (

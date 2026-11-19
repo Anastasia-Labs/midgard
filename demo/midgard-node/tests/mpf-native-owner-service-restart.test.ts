@@ -14,7 +14,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Level } from "level";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
-import { ProductionNativeMpfOwnerService } from "../src/services/mpf-native-owner/index.js";
+import { ProductionNativeMpfOwnerService } from "../src/services/mpf-native-owner/service.production-native-mpf-owner-service.js";
 import { prepareEventFlatDigest } from "../src/workers/utils/mpf-event-flat-digest.js";
 import {
   nativeOwnerBinaryPath,

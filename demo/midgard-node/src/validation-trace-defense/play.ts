@@ -35,7 +35,8 @@ import { Duration, Effect } from "effect";
 
 import { StateQueueMutationLeasesDB } from "../database/index.js";
 import { retrieveUnreconciledSignedSubmission } from "../database/pendingBlockFinalizations.retrieve-applied-missing-da-payloads.js";
-import { Globals, withL1ControlPlane } from "../services/index.js";
+import { Globals } from "../services/globals.globals.js";
+import { withL1ControlPlane } from "../services/globals.l1-control-plane.js";
 import {
   IntentJournal,
   type IntentPlan,

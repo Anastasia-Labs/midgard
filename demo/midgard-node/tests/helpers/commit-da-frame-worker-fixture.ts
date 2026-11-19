@@ -3,7 +3,7 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { vi } from "vitest";
 
-import { ContractDeploymentIdentity } from "../../src/services/index.js";
+import { ContractDeploymentIdentity } from "../../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import type { WorkerInput } from "../../src/workers/utils/commit-block-header.js";
 import { makeTestNodeConfig } from "./test-node-config.js";
 

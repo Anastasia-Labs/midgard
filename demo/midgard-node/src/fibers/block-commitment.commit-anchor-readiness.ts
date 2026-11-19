@@ -5,7 +5,8 @@ import {
   followerViewOf,
   readFollowerWriteGate,
 } from "../services/follower-write-gate.js";
-import { Globals, NodeConfig } from "../services/index.js";
+import { Globals } from "../services/globals.globals.js";
+import { NodeConfig } from "../services/index.js";
 import {
   clearLivenessIncident,
   raiseLivenessIncident,

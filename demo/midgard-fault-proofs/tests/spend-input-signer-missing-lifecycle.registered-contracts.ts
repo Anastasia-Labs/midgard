@@ -2,21 +2,21 @@ import { createPrivateKey, createPublicKey } from "node:crypto";
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-  ledgerEd25519SignatureReady,
-} from "@al-ft/midgard-core";
-import {
   computeMidgardNativeTxId,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
   deriveMidgardNativeTxWitnessSetCompact,
   encodeCbor,
   encodeMidgardAddressWitnessItem,
   encodeMidgardNativeTxWitnessSetCompact,
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
+  ledgerEd25519SignatureReady,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
-import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core/codec/forced";
-import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
+import {
+  encodeMidgardForcedTxCanonical,
+  materializeMidgardForcedTxFromCanonical,
+} from "@al-ft/midgard-core/codec/forced";
 import {
   AddressData,
   addressDataFromBech32,
@@ -30,10 +30,10 @@ import { expect } from "vitest";
 
 import {
   applySpendInputSignerMissingScripts,
-  prepareSpendInputSignerMissingEvidence as prepareSpendEvidence,
   SPEND_INPUT_SIGNER_MISSING_BLUEPRINT_TITLES,
   type SpendInputSignerMissingContracts,
-} from "../src/spend-input-signer-missing/index.js";
+} from "../src/spend-input-signer-missing/contracts.js";
+import { prepareSpendInputSignerMissingEvidence as prepareSpendEvidence } from "../src/spend-input-signer-missing/spend-input-signer-missing.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";

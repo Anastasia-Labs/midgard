@@ -14,28 +14,26 @@ import {
   unsafeCreateTransitionTraceEventAuthorityFromRawForTest,
 } from "../src/transition-trace/l1-events.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
-import {
-  encodeData,
-  reconstructDaPayload,
-} from "../src/transition-trace/reconstruct.js";
+import { reconstructDaPayload } from "../src/transition-trace/reconstruct.reconstruct-da-payload.js";
+import { encodeData } from "../src/transition-trace/reconstruct.transition-trace-reconstruction.js";
 import { createCatalogueCompleteCanonicalReplay } from "../src/workflow/catalogue-replay.js";
-import {
-  NETWORK_ID_COMPLETE_CANONICAL_REPLAY,
-  WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
-} from "../src/workflow/complete-replay.js";
-import { digest } from "../src/workflow/header-classifier.authenticated-state-queue-observation-digest.js";
+import { NETWORK_ID_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.detect-double-withdraws.js";
+import { WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import {
   authenticatedStateQueueObservationDigest,
-  classifyHeader,
+  digest,
+} from "../src/workflow/header-classifier.authenticated-state-queue-observation-digest.js";
+import { classifyHeader } from "../src/workflow/header-classifier.classify-header.js";
+import {
   createHeaderClassifier,
   headerDecisionReplayContext,
-} from "../src/workflow/header-classifier.js";
+} from "../src/workflow/header-classifier.create-header-classifier.js";
 import { TRANSITION_TRACE_STRUCTURAL_ROUTE } from "../src/workflow/header-classifier.transition-trace-structural-route.js";
 import { INSTALLED_FRAUD_PROOF_CATEGORY_ORDER } from "../src/workflow/installed-categories.js";
 import {
   FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
   type FraudProofRawL1SnapshotAuthority,
-} from "../src/workflow/raw-l1-snapshot.js";
+} from "../src/workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
 import {
   computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
@@ -48,10 +46,8 @@ import {
 } from "./helpers/canonical-block-evidence-fixture.js";
 import { TRANSITION_HISTORY_FIXTURE_PARAMETERS } from "./helpers/transition-history-fixture.js";
 import { fixtureLedgerAt } from "./support/fixture-ledger.js";
-import {
-  buildRetainedPlutusIdentityFixture,
-  captureRetainedPlutusIdentityOrigins,
-} from "./support/retained-reason-classifier.js";
+import { buildRetainedPlutusIdentityFixture } from "./support/retained-reason-classifier.build-retained-plutus-fixture.js";
+import { captureRetainedPlutusIdentityOrigins } from "./support/retained-reason-classifier.capture-retained-plutus-identity-origins.js";
 
 const DEPLOYMENT = "d1".repeat(32);
 const policy = { ...RELEASE_L1_FINALITY_POLICY };

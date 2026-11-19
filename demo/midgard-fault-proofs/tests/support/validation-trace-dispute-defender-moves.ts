@@ -26,10 +26,8 @@ import {
   validationTraceMoveWindow,
 } from "../../src/validation-trace-dispute/move-builders.js";
 import { completeValidationTraceMove } from "../../src/validation-trace-dispute/move-fee.js";
-import {
-  network,
-  publishPlainReferenceScriptUtxo,
-} from "./submit-init-emulator-shared.js";
+import { network } from "./emulator/blueprints.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 import {
   type SparseTrace,
   sparseTrace,

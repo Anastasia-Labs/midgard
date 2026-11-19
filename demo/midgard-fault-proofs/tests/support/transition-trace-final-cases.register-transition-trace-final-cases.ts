@@ -9,62 +9,62 @@ import {
 } from "@al-ft/midgard-core/codec";
 import * as SDK from "@al-ft/midgard-sdk";
 import { FraudProofTokenDatum } from "@al-ft/midgard-sdk";
-import type { UTxO } from "@lucid-evolution/lucid";
-import { assetsToValue, CML } from "@lucid-evolution/lucid";
 import {
+  assetsToValue,
+  CML,
   Data,
   Emulator,
   generateEmulatorAccount,
   getAddressDetails,
   Lucid,
   toUnit,
+  type UTxO,
 } from "@lucid-evolution/lucid";
-import { afterAll } from "vitest";
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 
-import {
-  FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY,
-  resolveProverSigner,
-  submitRemoveFraudulentBlock,
-} from "../../src/index.js";
+import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import { FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY } from "../../src/runtime.fraud-proof-deployment-entries-by-category.js";
+import { resolveProverSigner } from "../../src/runtime.resolve-prover-signer.js";
 import {
   type TransitionDepositOpening,
   transitionDepositOpening,
 } from "../../src/transition-trace/history-opening.js";
-import { buildTransitionTraceFinal } from "../../src/transition-trace/index.js";
 import { transitionTraceByteChunks } from "../../src/transition-trace/proof-carriage.js";
 import { type TransitionProofInput } from "../../src/transition-trace/proof-material.js";
+import { buildTransitionTraceFinal } from "../../src/transition-trace/submit.submit-transition-trace-final.js";
 import * as yieldDataModule from "../../src/transition-trace/yield-data.js";
 import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
-import { alignEmulatorToWholeSecond } from "./emulator/emulator-context.js";
+import {
+  alwaysSucceedsBlueprintPath,
+  network,
+  readBlueprint,
+  realBlueprintPath,
+} from "./emulator/blueprints.js";
+import { buildCatalogueDeploymentInfo } from "./emulator/catalogue.js";
+import { buildMinimalFaultProofContracts } from "./emulator/contracts.build-minimal-fault-proof-contracts.js";
+import {
+  alignEmulatorToWholeSecond,
+  alignUnixTimeToEmulatorSlotBoundary,
+  expectSingleUtxoWithUnit,
+  fundedProverEmulatorAccount,
+  registerPhasMembershipRewardAccount,
+} from "./emulator/emulator-context.js";
 import { measureCompleteSignedTransaction } from "./emulator/measurement.js";
+import { EMULATOR_PROTOCOL_PARAMETERS } from "./emulator/protocol-parameters.js";
 import { createReferenceScriptPublisher } from "./emulator/reference-script-publisher.js";
 import {
   publishFaultProofWitnessReferenceScripts,
   publishOperatorLifecycleReferenceScripts,
 } from "./emulator/reference-scripts.js";
+import { publishRemovalReferenceScripts } from "./emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { publishFraudProofChainReferenceScripts } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.build-removal-deployment-info.js";
+import { submitSetupTx } from "./emulator/setup-tx.submit-setup-tx.js";
 import { makeIsolatedAlwaysSucceedsAuthenticatedValidator } from "./emulator/validators.js";
-import { submitInit } from "./legacy-submit-emulator.js";
 import { submitFamilyCancel } from "./linear-fault-cancel.js";
-import { expectStateQueueHeaderOrder } from "./submit-init-emulator-fixtures.js";
-import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  alwaysSucceedsBlueprintPath,
-  buildCatalogueDeploymentInfo,
-  buildMinimalFaultProofContracts,
-  buildRemovalDeploymentInfo,
-  EMULATOR_PROTOCOL_PARAMETERS,
-  expectSingleUtxoWithUnit,
-  fundedProverEmulatorAccount,
-  network,
-  publishFraudProofChainReferenceScripts,
-  publishRemovalReferenceScripts,
-  readBlueprint,
-  realBlueprintPath,
-  registerPhasMembershipRewardAccount,
-  submitSetupTx,
-} from "./submit-init-emulator-shared.js";
+import { expectStateQueueHeaderOrder } from "./submit-init/queue-assertions.js";
 import { buildPastPrerequisitesUnjournaled } from "./submit-unjournaled.js";
+import { submitInit } from "./submit-unjournaled.legacy.js";
 import {
   publishTransitionTraceBytes,
   submitTransitionTraceFinal,

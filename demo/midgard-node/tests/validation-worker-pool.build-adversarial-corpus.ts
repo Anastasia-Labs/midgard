@@ -3,13 +3,13 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import {
-  deserializePhaseACandidate,
-  MidgardRedeemerTag,
-  type PhaseAResult,
-  type PhaseAValidatedTx,
-  type PhaseBResultWithPatch,
-} from "@al-ft/midgard-validation";
+import { deserializePhaseACandidate } from "@al-ft/midgard-validation";
+import { MidgardRedeemerTag } from "@al-ft/midgard-validation/midgard-redeemers";
+import type { PhaseBResultWithPatch } from "@al-ft/midgard-validation/phase-b";
+import type {
+  PhaseAResult,
+  PhaseAValidatedTx,
+} from "@al-ft/midgard-validation/types";
 
 import {
   hashScriptWitness,
@@ -22,7 +22,7 @@ import {
   outRefFromTxId,
   plutusV3ScriptWitness,
 } from "../../midgard-validation/tests/validation-fixtures.js";
-import { FixedValidationWorkerPool } from "../src/services/validation-pool.js";
+import { FixedValidationWorkerPool } from "../src/services/validation-pool.fixed-validation-worker-pool.js";
 import { packPhaseAJob } from "../src/workers/utils/validation-pool.js";
 
 export const workerEntry = pathToFileURL(resolve("dist/validation.js"));

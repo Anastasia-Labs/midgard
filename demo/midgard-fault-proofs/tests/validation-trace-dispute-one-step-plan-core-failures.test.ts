@@ -10,10 +10,10 @@ import { MIDGARD_CEK_STAGED_CHUNK_BYTES } from "@al-ft/midgard-core";
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
   MIDGARD_CEK_WRITE_BITS_LOOP_INPUT_WORDS,
-  type MidgardCekCoreStepWitness,
   midgardCekStagedBuiltinMaterialData,
   stageMidgardCekStagedBuiltinMaterial,
 } from "@al-ft/midgard-validation";
+import type { MidgardCekCoreStepWitness } from "@al-ft/midgard-validation/cek-machine";
 import { Constr, Data, type UTxO } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 

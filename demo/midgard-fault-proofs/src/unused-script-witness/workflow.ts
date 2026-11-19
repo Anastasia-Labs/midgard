@@ -1,6 +1,6 @@
 /** The `unusedScriptWitness` family's direct walk. */
 import { defineDirectWalkFamily } from "../direct-purpose-family/walk-family.js";
-import { UNUSED_SCRIPT_WITNESS_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
+import { UNUSED_SCRIPT_WITNESS_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import { UNUSED_SCRIPT_WITNESS_CURSOR_SPEC } from "../workflow/cursor-family-spec.js";
 import {
   UNUSED_SCRIPT_WITNESS_FAMILY,

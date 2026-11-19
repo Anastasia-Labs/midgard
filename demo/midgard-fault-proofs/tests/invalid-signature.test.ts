@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import { prepareInvalidSignatureFromCanonicalEvidence } from "../src/evidence/prepare-from-evidence.js";
-import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
-import { INVALID_SIGNATURE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
+import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
+import { INVALID_SIGNATURE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import {
   admitInvalidSignatureArtifact,
   prepareInvalidSignatureArtifact,
-} from "../src/workflow/invalid-signature.js";
+} from "../src/workflow/invalid-signature.admit-invalid-signature-artifact.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,

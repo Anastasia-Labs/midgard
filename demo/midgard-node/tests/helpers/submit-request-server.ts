@@ -22,12 +22,14 @@ import { createHttpIngress } from "../../src/commands/listen-http-ingress.js";
 import {
   AdmissionWriter,
   type AdmissionWriteRequest,
-} from "../../src/services/admission-writer.js";
+} from "../../src/services/admission-writer.validate-options.js";
+import { NodeConfig } from "../../src/services/config.make-config.js";
+import { Globals } from "../../src/services/globals.globals.js";
 import {
   DEFAULT_HTTP_RATE_LIMITS,
   type HttpRateLimitPolicy,
 } from "../../src/services/http-rate-limits.js";
-import { Globals, Lucid, NodeConfig } from "../../src/services/index.js";
+import { Lucid } from "../../src/services/lucid.js";
 import {
   createSubmitCheckPool,
   type SubmitCheckPool,

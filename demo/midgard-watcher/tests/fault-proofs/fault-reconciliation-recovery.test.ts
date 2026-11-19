@@ -26,9 +26,9 @@ import {
 import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "@al-ft/midgard-fault-proofs/test-support/wallet-only-send-always-open";
 import { describe, expect, it, vi } from "vitest";
 
-import { unsafeOpenWatcherFaultDecisionJournalForTest } from "../../src/fault-proofs/fault-decision-journal.js";
-import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.js";
-import { createWatcherFaultProofSupervisor } from "../../src/fault-proofs/fault-proof-supervisor.js";
+import { unsafeOpenWatcherFaultDecisionJournalForTest } from "../../src/fault-proofs/fault-decision-journal.create-journal.js";
+import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
+import { createWatcherFaultProofSupervisor } from "../../src/fault-proofs/fault-proof-supervisor.create-watcher-fault-proof-supervisor.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
 import { NO_APPLIED_BLOCK_L1_CLOCK } from "../support/no-applied-block-l1-clock.js";
 import { storelessProofRetention } from "../support/proof-retention.js";

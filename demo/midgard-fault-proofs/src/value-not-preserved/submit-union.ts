@@ -16,10 +16,8 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
-import {
-  faultProofFieldOpening,
-  type FaultProofFieldOpeningPlan,
-} from "../field-opening.js";
+import type { FaultProofFieldOpeningPlan } from "../field-opening.plan-fault-proof-field-opening.js";
+import { faultProofFieldOpening } from "../field-opening.publish-fault-proof-field-carriage.js";
 import { buildLinearFaultCancel } from "../linear-fault-cancel.js";
 import { buildLinearFaultFinalize } from "../linear-fault-finalize.js";
 import { buildLinearFaultContinue } from "../linear-fault-submit.js";

@@ -13,42 +13,40 @@ import { forcedVerdictSubject } from "@al-ft/midgard-sdk";
 import { getAddressDetails } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { FIELD_GRAMMAR_WALKED_COUNT_LIMIT } from "../src/field-grammar-certificate.js";
+import { FIELD_GRAMMAR_WALKED_COUNT_LIMIT } from "../src/field-grammar-certificate.route-fault-proof-field-grammar.js";
 import {
   VAN_ROSSEM_MAX_CPU_UNITS,
   VAN_ROSSEM_MAX_MEMORY_UNITS,
 } from "../src/proof-fit/van-rossem.js";
-import {
-  buildTransactionOutputNonCanonicalStep01Forced,
-  buildTransactionOutputNonCanonicalStep02,
-  buildTransactionOutputNonCanonicalStep03,
-  buildTransactionOutputNonCanonicalStep04,
-  TRANSACTION_OUTPUT_OUTCOME_ABSENT,
-} from "../src/transaction-output-non-canonical/index.js";
-import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
+import { buildTransactionOutputNonCanonicalStep01Forced } from "../src/transaction-output-non-canonical/submit-step-01-forced.js";
+import { buildTransactionOutputNonCanonicalStep02 } from "../src/transaction-output-non-canonical/submit-step-02.js";
+import { buildTransactionOutputNonCanonicalStep03 } from "../src/transaction-output-non-canonical/submit-step-03.js";
+import { buildTransactionOutputNonCanonicalStep04 } from "../src/transaction-output-non-canonical/submit-step-04.js";
+import { TRANSACTION_OUTPUT_OUTCOME_ABSENT } from "../src/transaction-output-non-canonical/transaction-output-non-canonical.js";
+import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
+import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { nodeForcedVerdict } from "./support/emulator/node-forced-verdict.js";
+import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
 import { deployHarnessFieldGrammarCertificate } from "./support/field-grammar-certificate-deployment-fixture.js";
-import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  submitSetupTx,
-} from "./support/submit-init-emulator-shared.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,
 } from "./support/submit-unjournaled.js";
+import { buildForcedOutputFixture } from "./support/transaction-output-non-canonical-emulator.build-forced-output-fixture.js";
 import {
-  buildForcedOutputFixture,
   MALFORMED_OUTPUT,
+  scanStateOf,
+} from "./support/transaction-output-non-canonical-emulator.continue-raw.js";
+import {
   outputFieldOpening,
   publishOutputFieldCarriage,
-  scanStateOf,
   submitOutputStep02Raw,
   submitOutputStep04Raw,
-} from "./support/transaction-output-non-canonical-emulator.js";
+} from "./support/transaction-output-non-canonical-emulator.publish-output-field-carriage.js";
 import { nodeTransactionSpendingHeldInput } from "./transaction-output-non-canonical-datum-lifecycle.scenario.js";
 import {
   evidenceOf,

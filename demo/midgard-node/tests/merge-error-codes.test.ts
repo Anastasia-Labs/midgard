@@ -15,10 +15,8 @@ import {
   extractStateQueueErrorCode,
   handleStateQueueGetFailure,
 } from "../src/commands/listen-response.js";
-import {
-  diagnoseMissingBlockTxs,
-  preflightDecodeBlockTxs,
-} from "../src/transactions/state-queue/merge-to-confirmed-state.js";
+import { preflightDecodeBlockTxs } from "../src/transactions/state-queue/merge-to-confirmed-state.fetch-canonical-merge-candidate-readiness.js";
+import { diagnoseMissingBlockTxs } from "../src/transactions/state-queue/merge-to-confirmed-state.merge-options.js";
 
 type TxFixture = {
   readonly cborHex: string;

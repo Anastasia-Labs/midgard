@@ -12,14 +12,16 @@ import { Effect } from "effect";
 
 import { parseHex, stringifyJson } from "./json-file.js";
 import {
-  buildTrieView,
-  decodeTransactionMaterial,
   type FetchLike,
   fetchNodeBlockTransactions,
   readNodeTransactionPayloadsFile,
+} from "./prepare-double-spend.encode-l2-transaction-source-value.js";
+import {
+  buildTrieView,
+  decodeTransactionMaterial,
   requireProof,
   transactionSourceTrieItem,
-} from "./prepare-double-spend.js";
+} from "./prepare-double-spend.resolve-double-spend-pair.js";
 import {
   findCandidate,
   parseIndex,

@@ -20,7 +20,7 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 
 import { type WatcherConfig } from "../runtime/config.js";
-import { assertVerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
+import { assertVerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.verify-watcher-user-event-script-binding.js";
 import { watcherDaFetchAlertSubject } from "../runtime/operations-observability.alert-book.js";
 import type { WatcherPublicDaRequest } from "./public-da-client.js";
 import {

@@ -12,7 +12,7 @@ import {
 } from "@al-ft/midgard-sdk";
 import { CML } from "@lucid-evolution/lucid";
 
-import { buildMissingSignatureSubject } from "./missing-signature-emulator.js";
+import { buildMissingSignatureSubject } from "./missing-signature-emulator.build-missing-signature-subject.js";
 export const buildMissingSignatureForcedTransaction = ({
   witnessCount = 1,
   signerCount = 1,

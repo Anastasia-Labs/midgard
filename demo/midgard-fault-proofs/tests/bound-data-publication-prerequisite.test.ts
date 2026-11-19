@@ -11,18 +11,14 @@ import { describe, expect, it } from "vitest";
 
 import { proofMaterialsAddress } from "../src/funding/proof-materials-address.js";
 import type { ResolvedProverSigner } from "../src/runtime.js";
-import {
-  createAuthenticatedFieldCarriagePrerequisitePort,
-  createBoundDataPublicationRequirement,
-} from "../src/workflow/field-carriage-prerequisite.js";
+import { createBoundDataPublicationRequirement } from "../src/workflow/bound-data-publication.js";
+import { createAuthenticatedFieldCarriagePrerequisitePort } from "../src/workflow/field-carriage-prerequisite.create-authenticated-field-carriage-prerequisite-port.js";
 import type { FraudProofWorkflowAction } from "../src/workflow/orchestrator.js";
 import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../src/workflow/raw-l1-publication-observation.js";
 import { createConfirmedActionJournal } from "./support/confirmed-action-journal.js";
-import {
-  captureEmulatorSubmission,
-  EMULATOR_PROTOCOL_PARAMETERS,
-  network,
-} from "./support/submit-init-emulator-shared.js";
+import { network } from "./support/emulator/blueprints.js";
+import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
+import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
 
 const headerHash = "ab".repeat(28);
 const action: FraudProofWorkflowAction = {

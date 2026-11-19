@@ -16,9 +16,10 @@ import {
   SKIPPED_DUE_VALIDATION_TRACE_DEFENSE,
   VALIDATION_TRACE_DEFENSE_COMMIT_PAUSE_MS,
 } from "../src/fibers/block-commitment.validation-trace-defense-pause.js";
-import { Globals, NodeConfig } from "../src/services/index.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
+import { Globals } from "../src/services/globals.globals.js";
 import { Lucid } from "../src/services/lucid.js";
-import { MidgardContracts } from "../src/services/midgard-contracts.js";
+import { MidgardContracts } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   initialValidationTraceDefenseHealth,
   type ValidationTraceDefenseHealth,

@@ -4,7 +4,7 @@
  * between its alarm and its state. Each alarm is raised once, for an entry
  * still in the set, and never lost.
  */
-import { type LocalScriptEvalResult } from "@al-ft/midgard-validation";
+import type { LocalScriptEvalResult } from "@al-ft/midgard-validation/types";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 

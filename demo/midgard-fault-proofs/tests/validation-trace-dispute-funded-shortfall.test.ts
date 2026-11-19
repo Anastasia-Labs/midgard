@@ -28,10 +28,8 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
-import {
-  isWorkflowFundingPauseReason,
-  WORKFLOW_FUNDING_SHORTFALL,
-} from "../src/workflow/funding-reservation-permit.js";
+import { isWorkflowFundingPauseReason } from "../src/workflow/funding-reservation-permit.is-workflow-funding-pause-reason.js";
+import { WORKFLOW_FUNDING_SHORTFALL } from "../src/workflow/funding-reservation-permit.workflow-funding-shortfall.js";
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import {
   drainProver,

@@ -21,8 +21,8 @@ import { type SimOutput, simTxHash } from "@al-ft/midgard-l1-follower/testing";
 import * as SDK from "@al-ft/midgard-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { stateQueueProjection } from "../src/l1-state-queue/index.js";
-import { landedFrontierPruneFloor } from "../src/landed-blocks/index.js";
+import { stateQueueProjection } from "../src/l1-state-queue/projection.js";
+import { landedFrontierPruneFloor } from "../src/landed-blocks/prune-floor.js";
 import { db } from "./helpers/forced-orders-node-store.js";
 import type { ChainDriver } from "./helpers/l1-events-store.js";
 import {

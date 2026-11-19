@@ -8,7 +8,8 @@ import {
   TxAdmissionsDB,
 } from "../../database/index.js";
 import * as SettlementJournal from "../../database/settlement.js";
-import { ContractDeploymentIdentity, Globals } from "../../services/index.js";
+import { Globals } from "../../services/globals.globals.js";
+import { ContractDeploymentIdentity } from "../../services/midgard-contracts.make-midgard-contract-runtime.js";
 import { publicReadinessPresentation } from "../listen-readiness-public-presentation.js";
 import { failWith500 } from "../listen-response.js";
 import { TX_STATUS_COMMITTED_MEANINGS } from "../tx-status.js";

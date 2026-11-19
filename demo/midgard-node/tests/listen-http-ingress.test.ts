@@ -29,7 +29,7 @@ import {
 import { HTTP_LIVENESS_MAX_ENTRIES } from "../src/commands/listen-http-rate-limit.js";
 import { encodeReadPage } from "../src/commands/listen-read-page.js";
 import { stateQueueHeaderPage } from "../src/commands/listen-state-queue-page.js";
-import { NodeConfig } from "../src/services/config.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
 import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
 const config = makeTestNodeConfig({ ADMIN_API_KEY: "01".repeat(32) });

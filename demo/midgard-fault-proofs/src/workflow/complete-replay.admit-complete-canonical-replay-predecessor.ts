@@ -18,13 +18,13 @@ import {
 import { detectNetworkIdAcceptedForced } from "../network-id/accepted-forced.js";
 import { findNetworkIdFaults } from "../network-id/evidence.js";
 import { detectNetworkIdWrongfulRejections } from "../network-id/wrongful-rejection.js";
-import { decodeTransactionMaterial } from "../prepare-double-spend.js";
+import { decodeTransactionMaterial } from "../prepare-double-spend.resolve-double-spend-pair.js";
 import { ledgerKeyBytesHex } from "../step-support.js";
+import type { CanonicalViolationDetection } from "./classification.classify-canonical-block-violations.js";
 import {
-  type CanonicalViolationDetection,
   DOUBLE_SPEND_VIOLATION_ID,
   NETWORK_ID_VIOLATION_ID,
-} from "./classification.js";
+} from "./classification.fraud-proof-classification-rules.js";
 import {
   COMPLETE_CANONICAL_REPLAY_PREDECESSOR,
   type CompleteCanonicalReplayContext,

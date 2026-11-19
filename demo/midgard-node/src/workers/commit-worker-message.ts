@@ -9,10 +9,8 @@ import {
   noticeCommitBuildAlarm,
   settleCommitBuildAlarms,
 } from "../services/globals.commit-build-alarms.js";
-import {
-  type Globals,
-  publishMempoolLedgerDelta,
-} from "../services/globals.js";
+import type { Globals } from "../services/globals.globals.js";
+import { publishMempoolLedgerDelta } from "../services/globals.with-l1-control-plane-held.js";
 import type { UnwrittenHold } from "../services/intent-journal.holds.js";
 import {
   applyCommitPlanningNotice,

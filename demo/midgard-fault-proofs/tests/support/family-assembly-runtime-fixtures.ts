@@ -1,10 +1,10 @@
 import type { UTxO } from "@lucid-evolution/lucid";
 
-import { FIELD_ITEM_WIDTH_ILLEGAL_WORKFLOW } from "../../src/field-item-width-illegal/workflow.js";
-import { MINT_ITEM_NON_CANONICAL_WORKFLOW } from "../../src/mint-item-non-canonical/workflow.js";
-import { OUTPUT_REFERENCE_SCRIPT_DECODING_WORKFLOW } from "../../src/output-reference-script-decoding/authenticated-workflow.js";
-import { PROTECTED_OUTPUT_SIGNER_MISSING_WORKFLOW } from "../../src/protected-output-signer-missing/authenticated-workflow.js";
-import { SPEND_INPUT_SIGNER_MISSING_WORKFLOW } from "../../src/spend-input-signer-missing/authenticated-workflow.js";
+import { FIELD_ITEM_WIDTH_ILLEGAL_WORKFLOW } from "../../src/field-item-width-illegal/workflow.create-field-item-width-illegal-raw-l1-stage-resolver.js";
+import { MINT_ITEM_NON_CANONICAL_WORKFLOW } from "../../src/mint-item-non-canonical/workflow.load-manifest-bound-mint-item-non-canonical-config.js";
+import { OUTPUT_REFERENCE_SCRIPT_DECODING_WORKFLOW } from "../../src/output-reference-script-decoding/authenticated-workflow.create-output-reference-script-decoding-bound-config.js";
+import { PROTECTED_OUTPUT_SIGNER_MISSING_WORKFLOW } from "../../src/protected-output-signer-missing/authenticated-workflow.create-protected-output-signer-missing-bound-config.js";
+import { SPEND_INPUT_SIGNER_MISSING_WORKFLOW } from "../../src/spend-input-signer-missing/authenticated-workflow.create-spend-input-signer-missing-bound-config.js";
 import { createCanonicalFamilyArtifactPort } from "../../src/workflow/manifest-bound-family-recovery.js";
 
 const versions = {

@@ -10,8 +10,10 @@ import { Clock, Effect, Option } from "effect";
 
 import { inFollowerSnapshot } from "../database/follower-schema.js";
 import { eventOrderOrPrunedByIdIn } from "../l1-events/event-by-id.js";
-import { Database, Lucid, MidgardContracts } from "../services/index.js";
+import { Database } from "../services/index.js";
 import { type IntentJournal, openPlan } from "../services/intent-journal.js";
+import { Lucid } from "../services/lucid.js";
+import { MidgardContracts } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import { awaitLedgerTipAtLowerBound } from "../transactions/ledger-tip-lower-bound.js";
 import {
   fetchReferenceScriptUtxosProgram,

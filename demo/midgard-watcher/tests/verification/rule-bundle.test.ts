@@ -6,10 +6,14 @@ import "@al-ft/midgard-core/deployment-profile";
 import "@al-ft/midgard-core/validation-trace";
 import "@lucid-evolution/lucid";
 import "vitest";
-import "../../src/runtime/deployment-identity.js";
-import "../../src/verification/rule-bundle.js";
+import "../../src/runtime/deployment-identity.parse-policy.js";
+import "../../src/runtime/deployment-identity.verify-watcher-deployment-identity.js";
+import "@al-ft/midgard-core/deployment-release";
+import "../../src/runtime/deployment-identity.catalogue-category-to-contract.js";
+import "../../src/verification/rule-bundle.parse-watcher-rule-bundle.js";
+import "../../src/verification/rule-bundle.canonical-json-value.js";
 import "../canonical-fraud-proof-catalogue.js";
-import "../support/deployment-authority-fixture.js";
+import "../support/deployment-authority-fixture.build-watcher-authority-contracts.js";
 import "./rule-bundle.canonical-manifest-identity.js";
 import "./rule-bundle.fixture.js";
 
@@ -27,14 +31,16 @@ import { MidgardValidationPhase } from "@al-ft/midgard-core/validation-trace";
 import { describe, expect, it } from "vitest";
 
 import {
+  WATCHER_RULE_BUNDLE_REJECTION_SELECTION,
+  WATCHER_RULE_BUNDLE_TRANSITION_PRIORITY,
+  WATCHER_RULE_BUNDLE_VALIDATION_PHASE_PRIORITY,
+} from "../../src/verification/rule-bundle.canonical-json-value.js";
+import {
   computeWatcherRuleBundleCommitment,
   encodeWatcherRuleBundle,
   loadWatcherRuleBundle,
   parseWatcherRuleBundle,
-  WATCHER_RULE_BUNDLE_REJECTION_SELECTION,
-  WATCHER_RULE_BUNDLE_TRANSITION_PRIORITY,
-  WATCHER_RULE_BUNDLE_VALIDATION_PHASE_PRIORITY,
-} from "../../src/verification/rule-bundle.js";
+} from "../../src/verification/rule-bundle.parse-watcher-rule-bundle.js";
 import {
   h32,
   makeTrustRoot,

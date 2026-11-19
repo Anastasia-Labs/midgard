@@ -7,20 +7,16 @@ import { FraudProofTokenDatum } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import {
-  buildInputNoIdxStep02,
-  buildInputNoIdxStep03,
-  type buildInputNoIdxStep04,
-} from "../../src/index.js";
+import { buildInputNoIdxStep02 } from "../../src/submit-input-no-idx-step-02.submit-input-no-idx-step02.js";
+import { buildInputNoIdxStep03 } from "../../src/submit-input-no-idx-step-03.js";
+import type { buildInputNoIdxStep04 } from "../../src/submit-input-no-idx-step-04.submit-input-no-idx-step04.js";
 import type {
   InputNoIdxBlockFixture,
   makeEmulatorHarness,
 } from "../submit-init-emulator-input-no-idx.build-input-no-idx-block-fixture.js";
 import { startInputNoIdxStep02Thread } from "../submit-init-emulator-input-no-idx.measure-step02-proof-transaction.js";
-import {
-  expectSingleUtxoWithUnit,
-  network,
-} from "./submit-init-emulator-shared.js";
+import { network } from "./emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "./emulator/emulator-context.js";
 import {
   buildAndSubmitUnjournaled,
   type SubmittedStep,

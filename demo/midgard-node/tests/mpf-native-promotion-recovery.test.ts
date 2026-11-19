@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   recoverNativeMpfAfterCommitWorkerFailure,
   recoverNativeMpfFromSignedJournal,
-} from "../src/fibers/block-commitment.js";
+} from "../src/fibers/block-commitment.promote-or-recover-native-mpf.js";
 import type {
   NativeMpfGenerationHandle,
   NativeMpfOwnerService,

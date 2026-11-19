@@ -4,20 +4,16 @@ import { Data, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildWithdrawnReferenceInputInit,
-  buildWithdrawnReferenceInputStep01,
-  buildWithdrawnReferenceInputStep02,
-  buildWithdrawnReferenceInputStep03,
-  submitRemoveFraudulentBlock,
-} from "../src/index.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import { buildWithdrawnReferenceInputInit } from "../src/withdrawn-reference-input/submit-withdrawn-reference-input-init.js";
+import { buildWithdrawnReferenceInputStep01 } from "../src/withdrawn-reference-input/submit-withdrawn-reference-input-step-01.js";
+import { buildWithdrawnReferenceInputStep02 } from "../src/withdrawn-reference-input/submit-withdrawn-reference-input-step-02.js";
+import { buildWithdrawnReferenceInputStep03 } from "../src/withdrawn-reference-input/submit-withdrawn-reference-input-step-03.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
-import {
-  buildRemovalDeploymentInfo,
-  expectSingleUtxoWithUnit,
-  network,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,
@@ -26,7 +22,7 @@ import {
   makeWithdrawnReferenceInputEmulatorHarness,
   publishWithdrawnReferenceInputReferenceScripts,
   setupWithdrawnReferenceInputScenario,
-} from "./support/withdrawn-reference-input-emulator.js";
+} from "./support/withdrawn-reference-input-emulator.setup-withdrawn-reference-input-unchecked-scenario.js";
 
 describe("withdrawn-reference-input emulator lifecycle", () => {
   it("proves the same-block conflict, mints permanent evidence, and removes the fraudulent block", async () => {

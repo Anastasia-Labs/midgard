@@ -12,49 +12,51 @@ import {
   type CanonicalBlockEvidence,
   canonicalBlockEvidenceFromVerifiedPayload,
 } from "../src/evidence/canonical-block-evidence.js";
+import { runOrResumeManifestBoundNetworkIdWorkflow } from "../src/network-id/workflow-adapter.create-manifest-bound-network-id-workflow.js";
+import { createNetworkIdAuthenticatedL1TerminalVerifier } from "../src/network-id/workflow-adapter.create-network-id-raw-l1-observation-port.js";
+import type { ManifestBoundNetworkIdWorkflow } from "../src/network-id/workflow-adapter.seal-manifest-bound-network-id-runtime.js";
+import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
+import { DOUBLE_SPEND_NETWORK_ID_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
 import {
-  createNetworkIdAuthenticatedL1TerminalVerifier,
-  type ManifestBoundNetworkIdWorkflow,
-  runOrResumeManifestBoundNetworkIdWorkflow,
-} from "../src/network-id/workflow-adapter.js";
-import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
-import {
-  COMPLETE_CANONICAL_REPLAY,
-  type CompleteCanonicalReplay,
   DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
-  DOUBLE_SPEND_NETWORK_ID_COMPLETE_CANONICAL_REPLAY,
   INVALID_RANGE_COMPLETE_CANONICAL_REPLAY,
   NETWORK_ID_COMPLETE_CANONICAL_REPLAY,
   ZERO_INPUT_COMPLETE_CANONICAL_REPLAY,
-} from "../src/workflow/complete-replay.js";
+} from "../src/workflow/complete-replay.detect-double-withdraws.js";
 import {
-  createDoubleSpendConstrainedWorkflowAdapter,
-  type ManifestBoundDoubleSpendWorkflow,
-  runOrResumeManifestBoundDoubleSpendWorkflow,
-} from "../src/workflow/double-spend-adapter.js";
+  COMPLETE_CANONICAL_REPLAY,
+  type CompleteCanonicalReplay,
+} from "../src/workflow/complete-replay.replay-context-identity.js";
+import { createDoubleSpendConstrainedWorkflowAdapter } from "../src/workflow/double-spend-adapter.create-double-spend-constrained-workflow-adapter.js";
+import { runOrResumeManifestBoundDoubleSpendWorkflow } from "../src/workflow/double-spend-adapter.create-manifest-bound-double-spend-workflow.js";
+import type { ManifestBoundDoubleSpendWorkflow } from "../src/workflow/double-spend-adapter.preflight-of.js";
+import {
+  DirectoryFraudProofWorkflowJournalStore,
+  MemoryFraudProofWorkflowJournalStore,
+  validateFraudProofWorkflowJournal,
+} from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
+import {
+  ConcurrentFraudProofWorkflowWriteError,
+  type FraudProofWorkflowJournalEntry,
+  type FraudProofWorkflowJournalStore,
+} from "../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import {
   computeFraudProofWorkflowId,
-  ConcurrentFraudProofWorkflowWriteError,
-  DirectoryFraudProofWorkflowJournalStore,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
   type FraudProofWorkflowIdentity,
-  type FraudProofWorkflowJournalEntry,
-  type FraudProofWorkflowJournalStore,
   type FraudProofWorkflowTerminal,
   journalJsonDigest,
-  MemoryFraudProofWorkflowJournalStore,
   normalizeJournalJson,
-  validateFraudProofWorkflowJournal,
-} from "../src/workflow/journal.js";
+} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import { FraudProofL1CheckpointChangedError } from "../src/workflow/l1-source.js";
 import {
-  createFraudProofWorkflowRegistry,
   FRAUD_PROOF_WORKFLOW_SAFETY,
   type FraudProofFamilyWorkflowAdapter,
-  runFraudProofWorkflowFromRetainedDa,
-} from "../src/workflow/orchestrator.js";
-import { StateQueueHeaderNotLiveError } from "../src/workflow/raw-l1-family-derivation.js";
+} from "../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
+import { createFraudProofWorkflowRegistry } from "../src/workflow/orchestrator.immutable-fraud-proof-workflow-registry.js";
+import { runFraudProofWorkflowFromRetainedDa } from "../src/workflow/orchestrator.run-fraud-proof-workflow-from-retained-da.js";
+import { StateQueueHeaderNotLiveError } from "../src/workflow/raw-l1-family-derivation.state-queue-topology.js";
 import { computeFraudProofReleaseFinalityPolicyDigest } from "../src/workflow/release-finality-policy.js";
 import {
   authenticatedHeaderObservation,

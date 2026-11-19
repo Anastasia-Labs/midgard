@@ -1,7 +1,7 @@
 import { toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { selectRetiredReferenceScriptUtxos } from "../src/transactions/reference-script-sweep.js";
+import { selectRetiredReferenceScriptUtxos } from "../src/transactions/reference-script-sweep.select-retired-reference-script-utxos.js";
 import {
   applyBatch,
   LIVE,

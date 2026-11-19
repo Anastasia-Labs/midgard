@@ -3,9 +3,11 @@ import "node:path";
 import "@al-ft/midgard-core/deployment-manifest-identity";
 import "@al-ft/midgard-test-support/hex";
 import "vitest";
-import "../../src/runtime/config.js";
+import "../../src/runtime/config.parse-watcher-config.js";
+import "../../src/runtime/config.strict-json-reader.js";
+import "../../src/runtime/config.watcher-config.js";
 import "../../src/runtime/process-config.js";
-import "../../src/runtime/watcher-runtime.js";
+import "../../src/runtime/watcher-runtime.startup-hold.js";
 import "./process-config.watcher-config-value.js";
 
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -21,7 +23,7 @@ import {
   parseWatcherProcessConfig,
   WATCHER_PROCESS_CONFIG_SCHEMA_VERSION,
 } from "../../src/runtime/process-config.js";
-import { createWatcherRuntime } from "../../src/runtime/watcher-runtime.js";
+import { createWatcherRuntime } from "../../src/runtime/watcher-runtime.startup-hold.js";
 import { freeOperationsEndpoint } from "../support/free-port.js";
 import {
   directories,

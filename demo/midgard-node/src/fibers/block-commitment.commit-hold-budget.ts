@@ -6,7 +6,7 @@ import {
   extendL1ControlPlaneHold,
   l1ControlPlaneHoldTimeoutStreak,
 } from "../services/globals.l1-control-plane.js";
-import { commitDaFrameStepDownPassBound } from "../workers/utils/commit-block-planner.js";
+import { commitDaFrameStepDownPassBound } from "../workers/utils/commit-block-planner.da-frame-decision.js";
 
 /**
  * The L1 control-plane hold a commitment needs, derived from the work queued

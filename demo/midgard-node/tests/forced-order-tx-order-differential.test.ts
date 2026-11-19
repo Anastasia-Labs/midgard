@@ -53,13 +53,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   carriageFieldPreimages,
   carriageVector,
-  FORCED_ORDERS_TABLE,
+  reconstructTxOrderMaterial,
+} from "../src/forced-orders/carriage.js";
+import {
   type ForcedOrderConfig,
   forcedOrderConfigFromContracts,
-  forcedOrderProjection,
-  reconstructTxOrderMaterial,
-} from "../src/forced-orders/index.js";
-import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
+} from "../src/forced-orders/config.js";
+import { forcedOrderProjection } from "../src/forced-orders/projection.js";
+import { FORCED_ORDERS_TABLE } from "../src/forced-orders/schema.js";
+import { AlwaysSucceedsContract } from "../src/services/always-succeeds.always-succeeds-contract.js";
 import {
   db,
   forcedRows,

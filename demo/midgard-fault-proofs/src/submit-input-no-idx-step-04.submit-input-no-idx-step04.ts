@@ -16,12 +16,12 @@ import { type FaultProofTurn, isPrerequisiteTurn } from "./fault-proof-turn.js";
 import {
   type FaultProofFieldGrammarDeployment,
   routeFaultProofFieldGrammar,
-} from "./field-grammar-certificate.js";
+} from "./field-grammar-certificate.route-fault-proof-field-grammar.js";
+import { planFaultProofFieldOpening } from "./field-opening.plan-fault-proof-field-opening.js";
 import {
   faultProofFieldOpening,
-  planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
-} from "./field-opening.js";
+} from "./field-opening.publish-fault-proof-field-carriage.js";
 import {
   fetchUtxoByOutRef,
   outRefLabel,
@@ -29,11 +29,10 @@ import {
   type ResolvedProverSigner,
   resolveInputNoIdxDeploymentContracts,
 } from "./runtime.js";
-import { completeStep, fundStep } from "./step-completion.js";
-import { finishStep } from "./step-completion.js";
+import { completeStep, finishStep, fundStep } from "./step-completion.js";
 import { requireComputationThreadToken } from "./step-support.js";
-import type { InputNoIdxStep04Build } from "./submit-input-no-idx-step-04.make-input-no-idx-step04-spend-redeemer.js";
 import {
+  type InputNoIdxStep04Build,
   type InputNoIdxStep04ResolvedLayout,
   type InputNoIdxStep04SpendLayout,
   makeComputationThreadSuccessRedeemer,

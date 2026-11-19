@@ -4,12 +4,12 @@ import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-
 import { h32 } from "@al-ft/midgard-test-support/hex";
 import { expect } from "vitest";
 
+import { parseWatcherConfig } from "../../src/runtime/config.parse-watcher-config.js";
+import { parseWatcherStrictJsonValue } from "../../src/runtime/config.strict-json-reader.js";
 import {
-  parseWatcherConfig,
-  parseWatcherStrictJsonValue,
   WATCHER_CONFIG_SCHEMA_VERSION,
   type WatcherConfig,
-} from "../../src/runtime/config.js";
+} from "../../src/runtime/config.watcher-config.js";
 import {
   parseWatcherProcessConfig,
   WATCHER_PROCESS_CONFIG_SCHEMA_VERSION,

@@ -4,7 +4,7 @@ import { Session } from "node:inspector";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 
-import { type QueuedTx } from "@al-ft/midgard-validation";
+import type { QueuedTx } from "@al-ft/midgard-validation/types";
 import { SqlClient } from "@effect/sql";
 import { PgClient } from "@effect/sql-pg";
 import { Effect, Redacted, type Scope } from "effect";

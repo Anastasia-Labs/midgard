@@ -11,8 +11,8 @@ import { SUBMIT_HTTP_BODY_MAX_BYTES } from "../src/commands/http/submission-capa
 import { makeSubmitRequestHandler } from "../src/commands/http/submit.js";
 import { withStartupHttpServer } from "../src/commands/listen.startup-http.js";
 import { withHttpIngress } from "../src/commands/listen-http-ingress.js";
+import { Globals } from "../src/services/globals.globals.js";
 import { DEFAULT_HTTP_RATE_LIMITS } from "../src/services/http-rate-limits.js";
-import { Globals } from "../src/services/index.js";
 import { acquireSubmitCheckPool } from "../src/services/submit-check-pool.acquire-submit-check-pool.js";
 import {
   makeNativeSubmitTx,

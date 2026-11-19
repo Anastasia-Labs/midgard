@@ -31,26 +31,24 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  buildNativeScriptDecodingScanPlan,
   type NativeScriptDecodingFinding,
-  NativeScriptDecodingPlanRoutes,
   NativeScriptDecodingProvability,
-} from "../src/native-script-decoding/index.js";
+} from "../src/native-script-decoding/finding.js";
+import { buildNativeScriptDecodingScanPlan } from "../src/native-script-decoding/scan-plan.build-native-script-decoding-scan-plan.js";
+import { NativeScriptDecodingPlanRoutes } from "../src/native-script-decoding/scan-plan.native-script-decoding-plan-costs.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
+import { decodingMalformedMultiChunkItem } from "./support/native-script-decoding-emulator.build-decoding-ledger-fixture.js";
 import {
-  decodingMalformedMultiChunkItem,
   makeDecodingEmulatorHarness,
   publishDecodingReferenceScripts,
   setupDecodingScenario,
-} from "./support/native-script-decoding-emulator.js";
+} from "./support/native-script-decoding-emulator.setup-decoding-scenario.js";
 import {
   NATIVE_SCRIPT_DECODING_PROVER_POLICY_DEFAULTS,
   type NativeScriptDecodingProverDeps,
-  proveNativeScriptDecodingFault,
-} from "./support/native-script-decoding-prover.js";
-import {
-  expectSingleUtxoWithUnit,
-  network,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/native-script-decoding-prover.locate-native-script-decoding-thread.js";
+import { proveNativeScriptDecodingFault } from "./support/native-script-decoding-prover.prove-native-script-decoding-fault.js";
 
 /** The emulator has no L1 depth or maturity to observe; both gates are off. */
 const EMULATOR_PROVER_POLICY = {

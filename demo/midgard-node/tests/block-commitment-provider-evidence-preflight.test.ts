@@ -1,11 +1,12 @@
 import { Effect, Ref } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { NodeConfig } from "../src/services/config.make-config.js";
+import { Globals } from "../src/services/globals.globals.js";
 import { HISTORY_COMMIT_LANDING_MARGIN_MS } from "../src/services/history-commit-window.js";
-import { Globals, NodeConfig } from "../src/services/index.js";
 import type { StateQueueSnapshot } from "../src/services/landed-state-queue.js";
 import { Lucid as LucidService } from "../src/services/lucid.js";
-import { MidgardContracts } from "../src/services/midgard-contracts.js";
+import { MidgardContracts } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import { lucidServiceStub } from "./helpers/lucid-service-stub.js";
 
 const mempoolState = vi.hoisted(() => ({ txCount: 1n }));
@@ -110,7 +111,7 @@ vi.mock(
   },
 );
 
-import { blockCommitmentAction } from "../src/fibers/block-commitment.js";
+import { blockCommitmentAction } from "../src/fibers/block-commitment.block-commitment-action.js";
 import { slotAwareDueWorkRegistry } from "../src/fibers/slot-aware-due-work.js";
 import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 

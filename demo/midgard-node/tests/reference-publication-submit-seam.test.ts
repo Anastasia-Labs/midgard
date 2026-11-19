@@ -22,7 +22,7 @@ import {
   type RecordOutcome,
 } from "../src/services/intent-journal.js";
 import { readProviderWalletView } from "../src/services/intent-journal.wallet-view.js";
-import { publishReferenceScripts } from "../src/transactions/reference-publication.js";
+import { publishReferenceScripts } from "../src/transactions/reference-publication.publish-reference-scripts.js";
 import { selectNodeWallet } from "../src/transactions/utils.wallet-view.js";
 import { TEST_PLAN } from "./helpers/intent-journal.js";
 

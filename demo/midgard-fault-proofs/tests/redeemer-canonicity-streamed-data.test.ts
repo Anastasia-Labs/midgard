@@ -2,10 +2,8 @@ import { writeFile } from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
 
-import {
-  REDEEMER_DATA_CHUNK_BYTES,
-  redeemerCanonicityEvidenceCloses,
-} from "../src/redeemer-canonicity/index.js";
+import { REDEEMER_DATA_CHUNK_BYTES } from "../src/redeemer-canonicity/data-plan.js";
+import { redeemerCanonicityEvidenceCloses } from "../src/redeemer-canonicity/family.js";
 import {
   dataStep,
   mint,

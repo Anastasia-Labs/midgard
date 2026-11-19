@@ -7,10 +7,10 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   canonicalCommittedWithdrawalTransitionEffect,
-  type PhaseAValidatedTx,
   runPhaseAValidation,
   transitionEffectToLedgerOps,
 } from "@al-ft/midgard-validation";
+import type { PhaseAValidatedTx } from "@al-ft/midgard-validation/types";
 import { type Cause, Effect, Fiber, Metric } from "effect";
 import * as FS from "fs";
 
@@ -55,13 +55,13 @@ import {
 import { settleCommitStageRejections } from "./commit-rejection.persist-commit-stage-rejected-transactions.js";
 import { buildDepositSourceEvents } from "./deposit-source-events.js";
 import { MpfError } from "./errors.js";
+import { classifyForcedTransactions } from "./event-window.classify-forced-transactions.js";
+import type { ClassifiedForcedTransaction } from "./event-window.forced-verdict-for-rejection.js";
 import {
-  type ClassifiedForcedTransaction,
-  classifyForcedTransactions,
   resolveIncludedDepositEntriesForWindow,
   resolveIncludedForcedTransactionEntriesForWindow,
   resolveIncludedWithdrawalEntriesForWindow,
-} from "./event-window.js";
+} from "./event-window.resolve-included-forced-transaction-entries-for-window.js";
 import {
   collapseLedgerDelta,
   type LedgerDelta,
@@ -101,12 +101,12 @@ import {
   withdrawalTraceEventKey,
 } from "./trace-events.js";
 import {
-  buildNativeTransitionTraceResult,
   buildTransactionsSourceRoot,
   countedRootFromEncodedEntries,
   type NativeMpfReplayBuild,
   type TransitionTraceBuildResult,
-} from "./transition-trace.js";
+} from "./transition-trace.apply-trace-ledger-ops-to-mpf.js";
+import { buildNativeTransitionTraceResult } from "./transition-trace.js";
 import { type MpfBatchOp, type MpfInsertBatchOp } from "./types.js";
 import {
   buildPlaceholderValidationTraceMembers,

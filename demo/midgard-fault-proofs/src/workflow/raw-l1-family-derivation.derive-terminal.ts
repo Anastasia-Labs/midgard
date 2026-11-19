@@ -5,11 +5,11 @@ import {
 } from "@al-ft/midgard-sdk";
 import { CML, coreToTxOutput, toUnit } from "@lucid-evolution/lucid";
 
-import { fraudSlashFeeLovelace } from "../remove-fraudulent-block.js";
+import { fraudSlashFeeLovelace } from "../remove-fraudulent-block.assert-exact-fraud-slash-lovelace-conservation.js";
 import {
   FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
   type FraudProofWorkflowTerminal,
-} from "./journal.js";
+} from "./journal.fraud-proof-workflow-terminal.js";
 import {
   bodyOutputsContainUnit,
   exactRemoval,

@@ -38,8 +38,8 @@ import {
   witnessSpendingValidatorCarriage,
   witnessWithdrawalValidatorCarriage,
 } from "../../src/witness-reference-scripts.js";
+import { network as emulatorNetwork } from "./emulator/blueprints.js";
 import { type InputSetUniquenessHarness } from "./input-set-uniqueness-emulator.build-input-set-uniqueness-fixture.js";
-import { network as emulatorNetwork } from "./submit-init-emulator-shared.js";
 
 // ---------------------------------------------------------------------------
 // Raw builders — the honest submitters' transactions WITHOUT their local

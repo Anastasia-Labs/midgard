@@ -10,8 +10,8 @@ import {
   classifyFabricatedWithdrawalFault,
   type FabricatedWithdrawalL1Witness,
   FabricatedWithdrawalRejection,
-  prepareFabricatedWithdrawalFromCommittedLeaves,
-} from "../src/prepare-fabricated-withdrawal.js";
+} from "../src/prepare-fabricated-withdrawal.classify-fabricated-withdrawal-fault.js";
+import { prepareFabricatedWithdrawalFromCommittedLeaves } from "../src/prepare-fabricated-withdrawal.prepare-fabricated-withdrawal-from-committed-leaves.js";
 import {
   AU_LEAF,
   AU_WITHDRAWALS_PHAS_ROOT,

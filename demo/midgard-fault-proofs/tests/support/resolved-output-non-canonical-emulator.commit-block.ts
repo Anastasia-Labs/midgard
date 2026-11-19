@@ -7,9 +7,11 @@ import {
   encodeMidgardNativeTxWitnessSetCompact,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
-import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core/codec/forced";
-import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
-import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
+import {
+  deriveMidgardForcedTxProofSource,
+  encodeMidgardForcedTxCanonical,
+  materializeMidgardForcedTxFromCanonical,
+} from "@al-ft/midgard-core/codec/forced";
 import {
   EventKeySchema,
   EventToStepValueSchema,
@@ -25,23 +27,23 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import { buildResolvedOutputNonCanonicalStep01Accepted } from "../../src/resolved-output-non-canonical/index.js";
+import { buildResolvedOutputNonCanonicalStep01Accepted } from "../../src/resolved-output-non-canonical/submit-step-01-accepted.js";
 import { nativeTxFromCoreCompact } from "../../src/step-support.js";
 import { buildCountedRoot } from "../../src/transition-trace/phas.js";
-import { l2TransactionSourceCbor } from "./emulator/native-tx.js";
-import { type ResolvedOutputContext } from "./resolved-output-non-canonical-emulator.build-prior-ledger.js";
-import {
-  countedTransactionsRoot,
-  EMULATOR_HEADER_CLOCK_HEADROOM_MS,
-  emulatorSuccessorHeaderStart,
-  setupFraudulentBlock,
-  submitSuccessorBlockTx,
-} from "./submit-init-emulator-fixtures.js";
 import {
   makeHeader,
   transitionTraceDaEntry,
   transitionTraceOutRef,
-} from "./submit-init-emulator-shared.js";
+} from "./emulator/header-fixtures.js";
+import { l2TransactionSourceCbor } from "./emulator/native-tx.js";
+import { type ResolvedOutputContext } from "./resolved-output-non-canonical-emulator.build-prior-ledger.js";
+import { setupFraudulentBlock } from "./submit-init/removal.js";
+import {
+  EMULATOR_HEADER_CLOCK_HEADROOM_MS,
+  emulatorSuccessorHeaderStart,
+  submitSuccessorBlockTx,
+} from "./submit-init/successor.js";
+import { countedTransactionsRoot } from "./submit-init/transaction-material.js";
 
 export type CommittedBlock = Readonly<{
   fraudulentBlockOutRef: string;

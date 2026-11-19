@@ -13,8 +13,10 @@ import {
   decodeMidgardNativeTxProofFieldLengths,
   encodeMidgardNativeTxProofFieldLengths,
 } from "@al-ft/midgard-core";
-import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
-import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
+import {
+  deriveMidgardForcedTxProofSource,
+  materializeMidgardForcedTxFromCanonical,
+} from "@al-ft/midgard-core/codec/forced";
 import {
   EMPTY_MERKLE_TREE_ROOT,
   EventKeySchema,
@@ -49,7 +51,7 @@ import { makeNativeTx } from "./emulator/native-tx.js";
 import {
   outputReferenceCbor,
   transitionTraceRawEntry,
-} from "./submit-init-emulator-fixtures.js";
+} from "./submit-init/transaction-material.js";
 import { syntheticDeepMembershipProof } from "./synthetic-deep-proof.js";
 
 export const FIELD_PREIMAGE_LENGTH_FORCED_FIELD_INDEX = 0;

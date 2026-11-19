@@ -15,15 +15,15 @@ import {
 } from "@lucid-evolution/lucid";
 import { expect, it } from "vitest";
 
-import { workflowTransactionInputOutRefs } from "../src/index.js";
+import { workflowTransactionInputOutRefs } from "../src/workflow/transaction-boundary.js";
+import { network } from "./support/emulator/blueprints.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { submitRawFraudulentBlockRemoval } from "./support/raw-fraudulent-block-removal.js";
 import {
   buildProvedDoubleSpendFixture,
-  expectStateQueueHeaderOrder,
   type ProvedDoubleSpendFixture,
-} from "./support/submit-init-emulator-fixtures.js";
-import { network } from "./support/submit-init-emulator-shared.js";
+} from "./support/submit-init/double-spend.js";
+import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
 import {
   liveQueueNodeOutRef,
   mintForeignValidationTraceToken,

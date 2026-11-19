@@ -1,11 +1,11 @@
-import {
-  type FaultProofFieldGrammarDeployment,
-  resolveFaultProofFieldGrammarDeployment,
-} from "../field-grammar-certificate.js";
+import { resolveFaultProofFieldGrammarDeployment } from "../field-grammar-certificate.resolve-fault-proof-field-grammar-deployment.js";
+import type { FaultProofFieldGrammarDeployment } from "../field-grammar-certificate.route-fault-proof-field-grammar.js";
 import {
   assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
   releaseFinalityAuthorityFromDeploymentBinding,
+} from "./deployment-manifest-binding.assert-deployment-info-matches-manifest.js";
+import {
+  bindFraudProofWorkflowDeployment,
   requireManifestBoundReferenceScriptUtxo,
 } from "./deployment-manifest-binding.js";
 import type {
@@ -24,10 +24,8 @@ import {
   createFraudProofFamilyAuthenticatedL1TerminalVerifier,
   createFraudProofFamilyL1ObservationPort,
 } from "./family-l1-observation.js";
-import {
-  createAuthenticatedFieldCarriagePrerequisitePort,
-  withFieldCarriagePrerequisite,
-} from "./field-carriage-prerequisite.js";
+import { createAuthenticatedFieldCarriagePrerequisitePort } from "./field-carriage-prerequisite.create-authenticated-field-carriage-prerequisite-port.js";
+import { withFieldCarriagePrerequisite } from "./field-carriage-prerequisite.js";
 import {
   bindReferenceScripts,
   boundDefinitions,
@@ -35,15 +33,11 @@ import {
   requireDefinition,
 } from "./manifest-bound-family-assembly.bind-reference-scripts.js";
 import { withDeploymentOwnThreadReclaim } from "./own-thread-reclaim.deployment.js";
-import {
-  createAuthenticatedProofChunkPrerequisitePort,
-  withProofChunkPrerequisite,
-} from "./proof-chunk-prerequisite.js";
-import {
-  createScriptDecodePrerequisitePort,
-  scriptDecodeDeploymentFromReferences,
-  withScriptDecodePrerequisite,
-} from "./script-decode-prerequisite.js";
+import { createAuthenticatedProofChunkPrerequisitePort } from "./proof-chunk-prerequisite.create-authenticated-proof-chunk-prerequisite-port.js";
+import { withProofChunkPrerequisite } from "./proof-chunk-prerequisite.js";
+import { createScriptDecodePrerequisitePort } from "./script-decode-prerequisite.create-script-decode-prerequisite-port.js";
+import { scriptDecodeDeploymentFromReferences } from "./script-decode-prerequisite.deployment.js";
+import { withScriptDecodePrerequisite } from "./script-decode-prerequisite.with-script-decode-prerequisite.js";
 
 /**
  * Assembles the manifest-bound workflow for one family definition. The

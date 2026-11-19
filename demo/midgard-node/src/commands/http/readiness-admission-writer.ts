@@ -1,6 +1,6 @@
 import { Effect, Option } from "effect";
 
-import { AdmissionWriter } from "../../services/index.js";
+import { AdmissionWriter } from "../../services/admission-writer.validate-options.js";
 
 /**
  * The admission writer's part of `/readyz`: its pending-set facts, and the

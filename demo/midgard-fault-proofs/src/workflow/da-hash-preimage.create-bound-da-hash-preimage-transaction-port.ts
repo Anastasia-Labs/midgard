@@ -3,9 +3,9 @@ import {
   FraudProofComputationThreadStepDatum,
 } from "@al-ft/midgard-sdk";
 
-import { parseSubmitDaHashPreimageTxInclusion } from "../submit-da-hash-preimage-step-01.js";
+import { parseSubmitDaHashPreimageTxInclusion } from "../submit-da-hash-preimage-step-01.parse-submit-da-hash-preimage-tx-inclusion.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import { DA_HASH_PREIMAGE_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
+import { DA_HASH_PREIMAGE_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.detect-double-withdraws.js";
 import {
   admitDaHashPreimageArtifact,
   type BoundDaHashPreimageTransactionsConfig,
@@ -15,11 +15,11 @@ import {
   stringField,
   WITNESS_ROLES,
 } from "./da-hash-preimage.artifact-input.js";
+import type { ManifestBoundLinearFamilyWorkflowConfig } from "./family-definition.family-adapter-arm.js";
 import {
   defineLinearFamily,
   type ManifestBoundLinearFamilyWorkflow,
-  type ManifestBoundLinearFamilyWorkflowConfig,
-} from "./family-definition.js";
+} from "./family-definition.family-definition.js";
 import { observeFraudProofWorkflowHeader } from "./family-l1-observation.js";
 import {
   type FraudProofWorkflowJournalStore,
@@ -30,13 +30,11 @@ import {
   type LinearFamilyCapturedAction,
   type LinearFamilyTransactionPort,
 } from "./linear-family-adapter.js";
-import { assembleManifestBoundFamilyWorkflow } from "./manifest-bound-family-assembly.js";
-import {
-  createFraudProofWorkflowRegistry,
-  type FraudProofWorkflowAction,
-  type FraudProofWorkflowRunResult,
-  runDaHashPreimageWorkflowFromRetainedDa,
-} from "./orchestrator.js";
+import { assembleManifestBoundFamilyWorkflow } from "./manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
+import type { FraudProofWorkflowAction } from "./orchestrator.fraud-proof-family-workflow-adapter.js";
+import type { FraudProofWorkflowRunResult } from "./orchestrator.fraud-proof-workflow-run-result.js";
+import { createFraudProofWorkflowRegistry } from "./orchestrator.js";
+import { runDaHashPreimageWorkflowFromRetainedDa } from "./orchestrator.run-da-hash-preimage-workflow-from-retained-da.js";
 import { admitRemovalTransaction } from "./removal-admission.js";
 import { journaledStepTransaction } from "./step-transaction.js";
 import {

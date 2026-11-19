@@ -1,15 +1,16 @@
 import { mkdir, readFile, realpath } from "node:fs/promises";
 
 import { type WatcherAvailabilityRuntime } from "../availability/runtime.js";
+import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../fault-proofs/fault-proof-application.js";
 import {
-  WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
   type WatcherFaultProofApplication,
   type WatcherFaultProofStartupReadiness,
-} from "../fault-proofs/fault-proof-application.js";
+} from "../fault-proofs/fault-proof-application.production-dependencies.js";
 import { type WatcherFaultProofSupervisor } from "../fault-proofs/fault-proof-supervisor.js";
 import { type WatcherFollowerRuntime } from "../l1-follower/follower-runtime.js";
-import { watcherCanonicalJson } from "../storage/durable-store.js";
-import { parseWatcherConfigJson, type WatcherConfig } from "./config.js";
+import { watcherCanonicalJson } from "../storage/durable-store.canonical-json.js";
+import { parseWatcherConfigJson } from "./config.strict-json-reader.js";
+import type { WatcherConfig } from "./config.watcher-config.js";
 import { type VerifiedWatcherDeploymentAuthority } from "./deployment-authority.js";
 import { type WatcherOperationsObservability } from "./operations-observability.js";
 import { type WatcherProcessConfig } from "./process-config.js";

@@ -8,10 +8,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   classifyFabricatedDepositFault,
-  fabricatedDepositBlockEvidenceFromVerifiedPayload,
   FabricatedDepositRejection,
+} from "../src/prepare-fabricated-deposit.classify-fabricated-deposit-fault.js";
+import {
+  fabricatedDepositBlockEvidenceFromVerifiedPayload,
   prepareFabricatedDepositFromCommittedLeaves,
-} from "../src/prepare-fabricated-deposit.js";
+} from "../src/prepare-fabricated-deposit.prepare-fabricated-deposit-from-committed-leaves.js";
 import {
   absentIdentityWitness,
   AUTHENTIC_INCLUSION_TIME,

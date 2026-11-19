@@ -3,8 +3,10 @@ import {
   encodeMidgardForcedTxCanonical,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
-import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
-import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
+import {
+  deriveMidgardForcedTxProofSource,
+  materializeMidgardForcedTxFromCanonical,
+} from "@al-ft/midgard-core/codec/forced";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import {
   DA_PAYLOAD_VERSION,
@@ -27,20 +29,20 @@ import {
   buildCountedRoot,
   keyValuePhasRootWithCount,
 } from "../../src/transition-trace/phas.js";
-import { reconstructDaPayload } from "../../src/transition-trace/reconstruct.js";
+import { reconstructDaPayload } from "../../src/transition-trace/reconstruct.reconstruct-da-payload.js";
+import {
+  h32,
+  makeHeader,
+  transitionTraceDaEntry,
+  transitionTraceOutRef,
+} from "./emulator/header-fixtures.js";
 import { makeNativeTx } from "./emulator/native-tx.js";
 import { recordFixtureLedger } from "./fixture-ledger.js";
 import {
   outputReferenceCbor,
   sortedDaEntries,
   transitionTraceRawEntry,
-} from "./submit-init-emulator-fixtures.js";
-import {
-  h32,
-  makeHeader,
-  transitionTraceDaEntry,
-  transitionTraceOutRef,
-} from "./submit-init-emulator-shared.js";
+} from "./submit-init/transaction-material.js";
 
 /**
  * A block whose single forced transaction carries `outputCbor` at output 0 and

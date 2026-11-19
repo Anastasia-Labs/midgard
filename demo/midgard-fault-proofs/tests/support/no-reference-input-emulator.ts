@@ -41,15 +41,15 @@ import {
   type TrieEntry,
 } from "../../src/ne-proofs.js";
 import type { NoReferenceInputPreimageEntry } from "../../src/prepare-no-reference-input.js";
-import { ledgerKeyBytesHex } from "../../src/step-support.js";
 import {
+  ledgerKeyBytesHex,
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
   type SubmitStep01TxInclusion,
 } from "../../src/step-support.js";
 import { l2TransactionSourceCbor as l2TransactionSourceCborV1 } from "./emulator/native-tx.js";
-import { decodingSubjectTransaction } from "./native-script-decoding-emulator.js";
-import { publishPlainReferenceScriptUtxo } from "./submit-init-emulator-shared.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { decodingSubjectTransaction } from "./native-script-decoding-emulator.build-decoding-ledger-fixture.js";
 
 /**
  * The producing transaction id of a reference input that never existed. It is

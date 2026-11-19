@@ -3,14 +3,14 @@ import { outRefLabel } from "@al-ft/midgard-core";
 import { toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { expectSingleUtxoWithUnit } from "./support/submit-init-emulator-shared.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
+import { makeWithdrawalMistagEmulatorHarness } from "./support/withdrawal-mistag-emulator.build-withdrawal-mistag-evidence-material.js";
 import {
   driveWithdrawalMistagToFraud,
-  makeWithdrawalMistagEmulatorHarness,
   publishWithdrawalMistagScripts,
   removeWithdrawalMistagBlock,
   setupWithdrawalMistagScenario,
-} from "./support/withdrawal-mistag-emulator.js";
+} from "./support/withdrawal-mistag-emulator.drive-withdrawal-mistag-to-fraud.js";
 
 describe("withdrawal-mistag invalid marked valid emulator lifecycle", () => {
   it("proves UnpayableWithdrawalValue, mints permanent evidence, and removes the block", async () => {

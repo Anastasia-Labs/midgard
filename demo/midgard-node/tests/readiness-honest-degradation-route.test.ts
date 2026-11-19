@@ -10,8 +10,8 @@ import {
 import {
   FORCED_ORDER_CARRIAGE_PENDING,
   FORCED_ORDER_INGESTION_FAILED,
-} from "../src/forced-orders/index.js";
-import { STATE_QUEUE_UNHEALTHY } from "../src/l1-state-queue/index.js";
+} from "../src/forced-orders/ingest.js";
+import { STATE_QUEUE_UNHEALTHY } from "../src/l1-state-queue/hook.js";
 import { Frontier, insertRow } from "../src/landed-blocks/store.js";
 import {
   L1_FOLLOWER_NOT_STARTED,

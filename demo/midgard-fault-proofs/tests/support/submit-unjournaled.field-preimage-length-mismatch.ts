@@ -6,13 +6,15 @@
  */
 import {
   buildFieldPreimageLengthAcceptedAuthentication,
-  buildFieldPreimageLengthAcceptedDispatch,
-  buildFieldPreimageLengthCancel,
-  buildFieldPreimageLengthForcedAuthentication,
   buildFieldPreimageLengthForcedDispatch,
+} from "../../src/field-preimage-length-mismatch/submit-lucid.submit-field-preimage-length-accepted-authentication.js";
+import { buildFieldPreimageLengthAcceptedDispatch } from "../../src/field-preimage-length-mismatch/submit-lucid.submit-field-preimage-length-accepted-dispatch.js";
+import {
+  buildFieldPreimageLengthCancel,
   buildFieldPreimageLengthInit,
-  buildFieldPreimageLengthTerminal,
-} from "../../src/field-preimage-length-mismatch/submit-lucid.js";
+} from "../../src/field-preimage-length-mismatch/submit-lucid.submit-field-preimage-length-cancel.js";
+import { buildFieldPreimageLengthForcedAuthentication } from "../../src/field-preimage-length-mismatch/submit-lucid.submit-field-preimage-length-forced-authentication.js";
+import { buildFieldPreimageLengthTerminal } from "../../src/field-preimage-length-mismatch/submit-lucid.submit-field-preimage-length-terminal.js";
 import { unjournaled } from "./submit-unjournaled.js";
 
 export const submitFieldPreimageLengthAcceptedAuthentication = unjournaled(

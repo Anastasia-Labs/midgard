@@ -8,15 +8,13 @@ import { Effect } from "effect";
 import { describe, expect } from "vitest";
 
 import * as Ledger from "../src/database/utils/ledger.js";
-import {
-  computeLedgerMpfRootFromLedgerEntries,
-  keyValuePhasRoot,
-  MidgardMpf,
-} from "../src/mpf/index.js";
+import { computeLedgerMpfRootFromLedgerEntries } from "../src/mpf/ledger-hydration.js";
+import { MidgardMpf } from "../src/mpf/store.midgard-mpf.js";
 import {
   buildCanonicalFixtureEntries,
   ledgerFixtureMpfEntries,
 } from "../src/workers/mpf-engine-probe-corpus.js";
+import { keyValuePhasRoot } from "../src/workers/utils/mpf/phas.key-value-phas-non-membership-proof.js";
 
 const scriptOutput = (addressByte: string): Buffer =>
   Buffer.from(`a200581d70${addressByte.repeat(28)}018200a0`, "hex");

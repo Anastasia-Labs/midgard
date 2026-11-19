@@ -9,22 +9,20 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import {
-  DIRECT_PURPOSE_FIELDS,
-  type DirectPurposeRole,
-} from "../src/direct-purpose-family/index.js";
-import { DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK } from "../src/distinct-asset-accumulation-limit/index.js";
-import { EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK } from "../src/execution-native-script-invalid/index.js";
+import { DIRECT_PURPOSE_FIELDS } from "../src/direct-purpose-family/custody.js";
+import type { DirectPurposeRole } from "../src/direct-purpose-family/family.js";
+import { DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK } from "../src/distinct-asset-accumulation-limit/workflow.js";
+import { EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK } from "../src/execution-native-script-invalid/workflow.js";
 import { EXECUTION_SOURCE_SCRIPT_DECODING_DIRECT_WALK } from "../src/execution-source-script-decoding/index.js";
 import { MISSING_REDEEMER_DIRECT_WALK } from "../src/missing-redeemer/index.js";
-import { MISSING_SCRIPT_SOURCE_DIRECT_WALK } from "../src/missing-script-source/index.js";
+import { MISSING_SCRIPT_SOURCE_DIRECT_WALK } from "../src/missing-script-source/workflow.js";
 import { RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK } from "../src/receive-purpose-language/index.js";
-import { SCRIPT_INTEGRITY_HASH_MISMATCH_DIRECT_WALK } from "../src/script-integrity-hash-mismatch/index.js";
+import { SCRIPT_INTEGRITY_HASH_MISMATCH_DIRECT_WALK } from "../src/script-integrity-hash-mismatch/workflow.js";
 import { UNUSED_REDEEMER_DIRECT_WALK } from "../src/unused-redeemer/index.js";
-import { UNUSED_SCRIPT_WITNESS_DIRECT_WALK } from "../src/unused-script-witness/index.js";
+import { UNUSED_SCRIPT_WITNESS_DIRECT_WALK } from "../src/unused-script-witness/workflow.js";
 import { CURSOR_FAMILY_SPECS } from "../src/workflow/cursor-family-spec.js";
 import * as DIRECT_WALK_RECORDS from "../src/workflow/family-application-registry.direct-walk-family-application-record.js";
-import { CHUNKED_VERIFY_WITNESS_ROLES } from "../src/workflow/family-definition.js";
+import { CHUNKED_VERIFY_WITNESS_ROLES } from "../src/workflow/family-definition.family-adapter-arm.js";
 import type { DirectWalkCategory } from "./support/direct-walk-emulator.js";
 
 /** The members of a walk and its derived definition the table reads. */

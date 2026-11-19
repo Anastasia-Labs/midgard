@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import dotenv from "dotenv";
 import { describe, expect, it } from "vitest";
 
-import { resolveValidationWorkerPoolSize } from "../src/services/config.js";
+import { resolveValidationWorkerPoolSize } from "../src/services/config.validation.js";
 import { parseNodeConfig } from "./helpers/test-node-config.js";
 import { TEST_ENV_DEFAULTS } from "./test-env.js";
 

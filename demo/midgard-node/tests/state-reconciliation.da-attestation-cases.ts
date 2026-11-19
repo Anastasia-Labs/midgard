@@ -1,10 +1,8 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import {
-  evaluateStateReconciliation,
-  type StateReconciliationInput,
-} from "../src/commands/state-reconciliation.js";
+import { evaluateStateReconciliation } from "../src/commands/state-reconciliation.check-ledger-cache.js";
+import type { StateReconciliationInput } from "../src/commands/state-reconciliation.walk-merged-chain.js";
 import {
   DA_TIMEOUT,
   expectOnlyFailure,

@@ -4,7 +4,7 @@ import { it } from "@effect/vitest";
 import { Effect } from "effect";
 import { describe, expect } from "vitest";
 
-import { mpfReplayProgram } from "../src/commands/mpf-replay.js";
+import { mpfReplayProgram } from "../src/commands/mpf-replay.make-seeded-adversarial-mpf-corpus-block.js";
 import {
   nativeOwnerBinaryPresent,
   warnNativeOwnerBinaryAbsent,

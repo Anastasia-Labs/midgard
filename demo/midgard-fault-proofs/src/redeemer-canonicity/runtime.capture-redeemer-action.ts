@@ -11,20 +11,21 @@ import { Data } from "@lucid-evolution/lucid";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { claimedCoordinateDecimal } from "../evidence/claimed-coordinate.js";
-import {
-  resolveFaultProofFieldCarriagePublications,
-  resolveFaultProofFieldPreimageCertificate,
-} from "../field-opening.js";
+import { resolveFaultProofFieldPreimageCertificate } from "../field-opening.certify-fault-proof-field-carriage.js";
+import { resolveFaultProofFieldCarriagePublications } from "../field-opening.publish-fault-proof-field-carriage.js";
 import { requireLinearFaultThreadUtxo } from "../linear-fault-family.js";
-import { buildTrieView, requireProof } from "../prepare-double-spend.js";
-import { buildInit } from "../submit-init.js";
-import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
-import { REDEEMER_CANONICITY_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
+import {
+  buildTrieView,
+  requireProof,
+} from "../prepare-double-spend.resolve-double-spend-pair.js";
+import { buildInit } from "../submit-init.submit-init.js";
+import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.build-source-membership-proof.js";
+import { REDEEMER_CANONICITY_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.create-complete-canonical-replay-union.js";
 import {
   CURSOR_FAMILY_TRANSACTION_PORT,
   type CursorFamilyCapturedAction,
   type CursorFamilyTransactionPort,
-} from "../workflow/cursor-family-adapter.js";
+} from "../workflow/cursor-family-adapter.admit-reference-scripts.js";
 import {
   captureCursorRemoval,
   cursorStringField,
@@ -33,13 +34,13 @@ import {
 import {
   cursorStepContractNames,
   defineFamily,
-} from "../workflow/family-definition.js";
+} from "../workflow/family-definition.family-definition.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
+import type { FraudProofWorkflowJournalEntry } from "../workflow/journal.fraud-proof-workflow-journal-event.js";
 import {
-  type FraudProofWorkflowJournalEntry,
   journalJsonDigest,
   type JournalJsonObject,
-} from "../workflow/journal.js";
+} from "../workflow/journal.fraud-proof-workflow-terminal.js";
 import { type FraudProofWorkflowAction } from "../workflow/orchestrator.js";
 import { journaledStepTransaction } from "../workflow/step-transaction.js";
 import { detectRedeemerCanonicityFromCanonicalBlock } from "./authenticated-workflow.js";

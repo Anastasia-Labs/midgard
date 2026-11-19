@@ -8,7 +8,7 @@ import { rm } from "node:fs/promises";
 
 import { afterEach, expect, it } from "vitest";
 
-import { parseWatcherProverFundingReservationRecord } from "../../src/funding/prover-funding-reservation.js";
+import { parseWatcherProverFundingReservationRecord } from "../../src/funding/prover-funding-reservation.parse-watcher-prover-funding-reservation-record.js";
 import {
   openStore,
   plan,

@@ -16,14 +16,14 @@ import {
   runProviderStepWithRetry,
 } from "../provider-retry.js";
 import { IntentJournal } from "../services/intent-journal.js";
+import { publishReferenceScripts } from "./reference-publication.publish-reference-scripts.js";
 import {
-  publishReferenceScripts,
   referencePublicationFundingRequired,
   referencePublicationLaneCount,
   type ReferencePublicationOptions,
   referencePublicationOptions,
   referencePublicationPreparationFeeAllowance,
-} from "./reference-publication.js";
+} from "./reference-publication.reference-publication-funding-required.js";
 import { deploymentInitializationNonceOutRefKeys } from "./reference-scripts.deployment-initialization-nonces.js";
 import {
   ensureReferenceScriptWalletWorkingCapital,
@@ -48,10 +48,10 @@ import {
 } from "./reference-scripts.wallet-view-utxos.js";
 import {
   TxConfirmError,
-  TxExpiredError,
   TxSignError,
   TxSubmitError,
-} from "./utils.js";
+} from "./utils.await-required-output-visibility.js";
+import { TxExpiredError } from "./utils.tx-expiry.js";
 
 /**
  * How often a publication pass interrupted by a transient provider failure

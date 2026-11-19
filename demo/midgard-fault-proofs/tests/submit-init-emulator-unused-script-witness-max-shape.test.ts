@@ -25,9 +25,9 @@ import { keyValuePhasMembershipProofs } from "../src/transition-trace/phas.js";
 import {
   prepareUnusedScriptWitnessProof,
   requireConvictingUnusedScriptWitnessProof,
-  UNUSED_SCRIPT_WITNESS_DIRECT_WALK,
   UnusedScriptWitnessHonestLeaf,
-} from "../src/unused-script-witness/index.js";
+} from "../src/unused-script-witness/prover.js";
+import { UNUSED_SCRIPT_WITNESS_DIRECT_WALK } from "../src/unused-script-witness/workflow.js";
 import {
   DIRECT_WALK_STEP_BOUNDS,
   driveDirectWalkThread,
@@ -36,6 +36,7 @@ import {
   type StepMeasurement,
   stepTable,
 } from "./support/direct-walk-emulator.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { scriptAddress } from "./support/missing-redeemer-emulator.purposes.js";
 import {
@@ -46,7 +47,6 @@ import {
   plutusScript,
   setupIntegrityScenario,
 } from "./support/script-integrity-hash-mismatch-emulator.subject.js";
-import { expectSingleUtxoWithUnit } from "./support/submit-init-emulator-shared.js";
 import {
   CLUSTER_DIGITS,
   groundNatives,

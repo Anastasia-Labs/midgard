@@ -15,7 +15,7 @@ import type { Emulator, LucidEvolution } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
 import { openL1Access } from "../../src/l1-access.js";
-import { inspectSignedTxValidityInterval } from "../../src/transactions/utils.js";
+import { inspectSignedTxValidityInterval } from "../../src/transactions/utils.await-required-output-visibility.js";
 
 export type ObservedSubmission = {
   readonly observedTipSlot: number;

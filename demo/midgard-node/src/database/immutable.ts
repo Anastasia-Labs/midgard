@@ -1,5 +1,5 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import { computeMidgardTxIdFromCanonicalCbor } from "@al-ft/midgard-validation";
+import { computeMidgardTxIdFromCanonicalCbor } from "@al-ft/midgard-validation/ledger-tx/codec";
 import { SqlClient, SqlError } from "@effect/sql";
 import { Effect } from "effect";
 

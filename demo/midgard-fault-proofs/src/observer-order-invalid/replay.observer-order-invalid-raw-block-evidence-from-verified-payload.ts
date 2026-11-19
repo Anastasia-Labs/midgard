@@ -12,10 +12,8 @@ import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { daHashPreimageBlockEvidenceFromVerifiedPayload } from "../prepare-da-hash-preimage.js";
-import {
-  buildTrieView,
-  requireTransactionsRootMatch,
-} from "../prepare-double-spend.js";
+import { requireTransactionsRootMatch } from "../prepare-double-spend.prepare-double-spend-from-transactions.js";
+import { buildTrieView } from "../prepare-double-spend.resolve-double-spend-pair.js";
 import {
   acceptedTransactionSubject,
   type DetectionSubject,

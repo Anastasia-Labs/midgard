@@ -17,12 +17,12 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import type { DirectPurposeTransition } from "../src/direct-purpose-family/custody.js";
 import {
   type DirectPurposeRole,
   directPurposeRoleValidator,
-  type DirectPurposeTransition,
-} from "../src/direct-purpose-family/index.js";
-import { faultProofFieldOpening } from "../src/field-opening.js";
+} from "../src/direct-purpose-family/family.js";
+import { faultProofFieldOpening } from "../src/field-opening.publish-fault-proof-field-carriage.js";
 import {
   getCompiledScript,
   phasMembershipRewardAddress,
@@ -30,16 +30,15 @@ import {
 } from "../src/runtime.js";
 import { PHAS_MEMBERSHIP_WITHDRAW_TITLE } from "../src/step-support.js";
 import { computationThreadOutputPredicate } from "../src/tx-layout.js";
-import {
-  prepareUnusedScriptWitnessProof,
-  UNUSED_SCRIPT_WITNESS_DIRECT_WALK,
-  UNUSED_SCRIPT_WITNESS_FAMILY,
-} from "../src/unused-script-witness/index.js";
+import { UNUSED_SCRIPT_WITNESS_FAMILY } from "../src/unused-script-witness/contracts.js";
+import { prepareUnusedScriptWitnessProof } from "../src/unused-script-witness/prover.js";
+import { UNUSED_SCRIPT_WITNESS_DIRECT_WALK } from "../src/unused-script-witness/workflow.js";
 import {
   driveDirectWalkThread,
   makeDirectWalkHarness,
   publishDirectWalkRoles,
 } from "./support/direct-walk-emulator.js";
+import { network } from "./support/emulator/blueprints.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   expectedHash,
@@ -48,7 +47,6 @@ import {
   scriptLockedEntries,
   setupIntegrityScenario,
 } from "./support/script-integrity-hash-mismatch-emulator.subject.js";
-import { network } from "./support/submit-init-emulator-shared.js";
 import { submitDirectPurposeTransition } from "./support/submit-unjournaled.direct-purpose.js";
 
 const STRANGER_FUNDING_LOVELACE = 1_000_000_000n;

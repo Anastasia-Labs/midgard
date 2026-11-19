@@ -5,14 +5,16 @@ import {
 
 import {
   advanceFieldGrammarCheckpoint,
-  advanceFieldSemanticCheckpoint,
   encodeFieldGrammarCheckpoint,
   encodeFieldSemanticCheckpoint,
   hashFieldGrammarCheckpoint,
   hashFieldSemanticCheckpoint,
   initialFieldGrammarCheckpoint,
+} from "../staged-field-walk/grammar-checkpoint.js";
+import {
+  advanceFieldSemanticCheckpoint,
   initialFieldSemanticCheckpoint,
-} from "../staged-field-walk/index.js";
+} from "../staged-field-walk/semantic-checkpoint.js";
 
 export const SCRIPT_INTEGRITY_HASH_MISSING_ITEM_BUDGET = 24;
 

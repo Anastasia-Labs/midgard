@@ -12,7 +12,7 @@ import {
   sqlErrorToDatabaseError,
 } from "./utils/common.js";
 import * as Ledger from "./utils/ledger.js";
-import { retrievePendingLedgerOutRefHexes } from "./withdrawals.js";
+import { retrievePendingLedgerOutRefHexes } from "./withdrawals.restore-corrected-classification.js";
 
 export const tableName = "mempool_ledger";
 const INSERT_ROW_CHUNK_SIZE = 10_000;

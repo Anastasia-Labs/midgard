@@ -11,7 +11,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { createDirectFieldPlan } from "../../src/direct-script-derivation/index.js";
+import { createDirectFieldPlan } from "../../src/direct-script-derivation/field-plan.js";
 import {
   directCarriagePublisherFunding,
   publishDirectReceiveFieldCarriage,
@@ -23,12 +23,12 @@ import {
 } from "./direct-source-fixture.js";
 import { createDirectSourceStepper } from "./direct-source-stepper.js";
 import {
-  EMULATOR_PROTOCOL_PARAMETERS,
   network,
-  publishPlainReferenceScriptUtxo,
   readBlueprint,
   realBlueprintPath,
-} from "./submit-init-emulator-shared.js";
+} from "./emulator/blueprints.js";
+import { EMULATOR_PROTOCOL_PARAMETERS } from "./emulator/protocol-parameters.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 
 /** Seeded authenticated-bound prefix only. This exercises actual published
  * spending workers and full field/auth/map custody; it does not claim Init,

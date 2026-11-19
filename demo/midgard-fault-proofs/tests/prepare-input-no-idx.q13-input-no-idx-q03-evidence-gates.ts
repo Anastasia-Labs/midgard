@@ -11,17 +11,15 @@ import {
   authenticateTransactionsInclusionRoots,
   type CanonicalBlockEvidence,
   canonicalBlockEvidenceFromVerifiedPayload,
-} from "../src/evidence/index.js";
+} from "../src/evidence/canonical-block-evidence.js";
 import * as FaultProofs from "../src/index.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
   transactionSourceTrieItem,
-} from "../src/prepare-double-spend.js";
-import {
-  prepareInputNoIdxFromCanonicalEvidence,
-  prepareInputNoIdxFromTransactions,
-} from "../src/prepare-input-no-idx.js";
+} from "../src/prepare-double-spend.resolve-double-spend-pair.js";
+import { prepareInputNoIdxFromCanonicalEvidence } from "../src/prepare-input-no-idx.prepare-input-no-idx-from-canonical-evidence.js";
+import { prepareInputNoIdxFromTransactions } from "../src/prepare-input-no-idx.prepare-input-no-idx-from-transactions.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,

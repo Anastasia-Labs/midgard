@@ -19,13 +19,13 @@ import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";
 
-import { planFaultProofFieldOpening } from "../src/field-opening.js";
+import { planFaultProofFieldOpening } from "../src/field-opening.plan-fault-proof-field-opening.js";
 import {
   applyMintDeclaredAssetLimitScripts,
   MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES,
   type MintDeclaredAssetLimitContracts,
 } from "../src/mint-declared-asset-limit/contracts.js";
-import { prepareMintDeclaredAssetLimitEvidence } from "../src/mint-declared-asset-limit/family.js";
+import { prepareMintDeclaredAssetLimitEvidence } from "../src/mint-declared-asset-limit/family.advance-mint-declared-fold.js";
 import { nativeTxFromCoreCompact } from "../src/step-support.js";
 import type { OwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";

@@ -9,7 +9,7 @@ import { Cause, Effect, Exit } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { ForcedTransactionsDB } from "../src/database/index.js";
-import { classifyForcedTransactions } from "../src/mpf/index.js";
+import { classifyForcedTransactions } from "../src/mpf/event-window.classify-forced-transactions.js";
 import {
   forcedEntry,
   makeOutput,

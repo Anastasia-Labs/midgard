@@ -4,7 +4,7 @@ import { Effect, Metric } from "effect";
 import { PendingBlockFinalizationsDB } from "../../database/index.js";
 import { DatabaseError } from "../../database/utils/common.js";
 import { type MpfError } from "../../mpf/index.js";
-import { buildAuthenticatedRootFromEncodedEntries } from "./transition-roots.js";
+import { buildAuthenticatedRootFromEncodedEntries } from "./transition-roots.validate-count-proof.js";
 
 export type PayloadRootSet = {
   readonly utxosRoot: string;

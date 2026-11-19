@@ -18,19 +18,19 @@ import {
 } from "../../database/index.js";
 import { DatabaseError } from "../../database/utils/common.js";
 import { Columns as TxColumns } from "../../database/utils/tx.js";
-import {
-  encodeTransactionRootValue,
-  type RetainedEventToStepMember,
-  type RetainedTransitionTraceMember,
-  type RetainedValidationTraceMember,
-} from "../../mpf/index.js";
-import { NodeConfig } from "../../services/config.js";
+import { encodeTransactionRootValue } from "../../mpf/index.js";
+import type {
+  RetainedEventToStepMember,
+  RetainedTransitionTraceMember,
+} from "../../mpf/trace-events.js";
+import type { RetainedValidationTraceMember } from "../../mpf/validation-trace.js";
+import { NodeConfig } from "../../services/config.make-config.js";
 import type { Database } from "../../services/index.js";
+import type { CommitDaFrameMeasurement } from "../utils/commit-block-planner.commit-scheduler-evidence-key.js";
 import {
-  type CommitDaFrameMeasurement,
   DA_PAYLOAD_UPPER_BOUND_HEADER,
   DA_PAYLOAD_UPPER_BOUND_HEADER_HASH,
-} from "../utils/commit-block-planner.js";
+} from "../utils/commit-block-planner.select-commit-tx-candidates.js";
 import { measureDaPayloadPrefixes } from "./submission.measure-da-prefixes.js";
 
 const daEntry = (key: Buffer, value: Buffer): SDK.DaPayloadEntry => [

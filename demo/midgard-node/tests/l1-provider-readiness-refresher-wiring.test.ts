@@ -6,11 +6,11 @@ import { Duration, Effect, Fiber, Ref, Schedule } from "effect";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { runNodeFiberSet } from "../src/commands/listen.node-fibers.js";
-import { NodeConfig } from "../src/services/config.js";
-import { Globals } from "../src/services/globals.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
+import { Globals } from "../src/services/globals.globals.js";
 import { L1LedgerBehindError } from "../src/services/l1-provider.js";
 import { Lucid } from "../src/services/lucid.js";
-import { MidgardContracts } from "../src/services/midgard-contracts.js";
+import { MidgardContracts } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import { makeFinalizedDeploymentManifestFixture } from "./helpers/finalized-deployment-manifest.js";
 import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 

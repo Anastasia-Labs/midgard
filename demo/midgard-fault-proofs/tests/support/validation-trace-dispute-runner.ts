@@ -5,18 +5,16 @@ import type { ValidationTraceCaseHistory } from "../../src/validation-trace-disp
 import { withValidationTraceOwnThreadReclaim } from "../../src/validation-trace-dispute/own-thread-reclaim.js";
 import type { ValidationTraceRemovalConfig } from "../../src/validation-trace-dispute/removal.js";
 import type { ValidationTraceDisputeDeployment } from "../../src/validation-trace-dispute/transactions.js";
-import {
-  type FraudProofWorkflowJournalStore,
-  MemoryFraudProofWorkflowJournalStore,
-} from "../../src/workflow/journal.js";
+import { MemoryFraudProofWorkflowJournalStore } from "../../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
+import type { FraudProofWorkflowJournalStore } from "../../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import type { FraudProofSignedTransactionRecovery } from "../../src/workflow/l1-source.js";
+import type {
+  FraudProofFamilyWorkflowAdapter,
+  FraudProofWorkflowTerminalVerifier,
+} from "../../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import type { FraudProofWorkflowRunResult } from "../../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
-import {
-  createFraudProofWorkflowRegistry,
-  type FraudProofFamilyWorkflowAdapter,
-  type FraudProofWorkflowTerminalVerifier,
-  runFraudProofWorkflow,
-} from "../../src/workflow/orchestrator.js";
+import { createFraudProofWorkflowRegistry } from "../../src/workflow/orchestrator.immutable-fraud-proof-workflow-registry.js";
+import { runFraudProofWorkflow } from "../../src/workflow/orchestrator.run-da-hash-preimage-workflow-from-retained-da.js";
 import type { FraudProofAuthenticatedPublicationObserver } from "../../src/workflow/raw-l1-publication-observation.js";
 import {
   DEPLOYMENT_FINGERPRINT,
@@ -24,9 +22,9 @@ import {
   releaseFinalityAuthority,
   terminalVerifier,
 } from "../workflow.make-adapter.js";
+import { network } from "./emulator/blueprints.js";
 import { emulatorSignedTransactionRecovery } from "./emulator-signed-recovery.js";
 import { emulatorPublicationObserver } from "./install-field-carriage.js";
-import { network } from "./submit-init-emulator-shared.js";
 import { l1SlotConfig } from "./validation-trace-claim-material.js";
 import { sceneCaseHistory } from "./validation-trace-dispute-case-history.js";
 import {

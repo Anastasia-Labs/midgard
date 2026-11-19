@@ -14,7 +14,7 @@ import { expect } from "vitest";
 import {
   activateOperatorProgram,
   registerOperatorProgram,
-} from "../src/transactions/register-active-operator.js";
+} from "../src/transactions/register-active-operator.activate-registered-operator-program.js";
 import { runWithoutFollower } from "./helpers/intent-journal.js";
 import {
   EMULATOR_REQUIRED_BOND_LOVELACE,

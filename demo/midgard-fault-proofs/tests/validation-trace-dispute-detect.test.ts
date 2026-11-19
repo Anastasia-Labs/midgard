@@ -11,11 +11,11 @@ import { replayValidationVerdictEvent } from "@al-ft/midgard-validation";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
+import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
 import {
   createValidationTraceDisputeCompleteCanonicalReplay,
   requireCompleteCanonicalReplayDecision,
-} from "../src/workflow/complete-replay.js";
+} from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
 import {
   plutusExecutionBlockFixture,
   type PlutusExecutionScenario,

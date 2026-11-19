@@ -6,7 +6,7 @@ import {
   eventKeyPhase,
   type SourceEventRecord,
   type TransitionTraceReconstruction,
-} from "../transition-trace/reconstruct.js";
+} from "../transition-trace/reconstruct.transition-trace-reconstruction.js";
 
 /**
  * The source frontier of the event a detection convicts. `block` names a fault

@@ -4,15 +4,11 @@ import {
   resolveWatcherCanonicalRetentionWindow,
   type WatcherCanonicalRetentionWindow,
 } from "../storage/retention-window.js";
-import {
-  type LoadedWatcherRuleBundle,
-  loadWatcherRuleBundle,
-} from "../verification/rule-bundle.js";
-import { parseWatcherStrictJsonValue } from "./config.js";
-import {
-  type VerifiedWatcherDeploymentIdentity,
-  verifyWatcherDeploymentIdentity,
-} from "./deployment-identity.js";
+import type { LoadedWatcherRuleBundle } from "../verification/rule-bundle.canonical-json-value.js";
+import { loadWatcherRuleBundle } from "../verification/rule-bundle.parse-watcher-rule-bundle.js";
+import { parseWatcherStrictJsonValue } from "./config.strict-json-reader.js";
+import type { VerifiedWatcherDeploymentIdentity } from "./deployment-identity.parse-trust-roots.js";
+import { verifyWatcherDeploymentIdentity } from "./deployment-identity.verify-watcher-deployment-identity.js";
 
 type ReadDeploymentAuthorityFile = (path: string) => Promise<Uint8Array>;
 

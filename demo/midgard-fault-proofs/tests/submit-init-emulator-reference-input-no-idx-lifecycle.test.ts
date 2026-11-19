@@ -47,36 +47,32 @@ import {
 import { Data, toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { planFaultProofFieldOpening } from "../src/field-opening.js";
-import {
-  buildReferenceInputNoIdxStep01,
-  buildReferenceInputNoIdxStep02,
-  buildReferenceInputNoIdxStep03,
-  buildReferenceInputNoIdxStep04,
-  submitRemoveFraudulentBlock,
-} from "../src/index.js";
-import { buildInit } from "./support/legacy-submit-emulator.js";
+import { planFaultProofFieldOpening } from "../src/field-opening.plan-fault-proof-field-opening.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import { buildInit } from "../src/submit-init.submit-init.js";
+import { buildReferenceInputNoIdxStep01 } from "../src/submit-reference-input-no-idx-step-01.js";
+import { buildReferenceInputNoIdxStep02 } from "../src/submit-reference-input-no-idx-step-02.submit-reference-input-no-idx-step02.js";
+import { buildReferenceInputNoIdxStep03 } from "../src/submit-reference-input-no-idx-step-03.js";
+import { buildReferenceInputNoIdxStep04 } from "../src/submit-reference-input-no-idx-step-04.submit-reference-input-no-idx-step04.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import {
   buildReferenceInputNoIdxBlockFixture,
-  expectOnchainRefusal,
   makeReferenceInputNoIdxEmulatorHarness,
-  publishReferenceInputNoIdxReferenceScripts,
   REFERENCE_INPUT_NO_IDX_TIER2_REFERENCE_INPUT_COUNT,
+} from "./support/reference-input-no-idx-emulator.build-reference-input-no-idx-block-fixture.js";
+import {
+  publishReferenceInputNoIdxReferenceScripts,
   submitRawReferenceInputNoIdxStep02,
-  submitRawReferenceInputNoIdxStep04,
-} from "./support/reference-input-no-idx-emulator.js";
+} from "./support/reference-input-no-idx-emulator.submit-raw-reference-input-no-idx-step02.js";
+import { submitRawReferenceInputNoIdxStep04 } from "./support/reference-input-no-idx-emulator.submit-raw-reference-input-no-idx-step04.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
-import {
-  expectStateQueueHeaderOrder,
-  setupFraudulentBlock as setupFraudulentBlock,
-} from "./support/submit-init-emulator-fixtures.js";
-import {
-  buildRemovalDeploymentInfo,
-  captureEmulatorSubmission,
-  expectSingleUtxoWithUnit,
-  network,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
+import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
+import { setupFraudulentBlock } from "./support/submit-init/removal.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,

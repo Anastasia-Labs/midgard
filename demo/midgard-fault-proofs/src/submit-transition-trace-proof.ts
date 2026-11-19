@@ -13,10 +13,8 @@ import {
 } from "./runtime.js";
 import { submitFaultProofTurns } from "./submit-fault-proof-turns.js";
 import { type TransitionL2ReplayMaterial } from "./transition-trace/proof-material.js";
-import {
-  buildTransitionTraceProof,
-  type SubmitTransitionTraceProofResult,
-} from "./transition-trace/submit.js";
+import type { SubmitTransitionTraceProofResult } from "./transition-trace/submit.make-transition-trace-route-spend-redeemer.js";
+import { buildTransitionTraceProof } from "./transition-trace/submit.submit-transition-trace-proof.js";
 
 const L2_REPLAY_KEYS = [
   "spendInputCbors",

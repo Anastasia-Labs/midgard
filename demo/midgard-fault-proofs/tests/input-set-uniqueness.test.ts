@@ -4,15 +4,11 @@ import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canon
 import {
   type CanonicalBlockClassification,
   classifyCanonicalBlockViolations,
-} from "../src/workflow/classification.js";
-import {
-  INPUT_SET_UNIQUENESS_COMPLETE_CANONICAL_REPLAY,
-  requireCompleteCanonicalReplayDecision,
-} from "../src/workflow/complete-replay.js";
-import {
-  admitInputSetUniquenessArtifact,
-  prepareInputSetUniquenessArtifact,
-} from "../src/workflow/input-set-uniqueness.js";
+} from "../src/workflow/classification.classify-canonical-block-violations.js";
+import { requireCompleteCanonicalReplayDecision } from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
+import { INPUT_SET_UNIQUENESS_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
+import { admitInputSetUniquenessArtifact } from "../src/workflow/input-set-uniqueness.admit-input-set-uniqueness-forced-artifact.js";
+import { prepareInputSetUniquenessArtifact } from "../src/workflow/input-set-uniqueness.prepare-input-set-uniqueness-artifact.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,

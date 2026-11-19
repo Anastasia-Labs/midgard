@@ -15,7 +15,7 @@ import {
 } from "../../src/fault-proofs/watcher-journal-database.js";
 import { watcherObjectiveScope } from "../../src/fault-proofs/watcher-journal-schema.js";
 import { createWatcherWorkflowJournal } from "../../src/fault-proofs/watcher-workflow-journal.js";
-import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.js";
+import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.canonical-json.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
 import {

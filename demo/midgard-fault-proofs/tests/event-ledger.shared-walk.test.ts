@@ -12,7 +12,7 @@ import {
   EventLedgerOutputNotCanonical,
 } from "../src/event-ledger.js";
 import type { CheckedLedger } from "../src/ledger-at.js";
-import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.js";
+import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
   block,
   NATIVE,

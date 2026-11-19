@@ -8,10 +8,8 @@ import { SqlClient } from "@effect/sql";
 import { Deferred, Effect, Fiber } from "effect";
 
 import { MigrationRunner, TxAdmissionsDB } from "../../src/database/index.js";
-import {
-  type AdmissionWriteRequest,
-  makeAdmissionWriterWithOptions,
-} from "../../src/services/admission-writer.js";
+import { makeAdmissionWriterWithOptions } from "../../src/services/admission-writer.make-admission-writer-with-options.js";
+import type { AdmissionWriteRequest } from "../../src/services/admission-writer.validate-options.js";
 import { AdmissionSql } from "../../src/services/database.js";
 import { provideDatabaseLayers, resetApplicationTables } from "../utils.js";
 

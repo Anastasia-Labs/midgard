@@ -2,24 +2,21 @@ import { HttpServerResponse } from "@effect/platform";
 import { Effect, Option, Ref } from "effect";
 
 import { StateQueueMutationLeasesDB } from "../../database/index.js";
+import { attestationTimeoutCorrectionReadinessBounds } from "../../fibers/attestation-timeout-correction.reconcile-state-queue-corrections.js";
 import { livenessReadiness } from "../../fibers/block-commitment.worker-readiness.js";
-import { attestationTimeoutCorrectionReadinessBounds } from "../../fibers/index.js";
 import { READINESS_L1_PROVIDER_PROBE_TIMEOUT_MS } from "../../l1-provider-readiness-probe.js";
 import { submitSlotEvidence } from "../../l1-provider-view.js";
-import { deploymentIdentityDigestOf } from "../../l1-queue-terminals/index.js";
+import { deploymentIdentityDigestOf } from "../../l1-queue-terminals/reads.js";
 import { readFollowerWriteGate } from "../../services/follower-write-gate.js";
 import { followerWriteGateReasons } from "../../services/follower-write-gate.local.js";
 import { commitBuildAlarmReadiness } from "../../services/globals.commit-build-alarms.js";
-import {
-  ContractDeploymentIdentity,
-  DEFAULT_L1_CONTROL_PLANE_MAX_HOLD_MS,
-  Globals,
-  Lucid,
-  NodeConfig,
-  ValidationPool,
-} from "../../services/index.js";
+import { Globals } from "../../services/globals.globals.js";
+import { DEFAULT_L1_CONTROL_PLANE_MAX_HOLD_MS } from "../../services/globals.next-l1-provider-health-evidence.js";
+import { NodeConfig } from "../../services/index.js";
 import { l1FollowerReadiness } from "../../services/l1-follower.readiness.js";
 import { activeLivenessReasons } from "../../services/liveness-halt.js";
+import { Lucid } from "../../services/lucid.js";
+import { ContractDeploymentIdentity } from "../../services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   fullIndexHealthOf,
   fullIndexNearCapDetails,
@@ -29,6 +26,7 @@ import {
   settlementReconcileStuckDetail,
   settlementStuckDetail,
 } from "../../services/settlement-readiness.js";
+import { ValidationPool } from "../../services/validation-pool.bundled-worker-exec-argv.js";
 import {
   DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING,
   planMergePreflight,

@@ -25,13 +25,13 @@ import {
   lowerBoundAtLedgerTip,
 } from "../ledger-tip-lower-bound.js";
 import { resolveL1NowMs } from "../register-active-operator/clock.js";
-import { handleSignSubmit } from "../utils.js";
+import { handleSignSubmit } from "../utils.await-submitted-transaction-confirmation.js";
 import { readSelectedWalletViewInputs } from "../utils.wallet-view.js";
 import {
   OPERATOR_TX_VALIDITY_WINDOW_MS,
   type OperatorExitError,
   resolveOperatorScriptRefsProgram,
-} from "./exit.js";
+} from "./exit.resolve-operator-script-refs-program.js";
 import {
   presetOperatorWalletInputs,
   requireOperatorFundingProgram,

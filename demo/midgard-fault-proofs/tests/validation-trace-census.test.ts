@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   readBlueprint,
   realBlueprintPath,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/emulator/blueprints.js";
 import { GAME_CENSUS_STEPS } from "./support/validation-game-census-steps.js";
 import {
   censusVariants,

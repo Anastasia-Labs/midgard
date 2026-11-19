@@ -4,8 +4,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { type MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
-import type { DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
+  type DeploymentManifest,
   type DeploymentManifestL1Finality,
   type DeploymentMarker,
   parseDeploymentManifestAvailabilityChallenge,
@@ -37,7 +37,7 @@ import { Effect } from "effect";
 import {
   defaultDeploymentRunStatePath,
   loadDeploymentRunState,
-} from "../e2e/run-state.js";
+} from "../e2e/run-state.parse-deployment-run-state.js";
 import {
   contractDeploymentInfoPathOverride,
   daAvailabilityChallengeEnvironmentInput,

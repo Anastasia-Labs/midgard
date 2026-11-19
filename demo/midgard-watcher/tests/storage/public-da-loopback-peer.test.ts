@@ -1,9 +1,9 @@
 import { encodeDaPayloadByHeaderResponseCbor } from "@al-ft/midgard-core/da-transport";
 import { describe, expect, it } from "vitest";
 
-import { parseWatcherConfig } from "../../src/runtime/config.js";
-import { createWatcherRetainedDaRuntime } from "../../src/storage/retained-da-runtime.js";
-import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
+import { parseWatcherConfig } from "../../src/runtime/config.parse-watcher-config.js";
+import { createWatcherRetainedDaRuntime } from "../../src/storage/retained-da-runtime.create-watcher-retained-da-runtime-owner.js";
+import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.build-watcher-deployment-authority-fixture.js";
 import {
   libp2pTransportFixture,
   rawConfig,

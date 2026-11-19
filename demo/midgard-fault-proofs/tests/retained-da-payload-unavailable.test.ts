@@ -1,13 +1,13 @@
 import { DaRequestResponseProtocol } from "@al-ft/midgard-core/da-transport";
 import { describe, expect, it } from "vitest";
 
-import {
-  fetchRetainedDaPayloadByHeaderHash,
-  isRetainedDaPayloadUnavailableError,
-  type RetainedDaFetchAttemptStatus,
-  type RetainedDaPayloadSource,
-  TransitionTraceChallengerError,
-} from "../src/transition-trace/index.js";
+import { TransitionTraceChallengerError } from "../src/transition-trace/errors.js";
+import type {
+  RetainedDaFetchAttemptStatus,
+  RetainedDaPayloadSource,
+} from "../src/transition-trace/fetch.admit-retained-da-provenance.js";
+import { fetchRetainedDaPayloadByHeaderHash } from "../src/transition-trace/fetch.fetch-retained-da-payload-by-header-hash.js";
+import { isRetainedDaPayloadUnavailableError } from "../src/transition-trace/fetch.retained-da-payload-unavailable.js";
 import { buildPayloadFixture } from "./transition-trace-challenger.build-payload-fixture.js";
 
 const HEADER_HASH = "ab".repeat(28);

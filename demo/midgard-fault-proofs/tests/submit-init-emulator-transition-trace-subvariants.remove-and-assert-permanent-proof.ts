@@ -3,21 +3,19 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data, getAddressDetails } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import {
-  buildTransitionTraceProof,
-  submitRemoveFraudulentBlock,
-} from "../src/index.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import { buildTransitionTraceProof } from "../src/transition-trace/submit.submit-transition-trace-proof.js";
 import {
   type DeploymentInfo,
   type Harness,
   type Setup,
 } from "./submit-init-emulator-transition-trace-subvariants.setup-challenge.js";
-import { expectStateQueueHeaderOrder } from "./support/submit-init-emulator-fixtures.js";
+import { network } from "./support/emulator/blueprints.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   expectSingleUtxoWithUnit,
-  network,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/emulator/emulator-context.js";
+import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
 import type { SubmittedStep } from "./support/submit-unjournaled.js";
 
 export const removeAndAssertPermanentProof = async ({

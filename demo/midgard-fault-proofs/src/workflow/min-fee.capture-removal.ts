@@ -12,14 +12,14 @@ import {
   type CanonicalEvidenceBuilderInput,
   prepareMinFeeFromCanonicalEvidence,
 } from "../evidence/prepare-from-evidence.js";
-import { planFaultProofFieldOpening } from "../field-opening.js";
+import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
 import type { MinFeeContracts } from "../min-fee-contracts.js";
 import {
   admitMinFeeForcedArtifact,
   MIN_FEE_FORCED_ARTIFACT,
 } from "../min-fee-forced-artifact.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.build-remove-fraudulent-block.js";
 import { type StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
-import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
@@ -27,8 +27,11 @@ import {
   CHUNKED_VERIFY_WITNESS_ROLES,
   type LinearFamilyAssemblyContext,
   type LinearFamilyReferenceScripts,
-} from "./family-definition.js";
-import { type JournalJsonObject, normalizeJournalJson } from "./journal.js";
+} from "./family-definition.family-adapter-arm.js";
+import {
+  type JournalJsonObject,
+  normalizeJournalJson,
+} from "./journal.fraud-proof-workflow-terminal.js";
 import {
   type AdmittedMinFeeArtifact,
   HEX_28,

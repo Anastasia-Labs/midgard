@@ -10,12 +10,12 @@ import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidenc
 import {
   type FaultProofFieldOpeningPlan,
   planFaultProofFieldOpening,
-} from "../field-opening.js";
+} from "../field-opening.plan-fault-proof-field-opening.js";
 import type { CanonicalBlockClassification } from "../workflow/classification.js";
 import {
   type JournalJsonObject,
   normalizeJournalJson,
-} from "../workflow/journal.js";
+} from "../workflow/journal.fraud-proof-workflow-terminal.js";
 import {
   prepareScriptIntegrityHashMissingEvidence,
   type ScriptIntegrityHashMissingEvidence,

@@ -20,7 +20,7 @@ import { Effect } from "effect";
 import {
   publishedNeglectedUserEventProgram,
   type PublishedOperatorSet,
-} from "../l1-operator-set/index.js";
+} from "../l1-operator-set/snapshot.js";
 import type { Globals } from "../services/globals.globals.js";
 import {
   clearLivenessIncident,

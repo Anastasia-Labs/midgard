@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
 import {
   computeFraudProofWorkflowId,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  MemoryFraudProofWorkflowJournalStore,
-} from "../src/workflow/journal.js";
+} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import type { FraudProofWorkflowTerminalVerifier } from "../src/workflow/orchestrator.js";
 import {
   canonicalEvidence,

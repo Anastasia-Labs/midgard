@@ -1,7 +1,6 @@
 import { retentionDeadlineForBlock } from "@al-ft/midgard-core";
 import {
   isFraudProofL1WaitError,
-  isReplayLocalFault,
   isRetainedDaPayloadUnavailableError,
   isValidationTraceReplayHeldError,
   type VALIDATION_TRACE_REPLAY_HELD,
@@ -9,6 +8,7 @@ import {
   validationTraceCaseOpenAtRisk,
   validationTraceCaseOpenWindowEndMs,
 } from "@al-ft/midgard-fault-proofs";
+import { isReplayLocalFault } from "@al-ft/midgard-fault-proofs/block-replay";
 import { StateQueueNode } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 

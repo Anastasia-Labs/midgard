@@ -20,13 +20,11 @@ import {
   computeTransitionTraceL1EventEvidenceDigest,
   replayTransitionTraceFromRetainedHistory,
 } from "../src/transition-trace/replay-authority.js";
-import { TRANSITION_TRACE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
+import { TRANSITION_TRACE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
 import { FraudProofL1CheckpointChangedError } from "../src/workflow/l1-source.js";
+import { computeFraudProofRawL1PointId } from "../src/workflow/raw-l1-snapshot.admit-fraud-proof-raw-l1-transaction.js";
+import type { FraudProofRawL1Snapshot } from "../src/workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
 import * as rawSnapshot from "../src/workflow/raw-l1-snapshot.js";
-import {
-  computeFraudProofRawL1PointId,
-  type FraudProofRawL1Snapshot,
-} from "../src/workflow/raw-l1-snapshot.js";
 import {
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
@@ -34,11 +32,9 @@ import {
 } from "../src/workflow/release-finality-policy.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
 import { fraudProofL1SourceForTest } from "./support/fraud-proof-l1-source.js";
-import {
-  buildRetainedPlutusIdentityFixture,
-  captureRetainedPlutusIdentityOrigins,
-  classifyRetainedReasonFixture,
-} from "./support/retained-reason-classifier.js";
+import { buildRetainedPlutusIdentityFixture } from "./support/retained-reason-classifier.build-retained-plutus-fixture.js";
+import { captureRetainedPlutusIdentityOrigins } from "./support/retained-reason-classifier.capture-retained-plutus-identity-origins.js";
+import { classifyRetainedReasonFixture } from "./support/retained-reason-classifier.classify-retained-reason-fixture.js";
 import {
   advance,
   capture,

@@ -30,13 +30,13 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { applyBlueprintParamsExact } from "../../src/runtime.js";
-import { type Blueprint } from "./emulator/blueprints.js";
 import {
-  EMULATOR_PROTOCOL_PARAMETERS,
+  type Blueprint,
   network,
   readBlueprint,
   realBlueprintPath,
-} from "./submit-init-emulator-shared.js";
+} from "./emulator/blueprints.js";
+import { EMULATOR_PROTOCOL_PARAMETERS } from "./emulator/protocol-parameters.js";
 import { threadTokenName } from "./validation-case-names.js";
 
 export const TRACE_TITLES = {

@@ -28,10 +28,10 @@ import {
 import { observedLedgerTip } from "./ledger-tip-lower-bound.js";
 import {
   TxConfirmError,
-  TxExpiredError,
   TxSignError,
   TxSubmitError,
-} from "./utils.js";
+} from "./utils.await-required-output-visibility.js";
+import { TxExpiredError } from "./utils.tx-expiry.js";
 
 /** One step of a header's DA attestation, journaled against the header. */
 const attestIntent = (

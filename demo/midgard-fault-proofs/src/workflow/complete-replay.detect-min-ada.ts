@@ -32,8 +32,8 @@ import {
   scanInputSetUniqueness,
 } from "../input-set-uniqueness/scan.js";
 import { minAdaOutputFacts } from "../min-ada/scan.js";
-import { decodeTransactionMaterial } from "../prepare-double-spend.js";
-import { detectInputNoIdxViolationsFromTransactions } from "../prepare-input-no-idx.js";
+import { decodeTransactionMaterial } from "../prepare-double-spend.resolve-double-spend-pair.js";
+import { detectInputNoIdxViolationsFromTransactions } from "../prepare-input-no-idx.midgard-tx-output-from-canonical-cbor.js";
 import { type CanonicalViolationDetection } from "./classification.js";
 import { acceptedTransactionSubject, subjectOf } from "./detection-subject.js";
 

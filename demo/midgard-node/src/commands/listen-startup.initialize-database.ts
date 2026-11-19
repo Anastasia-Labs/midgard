@@ -15,7 +15,7 @@ import { Effect } from "effect";
 
 import { InitDB } from "../database/index.js";
 import * as NodeDeployment from "../database/node-deployment.js";
-import { ContractDeploymentIdentity } from "../services/midgard-contracts.js";
+import { ContractDeploymentIdentity } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 
 export const initializeNodeDatabase = Effect.gen(function* () {
   yield* InitDB.program;

@@ -12,16 +12,16 @@ import {
 import { Data, getAddressDetails } from "@lucid-evolution/lucid";
 import { expect, it } from "vitest";
 
-import {
-  buildMintItemNonCanonicalStep01Forced,
-  buildMintItemNonCanonicalStep02,
-  buildMintItemNonCanonicalStep03,
-  buildMintItemNonCanonicalStep04,
-} from "../src/mint-item-non-canonical/index.js";
+import { buildMintItemNonCanonicalStep01Forced } from "../src/mint-item-non-canonical/submit-step-01-forced.js";
+import { buildMintItemNonCanonicalStep02 } from "../src/mint-item-non-canonical/submit-step-02.js";
+import { buildMintItemNonCanonicalStep03 } from "../src/mint-item-non-canonical/submit-step-03.js";
+import { buildMintItemNonCanonicalStep04 } from "../src/mint-item-non-canonical/submit-step-04.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
+import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
+import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
 import { submitMintStep01ForcedRaw } from "./support/mint-item-non-canonical-emulator.js";
 import {
   evidenceOf,
@@ -29,11 +29,7 @@ import {
   witnessSetCborOf,
 } from "./support/mint-item-non-canonical-lifecycle.js";
 import { mintField } from "./support/mint-item-vectors.js";
-import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
-import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  submitSetupTx,
-} from "./support/submit-init-emulator-shared.js";
+import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init/forced-transitions.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,

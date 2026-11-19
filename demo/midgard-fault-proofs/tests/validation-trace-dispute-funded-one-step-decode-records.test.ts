@@ -15,7 +15,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
 import type { ValidationTraceOneStepReferences } from "../src/validation-trace-dispute/transactions.js";
-import { SCRIPT_DECODE_SPEND_ROLE } from "../src/workflow/script-decode-prerequisite.js";
+import { SCRIPT_DECODE_SPEND_ROLE } from "../src/workflow/script-decode-prerequisite.deployment.js";
 import { drainProver } from "./support/installed-prover-wallet.js";
 import {
   type AdapterWrap,

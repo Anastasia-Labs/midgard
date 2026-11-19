@@ -11,24 +11,22 @@ import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import {
   admitDaHashPreimageArtifact,
   daHashPreimageArtifact,
-  unsafeCreateDaHashPreimageTransactionPortForTest,
-} from "../src/workflow/da-hash-preimage.js";
+} from "../src/workflow/da-hash-preimage.artifact-input.js";
+import { unsafeCreateDaHashPreimageTransactionPortForTest } from "../src/workflow/da-hash-preimage.create-bound-da-hash-preimage-transaction-port.js";
 import {
   FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
   type FraudProofFamilyL1ObservationPort,
 } from "../src/workflow/family-l1-observation.js";
-import {
-  type FraudProofWorkflowIdentity,
-  MemoryFraudProofWorkflowJournalStore,
-} from "../src/workflow/journal.js";
+import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
+import type { FraudProofWorkflowIdentity } from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import { createLinearFamilyWorkflowAdapter } from "../src/workflow/linear-family-adapter.js";
 import {
-  createFraudProofWorkflowRegistry,
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
   type FraudProofFamilyWorkflowAdapter,
-  runDaHashPreimageWorkflowFromRetainedDa,
-} from "../src/workflow/orchestrator.js";
+} from "../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
+import { createFraudProofWorkflowRegistry } from "../src/workflow/orchestrator.immutable-fraud-proof-workflow-registry.js";
+import { runDaHashPreimageWorkflowFromRetainedDa } from "../src/workflow/orchestrator.run-da-hash-preimage-workflow-from-retained-da.js";
 import type { FraudProofRawL1FamilyStage } from "../src/workflow/raw-l1-family-derivation.js";
 import {
   computeFraudProofReleaseFinalityPolicyDigest,

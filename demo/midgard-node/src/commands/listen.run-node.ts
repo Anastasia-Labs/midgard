@@ -5,7 +5,7 @@ import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { Cause, Effect, Option, pipe, Ref } from "effect";
 
-import { closeDaLibp2pPublicationTransport } from "../da/libp2p-producer.js";
+import { closeDaLibp2pPublicationTransport } from "../da/libp2p-producer.publication-transport.js";
 import {
   assertDaHardeningProviderStartup,
   daProviderAssertionsWaitReason,
@@ -19,26 +19,25 @@ import { assertPhase1AcceptCrashCheckpointConfiguration } from "../e2e/phase1-ac
 import {
   refreshAdmissionBacklogGauge,
   refreshAdmissionBacklogGaugeOnStartup,
-  requestTxQueueProcessorWakeup,
-} from "../fibers/index.js";
+} from "../fibers/admission-backlog-gauge.js";
+import { requestTxQueueProcessorWakeup } from "../fibers/tx-queue-processor.tx-queue-processor-drain-once.js";
 import * as Genesis from "../genesis.js";
 import { exportLedgerDivergenceSeries } from "../mpf/local-ledger-divergence.js";
+import { rebuildAdmissionInputClaimsOnStartup } from "../services/admission-input-claims.rebuild.js";
+import { AdmissionWriter } from "../services/admission-writer.validate-options.js";
 import {
   admissionAsDefaultSqlLayer,
   AdmissionSql,
-  AdmissionWriter,
   BatchSql,
+  DatabaseInitializationError,
+} from "../services/database.js";
+import { Globals } from "../services/globals.globals.js";
+import {
   ConfigError,
   Database,
-  DatabaseInitializationError,
-  Globals,
-  Lucid,
   mempoolLedgerCacheLayer,
-  MidgardContracts,
   NodeConfig,
-  rebuildAdmissionInputClaimsOnStartup,
   validationPoolLayer,
-  WriteBehind,
 } from "../services/index.js";
 import {
   IntentJournal,
@@ -46,11 +45,16 @@ import {
 } from "../services/intent-journal.js";
 import { startL1Follower } from "../services/l1-follower.js";
 import { nodeDatabaseConnectionString } from "../services/l1-provider.js";
+import { Lucid } from "../services/lucid.js";
+import { MidgardContracts } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import { requirePinnedNativeOwnerBinary } from "../services/native-mpf-startup.js";
 import { acquireNodeInstanceLock } from "../services/node-instance-lock.js";
 import { settlementWalletAddress } from "../services/settlement.js";
 import type { StartupStepFailedError } from "../services/startup-waiting.js";
 import { acquireSubmitCheckPool } from "../services/submit-check-pool.acquire-submit-check-pool.js";
+import { WriteBehind } from "../services/write-behind.summarize-write-behind-telemetry.js";
+import { buildListenRouter } from "./http/router.js";
+import { makeSubmitRequestHandler } from "./http/submit.js";
 import { scopedWithExitDeadline } from "./listen.exit-deadline.js";
 import { runNodeFiberSet } from "./listen.node-fibers.js";
 import {
@@ -59,15 +63,11 @@ import {
   runStartupProviderStepWithRetry,
 } from "./listen.retained-payload-server-thread.js";
 import type { StartupHttp } from "./listen.startup-http.js";
-import {
-  buildListenRouter,
-  makeSubmitRequestHandler,
-} from "./listen-router.js";
 import { awaitFollowerViewOnStartup } from "./listen-startup.await-follower-view.js";
 import { awaitLandedStateQueueOnStartup } from "./listen-startup.await-landed-state-queue.js";
 import { awaitLedgerSignatureVerifierOnStartup } from "./listen-startup.await-ledger-signature-verifier.js";
+import { ensureProtocolInitializedOnStartup } from "./listen-startup.ensure-protocol-initialized-on-startup.js";
 import { initializeNodeDatabase } from "./listen-startup.initialize-database.js";
-import { ensureProtocolInitializedOnStartup } from "./listen-startup.js";
 import { prepareNodeOnStartup } from "./listen-startup.prepare-node.js";
 import { shouldRunGenesisOnStartup } from "./startup-policy.js";
 

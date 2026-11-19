@@ -29,12 +29,12 @@ import {
 import { Effect } from "effect";
 import { expect } from "vitest";
 
+import { firstWalletUtxo } from "../emulator/emulator-context.js";
 import { withCommitSlot } from "../emulator/header-fixtures.js";
 import {
   findStateQueueYieldReferenceScript,
   type OperatorLifecycleReferenceScripts,
 } from "../emulator/reference-scripts.js";
-import { firstWalletUtxo } from "../submit-init-emulator-shared.js";
 
 /**
  * Successor fixtures are often assembled after publishing reference scripts,

@@ -25,15 +25,15 @@ import {
   outputReferenceScriptEvidenceCloses,
   OutputReferenceScriptResultClasses,
   prepareOutputReferenceScriptDecodingEvidence,
-} from "../src/output-reference-script-decoding/index.js";
+} from "../src/output-reference-script-decoding/output-reference-script-decoding.js";
+import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { buildRegisteredChainFixture } from "./support/emulator/registered-chain.js";
 import {
   OUTPUT_REFERENCE_MAX_OUTPUT_BYTES,
   outputWithRawNativePayload,
   rawNativeOutputOfLength,
   subjectTransaction,
-} from "./support/output-reference-script-decoding-emulator.js";
-import { makeNativeTx } from "./support/submit-init-emulator-shared.js";
+} from "./support/output-reference-script-decoding-emulator.commit-accepted-block.js";
 
 const subjectTransactionWith = (output: Buffer) =>
   subjectTransaction([output], 7n);

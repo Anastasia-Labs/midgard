@@ -1,8 +1,10 @@
 import type { UTxO } from "@lucid-evolution/lucid";
 
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
-import { createCursorFamilyWorkflowAdapter } from "./cursor-family-adapter.js";
+import { createCursorFamilyWorkflowAdapter } from "./cursor-family-adapter.create-cursor-family-workflow-adapter.js";
 import { requireManifestBoundReferenceScriptUtxo } from "./deployment-manifest-binding.js";
+import { LINEAR_FAMILY_DEFINITION_VERSION } from "./family-definition.family-adapter-arm.js";
+import { familyStepContractNames } from "./family-definition.family-definition.js";
 import type {
   FamilyAssemblyContext,
   FamilyCategory,
@@ -10,10 +12,6 @@ import type {
   FamilyReferenceScripts,
   FamilyTransactionPort,
   FaultProofWitnessRole,
-} from "./family-definition.js";
-import {
-  familyStepContractNames,
-  LINEAR_FAMILY_DEFINITION_VERSION,
 } from "./family-definition.js";
 import { type FraudProofFamilyL1ObservationPort } from "./family-l1-observation.js";
 import { createLinearFamilyWorkflowAdapter } from "./linear-family-adapter.js";

@@ -5,7 +5,8 @@ import {
   PendingBlockFinalizationsDB,
   StateQueueMutationLeasesDB,
 } from "../database/index.js";
-import { Database, MidgardContracts } from "../services/index.js";
+import { Database } from "../services/database.js";
+import { MidgardContracts } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   evidence,
   optionRecordEvidence,

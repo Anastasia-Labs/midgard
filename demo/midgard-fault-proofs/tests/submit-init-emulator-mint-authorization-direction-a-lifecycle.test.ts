@@ -29,8 +29,11 @@ import { Data, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { submitRemoveFraudulentBlock } from "../src/index.js";
 import { MINT_AUTHORIZATION_CATEGORY_LABEL } from "../src/mint-authorization/contracts.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import { network } from "./support/emulator/blueprints.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import {
   buildMintAuthorizationLedgerFixture,
   buildMintAuthorizationSubject,
@@ -41,11 +44,6 @@ import {
   setupMintAuthorizationScenario,
   smallMintItemCbors,
 } from "./support/mint-authorization-emulator.js";
-import {
-  buildRemovalDeploymentInfo,
-  network,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
 import { submitResolvedInit } from "./support/submit-unjournaled.init.js";
 import {
   submitMintAuthorizationStep01,

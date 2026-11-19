@@ -12,7 +12,7 @@ import {
   writeJson,
 } from "./commands/cli-runtime.js";
 import { runMpfAudit } from "./commands/mpf-audit.js";
-import { mpfReplayProgram } from "./commands/mpf-replay.js";
+import { mpfReplayProgram } from "./commands/mpf-replay.make-seeded-adversarial-mpf-corpus-block.js";
 import * as ReserveInspectionCommand from "./commands/reserve-inspection.js";
 import * as ReservePayoutCommand from "./commands/reserve-payout.js";
 import * as StateReconciliation from "./commands/state-reconciliation.js";

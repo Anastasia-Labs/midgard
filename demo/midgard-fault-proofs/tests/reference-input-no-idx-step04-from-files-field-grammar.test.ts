@@ -9,16 +9,14 @@ import { encodeMidgardTxOutputCanonical } from "@al-ft/midgard-sdk";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { submitReferenceInputNoIdxStep04FromFiles } from "../src/submit-reference-input-no-idx-step-04.submit-reference-input-no-idx-step04-from-files.js";
+import { network } from "./support/emulator/blueprints.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { deployFieldGrammarCertificate } from "./support/field-grammar-certificate-deployment-fixture.js";
 import { writeNoIdxStep04Files } from "./support/no-idx-step04-from-files.js";
 import {
   buildReferenceInputNoIdxBlockFixture,
   makeReferenceInputNoIdxEmulatorHarness,
-} from "./support/reference-input-no-idx-emulator.js";
-import {
-  buildRemovalDeploymentInfo,
-  network,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/reference-input-no-idx-emulator.build-reference-input-no-idx-block-fixture.js";
 
 const hooks = vi.hoisted(() => ({ lucid: undefined as unknown }));
 // The command's provider is the emulator; the step itself is observed, not

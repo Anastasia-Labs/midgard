@@ -14,17 +14,17 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
-import { encodeData } from "../src/transition-trace/reconstruct.js";
+import { encodeData } from "../src/transition-trace/reconstruct.transition-trace-reconstruction.js";
 import {
   type CanonicalBlockClassification,
   classifyCanonicalBlockViolations,
-} from "../src/workflow/classification.js";
-import { MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
+} from "../src/workflow/classification.classify-canonical-block-violations.js";
+import { MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.detect-double-withdraws.js";
 import {
   admitMissingSignatureArtifact,
-  type MissingSignatureArtifact,
   prepareMissingSignatureArtifact,
-} from "../src/workflow/missing-signature.js";
+} from "../src/workflow/missing-signature.admit-missing-signature-artifact.js";
+import type { MissingSignatureArtifact } from "../src/workflow/missing-signature.parse-artifact.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,

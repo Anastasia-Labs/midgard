@@ -18,11 +18,9 @@ import {
   type IntentPlan,
   journaledIntent,
 } from "../services/intent-journal.js";
-import {
-  handleSignSubmit,
-  type SubmitRecoveryOptions,
-  submitSignedTxWithRecovery,
-} from "./utils.js";
+import { handleSignSubmit } from "./utils.await-submitted-transaction-confirmation.js";
+import type { SubmitRecoveryOptions } from "./utils.submit-recovery-options.js";
+import { submitSignedTxWithRecovery } from "./utils.submit-signed-tx-with-recovery.js";
 
 /**
  * A funding step (consolidation or split), journaled under the

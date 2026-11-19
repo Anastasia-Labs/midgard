@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 
 import * as fundingAuthority from "../src/workflow/funding-reservation-permit.js";
-import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.js";
+import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
 import {
   canonicalEvidence,
   makeAdapter,

@@ -9,11 +9,11 @@ import {
   FRAUD_PROOF_WORKFLOW_SAFETY,
   type FraudProofFamilyWorkflowAdapter,
   type FraudProofWorkflowAction,
-} from "../src/workflow/orchestrator.js";
+} from "../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import {
   PROOF_CHUNK_PREREQUISITE,
   type ProofChunkPrerequisitePort,
-} from "../src/workflow/proof-chunk-prerequisite.js";
+} from "../src/workflow/proof-chunk-prerequisite.route-action-identity.js";
 import type { LocallyEvaluatedTransaction } from "../src/workflow/transaction-boundary.js";
 
 export const txHash = "11".repeat(32);

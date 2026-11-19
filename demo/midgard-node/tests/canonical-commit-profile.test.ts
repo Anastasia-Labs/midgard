@@ -3,16 +3,12 @@ import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  computeLedgerMpfRootFromLedgerEntries,
-  processMpfs,
-} from "../src/mpf/index.js";
+import { processMpfs } from "../src/mpf/index.js";
+import { computeLedgerMpfRootFromLedgerEntries } from "../src/mpf/ledger-hydration.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
 import { FollowerWriteFixture } from "../src/services/follower-write-gate.js";
-import {
-  ContractDeploymentIdentity,
-  NodeConfig,
-} from "../src/services/index.js";
-import { runCommitBlockHeaderWorkerProgram } from "../src/workers/commit-block-header.js";
+import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
+import { runCommitBlockHeaderWorkerProgram } from "../src/workers/commit-block-header.run-commit-block-header-worker-program.js";
 import type { WorkerInput } from "../src/workers/utils/commit-block-header.js";
 import { withoutFollowerJournal } from "./helpers/intent-journal.js";
 import { makeTestNodeConfig } from "./helpers/test-node-config.js";

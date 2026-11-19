@@ -2,10 +2,8 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { type UTxO, validatorToScriptHash } from "@lucid-evolution/lucid";
 
 import type { FaultProofFieldGrammarDeployment } from "./field-grammar-certificate.route-fault-proof-field-grammar.js";
-import {
-  type FraudProofWorkflowDeploymentBinding,
-  requireManifestBoundReferenceScriptUtxo,
-} from "./workflow/deployment-manifest-binding.js";
+import { type FraudProofWorkflowDeploymentBinding } from "./workflow/deployment-manifest-binding.assert-deployment-info-matches-manifest.js";
+import { requireManifestBoundReferenceScriptUtxo } from "./workflow/deployment-manifest-binding.js";
 
 /** The deployment members a certified field read runs against. */
 export const FIELD_GRAMMAR_CERTIFICATE_SPEND = "fieldGrammarCertificateSpend";

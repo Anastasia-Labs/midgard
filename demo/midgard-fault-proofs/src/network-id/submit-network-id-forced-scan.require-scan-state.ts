@@ -19,12 +19,14 @@ import {
   type NetworkIdContracts,
   type NetworkIdStepContract,
 } from "./contracts.js";
+import type {
+  NetworkIdForcedScanPlan,
+  NetworkIdForcedScanStep,
+} from "./forced-scan-plan.advance-grammar-by.js";
 import {
   networkIdForcedScanExpectedStateHash,
-  type NetworkIdForcedScanPlan,
-  type NetworkIdForcedScanStep,
   networkIdForcedScanSuccessorStateHash,
-} from "./forced-scan-plan.js";
+} from "./forced-scan-plan.plan-network-id-forced-scan.js";
 import { networkIdSubmitError } from "./submit-common.js";
 import { type PreparedNetworkIdWrongfulRejection } from "./wrongful-rejection.js";
 

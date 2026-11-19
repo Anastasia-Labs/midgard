@@ -33,12 +33,10 @@ import {
   parseOutRef,
   requireSingletonUtxo,
 } from "../../src/runtime.js";
+import { network as emulatorNetwork } from "./emulator/blueprints.js";
+import { makeFaultProofEmulatorHarness } from "./emulator/harness.js";
 import { withCommitSlot } from "./emulator/header-fixtures.js";
 import { findStateQueueYieldReferenceScript } from "./emulator/reference-scripts.js";
-import {
-  makeFaultProofEmulatorHarness,
-  network as emulatorNetwork,
-} from "./submit-init-emulator-shared.js";
 
 // ---------------------------------------------------------------------------
 // Harness, committed header, reference scripts, removal category

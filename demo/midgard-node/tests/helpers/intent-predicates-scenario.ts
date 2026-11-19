@@ -12,6 +12,7 @@
  */
 import {
   currentViewIn,
+  decodeTransaction,
   deriveIntentStatusIn,
   type FactStore,
   intentJournalProjection,
@@ -19,7 +20,6 @@ import {
   recordIntentIn,
   type TrackedSet,
 } from "@al-ft/midgard-l1-follower";
-import { decodeTransaction } from "@al-ft/midgard-l1-follower";
 import {
   encodeSimTx,
   SIM_ORIGIN,
@@ -27,14 +27,10 @@ import {
 } from "@al-ft/midgard-l1-follower/testing";
 import * as SDK from "@al-ft/midgard-sdk";
 
-import {
-  operatorSetProjection,
-  operatorSetTrackedSet,
-} from "../../src/l1-operator-set/index.js";
-import {
-  stateQueueProjection,
-  stateQueueTrackedSet,
-} from "../../src/l1-state-queue/index.js";
+import { operatorSetTrackedSet } from "../../src/l1-operator-set/config.js";
+import { operatorSetProjection } from "../../src/l1-operator-set/projection.js";
+import { stateQueueTrackedSet } from "../../src/l1-state-queue/config.js";
+import { stateQueueProjection } from "../../src/l1-state-queue/projection.js";
 import {
   nodeFamilyPredicate,
   type NodeFamilyPredicateDeps,

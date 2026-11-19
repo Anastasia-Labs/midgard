@@ -24,12 +24,13 @@ import {
   proofFromCbor,
   STEP_TX_OVERHEAD_ALLOWANCE_BYTES,
 } from "./native-script-decoding-envelope.step-01-redeemer-envelope-chart-both-carriages-q4.js";
+import { h32 } from "./support/emulator/header-fixtures.js";
+import { makeNativeTx } from "./support/emulator/native-tx.js";
 import {
   ADVERSARIAL_MEMBERSHIP_PROOF_BRANCH_LEVELS,
   insertAdversarialMembershipSiblings,
-  outputReferenceCbor,
-} from "./support/submit-init-emulator-fixtures.js";
-import { h32, makeNativeTx } from "./support/submit-init-emulator-shared.js";
+} from "./support/submit-init/membership.js";
+import { outputReferenceCbor } from "./support/submit-init/transaction-material.js";
 
 describe("step-03 redeemer envelope chart (windows, frames, tier frontier)", () => {
   // Adversarial reference-script item at the §8 aggregate-field ceiling:

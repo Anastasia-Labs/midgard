@@ -4,12 +4,10 @@ import {
 } from "@al-ft/midgard-core";
 import { deriveMidgardForcedTxProofSourceFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
 
-import { planFaultProofFieldOpening } from "../field-opening.js";
-import {
-  createAuthenticatedFieldCarriagePrerequisitePort,
-  type FieldCarriageRequirement,
-} from "../workflow/field-carriage-prerequisite.js";
-import { journalJsonDigest } from "../workflow/journal.js";
+import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
+import { createAuthenticatedFieldCarriagePrerequisitePort } from "../workflow/field-carriage-prerequisite.create-authenticated-field-carriage-prerequisite-port.js";
+import type { FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.field-carriage-prerequisite-port.js";
+import { journalJsonDigest } from "../workflow/journal.fraud-proof-workflow-terminal.js";
 import { admitValueConservationArtifact } from "./artifact.js";
 import type { ValueNotPreservedContracts } from "./contracts.js";
 

@@ -10,13 +10,10 @@ import { Data as LucidData, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
 import * as WithdrawalsDB from "../database/withdrawals.js";
-import {
-  Database,
-  Lucid,
-  MidgardContracts,
-  NodeConfig,
-} from "../services/index.js";
+import { Database, NodeConfig } from "../services/index.js";
 import { type IntentJournal, openPlan } from "../services/intent-journal.js";
+import { Lucid } from "../services/lucid.js";
+import { MidgardContracts } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   ReservePayoutTransport,
   submitAddReserveFundsToPayoutProgram,

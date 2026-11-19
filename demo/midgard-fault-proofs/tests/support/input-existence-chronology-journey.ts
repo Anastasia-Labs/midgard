@@ -12,29 +12,29 @@ import {
   prepareInputExistence,
 } from "../../src/input-existence/prepare.js";
 import { buildInputExistenceStep } from "../../src/input-existence/submit.js";
-import { buildInit } from "../../src/submit-init.js";
+import { buildInit } from "../../src/submit-init.submit-init.js";
 import {
   type InputChronology,
   inputExistenceChronologyFixture,
 } from "../helpers/input-existence-chronology-fixture.js";
 import { chronologySeedDeposits } from "../helpers/input-existence-chronology-seed.js";
+import { network } from "./emulator/blueprints.js";
+import {
+  alignUnixTimeToEmulatorSlotBoundary,
+  funderPaymentKeyHash,
+} from "./emulator/emulator-context.js";
 import { makeFaultProofEmulatorHarness } from "./emulator/harness.js";
 import {
   captureEmulatorSubmission,
   type CompleteSignedTransactionMeasurement,
 } from "./emulator/measurement.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.build-removal-deployment-info.js";
 import { submitSecondHeaderTx } from "./emulator/setup-tx.js";
+import { submitSetupTx } from "./emulator/setup-tx.submit-setup-tx.js";
 import { publishInputExistenceSelectionCarriage } from "./input-existence-execution-context.js";
 import { submitRawInputExistenceStep } from "./raw-input-existence-step.js";
-import { registerPexcludesExclusionRewardAccount } from "./submit-init-emulator-fixtures.js";
-import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  buildRemovalDeploymentInfo,
-  funderPaymentKeyHash,
-  network,
-  publishPlainReferenceScriptUtxo,
-  submitSetupTx,
-} from "./submit-init-emulator-shared.js";
+import { registerPexcludesExclusionRewardAccount } from "./submit-init/wallet.js";
 import { buildAndSubmitUnjournaled } from "./submit-unjournaled.js";
 import { depositEventsRetainedBlock } from "./transition-trace-retained.deposit-events-retained-block.js";
 

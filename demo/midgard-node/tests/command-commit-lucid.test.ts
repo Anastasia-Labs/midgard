@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 
 import { openL1Access } from "../src/l1-access.js";
 import { l1SlotNow } from "../src/l1-heads.js";
-import { NodeConfig } from "../src/services/config.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
 import { L1Adapter } from "../src/services/l1-adapter.js";
 import { Lucid } from "../src/services/lucid.js";
 import { scopedCommitLucidFactory } from "../src/workers/commit-block-header.pending-user-event-counts-up-to.js";

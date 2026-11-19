@@ -2,15 +2,15 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import { encodeTransactionRootValue as encodeProductionTransactionRootValue } from "@al-ft/midgard-fault-proofs/block-replay";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { encodeForcedInclusionValueV1 } from "../src/database/forcedTransactions.js";
+import { encodeForcedInclusionValueV1 } from "../src/database/forcedTransactions.encode-forced-inclusion-value-v1.js";
 import { ForcedTransactionsDB } from "../src/database/index.js";
-import { encodeTransactionRootValue as encodeProductionTransactionRootValue } from "../src/mpf/index.js";
-import { buildAuthenticatedRootFromEncodedEntries } from "../src/workers/commit-block-header/transition-roots.js";
+import { buildAuthenticatedRootFromEncodedEntries } from "../src/workers/commit-block-header/transition-roots.validate-count-proof.js";
 
 type GoldenEntry = {
   readonly name: string;

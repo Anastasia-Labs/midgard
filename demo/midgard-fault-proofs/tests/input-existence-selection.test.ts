@@ -16,7 +16,7 @@ import {
 import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
-import { faultProofFieldOpening } from "../src/field-opening.js";
+import { faultProofFieldOpening } from "../src/field-opening.publish-fault-proof-field-carriage.js";
 import { inputExistenceArtifact } from "../src/input-existence/artifact.js";
 import {
   inputExistenceFieldPlans,
@@ -37,7 +37,7 @@ import { NO_REFERENCE_INPUT_FAMILY_DEFINITION } from "../src/workflow/no-referen
 import { NON_EXISTENT_INPUT_FAMILY_DEFINITION } from "../src/workflow/non-existent-input.non-existent-input-family-definition.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
-import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
+import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.build-decoding-block-fixture.js";
 
 const OWNER = "91".repeat(28);
 const input = (outputIndex: number) =>

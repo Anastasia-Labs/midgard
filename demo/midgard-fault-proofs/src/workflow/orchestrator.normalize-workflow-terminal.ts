@@ -1,13 +1,15 @@
 import { isCollateralForfeitureEvent } from "./collateral-forfeiture.js";
+import type {
+  FraudProofWorkflowJournalEntry,
+  FraudProofWorkflowJournalEvent,
+} from "./journal.fraud-proof-workflow-journal-event.js";
 import {
   FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
   type FraudProofWorkflowIdentity,
-  type FraudProofWorkflowJournalEntry,
-  type FraudProofWorkflowJournalEvent,
   type FraudProofWorkflowTerminal,
   type JournalJsonObject,
   normalizeJournalJson,
-} from "./journal.js";
+} from "./journal.fraud-proof-workflow-terminal.js";
 import {
   type FraudProofWorkflowAction,
   type FraudProofWorkflowPreflight,

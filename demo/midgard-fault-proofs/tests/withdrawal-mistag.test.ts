@@ -25,7 +25,7 @@ import { prepareWithdrawalMistag } from "../src/withdrawal-mistag/prepare-withdr
 import {
   withdrawalMistagStates,
   withdrawalMistagStepPayloadCbor,
-} from "../src/withdrawal-mistag/submit-withdrawal-mistag-steps.js";
+} from "../src/withdrawal-mistag/submit-withdrawal-mistag-steps.step-args.js";
 
 // The ledger's Ed25519 check is libsodium's, which initialises
 // asynchronously; production entry points await it, and so does this file.

@@ -10,26 +10,22 @@ import { Data, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildCommittedFieldShapeInit,
-  buildCommittedFieldShapeStep01,
-  buildCommittedFieldShapeStep02,
-  prepareCommittedFieldShapeFromCanonicalTx,
-  submitRemoveFraudulentBlock,
-} from "../src/index.js";
+import { prepareCommittedFieldShapeFromCanonicalTx } from "../src/committed-field-shape/prepare-committed-field-shape.js";
+import { buildCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
+import { buildCommittedFieldShapeStep01 } from "../src/committed-field-shape/submit-committed-field-shape-step-01.submit-committed-field-shape-step01.js";
+import { buildCommittedFieldShapeStep02 } from "../src/committed-field-shape/submit-committed-field-shape-step-02.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import {
   makeCommittedFieldShapeEmulatorHarness,
   publishCommittedFieldShapeReferenceScripts,
   setupCommittedFieldShapeScenario,
-} from "./support/committed-field-shape-emulator.js";
+} from "./support/committed-field-shape-emulator.committed-field-shape-scenario-material.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
+import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
-import {
-  buildRemovalDeploymentInfo,
-  captureEmulatorSubmission,
-  expectSingleUtxoWithUnit,
-  network,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 describe("committed-field-shape emulator lifecycle", () => {

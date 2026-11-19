@@ -3,11 +3,9 @@ import { readFile, realpath, stat } from "node:fs/promises";
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { assertRoleL1Env } from "@al-ft/midgard-l1-follower";
 
-import {
-  parseWatcherConfig,
-  parseWatcherStrictJsonValue,
-  type WatcherWalletKeySource,
-} from "./config.js";
+import { parseWatcherConfig } from "./config.parse-watcher-config.js";
+import { parseWatcherStrictJsonValue } from "./config.strict-json-reader.js";
+import type { WatcherWalletKeySource } from "./config.watcher-config.js";
 import {
   refusePermanently,
   WatcherPermanentRefusalError,

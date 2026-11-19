@@ -5,9 +5,9 @@ import {
   admitNativeScriptDecodingWorkflowArtifact,
   prepareNativeScriptDecodingWorkflowArtifact,
 } from "../src/native-script-decoding/artifact.js";
-import { reconstructDaPayload } from "../src/transition-trace/reconstruct.js";
-import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
-import { NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
+import { reconstructDaPayload } from "../src/transition-trace/reconstruct.reconstruct-da-payload.js";
+import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
+import { NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import { reencodeFixturePayload } from "./helpers/canonical-block-evidence-fixture.js";
 import { nativeDecodingFixture } from "./support/native-script-decoding-retained.js";
 import { ledgerEntriesAfter } from "./support/predecessor-ledger.js";

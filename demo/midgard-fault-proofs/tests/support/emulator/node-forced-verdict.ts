@@ -1,13 +1,11 @@
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import type { OperatorVerdict } from "@al-ft/midgard-sdk";
-import {
-  runPhaseAValidation,
-  runPhaseBValidationWithPatch,
-} from "@al-ft/midgard-validation";
+import { runPhaseAValidation } from "@al-ft/midgard-validation/phase-a";
+import { runPhaseBValidationWithPatch } from "@al-ft/midgard-validation/phase-b";
 import { Effect } from "effect";
 
-import { forcedVerdictForRejection } from "../../../src/index.js";
+import { forcedVerdictForRejection } from "../../../src/workflow/forced-rejection-reason.js";
 
 /**
  * The verdict the node's forced-transaction classifier commits for one forced

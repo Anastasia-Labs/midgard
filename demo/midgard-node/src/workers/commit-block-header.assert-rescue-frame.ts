@@ -4,7 +4,8 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Option } from "effect";
 
 import { unixTimeToSlotForConfig } from "../lucid-time.js";
-import { emptyRootHexProgram, type processMpfs } from "../mpf/index.js";
+import type { processMpfs } from "../mpf/process.process-mpfs.js";
+import { emptyRootHexProgram } from "../mpf/store.empty-root-hex-program.js";
 import type { Lucid } from "../services/index.js";
 import { CommitWorkerInvariantError } from "./commit-block-header.pending-user-event-counts-up-to.js";
 import {
@@ -19,7 +20,7 @@ import {
 } from "./commit-block-header/state-queue.js";
 import { assertPreSubmitDaPayloadSize } from "./commit-block-header/submission.assert-pre-submit-da-payload-size.js";
 import { makeEventCommitments } from "./commit-block-header/transition-commitments.js";
-import { selectCommitRoots } from "./utils/commit-block-planner.js";
+import { selectCommitRoots } from "./utils/commit-block-planner.plan-scheduler-aware-commit-selection.js";
 
 /** An exact rescue never proceeds on the synthetic widest-header estimate.
  * Derive the actual header with the same SDK/count/root helpers as submission,

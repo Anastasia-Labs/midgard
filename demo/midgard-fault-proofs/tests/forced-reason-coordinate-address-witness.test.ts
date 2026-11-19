@@ -17,9 +17,9 @@ import { describe, expect, it } from "vitest";
 
 import type { InvalidSignatureContracts } from "../src/invalid-signature/contracts.js";
 import { buildInvalidSignatureStep01Forced } from "../src/invalid-signature/submit.js";
-import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
-import { buildInit } from "../src/submit-init.js";
-import { buildInvalidSignatureStep02 } from "../src/submit-invalid-signature-step-02.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import { buildInit } from "../src/submit-init.submit-init.js";
+import { buildInvalidSignatureStep02 } from "../src/submit-invalid-signature-step-02.submit-invalid-signature-step02.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
@@ -27,18 +27,18 @@ import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { nodeForcedVerdict } from "./support/emulator/node-forced-verdict.js";
-import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
 import {
   buildInvalidSignatureBlockFixture,
   honestAddressWitness,
   invalidAddressWitness,
   type InvalidSignatureSubject,
-  submitRawInvalidSignatureStep02,
-} from "./support/invalid-signature-emulator.js";
+} from "./support/invalid-signature-emulator.build-invalid-signature-subject.js";
+import { submitRawInvalidSignatureStep02 } from "./support/invalid-signature-emulator.submit-raw-invalid-signature-step02.js";
 import { network } from "./support/invalid-signature-wrongful-emulator.network.js";
-import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
-import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
+import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init/forced-transitions.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,

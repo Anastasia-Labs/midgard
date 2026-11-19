@@ -29,11 +29,11 @@ import {
   nativeScriptDecodingScanArgsEvidence,
   nativeScriptDecodingWindowProofs,
 } from "../native-script-decoding/evidence.js";
+import { buildNativeScriptDecodingScanPlan } from "../native-script-decoding/scan-plan.build-native-script-decoding-scan-plan.js";
 import {
-  buildNativeScriptDecodingScanPlan,
   NativeScriptDecodingPlanRoutes,
   type NativeScriptDecodingScanPlan,
-} from "../native-script-decoding/scan-plan.js";
+} from "../native-script-decoding/scan-plan.native-script-decoding-plan-costs.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {

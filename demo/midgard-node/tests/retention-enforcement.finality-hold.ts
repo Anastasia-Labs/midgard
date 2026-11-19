@@ -9,7 +9,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { DaPayloadsDB } from "../src/database/index.js";
 import * as MigrationRunner from "../src/database/migrations/runner.js";
 import { retentionSweepAction } from "../src/fibers/retention-sweeper.js";
-import { NodeConfig } from "../src/services/index.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
 import {
   dbEnabled,
   NOW,

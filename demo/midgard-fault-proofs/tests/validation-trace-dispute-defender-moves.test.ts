@@ -40,9 +40,9 @@ import {
   type ValidationTraceThreadHolder,
   type ValidationTraceThreadStanding,
 } from "../src/validation-trace-dispute/threads.js";
-import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.js";
+import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { network } from "./support/emulator/blueprints.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
-import { network } from "./support/submit-init-emulator-shared.js";
 import { l1SlotConfig } from "./support/validation-trace-claim-material.js";
 import { sceneCaseHistory } from "./support/validation-trace-dispute-case-history.js";
 import {

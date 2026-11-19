@@ -5,38 +5,44 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import type { UTxO } from "@lucid-evolution/lucid";
 
+import { directPurposeArtifactPaging } from "../../src/direct-purpose-family/artifact.js";
+import type { DirectPurposeReplay } from "../../src/direct-purpose-family/artifact-family.js";
 import {
-  buildDirectPurposeInit,
+  DIRECT_PURPOSE_FIELDS,
+  type DirectPurposeFieldPlan,
+  type DirectPurposeTransition,
+} from "../../src/direct-purpose-family/custody.js";
+import type {
+  DirectPurposeContracts,
+  DirectPurposeCustodyFamily,
+  DirectPurposeRole,
+} from "../../src/direct-purpose-family/family.js";
+import { fitDirectPurposeTransition } from "../../src/direct-purpose-family/fit.js";
+import { buildDirectPurposeInit } from "../../src/direct-purpose-family/init.js";
+import type { DirectPurposePaging } from "../../src/direct-purpose-family/paging.js";
+import {
   buildDirectPurposeStep01Accepted,
   buildDirectPurposeStep01Forced,
-  buildDirectPurposeTerminal,
-  DIRECT_PURPOSE_FIELDS,
-  directPurposeArtifactPaging,
-  type DirectPurposeContracts,
-  type DirectPurposeCustody,
-  type DirectPurposeCustodyFamily,
-  type DirectPurposeFieldPlan,
-  type DirectPurposePaging,
-  type DirectPurposeReplay,
-  type DirectPurposeRole,
   directPurposeStep01Datum,
-  type DirectPurposeTransition,
-  type DirectWalkFamily,
-  type DirectWalkProof,
-  directWalkTerminalFamily,
-  fitDirectPurposeTransition,
-} from "../../src/direct-purpose-family/index.js";
+} from "../../src/direct-purpose-family/step01.js";
+import type { DirectPurposeCustody } from "../../src/direct-purpose-family/submit.js";
+import { buildDirectPurposeTerminal } from "../../src/direct-purpose-family/terminal.js";
+import { directWalkTerminalFamily } from "../../src/direct-purpose-family/transaction-port.js";
+import type {
+  DirectWalkFamily,
+  DirectWalkProof,
+} from "../../src/direct-purpose-family/walk-family.js";
 import type { DirectScriptMaterial } from "../../src/direct-script-derivation/material.js";
 import { publishDirectWalkCarriage } from "./direct-walk-emulator.carriage.js";
+import { network } from "./emulator/blueprints.js";
+import { registerChunkedVerifyRewardAccount } from "./emulator/emulator-context.js";
+import { makeFaultProofEmulatorHarness } from "./emulator/harness.js";
 import {
   captureEmulatorSubmission,
   type CompleteSignedTransactionMeasurement,
-  makeFaultProofEmulatorHarness,
   measureCompleteSignedTransaction,
-  network,
-  publishPlainReferenceScriptUtxo,
-  registerChunkedVerifyRewardAccount,
-} from "./submit-init-emulator-shared.js";
+} from "./emulator/measurement.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 import {
   submitDirectPurposeTransition,
   submitDirectPurposeTransitions,

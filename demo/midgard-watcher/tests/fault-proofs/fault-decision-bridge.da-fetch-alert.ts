@@ -1,8 +1,8 @@
 import {
   bindWatcherRetainedDaOperations,
   type WatcherRetainedDaOperationsBinding,
-} from "../../src/storage/retained-da-runtime.js";
-import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
+} from "../../src/storage/retained-da-runtime.retained-da-request-permits.js";
+import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.build-watcher-deployment-authority-fixture.js";
 import type { operations } from "./fault-decision-bridge.released-fixture.js";
 
 const bound: WatcherRetainedDaOperationsBinding[] = [];

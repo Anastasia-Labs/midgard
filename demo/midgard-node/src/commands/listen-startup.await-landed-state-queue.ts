@@ -20,15 +20,15 @@ import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { SqlClient } from "@effect/sql";
 import { Clock, Duration, Effect, Ref } from "effect";
 
-import { STATE_QUEUE_UNHEALTHY } from "../l1-state-queue/index.js";
+import { STATE_QUEUE_UNHEALTHY } from "../l1-state-queue/hook.js";
 import { isConnectionClassError } from "../provider-retry.js";
-import { Globals } from "../services/globals.js";
+import { Globals } from "../services/globals.globals.js";
 import {
   caughtUpFollower,
   l1FollowerReadiness,
 } from "../services/l1-follower.readiness.js";
 import { readLandedStateQueue } from "../services/landed-state-queue.js";
-import { MidgardContracts } from "../services/midgard-contracts.js";
+import { MidgardContracts } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   STARTUP_DATABASE_BUDGET,
   startupStepFailed,

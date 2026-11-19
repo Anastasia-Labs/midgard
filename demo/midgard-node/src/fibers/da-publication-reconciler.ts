@@ -4,27 +4,27 @@ import { hostname } from "node:os";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { Effect, Either, Metric, Option, Schedule } from "effect";
 
+import type { DaProducerCommitteePeer } from "../da/libp2p-producer.parse-committee-peers.js";
+import { loadDaProducerPublicationManifestFromEnv } from "../da/libp2p-producer.parse-da-producer-publication-manifest.js";
 import {
-  type DaProducerCommitteePeer,
-  loadDaProducerPublicationManifestFromEnv,
   publishDaPayloadAnnouncementFromEnv,
   reconcileDaPayloadPeerFromEnv,
-} from "../da/libp2p-producer.js";
+} from "../da/libp2p-producer.reconcile-da-payload-peer-from-env.js";
 import {
   DaPayloadAnnouncementsDB,
   DaPayloadPublicationsDB,
   DaPayloadsDB,
 } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
-import { deploymentIdentityDigestOf } from "../l1-queue-terminals/index.js";
+import { deploymentIdentityDigestOf } from "../l1-queue-terminals/reads.js";
 import { NodeConfig } from "../services/config.js";
 import type { Database } from "../services/database.js";
-import { Globals } from "../services/globals.js";
+import { Globals } from "../services/globals.globals.js";
 import {
   clearLivenessIncident,
   raiseLivenessIncident,
 } from "../services/liveness-halt.js";
-import { ContractDeploymentIdentity } from "../services/midgard-contracts.js";
+import { ContractDeploymentIdentity } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 
 const daPublishReconcilerAttemptsCounter = Metric.counter(
   "da_publish_reconciler_attempts_total",

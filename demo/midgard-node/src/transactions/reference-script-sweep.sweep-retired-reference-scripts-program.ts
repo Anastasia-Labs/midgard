@@ -7,8 +7,11 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import type { IntentJournal } from "../services/intent-journal.js";
-import { journaledIntent, openPlan } from "../services/intent-journal.js";
+import {
+  type IntentJournal,
+  journaledIntent,
+  openPlan,
+} from "../services/intent-journal.js";
 import { outRefLabel } from "../tx-context.js";
 import {
   buildReferenceScriptSweepPlan,
@@ -31,12 +34,12 @@ import {
   REFERENCE_SCRIPT_CONFIRMATION_TIMEOUT_MS,
 } from "./reference-scripts.js";
 import {
-  handleSignSubmit,
   TxConfirmError,
-  TxExpiredError,
   TxSignError,
   TxSubmitError,
-} from "./utils.js";
+} from "./utils.await-required-output-visibility.js";
+import { handleSignSubmit } from "./utils.await-submitted-transaction-confirmation.js";
+import { TxExpiredError } from "./utils.tx-expiry.js";
 
 export type ReferenceScriptSweepOptions = {
   readonly retiredAuthPolicyId: string;

@@ -27,7 +27,7 @@ import {
 } from "../../src/transition-trace/phas.js";
 import { buildCanonicalBlockFixture } from "../helpers/canonical-block-evidence-fixture.js";
 import { recordFixtureLedger } from "./fixture-ledger.js";
-import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.js";
+import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.build-decoding-block-fixture.js";
 
 /**
  * The validation-trace descriptor entry an operator commits for one event under

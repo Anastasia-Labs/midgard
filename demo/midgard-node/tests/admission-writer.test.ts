@@ -8,21 +8,21 @@ import { describe, expect, it } from "vitest";
 
 import { getTxStatusHandler } from "../src/commands/http/transaction-status.js";
 import { MigrationRunner, TxAdmissionsDB } from "../src/database/index.js";
+import { makeAdmissionWriterWithOptions } from "../src/services/admission-writer.make-admission-writer-with-options.js";
 import {
   AdmissionWriter,
   type AdmissionWriteRequest,
   type AdmissionWriterService,
-  makeAdmissionWriterWithOptions,
-} from "../src/services/admission-writer.js";
-import { NodeConfig } from "../src/services/config.js";
+} from "../src/services/admission-writer.validate-options.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
 import { AdmissionSql } from "../src/services/database.js";
-import { Globals } from "../src/services/globals.js";
-import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.js";
+import { Globals } from "../src/services/globals.globals.js";
+import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   makeNativeSubmitTx,
   submitThroughRouter,
   wrapNativeSubmitTx,
-} from "./database.test/fixtures.js";
+} from "./database.test/fixtures.submission.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 type Settlement = readonly [label: string, written: boolean];

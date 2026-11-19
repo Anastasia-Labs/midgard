@@ -32,7 +32,7 @@ import type { UTxO } from "@lucid-evolution/lucid";
 import { Cause, Effect, Either, Option, Ref } from "effect";
 
 import { retrieveUnreconciledSignedSubmission } from "../database/pendingBlockFinalizations.retrieve-applied-missing-da-payloads.js";
-import { Globals } from "../services/index.js";
+import { Globals } from "../services/globals.globals.js";
 import { IntentJournal } from "../services/intent-journal.js";
 import {
   decideValidationTraceDefense,

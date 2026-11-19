@@ -10,13 +10,15 @@ import {
   journaledIntent,
 } from "../../services/intent-journal.js";
 import { planSubmitTiming } from "../../transactions/submit-timing.js";
-import {
-  handleSignSubmitNoConfirmation,
-  type IntendedStateProbe,
-  type NoInlineSubmitRecoveryOptions,
-  type TxSignError,
-  type TxSubmitError,
-} from "../../transactions/utils.js";
+import type {
+  TxSignError,
+  TxSubmitError,
+} from "../../transactions/utils.await-required-output-visibility.js";
+import { handleSignSubmitNoConfirmation } from "../../transactions/utils.await-submitted-transaction-confirmation.js";
+import type {
+  IntendedStateProbe,
+  NoInlineSubmitRecoveryOptions,
+} from "../../transactions/utils.submit-recovery-options.js";
 import { readSelectedWalletView } from "../../transactions/utils.wallet-view.js";
 import { compareOutRefs, outRefLabel } from "../../tx-context.js";
 import { getSchedulerDatumFromUTxO } from "./scheduler-refresh.fetch-fresh-active-operator-input-for-commit.js";

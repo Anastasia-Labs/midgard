@@ -15,9 +15,9 @@ import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-confi
 import {
   type LedgerCheckpoint,
   LOCAL_FAULT_RUN_LIMIT,
-  ReplayLocalFault,
   type RetainedDaPayloadSource,
 } from "@al-ft/midgard-fault-proofs";
+import { ReplayLocalFault } from "@al-ft/midgard-fault-proofs/block-replay";
 import { buildCanonicalBlockFixture } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import { SIM_ORIGIN } from "@al-ft/midgard-l1-follower/testing";
 import * as SDK from "@al-ft/midgard-sdk";

@@ -1,6 +1,6 @@
 import { isWorkflowFundingPauseReason } from "@al-ft/midgard-fault-proofs";
 
-import { WatcherProverFundingUnavailableError } from "../funding/prover-funding-reservation.js";
+import { WatcherProverFundingUnavailableError } from "../funding/prover-funding-reservation.watcher-prover-funding-reservation-store.js";
 import type { WatcherProofObjective } from "./fault-proof-objective-journal.js";
 
 /**

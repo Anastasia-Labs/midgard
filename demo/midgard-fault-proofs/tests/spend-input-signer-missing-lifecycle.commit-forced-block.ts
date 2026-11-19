@@ -4,8 +4,10 @@ import {
   encodeMidgardNativeTxCompact,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
-import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
-import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
+import {
+  deriveMidgardForcedTxProofSource,
+  materializeMidgardForcedTxFromCanonical,
+} from "@al-ft/midgard-core/codec/forced";
 import {
   EMPTY_MERKLE_TREE_ROOT,
   forcedVerdictSubject,
@@ -21,28 +23,28 @@ import {
   nativeTxFromCoreCompact,
   type SubmitStep01TxInclusion,
 } from "../src/step-support.js";
-import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
+import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
 import {
   type Family,
   type Harness,
   recordMeasurements,
   witnessSetCompactHex,
 } from "./spend-input-signer-missing-lifecycle.registered-contracts.js";
-import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
-import { l2TransactionSourceCbor } from "./support/emulator/native-tx.js";
-import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
-import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
-import {
-  countedTransactionsRoot,
-  EMULATOR_HEADER_CLOCK_HEADROOM_MS,
-  emulatorSuccessorHeaderStart,
-  setupFraudulentBlock,
-  submitSuccessorBlockTx,
-} from "./support/submit-init-emulator-fixtures.js";
 import {
   makeHeader,
   transitionTraceOutRef,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/emulator/header-fixtures.js";
+import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
+import { l2TransactionSourceCbor } from "./support/emulator/native-tx.js";
+import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
+import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.build-decoding-block-fixture.js";
+import { setupFraudulentBlock } from "./support/submit-init/removal.js";
+import {
+  EMULATOR_HEADER_CLOCK_HEADROOM_MS,
+  emulatorSuccessorHeaderStart,
+  submitSuccessorBlockTx,
+} from "./support/submit-init/successor.js";
+import { countedTransactionsRoot } from "./support/submit-init/transaction-material.js";
 
 /** Publishes the four applied steps and the certificate mint as plain
  * reference scripts; checked only for the maximum run. */

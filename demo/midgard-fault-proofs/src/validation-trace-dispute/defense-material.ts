@@ -17,10 +17,10 @@ import {
   buildTraceAtStepCountV1,
   DirectValidationTraceUnavailable,
   openValidationTraceV1,
-  type RejectedTx,
   validationTraceLevelsAtStepCountV1,
   ValidationTraceStopped,
 } from "@al-ft/midgard-validation";
+import type { RejectedTx } from "@al-ft/midgard-validation/types";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

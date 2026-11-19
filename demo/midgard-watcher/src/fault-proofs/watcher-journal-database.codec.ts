@@ -1,6 +1,6 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
-import { watcherCanonicalJson } from "../storage/durable-store.js";
+import { watcherCanonicalJson } from "../storage/durable-store.canonical-json.js";
 import type { StoredRow } from "./watcher-journal-database.types.js";
 
 const MAC_DOMAIN = "midgard-watcher-journal-row-v1";

@@ -1,14 +1,12 @@
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 
-import {
-  DaLibp2pRetainedDaSource,
-  type RetainedDaPayloadSource,
-} from "../transition-trace/fetch.js";
+import type { RetainedDaPayloadSource } from "../transition-trace/fetch.admit-retained-da-provenance.js";
+import { DaLibp2pRetainedDaSource } from "../transition-trace/fetch.da-libp2p-retained-da-source.js";
 import {
   assertWorkflowJournalActuation,
   bindWorkflowActuationJournal,
-  workflowJournalIsReconciliationOnly,
-} from "./actuation-permit.js";
+} from "./actuation-permit.assert-workflow-actuation-permit-identity.js";
+import { workflowJournalIsReconciliationOnly } from "./actuation-permit.js";
 import {
   type WorkflowAdapterReadinessInput,
   type WorkflowAdapterRunner,
@@ -17,19 +15,19 @@ import {
 import {
   applyFamilyApplicationRecord,
   type FamilyApplicationInvocation,
-  type FamilyApplicationRecord,
-  type FamilyApplicationWorkflowIdentity,
-  type FamilyCommonInfrastructure,
   type FamilyReferenceScriptResolver,
-} from "./family-application.js";
-import {
-  FAMILY_APPLICATION_REGISTRY,
-  type FamilyApplicationRegistryEntry,
-} from "./family-application-registry.js";
+} from "./family-application.apply-family-application-record.js";
+import type {
+  FamilyApplicationRecord,
+  FamilyApplicationWorkflowIdentity,
+  FamilyCommonInfrastructure,
+} from "./family-application.assert-family-definition-roster.js";
+import { FAMILY_APPLICATION_REGISTRY } from "./family-application-registry.family-application-registry.js";
+import type { FamilyApplicationRegistryEntry } from "./family-application-registry.value-not-preserved-family-application-record.js";
 import type { WorkflowFundingRequirements } from "./funding-requirements.js";
-import { bindWorkflowFundingReservationJournal } from "./funding-reservation-permit.js";
+import { bindWorkflowFundingReservationJournal } from "./funding-reservation-permit.begin-workflow-funding-reservation-action.js";
 import { type InstalledFraudProofCategory } from "./installed-categories.js";
-import { resumeRecordedFraudProofWorkflow } from "./orchestrator.js";
+import { resumeRecordedFraudProofWorkflow } from "./orchestrator.run-da-hash-preimage-workflow-from-retained-da.js";
 import { continuePendingWorkflow } from "./pending-continuation.js";
 import {
   createAdmittedWorkflowRunner,

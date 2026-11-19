@@ -1,19 +1,19 @@
 import { decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
 import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk";
 
-import { planFaultProofFieldOpening } from "../field-opening.js";
-import { MINT_ITEM_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
-import { CURSOR_FAMILY_TRANSACTION_PORT } from "../workflow/cursor-family-adapter.js";
+import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
+import { MINT_ITEM_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.create-complete-canonical-replay-union.js";
+import { CURSOR_FAMILY_TRANSACTION_PORT } from "../workflow/cursor-family-adapter.admit-reference-scripts.js";
 import {
   captureCursorRemoval,
   cursorFamilyActionInput,
   cursorStringField,
 } from "../workflow/cursor-family-runtime.js";
+import { CORE_WITNESS_ROLES } from "../workflow/family-definition.family-adapter-arm.js";
 import {
-  CORE_WITNESS_ROLES,
   cursorStepContractNames,
   defineFamily,
-} from "../workflow/family-definition.js";
+} from "../workflow/family-definition.family-definition.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import { journaledStepTransaction } from "../workflow/step-transaction.js";
 import { workflowTransactionInputOutRefs } from "../workflow/transaction-boundary.js";

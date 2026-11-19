@@ -2,7 +2,7 @@ import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import { watcherSameCanonicalJson } from "../storage/durable-store.js";
+import { watcherSameCanonicalJson } from "../storage/durable-store.canonical-json.js";
 
 export const WATCHER_AUTHENTICATED_STATE_QUEUE_OBSERVATION_SCHEMA_VERSION =
   "midgard-watcher-production-state-queue-observation-v1" as const;

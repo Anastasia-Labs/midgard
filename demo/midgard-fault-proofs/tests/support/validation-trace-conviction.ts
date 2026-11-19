@@ -17,8 +17,8 @@ import {
 
 import { outRefLabel } from "../../src/runtime.js";
 import { buildResolvedInit } from "../../src/submit-init.submit-resolved-init.js";
+import { network } from "./emulator/blueprints.js";
 import { type ProvedDoubleSpendFixture } from "./submit-init-emulator-fixtures.js";
-import { network } from "./submit-init-emulator-shared.js";
 import { buildAndSubmitUnjournaled } from "./submit-unjournaled.js";
 
 export const VALIDATION_TRACE_CATEGORY_ID =

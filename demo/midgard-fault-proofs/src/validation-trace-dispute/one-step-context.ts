@@ -9,7 +9,7 @@
  * state's witness; here it is derived off chain from our own trace, field
  * for field. */
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
-import { midgardEnvelopeDataFromCborIterative } from "@al-ft/midgard-validation";
+import { midgardEnvelopeDataFromCborIterative } from "@al-ft/midgard-validation/cek-constant";
 import { Constr, Data } from "@lucid-evolution/lucid";
 
 import { requiredObserverAt } from "./one-step-carriage.js";

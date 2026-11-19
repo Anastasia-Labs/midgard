@@ -9,18 +9,22 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import type { RetainedDaPayloadSource } from "../src/transition-trace/fetch.js";
+import { createCompleteCanonicalReplayUnion } from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
+import {
+  DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
+  NETWORK_ID_COMPLETE_CANONICAL_REPLAY,
+  NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
+} from "../src/workflow/complete-replay.detect-double-withdraws.js";
 import {
   COMPLETE_CANONICAL_REPLAY,
   type CompleteCanonicalReplay,
-  createCompleteCanonicalReplayUnion,
-  DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
+} from "../src/workflow/complete-replay.replay-context-identity.js";
+import {
   FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
   MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY,
-  NETWORK_ID_COMPLETE_CANONICAL_REPLAY,
-  NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
   OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY,
   PROTECTED_OUTPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY,
-} from "../src/workflow/complete-replay.js";
+} from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import {
   authenticatedStateQueueObservationDigest,
   classifyHeader,

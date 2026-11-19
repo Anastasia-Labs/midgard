@@ -1,10 +1,10 @@
 import { Effect, Ref } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { takeCommitWorkerOutput } from "../src/fibers/block-commitment.js";
 import type { CommitWorkerMessage } from "../src/fibers/block-commitment.promote-or-recover-native-mpf.js";
 import { shouldSkipIdleCommitPipelineBeforeSchedulerAlignment } from "../src/fibers/block-commitment.should-skip-for-detailed-scheduler-due-work.js";
-import { Globals } from "../src/services/globals.js";
+import { Globals } from "../src/services/globals.globals.js";
+import { takeCommitWorkerOutput } from "../src/workers/commit-worker-message.js";
 import { readyz } from "./readiness-honest-degradation-route.readyz-fixture.js";
 
 /**

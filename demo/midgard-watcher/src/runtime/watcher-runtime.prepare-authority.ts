@@ -5,7 +5,7 @@ import { resolveProverSigner } from "@al-ft/midgard-fault-proofs";
 import { loadWatcherWorkflowFundingProfileOverlay } from "../funding/workflow-funding-profile-overlay.js";
 import { openWatcherSqliteDurableBackend } from "../storage/sqlite-durable-backend.js";
 import { loadWatcherVerifiedDeploymentAuthority } from "./deployment-authority.js";
-import { watcherDeploymentReleaseFinalityPolicy } from "./deployment-identity.js";
+import { watcherDeploymentReleaseFinalityPolicy } from "./deployment-identity.watcher-deployment-availability-challenge-authority.js";
 import {
   alertWatcherLegacyProofLayout,
   warnWatcherLegacyJournalDirectories,

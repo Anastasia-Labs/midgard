@@ -1,7 +1,9 @@
 import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
-import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core/codec/forced";
-import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
-import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
+import {
+  deriveMidgardForcedTxProofSource,
+  encodeMidgardForcedTxCanonical,
+  materializeMidgardForcedTxFromCanonical,
+} from "@al-ft/midgard-core/codec/forced";
 import {
   acceptedVerdictSubject,
   forcedVerdictSubject,
@@ -13,12 +15,12 @@ import {
   invalidSignatureEvidenceFromForcedSource,
   invalidSignatureWrongfulRejectionCloses,
 } from "../src/invalid-signature/wrongful-rejection.js";
-import { INVALID_SIGNATURE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
+import { INVALID_SIGNATURE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import {
   buildInvalidSignatureSubject,
   honestAddressWitness,
   invalidAddressWitness,
-} from "./support/invalid-signature-emulator.js";
+} from "./support/invalid-signature-emulator.build-invalid-signature-subject.js";
 
 // The ledger's Ed25519 check is libsodium's, which initialises
 // asynchronously; production entry points await it, and so does this file.

@@ -1,11 +1,11 @@
 import { beginWorkflowFundingReservationAction } from "@al-ft/midgard-fault-proofs";
 import { afterEach, expect, it, vi } from "vitest";
 
+import { setupFundingRecoveryFixture } from "../support/fault-proof-funding-fixture.setup-funding-recovery-fixture.js";
 import {
   cleanupFundingRecoveryFixtures,
-  setupFundingRecoveryFixture,
   walletAddress,
-} from "../support/fault-proof-funding-fixture.js";
+} from "../support/fault-proof-funding-fixture.sources-for.js";
 import {
   fundingOf,
   recordReplacement,

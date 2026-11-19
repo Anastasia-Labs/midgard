@@ -7,7 +7,7 @@ import {
   type WorkflowFundingRecordedAttempt,
 } from "@al-ft/midgard-fault-proofs";
 
-import { watcherCanonicalJson } from "../storage/durable-store.js";
+import { watcherCanonicalJson } from "../storage/durable-store.canonical-json.js";
 import {
   type AttemptRow,
   parseSupersededAttemptRow,

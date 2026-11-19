@@ -16,7 +16,7 @@ import {
   createPublishedWorkflowDeploymentAccounts,
   type PublishedWorkflowDeploymentAccounts,
 } from "./published-workflow-deployment.submit-published-initialization.js";
-import { DEFAULT_PUBLICATION_SCHEDULE } from "./reference-publication-chain.js";
+import { DEFAULT_PUBLICATION_SCHEDULE } from "./reference-publication-chain.publication-journal.js";
 import { makeJournalDirectory } from "./run-journal-directory.js";
 
 // A parameter keeps this fixture typecheckable for either compiled profile.

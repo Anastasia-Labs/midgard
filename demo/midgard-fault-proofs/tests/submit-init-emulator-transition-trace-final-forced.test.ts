@@ -1,4 +1,4 @@
-import { registerTransitionTraceFinalCases } from "./support/transition-trace-final-cases.js";
+import { registerTransitionTraceFinalCases } from "./support/transition-trace-final-cases.register-transition-trace-final-cases.js";
 
 // Accepted forced transactions take the L2 replay route from their forced
 // leaf. A wrong committed post-root is removed, the honest root is defended at

@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as NodeDeployment from "../src/database/node-deployment.js";
 import * as Journal from "../src/database/settlement.js";
-import { NodeConfig } from "../src/services/config.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
 import * as IntentJournal from "../src/services/intent-journal.js";
 import {
   noOpenAttempt,

@@ -18,12 +18,10 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data, toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildCountedRoot,
-  buildOmittedDueL1EventFault,
-  buildTransitionTraceProof,
-  transitionTraceFinalIndex,
-} from "../src/index.js";
+import { buildCountedRoot } from "../src/transition-trace/phas.js";
+import { transitionTraceFinalIndex } from "../src/transition-trace/submit.make-transition-trace-final-spend-redeemer.js";
+import { buildTransitionTraceProof } from "../src/transition-trace/submit.submit-transition-trace-proof.js";
+import { buildOmittedDueL1EventFault } from "../src/transition-trace/witnesses.build-omitted-due-l1-event-fault.js";
 import {
   alignedHeaderStart,
   removeAndAssertPermanentProof,
@@ -35,15 +33,17 @@ import {
   setupChallenge,
   withUnrelatedWithdrawal,
 } from "./submit-init-emulator-transition-trace-subvariants.setup-challenge.js";
-import { makeNativeTx } from "./support/emulator/native-tx.js";
+import { network } from "./support/emulator/blueprints.js";
+import { ledgerOrderedIndex } from "./support/emulator/catalogue.js";
 import {
   expectSingleUtxoWithUnit,
   funderPaymentKeyHash,
-  ledgerOrderedIndex,
+} from "./support/emulator/emulator-context.js";
+import {
   makeHeader,
-  network,
   transitionTraceOutRef,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/emulator/header-fixtures.js";
+import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { submitTurnsUnjournaled } from "./support/submit-unjournaled.js";
 
 describe("transition-trace forced order validity interval", () => {

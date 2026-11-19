@@ -13,7 +13,7 @@ import {
   type WatcherProverFundingReservationPlan,
   type WatcherProverFundingReservationStore,
 } from "../../src/funding/prover-funding-reservation.js";
-import { unsafeOpenWatcherSqliteProverFundingReservationStoreForTest } from "../../src/funding/sqlite-prover-funding-reservation-store.js";
+import { unsafeOpenWatcherSqliteProverFundingReservationStoreForTest } from "../../src/funding/sqlite-prover-funding-reservation-store.unsafe-open-watcher-sqlite-prover-funding-reservation-store-for-test.js";
 import { testStorageRoot } from "../support/test-storage-root.js";
 
 export const temporaryDirectories: string[] = [];

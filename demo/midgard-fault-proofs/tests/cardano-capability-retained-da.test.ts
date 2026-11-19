@@ -7,7 +7,9 @@ import "@al-ft/midgard-sdk";
 import "@al-ft/midgard-validation";
 import "effect";
 import "vitest";
-import "../src/transition-trace/index.js";
+import "../src/transition-trace/reconstruct.transition-trace-reconstruction.js";
+import "../src/transition-trace/reconstruct.reconstruct-da-payload.js";
+import "../src/transition-trace/phas.js";
 import "./helpers/cardano-capability-retained-da.js";
 import "./cardano-capability-retained-da.reconstruct-authenticated-canonical-transaction-from-field-chunks.js";
 
@@ -28,10 +30,8 @@ import {
   checkLedgerAgainstRoot,
   LedgerRootMismatchError,
 } from "../src/ledger-at.js";
-import {
-  eventKeyFingerprint,
-  reconstructDaPayload,
-} from "../src/transition-trace/index.js";
+import { reconstructDaPayload } from "../src/transition-trace/reconstruct.reconstruct-da-payload.js";
+import { eventKeyFingerprint } from "../src/transition-trace/reconstruct.transition-trace-reconstruction.js";
 import {
   corpus,
   expectedLabels,

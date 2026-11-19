@@ -4,11 +4,11 @@ import * as TxAdmissionsDB from "../database/txAdmissions.js";
 import { DatabaseError } from "../database/utils/common.js";
 import { isConnectionClassError } from "../provider-retry.js";
 import { Database } from "../services/database.js";
+import { Globals } from "../services/globals.globals.js";
 import {
   type AdmissionBacklogGauge,
   AdmissionBacklogGaugeState,
-  Globals,
-} from "../services/globals.js";
+} from "../services/globals.next-l1-provider-health-evidence.js";
 import {
   ADMISSION_BACKLOG_UNREAD,
   retryStartupStep,

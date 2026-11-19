@@ -9,7 +9,7 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../../src/evidence/canonical-block-evidence.js";
-import { admitCompleteCanonicalReplayPredecessor } from "../../src/workflow/complete-replay.js";
+import { admitCompleteCanonicalReplayPredecessor } from "../../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
@@ -22,7 +22,7 @@ import {
   directionBNativeScript,
   mintItemCborV1,
 } from "./mint-authorization-emulator.js";
-import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.js";
+import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.build-decoding-block-fixture.js";
 import { payloadLedgerAt } from "./predecessor-ledger.js";
 
 /** `all []`: a native script every transaction satisfies. */

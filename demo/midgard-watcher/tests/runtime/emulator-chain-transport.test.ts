@@ -10,11 +10,11 @@ import {
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { createEmulatorChainTransport } from "../support/emulator-chain-transport.js";
-import {
-  createSyntheticUserEventOriginFixture,
-  type SyntheticNativeTip,
-  type SyntheticUserEventOriginFixture,
-} from "../support/user-event-origin-fixture.js";
+import type {
+  SyntheticNativeTip,
+  SyntheticUserEventOriginFixture,
+} from "../support/user-event-origin-fixture.build-block.js";
+import { createSyntheticUserEventOriginFixture } from "../support/user-event-origin-fixture.create-synthetic-user-event-origin-fixture.js";
 
 let deployment: SyntheticUserEventOriginFixture["deployment"];
 beforeAll(async () => {

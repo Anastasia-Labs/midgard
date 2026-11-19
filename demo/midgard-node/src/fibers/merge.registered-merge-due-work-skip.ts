@@ -3,17 +3,13 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
-import {
-  Globals,
-  Lucid,
-  withL1ControlPlaneWaitTimeout,
-} from "../services/index.js";
+import { Globals } from "../services/globals.globals.js";
+import { withL1ControlPlaneWaitTimeout } from "../services/globals.with-l1-control-plane-held.js";
 import { type StateQueueSnapshot } from "../services/landed-state-queue.js";
+import { Lucid } from "../services/lucid.js";
 import { type MergeReadinessStatus } from "../transactions/state-queue/merge-readiness.js";
-import {
-  type CanonicalMergeCandidateReadiness,
-  mergeSemanticSkipResult,
-} from "../transactions/state-queue/merge-to-confirmed-state.js";
+import { type CanonicalMergeCandidateReadiness } from "../transactions/state-queue/merge-to-confirmed-state.fetch-canonical-merge-candidate-readiness.js";
+import { mergeSemanticSkipResult } from "../transactions/state-queue/merge-to-confirmed-state.js";
 import {
   checkSlotAwareDueWork,
   clearSlotAwareDueWork,

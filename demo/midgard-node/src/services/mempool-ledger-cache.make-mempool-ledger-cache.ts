@@ -2,7 +2,7 @@ import { SqlClient } from "@effect/sql";
 import { Effect, Layer } from "effect";
 
 import { MempoolLedgerDB } from "../database/index.js";
-import { Globals } from "./globals.js";
+import { Globals } from "./globals.globals.js";
 import { makeMempoolLedgerCacheService } from "./mempool-ledger-cache.make-mempool-ledger-cache-service.js";
 import { MempoolLedgerCache } from "./mempool-ledger-cache.mempool-ledger-cache-service.js";
 

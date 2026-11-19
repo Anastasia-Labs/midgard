@@ -11,17 +11,17 @@ import { Effect } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as Journal from "../src/database/settlement.js";
-import { NodeConfig } from "../src/services/config.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
 import { Lucid } from "../src/services/lucid.js";
 import {
   ContractDeploymentIdentity,
   MidgardContracts,
-} from "../src/services/midgard-contracts.js";
+} from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
+import { settlementTick } from "../src/services/settlement.build-job.js";
 import {
   type SettlementHealth,
-  settlementTick,
   settlementWalletAddress,
-} from "../src/services/settlement.js";
+} from "../src/services/settlement.reconcile-attempt.js";
 import {
   clearSettlementReconcileFailures,
   recordSettlementReconcileFailure,

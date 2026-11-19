@@ -2,13 +2,13 @@ import { computeHash32 } from "@al-ft/midgard-core";
 
 import {
   advanceFieldGrammarCheckpoint,
-  advanceFieldSemanticCheckpoint,
   encodeFieldGrammarCheckpoint,
   encodeFieldSemanticCheckpoint,
   type FieldGrammarCheckpoint,
   type FieldSemanticCheckpoint,
   STAGED_FIELD_WALK_BATCH_LIMIT,
-} from "../staged-field-walk/index.js";
+} from "../staged-field-walk/grammar-checkpoint.js";
+import { advanceFieldSemanticCheckpoint } from "../staged-field-walk/semantic-checkpoint.js";
 
 /** §2.5 positional index of the transaction body's outputs field. */
 export const NETWORK_ID_OUTPUTS_FIELD_INDEX = 2;

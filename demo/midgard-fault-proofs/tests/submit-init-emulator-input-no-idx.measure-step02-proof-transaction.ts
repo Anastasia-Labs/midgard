@@ -4,7 +4,8 @@ import { outRefLabel } from "@al-ft/midgard-core";
 import { CML, PROTOCOL_PARAMETERS_DEFAULT } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import { buildInputNoIdxStep01 } from "../src/index.js";
+import { buildInit } from "../src/submit-init.submit-init.js";
+import { buildInputNoIdxStep01 } from "../src/submit-input-no-idx-step-01.js";
 import {
   HALF_CANONICAL_MATURITY_MS,
   type InputNoIdxBlockFixture,
@@ -12,13 +13,10 @@ import {
   STEP02_RELEASE_CPU_LIMIT,
   STEP02_RELEASE_MEMORY_LIMIT,
 } from "./submit-init-emulator-input-no-idx.build-input-no-idx-block-fixture.js";
-import { buildInit } from "./support/legacy-submit-emulator.js";
-import { setupFraudulentBlock as setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
-import {
-  buildRemovalDeploymentInfo,
-  expectSingleUtxoWithUnit,
-  network,
-} from "./support/submit-init-emulator-shared.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
+import { setupFraudulentBlock } from "./support/submit-init/removal.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 /*

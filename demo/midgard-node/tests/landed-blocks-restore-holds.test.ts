@@ -25,7 +25,7 @@ import {
 import {
   type NativeMpfOwnerService,
   NativeMpfRootNotRetained,
-} from "../src/services/mpf-native-owner/index.js";
+} from "../src/services/mpf-native-owner/protocol.js";
 
 const DURABLE = "d1".repeat(32);
 const FRONTIER = "f0".repeat(32);

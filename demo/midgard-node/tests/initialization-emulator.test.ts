@@ -6,11 +6,12 @@ import "@lucid-evolution/lucid";
 import "effect";
 import "vitest";
 import "../src/phas-membership.js";
-import "../src/transactions/initialization.js";
+import "../src/transactions/initialization.fetch-protocol-deployment-status.js";
+import "../src/transactions/initialization.derive-operator-da-params.js";
 import "../src/transactions/reference-scripts.js";
-import "../src/transactions/register-active-operator.js";
+import "../src/transactions/register-active-operator.activate-registered-operator-program.js";
 import "../src/transactions/script-reward-registration.js";
-import "../src/transactions/utils.js";
+import "../src/transactions/utils.await-submitted-transaction-confirmation.js";
 import "./helpers/mainnet-protocol-parameters.js";
 import "./helpers/real-midgard-contracts.js";
 import "./initialization-emulator.init-emulator-lucid.js";
@@ -31,14 +32,14 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import { loadRealBlueprintSha256 } from "../src/services/midgard-contracts.js";
-import { fetchProtocolDeploymentStatus } from "../src/transactions/initialization.js";
+import { loadRealBlueprintSha256 } from "../src/services/midgard-contracts.load-reference-script-auth-validator.js";
+import { fetchProtocolDeploymentStatus } from "../src/transactions/initialization.fetch-protocol-deployment-status.js";
 import { verifyNodeRuntimeReferenceScriptsProgram } from "../src/transactions/reference-scripts.js";
 import {
   activateOperatorProgram,
   registerOperatorProgram,
-} from "../src/transactions/register-active-operator.js";
-import { handleSignSubmit } from "../src/transactions/utils.js";
+} from "../src/transactions/register-active-operator.activate-registered-operator-program.js";
+import { handleSignSubmit } from "../src/transactions/utils.await-submitted-transaction-confirmation.js";
 import { runWithoutFollower, TEST_INTENT } from "./helpers/intent-journal.js";
 import {
   buildAtomicInitializationTx,

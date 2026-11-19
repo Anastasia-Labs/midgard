@@ -7,8 +7,8 @@ import {
   transitionTraceCanonicalDetections,
 } from "../transition-trace/replay-authority.canonical-detections.js";
 import { detectStructuralTransitionTraceFaults } from "../transition-trace/replay-authority.js";
-import { classifyCanonicalBlockViolations } from "./classification.js";
-import { COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
+import { classifyCanonicalBlockViolations } from "./classification.classify-canonical-block-violations.js";
+import { COMPLETE_CANONICAL_REPLAY } from "./complete-replay.replay-context-identity.js";
 import {
   detectionJson,
   digest,

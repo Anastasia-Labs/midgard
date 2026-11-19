@@ -13,11 +13,9 @@ import {
 } from "@al-ft/midgard-core/da-transport";
 import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
 
-import {
-  createDaLibp2pRetainedPayloadRequestHandlers,
-  type DaProducerStream,
-  parseDaProducerPublicationManifest,
-} from "../src/da/libp2p-producer.js";
+import { createDaLibp2pRetainedPayloadRequestHandlers } from "../src/da/libp2p-producer.create-da-libp2p-retained-payload-request-handlers.js";
+import type { DaProducerStream } from "../src/da/libp2p-producer.parse-committee-peers.js";
+import { parseDaProducerPublicationManifest } from "../src/da/libp2p-producer.parse-da-producer-publication-manifest.js";
 import { DaPayloadsDB } from "../src/database/index.js";
 
 export const PEER_A = "12D3KooWJzVqLz7QpLdfW6M5G2X1L8L6GQ9QJ3uCHZP8X8J6BC8u";

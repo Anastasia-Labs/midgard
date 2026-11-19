@@ -3,11 +3,11 @@ import { describe, expect, it } from "vitest";
 
 import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
-import { DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
+import { DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import {
   admitDoubleWithdrawArtifact,
   DOUBLE_WITHDRAW_ARTIFACT,
-} from "../src/workflow/double-withdraw.js";
+} from "../src/workflow/double-withdraw.parse-artifact.js";
 
 const FIRST_ID: SDK.OutputReference = {
   transactionId: "8b".repeat(32),

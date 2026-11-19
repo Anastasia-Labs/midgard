@@ -1,4 +1,4 @@
-import { expectOnchainRefusal } from "./submit-init-emulator-shared.js";
+import { expectOnchainRefusal } from "./emulator/expect-onchain-refusal.js";
 import {
   buildMove,
   cap,

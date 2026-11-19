@@ -12,10 +12,8 @@ import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canon
 import { detectStructuralTransitionTraceFaults } from "../src/transition-trace/replay-authority.js";
 import { RELEASE_L1_FINALITY_POLICY } from "../src/workflow/release-finality-policy.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
-import {
-  buildRetainedPlutusIdentityFixture,
-  captureRetainedPlutusIdentityOrigins,
-} from "./support/retained-reason-classifier.js";
+import { buildRetainedPlutusIdentityFixture } from "./support/retained-reason-classifier.build-retained-plutus-fixture.js";
+import { captureRetainedPlutusIdentityOrigins } from "./support/retained-reason-classifier.capture-retained-plutus-identity-origins.js";
 
 // The fixture block's slot and event window (`blockSlot` and
 // `blockEndTimeMs` defaults, with the default 60 s window).

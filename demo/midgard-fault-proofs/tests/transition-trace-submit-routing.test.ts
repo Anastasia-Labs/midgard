@@ -4,7 +4,7 @@ import type {
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { transitionTraceFinalIndex } from "../src/transition-trace/submit.js";
+import { transitionTraceFinalIndex } from "../src/transition-trace/submit.make-transition-trace-final-spend-redeemer.js";
 
 const proofFor = (
   witness: InvalidOneStepTransitionWitness,

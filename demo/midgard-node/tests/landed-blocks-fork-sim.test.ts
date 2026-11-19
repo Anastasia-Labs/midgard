@@ -63,15 +63,13 @@ import {
   MempoolLedgerDB,
   type PendingBlockFinalizationsDB,
 } from "../src/database/index.js";
-import { queueTerminalProjection } from "../src/l1-queue-terminals/index.js";
+import { queueTerminalProjection } from "../src/l1-queue-terminals/projection.js";
 import { ledgerRows } from "../src/landed-blocks/ledger.js";
 import { ledgerOutputToInsertBatchOp } from "../src/mpf/ledger-delta.js";
 import type { NodeConfig } from "../src/services/config.js";
 import type { Database } from "../src/services/database.js";
-import {
-  encodeNativeMpfEventLog,
-  ProductionNativeMpfOwnerService,
-} from "../src/services/mpf-native-owner/index.js";
+import { encodeNativeMpfEventLog } from "../src/services/mpf-native-owner/service.parse-promotion-records.js";
+import { ProductionNativeMpfOwnerService } from "../src/services/mpf-native-owner/service.production-native-mpf-owner-service.js";
 import { prepareEventFlatDigest } from "../src/workers/utils/mpf-event-flat-digest.js";
 import { insertDeposits } from "./helpers/event-rows.js";
 import { testDatabases } from "./helpers/l1-events-store.js";

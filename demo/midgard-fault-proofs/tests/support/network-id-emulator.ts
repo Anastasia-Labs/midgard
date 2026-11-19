@@ -18,18 +18,20 @@ import { Effect } from "effect";
 import { type NetworkIdContracts } from "../../src/network-id/contracts.js";
 import type { PreparedNetworkIdProof } from "../../src/network-id/prepare.js";
 import { nativeTxFromCoreCompact } from "../../src/step-support.js";
-import { type CompleteSignedTransactionMeasurement } from "./emulator/measurement.js";
-import { registerPexcludesExclusionRewardAccount } from "./submit-init-emulator-fixtures.js";
+import { network } from "./emulator/blueprints.js";
 import {
   buildCatalogueDeploymentInfo,
-  l2TransactionSourceCbor as l2TransactionSourceCborV1,
-  makeFaultProofEmulatorHarness,
-  makeNativeTx,
-  network,
-  publishPlainReferenceScriptUtxo,
-  registerChunkedVerifyRewardAccount,
   trieRootHex,
-} from "./submit-init-emulator-shared.js";
+} from "./emulator/catalogue.js";
+import { registerChunkedVerifyRewardAccount } from "./emulator/emulator-context.js";
+import { makeFaultProofEmulatorHarness } from "./emulator/harness.js";
+import { type CompleteSignedTransactionMeasurement } from "./emulator/measurement.js";
+import {
+  l2TransactionSourceCbor as l2TransactionSourceCborV1,
+  makeNativeTx,
+} from "./emulator/native-tx.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { registerPexcludesExclusionRewardAccount } from "./submit-init/wallet.js";
 
 export const NETWORK_ID_EMULATOR_CATEGORY_ID =
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.networkId;

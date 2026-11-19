@@ -24,10 +24,10 @@ import type { CommitSubmitRefusalCode } from "../../fibers/block-commitment.work
 import type { Database } from "../../services/index.js";
 import { IntentJournalRefused } from "../../services/intent-journal.refusals.js";
 import {
-  isNoInlineSubmitDefer,
   TxSignError,
   TxSubmitError,
-} from "../../transactions/utils.js";
+} from "../../transactions/utils.await-required-output-visibility.js";
+import { isNoInlineSubmitDefer } from "../../transactions/utils.submit-recovery-options.js";
 import type {
   CommitSubmitRefusal,
   WorkerOutput,

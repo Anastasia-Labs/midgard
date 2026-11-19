@@ -32,11 +32,13 @@ import {
   type NativeScriptInvalidContracts,
 } from "./contracts.js";
 import {
-  NATIVE_SCRIPT_INVALID_NODE_BATCH,
   nativeScriptInvalidPushdownStep,
-  nativeScriptInvalidSignerSet,
   resolveNativeScriptInvalidPushdownResume,
-} from "./evidence-machine.js";
+} from "./evidence-machine.native-script-invalid-pushdown-step.js";
+import {
+  NATIVE_SCRIPT_INVALID_NODE_BATCH,
+  nativeScriptInvalidSignerSet,
+} from "./evidence-machine.native-script-invalid-signer-set.js";
 
 type State = NonNullable<
   Data.Static<typeof NativeScriptInvalidStep05DatumSchema>["data"]

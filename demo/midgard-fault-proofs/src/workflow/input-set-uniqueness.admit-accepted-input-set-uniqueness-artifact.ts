@@ -11,7 +11,7 @@ import { Data } from "@lucid-evolution/lucid";
 import {
   type FaultProofFieldOpeningPlan,
   planFaultProofFieldOpening,
-} from "../field-opening.js";
+} from "../field-opening.plan-fault-proof-field-opening.js";
 import {
   INPUT_SET_UNIQUENESS_VIOLATION_ID,
   type InputSetUniquenessClaim,

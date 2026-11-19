@@ -15,11 +15,17 @@ import { Effect } from "effect";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
+import { network } from "./support/emulator/blueprints.js";
+import {
+  alignUnixTimeToEmulatorSlotBoundary,
+  funderPaymentKeyHash,
+} from "./support/emulator/emulator-context.js";
 import {
   awaitHeaderCommitWindow,
   FAMILY_HISTORY_HEADER_LEAD_MS,
   prepareFamilyHistory,
 } from "./support/emulator/family-history.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import {
   makeHeader,
   withPlaceholderDeposit,
@@ -28,15 +34,9 @@ import {
 import { insertHistoryFillerAfter } from "./support/emulator/history-pair.js";
 import { measureCompleteSignedTransaction } from "./support/emulator/measurement.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
-import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  buildRemovalDeploymentInfo,
-  funderPaymentKeyHash,
-  makeFaultProofEmulatorHarness,
-  network,
-  publishRemovalReferenceScripts,
-  submitSetupTx,
-} from "./support/submit-init-emulator-shared.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
+import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
 import { submitInit } from "./support/submit-unjournaled.init.js";
 import {
   submitTransitionTraceFinal,

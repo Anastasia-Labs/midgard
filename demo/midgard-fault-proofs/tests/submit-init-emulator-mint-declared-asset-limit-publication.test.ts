@@ -8,11 +8,11 @@ import {
   MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES,
 } from "../src/mint-declared-asset-limit/contracts.js";
 import {
-  makeFaultProofEmulatorHarness,
-  publishPlainReferenceScriptUtxo,
   readBlueprint,
   realBlueprintPath,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/emulator/blueprints.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
+import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 
 const blueprint = readBlueprint(realBlueprintPath);
 const missingTitles = MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES.filter(

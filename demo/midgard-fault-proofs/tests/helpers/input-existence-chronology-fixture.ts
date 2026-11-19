@@ -28,7 +28,7 @@ import {
   type LedgerEntry,
 } from "../../src/ledger-at.js";
 import { buildCountedRoot } from "../../src/transition-trace/phas.js";
-import { admitCompleteCanonicalReplayPredecessor } from "../../src/workflow/complete-replay.js";
+import { admitCompleteCanonicalReplayPredecessor } from "../../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import { fixtureBlockSlot } from "../support/emulator/header-fixtures.js";
 import {
   authenticatedHeaderObservation,

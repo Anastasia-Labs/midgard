@@ -5,11 +5,11 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   inspectSignedTxValidityInterval,
-  isNoInlineSubmitDefer,
   NoInlineSubmitDefer,
-  parseOutsideValidityIntervalDetails,
-  submitSignedTxWithRecovery,
-} from "../src/transactions/utils.js";
+} from "../src/transactions/utils.await-required-output-visibility.js";
+import { parseOutsideValidityIntervalDetails } from "../src/transactions/utils.parse-structured-outside-validity-interval-details.js";
+import { isNoInlineSubmitDefer } from "../src/transactions/utils.submit-recovery-options.js";
+import { submitSignedTxWithRecovery } from "../src/transactions/utils.submit-signed-tx-with-recovery.js";
 import { runWithoutFollower, TEST_INTENT } from "./helpers/intent-journal.js";
 
 describe("parseOutsideValidityIntervalDetails", () => {

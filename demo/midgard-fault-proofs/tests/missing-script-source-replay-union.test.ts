@@ -12,10 +12,12 @@ import { describe, expect, it } from "vitest";
 import {
   createCompleteCanonicalReplayUnion,
   MINT_ITEM_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
+} from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
+import {
   MISSING_SCRIPT_SOURCE_COMPLETE_CANONICAL_REPLAY,
   TRANSACTION_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
   WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
-} from "../src/workflow/complete-replay.js";
+} from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import { plutusScript } from "./support/missing-redeemer-emulator.subject.js";
 import { scriptSourceMissingVerdict } from "./support/missing-script-source-emulator.js";
 import { unreadableItemViolations } from "./support/unreadable-item-block.js";

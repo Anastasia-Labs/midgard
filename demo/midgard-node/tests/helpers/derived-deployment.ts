@@ -23,7 +23,7 @@ import { vi } from "vitest";
 import {
   createDeploymentRunState,
   writeDeploymentRunStateAtomic,
-} from "../../src/e2e/run-state.js";
+} from "../../src/e2e/run-state.parse-deployment-run-state.js";
 import { TEST_AVAILABILITY_CHALLENGE } from "./availability-challenge.js";
 
 /** The publisher's key and the slot clock are all a policy needs. */

@@ -3,7 +3,7 @@ import { type FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import {
   assembleBoundManifestBoundFamilyWorkflow,
   bindManifestBoundFamilyWorkflow,
-} from "../workflow/manifest-bound-family-assembly.js";
+} from "../workflow/manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
 import {
   createCanonicalFamilyArtifactPort,
   executeManifestBoundFamilyRecovery,

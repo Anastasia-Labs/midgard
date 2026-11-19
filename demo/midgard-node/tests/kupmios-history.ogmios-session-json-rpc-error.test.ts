@@ -1,12 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  openOgmiosSession,
-  type WebSocketLike,
-} from "../src/l1-external/kupmios-history.js";
+import type { WebSocketLike } from "../src/l1-external/kupmios-history.l1-chain-point.js";
 import {
   ogmiosJsonRpcAnswerCode,
   OgmiosJsonRpcUnavailable,
+  openOgmiosSession,
 } from "../src/l1-external/kupmios-history.open-ogmios-session.js";
 import { L1SourceUnavailable } from "../src/l1-external/kupmios-history.source-unavailable.js";
 

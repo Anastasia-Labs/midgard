@@ -21,15 +21,17 @@ import {
 import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import { buildNativeTxBinding } from "../native-tx-binding.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import type { SubmitStep01TxInclusion } from "../step-support.js";
-import { requireInitialStepDatum } from "../step-support.js";
+import {
+  requireInitialStepDatum,
+  type SubmitStep01TxInclusion,
+} from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import type { MintDeclaredAssetLimitContracts } from "./contracts.js";
 import {
   classifyMintDeclaredAssetLimitFinding,
   type MintDeclaredAssetLimitFinding,
-} from "./family.js";
+} from "./family.begin-mint-declared-policy.js";
 import {
   MintDeclaredAssetLimitStep01RedeemerSchema,
   MintDeclaredAssetLimitStep02DatumSchema,

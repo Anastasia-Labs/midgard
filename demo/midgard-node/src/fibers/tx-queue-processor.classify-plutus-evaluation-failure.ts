@@ -1,8 +1,8 @@
-import {
-  type PhaseAResult,
-  type PhaseAValidatedTx,
-  runPhaseBValidationWithPatch,
-} from "@al-ft/midgard-validation";
+import { runPhaseBValidationWithPatch } from "@al-ft/midgard-validation/phase-b";
+import type {
+  PhaseAResult,
+  PhaseAValidatedTx,
+} from "@al-ft/midgard-validation/types";
 import { Effect, Metric } from "effect";
 
 import { TxAdmissionsDB } from "../database/index.js";

@@ -16,7 +16,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { resolveProverSigner } from "../src/index.js";
+import { resolveProverSigner } from "../src/runtime.resolve-prover-signer.js";
 import {
   type ConfirmedValidationTraceStage,
   confirmedValidationTraceStages,
@@ -27,11 +27,11 @@ import type { FraudProofWorkflowJournalEntry } from "../src/workflow/journal.js"
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { recordCrossBlockRawEmulator } from "./support/cross-block-raw-emulator.js";
+import { network } from "./support/emulator/blueprints.js";
 import {
   expectResolvedWithReclaim,
   walletLovelace,
 } from "./support/own-thread-reclaim-expectations.js";
-import { network } from "./support/submit-init-emulator-shared.js";
 import {
   type Scene,
   setUpScene,

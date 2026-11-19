@@ -5,13 +5,13 @@ import {
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { describe, expect, it } from "vitest";
 
-import { MIN_ADA_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
+import { MIN_ADA_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
+import { authenticatedStateQueueObservationDigest } from "../src/workflow/header-classifier.authenticated-state-queue-observation-digest.js";
+import { classifyHeader } from "../src/workflow/header-classifier.classify-header.js";
 import {
-  authenticatedStateQueueObservationDigest,
-  classifyHeader,
   createHeaderClassifier,
   headerDecisionReplayContext,
-} from "../src/workflow/header-classifier.js";
+} from "../src/workflow/header-classifier.create-header-classifier.js";
 import {
   computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,

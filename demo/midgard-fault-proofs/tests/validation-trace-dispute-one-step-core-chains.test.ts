@@ -5,10 +5,8 @@
  * on-chain roots route them by tag, and refuses a later builtin; and the staged semantic stage the budget hop routes a staged builtin to. */
 import { DEPLOYMENT_MANIFEST_CONTRACT_NAMES } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { CEK_CORE_CHAIN } from "@al-ft/midgard-sdk";
-import {
-  MIDGARD_CEK_WRITE_BITS_LOOP_INPUT_WORDS,
-  type MidgardCekCoreStepWitness,
-} from "@al-ft/midgard-validation";
+import { MIDGARD_CEK_WRITE_BITS_LOOP_INPUT_WORDS } from "@al-ft/midgard-validation";
+import type { MidgardCekCoreStepWitness } from "@al-ft/midgard-validation/cek-machine";
 import { describe, expect, it } from "vitest";
 
 import {

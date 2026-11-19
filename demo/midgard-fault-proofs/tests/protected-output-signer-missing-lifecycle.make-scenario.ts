@@ -7,21 +7,19 @@ import { buildCommittedFieldShapeInit } from "../src/committed-field-shape/submi
 import type { FaultProofFieldGrammarDeployment } from "../src/field-grammar-certificate.js";
 import { requireLinearFaultThreadUtxo } from "../src/linear-fault-family.js";
 import { buildLinearFaultFinalize } from "../src/linear-fault-finalize.js";
-import {
-  buildProtectedOutputSignerMissingCancel,
-  buildProtectedOutputSignerMissingStep01Accepted,
-  buildProtectedOutputSignerMissingStep01Forced,
-  buildProtectedOutputSignerMissingStep02,
-  type ProtectedOutputSignerMissingEvidence,
-} from "../src/protected-output-signer-missing/index.js";
+import type { ProtectedOutputSignerMissingEvidence } from "../src/protected-output-signer-missing/protected-output-signer-missing.js";
+import { buildProtectedOutputSignerMissingCancel } from "../src/protected-output-signer-missing/submit-cancel.js";
 import { buildProtectedOutputSignerOpeningTransition } from "../src/protected-output-signer-missing/submit-opening-transition.js";
+import { buildProtectedOutputSignerMissingStep01Accepted } from "../src/protected-output-signer-missing/submit-step-01-accepted.js";
+import { buildProtectedOutputSignerMissingStep01Forced } from "../src/protected-output-signer-missing/submit-step-01-forced.js";
+import { buildProtectedOutputSignerMissingStep02 } from "../src/protected-output-signer-missing/submit-step-02.js";
 import {
   buildSignerWitnessScan,
   buildSignerWitnessTerminal,
   SIGNER_WITNESS_TERMINAL_STEP_INDEX,
   SignerWitnessTerminalRedeemerSchema,
 } from "../src/signer-witness-scan/index.js";
-import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
+import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
 import {
   compactHex,
   FORCED_ORDER_KEY,
@@ -29,15 +27,15 @@ import {
   registeredContracts,
   witnessSetCompactHex,
 } from "./protected-output-signer-missing-lifecycle.registered-contracts.js";
-import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
-import { submitRawSignerWitnessScanTurn } from "./support/emulator/signer-witness-scan-raw-turn.js";
-import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
+import { network } from "./support/emulator/blueprints.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   funderPaymentKeyHash,
-  network,
-  submitSetupTx,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/emulator/emulator-context.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
+import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
+import { submitRawSignerWitnessScanTurn } from "./support/emulator/signer-witness-scan-raw-turn.js";
+import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.build-decoding-block-fixture.js";
 import {
   buildAndSubmitUnjournaled,
   type SubmittedStep,

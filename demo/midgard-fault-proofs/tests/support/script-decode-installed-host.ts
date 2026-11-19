@@ -6,10 +6,8 @@
 import { CML, type Emulator } from "@lucid-evolution/lucid";
 import { vi } from "vitest";
 
-import {
-  DaLibp2pRetainedDaSource,
-  type RetainedDaPayloadSourceResult,
-} from "../../src/transition-trace/fetch.js";
+import type { RetainedDaPayloadSourceResult } from "../../src/transition-trace/fetch.admit-retained-da-provenance.js";
+import { DaLibp2pRetainedDaSource } from "../../src/transition-trace/fetch.da-libp2p-retained-da-source.js";
 
 /** Retained DA answered from the committed block's payload envelope. */
 export class FixtureRetainedDaSource extends DaLibp2pRetainedDaSource {

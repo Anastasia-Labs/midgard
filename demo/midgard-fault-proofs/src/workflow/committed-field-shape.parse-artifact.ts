@@ -9,13 +9,13 @@ import {
   prepareCommittedFieldShapeFromCanonicalTx,
   type PreparedCommittedFieldShape,
 } from "../committed-field-shape/prepare-committed-field-shape.js";
+import { requireTransactionsRootMatch } from "../prepare-double-spend.prepare-double-spend-from-transactions.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
   requireProof,
-  requireTransactionsRootMatch,
   transactionSourceTrieItem,
-} from "../prepare-double-spend.js";
+} from "../prepare-double-spend.resolve-double-spend-pair.js";
 import { parseSubmitStep01TxInclusion } from "../step-support.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import { type JournalJsonObject } from "./journal.js";

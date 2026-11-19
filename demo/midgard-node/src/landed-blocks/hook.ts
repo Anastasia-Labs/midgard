@@ -11,10 +11,8 @@ import { Effect } from "effect";
 
 import type { ForcedAdmissionDivergences } from "../forced-orders/admission-divergence.js";
 import type { DriverHook } from "../l1-events/driver.js";
-import {
-  readLandedStateQueueFrom,
-  type StateQueueProjectionConfig,
-} from "../l1-state-queue/index.js";
+import type { StateQueueProjectionConfig } from "../l1-state-queue/config.js";
+import { readLandedStateQueueFrom } from "../l1-state-queue/hook.js";
 import type { Database } from "../services/database.js";
 import type { LandedBlockPorts } from "./ports.js";
 import {

@@ -13,7 +13,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { faultProofFieldOpening } from "../../src/field-opening.js";
+import { faultProofFieldOpening } from "../../src/field-opening.publish-fault-proof-field-carriage.js";
 import { stepWalletFunding } from "../../src/funding/plain-funding-output.js";
 import type { PreparedInputExistence } from "../../src/input-existence/prepare.js";
 import {

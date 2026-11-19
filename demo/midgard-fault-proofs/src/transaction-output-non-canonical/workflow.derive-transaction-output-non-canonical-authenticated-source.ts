@@ -27,12 +27,12 @@ import {
   decodeTransactionMaterial,
   requireProof,
   transactionSourceTrieItem,
-} from "../prepare-double-spend.js";
+} from "../prepare-double-spend.resolve-double-spend-pair.js";
 import {
   parseSubmitStep01TxInclusion,
   type SubmitStep01TxInclusion,
 } from "../step-support.js";
-import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
+import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.build-source-membership-proof.js";
 import {
   prepareTransactionOutputEvidence,
   type TransactionOutputEvidence,

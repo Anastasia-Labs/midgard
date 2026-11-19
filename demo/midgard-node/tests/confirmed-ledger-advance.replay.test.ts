@@ -18,7 +18,7 @@ import {
 } from "../src/mpf/confirmed-ledger-advance.js";
 import type { ConfirmedLedgerVerification } from "../src/mpf/confirmed-ledger-run.js";
 import { confirmedLedgerVerificationLoop } from "../src/mpf/confirmed-ledger-verification.js";
-import { Globals } from "../src/services/globals.js";
+import { Globals } from "../src/services/globals.globals.js";
 import {
   A,
   C,

@@ -1,12 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  buildWithdrawnInputStep01,
-  buildWithdrawnInputStep02,
-} from "../src/index.js";
 import { buildLinearFaultCancel } from "../src/linear-fault-cancel.js";
 import { WITHDRAWN_INPUT_CATEGORY_LABEL } from "../src/withdrawn-input/contracts.js";
-import { network } from "./support/submit-init-emulator-shared.js";
+import { buildWithdrawnInputStep01 } from "../src/withdrawn-input/submit-withdrawn-input-step-01.js";
+import { buildWithdrawnInputStep02 } from "../src/withdrawn-input/submit-withdrawn-input-step-02.js";
+import { network } from "./support/emulator/blueprints.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,

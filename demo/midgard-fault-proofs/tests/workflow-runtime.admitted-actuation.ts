@@ -1,26 +1,24 @@
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { CML } from "@lucid-evolution/lucid";
 
-import { createWorkflowActuationPermitController } from "../src/workflow/actuation-permit.js";
-import { DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
-import {
-  unsafeCreateWorkflowFundingReservationPermitForTest,
-  type WorkflowJournalWriter,
-} from "../src/workflow/funding-reservation-permit.js";
-import {
-  authenticatedStateQueueObservationDigest,
-  classifyHeader,
-  createHeaderClassifier,
-} from "../src/workflow/header-classifier.js";
+import { createWorkflowActuationPermitController } from "../src/workflow/actuation-permit.create-workflow-reconciliation-permit-controller.js";
+import { DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.detect-double-withdraws.js";
+import { unsafeCreateWorkflowFundingReservationPermitForTest } from "../src/workflow/funding-reservation-permit.restrict-workflow-funding-signer.js";
+import type { WorkflowJournalWriter } from "../src/workflow/funding-reservation-permit.workflow-journal-writer.js";
+import { authenticatedStateQueueObservationDigest } from "../src/workflow/header-classifier.authenticated-state-queue-observation-digest.js";
+import { classifyHeader } from "../src/workflow/header-classifier.classify-header.js";
+import { createHeaderClassifier } from "../src/workflow/header-classifier.create-header-classifier.js";
+import { DirectoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
+import type {
+  FraudProofWorkflowJournalEvent,
+  FraudProofWorkflowJournalStore,
+} from "../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import {
   computeFraudProofWorkflowId,
-  DirectoryFraudProofWorkflowJournalStore,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
   type FraudProofWorkflowIdentity,
-  type FraudProofWorkflowJournalEvent,
-  type FraudProofWorkflowJournalStore,
-} from "../src/workflow/journal.js";
+} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import type { FraudProofWorkflowAction } from "../src/workflow/orchestrator.js";
 import {
   computeFraudProofReleaseFinalityPolicyDigest,

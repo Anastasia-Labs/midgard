@@ -1,11 +1,13 @@
 import type { WorkflowFundingReservationPort } from "./funding-reservation-permit.workflow-funding-reservation-port.js";
+import type {
+  FraudProofWorkflowJournalEntry,
+  FraudProofWorkflowJournalEvent,
+  FraudProofWorkflowJournalStore,
+} from "./journal.fraud-proof-workflow-journal-event.js";
 import {
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
   type FraudProofWorkflowIdentity,
-  type FraudProofWorkflowJournalEntry,
-  type FraudProofWorkflowJournalEvent,
-  type FraudProofWorkflowJournalStore,
-} from "./journal.js";
+} from "./journal.fraud-proof-workflow-terminal.js";
 
 /** How a workflow records its journal events: `entriesFor` numbers them
  * after the entries already recorded, and `recorded` learns of entries once

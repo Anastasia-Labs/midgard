@@ -7,7 +7,6 @@
  */
 import {
   createMissingSignatureWorkflowAdapter,
-  FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
   FraudProofL1UnavailableError,
   type FraudProofWorkflowReconcileResult,
   MISSING_SIGNATURE_ACTION,
@@ -15,14 +14,13 @@ import {
   type SignedWorkflowTransaction,
   type StateQueueMutationLeaseCoordinator,
 } from "@al-ft/midgard-fault-proofs";
+import { FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT } from "@al-ft/midgard-fault-proofs/test-support/family-l1-observation";
 import { createValueConservationAdapter } from "@al-ft/midgard-fault-proofs/test-support/value-conservation-adapter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { forfeitureOf, showLanding } from "../support/collateral-landing.js";
-import {
-  cleanupFundingRecoveryFixtures,
-  setupFundingRecoveryFixture,
-} from "../support/fault-proof-funding-fixture.js";
+import { setupFundingRecoveryFixture } from "../support/fault-proof-funding-fixture.setup-funding-recovery-fixture.js";
+import { cleanupFundingRecoveryFixtures } from "../support/fault-proof-funding-fixture.sources-for.js";
 
 afterEach(async () => {
   vi.restoreAllMocks();

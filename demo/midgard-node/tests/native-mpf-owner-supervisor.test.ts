@@ -10,7 +10,7 @@ import {
   nativeMpfOwnerRestartsInWindowGauge,
   nativeMpfOwnerSupervisorFiber,
 } from "../src/fibers/native-mpf-owner-supervisor.js";
-import { Globals } from "../src/services/globals.js";
+import { Globals } from "../src/services/globals.globals.js";
 import {
   type NativeMpfFullIndexHealth,
   type NativeMpfOwnerService,

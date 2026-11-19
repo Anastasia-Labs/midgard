@@ -17,13 +17,13 @@ import { CML } from "@lucid-evolution/lucid";
 import { Deferred, Effect, Fiber, Option } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { buildListenRouter } from "../src/commands/http/router.js";
 import {
-  buildListenRouter,
   readSubmitBodyWithProtocolLimit,
   resolveSubmitIngressReservation,
   SUBMIT_HTTP_BODY_MAX_BYTES,
   withSubmitIngressPermit,
-} from "../src/commands/listen-router.js";
+} from "../src/commands/http/submission-capacity.js";
 import {
   ADMIN_ROUTE_PATHS,
   authorizeAdminRoute,

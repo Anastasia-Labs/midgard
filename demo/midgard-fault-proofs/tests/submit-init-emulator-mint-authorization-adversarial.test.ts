@@ -25,15 +25,14 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { planFaultProofFieldOpening } from "../src/field-opening.js";
+import { planFaultProofFieldOpening } from "../src/field-opening.plan-fault-proof-field-opening.js";
 import { MINT_AUTHORIZATION_CATEGORY_LABEL } from "../src/mint-authorization/contracts.js";
-import {
-  buildMintAuthorizationStep01,
-  buildMintAuthorizationStep02,
-  buildMintAuthorizationStep03EvaluateUnsatisfied,
-  buildMintAuthorizationStep03WitnessAbsence,
-} from "../src/mint-authorization/index.js";
-import { buildResolvedInit } from "../src/submit-init.js";
+import { buildMintAuthorizationStep01 } from "../src/mint-authorization/submit-mint-authorization-step-01.js";
+import { buildMintAuthorizationStep02 } from "../src/mint-authorization/submit-mint-authorization-step-02.submit-mint-authorization-step02.js";
+import { buildMintAuthorizationStep03EvaluateUnsatisfied } from "../src/mint-authorization/submit-mint-authorization-step-03.submit-mint-authorization-step03-evaluate-unsatisfied.js";
+import { buildMintAuthorizationStep03WitnessAbsence } from "../src/mint-authorization/submit-mint-authorization-step-03.submit-mint-authorization-step03-witness-absence.js";
+import { buildResolvedInit } from "../src/submit-init.submit-resolved-init.js";
+import { network } from "./support/emulator/blueprints.js";
 import {
   addressWitnessItemCbors,
   buildMintAuthorizationSubject,
@@ -49,7 +48,6 @@ import {
   submitRawMintAuthorizationStep02TamperedMint,
   tamperFieldPreimageBytes,
 } from "./support/mint-authorization-emulator.js";
-import { network } from "./support/submit-init-emulator-shared.js";
 import {
   buildAndSubmitUnjournaled,
   type SubmittedStep,

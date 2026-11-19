@@ -23,10 +23,11 @@ import { expect } from "vitest";
 import {
   applyResolvedOutputNonCanonicalScripts,
   RESOLVED_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES,
-  type ResolvedOutputCoordinate,
   type ResolvedOutputNonCanonicalContracts,
-} from "../../src/resolved-output-non-canonical/index.js";
+} from "../../src/resolved-output-non-canonical/contracts.js";
+import type { ResolvedOutputCoordinate } from "../../src/resolved-output-non-canonical/resolved-output-non-canonical.prepare-resolved-output-non-canonical-evidence.js";
 import { makeFaultProofEmulatorHarness } from "./emulator/harness.js";
+import { makeNativeTx } from "./emulator/native-tx.js";
 import {
   expectRegisteredChainParity,
   familyStepsFromRegisteredChain,
@@ -34,8 +35,7 @@ import {
 import {
   ADVERSARIAL_MEMBERSHIP_PROOF_BRANCH_LEVELS,
   insertAdversarialMembershipSiblings,
-} from "./submit-init-emulator-fixtures.js";
-import { makeNativeTx } from "./submit-init-emulator-shared.js";
+} from "./submit-init/membership.js";
 
 export const network = "Custom" as const;
 

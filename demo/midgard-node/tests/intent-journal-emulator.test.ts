@@ -42,10 +42,8 @@ import {
   IntentSubmitHeld,
   journaledIntent,
 } from "../src/services/intent-journal.js";
-import {
-  handleSignSubmit,
-  submitSignedTxWithRecovery,
-} from "../src/transactions/utils.js";
+import { handleSignSubmit } from "../src/transactions/utils.await-submitted-transaction-confirmation.js";
+import { submitSignedTxWithRecovery } from "../src/transactions/utils.submit-signed-tx-with-recovery.js";
 import { RECORD_ONLY } from "./helpers/intent-journal.js";
 import {
   type IntentEmulator,

@@ -39,7 +39,7 @@ import {
   type NodeL1Access,
   nodeL1AccessOver,
 } from "../src/services/l1-provider.js";
-import { awaitSubmittedTransactionConfirmation } from "../src/transactions/utils.js";
+import { awaitSubmittedTransactionConfirmation } from "../src/transactions/utils.await-submitted-transaction-confirmation.js";
 import { emulatorFollowerPlan } from "./helpers/follower-emulator.host.js";
 import { freezablePostgresProxy } from "./helpers/freezable-postgres-proxy.js";
 import { testDatabases } from "./helpers/l1-events-store.js";

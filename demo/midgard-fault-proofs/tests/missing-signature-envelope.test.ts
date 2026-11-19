@@ -19,37 +19,35 @@ import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { buildMissingSignatureInit } from "../src/missing-signature/submit-missing-signature-init.js";
+import { buildMissingSignatureStep01 } from "../src/missing-signature/submit-missing-signature-step-01.js";
+import { parseSubmitStep01TxInclusion } from "../src/step-support.js";
 import {
-  buildMissingSignatureInit,
-  buildMissingSignatureStep01,
-} from "../src/missing-signature/index.js";
+  network,
+  readBlueprint,
+  realBlueprintPath,
+} from "./support/emulator/blueprints.js";
+import {
+  alignUnixTimeToEmulatorSlotBoundary,
+  funderPaymentKeyHash,
+} from "./support/emulator/emulator-context.js";
+import { makeHeader } from "./support/emulator/header-fixtures.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
-import { parseSubmitStep01TxInclusion } from "./support/legacy-submit-emulator.js";
+import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
 import {
   makeMissingSignatureEmulatorHarness,
   MISSING_SIGNATURE_FIRST_RAW_WITNESS_COUNT,
   MISSING_SIGNATURE_MAX_ADMISSIBLE_WITNESS_COUNT,
   missingSignatureFinding,
   missingSignatureProverDeps,
-  publishMissingSignatureField07Certificate,
   publishMissingSignatureReferenceScripts,
   setupMissingSignatureScenario,
-} from "./support/missing-signature-emulator.js";
-import { proveMissingSignatureFault } from "./support/missing-signature-prover.js";
-import {
-  ADVERSARIAL_MEMBERSHIP_PROOF_BRANCH_LEVELS,
-  buildTransactionInclusionFixture,
-  countedTransactionsRoot,
-} from "./support/submit-init-emulator-fixtures.js";
-import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  funderPaymentKeyHash,
-  makeHeader,
-  network,
-  readBlueprint,
-  realBlueprintPath,
-  submitSetupTx,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/missing-signature-emulator.build-missing-signature-subject.js";
+import { publishMissingSignatureField07Certificate } from "./support/missing-signature-emulator.submit-raw-missing-signature-step04.js";
+import { proveMissingSignatureFault } from "./support/missing-signature-prover.prove-missing-signature-fault.js";
+import { buildTransactionInclusionFixture } from "./support/submit-init/inclusion.js";
+import { ADVERSARIAL_MEMBERSHIP_PROOF_BRANCH_LEVELS } from "./support/submit-init/membership.js";
+import { countedTransactionsRoot } from "./support/submit-init/transaction-material.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 const OWNER = Buffer.alloc(28, 0x11);

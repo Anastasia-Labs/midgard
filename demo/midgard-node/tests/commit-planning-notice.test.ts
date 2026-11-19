@@ -19,7 +19,7 @@ import {
   type GateState,
   readFollowerWriteGate,
 } from "../src/services/follower-write-gate.js";
-import { Globals } from "../src/services/globals.js";
+import { Globals } from "../src/services/globals.globals.js";
 import type { notifyCommitPlanningSelection } from "../src/workers/commit-block-header.notify-planning-selection.js";
 import {
   applyCommitPlanningNotice,

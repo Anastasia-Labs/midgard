@@ -6,12 +6,14 @@ import "node:url";
 import "@al-ft/midgard-core/cek-proof";
 import "@al-ft/midgard-core/consensus-profile";
 import "@al-ft/midgard-validation";
+import "@al-ft/midgard-validation/phase-a";
+import "@al-ft/midgard-validation/phase-b";
 import "@effect/sql";
 import "effect";
 import "vitest";
 import "../../../midgard-validation/tests/validation-fixtures.js";
 import "../../src/database/index.js";
-import "../../src/services/validation-pool.js";
+import "../../src/services/validation-pool.fixed-validation-worker-pool.js";
 import "../../src/workers/utils/validation-pool.js";
 import "./phase2-cpu-topology.js";
 import "./validation-worker-isolation.run-pool-phase-a.js";
@@ -22,11 +24,9 @@ import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import {
-  processedTxFromValidatedTx,
-  runPhaseAValidation,
-  runPhaseBValidationWithPatch,
-} from "@al-ft/midgard-validation";
+import { processedTxFromValidatedTx } from "@al-ft/midgard-validation";
+import { runPhaseAValidation } from "@al-ft/midgard-validation/phase-a";
+import { runPhaseBValidationWithPatch } from "@al-ft/midgard-validation/phase-b";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -37,7 +37,7 @@ import {
   MigrationRunner,
   TxAdmissionsDB,
 } from "../../src/database/index.js";
-import { FixedValidationWorkerPool } from "../../src/services/validation-pool.js";
+import { FixedValidationWorkerPool } from "../../src/services/validation-pool.fixed-validation-worker-pool.js";
 import { provideDatabaseLayers } from "../utils.js";
 import {
   readPhase2ContainerIdentity,

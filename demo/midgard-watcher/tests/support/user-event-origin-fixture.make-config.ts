@@ -17,12 +17,12 @@ import {
 import { type Script, validatorToScriptHash } from "@lucid-evolution/lucid";
 import { deriveWatcherInitializationFrame } from "midgard-node/tests/helpers/derived-watcher-initialization-frame";
 
-import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.js";
+import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.watcher-config.js";
 import {
   makeWatcherAuthorityContracts,
-  makeWatcherDeploymentAuthorityFixture,
   WATCHER_EMULATOR_HISTORY_RECIPE,
-} from "./deployment-authority-fixture.js";
+} from "./deployment-authority-fixture.build-watcher-authority-contracts.js";
+import { makeWatcherDeploymentAuthorityFixture } from "./deployment-authority-fixture.build-watcher-deployment-authority-fixture.js";
 
 // Explicitly synthetic local test chain. The initialization and reference frames
 // are the real node initialization on a deterministic emulator, derived once per

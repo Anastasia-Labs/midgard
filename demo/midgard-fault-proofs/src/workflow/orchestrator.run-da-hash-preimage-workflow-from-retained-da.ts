@@ -9,24 +9,22 @@ import {
   FRAUD_PROOF_EVIDENCE_ROUTE,
 } from "../evidence/fraud-proof-evidence.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import {
-  workflowActuationDecisionDigest,
-  workflowJournalIsReconciliationOnly,
-} from "./actuation-permit.js";
+import { workflowActuationDecisionDigest } from "./actuation-permit.assert-workflow-actuation-permit-identity.js";
+import { workflowJournalIsReconciliationOnly } from "./actuation-permit.js";
 import {
   type CanonicalViolationDetection,
   classifyCanonicalBlockViolations,
-} from "./classification.js";
+} from "./classification.classify-canonical-block-violations.js";
 import { type CompleteCanonicalReplayContext } from "./complete-replay.js";
+import { validateFraudProofWorkflowJournal } from "./journal.directory-fraud-proof-workflow-journal-store.js";
+import type { FraudProofWorkflowJournalStore } from "./journal.fraud-proof-workflow-journal-event.js";
 import {
   computeFraudProofWorkflowId,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  type FraudProofWorkflowJournalStore,
   type JournalJsonObject,
   normalizeFraudProofWorkflowIdentity,
   normalizeJournalJson,
-  validateFraudProofWorkflowJournal,
-} from "./journal.js";
+} from "./journal.fraud-proof-workflow-terminal.js";
 import {
   type FraudProofFamilyWorkflowAdapter,
   type FraudProofWorkflowRegistry,

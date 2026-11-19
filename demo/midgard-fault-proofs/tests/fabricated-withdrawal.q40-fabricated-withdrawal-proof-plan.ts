@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 import {
   fabricatedWithdrawalBlockEvidenceFromVerifiedPayload,
   prepareFabricatedWithdrawalFromCommittedLeaves,
-} from "../src/prepare-fabricated-withdrawal.js";
+} from "../src/prepare-fabricated-withdrawal.prepare-fabricated-withdrawal-from-committed-leaves.js";
 import {
   AUTHENTIC_INCLUSION_TIME,
   buildWithdrawalsBlockFixture,

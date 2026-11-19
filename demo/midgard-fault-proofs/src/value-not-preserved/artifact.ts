@@ -12,20 +12,22 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 
-import { parseSubmitStep01TxInclusion } from "../step-support.js";
-import { nativeTxFromCoreCompact } from "../step-support.js";
+import {
+  nativeTxFromCoreCompact,
+  parseSubmitStep01TxInclusion,
+} from "../step-support.js";
 import { commitCountedRoot } from "../transition-trace/phas.js";
 import {
   type JournalJsonObject,
   normalizeJournalJson,
-} from "../workflow/journal.js";
+} from "../workflow/journal.fraud-proof-workflow-terminal.js";
 import type { ValueNotPreservedContracts } from "./contracts.js";
 import { flattenMidgardValueAssets } from "./evidence.js";
 import {
   conservationAcceptedSource,
   conservationForcedSource,
 } from "./source-plan.js";
-import { planConservationFold } from "./union-plan.js";
+import { planConservationFold } from "./union-plan.plan-conservation-fold.js";
 import { ConservationClaim } from "./union-schemas.js";
 
 export const VALUE_CONSERVATION_ARTIFACT =

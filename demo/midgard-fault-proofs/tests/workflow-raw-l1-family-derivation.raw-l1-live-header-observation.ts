@@ -8,19 +8,19 @@ import {
 import { CML, toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { deriveAuthenticatedStateQueueHeaderObservationFromRawL1 } from "../src/workflow/raw-l1-family-derivation.derive-retained-state-queue-header-observation-from-raw-l1.js";
+import { computeFraudProofRawL1PointId } from "../src/workflow/raw-l1-snapshot.admit-fraud-proof-raw-l1-transaction.js";
+import type {
+  FraudProofRawL1Snapshot,
+  FraudProofRawL1Utxo,
+} from "../src/workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
+import { fixture } from "./support/raw-l1-terminal-fixture.fixture.js";
 import {
-  computeFraudProofRawL1PointId,
-  deriveAuthenticatedStateQueueHeaderObservationFromRawL1,
-  type FraudProofRawL1Snapshot,
-  type FraudProofRawL1Utxo,
-} from "../src/workflow/index.js";
-import {
-  fixture,
   hash32,
   input,
   output,
   raw,
-} from "./support/raw-l1-terminal-fixture.js";
+} from "./support/raw-l1-terminal-fixture.output.js";
 
 describe("raw L1 live header observation", () => {
   it("binds a live header to its NFT mint even after a later transaction re-created its output", async () => {

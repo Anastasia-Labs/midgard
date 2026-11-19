@@ -7,7 +7,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { expect, it } from "vitest";
 
-import { submitPublishedInitialization } from "./helpers/published-workflow-deployment.js";
+import { submitPublishedInitialization } from "./helpers/published-workflow-deployment.submit-published-initialization.js";
 
 it("records initialization before node I/O and resumes an accepted transaction after acknowledgement loss", async () => {
   const account = generateEmulatorAccount({ lovelace: 1_000_000_000n });

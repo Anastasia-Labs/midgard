@@ -3,11 +3,9 @@ import { createServer } from "node:net";
 import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
 import { describe, expect, it } from "vitest";
 
-import {
-  createDaLibp2pProducerTransport,
-  type DaProducerStreamHandler,
-  parseDaProducerPublicationManifest,
-} from "../src/da/libp2p-producer.js";
+import { createDaLibp2pProducerTransport } from "../src/da/libp2p-producer.create-da-libp2p-producer-transport.js";
+import type { DaProducerStreamHandler } from "../src/da/libp2p-producer.parse-committee-peers.js";
+import { parseDaProducerPublicationManifest } from "../src/da/libp2p-producer.parse-da-producer-publication-manifest.js";
 import {
   closeServer,
   listenOnLoopback,

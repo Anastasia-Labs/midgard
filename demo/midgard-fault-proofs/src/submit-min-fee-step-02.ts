@@ -32,11 +32,13 @@ import {
 
 import { type FaultProofTurn, isPrerequisiteTurn } from "./fault-proof-turn.js";
 import {
-  faultProofFieldCarriage,
   type FaultProofFieldOpeningPlan,
   planFaultProofFieldOpening,
+} from "./field-opening.plan-fault-proof-field-opening.js";
+import {
+  faultProofFieldCarriage,
   publishFaultProofFieldCarriage,
-} from "./field-opening.js";
+} from "./field-opening.publish-fault-proof-field-carriage.js";
 import type { MinFeeContracts } from "./min-fee-contracts.js";
 import {
   minFeeStepLabel,
@@ -46,8 +48,7 @@ import {
   requireMinFeeThreadUtxo,
 } from "./min-fee-submit-common.js";
 import { type ResolvedProverSigner } from "./runtime.js";
-import { completeStep, fundStep } from "./step-completion.js";
-import { finishStep } from "./step-completion.js";
+import { completeStep, finishStep, fundStep } from "./step-completion.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,

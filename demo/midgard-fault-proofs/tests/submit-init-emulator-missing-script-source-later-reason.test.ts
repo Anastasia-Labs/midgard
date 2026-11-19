@@ -9,10 +9,10 @@ import type * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
-  MISSING_SCRIPT_SOURCE_DIRECT_WALK,
   MissingScriptSourceHonestLeaf,
   requireConvictingMissingScriptSourceProof,
-} from "../src/missing-script-source/index.js";
+} from "../src/missing-script-source/prover.js";
+import { MISSING_SCRIPT_SOURCE_DIRECT_WALK } from "../src/missing-script-source/workflow.js";
 import {
   makeDirectWalkHarness,
   publishDirectWalkRoles,

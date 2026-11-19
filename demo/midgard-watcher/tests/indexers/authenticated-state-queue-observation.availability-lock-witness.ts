@@ -8,8 +8,11 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { unsafeCorrectionLockWitnessForTest } from "../../src/indexers/authenticated-state-queue-observation.js";
-import { h28, h32 } from "../support/deployment-authority-fixture.js";
+import { unsafeCorrectionLockWitnessForTest } from "../../src/indexers/authenticated-state-queue-observation.correction-lock-witness.js";
+import {
+  h28,
+  h32,
+} from "../support/deployment-authority-fixture.build-watcher-authority-contracts.js";
 
 const value = (policyId: string, assetName: string): CML.Value => {
   const multiasset = CML.MultiAsset.new();

@@ -8,7 +8,7 @@ import * as MpfEngineStateDB from "../src/database/mpfEngineState.js";
 import * as StateQueueLeases from "../src/database/stateQueueMutationLeases.js";
 import { runLedgerPayloadAudit } from "../src/fibers/mpf-payload-audit.js";
 import type { Database } from "../src/services/database.js";
-import { Globals } from "../src/services/index.js";
+import { Globals } from "../src/services/globals.globals.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 // Node startup retires the running node's own audit leases after a kill and

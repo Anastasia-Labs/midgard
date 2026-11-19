@@ -14,22 +14,22 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { directPurposeClaimRoute } from "../src/direct-purpose-family/claim-route.js";
+import { directPurposeFieldPlans } from "../src/direct-purpose-family/custody.js";
 import {
-  buildDirectPurposeTransition,
   directPurposeBindTransitions,
-  directPurposeClaimRoute,
-  directPurposeFieldPlans,
   type DirectPurposeSourceEvidence,
   directPurposeSourceTransitions,
-} from "../src/direct-purpose-family/index.js";
-import { buildDirectSourceIndexEvidence } from "../src/direct-script-derivation/index.js";
+} from "../src/direct-purpose-family/source-walk.js";
+import { buildDirectPurposeTransition } from "../src/direct-purpose-family/submit.js";
+import { buildDirectSourceIndexEvidence } from "../src/direct-script-derivation/source-index.js";
+import { missingScriptSourceContractRoles } from "../src/missing-script-source/contracts.js";
 import {
-  MISSING_SCRIPT_SOURCE_DIRECT_WALK,
-  missingScriptSourceContractRoles,
   MissingScriptSourceHonestLeaf,
-  missingScriptSourceObservedRoute,
   requireConvictingMissingScriptSourceProof,
-} from "../src/missing-script-source/index.js";
+} from "../src/missing-script-source/prover.js";
+import { missingScriptSourceObservedRoute } from "../src/missing-script-source/routes.js";
+import { MISSING_SCRIPT_SOURCE_DIRECT_WALK } from "../src/missing-script-source/workflow.js";
 import {
   driveDirectWalkThread,
   makeDirectWalkHarness,

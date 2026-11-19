@@ -10,10 +10,8 @@ import { Effect } from "effect";
 import { expect, it } from "vitest";
 
 import { ForcedTransactionsDB } from "../src/database/index.js";
-import {
-  buildPlaceholderValidationTraceMembers,
-  classifyForcedTransactions,
-} from "../src/mpf/index.js";
+import { classifyForcedTransactions } from "../src/mpf/event-window.classify-forced-transactions.js";
+import { buildPlaceholderValidationTraceMembers } from "../src/mpf/validation-trace.js";
 import { forcedEntry } from "./forced-transactions.make-signed-effectful-transaction.js";
 
 it.each([

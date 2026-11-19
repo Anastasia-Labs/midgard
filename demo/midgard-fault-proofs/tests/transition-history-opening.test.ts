@@ -12,7 +12,7 @@ import {
 import { Data, datumToHash } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { detectTransitionTraceFaults } from "../src/transition-trace/detect.js";
+import { detectTransitionTraceFaults } from "../src/transition-trace/detect.detect-single-ledger-transitions.js";
 import {
   reopenTransitionDeposit,
   transitionDepositOpening,
@@ -23,7 +23,7 @@ import {
   makeTransitionProofMaterial,
   transitionProofHistorySource,
 } from "../src/transition-trace/proof-material.js";
-import { reconstructDaPayload } from "../src/transition-trace/reconstruct.js";
+import { reconstructDaPayload } from "../src/transition-trace/reconstruct.reconstruct-da-payload.js";
 import { deriveTransitionTraceReplayEvidence } from "../src/transition-trace/replay.js";
 import { transitionTraceYieldData } from "../src/transition-trace/yield-data.js";
 import { fixtureLedgerAfter } from "./support/fixture-ledger.js";

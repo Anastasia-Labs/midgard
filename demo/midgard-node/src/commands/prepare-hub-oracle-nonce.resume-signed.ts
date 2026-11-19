@@ -7,7 +7,7 @@ import {
 import { CML, type LucidEvolution, type OutRef } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { parseOutsideValidityIntervalDetails } from "../transactions/utils.js";
+import { parseOutsideValidityIntervalDetails } from "../transactions/utils.parse-structured-outside-validity-interval-details.js";
 
 export class SignedNonceConflictError extends Error {
   override readonly name = "SignedNonceConflictError";

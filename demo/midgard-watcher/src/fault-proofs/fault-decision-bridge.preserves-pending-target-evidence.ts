@@ -1,5 +1,5 @@
 import { type WatcherAuthenticatedStateQueueObservation } from "../indexers/authenticated-state-queue-observation.js";
-import { watcherSameCanonicalJson } from "../storage/durable-store.js";
+import { watcherSameCanonicalJson } from "../storage/durable-store.canonical-json.js";
 import {
   observationPreservesTarget,
   preservesObservationAuthority,

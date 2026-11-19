@@ -1,12 +1,12 @@
 import { MIDGARD_VALIDATION_CASE_OPEN_WINDOW_MS } from "@al-ft/midgard-core";
 import {
   FraudProofL1UnavailableError,
-  ReplayLocalFault,
   RetainedDaPayloadUnavailableError,
   VALIDATION_TRACE_REPLAY_HELD,
   VALIDATION_TRACE_REPLAY_STUCK,
   ValidationTraceReplayHeldError,
 } from "@al-ft/midgard-fault-proofs";
+import { ReplayLocalFault } from "@al-ft/midgard-fault-proofs/block-replay";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WATCHER_REPLAY_HOLD_MAXIMUM_AGE_MS } from "../../src/fault-proofs/fault-decision-bridge.classification-miss.js";

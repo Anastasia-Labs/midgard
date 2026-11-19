@@ -8,7 +8,7 @@ import {
 import { DatabaseError } from "../../database/utils/common.js";
 import { NodeConfig } from "../../services/config.js";
 import { type Database } from "../../services/database.js";
-import { buildDaPayloadInsert } from "./da-payload.js";
+import { buildDaPayloadInsert } from "./da-payload.build-da-payload-insert.js";
 
 export type DaPayloadBackfillSkipped = {
   readonly headerHash: string;

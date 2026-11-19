@@ -8,10 +8,8 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import {
-  fabricatedDepositBlockEvidenceFromVerifiedPayload,
-  type FabricatedDepositL1Witness,
-} from "../src/prepare-fabricated-deposit.js";
+import type { FabricatedDepositL1Witness } from "../src/prepare-fabricated-deposit.classify-fabricated-deposit-fault.js";
+import { fabricatedDepositBlockEvidenceFromVerifiedPayload } from "../src/prepare-fabricated-deposit.prepare-fabricated-deposit-from-committed-leaves.js";
 import {
   AUTHENTIC_DEPOSIT_ID,
   AUTHENTIC_INCLUSION_TIME,

@@ -3,13 +3,11 @@
  * into a function that builds its step and submits it with no journal (see
  * ./submit-unjournaled.ts).
  */
-import {
-  buildTransactionOutputNonCanonicalStep01Accepted,
-  buildTransactionOutputNonCanonicalStep01Forced,
-  buildTransactionOutputNonCanonicalStep02,
-  buildTransactionOutputNonCanonicalStep03,
-  buildTransactionOutputNonCanonicalStep04,
-} from "../../src/transaction-output-non-canonical/index.js";
+import { buildTransactionOutputNonCanonicalStep01Accepted } from "../../src/transaction-output-non-canonical/submit-step-01-accepted.js";
+import { buildTransactionOutputNonCanonicalStep01Forced } from "../../src/transaction-output-non-canonical/submit-step-01-forced.js";
+import { buildTransactionOutputNonCanonicalStep02 } from "../../src/transaction-output-non-canonical/submit-step-02.js";
+import { buildTransactionOutputNonCanonicalStep03 } from "../../src/transaction-output-non-canonical/submit-step-03.js";
+import { buildTransactionOutputNonCanonicalStep04 } from "../../src/transaction-output-non-canonical/submit-step-04.js";
 import { unjournaled, unjournaledTurns } from "./submit-unjournaled.js";
 
 export const submitTransactionOutputNonCanonicalStep01Accepted = unjournaled(

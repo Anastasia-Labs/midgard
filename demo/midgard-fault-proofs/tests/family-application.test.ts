@@ -5,16 +5,18 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
-import { WORKFLOW_ACTUATION_PERMIT } from "../src/workflow/actuation-permit.js";
+import { WORKFLOW_ACTUATION_PERMIT } from "../src/workflow/actuation-permit.create-workflow-reconciliation-permit-controller.js";
 import {
   applyFamilyApplicationRecord,
+  type FamilyApplicationInvocation,
+  resolveFamilyApplicationReferences,
+} from "../src/workflow/family-application.apply-family-application-record.js";
+import {
   assertFamilyDefinitionRoster,
   defineFamilyApplication,
-  type FamilyApplicationInvocation,
   type FamilyCommonInfrastructure,
   familyDefinitionRoster,
-  resolveFamilyApplicationReferences,
-} from "../src/workflow/family-application.js";
+} from "../src/workflow/family-application.assert-family-definition-roster.js";
 import { isAdmittedWorkflowRunner } from "../src/workflow/runner-admission.js";
 import {
   createFamilyApplicationWorkflowRunner,

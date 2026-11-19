@@ -6,18 +6,22 @@ import {
   eventKeyFingerprint,
   type SourceEventRecord,
   type TransitionTraceReconstruction,
-} from "./reconstruct.js";
+} from "./reconstruct.transition-trace-reconstruction.js";
+import type {
+  OmittedDueL1EventEvidence,
+  OutOfWindowSourceEventEvidence,
+} from "./witnesses.build-omitted-due-l1-event-fault.js";
 import {
   buildCountFault,
-  buildTraceBoundaryFault,
   buildTransitionFaultProof,
+} from "./witnesses.build-out-of-window-source-event-fault.js";
+import { rootCountProof } from "./witnesses.build-source-membership-proof.js";
+import {
+  buildTraceBoundaryFault,
   type L2TransactionTransitionEvidence,
-  type OmittedDueL1EventEvidence,
-  type OutOfWindowSourceEventEvidence,
-  rootCountProof,
   type ValidDepositTransitionEvidence,
   type ValidWithdrawalTransitionEvidence,
-} from "./witnesses.js";
+} from "./witnesses.build-source-non-membership-proof.js";
 
 /**
  * The complete set of fault kinds `detectTransitionTraceFaults` can report,

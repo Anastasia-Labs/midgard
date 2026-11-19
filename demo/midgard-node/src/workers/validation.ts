@@ -5,11 +5,11 @@ import {
   ledgerEd25519SignatureReady,
 } from "@al-ft/midgard-core";
 import {
-  evaluateMidgardCekVerdict,
   phaseAAddressCacheStats,
   serializePhaseACandidate,
-  validatePhaseASingle,
 } from "@al-ft/midgard-validation";
+import { validatePhaseASingle } from "@al-ft/midgard-validation/phase-a";
+import { evaluateMidgardCekVerdict } from "@al-ft/midgard-validation/phase-b";
 
 import type {
   PhaseAJobRequest,

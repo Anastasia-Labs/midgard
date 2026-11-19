@@ -17,11 +17,11 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
 import { ForcedTransactionsDB } from "../../src/database/index.js";
+import type { ForcedOrderConfig } from "../../src/forced-orders/config.js";
 import {
-  type ForcedOrderConfig,
   forcedOrderIngestionHook,
   type RunDatabase,
-} from "../../src/forced-orders/index.js";
+} from "../../src/forced-orders/ingest.js";
 import type { FollowerChange } from "../../src/l1-events/driver.js";
 import { testDatabaseName } from "../test-env.js";
 import { provideDatabaseLayers } from "../utils.js";

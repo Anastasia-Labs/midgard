@@ -25,13 +25,13 @@ import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import type { NodeTransactionPayload } from "../src/prepare-double-spend.encode-l2-transaction-source-value.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
-  type NodeTransactionPayload,
-  prepareInvalidSignatureFromTransactions,
   transactionSourceTrieItem,
-} from "../src/index.js";
+} from "../src/prepare-double-spend.resolve-double-spend-pair.js";
+import { prepareInvalidSignatureFromTransactions } from "../src/prepare-invalid-signature.js";
 
 const EMPTY_CBOR_LIST = encodeCbor([]);
 const EMPTY_CBOR_NULL = encodeCbor(null);

@@ -12,10 +12,8 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import {
-  fabricatedWithdrawalBlockEvidenceFromVerifiedPayload,
-  type FabricatedWithdrawalL1Witness,
-} from "../src/prepare-fabricated-withdrawal.js";
+import type { FabricatedWithdrawalL1Witness } from "../src/prepare-fabricated-withdrawal.classify-fabricated-withdrawal-fault.js";
+import { fabricatedWithdrawalBlockEvidenceFromVerifiedPayload } from "../src/prepare-fabricated-withdrawal.prepare-fabricated-withdrawal-from-committed-leaves.js";
 import {
   AUTHENTIC_INCLUSION_TIME,
   AUTHENTIC_WITHDRAWAL_ID,

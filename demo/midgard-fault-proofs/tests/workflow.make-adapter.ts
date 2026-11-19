@@ -8,20 +8,20 @@ import {
 import type { RetainedDaPayloadSource } from "../src/transition-trace/fetch.js";
 import { type CanonicalViolationDetection } from "../src/workflow/classification.js";
 import { BLOCK_SUBJECT } from "../src/workflow/detection-subject.js";
+import type { FraudProofWorkflowJournalStore } from "../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import {
   FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
-  type FraudProofWorkflowJournalStore,
   type FraudProofWorkflowTerminal,
-} from "../src/workflow/journal.js";
+} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import {
-  createFraudProofWorkflowRegistry,
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
   type FraudProofFamilyWorkflowAdapter,
   type FraudProofWorkflowTerminalVerifier,
-  runFraudProofWorkflow,
-} from "../src/workflow/orchestrator.js";
-import { computeFraudProofRawL1PointId } from "../src/workflow/raw-l1-snapshot.js";
+} from "../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
+import { createFraudProofWorkflowRegistry } from "../src/workflow/orchestrator.immutable-fraud-proof-workflow-registry.js";
+import { runFraudProofWorkflow } from "../src/workflow/orchestrator.run-da-hash-preimage-workflow-from-retained-da.js";
+import { computeFraudProofRawL1PointId } from "../src/workflow/raw-l1-snapshot.admit-fraud-proof-raw-l1-transaction.js";
 import {
   computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,

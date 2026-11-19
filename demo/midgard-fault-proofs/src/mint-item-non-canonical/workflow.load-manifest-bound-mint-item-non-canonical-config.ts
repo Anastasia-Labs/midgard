@@ -13,8 +13,10 @@ import { type SubmitStep01TxInclusion } from "../step-support.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import {
   assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
   type FraudProofWorkflowDeploymentBinding,
+} from "../workflow/deployment-manifest-binding.assert-deployment-info-matches-manifest.js";
+import {
+  bindFraudProofWorkflowDeployment,
   requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding.js";
 import type { MintItemNonCanonicalContracts } from "./contracts.js";

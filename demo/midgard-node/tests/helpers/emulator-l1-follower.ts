@@ -26,15 +26,13 @@ import { Duration, Effect, Ref, Schedule } from "effect";
 
 import { MempoolLedgerDB } from "../../src/database/index.js";
 import { DatabaseError } from "../../src/database/utils/common.js";
+import { NodeConfig } from "../../src/services/config.make-config.js";
 import {
   FollowerWriteFixture,
   withFollowerWrite,
 } from "../../src/services/follower-write-gate.js";
-import {
-  Globals,
-  NodeConfig,
-  publishMempoolLedgerDelta,
-} from "../../src/services/index.js";
+import { Globals } from "../../src/services/globals.globals.js";
+import { publishMempoolLedgerDelta } from "../../src/services/globals.with-l1-control-plane-held.js";
 import { planCurrentView } from "../../src/services/l1-follower.readiness.js";
 import {
   landedStateQueueSnapshot,

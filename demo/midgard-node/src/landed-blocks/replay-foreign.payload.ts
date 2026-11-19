@@ -18,7 +18,7 @@ import {
 import { decodeStoredPayload } from "../da/stored-payload.js";
 import { DaPayloadsDB } from "../database/index.js";
 import { withFollowerWrite } from "../services/follower-write-gate.js";
-import { ContractDeploymentIdentity } from "../services/midgard-contracts.js";
+import { ContractDeploymentIdentity } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import { sha256 } from "../sha256.js";
 import { Verdict } from "./replay-foreign.verdict.js";
 

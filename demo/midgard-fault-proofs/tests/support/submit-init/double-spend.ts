@@ -16,25 +16,24 @@ import {
 } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import { resolveProverSigner } from "../../../src/index.js";
+import { parseSpendInputCbors } from "../../../src/double-spend/submit-step-03.js";
+import { buildStep04 } from "../../../src/double-spend/submit-step-04.submit-step04.js";
+import { resolveProverSigner } from "../../../src/runtime.resolve-prover-signer.js";
+import { parseSubmitStep01TxInclusion } from "../../../src/step-support.js";
+import { buildInit } from "../../../src/submit-init.submit-init.js";
+import { type Blueprint, network } from "../emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "../emulator/emulator-context.js";
 import {
-  buildInit,
-  buildStep04,
-  parseSpendInputCbors,
-  parseSubmitStep01TxInclusion,
-} from "../legacy-submit-emulator.js";
-import {
-  type Blueprint,
-  buildRemovalDeploymentInfo,
   captureEmulatorSubmission,
   type CompleteSignedTransactionMeasurement,
-  expectSingleUtxoWithUnit,
-  network,
+} from "../emulator/measurement.js";
+import {
   publishFaultProofWitnessReferenceScripts,
-  publishFraudProofChainReferenceScripts,
   publishRemovalReferenceScripts,
-  submitSetupTx,
-} from "../submit-init-emulator-shared.js";
+} from "../emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { publishFraudProofChainReferenceScripts } from "../emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "../emulator/removal-deployment.build-removal-deployment-info.js";
+import { submitSetupTx } from "../emulator/setup-tx.submit-setup-tx.js";
 import {
   type SubmittedStep,
   submitTurnsUnjournaled,

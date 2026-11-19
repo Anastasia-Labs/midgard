@@ -7,7 +7,7 @@
  * and so does a reclaim our wallet cannot fund, until a top-up. */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.js";
+import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
 import type { FraudProofFamilyWorkflowAdapter } from "../src/workflow/orchestrator.js";
 import {
   canonicalEvidence,

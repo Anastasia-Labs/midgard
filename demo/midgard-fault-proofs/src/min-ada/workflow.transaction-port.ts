@@ -7,7 +7,7 @@ import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scr
 import {
   CURSOR_FAMILY_TRANSACTION_PORT,
   type CursorFamilyTransactionPort,
-} from "../workflow/cursor-family-adapter.js";
+} from "../workflow/cursor-family-adapter.admit-reference-scripts.js";
 import {
   captureCursorRemoval,
   cursorFamilyActionInput,
@@ -24,7 +24,7 @@ import { journaledStepTransaction } from "../workflow/step-transaction.js";
 import { buildMinAdaInit } from "./submit-init.js";
 import { buildMinAdaTxStep01 } from "./submit-step-01.js";
 import { buildMinAdaStep01Forced } from "./submit-step-01-forced.js";
-import { buildMinAdaTxStep02 } from "./submit-step-02.js";
+import { buildMinAdaTxStep02 } from "./submit-step-02.submit-min-ada-tx-step02.js";
 import { buildMinAdaStep03 } from "./submit-step-03.js";
 import { buildMinAdaStep04 } from "./submit-step-04.js";
 import {

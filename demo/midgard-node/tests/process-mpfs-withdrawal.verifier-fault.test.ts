@@ -20,10 +20,11 @@ import {
   COMMIT_WORKER_FAILED,
   COMMIT_WORKER_SOURCE,
 } from "../src/fibers/block-commitment.worker-readiness.js";
-import { type MidgardMpf, processMpfs } from "../src/mpf/index.js";
 import { ledgerEntryToInsertBatchOp } from "../src/mpf/ledger-delta.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../src/mpf/ledger-hydration.js";
-import { Globals } from "../src/services/globals.js";
+import { processMpfs } from "../src/mpf/process.process-mpfs.js";
+import type { MidgardMpf } from "../src/mpf/store.midgard-mpf.js";
+import { Globals } from "../src/services/globals.globals.js";
 import { activeLivenessReasons } from "../src/services/liveness-halt.js";
 import { captureCommitWorkerFailure } from "../src/workers/commit-block-header.run-commit-block-header-worker-program.js";
 import { insertWithdrawals } from "./helpers/event-rows.js";

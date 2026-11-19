@@ -6,10 +6,10 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  faultProofFieldCarriage,
   type FaultProofFieldOpeningPlan,
   planFaultProofFieldOpening,
-} from "../../src/field-opening.js";
+} from "../../src/field-opening.plan-fault-proof-field-opening.js";
+import { faultProofFieldCarriage } from "../../src/field-opening.publish-fault-proof-field-carriage.js";
 import { requireLinearFaultThreadUtxo } from "../../src/linear-fault-family.js";
 import { buildLinearFaultFinalize } from "../../src/linear-fault-finalize.js";
 import type { ResolvedProverSigner } from "../../src/runtime.js";

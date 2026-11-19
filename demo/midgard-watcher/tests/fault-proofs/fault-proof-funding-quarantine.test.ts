@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WATCHER_FAULT_PROOF_QUARANTINED } from "../../src/fault-proofs/fault-proof-quarantine.js";
 import { setupFaultProofExecution } from "../support/fault-proof-execution-fixture.js";
-import { cleanupFundingRecoveryFixtures } from "../support/fault-proof-funding-fixture.js";
+import { cleanupFundingRecoveryFixtures } from "../support/fault-proof-funding-fixture.sources-for.js";
 
 afterEach(cleanupFundingRecoveryFixtures);
 

@@ -8,16 +8,16 @@ import {
 import { Data } from "@lucid-evolution/lucid";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { encodeL2TransactionSourceValue } from "../prepare-double-spend.encode-l2-transaction-source-value.js";
 import {
   buildTrieView,
-  encodeL2TransactionSourceValue,
   requireProof,
-} from "../prepare-double-spend.js";
+} from "../prepare-double-spend.resolve-double-spend-pair.js";
 import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
 } from "../step-support.js";
-import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
+import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.build-source-membership-proof.js";
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import { createCanonicalFamilyArtifactPort } from "../workflow/manifest-bound-family-recovery.js";
 import { CanonicalReplayPrerequisiteError } from "../workflow/replay-prerequisite.js";

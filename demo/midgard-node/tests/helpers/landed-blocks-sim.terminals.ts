@@ -17,7 +17,7 @@ import type {
 } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
 
-import { QUEUE_TERMINALS_TABLE } from "../../src/l1-queue-terminals/index.js";
+import { QUEUE_TERMINALS_TABLE } from "../../src/l1-queue-terminals/schema.js";
 import { SIM_QUEUE_CONFIG } from "./state-queue-sim.fixtures.js";
 
 const hex = (value: Uint8Array) => Buffer.from(value).toString("hex");

@@ -48,7 +48,9 @@ import {
   verifyPeerAnswer,
 } from "../l2-peer/protocol.js";
 import { recordPeerHeldTxs } from "../l2-peer/successor-holds-pending.js";
-import { Globals, MidgardContracts, NodeConfig } from "../services/index.js";
+import { Globals } from "../services/globals.globals.js";
+import { NodeConfig } from "../services/index.js";
+import { MidgardContracts } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 
 /**
  * A full body (about 890 small txs) is checked and admitted in about 0.25 s

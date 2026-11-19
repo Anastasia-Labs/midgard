@@ -19,7 +19,7 @@ import {
   EVENT_UNDECODABLE,
   type EventRefusal,
 } from "../src/l1-events/driver.js";
-import { Globals } from "../src/services/globals.js";
+import { Globals } from "../src/services/globals.globals.js";
 import {
   IntentJournal,
   IntentJournalWithoutFollower,
@@ -29,7 +29,7 @@ import {
   type L1FollowerHandle,
   startingStatus,
 } from "../src/services/l1-follower.readiness.js";
-import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.js";
+import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import { SETTLEMENT_JOB_FAILURE_CAP } from "../src/services/settlement-retry.js";
 import {
   applyCommitPlanningNotice,

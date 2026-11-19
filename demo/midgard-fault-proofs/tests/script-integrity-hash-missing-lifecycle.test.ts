@@ -5,10 +5,12 @@ import "@lucid-evolution/lucid";
 import "effect";
 import "vitest";
 import "../src/evidence/forced-leaf-evidence.js";
-import "../src/field-opening.js";
-import "../src/index.js";
-import "../src/staged-field-walk/index.js";
-import "../src/script-integrity-hash-missing/actuator.js";
+import "../src/field-opening.publish-fault-proof-field-carriage.js";
+import "../src/field-opening.plan-fault-proof-field-opening.js";
+import "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import "../src/staged-field-walk/grammar-checkpoint.js";
+import "../src/staged-field-walk/semantic-checkpoint.js";
+import "../src/script-integrity-hash-missing/actuator.create-script-integrity-hash-missing-transaction-port.js";
 import "../src/script-integrity-hash-missing/artifact.js";
 import "../src/script-integrity-hash-missing/family.js";
 import "../src/script-integrity-hash-missing/replay.js";
@@ -18,22 +20,28 @@ import "../src/script-integrity-hash-missing/submit-direct.js";
 import "../src/script-integrity-hash-missing/submit-init.js";
 import "../src/script-integrity-hash-missing/submitters.js";
 import "../src/testing/complete-lifecycle.js";
-import "../src/transition-trace/witnesses.js";
+import "../src/transition-trace/witnesses.build-source-membership-proof.js";
 import "../src/workflow/cursor-family-state.js";
 import "../src/workflow/transaction-boundary.js";
 import "./support/emulator/expect-onchain-refusal.js";
 import "./support/emulator/measurement.js";
 import "./support/emulator/registered-chain.js";
 import "./support/lifecycle-coverage.js";
-import "./support/native-script-decoding-emulator.js";
-import "./support/submit-init-emulator-shared.js";
+import "./support/native-script-decoding-emulator.build-decoding-block-fixture.js";
+import "./support/emulator/emulator-context.js";
+import "./support/emulator/removal-deployment.build-removal-deployment-info.js";
+import "./support/emulator/harness.js";
+import "./support/emulator/blueprints.js";
+import "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import "./support/emulator/setup-tx.submit-setup-tx.js";
 import "./script-integrity-hash-missing-lifecycle.registered-family.js";
 import "./script-integrity-hash-missing-lifecycle.make-scenario.js";
 
-import { EMPTY_NULL_ROOT } from "@al-ft/midgard-core";
 import {
   deriveMidgardNativeTxWitnessSetCompact,
   EMPTY_CBOR_LIST,
+  EMPTY_NULL_ROOT,
   encodeMidgardNativeTxCompact,
   encodeMidgardNativeTxWitnessSetCompact,
   encodeMidgardVersionedScript,
@@ -49,12 +57,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
 import { extractForcedLeafEvidence } from "../src/evidence/forced-leaf-evidence.js";
-import {
-  faultProofFieldOpening,
-  planFaultProofFieldOpening,
-} from "../src/field-opening.js";
-import { submitRemoveFraudulentBlock } from "../src/index.js";
-import { createScriptIntegrityHashMissingTransactionPort } from "../src/script-integrity-hash-missing/actuator.js";
+import { planFaultProofFieldOpening } from "../src/field-opening.plan-fault-proof-field-opening.js";
+import { faultProofFieldOpening } from "../src/field-opening.publish-fault-proof-field-carriage.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import { createScriptIntegrityHashMissingTransactionPort } from "../src/script-integrity-hash-missing/actuator.create-script-integrity-hash-missing-transaction-port.js";
 import { testingOnlyScriptIntegrityHashMissingArtifact } from "../src/script-integrity-hash-missing/artifact.js";
 import { prepareScriptIntegrityHashMissingEvidence } from "../src/script-integrity-hash-missing/family.js";
 import {
@@ -82,18 +88,20 @@ import {
 } from "../src/script-integrity-hash-missing/submitters.js";
 import {
   advanceFieldGrammarCheckpoint,
-  advanceFieldSemanticCheckpoint,
   decodeFieldGrammarCheckpoint,
-  decodeFieldSemanticCheckpoint,
   encodeFieldGrammarCheckpoint,
   encodeFieldSemanticCheckpoint,
   hashFieldGrammarCheckpoint,
   hashFieldSemanticCheckpoint,
   initialFieldGrammarCheckpoint,
+} from "../src/staged-field-walk/grammar-checkpoint.js";
+import {
+  advanceFieldSemanticCheckpoint,
+  decodeFieldSemanticCheckpoint,
   initialFieldSemanticCheckpoint,
-} from "../src/staged-field-walk/index.js";
+} from "../src/staged-field-walk/semantic-checkpoint.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
-import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
+import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
 import { CURSOR_FAMILY_ACTION } from "../src/workflow/cursor-family-state.js";
 import type { FraudProofWorkflowDeploymentBinding } from "../src/workflow/deployment-manifest-binding.js";
 import type { FraudProofWorkflowAction } from "../src/workflow/orchestrator.js";
@@ -116,20 +124,20 @@ import {
   registeredFamily,
 } from "./script-integrity-hash-missing-lifecycle.registered-family.js";
 import { createConfirmedActionJournal } from "./support/confirmed-action-journal.js";
-import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
-import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
-import { installFieldCarriage } from "./support/install-field-carriage.js";
-import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
+import { network } from "./support/emulator/blueprints.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
-  buildRemovalDeploymentInfo,
   funderPaymentKeyHash,
-  makeFaultProofEmulatorHarness,
-  network,
-  publishPlainReferenceScriptUtxo,
-  publishRemovalReferenceScripts,
-  submitSetupTx,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/emulator/emulator-context.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
+import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
+import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
+import { installFieldCarriage } from "./support/install-field-carriage.js";
+import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.build-decoding-block-fixture.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 describe("script-integrity-hash-missing real lifecycle", () => {

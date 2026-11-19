@@ -15,13 +15,11 @@ import { describe, expect, it, vi } from "vitest";
 import { PendingBlockFinalizationsDB } from "../src/database/index.js";
 import { buildAndSubmitCommitmentBlockAction } from "../src/fibers/block-commitment.build-and-submit-commitment-block-action.js";
 import { Frontier } from "../src/landed-blocks/store.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
 import { FollowerWrite } from "../src/services/follower-write-gate.js";
-import {
-  Globals,
-  Lucid,
-  MidgardContracts,
-  NodeConfig,
-} from "../src/services/index.js";
+import { Globals } from "../src/services/globals.globals.js";
+import { Lucid } from "../src/services/lucid.js";
+import { MidgardContracts } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import { makeCardanoSignedMapOutputTxBytes } from "./helpers/cardano-native-fixtures.js";
 import { writeFollowerTip } from "./helpers/follower-view.js";
 import { openFollowerWriteGateAt } from "./helpers/follower-write-gate.js";

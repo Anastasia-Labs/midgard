@@ -2,12 +2,14 @@ import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-
 import { expect, it, vi } from "vitest";
 
 import { reconcileSupersededAttemptRecords } from "../src/workflow/funding-reservation-permit.reconcile-superseded-attempts.js";
+import type {
+  FraudProofWorkflowJournalEntry,
+  FraudProofWorkflowJournalEvent,
+} from "../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import {
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-  type FraudProofWorkflowJournalEntry,
-  type FraudProofWorkflowJournalEvent,
-} from "../src/workflow/journal.js";
+} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import { reconcileSignedWorkflowTransaction } from "../src/workflow/signed-transaction-reconciliation.js";
 import { createSupersededAttemptReadSchedule } from "../src/workflow/superseded-attempt-read-schedule.js";
 import {

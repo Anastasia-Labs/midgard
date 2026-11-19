@@ -26,14 +26,14 @@ import {
 } from "../helpers/mutation-lease.js";
 import { insertCommitIntent } from "../helpers/own-block-facts.js";
 import { databaseTestDirectory } from "./finalization.database-test-directory.js";
+import { databaseFixtureBytes } from "./fixtures.bytes.js";
 import {
   bundleChildProcessHelper,
   collectChildProcess,
   databaseChildProcessEnv,
-  databaseFixtureBytes,
   isolatedDb,
-  makeDepositEntry,
-} from "./fixtures.js";
+} from "./fixtures.environment.js";
+import { makeDepositEntry } from "./fixtures.events.js";
 
 export const registerFinalizationTests = () => {
   describe("PendingBlockFinalizationsDB", () => {

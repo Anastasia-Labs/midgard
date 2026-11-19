@@ -17,7 +17,7 @@ import { Effect } from "effect";
 import {
   type FaultProofFieldOpeningPlan,
   planFaultProofFieldOpening,
-} from "../field-opening.js";
+} from "../field-opening.plan-fault-proof-field-opening.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import { type JournalJsonObject } from "./journal.js";
 import {

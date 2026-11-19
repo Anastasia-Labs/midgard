@@ -4,22 +4,19 @@ import { SqlClient } from "@effect/sql";
 import { Effect, Ref } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { buildListenRouter } from "../src/commands/listen-router.js";
-import { takeCommitWorkerOutput } from "../src/fibers/block-commitment.js";
+import { buildListenRouter } from "../src/commands/http/router.js";
 import {
   COMMIT_SUBMIT_REFUSED,
   COMMIT_SUBMIT_SOURCE,
 } from "../src/fibers/block-commitment.worker-readiness.js";
 import { LANDED_BLOCK_REBASE_SOURCE } from "../src/landed-blocks/holds.js";
-import { NodeConfig } from "../src/services/config.js";
-import {
-  Globals,
-  nextL1ProviderHealthEvidence,
-} from "../src/services/globals.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
+import { Globals } from "../src/services/globals.globals.js";
 import {
   clearLivenessReason,
   setLivenessReason,
 } from "../src/services/globals.liveness-reasons.js";
+import { nextL1ProviderHealthEvidence } from "../src/services/globals.next-l1-provider-health-evidence.js";
 import {
   type ActiveLivenessReason,
   clearLivenessIncident,
@@ -32,9 +29,10 @@ import { Lucid } from "../src/services/lucid.js";
 import {
   ContractDeploymentIdentity,
   MidgardContracts,
-} from "../src/services/midgard-contracts.js";
+} from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import type { NativeMpfOwnerService } from "../src/services/mpf-native-owner/protocol.js";
-import { ValidationPool } from "../src/services/validation-pool.js";
+import { ValidationPool } from "../src/services/validation-pool.bundled-worker-exec-argv.js";
+import { takeCommitWorkerOutput } from "../src/workers/commit-worker-message.js";
 import {
   COMMIT_DA_FRAME_FITS_NOTICE,
   commitDaFrameNoticeForOutcome,

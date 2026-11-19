@@ -4,12 +4,12 @@ import { beginWorkflowFundingReservationAction } from "@al-ft/midgard-fault-proo
 import { CML } from "@lucid-evolution/lucid";
 import { afterEach, expect, it, vi } from "vitest";
 
-import { unsafeOpenWatcherSqliteProverFundingReservationStoreForTest } from "../../src/funding/sqlite-prover-funding-reservation-store.js";
+import { unsafeOpenWatcherSqliteProverFundingReservationStoreForTest } from "../../src/funding/sqlite-prover-funding-reservation-store.unsafe-open-watcher-sqlite-prover-funding-reservation-store-for-test.js";
+import { setupFundingRecoveryFixture } from "../support/fault-proof-funding-fixture.setup-funding-recovery-fixture.js";
 import {
   cleanupFundingRecoveryFixtures,
-  setupFundingRecoveryFixture,
   walletAddress,
-} from "../support/fault-proof-funding-fixture.js";
+} from "../support/fault-proof-funding-fixture.sources-for.js";
 import { plan as storePlan } from "./sqlite-prover-funding-reservation-store.signed-transition.js";
 
 afterEach(async () => {

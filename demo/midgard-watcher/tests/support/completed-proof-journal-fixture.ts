@@ -18,9 +18,9 @@ import {
 } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 
 import type { WatcherWorkflowJournal } from "../../src/fault-proofs/watcher-workflow-journal.js";
-import { watcherDeploymentReleaseFinalityAuthority } from "../../src/runtime/deployment-identity.js";
+import { watcherDeploymentReleaseFinalityAuthority } from "../../src/runtime/deployment-identity.watcher-deployment-availability-challenge-authority.js";
 import { fundingTerminal } from "../funding/funding-handoff-fixture.js";
-import { makeWatcherDeploymentAuthorityFixture } from "./deployment-authority-fixture.js";
+import { makeWatcherDeploymentAuthorityFixture } from "./deployment-authority-fixture.build-watcher-deployment-authority-fixture.js";
 import {
   emptyWorkflowJournal,
   recordObjectives,

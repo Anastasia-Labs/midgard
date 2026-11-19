@@ -8,7 +8,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data, generateEmulatorAccount, Lucid } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { resolveProverSigner } from "../src/index.js";
+import { resolveProverSigner } from "../src/runtime.resolve-prover-signer.js";
 import {
   type ConfirmedValidationTraceStage,
   confirmedValidationTraceStages,
@@ -19,8 +19,8 @@ import type { FraudProofWorkflowJournalEntry } from "../src/workflow/journal.js"
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
 import { recordCrossBlockRawEmulator } from "./support/cross-block-raw-emulator.js";
-import { expectStateQueueHeaderOrder } from "./support/submit-init-emulator-fixtures.js";
-import { network } from "./support/submit-init-emulator-shared.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
 import {
   type Scene,
   setUpScene,

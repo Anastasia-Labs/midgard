@@ -14,7 +14,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data, generateEmulatorAccount, Lucid } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { resolveProverSigner } from "../src/index.js";
+import { resolveProverSigner } from "../src/runtime.resolve-prover-signer.js";
 import { confirmedValidationTraceStages } from "../src/validation-trace-dispute/actions.js";
 import { VALIDATION_TRACE_CASE_OPEN } from "../src/validation-trace-dispute/adapter.js";
 import {
@@ -26,7 +26,7 @@ import { validationTraceDefenseDeadlineMs } from "../src/validation-trace-disput
 import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import type { FraudProofFamilyWorkflowAdapter } from "../src/workflow/orchestrator.js";
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
-import { network } from "./support/submit-init-emulator-shared.js";
+import { network } from "./support/emulator/blueprints.js";
 import {
   blockOf,
   copiesOf,

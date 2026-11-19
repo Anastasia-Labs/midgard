@@ -9,10 +9,8 @@
 import type { UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildDirectPurposeTransition,
-  type DirectPurposeRole,
-} from "../src/direct-purpose-family/index.js";
+import type { DirectPurposeRole } from "../src/direct-purpose-family/family.js";
+import { buildDirectPurposeTransition } from "../src/direct-purpose-family/submit.js";
 import { MISSING_REDEEMER_DIRECT_WALK } from "../src/missing-redeemer/index.js";
 import {
   makeDirectWalkHarness,

@@ -10,7 +10,7 @@ import {
 import { Effect } from "effect";
 import { expect, it as unitIt, vi } from "vitest";
 
-import { loadRealBlueprintSha256 } from "../src/services/midgard-contracts.js";
+import { loadRealBlueprintSha256 } from "../src/services/midgard-contracts.load-reference-script-auth-validator.js";
 
 /** The real blueprint's bytes, from `MIDGARD_REAL_BLUEPRINT_PATH` when set. */
 export const realBlueprintBytes = () =>

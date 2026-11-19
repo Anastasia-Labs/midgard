@@ -20,11 +20,13 @@ import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile
 import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  type MidgardCommittedScriptRun,
-  type RejectedTx,
   replayValidationVerdictEvent,
   type ValidationMachineLedgerEntry,
 } from "@al-ft/midgard-validation";
+import type {
+  MidgardCommittedScriptRun,
+  RejectedTx,
+} from "@al-ft/midgard-validation/types";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

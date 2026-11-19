@@ -22,6 +22,7 @@ import {
   type StepMeasurement,
   stepTable,
 } from "./support/direct-walk-emulator.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { driveMissingRedeemerThread } from "./support/missing-redeemer-emulator.js";
 import {
@@ -30,7 +31,6 @@ import {
   plutusScript,
   setupMissingRedeemerScenario,
 } from "./support/missing-redeemer-emulator.subject.js";
-import { expectSingleUtxoWithUnit } from "./support/submit-init-emulator-shared.js";
 
 const FIELD_CAP = MIDGARD_CONSENSUS_LIMITS.maxTransactionAggregateFieldBytes;
 

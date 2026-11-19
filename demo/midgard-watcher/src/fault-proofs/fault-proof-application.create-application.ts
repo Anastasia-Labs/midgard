@@ -1,13 +1,9 @@
 import {
-  createTransitionTraceEventAuthority,
-  TRANSITION_TRACE_WORKFLOW_DATUM_SCHEMAS,
-  WORKFLOW_RUNNER_FACTORIES,
-} from "@al-ft/midgard-fault-proofs";
-import {
   bindFraudProofTerminalDeployment,
   bindFraudProofWorkflowDeployment,
   type CompleteCanonicalReplayContext,
   createHeaderClassifier,
+  createTransitionTraceEventAuthority,
   FAMILY_APPLICATION_REGISTRY,
   FraudProofL1CheckpointChangedError,
   headerDecisionReplayContext,
@@ -16,7 +12,9 @@ import {
   normalizeJournalJson,
   resolveFamilyApplicationReferences,
   runFraudProofWorkflowCli,
+  TRANSITION_TRACE_WORKFLOW_DATUM_SCHEMAS,
   verifyCompletedFraudProofWorkflow,
+  WORKFLOW_RUNNER_FACTORIES,
   type WorkflowAdapterRunner,
 } from "@al-ft/midgard-fault-proofs";
 import { Header } from "@al-ft/midgard-sdk";
@@ -27,12 +25,10 @@ import {
   assertWatcherStateQueueHeaderObservation,
   assertWatcherStateQueueObservation,
 } from "../indexers/authenticated-state-queue-observation.js";
-import { parseWatcherConfig } from "../runtime/config.js";
+import { parseWatcherConfig } from "../runtime/config.parse-watcher-config.js";
 import { assertWatcherVerifiedDeploymentAuthority } from "../runtime/deployment-authority.js";
-import {
-  assertVerifiedWatcherDeploymentIdentity,
-  watcherDeploymentReleaseFinalityAuthority,
-} from "../runtime/deployment-identity.js";
+import { assertVerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.verify-watcher-user-event-script-binding.js";
+import { watcherDeploymentReleaseFinalityAuthority } from "../runtime/deployment-identity.watcher-deployment-availability-challenge-authority.js";
 import {
   createWatcherRetainedDaRuntimeOwner,
   createWatcherWorkflowRuntimeLoader,

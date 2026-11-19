@@ -29,23 +29,21 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it as unitIt, vi } from "vitest";
 
+import { buildContractDeploymentInfoFromContracts } from "../src/commands/contract-deployment-info.build-contract-deployment-info-from-contracts.js";
+import { buildDeploymentManifest } from "../src/commands/contract-deployment-info.build-deployment-manifest.js";
+import type { DeploymentManifestIdentityContext } from "../src/commands/contract-deployment-info.build-reference-script-out-ref-map.js";
+import { AlwaysSucceedsContract } from "../src/services/always-succeeds.always-succeeds-contract.js";
+import { assertDeploymentManifestMatchesConfig } from "../src/services/midgard-contracts.assert-deployment-manifest-matches-config.js";
+import { buildRealTxOrderContracts } from "../src/services/midgard-contracts.build-real-no-reference-input-first-step-validator.js";
 import {
-  buildContractDeploymentInfoFromContracts,
-  buildDeploymentManifest,
-  type DeploymentManifestIdentityContext,
-} from "../src/commands/contract-deployment-info.js";
-import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
-import {
-  assertDeploymentManifestMatchesConfig,
-  buildRealTxOrderContracts,
   eventHistoryBoundsFromExplicitEnvironment,
   readRuntimeDeploymentManifestFile,
-  withRealStateQueueAndOperatorContracts,
-} from "../src/services/midgard-contracts.js";
+} from "../src/services/midgard-contracts.load-reference-script-auth-validator.js";
+import { withRealStateQueueAndOperatorContracts } from "../src/services/midgard-contracts.with-real-state-queue-and-operator-contracts.js";
 import {
   buildFraudProofCatalogueDeploymentInfo,
   fraudProofsToIndexedValidators,
-} from "../src/transactions/initialization.js";
+} from "../src/transactions/initialization.atomic-protocol-init-reference-scripts-from-publications.js";
 import {
   TEST_AVAILABILITY_CHALLENGE,
   TEST_AVAILABILITY_PARAMETERS,

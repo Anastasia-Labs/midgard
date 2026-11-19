@@ -8,10 +8,8 @@ import {
   fabricatedWithdrawalBlockEvidenceFromVerifiedPayload,
   prepareFabricatedWithdrawalFromCommittedLeaves,
 } from "./prepare-fabricated-withdrawal.prepare-fabricated-withdrawal-from-committed-leaves.js";
-import {
-  fetchRetainedDaPayloadByHeaderHash,
-  type RetainedDaPayloadSource,
-} from "./transition-trace/fetch.js";
+import type { RetainedDaPayloadSource } from "./transition-trace/fetch.admit-retained-da-provenance.js";
+import { fetchRetainedDaPayloadByHeaderHash } from "./transition-trace/fetch.fetch-retained-da-payload-by-header-hash.js";
 
 /**
  * The security-grade entry point: authenticated L1 header observation + public

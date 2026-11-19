@@ -11,7 +11,7 @@ import { tcp } from "@libp2p/tcp";
 import { multiaddr } from "@multiformats/multiaddr";
 import { createLibp2p, type Libp2pOptions } from "libp2p";
 
-import { assertVerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
+import { assertVerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.verify-watcher-user-event-script-binding.js";
 import type {
   WatcherPublicDaLibp2pTransportV1,
   WatcherPublicDaRequest,

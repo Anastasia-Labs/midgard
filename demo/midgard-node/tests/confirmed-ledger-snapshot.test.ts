@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { PendingBlockFinalizationsDB } from "../src/database/index.js";
 import * as Ledger from "../src/database/utils/ledger.js";
-import { computeLedgerMpfRootFromLedgerEntries } from "../src/mpf/index.js";
+import { computeLedgerMpfRootFromLedgerEntries } from "../src/mpf/ledger-hydration.js";
 import {
   materializeConfirmedLedgerDeltaChain,
   pendingUtxoMemberToConfirmedLedgerEntry,

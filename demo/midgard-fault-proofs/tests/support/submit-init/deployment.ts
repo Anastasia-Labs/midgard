@@ -20,32 +20,32 @@ import {
 import { Effect } from "effect";
 import { expect } from "vitest";
 
-import { resolveProverSigner } from "../../../src/index.js";
+import { resolveProverSigner } from "../../../src/runtime.resolve-prover-signer.js";
 import {
   buildCanonicalL2BlockFixture,
   buildFixtureTransaction,
 } from "../../helpers/canonical-block-evidence-fixture.js";
 import {
+  alwaysSucceedsBlueprintPath,
+  network,
+  readBlueprint,
+  realBlueprintPath,
+} from "../emulator/blueprints.js";
+import { buildCatalogueDeploymentInfo } from "../emulator/catalogue.js";
+import { buildMinimalFaultProofContracts } from "../emulator/contracts.build-minimal-fault-proof-contracts.js";
+import {
   alignEmulatorToWholeSecond,
+  emulatorAccountFromSeed,
+  fundedProverEmulatorAccount,
+  registerPhasMembershipRewardAccount,
   requireUtxoWithUnit,
 } from "../emulator/emulator-context.js";
 import { EMULATOR_DEPLOYMENT_L1_SLOT_CONFIG } from "../emulator/header-fixtures.js";
 import { measureCompleteSignedTransaction } from "../emulator/measurement.js";
+import { EMULATOR_PROTOCOL_PARAMETERS } from "../emulator/protocol-parameters.js";
 import { createReferenceScriptPublisher } from "../emulator/reference-script-publisher.js";
+import { publishOperatorLifecycleReferenceScripts } from "../emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 import { onboardEmulatorOperator } from "../emulator/setup-tx.onboard-emulator-operator.js";
-import {
-  alwaysSucceedsBlueprintPath,
-  buildCatalogueDeploymentInfo,
-  buildMinimalFaultProofContracts,
-  EMULATOR_PROTOCOL_PARAMETERS,
-  emulatorAccountFromSeed,
-  fundedProverEmulatorAccount,
-  network,
-  publishOperatorLifecycleReferenceScripts,
-  readBlueprint,
-  realBlueprintPath,
-  registerPhasMembershipRewardAccount,
-} from "../submit-init-emulator-shared.js";
 import {
   outputReferenceCbor,
   tx1InputsPreimage,

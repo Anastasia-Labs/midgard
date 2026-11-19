@@ -29,7 +29,7 @@ import {
 import {
   SPEND_INPUT_SIGNER_MISSING_ID,
   type SpendInputSignerMissingEvidence,
-} from "../src/spend-input-signer-missing/index.js";
+} from "../src/spend-input-signer-missing/spend-input-signer-missing.js";
 import {
   commitForcedBlock,
   publishReferences,

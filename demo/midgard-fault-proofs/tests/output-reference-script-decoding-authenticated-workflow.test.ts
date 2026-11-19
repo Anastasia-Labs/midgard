@@ -10,8 +10,8 @@ import {
   OUTPUT_REFERENCE_SCRIPT_DECODING_MANIFEST_CONTRACTS,
   type OutputReferenceScriptDecodingDeploymentBinding,
   type OutputReferenceScriptDecodingReferenceScripts,
-  outputReferenceScriptDecodingStageFromL1,
-} from "../src/output-reference-script-decoding/index.js";
+} from "../src/output-reference-script-decoding/authenticated-workflow.create-output-reference-script-decoding-bound-config.js";
+import { outputReferenceScriptDecodingStageFromL1 } from "../src/output-reference-script-decoding/authenticated-workflow.derive-output-reference-script-decoding-authenticated-source.js";
 
 const script = (byte: string): Script => ({
   type: "PlutusV3",

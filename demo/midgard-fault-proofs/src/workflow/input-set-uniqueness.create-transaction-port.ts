@@ -5,7 +5,7 @@ import type { InputSetUniquenessContracts } from "../input-set-uniqueness/contra
 import { buildInputSetUniquenessForcedStep01 } from "../input-set-uniqueness/submit-input-set-uniqueness-forced-step-01.js";
 import { buildInputSetUniquenessInit } from "../input-set-uniqueness/submit-input-set-uniqueness-init.js";
 import { buildInputSetUniquenessStep01 } from "../input-set-uniqueness/submit-input-set-uniqueness-step-01.js";
-import { buildInputSetUniquenessStep02 } from "../input-set-uniqueness/submit-input-set-uniqueness-step-02.js";
+import { buildInputSetUniquenessStep02 } from "../input-set-uniqueness/submit-input-set-uniqueness-step-02.submit-input-set-uniqueness-step02.js";
 import { buildInputSetUniquenessStep03 } from "../input-set-uniqueness/submit-input-set-uniqueness-step-03.js";
 import {
   buildInputSetUniquenessStep04Advance,
@@ -36,7 +36,7 @@ import {
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyTransactionPort,
 } from "./linear-family-adapter.js";
-import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.js";
+import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.route-action-identity.js";
 import { journaledStepTransaction } from "./step-transaction.js";
 
 export const createTransactionPort = (

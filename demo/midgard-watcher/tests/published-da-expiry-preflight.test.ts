@@ -9,10 +9,8 @@ import {
 } from "@lucid-evolution/lucid";
 import { expect, it, vi } from "vitest";
 
-import {
-  createPublishedWatcherBlockActor,
-  type PublishedWatcherDeployment,
-} from "./support/published-block-actor.js";
+import { createPublishedWatcherBlockActor } from "./support/published-block-actor.create-published-watcher-block-actor.js";
+import type { PublishedWatcherDeployment } from "./support/published-block-actor.is-unanswered-submission.js";
 
 const headerHash = "11".repeat(28);
 const stateQueuePolicyId = "44".repeat(28);

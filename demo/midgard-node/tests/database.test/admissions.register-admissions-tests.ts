@@ -48,34 +48,30 @@ import {
   readAdmissionBacklogSize,
   refreshAdmissionBacklogGauge,
 } from "../../src/fibers/admission-backlog-gauge.js";
-import {
-  requestTxQueueProcessorWakeup,
-  withAdmissionLeaseRecovery,
-} from "../../src/fibers/tx-queue-processor.js";
+import { withAdmissionLeaseRecovery } from "../../src/fibers/tx-queue-processor.run-phase-afor-batch.js";
+import { requestTxQueueProcessorWakeup } from "../../src/fibers/tx-queue-processor.tx-queue-processor-drain-once.js";
 import {
   COMMIT_REJECT_CODE_SPENDS_REJECTED_OUTPUT,
   COMMIT_REJECT_CODE_WITHDRAWN_REFERENCE_INPUT,
   commitStageInputPostState,
-  persistCommitStageRejectedTransactions,
   resolveTxDeltaForCommit,
-} from "../../src/mpf/index.js";
-import { AdmissionWriter } from "../../src/services/admission-writer.js";
-import { NodeConfig } from "../../src/services/config.js";
+} from "../../src/mpf/commit-rejection.js";
+import { persistCommitStageRejectedTransactions } from "../../src/mpf/commit-rejection.persist-commit-stage-rejected-transactions.js";
+import { AdmissionWriter } from "../../src/services/admission-writer.validate-options.js";
+import { NodeConfig } from "../../src/services/config.make-config.js";
 import { AdmissionSql, BatchSql } from "../../src/services/database.js";
-import { Globals } from "../../src/services/globals.js";
+import { Globals } from "../../src/services/globals.globals.js";
 import { Lucid } from "../../src/services/lucid.js";
-import {
-  makeMempoolLedgerCacheService,
-  MempoolLedgerCache,
-} from "../../src/services/mempool-ledger-cache.js";
+import { makeMempoolLedgerCacheService } from "../../src/services/mempool-ledger-cache.make-mempool-ledger-cache-service.js";
+import { MempoolLedgerCache } from "../../src/services/mempool-ledger-cache.mempool-ledger-cache-service.js";
 import {
   ValidationPool,
   type ValidationPoolService,
   ValidationWorkerError,
-} from "../../src/services/validation-pool.js";
-import { WriteBehind } from "../../src/services/write-behind.js";
+} from "../../src/services/validation-pool.bundled-worker-exec-argv.js";
+import { WriteBehind } from "../../src/services/write-behind.summarize-write-behind-telemetry.js";
 import { breakDownTx, ProcessedTx } from "../../src/utils.js";
-import { selectCommitTxCandidates } from "../../src/workers/utils/commit-block-planner.js";
+import { selectCommitTxCandidates } from "../../src/workers/utils/commit-block-planner.select-commit-tx-candidates.js";
 import {
   makeMidgardTxOutput,
   makeOutRefCbor,
@@ -87,18 +83,24 @@ import { attachTestL1Access } from "../helpers/l1-tip.js";
 import { testingInlineCekVerdicts } from "../helpers/validation-pool-cek.js";
 import { databaseTestDirectory } from "./admissions.database-test-directory.js";
 import {
-  address1,
-  address2,
-  bundleChildProcessHelper,
-  databaseChildProcessEnv,
   databaseFixtureBytes,
   databaseOutputReferenceId,
   databaseTxHash,
-  expectSubmitBody,
+} from "./fixtures.bytes.js";
+import {
+  bundleChildProcessHelper,
+  databaseChildProcessEnv,
   isolatedDb,
+} from "./fixtures.environment.js";
+import { makeDepositEntry } from "./fixtures.events.js";
+import {
+  address1,
+  address2,
   ledgerEntry1,
   ledgerEntry2,
-  makeDepositEntry,
+} from "./fixtures.ledger.js";
+import {
+  expectSubmitBody,
   makeNativeSubmitTx,
   makeProofSubmitTx,
   makeReferenceScriptProofSubmitTx,
@@ -108,7 +110,7 @@ import {
   type TxQueueWakeRequirements,
   withoutScriptWitnesses,
   wrapNativeSubmitTx,
-} from "./fixtures.js";
+} from "./fixtures.submission.js";
 
 export const registerAdmissionsTests = () => {
   describe("TxAdmissionsDB", () => {

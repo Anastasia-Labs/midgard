@@ -24,13 +24,13 @@ import {
   makeDirectWalkHarness,
   publishDirectWalkRoles,
 } from "./support/direct-walk-emulator.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
 import { driveMissingRedeemerThread } from "./support/missing-redeemer-emulator.js";
 import {
   type MissingRedeemerSubjectShape,
   plutusScript,
   setupMissingRedeemerScenario,
 } from "./support/missing-redeemer-emulator.subject.js";
-import { expectSingleUtxoWithUnit } from "./support/submit-init-emulator-shared.js";
 
 /** The observer's Plutus script, sourced only from the first reference
  * input. */

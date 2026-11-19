@@ -17,7 +17,7 @@ import {
 import * as phasesModule from "../../src/transition-trace/phases.js";
 import { type TransitionProofInput } from "../../src/transition-trace/proof-material.js";
 import { type LocallyEvaluatedTransaction } from "../../src/workflow/transaction-boundary.js";
-import { expectSingleUtxoWithUnit } from "./submit-init-emulator-shared.js";
+import { expectSingleUtxoWithUnit } from "./emulator/emulator-context.js";
 import {
   nextOutputKey,
   type PhaseInput,

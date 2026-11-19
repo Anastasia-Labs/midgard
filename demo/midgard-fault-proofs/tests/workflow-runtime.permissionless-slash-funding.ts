@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { assertWorkflowFundingReservationReadyToSubmit } from "../src/workflow/funding-reservation-permit.js";
+import { assertWorkflowFundingReservationReadyToSubmit } from "../src/workflow/funding-reservation-permit.read-workflow-funding-recovery.js";
 import { slashFundingFixture } from "./workflow-runtime.slash-funding-fixture.js";
 
 describe("permissionless slash funding", () => {

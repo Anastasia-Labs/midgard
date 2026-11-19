@@ -1,4 +1,9 @@
 import { MIDGARD_TRANSITION_STEP_SCHEMA_VERSION } from "@al-ft/midgard-core/consensus-profile";
+import {
+  encodeEventToStepValueCbor,
+  encodeTransitionIntegerCbor,
+  encodeTransitionStepCbor,
+} from "@al-ft/midgard-fault-proofs/block-replay";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
@@ -13,11 +18,6 @@ import {
   type RetainedTransitionTraceMember,
   type TransitionTraceSourceEvent,
 } from "./trace-events.js";
-import {
-  encodeEventToStepValueCbor,
-  encodeTransitionIntegerCbor,
-  encodeTransitionStepCbor,
-} from "./transition-cbor.js";
 import {
   applyTraceLedgerOpsToMpf,
   countedRootFromEncodedEntries,

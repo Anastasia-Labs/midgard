@@ -2,13 +2,13 @@ import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
-import { prepareInputNoIdxFromCanonicalEvidence } from "../src/prepare-input-no-idx.js";
-import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
-import { INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
+import { prepareInputNoIdxFromCanonicalEvidence } from "../src/prepare-input-no-idx.prepare-input-no-idx-from-canonical-evidence.js";
+import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
+import { INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import {
   admitInputNoIdxArtifact,
   prepareInputNoIdxArtifact,
-} from "../src/workflow/input-no-idx.js";
+} from "../src/workflow/input-no-idx.admit-input-no-idx-artifact.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,

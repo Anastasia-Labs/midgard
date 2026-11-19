@@ -16,7 +16,7 @@ import {
   buildEventToStepMembershipProof,
   buildForcedTransactionLeafMembershipProof,
   buildIndexedTraceProof,
-} from "../transition-trace/witnesses.js";
+} from "../transition-trace/witnesses.build-source-membership-proof.js";
 import { forcedTransactionSubject } from "../workflow/detection-subject.js";
 import type { InputExistenceCategory, InputExistenceKind } from "./kind.js";
 

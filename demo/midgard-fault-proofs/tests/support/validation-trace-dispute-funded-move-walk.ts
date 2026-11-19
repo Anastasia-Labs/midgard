@@ -9,7 +9,7 @@ import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deploym
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { CML, type TxSigned, type UTxO } from "@lucid-evolution/lucid";
 
-import { createWorkflowActuationPermitController } from "../../src/workflow/actuation-permit.js";
+import { createWorkflowActuationPermitController } from "../../src/workflow/actuation-permit.create-workflow-reconciliation-permit-controller.js";
 import { validationDisputeFunding } from "../../src/workflow/funding-reservation-permit.assert-validation-dispute-funding.js";
 import { grantValidationDisputeMoveAuthority } from "../../src/workflow/funding-reservation-permit.assert-validation-dispute-move.js";
 import { exactResolvedOutputCbor } from "../../src/workflow/funding-reservation-permit.create-workflow-funding-reservation-permit.js";

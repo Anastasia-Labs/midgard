@@ -26,12 +26,12 @@ import {
   createOperatorSetMirror,
   type OperatorSet,
   type OperatorSetMirror,
-} from "../l1-operator-set/index.js";
+} from "../l1-operator-set/set.js";
 import {
   type LandedStateQueue,
   landedStateQueueIn,
   landedTail,
-} from "../l1-state-queue/index.js";
+} from "../l1-state-queue/landed.js";
 import type { NodeIntentFamily } from "./intent-journal.js";
 import { listInsert } from "./l1-follower.intent-predicates.list-insert.js";
 import {

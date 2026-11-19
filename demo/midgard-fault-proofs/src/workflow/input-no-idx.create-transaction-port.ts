@@ -5,19 +5,19 @@ import {
   InputNoIdxStep04Datum,
 } from "@al-ft/midgard-sdk";
 
-import { requireFaultProofFieldGrammarDeployment } from "../field-grammar-certificate.js";
-import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
-import { buildInit } from "../submit-init.js";
+import { requireFaultProofFieldGrammarDeployment } from "../field-grammar-certificate.resolve-fault-proof-field-grammar-deployment.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.build-remove-fraudulent-block.js";
+import { buildInit } from "../submit-init.submit-init.js";
 import { buildInputNoIdxStep01 } from "../submit-input-no-idx-step-01.js";
-import { buildInputNoIdxStep02 } from "../submit-input-no-idx-step-02.js";
+import { buildInputNoIdxStep02 } from "../submit-input-no-idx-step-02.submit-input-no-idx-step02.js";
 import { buildInputNoIdxStep03 } from "../submit-input-no-idx-step-03.js";
-import { buildInputNoIdxStep04 } from "../submit-input-no-idx-step-04.js";
-import { INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
+import { buildInputNoIdxStep04 } from "../submit-input-no-idx-step-04.submit-input-no-idx-step04.js";
+import { INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
+import type { ManifestBoundLinearFamilyWorkflowConfig } from "./family-definition.family-adapter-arm.js";
 import {
   defineLinearFamily,
   type ManifestBoundLinearFamilyWorkflow,
-  type ManifestBoundLinearFamilyWorkflowConfig,
-} from "./family-definition.js";
+} from "./family-definition.family-definition.js";
 import { type FieldCarriageRequirement } from "./field-carriage-prerequisite.js";
 import { workflowFieldCarriageOwnOutputs } from "./field-carriage-prerequisite.own-carriage-claims.js";
 import {
@@ -35,11 +35,9 @@ import {
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyTransactionPort,
 } from "./linear-family-adapter.js";
-import {
-  assembleManifestBoundFamilyWorkflow,
-  runOrResumeManifestBoundFamilyWorkflow,
-} from "./manifest-bound-family-assembly.js";
-import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.js";
+import { assembleManifestBoundFamilyWorkflow } from "./manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
+import { runOrResumeManifestBoundFamilyWorkflow } from "./manifest-bound-family-assembly.run-or-resume-manifest-bound-family-workflow.js";
+import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.route-action-identity.js";
 import { admitRemovalTransaction } from "./removal-admission.js";
 import { journaledStepTransaction } from "./step-transaction.js";
 import {

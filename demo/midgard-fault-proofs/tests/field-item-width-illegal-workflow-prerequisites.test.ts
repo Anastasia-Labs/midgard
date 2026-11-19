@@ -14,18 +14,16 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
+import { detectFieldItemWidthIllegalCompleteReplay } from "../src/field-item-width-illegal/replay.js";
 import {
   deriveFieldItemWidthIllegalAuthenticatedSource,
   deriveFieldItemWidthIllegalEvidenceFromCanonicalBlock,
-  detectFieldItemWidthIllegalCompleteReplay,
   prepareFieldItemWidthIllegalRecoveryMaterial,
-} from "../src/field-item-width-illegal/workflow.js";
+} from "../src/field-item-width-illegal/workflow.derive-field-item-width-illegal-authenticated-source.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
-import {
-  COMMITTED_FIELD_SHAPE_COMPLETE_CANONICAL_REPLAY,
-  createCompleteCanonicalReplayUnion,
-  FIELD_ITEM_WIDTH_ILLEGAL_COMPLETE_CANONICAL_REPLAY,
-} from "../src/workflow/complete-replay.js";
+import { createCompleteCanonicalReplayUnion } from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
+import { COMMITTED_FIELD_SHAPE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.detect-double-withdraws.js";
+import { FIELD_ITEM_WIDTH_ILLEGAL_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import { CanonicalReplayPrerequisiteError } from "../src/workflow/replay-prerequisite.js";
 import {
   authenticatedHeaderObservation,

@@ -7,11 +7,11 @@ import { it } from "@effect/vitest";
 import { Effect } from "effect";
 import { describe, expect } from "vitest";
 
-import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
+import { AlwaysSucceedsContract } from "../src/services/always-succeeds.always-succeeds-contract.js";
 import {
   buildFraudProofCatalogueDeploymentInfo,
   fraudProofsToIndexedValidators,
-} from "../src/transactions/initialization.js";
+} from "../src/transactions/initialization.atomic-protocol-init-reference-scripts-from-publications.js";
 
 /**
  * The oracle for the catalogue root and its membership proofs is the

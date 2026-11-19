@@ -16,8 +16,8 @@ import * as SDK from "@al-ft/midgard-sdk";
 import {
   authenticateTransactionsInclusionRoots,
   canonicalBlockEvidenceFromVerifiedPayload,
-} from "../src/evidence/index.js";
-import { encodeData } from "../src/transition-trace/reconstruct.js";
+} from "../src/evidence/canonical-block-evidence.js";
+import { encodeData } from "../src/transition-trace/reconstruct.transition-trace-reconstruction.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,

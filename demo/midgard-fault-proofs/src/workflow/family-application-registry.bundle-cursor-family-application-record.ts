@@ -1,55 +1,63 @@
 import {
   createManifestBoundMinAdaWorkflow,
-  type ManifestBoundMinAdaWorkflow,
-  type ManifestBoundMinAdaWorkflowConfig,
   MIN_ADA_FAMILY_DEFINITION,
   runOrResumeManifestBoundMinAdaWorkflow,
-} from "../min-ada/workflow.js";
+} from "../min-ada/workflow.min-ada-family-definition.js";
+import type {
+  ManifestBoundMinAdaWorkflow,
+  ManifestBoundMinAdaWorkflowConfig,
+} from "../min-ada/workflow.transaction-port.js";
+import type {
+  ManifestBoundMintAuthorizationWorkflow,
+  ManifestBoundMintAuthorizationWorkflowConfig,
+} from "../mint-authorization/workflow.create-mint-authorization-transaction-port.js";
 import {
   createManifestBoundMintAuthorizationWorkflow,
-  type ManifestBoundMintAuthorizationWorkflow,
-  type ManifestBoundMintAuthorizationWorkflowConfig,
   MINT_AUTHORIZATION_FAMILY_DEFINITION,
   runOrResumeManifestBoundMintAuthorizationWorkflow,
-} from "../mint-authorization/workflow.js";
+} from "../mint-authorization/workflow.mint-authorization-family-definition.js";
+import type { ManifestBoundNativeScriptDecodingWorkflowConfig } from "../native-script-decoding/workflow.create-native-script-decoding-transaction-port.js";
 import {
   createManifestBoundNativeScriptDecodingWorkflow,
   type ManifestBoundNativeScriptDecodingWorkflow,
-  type ManifestBoundNativeScriptDecodingWorkflowConfig,
   NATIVE_SCRIPT_DECODING_FAMILY_DEFINITION,
   runOrResumeManifestBoundNativeScriptDecodingWorkflow,
-} from "../native-script-decoding/workflow.js";
+} from "../native-script-decoding/workflow.native-script-decoding-family-definition.js";
 import {
   createManifestBoundNativeScriptInvalidWorkflow,
-  type ManifestBoundNativeScriptInvalidWorkflow,
-  type ManifestBoundNativeScriptInvalidWorkflowConfig,
   NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION,
   runOrResumeManifestBoundNativeScriptInvalidWorkflow,
-} from "../native-script-invalid/workflow.js";
+} from "../native-script-invalid/workflow.native-script-invalid-family-definition.js";
+import type {
+  ManifestBoundNativeScriptInvalidWorkflow,
+  ManifestBoundNativeScriptInvalidWorkflowConfig,
+} from "../native-script-invalid/workflow.transaction-port.js";
+import type { ManifestBoundResolvedOutputNonCanonicalWorkflowConfig } from "../resolved-output-non-canonical/authenticated-workflow.create-resolved-output-non-canonical-recovery-ports.js";
+import { RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS } from "../resolved-output-non-canonical/authenticated-workflow.resolved-output-non-canonical-config-from-binding.js";
 import {
   createManifestBoundResolvedOutputNonCanonicalWorkflow,
   executeManifestBoundResolvedOutputNonCanonicalWorkflow,
   type ManifestBoundResolvedOutputNonCanonicalWorkflow,
-  type ManifestBoundResolvedOutputNonCanonicalWorkflowConfig,
   RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION,
-  RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS,
-} from "../resolved-output-non-canonical/authenticated-workflow.js";
+} from "../resolved-output-non-canonical/authenticated-workflow.run-or-resume-manifest-bound-resolved-output-non-canonical-workflow.js";
+import { SPEND_INPUT_SIGNER_MISSING_MANIFEST_CONTRACTS } from "../spend-input-signer-missing/authenticated-workflow.create-spend-input-signer-missing-bound-config.js";
 import {
   createManifestBoundSpendInputSignerMissingWorkflow,
   executeManifestBoundSpendInputSignerMissingWorkflow,
   type ManifestBoundSpendInputSignerMissingWorkflow,
+} from "../spend-input-signer-missing/authenticated-workflow.run-or-resume-manifest-bound-spend-input-signer-missing-workflow.js";
+import {
   type ManifestBoundSpendInputSignerMissingWorkflowConfig,
   SPEND_INPUT_SIGNER_MISSING_FAMILY_DEFINITION,
-  SPEND_INPUT_SIGNER_MISSING_MANIFEST_CONTRACTS,
-} from "../spend-input-signer-missing/authenticated-workflow.js";
+} from "../spend-input-signer-missing/authenticated-workflow.spend-input-signer-missing-family-definition.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
+import type { ManifestBoundTransitionTraceWorkflowConfig } from "../transition-trace/workflow.manifest-bound-transition-trace-workflow-config.js";
 import {
   createManifestBoundTransitionTraceWorkflow,
   type ManifestBoundTransitionTraceWorkflow,
-  type ManifestBoundTransitionTraceWorkflowConfig,
   runOrResumeManifestBoundTransitionTraceWorkflow,
   TRANSITION_TRACE_FAMILY_DEFINITION,
-} from "../transition-trace/workflow.js";
+} from "../transition-trace/workflow.run-or-resume-manifest-bound-transition-trace-workflow.js";
 import {
   createManifestBoundWithdrawalMistagWorkflow,
   type ManifestBoundWithdrawalMistagWorkflow,
@@ -67,10 +75,12 @@ import {
 import {
   COMMITTED_FIELD_SHAPE_FAMILY_DEFINITION,
   createManifestBoundCommittedFieldShapeWorkflow,
-  type ManifestBoundCommittedFieldShapeWorkflow,
-  type ManifestBoundCommittedFieldShapeWorkflowConfig,
   runOrResumeManifestBoundCommittedFieldShapeWorkflow,
-} from "./committed-field-shape.js";
+} from "./committed-field-shape.contracts.js";
+import type {
+  ManifestBoundCommittedFieldShapeWorkflow,
+  ManifestBoundCommittedFieldShapeWorkflowConfig,
+} from "./committed-field-shape.create-bound-transaction-port.js";
 import {
   type FamilyApplicationRecord,
   type FamilyApplicationWorkflowIdentity,

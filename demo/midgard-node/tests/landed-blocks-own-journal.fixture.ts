@@ -15,8 +15,9 @@ import {
   type MidgardNativeTxWitnessSetCanonical,
 } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import { encodeTransactionRootValue } from "@al-ft/midgard-fault-proofs/block-replay";
 import * as SDK from "@al-ft/midgard-sdk";
-import { computeMidgardTxIdFromCanonicalCbor } from "@al-ft/midgard-validation";
+import { computeMidgardTxIdFromCanonicalCbor } from "@al-ft/midgard-validation/ledger-tx/codec";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -27,8 +28,7 @@ import {
   WithdrawalsDB,
 } from "../src/database/index.js";
 import { Columns as TxColumns } from "../src/database/utils/tx.js";
-import { encodeTransactionRootValue } from "../src/mpf/index.js";
-import { buildAuthenticatedRootFromEncodedEntries } from "../src/workers/commit-block-header/transition-roots.js";
+import { buildAuthenticatedRootFromEncodedEntries } from "../src/workers/commit-block-header/transition-roots.validate-count-proof.js";
 import { journalFixture } from "./helpers/own-journal-fixture.js";
 
 const emptyList = Buffer.from([0x80]);

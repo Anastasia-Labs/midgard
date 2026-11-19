@@ -8,18 +8,16 @@ import { LedgerSignatureVerifierUnavailableError } from "@al-ft/midgard-core";
 import { computeMidgardNativeTxFullHashFromCanonicalCbor } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import { validateMidgardConsensusTx } from "@al-ft/midgard-core/consensus-validation";
-import {
-  midgardOutRefToCborHex,
-  type RejectCode,
-  RejectCodes,
-  validatePhaseASingleDecoded,
-} from "@al-ft/midgard-validation";
+import { midgardOutRefToCborHex } from "@al-ft/midgard-validation";
+import { validatePhaseASingleDecoded } from "@al-ft/midgard-validation/phase-a";
+import { type RejectCode, RejectCodes } from "@al-ft/midgard-validation/types";
 import type { SlotConfig } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { canonicalSlotConfigForLucid } from "../../lucid-time.js";
-import { Lucid, NodeConfig } from "../../services/index.js";
+import { NodeConfig } from "../../services/index.js";
 import { wallSlotAt } from "../../services/l1-ledger-tip.js";
+import { Lucid } from "../../services/lucid.js";
 import { publicSubmissionDiagnostic } from "../listen-public-error-presentation.js";
 import {
   decodeSubmitTxCanonicalCbor,

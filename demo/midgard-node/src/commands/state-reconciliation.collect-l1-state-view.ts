@@ -8,13 +8,11 @@ import {
   withdrawalDataToEntry,
 } from "../database/user-event-entries.js";
 import * as Ledger from "../database/utils/ledger.js";
-import {
-  Database,
-  Lucid,
-  MidgardContracts,
-  NodeConfig,
-} from "../services/index.js";
+import { NodeConfig } from "../services/config.make-config.js";
+import { Database } from "../services/database.js";
 import { landedStateQueueUTxOs } from "../services/landed-state-queue.js";
+import { Lucid } from "../services/lucid.js";
+import { MidgardContracts } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   depositPayloadOf,
   outRefOf,

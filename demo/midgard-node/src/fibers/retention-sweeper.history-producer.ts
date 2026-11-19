@@ -6,7 +6,8 @@ import {
   isFollowerWriteHeld,
   runAtFollowerView,
 } from "../services/follower-write-gate.js";
-import { Database, Globals } from "../services/index.js";
+import { Globals } from "../services/globals.globals.js";
+import { Database } from "../services/index.js";
 
 /**
  * How long one sweep's history prunes may keep starting batches under the

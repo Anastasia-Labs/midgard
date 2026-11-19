@@ -9,12 +9,10 @@ import {
 } from "../../database/index.js";
 import { DatabaseError } from "../../database/utils/common.js";
 import * as Ledger from "../../database/utils/ledger.js";
-import {
-  computeLedgerMpfRootFromLedgerEntries,
-  computeUtxoPayloadRoot,
-  type LedgerDelta,
-  type UtxoPayloadEntry,
-} from "../../mpf/index.js";
+import { computeLedgerMpfRootFromLedgerEntries } from "../../mpf/index.js";
+import type { LedgerDelta } from "../../mpf/ledger-delta.js";
+import { computeUtxoPayloadRoot } from "../../mpf/payload-size.js";
+import type { UtxoPayloadEntry } from "../../mpf/types.js";
 import {
   type ContractDeploymentIdentityValue,
   type Database,

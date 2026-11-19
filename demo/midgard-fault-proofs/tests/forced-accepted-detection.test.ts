@@ -40,16 +40,14 @@ import {
   prepareNetworkIdAcceptedForced,
 } from "../src/network-id/accepted-forced.js";
 import { networkIdAcceptedForcedArtifactFromPrepared } from "../src/network-id/workflow-adapter.accepted-forced-artifact.js";
+import { admitNetworkIdWorkflowArtifact } from "../src/network-id/workflow-adapter.admit-network-id-forced-artifact.js";
+import { createNetworkIdWorkflowAdapter } from "../src/network-id/workflow-adapter.create-network-id-workflow-adapter.js";
 import type { NetworkIdWorkflowAdapterConfig } from "../src/network-id/workflow-adapter.js";
-import {
-  admitNetworkIdWorkflowArtifact,
-  createNetworkIdWorkflowAdapter,
-} from "../src/network-id/workflow-adapter.js";
 import { detectNetworkIdWrongfulRejections } from "../src/network-id/wrongful-rejection.js";
 import { deriveTransactionOutputScan } from "../src/transaction-output-non-canonical/transaction-output-non-canonical.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
-import { eventKeyFingerprint } from "../src/transition-trace/reconstruct.js";
-import { FRAUD_PROOF_CLASSIFICATION_RULES } from "../src/workflow/classification.js";
+import { eventKeyFingerprint } from "../src/transition-trace/reconstruct.transition-trace-reconstruction.js";
+import { FRAUD_PROOF_CLASSIFICATION_RULES } from "../src/workflow/classification.fraud-proof-classification-rules.js";
 import { detectNetworkIds } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import { h28, h32 } from "./helpers/canonical-block-evidence-fixture.js";
 import { makeHeader } from "./support/emulator/header-fixtures.js";

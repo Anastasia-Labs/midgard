@@ -9,8 +9,10 @@ import {
   encodeMidgardVersionedScript,
   materializeMidgardNativeTxFromCanonical,
 } from "@al-ft/midgard-core";
-import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
-import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
+import {
+  deriveMidgardForcedTxProofSource,
+  materializeMidgardForcedTxFromCanonical,
+} from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data, getAddressDetails } from "@lucid-evolution/lucid";
 
@@ -23,20 +25,18 @@ import {
   buildCountedRoot,
   commitCountedRoot,
 } from "../src/transition-trace/phas.js";
-import { eventKeyFingerprint } from "../src/transition-trace/reconstruct.js";
-import { NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
+import { eventKeyFingerprint } from "../src/transition-trace/reconstruct.transition-trace-reconstruction.js";
+import { NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
+import { network } from "./support/emulator/blueprints.js";
+import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
+import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
 import {
   makeNativeScriptInvalidEmulatorHarness,
   publishFinalFamilyReferenceScripts,
-} from "./support/final-catalogue-emulator.js";
-import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
-import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  buildRemovalDeploymentInfo,
-  network,
-  submitSetupTx,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/final-catalogue-emulator.build-min-ada-tx-emulator-fixture.js";
+import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init/forced-transitions.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 import { syntheticDeepMembershipProof } from "./support/synthetic-deep-proof.js";
 

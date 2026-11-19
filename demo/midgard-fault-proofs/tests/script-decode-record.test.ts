@@ -18,20 +18,24 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { proofMaterialsAddress } from "../src/funding/proof-materials-address.js";
 import {
+  SCRIPT_DECODE_CLOSE_REDEEMER,
+  scriptDecodeRecordDatum,
+  scriptDecodeRunDatum,
+} from "../src/script-decode/data.js";
+import {
+  findScriptDecodeRecord,
+  recordScriptDecode,
+} from "../src/script-decode/record.js";
+import { stageScriptDecodeBytes } from "../src/script-decode/stage.js";
+import {
   bindScriptDecodeRun,
   buildScriptDecodeWalk,
   buildScriptDecodeWalkTx,
-  findScriptDecodeRecord,
   finishScriptDecodeRun,
-  recordScriptDecode,
-  SCRIPT_DECODE_CLOSE_REDEEMER,
   type ScriptDecodeDeployment,
-  scriptDecodeRecordDatum,
-  scriptDecodeRunDatum,
   scriptDecodeStagingDatums,
   scriptDecodeWalkStakes,
-  stageScriptDecodeBytes,
-} from "../src/script-decode/index.js";
+} from "../src/script-decode/submit.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
 import { injectScriptDecodeDeployment } from "./support/script-decode-emulator.js";

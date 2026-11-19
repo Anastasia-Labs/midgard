@@ -24,11 +24,9 @@ import {
   validatorToRewardAddress,
 } from "@lucid-evolution/lucid";
 
-import {
-  plutusItemScriptDecode,
-  recordScriptDecode,
-  type ScriptDecodeDeployment,
-} from "../../src/script-decode/index.js";
+import { plutusItemScriptDecode } from "../../src/script-decode/item-record.js";
+import { recordScriptDecode } from "../../src/script-decode/record.js";
+import type { ScriptDecodeDeployment } from "../../src/script-decode/submit.js";
 import {
   network,
   readBlueprint,

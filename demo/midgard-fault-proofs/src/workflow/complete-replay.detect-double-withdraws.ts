@@ -11,8 +11,8 @@ import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidenc
 import { detectMissingSignatureWrongfulRejections } from "../missing-signature/wrongful-rejection.js";
 import { detectNoReferenceInputWrongfulRejections } from "../no-reference-input/wrongful-rejection.js";
 import { detectNonExistentInputWrongfulRejections } from "../non-existent-input/wrongful-rejection.js";
-import { decodeTransactionMaterial } from "../prepare-double-spend.js";
-import { detectReferenceInputNoIdxViolationsFromTransactions } from "../prepare-reference-input-no-idx.js";
+import { decodeTransactionMaterial } from "../prepare-double-spend.resolve-double-spend-pair.js";
+import { detectReferenceInputNoIdxViolationsFromTransactions } from "../prepare-reference-input-no-idx.decode-tx.js";
 import { type CanonicalViolationDetection } from "./classification.js";
 import {
   completeCanonicalReplayPredecessorLedger,

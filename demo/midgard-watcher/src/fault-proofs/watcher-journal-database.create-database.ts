@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 
-import { watcherCanonicalJson } from "../storage/durable-store.js";
+import { watcherCanonicalJson } from "../storage/durable-store.canonical-json.js";
 import {
   createWatcherJournalCodec,
   sameHex,

@@ -15,20 +15,20 @@ import {
 } from "@lucid-evolution/lucid";
 import { expect, it } from "vitest";
 
-import { planFaultProofFieldOpening } from "../src/field-opening.js";
+import { planFaultProofFieldOpening } from "../src/field-opening.plan-fault-proof-field-opening.js";
 import { buildLinearFaultCancel } from "../src/linear-fault-cancel.js";
 import { MINT_AUTHORIZATION_CATEGORY_LABEL } from "../src/mint-authorization/contracts.js";
 import { mintAuthorizationEvaluationPreimage } from "../src/mint-authorization/evaluate.js";
-import {
-  buildMintAuthorizationEvaluate,
-  buildMintAuthorizationStep01,
-  buildMintAuthorizationStep02,
-  buildMintAuthorizationStep03EvaluateUnsatisfied,
-  buildMintAuthorizationStep05,
-} from "../src/mint-authorization/index.js";
-import { buildResolvedInit } from "../src/submit-init.js";
+import { buildMintAuthorizationEvaluate } from "../src/mint-authorization/submit-mint-authorization-evaluate.js";
+import { buildMintAuthorizationStep01 } from "../src/mint-authorization/submit-mint-authorization-step-01.js";
+import { buildMintAuthorizationStep02 } from "../src/mint-authorization/submit-mint-authorization-step-02.submit-mint-authorization-step02.js";
+import { buildMintAuthorizationStep03EvaluateUnsatisfied } from "../src/mint-authorization/submit-mint-authorization-step-03.submit-mint-authorization-step03-evaluate-unsatisfied.js";
+import { buildMintAuthorizationStep05 } from "../src/mint-authorization/submit-mint-authorization-step-05.js";
+import { buildResolvedInit } from "../src/submit-init.submit-resolved-init.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { createRawDatumPreimageRequirement } from "../src/workflow/raw-datum-preimage-prerequisite.js";
+import { network } from "./support/emulator/blueprints.js";
+import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 import {
   addressWitnessItemCbors,
   buildMintAuthorizationSubject,
@@ -38,10 +38,6 @@ import {
   publishMintAuthorizationReferenceScripts,
   setupMintAuthorizationScenario,
 } from "./support/mint-authorization-emulator.js";
-import {
-  network,
-  publishPlainReferenceScriptUtxo,
-} from "./support/submit-init-emulator-shared.js";
 import {
   buildAndSubmitUnjournaled,
   certifyCarriageUnjournaled,

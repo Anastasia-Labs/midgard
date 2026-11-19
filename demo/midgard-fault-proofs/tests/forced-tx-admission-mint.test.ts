@@ -20,17 +20,17 @@ import {
 import { Effect } from "effect";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
-import { mintReferenceOnlyOrder } from "./support/emulator/reference-only-order.js";
-import { publishForcedOrderCarriage } from "./support/forced-order-settlement.js";
+import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  expectOnchainRefusal,
-  makeFaultProofEmulatorHarness,
   makeHeader,
-  publishPlainReferenceScriptUtxo,
-  submitSetupTx,
   withPlaceholderDeposit,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/emulator/header-fixtures.js";
+import { mintReferenceOnlyOrder } from "./support/emulator/reference-only-order.js";
+import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
+import { publishForcedOrderCarriage } from "./support/forced-order-settlement.js";
 
 // An adversary skips the SDK's admission screen. Refused rows switch it off so
 // the order reaches the tx-order mint, whose own rules must refuse it.

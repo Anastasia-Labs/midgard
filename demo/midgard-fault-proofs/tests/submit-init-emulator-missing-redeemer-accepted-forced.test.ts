@@ -15,13 +15,11 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
-import { submitRemoveFraudulentBlock } from "../src/index.js";
 import { singleLedgerAt } from "../src/ledger-at.js";
 import { MISSING_REDEEMER_DIRECT_WALK } from "../src/missing-redeemer/index.js";
-import {
-  admitCompleteCanonicalReplayPredecessor,
-  MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY,
-} from "../src/workflow/complete-replay.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import { admitCompleteCanonicalReplayPredecessor } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
 import {
   DIRECT_WALK_STEP_BOUNDS,
@@ -29,6 +27,10 @@ import {
   publishDirectWalkRoles,
   stepTable,
 } from "./support/direct-walk-emulator.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { driveMissingRedeemerThread } from "./support/missing-redeemer-emulator.js";
 import { scriptAddress } from "./support/missing-redeemer-emulator.purposes.js";
 import {
@@ -41,12 +43,6 @@ import {
   redeemerMissingVerdict,
   setupMissingRedeemerScenario,
 } from "./support/missing-redeemer-emulator.subject.js";
-import {
-  buildRemovalDeploymentInfo,
-  expectSingleUtxoWithUnit,
-  network,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
 
 /** A spend of an output locked by a Plutus script sourced only from a
  * reference input, with no script witness and no redeemer. */

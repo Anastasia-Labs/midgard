@@ -2,7 +2,7 @@ import { CML, credentialToAddress, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { awaitSubmittedTransactionConfirmation } from "../src/transactions/utils.js";
+import { awaitSubmittedTransactionConfirmation } from "../src/transactions/utils.await-submitted-transaction-confirmation.js";
 
 const fixture = (datumMode: "none" | "inline" | "hash" = "none") => {
   const address = credentialToAddress("Preprod", {

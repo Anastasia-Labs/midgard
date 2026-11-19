@@ -25,18 +25,17 @@ import {
   type FaultProofTurn,
   isPrerequisiteTurn,
 } from "../fault-proof-turn.js";
+import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
 import {
   faultProofFieldOpening,
-  planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
-} from "../field-opening.js";
+} from "../field-opening.publish-fault-proof-field-carriage.js";
 import {
   linearFaultStepLabel,
   requireLinearFaultReferenceScript,
 } from "../linear-fault-family.js";
 import { type ResolvedProverSigner } from "../runtime.js";
-import { completeStep, fundStep } from "../step-completion.js";
-import { finishStep } from "../step-completion.js";
+import { completeStep, finishStep, fundStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   createOwnOutputJournal,

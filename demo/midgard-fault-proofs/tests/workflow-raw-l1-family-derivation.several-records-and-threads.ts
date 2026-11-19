@@ -11,21 +11,25 @@ import { describe, expect, it } from "vitest";
 import {
   deriveFraudProofRawL1CompletedTerminal,
   deriveFraudProofRawL1FamilyStage,
-  FraudProofRawL1DerivationError,
-  type FraudProofRawL1FamilyDefinition,
-  type FraudProofRawL1Snapshot,
-  type FraudProofRawL1Utxo,
-} from "../src/workflow/index.js";
+} from "../src/workflow/raw-l1-family-derivation.derive-fraud-proof-raw-l1-family-stage.js";
 import { deriveFraudProofRawL1OwnThreads } from "../src/workflow/raw-l1-family-derivation.own-thread.js";
 import {
-  fixture,
+  FraudProofRawL1DerivationError,
+  type FraudProofRawL1FamilyDefinition,
+} from "../src/workflow/raw-l1-family-derivation.state-queue-topology.js";
+import type {
+  FraudProofRawL1Snapshot,
+  FraudProofRawL1Utxo,
+} from "../src/workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
+import { fixture } from "./support/raw-l1-terminal-fixture.fixture.js";
+import {
   hash32,
   output,
   policy,
   PROVER,
   raw,
   releaseEconomics,
-} from "./support/raw-l1-terminal-fixture.js";
+} from "./support/raw-l1-terminal-fixture.output.js";
 
 const OTHER_PROVER = policy("ee");
 

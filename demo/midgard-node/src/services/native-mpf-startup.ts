@@ -8,18 +8,18 @@ import {
 } from "../database/index.js";
 import {
   computeLedgerMpfRootFromLedgerEntries,
-  MidgardMpf,
   utxoToLedgerInsertMaterial,
-} from "../mpf/index.js";
+} from "../mpf/ledger-hydration.js";
+import { MidgardMpf } from "../mpf/store.midgard-mpf.js";
 import type { NodeConfigDep } from "./config.js";
 import type { Database } from "./database.js";
 import { withFollowerWrite } from "./follower-write-gate.js";
 import type { Globals } from "./globals.js";
 import { landedStateQueueSnapshot } from "./landed-state-queue.js";
 import { Lucid } from "./lucid.js";
-import { MidgardContracts } from "./midgard-contracts.js";
+import { MidgardContracts } from "./midgard-contracts.make-midgard-contract-runtime.js";
 import { NativeMpfPromotionIndexCapExceeded } from "./mpf-native-owner/protocol.js";
-import { ProductionNativeMpfOwnerService } from "./mpf-native-owner/service.js";
+import { ProductionNativeMpfOwnerService } from "./mpf-native-owner/service.production-native-mpf-owner-service.js";
 
 /**
  * The node refuses to start the native owner from an unpinned binary: the

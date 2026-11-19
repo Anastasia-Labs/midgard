@@ -20,7 +20,7 @@ import { fixtureValidationTrace } from "../../../da-committee-node/tests/helpers
 import {
   buildCountedRoot,
   keyValuePhasRootWithCount,
-} from "../../src/transition-trace/index.js";
+} from "../../src/transition-trace/phas.js";
 
 const hash28 = (byte: number): string =>
   byte.toString(16).padStart(2, "0").repeat(28);

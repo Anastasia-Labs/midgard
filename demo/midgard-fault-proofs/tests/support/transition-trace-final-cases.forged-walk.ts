@@ -7,7 +7,7 @@ import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
 import { expect, vi } from "vitest";
 
 import * as walkModule from "../../src/transition-trace/data-summary-walk.js";
-import { expectSingleUtxoWithUnit } from "./submit-init-emulator-shared.js";
+import { expectSingleUtxoWithUnit } from "./emulator/emulator-context.js";
 
 /** An item's memory off by one, or a parent frame swapped list/constr. */
 const forged = (

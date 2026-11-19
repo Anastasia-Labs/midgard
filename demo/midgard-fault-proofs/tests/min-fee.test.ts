@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
-import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
-import { MIN_FEE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
+import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
+import { MIN_FEE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import {
   admitMinFeeArtifact,
   prepareMinFeeArtifact,
-} from "../src/workflow/min-fee.js";
+} from "../src/workflow/min-fee.capture-removal.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,

@@ -1,6 +1,6 @@
 import { type Script, type UTxO } from "@lucid-evolution/lucid";
 
-import { buildResolvedInit } from "../../src/submit-init.js";
+import { buildResolvedInit } from "../../src/submit-init.submit-resolved-init.js";
 import {
   VALUE_NOT_PRESERVED_CATEGORY_LABEL,
   type ValueNotPreservedContracts,
@@ -21,23 +21,27 @@ import {
 import { buildValueNotPreservedStep03 } from "../../src/value-not-preserved/submit-value-not-preserved-step-03.js";
 import { buildValueNotPreservedStep04 } from "../../src/value-not-preserved/submit-value-not-preserved-step-04.js";
 import { type FaultProofWitnessReferenceScripts } from "../../src/witness-reference-scripts.js";
-import { publishFaultProofWitnessReferenceScripts } from "./emulator/reference-scripts.js";
-import {
-  countedTransactionsRoot,
-  EMULATOR_HEADER_CLOCK_HEADROOM_MS,
-  emulatorSuccessorHeaderStart,
-} from "./submit-init-emulator-fixtures.js";
+import { network as emulatorNetwork } from "./emulator/blueprints.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
+  funderPaymentKeyHash,
+} from "./emulator/emulator-context.js";
+import {
+  makeHeader,
+  withPlaceholderDeposit,
+} from "./emulator/header-fixtures.js";
+import {
   captureEmulatorSubmission,
   type CompleteSignedTransactionMeasurement,
-  funderPaymentKeyHash,
-  makeHeader,
-  network as emulatorNetwork,
-  publishPlainReferenceScriptUtxo,
-  submitSetupTx,
-  withPlaceholderDeposit,
-} from "./submit-init-emulator-shared.js";
+} from "./emulator/measurement.js";
+import { publishFaultProofWitnessReferenceScripts } from "./emulator/reference-scripts.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { submitSetupTx } from "./emulator/setup-tx.submit-setup-tx.js";
+import {
+  EMULATOR_HEADER_CLOCK_HEADROOM_MS,
+  emulatorSuccessorHeaderStart,
+} from "./submit-init/successor.js";
+import { countedTransactionsRoot } from "./submit-init/transaction-material.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,

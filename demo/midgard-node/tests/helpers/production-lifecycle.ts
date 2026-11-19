@@ -41,29 +41,27 @@ import {
   PendingBlockFinalizationsDB,
 } from "../../src/database/index.js";
 import type { DriverHold } from "../../src/l1-events/driver.js";
-import { NodeConfig } from "../../src/services/config.js";
+import { NodeConfig } from "../../src/services/config.make-config.js";
 import { Database } from "../../src/services/database.js";
 import {
   type FollowerWritePermit,
   readFollowerWriteGate,
   runAtFollowerView,
 } from "../../src/services/follower-write-gate.js";
-import { Globals } from "../../src/services/globals.js";
+import { Globals } from "../../src/services/globals.globals.js";
 import {
   IntentJournal,
   IntentJournalLive,
 } from "../../src/services/intent-journal.js";
 import type { DriverRecompute } from "../../src/services/l1-follower.recompute.js";
 import { Lucid } from "../../src/services/lucid.js";
-import {
-  MempoolLedgerCache,
-  mempoolLedgerCacheLayer,
-} from "../../src/services/mempool-ledger-cache.js";
+import { mempoolLedgerCacheLayer } from "../../src/services/mempool-ledger-cache.make-mempool-ledger-cache.js";
+import { MempoolLedgerCache } from "../../src/services/mempool-ledger-cache.mempool-ledger-cache-service.js";
 import {
   ContractDeploymentIdentity,
   MidgardContracts,
-} from "../../src/services/midgard-contracts.js";
-import { WriteBehindLive } from "../../src/services/write-behind.js";
+} from "../../src/services/midgard-contracts.make-midgard-contract-runtime.js";
+import { WriteBehindLive } from "../../src/services/write-behind.make-write-behind.js";
 import { selectNodeWallet } from "../../src/transactions/utils.wallet-view.js";
 import {
   makeGlobalsService,

@@ -11,8 +11,8 @@ import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-confi
 import {
   evaluateMidgardCekVerdict,
   type MidgardCekVerdictRequest,
-  RejectCodes,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/phase-b";
+import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { Effect } from "effect";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -26,12 +26,10 @@ import {
   walkingProgram,
 } from "../../midgard-validation/tests/phase-b.deep-data.fixture.js";
 import { type ProgramSpend } from "../../midgard-validation/tests/phase-b.indeterminate.fixture.js";
-import { decideAdmissionBatch } from "../src/fibers/tx-queue-processor.js";
+import { decideAdmissionBatch } from "../src/fibers/tx-queue-processor.classify-plutus-evaluation-failure.js";
 import { pooledCekVerdictEvaluator } from "../src/fibers/tx-queue-processor.pooled-cek-verdict.js";
-import {
-  FixedValidationWorkerPool,
-  type ValidationPoolService,
-} from "../src/services/validation-pool.js";
+import type { ValidationPoolService } from "../src/services/validation-pool.bundled-worker-exec-argv.js";
+import { FixedValidationWorkerPool } from "../src/services/validation-pool.fixed-validation-worker-pool.js";
 import {
   init,
   workerEntry,

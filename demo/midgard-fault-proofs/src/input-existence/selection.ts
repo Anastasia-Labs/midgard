@@ -8,7 +8,7 @@ import {
 import { decodeMidgardForcedTxCompact } from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
 
-import { planFaultProofFieldOpening } from "../field-opening.js";
+import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
 import {
   forcedTxFromCoreCompact,
   nativeTxFromCoreCompact,

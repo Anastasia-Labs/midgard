@@ -20,15 +20,16 @@ import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { submitRemoveFraudulentBlock } from "../src/index.js";
 import { MINT_AUTHORIZATION_CATEGORY_LABEL } from "../src/mint-authorization/contracts.js";
-import {
-  buildMintAuthorizationStep01,
-  buildMintAuthorizationStep02,
-  buildMintAuthorizationStep03EvaluateUnsatisfied,
-  buildMintAuthorizationStep05,
-} from "../src/mint-authorization/index.js";
-import { buildResolvedInit } from "../src/submit-init.js";
+import { buildMintAuthorizationStep01 } from "../src/mint-authorization/submit-mint-authorization-step-01.js";
+import { buildMintAuthorizationStep02 } from "../src/mint-authorization/submit-mint-authorization-step-02.submit-mint-authorization-step02.js";
+import { buildMintAuthorizationStep03EvaluateUnsatisfied } from "../src/mint-authorization/submit-mint-authorization-step-03.submit-mint-authorization-step03-evaluate-unsatisfied.js";
+import { buildMintAuthorizationStep05 } from "../src/mint-authorization/submit-mint-authorization-step-05.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import { buildResolvedInit } from "../src/submit-init.submit-resolved-init.js";
+import { network } from "./support/emulator/blueprints.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import {
   addressWitnessItemCbors,
   buildMintAuthorizationSubject,
@@ -38,11 +39,6 @@ import {
   setupMintAuthorizationScenario,
 } from "./support/mint-authorization-emulator.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
-import {
-  buildRemovalDeploymentInfo,
-  network,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,

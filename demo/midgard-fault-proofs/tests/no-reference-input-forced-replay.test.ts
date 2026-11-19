@@ -3,9 +3,11 @@ import {
   computeMidgardNativeTxId,
   encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
-import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core/codec/forced";
-import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
-import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
+import {
+  deriveMidgardForcedTxProofSource,
+  encodeMidgardForcedTxCanonical,
+  materializeMidgardForcedTxFromCanonical,
+} from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
@@ -17,11 +19,9 @@ import {
 } from "../src/no-reference-input/artifact.js";
 import { prepareNoReferenceInputWrongfulRejection } from "../src/no-reference-input/wrongful-rejection.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
-import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
-import {
-  admitCompleteCanonicalReplayPredecessor,
-  NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
-} from "../src/workflow/complete-replay.js";
+import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
+import { admitCompleteCanonicalReplayPredecessor } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.detect-double-withdraws.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
@@ -32,7 +32,7 @@ import {
   checkedLedgerAfter,
   ledgerAtAfter,
 } from "./support/predecessor-ledger.js";
-import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
+import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init/forced-transitions.js";
 
 const provenance = {
   trustClass: "public_or_permissionless_da",

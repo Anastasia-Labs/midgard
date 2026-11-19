@@ -6,14 +6,14 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createValueConservationAdapter } from "../src/value-not-preserved/adapter.js";
 import { WorkflowActionChangedError } from "../src/workflow/action-changed.js";
+import { DirectoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
+import type { FraudProofWorkflowJournalEvent } from "../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import {
   computeFraudProofWorkflowId,
-  DirectoryFraudProofWorkflowJournalStore,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-  type FraudProofWorkflowJournalEvent,
   journalJsonDigest,
-} from "../src/workflow/journal.js";
+} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import type { LocallyEvaluatedTransaction } from "../src/workflow/transaction-boundary.js";
 const hash = (byte: string) => byte.repeat(32);
 const outRef = (byte: string, index = 0) => `${hash(byte)}#${index}`;

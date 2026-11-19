@@ -15,8 +15,8 @@ import {
 } from "../src/landed-blocks/confirmed-merges.js";
 import { processRow, rollBackRows } from "../src/landed-blocks/settlements.js";
 import { Frontier, type LandedBlockRow } from "../src/landed-blocks/store.js";
-import { Globals } from "../src/services/globals.js";
-import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.js";
+import { Globals } from "../src/services/globals.globals.js";
+import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import { canonicalManifest } from "./deployment-manifest.canonical-identity.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 

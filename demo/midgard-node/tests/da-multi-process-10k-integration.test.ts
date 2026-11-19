@@ -12,7 +12,10 @@ import "tsup";
 import "vitest";
 import "../../da-committee-node/tests/helpers.js";
 import "../../da-committee-node/tests/helpers/postgres-database.js";
-import "../src/da/libp2p-producer.js";
+import "../src/da/libp2p-producer.create-da-libp2p-producer-transport.js";
+import "../src/da/libp2p-producer.parse-committee-peers.js";
+import "../src/da/libp2p-producer.probe-da-envelope-capabilities.js";
+import "../src/da/libp2p-producer.publish-da-payload-insert.js";
 import "../src/database/index.js";
 import "../src/sha256.js";
 import "./da-multi-process-10k-integration.stop-child-bounded.js";
@@ -38,14 +41,14 @@ import { describe, expect, it } from "vitest";
 
 import { makePayloadFixture } from "../../da-committee-node/tests/helpers.js";
 import { postgresTestDatabases } from "../../da-committee-node/tests/helpers/postgres-database.js";
+import { createDaLibp2pProducerTransport } from "../src/da/libp2p-producer.create-da-libp2p-producer-transport.js";
 import {
-  createDaLibp2pProducerTransport,
   DaPayloadPublicationError,
   type DaProducerCommitteePeer,
   type DaProducerPublicationManifest,
-  probeDaEnvelopeCapabilities,
-  publishDaPayloadInsert,
-} from "../src/da/libp2p-producer.js";
+} from "../src/da/libp2p-producer.parse-committee-peers.js";
+import { probeDaEnvelopeCapabilities } from "../src/da/libp2p-producer.probe-da-envelope-capabilities.js";
+import { publishDaPayloadInsert } from "../src/da/libp2p-producer.publish-da-payload-insert.js";
 import { DaPayloadsDB } from "../src/database/index.js";
 import { sha256Hex } from "../src/sha256.js";
 import {

@@ -1,13 +1,13 @@
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
+import { FIELD_ITEM_WIDTH_ILLEGAL_MANIFEST_CONTRACTS } from "../field-item-width-illegal/workflow.create-field-item-width-illegal-raw-l1-stage-resolver.js";
+import { FIELD_ITEM_WIDTH_ILLEGAL_FAMILY_DEFINITION } from "../field-item-width-illegal/workflow.field-item-width-illegal-family-definition.js";
 import {
   createManifestBoundFieldItemWidthIllegalWorkflow,
   executeManifestBoundFieldItemWidthIllegalWorkflow,
-  FIELD_ITEM_WIDTH_ILLEGAL_FAMILY_DEFINITION,
-  FIELD_ITEM_WIDTH_ILLEGAL_MANIFEST_CONTRACTS,
   type ManifestBoundFieldItemWidthIllegalWorkflow,
   type ManifestBoundFieldItemWidthIllegalWorkflowConfig,
-} from "../field-item-width-illegal/workflow.js";
+} from "../field-item-width-illegal/workflow.run-or-resume-manifest-bound-field-item-width-illegal-workflow.js";
 import {
   createManifestBoundFieldPreimageLengthWorkflow,
   executeManifestBoundFieldPreimageLengthWorkflow,
@@ -15,50 +15,54 @@ import {
   type ManifestBoundFieldPreimageLengthWorkflow,
   type ManifestBoundFieldPreimageLengthWorkflowConfig,
 } from "../field-preimage-length-mismatch/authenticated-workflow.js";
-import { FIELD_PREIMAGE_LENGTH_MANIFEST_CONTRACTS } from "../field-preimage-length-mismatch/config.js";
+import { FIELD_PREIMAGE_LENGTH_MANIFEST_CONTRACTS } from "../field-preimage-length-mismatch/config.create-concrete-field-preimage-length-lucid-builders.js";
 import {
   createManifestBoundMintItemNonCanonicalWorkflow,
   executeManifestBoundMintItemNonCanonicalWorkflow,
   type ManifestBoundMintItemNonCanonicalWorkflow,
   type ManifestBoundMintItemNonCanonicalWorkflowConfig,
-  MINT_ITEM_NON_CANONICAL_FAMILY_DEFINITION,
-  MINT_ITEM_NON_CANONICAL_MANIFEST_CONTRACTS,
-} from "../mint-item-non-canonical/workflow.js";
+} from "../mint-item-non-canonical/workflow.execute-manifest-bound-mint-item-non-canonical-workflow.js";
+import { MINT_ITEM_NON_CANONICAL_MANIFEST_CONTRACTS } from "../mint-item-non-canonical/workflow.load-manifest-bound-mint-item-non-canonical-config.js";
+import { MINT_ITEM_NON_CANONICAL_FAMILY_DEFINITION } from "../mint-item-non-canonical/workflow.mint-item-non-canonical-family-definition.js";
+import { OUTPUT_REFERENCE_SCRIPT_DECODING_MANIFEST_CONTRACTS } from "../output-reference-script-decoding/authenticated-workflow.create-output-reference-script-decoding-bound-config.js";
 import {
   createManifestBoundOutputReferenceScriptDecodingWorkflow,
   executeManifestBoundOutputReferenceScriptDecodingWorkflow,
   type ManifestBoundOutputReferenceScriptDecodingWorkflow,
+} from "../output-reference-script-decoding/authenticated-workflow.execute-manifest-bound-output-reference-script-decoding-workflow.js";
+import {
   type ManifestBoundOutputReferenceScriptDecodingWorkflowConfig,
   OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_DEFINITION,
-  OUTPUT_REFERENCE_SCRIPT_DECODING_MANIFEST_CONTRACTS,
-} from "../output-reference-script-decoding/authenticated-workflow.js";
+} from "../output-reference-script-decoding/authenticated-workflow.output-reference-script-decoding-family-definition.js";
+import { PROTECTED_OUTPUT_SIGNER_MISSING_MANIFEST_CONTRACTS } from "../protected-output-signer-missing/authenticated-workflow.create-protected-output-signer-missing-bound-config.js";
+import {
+  type ManifestBoundProtectedOutputSignerMissingWorkflowConfig,
+  PROTECTED_OUTPUT_SIGNER_MISSING_FAMILY_DEFINITION,
+} from "../protected-output-signer-missing/authenticated-workflow.protected-output-signer-missing-family-definition.js";
 import {
   createManifestBoundProtectedOutputSignerMissingWorkflow,
   executeManifestBoundProtectedOutputSignerMissingWorkflow,
   type ManifestBoundProtectedOutputSignerMissingWorkflow,
-  type ManifestBoundProtectedOutputSignerMissingWorkflowConfig,
-  PROTECTED_OUTPUT_SIGNER_MISSING_FAMILY_DEFINITION,
-  PROTECTED_OUTPUT_SIGNER_MISSING_MANIFEST_CONTRACTS,
-} from "../protected-output-signer-missing/authenticated-workflow.js";
+} from "../protected-output-signer-missing/authenticated-workflow.run-or-resume-manifest-bound-protected-output-signer-missing-workflow.js";
 import { type StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { type ResolvedProverSigner } from "../runtime.js";
+import type { ManifestBoundTransactionOutputNonCanonicalWorkflowConfig } from "../transaction-output-non-canonical/workflow.create-transaction-output-non-canonical-recovery-ports.js";
 import {
   createManifestBoundTransactionOutputNonCanonicalWorkflow,
   executeManifestBoundTransactionOutputNonCanonicalWorkflow,
   type ManifestBoundTransactionOutputNonCanonicalWorkflow,
-  type ManifestBoundTransactionOutputNonCanonicalWorkflowConfig,
   TRANSACTION_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION,
-  TRANSACTION_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS,
-} from "../transaction-output-non-canonical/workflow.js";
+} from "../transaction-output-non-canonical/workflow.run-or-resume-manifest-bound-transaction-output-non-canonical-workflow.js";
+import { TRANSACTION_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS } from "../transaction-output-non-canonical/workflow.transaction-output-non-canonical-config-from-binding.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import {
   createManifestBoundWitnessScriptDecodingWorkflow,
   executeManifestBoundWitnessScriptDecodingWorkflow,
   type ManifestBoundWitnessScriptDecodingWorkflow,
-  type ManifestBoundWitnessScriptDecodingWorkflowConfig,
   WITNESS_SCRIPT_DECODING_FAMILY_DEFINITION,
-  WITNESS_SCRIPT_DECODING_MANIFEST_CONTRACTS,
-} from "../witness-script-decoding/workflow.js";
+} from "../witness-script-decoding/workflow.create-manifest-bound-witness-script-decoding-workflow.js";
+import type { ManifestBoundWitnessScriptDecodingWorkflowConfig } from "../witness-script-decoding/workflow.create-witness-script-decoding-recovery-ports.js";
+import { WITNESS_SCRIPT_DECODING_MANIFEST_CONTRACTS } from "../witness-script-decoding/workflow.witness-script-decoding-config-from-binding.js";
 import type { CompleteCanonicalReplayContext } from "./complete-replay.js";
 import {
   assertFamilyDefinitionRoster,
@@ -68,7 +72,7 @@ import {
   familyDefinitionRoster,
   type FamilyResolvedReferenceScripts,
   type FamilyRosterDefinition,
-} from "./family-application.js";
+} from "./family-application.assert-family-definition-roster.js";
 import {
   type AuthenticatedCertificateFamilyConfig,
   bindAuthenticatedCertificateFamilyConfig,
@@ -80,10 +84,8 @@ import {
   type ResolvedRosterParts,
   resolveRosterParts,
 } from "./family-application-registry.resolve-roster-parts.js";
-import {
-  type FamilyCategory,
-  familyStepContractNames,
-} from "./family-definition.js";
+import type { FamilyCategory } from "./family-definition.family-adapter-arm.js";
+import { familyStepContractNames } from "./family-definition.family-definition.js";
 import type { FraudProofWorkflowJournalStore } from "./journal.js";
 import type { FraudProofL1Source } from "./l1-source.js";
 import { type WalletOnlySend } from "./wallet-only-send-gate.js";

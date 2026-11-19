@@ -21,26 +21,26 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { prepareCommittedFieldShapeFromCanonicalTx } from "../src/committed-field-shape/prepare-committed-field-shape.js";
+import { buildCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
+import { buildCommittedFieldShapeStep01 } from "../src/committed-field-shape/submit-committed-field-shape-step-01.submit-committed-field-shape-step01.js";
+import { buildCommittedFieldShapeStep02 } from "../src/committed-field-shape/submit-committed-field-shape-step-02.js";
 import {
-  buildCommittedFieldShapeInit,
-  buildCommittedFieldShapeStep01,
-  buildCommittedFieldShapeStep02,
-  prepareCommittedFieldShapeFromCanonicalTx,
-} from "../src/index.js";
-import {
-  committedFieldShapeInlineClaim,
-  type CommittedFieldShapeRawSuccessor,
-  expectCommittedFieldShapeOnchainRefusal,
-  fundCommittedFieldShapeOutsider,
   makeCommittedFieldShapeEmulatorHarness,
   publishCommittedFieldShapeReferenceScripts,
   setupCommittedFieldShapeScenario,
-  submitRawCommittedFieldShapeStep01,
-} from "./support/committed-field-shape-emulator.js";
+} from "./support/committed-field-shape-emulator.committed-field-shape-scenario-material.js";
 import {
-  expectSingleUtxoWithUnit,
-  network,
-} from "./support/submit-init-emulator-shared.js";
+  type CommittedFieldShapeRawSuccessor,
+  fundCommittedFieldShapeOutsider,
+  submitRawCommittedFieldShapeStep01,
+} from "./support/committed-field-shape-emulator.submit-raw-committed-field-shape-step01.js";
+import {
+  committedFieldShapeInlineClaim,
+  expectCommittedFieldShapeOnchainRefusal,
+} from "./support/committed-field-shape-emulator.submit-raw-committed-field-shape-step02.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 const B = MIDGARD_ENVELOPE_BATCH_ITEMS;

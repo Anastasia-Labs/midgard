@@ -9,12 +9,12 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { submitRemoveFraudulentBlock } from "../src/index.js";
 import {
   MISSING_REDEEMER_DIRECT_WALK,
   MissingRedeemerHonestLeaf,
   requireConvictingMissingRedeemerProof,
 } from "../src/missing-redeemer/index.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import {
   DIRECT_WALK_STEP_BOUNDS,
   type DirectWalkHarness,
@@ -22,7 +22,11 @@ import {
   publishDirectWalkRoles,
   stepTable,
 } from "./support/direct-walk-emulator.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { driveMissingRedeemerThread } from "./support/missing-redeemer-emulator.js";
 import {
   honestForcedObserverShape,
@@ -31,12 +35,6 @@ import {
   redeemerMissingVerdict,
   setupMissingRedeemerScenario,
 } from "./support/missing-redeemer-emulator.subject.js";
-import {
-  buildRemovalDeploymentInfo,
-  expectSingleUtxoWithUnit,
-  network,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
 
 const expectWithinBounds = (steps: Parameters<typeof stepTable>[0]): void => {
   for (const { label, measurement } of steps) {

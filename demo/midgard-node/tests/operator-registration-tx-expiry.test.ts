@@ -8,7 +8,7 @@
 import { CML, type Emulator } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { registerOperatorProgram } from "../src/transactions/register-active-operator.js";
+import { registerOperatorProgram } from "../src/transactions/register-active-operator.activate-registered-operator-program.js";
 import { runWithoutFollower } from "./helpers/intent-journal.js";
 import {
   EMULATOR_REQUIRED_BOND_LOVELACE,

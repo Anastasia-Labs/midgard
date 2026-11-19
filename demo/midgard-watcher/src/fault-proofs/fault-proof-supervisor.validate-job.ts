@@ -9,10 +9,8 @@ import {
 import { Header, StateQueueNode } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import {
-  assertWatcherStateQueueHeaderObservation,
-  type WatcherStateQueueHeaderObservation,
-} from "../indexers/authenticated-state-queue-observation.js";
+import { assertWatcherStateQueueHeaderObservation } from "../indexers/authenticated-state-queue-observation.js";
+import { type WatcherStateQueueHeaderObservation } from "../indexers/authenticated-state-queue-observation.parse-persisted-header.js";
 import { type WatcherInstalledWorkflowCategory } from "./fault-proof-application.js";
 import type { WatcherFaultProofExecutionAdmission } from "./fault-proof-execution.js";
 import type { WatcherProofCleanupFailure } from "./fault-proof-objective-cleanup.js";

@@ -26,9 +26,9 @@ import type { LedgerEntry } from "../src/ledger-at.js";
 import {
   prepareScriptIntegrityHashMismatchProof,
   requireConvictingScriptIntegrityHashMismatchProof,
-  SCRIPT_INTEGRITY_HASH_MISMATCH_DIRECT_WALK,
   ScriptIntegrityHashMismatchHonestLeaf,
-} from "../src/script-integrity-hash-mismatch/index.js";
+} from "../src/script-integrity-hash-mismatch/prover.js";
+import { SCRIPT_INTEGRITY_HASH_MISMATCH_DIRECT_WALK } from "../src/script-integrity-hash-mismatch/workflow.js";
 import { keyValuePhasMembershipProofs } from "../src/transition-trace/phas.js";
 import {
   DIRECT_WALK_STEP_BOUNDS,
@@ -38,6 +38,7 @@ import {
   type StepMeasurement,
   stepTable,
 } from "./support/direct-walk-emulator.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { scriptAddress } from "./support/missing-redeemer-emulator.purposes.js";
 import {
@@ -49,7 +50,6 @@ import {
   setupIntegrityScenario,
   WRONG_HASH,
 } from "./support/script-integrity-hash-mismatch-emulator.subject.js";
-import { expectSingleUtxoWithUnit } from "./support/submit-init-emulator-shared.js";
 
 const FIELD_CAP = MIDGARD_CONSENSUS_LIMITS.maxTransactionAggregateFieldBytes;
 

@@ -7,7 +7,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 
 import type { DirectPurposeTransition } from "../direct-purpose-family/custody.js";
 import { directPurposeBindTransitions } from "../direct-purpose-family/source-walk.js";
-import { directBindingStates } from "../direct-script-derivation/index.js";
+import { directBindingStates } from "../direct-script-derivation/binding-plan.js";
 import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
 import { CanonicalReplayPrerequisiteError } from "../workflow/replay-prerequisite.js";
 import { EXECUTION_SOURCE_SCRIPT_DECODING_CATEGORY_LABEL } from "./contracts.js";

@@ -8,10 +8,10 @@
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   DirectValidationTraceUnavailable,
-  RejectCodes,
-  ScriptEvaluationIndeterminateError,
   ValidationTraceStopped,
 } from "@al-ft/midgard-validation";
+import { ScriptEvaluationIndeterminateError } from "@al-ft/midgard-validation/phase-b";
+import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { EventLedgerReplayRefusal } from "../src/event-ledger.js";
@@ -24,13 +24,13 @@ import {
   VALIDATION_TRACE_REPLAY_HELD,
   ValidationTraceReplayHeldError,
 } from "../src/validation-trace-dispute/replay-hold.js";
-import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
+import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
 import { EVENT_PRE_STATE_UNAVAILABLE_VIOLATION_ID } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
-  type CompleteCanonicalReplayContext,
   createValidationTraceDisputeCompleteCanonicalReplay,
   requireCompleteCanonicalReplayDecision,
-} from "../src/workflow/complete-replay.js";
+} from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
+import type { CompleteCanonicalReplayContext } from "../src/workflow/complete-replay.replay-context-identity.js";
 import { plutusExecutionBlockFixture } from "./helpers/plutus-execution-block-fixture.js";
 import { plutusExecutionEventsBlockFixture } from "./helpers/plutus-execution-events-fixture.js";
 

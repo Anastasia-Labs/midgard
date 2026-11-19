@@ -1,11 +1,9 @@
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  createAuthenticatedFieldCarriagePrerequisitePort,
-  FIELD_CARRIAGE_RECOVERY,
-  withFieldCarriagePrerequisite,
-} from "../src/workflow/field-carriage-prerequisite.js";
+import { createAuthenticatedFieldCarriagePrerequisitePort } from "../src/workflow/field-carriage-prerequisite.create-authenticated-field-carriage-prerequisite-port.js";
+import { FIELD_CARRIAGE_RECOVERY } from "../src/workflow/field-carriage-prerequisite.field-carriage-prerequisite-port.js";
+import { withFieldCarriagePrerequisite } from "../src/workflow/field-carriage-prerequisite.with-field-carriage-prerequisite.js";
 import type { FraudProofWorkflowJournalEntry } from "../src/workflow/journal.js";
 import { createRawDatumPreimageRequirement } from "../src/workflow/raw-datum-preimage.js";
 import { withRawDatumPreimagePrerequisite } from "../src/workflow/raw-datum-preimage-prerequisite.js";

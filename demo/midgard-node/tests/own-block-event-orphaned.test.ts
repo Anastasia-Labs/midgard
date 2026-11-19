@@ -24,10 +24,8 @@ import {
   type ProjectedEvent,
 } from "@al-ft/midgard-l1-follower/events";
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  RejectCodes,
-  runPhaseBValidationWithPatch,
-} from "@al-ft/midgard-validation";
+import { runPhaseBValidationWithPatch } from "@al-ft/midgard-validation/phase-b";
+import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { SqlClient } from "@effect/sql";
 import { Effect, Either } from "effect";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
@@ -55,7 +53,7 @@ import {
 } from "../src/services/follower-write-gate.js";
 import { Globals } from "../src/services/globals.globals.js";
 import { activeLivenessReasons } from "../src/services/liveness-halt.js";
-import { makeMempoolLedgerCacheService } from "../src/services/mempool-ledger-cache.js";
+import { makeMempoolLedgerCacheService } from "../src/services/mempool-ledger-cache.make-mempool-ledger-cache-service.js";
 import { classifyOldestQueuedBlockReadiness } from "../src/transactions/state-queue/merge-readiness.js";
 import { backfillMissingDaPayloadsFromAppliedJournals } from "../src/workers/commit-block-header/da-payload-backfill.js";
 import {

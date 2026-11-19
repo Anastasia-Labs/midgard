@@ -1,5 +1,5 @@
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
+import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.build-source-membership-proof.js";
 import {
   detectZeroInputForcedReplay,
   selectCanonicalZeroInputForcedDetection,

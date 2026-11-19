@@ -5,18 +5,18 @@ import { createWorkflowActuationPermitController } from "@al-ft/midgard-fault-pr
 import { afterEach, describe, expect, it } from "vitest";
 
 import * as DecisionJournal from "../../src/fault-proofs/fault-decision-journal.js";
-import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.js";
+import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
 import { createWatcherFaultProofProgressAuthority } from "../../src/fault-proofs/fault-proof-progress-authority.js";
-import { watcherFaultProofDeadline } from "../../src/fault-proofs/fault-proof-supervisor.js";
+import { watcherFaultProofDeadline } from "../../src/fault-proofs/fault-proof-supervisor.validate-job.js";
 import type {
   WatcherProofPinResult,
   WatcherProofRetention,
 } from "../../src/l1-follower/proof-retention.js";
+import { setupFundingRecoveryFixture } from "../support/fault-proof-funding-fixture.setup-funding-recovery-fixture.js";
 import {
   cleanupFundingRecoveryFixtures,
   deploymentIdentity,
-  setupFundingRecoveryFixture,
-} from "../support/fault-proof-funding-fixture.js";
+} from "../support/fault-proof-funding-fixture.sources-for.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
 import { testStorageRoot } from "../support/test-storage-root.js";

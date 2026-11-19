@@ -11,8 +11,8 @@ import { commitCountedRootProgram, ROOT_DOMAINS } from "@al-ft/midgard-sdk";
 import { CML, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { nativeTxFromCoreCompact } from "../legacy-submit-emulator.js";
-import { h32 } from "../submit-init-emulator-shared.js";
+import { nativeTxFromCoreCompact } from "../../../src/step-support.js";
+import { h32 } from "../emulator/header-fixtures.js";
 
 // Commit a raw transactions MPF root the way the node does: wrap it with the
 // counted-root hash under the transactions domain. Fault-proof inclusion then

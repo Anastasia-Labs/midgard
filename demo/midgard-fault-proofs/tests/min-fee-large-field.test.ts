@@ -13,12 +13,12 @@ import {
 } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
-import { planFaultProofFieldOpening } from "../src/field-opening.js";
-import { buildMinFeeStep02 } from "../src/index.js";
+import { planFaultProofFieldOpening } from "../src/field-opening.plan-fault-proof-field-opening.js";
 import {
   VAN_ROSSEM_MAX_CPU_UNITS,
   VAN_ROSSEM_MAX_MEMORY_UNITS,
 } from "../src/proof-fit/van-rossem.js";
+import { buildMinFeeStep02 } from "../src/submit-min-fee-step-02.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
   advanceStep01,
@@ -26,12 +26,10 @@ import {
   makeHarness,
   setupScenario,
 } from "./submit-init-emulator-min-fee.setup-scenario.js";
-import {
-  captureEmulatorSubmission,
-  expectSingleUtxoWithUnit,
-  network,
-  publishPlainReferenceScriptUtxo,
-} from "./support/submit-init-emulator-shared.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
+import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
+import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 import {
   certifyCarriageUnjournaled,
   publishCarriageUnjournaled,

@@ -4,12 +4,10 @@ import type { HeaderDecision } from "@al-ft/midgard-fault-proofs";
 import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "@al-ft/midgard-sdk";
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  unsafeOpenWatcherFaultDecisionJournalForTest,
-  type WatcherPersistedFaultDecisionRecord,
-} from "../../src/fault-proofs/fault-decision-journal.js";
-import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.js";
-import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.js";
+import { unsafeOpenWatcherFaultDecisionJournalForTest } from "../../src/fault-proofs/fault-decision-journal.create-journal.js";
+import type { WatcherPersistedFaultDecisionRecord } from "../../src/fault-proofs/fault-decision-journal.exact-record.js";
+import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
+import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.canonical-json.js";
 import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 import { harness } from "./fault-decision-bridge.harness.js";
 import {

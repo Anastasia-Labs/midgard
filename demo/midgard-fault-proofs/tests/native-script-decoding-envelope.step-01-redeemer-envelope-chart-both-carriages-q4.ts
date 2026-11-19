@@ -16,16 +16,16 @@ import { describe, expect, it } from "vitest";
 
 import { NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES } from "../src/native-script-decoding/contracts.js";
 import {
-  ADVERSARIAL_MEMBERSHIP_PROOF_BRANCH_LEVELS,
-  buildTransactionInclusionFixture,
-  membershipProofBranchLevelsReachableWithWork,
-  PROOF_TRANSACTION_BRANCH_LEVEL_BYTES,
-} from "./support/submit-init-emulator-fixtures.js";
-import {
   network,
   readBlueprint,
   realBlueprintPath,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/emulator/blueprints.js";
+import { buildTransactionInclusionFixture } from "./support/submit-init/inclusion.js";
+import {
+  ADVERSARIAL_MEMBERSHIP_PROOF_BRANCH_LEVELS,
+  membershipProofBranchLevelsReachableWithWork,
+  PROOF_TRANSACTION_BRANCH_LEVEL_BYTES,
+} from "./support/submit-init/membership.js";
 
 /** The consensus floor every fault-proof step transaction must fit. */
 export const L1_ENVELOPE_BYTES =

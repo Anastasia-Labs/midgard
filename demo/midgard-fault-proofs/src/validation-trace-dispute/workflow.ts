@@ -5,21 +5,23 @@
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
-import { resolveFaultProofFieldGrammarDeployment } from "../field-grammar-certificate.js";
+import { resolveFaultProofFieldGrammarDeployment } from "../field-grammar-certificate.resolve-fault-proof-field-grammar-deployment.js";
 import {
   parseContractDeploymentDisputeBondLovelace,
   parseContractDeploymentL1SlotConfig,
-} from "../inspect-contracts.js";
+} from "../inspect-contracts.inspect-fraud-proof-catalogue-category-readiness.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
+import { createValidationTraceDisputeCompleteCanonicalReplay } from "../workflow/complete-replay.create-complete-canonical-replay-union.js";
 import type { CompleteCanonicalReplayContext } from "../workflow/complete-replay.js";
-import { createValidationTraceDisputeCompleteCanonicalReplay } from "../workflow/complete-replay.js";
 import {
   assertManifestBoundWorkflowSigner,
-  bindFraudProofDisputeDeployment,
   type FraudProofWorkflowDeploymentBinding,
   releaseFinalityAuthorityFromDeploymentBinding,
+} from "../workflow/deployment-manifest-binding.assert-deployment-info-matches-manifest.js";
+import {
+  bindFraudProofDisputeDeployment,
   requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding.js";
 import {
@@ -33,11 +35,13 @@ import type {
   FraudProofL1Source,
   FraudProofSignedTransactionRecovery,
 } from "../workflow/l1-source.js";
+import type {
+  FraudProofFamilyWorkflowAdapter,
+  FraudProofWorkflowTerminalVerifier,
+} from "../workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
+import type { FraudProofWorkflowRunResult } from "../workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import {
   createFraudProofWorkflowRegistry,
-  type FraudProofFamilyWorkflowAdapter,
-  type FraudProofWorkflowRunResult,
-  type FraudProofWorkflowTerminalVerifier,
   runFraudProofWorkflowFromRetainedDa,
 } from "../workflow/orchestrator.js";
 import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";

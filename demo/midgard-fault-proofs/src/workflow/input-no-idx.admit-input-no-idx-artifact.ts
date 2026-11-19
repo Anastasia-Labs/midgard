@@ -7,13 +7,13 @@ import {
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 import type { FaultProofFieldGrammarDeployment } from "../field-grammar-certificate.js";
+import { resolveFaultProofFieldPreimageCertificate } from "../field-opening.certify-fault-proof-field-carriage.js";
 import {
   type FaultProofFieldOpeningPlan,
   planFaultProofFieldOpening,
-  resolveFaultProofFieldCarriagePublications,
-  resolveFaultProofFieldPreimageCertificate,
-} from "../field-opening.js";
-import { prepareInputNoIdxFromCanonicalEvidence } from "../prepare-input-no-idx.js";
+} from "../field-opening.plan-fault-proof-field-opening.js";
+import { resolveFaultProofFieldCarriagePublications } from "../field-opening.publish-fault-proof-field-carriage.js";
+import { prepareInputNoIdxFromCanonicalEvidence } from "../prepare-input-no-idx.prepare-input-no-idx-from-canonical-evidence.js";
 import { type StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { CanonicalBlockClassification } from "./classification.js";
@@ -23,7 +23,7 @@ import {
   type FieldPreimageCertificateBinding,
   type LinearFamilyAssemblyContext,
   type LinearFamilyReferenceScripts,
-} from "./family-definition.js";
+} from "./family-definition.family-adapter-arm.js";
 import {
   type AdmittedArtifact,
   exact,
@@ -40,7 +40,7 @@ import {
   record,
   safeNatural,
 } from "./input-no-idx.parse-inclusion.js";
-import { normalizeJournalJson } from "./journal.js";
+import { normalizeJournalJson } from "./journal.fraud-proof-workflow-terminal.js";
 import { type FraudProofWorkflowAction } from "./orchestrator.js";
 import type { OwnOutputJournal } from "./own-outputs.js";
 

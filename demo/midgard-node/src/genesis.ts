@@ -7,26 +7,23 @@ import { Data, Effect } from "effect";
 import * as MempoolLedgerDB from "./database/mempoolLedger.js";
 import { DatabaseError } from "./database/utils/common.js";
 import { Columns as LedgerColumns } from "./database/utils/ledger.js";
-import {
-  Database,
-  Globals,
-  Lucid,
-  MidgardContracts,
-  NodeConfig,
-  publishMempoolLedgerDelta,
-} from "./services/index.js";
+import { Globals } from "./services/globals.globals.js";
+import { publishMempoolLedgerDelta } from "./services/globals.with-l1-control-plane-held.js";
+import { Database, NodeConfig } from "./services/index.js";
 import {
   type IntentJournal,
   journaledIntent,
   openPlan,
 } from "./services/intent-journal.js";
+import { Lucid } from "./services/lucid.js";
+import { MidgardContracts } from "./services/midgard-contracts.make-midgard-contract-runtime.js";
 import { observedLedgerTip } from "./transactions/ledger-tip-lower-bound.js";
 import {
-  handleSignSubmit,
   TxConfirmError,
-  TxExpiredError,
   TxSignError,
-} from "./transactions/utils.js";
+} from "./transactions/utils.await-required-output-visibility.js";
+import { handleSignSubmit } from "./transactions/utils.await-submitted-transaction-confirmation.js";
+import { TxExpiredError } from "./transactions/utils.tx-expiry.js";
 import { readSelectedWalletViewInputs } from "./transactions/utils.wallet-view.js";
 
 /** The deposit's lower bound looks back a minute from the observed tip. */

@@ -13,12 +13,12 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { resolveFaultProofFieldPreimageCertificate } from "../field-opening.certify-fault-proof-field-carriage.js";
+import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
 import {
   faultProofFieldOpening,
-  planFaultProofFieldOpening,
   resolveFaultProofFieldCarriagePublications,
-  resolveFaultProofFieldPreimageCertificate,
-} from "../field-opening.js";
+} from "../field-opening.publish-fault-proof-field-carriage.js";
 import {
   requireLinearFaultReferenceScript,
   requireLinearFaultStepState,
@@ -32,11 +32,9 @@ import {
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
 import type { MintDeclaredAssetLimitContracts } from "./contracts.js";
-import {
-  initialMintDeclaredFoldCursor,
-  type MintDeclaredAssetLimitEvidence,
-  mintDeclaredFoldStateData,
-} from "./family.js";
+import type { MintDeclaredAssetLimitEvidence } from "./family.advance-mint-declared-fold.js";
+import { initialMintDeclaredFoldCursor } from "./family.begin-mint-declared-policy.js";
+import { mintDeclaredFoldStateData } from "./family.mint-declared-fold-state-data.js";
 import {
   MintDeclaredAssetLimitStep02DatumSchema,
   MintDeclaredAssetLimitStep02RedeemerSchema,

@@ -10,8 +10,9 @@ import {
 import { Effect } from "effect";
 import { expect, it, vi } from "vitest";
 
-import { workflowTransactionInputOutRefs } from "../src/index.js";
 import * as topology from "../src/remove-fraudulent-block.load-state-queue-topology.js";
+import { workflowTransactionInputOutRefs } from "../src/workflow/transaction-boundary.js";
+import { network } from "./support/emulator/blueprints.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import {
@@ -20,12 +21,9 @@ import {
   liveSchedulerOf,
   retireOperator,
 } from "./support/rotated-successor-operator.js";
-import {
-  buildProvedDoubleSpendFixture,
-  expectStateQueueHeaderOrder,
-  submitRemovalForFixture,
-} from "./support/submit-init-emulator-fixtures.js";
-import { network } from "./support/submit-init-emulator-shared.js";
+import { buildProvedDoubleSpendFixture } from "./support/submit-init/double-spend.js";
+import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
+import { submitRemovalForFixture } from "./support/submit-init/removal.js";
 
 /** Change only the operator selection after the removed node's authentic hash
  * has been checked. Both directory and state-queue redeemers then consistently

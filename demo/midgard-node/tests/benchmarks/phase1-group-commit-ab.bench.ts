@@ -7,8 +7,8 @@ import "@effect/sql";
 import "effect";
 import "vitest";
 import "../../src/database/index.js";
-import "../../src/services/admission-writer.js";
-import "../../src/services/config.js";
+import "../../src/services/admission-writer.validate-options.js";
+import "../../src/services/config.make-config.js";
 import "../../src/services/database.js";
 import "./phase1-group-commit-ab.build-fixture.js";
 import "./phase1-group-commit-ab.verify-semantic-state.js";
@@ -21,7 +21,7 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { MigrationRunner } from "../../src/database/index.js";
-import { NodeConfig } from "../../src/services/config.js";
+import { NodeConfig } from "../../src/services/config.make-config.js";
 import { AdmissionSql, Database } from "../../src/services/database.js";
 import {
   buildFixture,

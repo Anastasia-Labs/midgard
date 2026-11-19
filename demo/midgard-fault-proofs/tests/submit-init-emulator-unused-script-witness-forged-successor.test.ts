@@ -18,18 +18,14 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildDirectPurposeTransition,
-  type DirectPurposeRole,
-} from "../src/direct-purpose-family/index.js";
+import type { DirectPurposeRole } from "../src/direct-purpose-family/family.js";
+import { buildDirectPurposeTransition } from "../src/direct-purpose-family/submit.js";
 import { buildNativeTxBinding } from "../src/native-tx-binding.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
 import { computationThreadOutputPredicate } from "../src/tx-layout.js";
-import {
-  prepareUnusedScriptWitnessProof,
-  UNUSED_SCRIPT_WITNESS_DIRECT_WALK,
-  unusedScriptWitnessContractRoles,
-} from "../src/unused-script-witness/index.js";
+import { unusedScriptWitnessContractRoles } from "../src/unused-script-witness/contracts.js";
+import { prepareUnusedScriptWitnessProof } from "../src/unused-script-witness/prover.js";
+import { UNUSED_SCRIPT_WITNESS_DIRECT_WALK } from "../src/unused-script-witness/workflow.js";
 import { witnessMintingPolicyCarriage } from "../src/witness-reference-scripts.js";
 import {
   type DirectWalkHarness,
@@ -37,6 +33,7 @@ import {
   makeDirectWalkHarness,
   publishDirectWalkRoles,
 } from "./support/direct-walk-emulator.js";
+import { network } from "./support/emulator/blueprints.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   buildIntegritySubject,
@@ -47,7 +44,6 @@ import {
   scriptLockedEntries,
   setupIntegrityScenario,
 } from "./support/script-integrity-hash-mismatch-emulator.subject.js";
-import { network } from "./support/submit-init-emulator-shared.js";
 import { submitDirectPurposeTransition } from "./support/submit-unjournaled.direct-purpose.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 import {

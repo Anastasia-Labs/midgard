@@ -21,14 +21,18 @@ import {
 } from "../fault-proof-turn.js";
 import {
   certifyFaultProofFieldCarriage,
-  faultProofFieldCarriage,
-  faultProofFieldOpening,
+  resolveFaultProofFieldPreimageCertificate,
+} from "../field-opening.certify-fault-proof-field-carriage.js";
+import {
   type FaultProofFieldOpeningPlan,
   planFaultProofFieldOpening,
+} from "../field-opening.plan-fault-proof-field-opening.js";
+import {
+  faultProofFieldCarriage,
+  faultProofFieldOpening,
   publishFaultProofFieldCarriage,
   resolveFaultProofFieldCarriagePublications,
-  resolveFaultProofFieldPreimageCertificate,
-} from "../field-opening.js";
+} from "../field-opening.publish-fault-proof-field-carriage.js";
 import { type ContractDeploymentInfo } from "../inspect-contracts.js";
 import {
   requireDeploymentReferenceScript,

@@ -17,17 +17,16 @@ import {
 } from "../environment.js";
 import { l1NowUnixTimeMs } from "../l1-heads.js";
 import { timeoutCorrectionJournalNeedsRecovery } from "../services/attestation-timeout-observation.js";
+import { Globals } from "../services/globals.globals.js";
 import { type AttestationTimeoutCorrectionHealth } from "../services/globals.js";
-import {
-  ContractDeploymentIdentity,
-  Database,
-  Globals,
-  Lucid,
-  MidgardContracts,
-  NodeConfig,
-} from "../services/index.js";
+import { Database, NodeConfig } from "../services/index.js";
 import { IntentJournal, openPlan } from "../services/intent-journal.js";
 import { landedStateQueueUTxOs } from "../services/landed-state-queue.js";
+import { Lucid } from "../services/lucid.js";
+import {
+  ContractDeploymentIdentity,
+  MidgardContracts,
+} from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   readSelectedWalletViewInputs,
   signOverWalletView,

@@ -1,9 +1,9 @@
 import { DEPLOYMENT_MANIFEST_CONTRACT_NAMES } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { describe, expect, it } from "vitest";
 
-import { REMOVE_FRAUDULENT_BLOCK_REFERENCE_SCRIPT_NAMES } from "../src/remove-fraudulent-block.js";
-import { familyStepRole } from "../src/workflow/family-application.js";
-import { familyStepContractNames } from "../src/workflow/family-definition.js";
+import { REMOVE_FRAUDULENT_BLOCK_REFERENCE_SCRIPT_NAMES } from "../src/remove-fraudulent-block.assert-exact-fraud-slash-lovelace-conservation.js";
+import { familyStepRole } from "../src/workflow/family-application.assert-family-definition-roster.js";
+import { familyStepContractNames } from "../src/workflow/family-definition.family-definition.js";
 import { INSTALLED_FRAUD_PROOF_CATEGORY_ORDER } from "../src/workflow/installed-categories.js";
 import { LINEAR_FAMILY_CATEGORIES } from "../src/workflow/linear-family-spec.js";
 import {

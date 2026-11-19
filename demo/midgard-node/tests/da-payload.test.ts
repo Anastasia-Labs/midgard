@@ -9,10 +9,11 @@ import "effect";
 import "vitest";
 import "../src/database/index.js";
 import "../src/database/utils/common.js";
-import "../src/mpf/index.js";
-import "../src/workers/commit-block-header/da-payload.js";
+import "../src/workers/utils/mpf/phas.key-value-phas-non-membership-proof.js";
+import "../src/mpf/ledger-delta.js";
+import "../src/workers/commit-block-header/da-payload.build-da-payload-insert.js";
 import "../src/workers/commit-block-header/da-payload-backfill.js";
-import "../src/workers/commit-block-header/transition-roots.js";
+import "../src/workers/commit-block-header/transition-roots.validate-count-proof.js";
 import "./midgard-output-helpers.js";
 import "./da-payload.record.js";
 import "./da-payload.build-journal-fixture.js";
@@ -35,8 +36,8 @@ import {
   DaPayloadsDB,
   PendingBlockFinalizationsDB,
 } from "../src/database/index.js";
-import { NodeConfig } from "../src/services/config.js";
-import { buildDaPayloadInsert } from "../src/workers/commit-block-header/da-payload.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
+import { buildDaPayloadInsert } from "../src/workers/commit-block-header/da-payload.build-da-payload-insert.js";
 import { backfillMissingDaPayloadsFromAppliedJournals } from "../src/workers/commit-block-header/da-payload-backfill.js";
 import { buildJournalFixture } from "./da-payload.build-journal-fixture.js";
 import {

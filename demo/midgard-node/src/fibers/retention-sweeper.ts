@@ -35,20 +35,19 @@ import {
 } from "../database/retention-policy.js";
 import { DatabaseError } from "../database/utils/common.js";
 import { l1NowUnixTimeMs, L1SlotUnknownError } from "../l1-heads.js";
-import { pruneFinalQueueTerminals } from "../l1-queue-terminals/index.js";
-import {
-  ContractDeploymentIdentity,
-  Database,
-  Globals,
-  Lucid,
-  MidgardContracts,
-  NodeConfig,
-} from "../services/index.js";
+import { pruneFinalQueueTerminals } from "../l1-queue-terminals/reads.js";
+import { Globals } from "../services/globals.globals.js";
+import { Database, NodeConfig } from "../services/index.js";
 import { requireLandedStateQueue } from "../services/landed-state-queue.js";
 import {
   clearLivenessIncident,
   raiseLivenessIncident,
 } from "../services/liveness-halt.js";
+import { Lucid } from "../services/lucid.js";
+import {
+  ContractDeploymentIdentity,
+  MidgardContracts,
+} from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import { settlementDepthParameters } from "../services/settlement.status.js";
 import {
   RETENTION_HISTORY_PRUNE_BUDGET_MS,

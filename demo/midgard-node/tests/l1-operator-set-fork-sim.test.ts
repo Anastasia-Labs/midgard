@@ -11,9 +11,9 @@
  * it exercised both read paths, a prune past a read and every membership
  * state.
  */
-import type { FollowerProjection } from "@al-ft/midgard-l1-follower";
 import {
   type FactStore,
+  type FollowerProjection,
   openPostgresFactStore,
   openSqliteFactStore,
   type SqlTx,
@@ -32,13 +32,15 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
   classifyOperatorMembership,
-  createOperatorSetMirror,
   type OperatorMembershipState,
+} from "../src/l1-operator-set/membership.js";
+import { operatorSetProjection } from "../src/l1-operator-set/projection.js";
+import {
+  createOperatorSetMirror,
   type OperatorSet,
   type OperatorSetMirror,
-  operatorSetProjection,
   type OperatorSetRead,
-} from "../src/l1-operator-set/index.js";
+} from "../src/l1-operator-set/set.js";
 import { testDatabases } from "./helpers/l1-events-store.js";
 import {
   loadOperatorSetChainFixture,

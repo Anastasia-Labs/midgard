@@ -18,10 +18,8 @@ import { L2TransactionSourceSchema } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import {
-  type FaultProofFieldOpeningPlan,
-  faultProofRawFieldCarriage,
-} from "../src/field-opening.js";
+import type { FaultProofFieldOpeningPlan } from "../src/field-opening.plan-fault-proof-field-opening.js";
+import { faultProofRawFieldCarriage } from "../src/field-opening.publish-fault-proof-field-carriage.js";
 import {
   fieldPreimageLengthCommittedClaim,
   prepareAcceptedFieldPreimageLengthMismatch,
@@ -32,7 +30,7 @@ import {
 } from "../src/field-preimage-length-mismatch/workflow.js";
 import { parseSubmitStep01TxInclusion } from "../src/step-support.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
-import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
+import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
   forcedPrepared,
@@ -62,7 +60,7 @@ import { network } from "./support/emulator/blueprints.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import { FIELD_PREIMAGE_LENGTH_FORCED_FIELD_INDEX } from "./support/field-preimage-length-mismatch-forced-fixture.js";
-import { countedTransactionsRoot } from "./support/submit-init-emulator-fixtures.js";
+import { countedTransactionsRoot } from "./support/submit-init/transaction-material.js";
 import {
   certifyCarriageUnjournaled,
   publishCarriageUnjournaled,

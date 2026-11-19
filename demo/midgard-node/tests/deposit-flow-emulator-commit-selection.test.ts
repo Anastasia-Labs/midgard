@@ -6,7 +6,7 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { describe, expect, it, vi } from "vitest";
 
-import { WriteBehind } from "../src/services/write-behind.js";
+import { WriteBehind } from "../src/services/write-behind.summarize-write-behind-telemetry.js";
 import { admitAndAcceptL2Tx } from "./deposit-flow-emulator-merge-payout.admit-l2-tx.js";
 import {
   advanceEmulatorPastLatestBlockEndTime,

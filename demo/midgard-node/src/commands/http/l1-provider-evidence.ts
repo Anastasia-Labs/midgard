@@ -1,11 +1,11 @@
 import { type SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import { Duration, Effect, Ref } from "effect";
 
+import { Globals } from "../../services/globals.globals.js";
 import {
-  Globals,
   type L1ProviderHealthEvidence,
   nextL1ProviderHealthEvidence,
-} from "../../services/index.js";
+} from "../../services/globals.next-l1-provider-health-evidence.js";
 import { type L1ProviderPreflightReport } from "../l1-provider-preflight.js";
 
 /**

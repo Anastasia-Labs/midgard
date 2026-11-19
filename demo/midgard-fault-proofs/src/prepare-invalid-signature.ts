@@ -56,15 +56,17 @@ import {
 import { Effect } from "effect";
 
 import { parseHex, stringifyJson } from "./json-file.js";
+import type {
+  DecodedTransactionMaterial,
+  NodeTransactionPayload,
+  PreparedTxInclusionJson,
+} from "./prepare-double-spend.encode-l2-transaction-source-value.js";
 import {
   buildTrieView,
-  type DecodedTransactionMaterial,
   decodeTransactionMaterial,
-  type NodeTransactionPayload,
-  type PreparedTxInclusionJson,
   requireProof,
   transactionSourceTrieItem,
-} from "./prepare-double-spend.js";
+} from "./prepare-double-spend.resolve-double-spend-pair.js";
 
 export type PreparedInvalidSignatureTx = {
   readonly nodeTxId: string;

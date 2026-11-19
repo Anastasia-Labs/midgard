@@ -1,16 +1,14 @@
 import { Effect, Ref } from "effect";
 
 import { successorHoldsAllPendingHere } from "../l2-peer/successor-holds-pending.js";
-import {
-  type CommitPipelinePhase,
-  Globals,
-  Lucid,
-  MidgardContracts,
-} from "../services/index.js";
+import { Globals } from "../services/globals.globals.js";
+import type { CommitPipelinePhase } from "../services/globals.next-l1-provider-health-evidence.js";
 import {
   clearLivenessIncident,
   raiseLivenessIncident,
 } from "../services/liveness-halt.js";
+import { Lucid } from "../services/lucid.js";
+import { MidgardContracts } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import type { EarliestCommitSchedulerPlan } from "../workers/utils/commit-block-planner.js";
 import { fetchRealStateQueueWitnessContext } from "../workers/utils/scheduler-refresh.js";
 import {

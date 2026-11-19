@@ -1,10 +1,8 @@
 import { expect } from "vitest";
 
-import {
-  buildTransactionOutputNonCanonicalStep03,
-  buildTransactionOutputNonCanonicalStep03Datum,
-  transactionOutputScanControlData,
-} from "../src/transaction-output-non-canonical/index.js";
+import { buildTransactionOutputNonCanonicalStep03 } from "../src/transaction-output-non-canonical/submit-step-03.js";
+import { buildTransactionOutputNonCanonicalStep03Datum } from "../src/transaction-output-non-canonical/submit-step-03-datum.js";
+import { transactionOutputScanControlData } from "../src/transaction-output-non-canonical/transaction-output-non-canonical.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
@@ -12,8 +10,8 @@ import {
   readOutputScanState,
   scanStateOf,
   scanWindowAt,
-  submitOutputStep03Raw,
-} from "./support/transaction-output-non-canonical-emulator.js";
+} from "./support/transaction-output-non-canonical-emulator.continue-raw.js";
+import { submitOutputStep03Raw } from "./support/transaction-output-non-canonical-emulator.publish-output-field-carriage.js";
 import { record } from "./transaction-output-non-canonical-lifecycle.record-fit.js";
 import {
   controlCbor,

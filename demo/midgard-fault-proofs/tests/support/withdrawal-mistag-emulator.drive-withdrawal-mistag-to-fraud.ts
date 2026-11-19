@@ -1,31 +1,31 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { type Script, type UTxO } from "@lucid-evolution/lucid";
 
-import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.js";
+import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import { fetchUtxoByOutRef, parseOutRef } from "../../src/runtime.js";
+import { prepareWithdrawalMistag } from "../../src/withdrawal-mistag/prepare-withdrawal-mistag.js";
+import { buildWithdrawalMistagInit } from "../../src/withdrawal-mistag/submit-withdrawal-mistag-init.js";
+import { buildWithdrawalMistagStep05 } from "../../src/withdrawal-mistag/submit-withdrawal-mistag-step-05.js";
 import {
-  buildWithdrawalMistagInit,
   buildWithdrawalMistagStep01,
   buildWithdrawalMistagStep02,
   buildWithdrawalMistagStep03,
   buildWithdrawalMistagStep04,
-  buildWithdrawalMistagStep05,
-  prepareWithdrawalMistag,
-} from "../../src/withdrawal-mistag/index.js";
+} from "../../src/withdrawal-mistag/submit-withdrawal-mistag-steps.submit-withdrawal-mistag-intermediate-step.js";
+import { network } from "./emulator/blueprints.js";
+import {
+  alignUnixTimeToEmulatorSlotBoundary,
+  funderPaymentKeyHash,
+} from "./emulator/emulator-context.js";
+import { makeHeader } from "./emulator/header-fixtures.js";
 import {
   captureEmulatorSubmission,
   type CompleteSignedTransactionMeasurement,
 } from "./emulator/measurement.js";
-import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  buildRemovalDeploymentInfo,
-  funderPaymentKeyHash,
-  makeHeader,
-  network,
-  publishPlainReferenceScriptUtxo,
-  publishRemovalReferenceScripts,
-  submitSetupTx,
-} from "./submit-init-emulator-shared.js";
+import { publishRemovalReferenceScripts } from "./emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.build-removal-deployment-info.js";
+import { submitSetupTx } from "./emulator/setup-tx.submit-setup-tx.js";
 import { buildAndSubmitUnjournaled } from "./submit-unjournaled.js";
 import {
   buildWithdrawalMistagEvidenceMaterial,

@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import { WorkflowActionChangedError } from "../src/workflow/action-changed.js";
 import * as actuationAuthority from "../src/workflow/actuation-permit.js";
 import * as fundingAuthority from "../src/workflow/funding-reservation-permit.js";
-import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.js";
+import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
 import { type FraudProofFamilyWorkflowAdapter } from "../src/workflow/orchestrator.js";
 import {
   canonicalEvidence,

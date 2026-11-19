@@ -5,7 +5,7 @@ import { CML, coreToTxOutput, Data } from "@lucid-evolution/lucid";
 import {
   watcherSameCanonicalJson,
   watcherSha256CanonicalJson,
-} from "../storage/durable-store.js";
+} from "../storage/durable-store.canonical-json.js";
 import {
   admittedHeaders,
   admittedObservations,

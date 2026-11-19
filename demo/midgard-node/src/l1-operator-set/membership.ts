@@ -18,7 +18,7 @@
  */
 import { Effect, Ref } from "effect";
 
-import { Globals } from "../services/globals.js";
+import { Globals } from "../services/globals.globals.js";
 import {
   clearLivenessIncident,
   HaltSource,

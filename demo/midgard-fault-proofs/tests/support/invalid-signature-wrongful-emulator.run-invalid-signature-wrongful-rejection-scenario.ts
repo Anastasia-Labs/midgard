@@ -3,8 +3,10 @@ import {
   computeMidgardNativeTxId,
   encodeMidgardForcedTxCanonical,
 } from "@al-ft/midgard-core";
-import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
-import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
+import {
+  deriveMidgardForcedTxProofSource,
+  materializeMidgardForcedTxFromCanonical,
+} from "@al-ft/midgard-core/codec/forced";
 import {
   ForcedInclusionTxV1Schema,
   forcedVerdictSubject,
@@ -16,13 +18,13 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data, getAddressDetails } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import { planFaultProofFieldOpening } from "../../src/field-opening.js";
+import { planFaultProofFieldOpening } from "../../src/field-opening.plan-fault-proof-field-opening.js";
 import {
   admitInvalidSignatureForcedArtifact,
   INVALID_SIGNATURE_FORCED_ARTIFACT,
 } from "../../src/invalid-signature/artifact.js";
 import type { InvalidSignatureContracts } from "../../src/invalid-signature/contracts.js";
-import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.js";
+import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import {
   buildCountedRoot,
   commitCountedRoot,
@@ -32,17 +34,15 @@ import { buildCatalogueDeploymentInfo } from "./emulator/catalogue.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./emulator/emulator-context.js";
 import { makeFaultProofEmulatorHarness } from "./emulator/harness.js";
 import { captureEmulatorSubmission } from "./emulator/measurement.js";
-import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.js";
+import { publishRemovalReferenceScripts } from "./emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.build-removal-deployment-info.js";
 import { submitSetupTx } from "./emulator/setup-tx.js";
-import {
-  buildInvalidSignatureSubject,
-  submitRawInvalidSignatureStep02,
-} from "./invalid-signature-emulator.js";
+import { buildInvalidSignatureSubject } from "./invalid-signature-emulator.build-invalid-signature-subject.js";
+import { submitRawInvalidSignatureStep02 } from "./invalid-signature-emulator.submit-raw-invalid-signature-step02.js";
 import { network } from "./invalid-signature-wrongful-emulator.network.js";
 import { submitFamilyCancel } from "./linear-fault-cancel.js";
-import { buildInvalidForcedTransitionTraceFixture } from "./submit-init-emulator-fixtures.js";
-import { publishPlainReferenceScriptUtxo } from "./submit-init-emulator-shared.js";
-import { publishRemovalReferenceScripts } from "./submit-init-emulator-shared.js";
+import { buildInvalidForcedTransitionTraceFixture } from "./submit-init/forced-transitions.js";
 import { submitInit } from "./submit-unjournaled.init.js";
 import {
   certifyCarriageUnjournaled,

@@ -10,7 +10,9 @@ import {
   splitPackedHex,
   VERIFICATION_KEY_HEX_LENGTH,
 } from "../da/local-signers.js";
-import { MidgardMpf, MpfBatchOp, MpfError } from "../mpf/index.js";
+import { MpfError } from "../mpf/errors.js";
+import { MidgardMpf } from "../mpf/store.midgard-mpf.js";
+import { MpfBatchOp } from "../mpf/types.js";
 
 /**
  * Deployment helpers for the protocol's initial on-chain contract state.

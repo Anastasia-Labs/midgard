@@ -9,7 +9,7 @@ import { Effect, Option } from "effect";
 import { PendingBlockFinalizationsDB } from "../../database/index.js";
 import { DatabaseError } from "../../database/utils/common.js";
 import * as Ledger from "../../database/utils/ledger.js";
-import { computeLedgerMpfRootFromLedgerEntries } from "../../mpf/index.js";
+import { computeLedgerMpfRootFromLedgerEntries } from "../../mpf/ledger-hydration.js";
 
 export type ConfirmedLedgerSnapshot = {
   readonly entries: readonly Ledger.Entry[];

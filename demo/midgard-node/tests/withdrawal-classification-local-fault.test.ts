@@ -1,10 +1,10 @@
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   createReplayedLedger,
-  isReplayLocalFault,
   ledgerEntriesRoot,
   type ReplayedLedgerRefusal,
 } from "@al-ft/midgard-fault-proofs";
+import { isReplayLocalFault } from "@al-ft/midgard-fault-proofs/block-replay";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CANONICAL_MAX_DEPTHS,

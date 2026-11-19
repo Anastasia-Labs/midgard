@@ -14,7 +14,7 @@ import {
   eventKeyFingerprint,
   type SourceEventRecord,
   type TransitionTraceReconstruction,
-} from "./reconstruct.js";
+} from "./reconstruct.transition-trace-reconstruction.js";
 
 const countedPhasView = (root: CountedRoot): KeyValuePhasRoot => ({
   root: root.phasRoot,

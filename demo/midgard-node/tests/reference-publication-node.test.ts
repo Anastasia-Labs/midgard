@@ -9,13 +9,13 @@ import { CML, Kupmios, Lucid, type UTxO } from "@lucid-evolution/lucid";
 import { expect, it } from "vitest";
 
 import { nodeRuntimeReferenceScriptTargets } from "../src/transactions/reference-scripts.js";
+import { synchronizePublicationIndexer } from "./helpers/publication-indexer-barrier.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 import {
   DEFAULT_PUBLICATION_SCHEDULE,
   PublicationJournal,
-  publishReferenceChain,
-  synchronizePublicationIndexer,
-} from "./helpers/reference-publication-chain.js";
+} from "./helpers/reference-publication-chain.publication-journal.js";
+import { publishReferenceChain } from "./helpers/reference-publication-chain.publish-reference-chain.js";
 
 const runDirectory = process.env.MIDGARD_PUBLICATION_NODE_RUN_DIR;
 const probe = process.env.MIDGARD_PUBLICATION_NODE_PROBE ?? "bounded";

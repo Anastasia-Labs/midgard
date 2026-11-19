@@ -5,7 +5,7 @@ import {
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { prepareMintItemEvidence } from "../src/mint-item-non-canonical/index.js";
+import { prepareMintItemEvidence } from "../src/mint-item-non-canonical/mint-item-non-canonical.js";
 import {
   canonicalMintItems,
   malformedMintItems,

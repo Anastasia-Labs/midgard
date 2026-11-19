@@ -6,11 +6,9 @@ import {
   makeFraudProofMintRedeemer,
   makeStep04SpendRedeemer,
 } from "../../src/double-spend/submit-step-04.make-step04-spend-redeemer.js";
-import {
-  faultProofFieldOpening,
-  planFaultProofFieldOpening,
-} from "../../src/field-opening.js";
-import { parseSubmitStep01TxInclusion } from "./legacy-submit-emulator.js";
+import { planFaultProofFieldOpening } from "../../src/field-opening.plan-fault-proof-field-opening.js";
+import { faultProofFieldOpening } from "../../src/field-opening.publish-fault-proof-field-carriage.js";
+import { parseSubmitStep01TxInclusion } from "../../src/step-support.js";
 import { type stageDoubleSpendStep04 } from "./submit-init/double-spend-staging.js";
 
 type StagedDoubleSpend = Awaited<ReturnType<typeof stageDoubleSpendStep04>>;

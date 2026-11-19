@@ -26,30 +26,30 @@ import { Data, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { submitRemoveFraudulentBlock } from "../src/index.js";
 import {
   requireInputSetUniquenessClaim,
   scanInputSetUniqueness,
-} from "../src/input-set-uniqueness/index.js";
+} from "../src/input-set-uniqueness/scan.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
+import {
+  captureEmulatorSubmission,
+  type CompleteSignedTransactionMeasurement,
+} from "./support/emulator/measurement.js";
+import { expectProofFit } from "./support/emulator/proof-fit.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import {
   buildInputSetUniquenessFixture,
   isuOutRef,
   makeInputSetUniquenessEmulatorHarness,
   publishInputSetUniquenessReferenceScripts,
   setupInputSetUniquenessScenario,
-} from "./support/input-set-uniqueness-emulator.js";
+} from "./support/input-set-uniqueness-emulator.build-input-set-uniqueness-fixture.js";
 import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
-import { expectStateQueueHeaderOrder } from "./support/submit-init-emulator-fixtures.js";
-import {
-  buildRemovalDeploymentInfo,
-  captureEmulatorSubmission,
-  type CompleteSignedTransactionMeasurement,
-  expectProofFit,
-  expectSingleUtxoWithUnit,
-  network,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
+import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
 import {
   submitInputSetUniquenessInit,
   submitInputSetUniquenessStep01,

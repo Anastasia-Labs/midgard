@@ -10,7 +10,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { expect, it } from "vitest";
 
-import { referencePublicationFundingRequired } from "../src/transactions/reference-publication.js";
+import { referencePublicationFundingRequired } from "../src/transactions/reference-publication.reference-publication-funding-required.js";
 import { ensureReferenceScriptTargetsProgram } from "../src/transactions/reference-scripts.js";
 import { runWithoutFollower } from "./helpers/intent-journal.js";
 

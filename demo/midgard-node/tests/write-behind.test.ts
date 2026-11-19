@@ -18,14 +18,16 @@ import {
 } from "../src/database/mempoolTxDeltas.js";
 import type { WriteBehindItem } from "../src/services/write-behind.js";
 import {
-  persistWriteBehindInlineOverflowWithRetry,
   readWriteBehindTelemetry,
   recordWriteBehindTransactionTelemetry,
   summarizeWriteBehindTelemetry,
-  takeWriteBehindProjectionBatch,
   writeBehindFlushDurationTimer,
   writeBehindInlineFallbackCounter,
-} from "../src/services/write-behind.js";
+} from "../src/services/write-behind.summarize-write-behind-telemetry.js";
+import {
+  persistWriteBehindInlineOverflowWithRetry,
+  takeWriteBehindProjectionBatch,
+} from "../src/services/write-behind.take-write-behind-projection-batch.js";
 
 const deltaItem = (count: number): WriteBehindItem => ({
   kind: "tx_deltas",

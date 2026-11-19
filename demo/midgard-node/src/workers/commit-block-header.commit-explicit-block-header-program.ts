@@ -6,18 +6,20 @@ import { Effect, Schedule } from "effect";
 import { PendingBlockFinalizationsDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
 import * as Ledger from "../database/utils/ledger.js";
-import { MidgardMpf } from "../mpf/index.js";
-import { Lucid, MidgardContracts, NodeConfig } from "../services/index.js";
+import { MidgardMpf } from "../mpf/store.midgard-mpf.js";
+import { NodeConfig } from "../services/config.make-config.js";
 import type { IntentJournal } from "../services/intent-journal.js";
 import {
   findLandedBlock,
   requireLandedStateQueue,
 } from "../services/landed-state-queue.js";
+import { Lucid } from "../services/lucid.js";
+import { MidgardContracts } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   awaitExactTransactionConfirmation,
   type TxSignError,
   type TxSubmitError,
-} from "../transactions/utils.js";
+} from "../transactions/utils.await-required-output-visibility.js";
 import {
   EXPLICIT_COMMIT_BLOCK_VISIBILITY_DELAY,
   EXPLICIT_COMMIT_BLOCK_VISIBILITY_RETRIES,

@@ -3,8 +3,8 @@ import { expect, it } from "vitest";
 import {
   MemoryFraudProofWorkflowJournalStore,
   validateFraudProofWorkflowJournal,
-} from "../src/workflow/journal.js";
-import { computeFraudProofRawL1PointId } from "../src/workflow/raw-l1-snapshot.js";
+} from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
+import { computeFraudProofRawL1PointId } from "../src/workflow/raw-l1-snapshot.admit-fraud-proof-raw-l1-transaction.js";
 import {
   canonicalEvidence,
   makeAdapter,

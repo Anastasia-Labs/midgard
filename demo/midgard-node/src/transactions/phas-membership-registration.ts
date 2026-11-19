@@ -21,12 +21,12 @@ import {
   decodePhasMembershipRewardRegistrationResult,
 } from "./phas-membership-registration.decode.js";
 import {
-  handleSignSubmit,
   TxConfirmError,
-  TxExpiredError,
   TxSignError,
   TxSubmitError,
-} from "./utils.js";
+} from "./utils.await-required-output-visibility.js";
+import { handleSignSubmit } from "./utils.await-submitted-transaction-confirmation.js";
+import { TxExpiredError } from "./utils.tx-expiry.js";
 import { readSelectedWalletViewInputs } from "./utils.wallet-view.js";
 
 export type PhasMembershipRewardRegistrationResult = {

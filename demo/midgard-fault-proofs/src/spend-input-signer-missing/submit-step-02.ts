@@ -16,11 +16,11 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { isPrerequisiteTurn } from "../fault-proof-turn.js";
+import { reuseOrCertifyFaultProofFieldCarriage } from "../field-opening.certify-fault-proof-field-carriage.js";
 import {
   faultProofFieldOpening,
   publishFaultProofFieldCarriage,
-  reuseOrCertifyFaultProofFieldCarriage,
-} from "../field-opening.js";
+} from "../field-opening.publish-fault-proof-field-carriage.js";
 import {
   requireLinearFaultReferenceScript,
   requireLinearFaultStepState,
@@ -39,8 +39,7 @@ import {
   SIGNER_WITNESS_SCAN_STEP_INDEX,
   SIGNER_WITNESS_TERMINAL_STEP_INDEX,
 } from "../signer-witness-scan/submit-scan.js";
-import { completeStep, fundStep } from "../step-completion.js";
-import { finishStep } from "../step-completion.js";
+import { completeStep, finishStep, fundStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessWithdrawalValidatorCarriage } from "../witness-reference-scripts.js";
 import {

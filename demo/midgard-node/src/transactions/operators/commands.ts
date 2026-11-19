@@ -10,22 +10,26 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
-import { Lucid, MidgardContracts, NodeConfig } from "../../services/index.js";
+import { NodeConfig } from "../../services/index.js";
+import { Lucid } from "../../services/lucid.js";
+import { MidgardContracts } from "../../services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   activateOperatorProgram,
   activateRegisteredOperatorProgram,
   deregisterOperatorProgram,
-  OperatorRegistrationRefusal,
   registerOperatorProgram,
-} from "../register-active-operator.js";
-import { rebuildOnTxExpiry } from "../utils.js";
+} from "../register-active-operator.activate-registered-operator-program.js";
+import { OperatorRegistrationRefusal } from "../register-active-operator.to-lifecycle-result.js";
+import { rebuildOnTxExpiry } from "../utils.tx-expiry.js";
 import {
   configuredOperatorEconomicsProgram,
   OperatorExitRefusal,
+} from "./exit.resolve-operator-script-refs-program.js";
+import {
   recoverOperatorBondProgram,
   retireOperatorProgram,
-  slashDuplicateOperatorProgram,
-} from "./exit.js";
+} from "./exit.retire-operator-program.js";
+import { slashDuplicateOperatorProgram } from "./exit.slash-duplicate-operator-program.js";
 import {
   OperatorFundingShortfall,
   OperatorWalletInputsEmpty,

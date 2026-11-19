@@ -5,7 +5,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data, type UTxO } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import { faultProofFieldOpening } from "../../src/field-opening.js";
+import { faultProofFieldOpening } from "../../src/field-opening.publish-fault-proof-field-carriage.js";
 import { createDirectComponentStepper } from "./direct-component-stepper.js";
 import {
   directSourceAdmissionRedeemer,
@@ -13,11 +13,9 @@ import {
 } from "./direct-source-fixture.js";
 import type { DirectSourceResourceFixture } from "./direct-source-resource-fixture.js";
 import { setupDirectSourceResourceThread } from "./direct-source-resource-setup.js";
+import { measureCompleteSignedTransaction } from "./emulator/measurement.js";
+import { EMULATOR_PROTOCOL_PARAMETERS } from "./emulator/protocol-parameters.js";
 import { TRACED_REFUSALS } from "./emulator/traced-refusals.js";
-import {
-  EMULATOR_PROTOCOL_PARAMETERS,
-  measureCompleteSignedTransaction,
-} from "./submit-init-emulator-shared.js";
 
 type Transition = Parameters<
   ReturnType<typeof createDirectComponentStepper>["complete"]

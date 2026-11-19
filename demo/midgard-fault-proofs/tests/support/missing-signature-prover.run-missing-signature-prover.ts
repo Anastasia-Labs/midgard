@@ -14,7 +14,7 @@ import { buildMissingSignatureInit } from "../../src/missing-signature/submit-mi
 import { buildMissingSignatureStep01 } from "../../src/missing-signature/submit-missing-signature-step-01.js";
 import { buildMissingSignatureStep02 } from "../../src/missing-signature/submit-missing-signature-step-02.js";
 import { buildMissingSignatureStep03 } from "../../src/missing-signature/submit-missing-signature-step-03.js";
-import { buildMissingSignatureStep04 } from "../../src/missing-signature/submit-missing-signature-step-04.js";
+import { buildMissingSignatureStep04 } from "../../src/missing-signature/submit-missing-signature-step-04.submit-missing-signature-step04.js";
 import { outRefLabel } from "../../src/runtime.js";
 import type { SubmitStep01TxInclusion } from "../../src/step-support.js";
 import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";

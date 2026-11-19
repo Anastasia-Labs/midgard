@@ -35,8 +35,8 @@ import {
 import { resolveRegisteredOperatorRemovalWitness } from "../../src/remove-fraudulent-block.resolve-registered-operator-removal-witness.js";
 import { buildSlashingInputs } from "../../src/remove-fraudulent-block.resolve-state-queue-slashing-approach.js";
 import { outRefLabel } from "../../src/runtime.js";
+import { network } from "./emulator/blueprints.js";
 import { type ProvedDoubleSpendFixture } from "./submit-init-emulator-fixtures.js";
-import { network } from "./submit-init-emulator-shared.js";
 import { proverEnterpriseAddress } from "./validation-trace-removal.js";
 
 export type RawRemoval = {

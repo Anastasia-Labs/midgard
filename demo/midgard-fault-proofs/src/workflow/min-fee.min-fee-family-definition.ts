@@ -4,12 +4,10 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import { MIN_FEE_FORCED_ARTIFACT } from "../min-fee-forced-artifact.js";
-import { MIN_FEE_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
-import { defineLinearFamily } from "./family-definition.js";
-import {
-  assembleManifestBoundFamilyWorkflow,
-  runOrResumeManifestBoundFamilyWorkflow,
-} from "./manifest-bound-family-assembly.js";
+import { MIN_FEE_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
+import { defineLinearFamily } from "./family-definition.family-definition.js";
+import { assembleManifestBoundFamilyWorkflow } from "./manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
+import { runOrResumeManifestBoundFamilyWorkflow } from "./manifest-bound-family-assembly.run-or-resume-manifest-bound-family-workflow.js";
 import {
   admitMinFeeArtifact,
   WITNESS_ROLES,

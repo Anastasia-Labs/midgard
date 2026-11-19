@@ -2,8 +2,10 @@ import {
   computeMidgardNativeTxId,
   encodeMidgardForcedTxCanonical,
 } from "@al-ft/midgard-core";
-import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
-import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
+import {
+  deriveMidgardForcedTxProofSource,
+  materializeMidgardForcedTxFromCanonical,
+} from "@al-ft/midgard-core/codec/forced";
 import {
   forcedVerdictSubject,
   minFeeTerminalContradiction,
@@ -15,7 +17,7 @@ import {
   detectMinFeeForcedReplay,
   prepareMinFeeForcedPlan,
 } from "../src/min-fee-forced.js";
-import { MIN_FEE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
+import { MIN_FEE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 
 const fixture = (minimum = 1_000n, reason = "FeeBelowMinimum") => {

@@ -7,15 +7,13 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import {
-  buildDirectSourceIndexEvidence,
-  prepareDirectScriptMaterial,
-} from "../../src/direct-script-derivation/index.js";
+import { prepareDirectScriptMaterial } from "../../src/direct-script-derivation/material.js";
+import { buildDirectSourceIndexEvidence } from "../../src/direct-script-derivation/source-index.js";
 import {
   checkLedgerAgainstRoot,
   ledgerEntriesRoot,
 } from "../../src/ledger-at.js";
-import { reconstructDaPayload } from "../../src/transition-trace/reconstruct.js";
+import { reconstructDaPayload } from "../../src/transition-trace/reconstruct.reconstruct-da-payload.js";
 import {
   buildCanonicalBlockFixture,
   buildFixtureTransaction,

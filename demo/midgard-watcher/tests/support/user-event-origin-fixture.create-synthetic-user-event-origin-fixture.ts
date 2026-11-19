@@ -19,7 +19,7 @@ import { vi } from "vitest";
 import {
   verifyWatcherUserEventScriptBinding,
   type WatcherUserEventScriptBinding,
-} from "../../src/runtime/deployment-identity.js";
+} from "../../src/runtime/deployment-identity.verify-watcher-user-event-script-binding.js";
 import {
   type LedgerProtocolParameterOverrides,
   ledgerProtocolParameters,

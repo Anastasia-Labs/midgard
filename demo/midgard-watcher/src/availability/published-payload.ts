@@ -11,14 +11,10 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import {
-  assertWatcherStateQueueObservation,
-  type WatcherAuthenticatedStateQueueObservation,
-} from "../indexers/authenticated-state-queue-observation.js";
-import {
-  assertVerifiedWatcherDeploymentIdentity,
-  type VerifiedWatcherDeploymentIdentity,
-} from "../runtime/deployment-identity.js";
+import { assertWatcherStateQueueObservation } from "../indexers/authenticated-state-queue-observation.js";
+import { type WatcherAuthenticatedStateQueueObservation } from "../indexers/authenticated-state-queue-observation.parse-persisted-header.js";
+import { assertVerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
+import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.parse-trust-roots.js";
 import {
   observationPoint,
   readAtPoint,

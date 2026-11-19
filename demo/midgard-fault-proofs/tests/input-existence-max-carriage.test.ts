@@ -22,28 +22,28 @@ import {
 import { prepareInputExistence } from "../src/input-existence/prepare.js";
 import { buildInputExistenceStep } from "../src/input-existence/submit.js";
 import type { PublishedProofChunk } from "../src/publish-proof-chunks.js";
-import { buildInit } from "../src/submit-init.js";
+import { buildInit } from "../src/submit-init.submit-init.js";
 import { commitCountedRoot } from "../src/transition-trace/phas.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
 import { verifiedMaximumForkPrefixes } from "./support/canonical-decodability-emulator.long-fork-proof.js";
-import { registerChunkedVerifyRewardAccount } from "./support/emulator/emulator-context.js";
+import { network } from "./support/emulator/blueprints.js";
+import {
+  alignUnixTimeToEmulatorSlotBoundary,
+  funderPaymentKeyHash,
+  registerChunkedVerifyRewardAccount,
+} from "./support/emulator/emulator-context.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import {
   captureEmulatorSubmission,
   measureCompleteSignedTransaction,
 } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
-import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
-import { registerPexcludesExclusionRewardAccount } from "./support/submit-init-emulator-fixtures.js";
-import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  buildRemovalDeploymentInfo,
-  funderPaymentKeyHash,
-  network,
-  publishPlainReferenceScriptUtxo,
-  submitSetupTx,
-} from "./support/submit-init-emulator-shared.js";
+import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
+import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
+import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.build-decoding-block-fixture.js";
+import { registerPexcludesExclusionRewardAccount } from "./support/submit-init/wallet.js";
 import {
   buildAndSubmitUnjournaled,
   certifyCarriageUnjournaled,

@@ -15,7 +15,7 @@ import {
   planNetworkIdOutputsOpening,
   type PreparedNetworkIdProof,
 } from "../../src/network-id/prepare.js";
-import { deriveL2TransactionSourceCbor } from "../../src/prepare-double-spend.js";
+import { deriveL2TransactionSourceCbor } from "../../src/prepare-double-spend.encode-l2-transaction-source-value.js";
 import type { JournalJsonObject } from "../../src/workflow/journal.js";
 import {
   buildFixtureTransaction,

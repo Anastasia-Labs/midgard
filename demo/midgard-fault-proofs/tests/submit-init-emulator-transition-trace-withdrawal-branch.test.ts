@@ -12,14 +12,12 @@ import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-v
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildCountedRoot,
-  buildTransitionFaultProof,
-  buildTransitionTraceProof,
-  buildValidWithdrawalTransitionWitness,
-  resolveTransitionTraceDeploymentContracts,
-  transitionTraceFinalIndex,
-} from "../src/index.js";
+import { resolveTransitionTraceDeploymentContracts } from "../src/runtime.resolve-category-deployment-contracts.js";
+import { buildCountedRoot } from "../src/transition-trace/phas.js";
+import { transitionTraceFinalIndex } from "../src/transition-trace/submit.make-transition-trace-final-spend-redeemer.js";
+import { buildTransitionTraceProof } from "../src/transition-trace/submit.submit-transition-trace-proof.js";
+import { buildTransitionFaultProof } from "../src/transition-trace/witnesses.build-out-of-window-source-event-fault.js";
+import { buildValidWithdrawalTransitionWitness } from "../src/transition-trace/witnesses.build-source-non-membership-proof.js";
 import {
   alignedHeaderStart,
   removeAndAssertPermanentProof,
@@ -32,14 +30,14 @@ import {
   withdrawalIdFor,
   withdrawalInfo,
 } from "./submit-init-emulator-transition-trace-subvariants.setup-challenge.js";
+import { network } from "./support/emulator/blueprints.js";
+import { funderPaymentKeyHash } from "./support/emulator/emulator-context.js";
 import { FAMILY_HISTORY_HEADER_LEAD_MS } from "./support/emulator/family-history.js";
 import {
-  funderPaymentKeyHash,
   makeHeader,
-  network,
   transitionTraceDaEntry,
   withCommitSlot,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/emulator/header-fixtures.js";
 import { submitTurnsUnjournaled } from "./support/submit-unjournaled.js";
 
 // A withdrawal step deletes the spent output from the ledger. When the delete

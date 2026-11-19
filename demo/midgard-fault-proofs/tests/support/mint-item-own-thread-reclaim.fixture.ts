@@ -5,17 +5,19 @@
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { expect, vi } from "vitest";
 
-import { createMintItemNonCanonicalRecoveryAdapter } from "../../src/mint-item-non-canonical/workflow.js";
+import { createMintItemNonCanonicalRecoveryAdapter } from "../../src/mint-item-non-canonical/workflow.execute-manifest-bound-mint-item-non-canonical-workflow.js";
 import { FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT } from "../../src/workflow/family-l1-observation.js";
 import * as funding from "../../src/workflow/funding-reservation-permit.js";
+import { validateFraudProofWorkflowJournal } from "../../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
+import type {
+  FraudProofWorkflowJournalEntry,
+  FraudProofWorkflowJournalStore,
+} from "../../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import {
   FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
-  type FraudProofWorkflowJournalEntry,
-  type FraudProofWorkflowJournalStore,
   type FraudProofWorkflowTerminal,
-  validateFraudProofWorkflowJournal,
-} from "../../src/workflow/journal.js";
-import { createFraudProofWorkflowRegistry } from "../../src/workflow/orchestrator.js";
+} from "../../src/workflow/journal.fraud-proof-workflow-terminal.js";
+import { createFraudProofWorkflowRegistry } from "../../src/workflow/orchestrator.immutable-fraud-proof-workflow-registry.js";
 import { runAdmittedFraudProofWorkflow } from "../../src/workflow/orchestrator.run-admitted-fraud-proof-workflow.js";
 import * as cancel from "../../src/workflow/own-thread-reclaim.linear-cancel-port.js";
 import type { OwnThreadReclaimPort } from "../../src/workflow/own-thread-reclaim.with-own-thread-reclaim.js";

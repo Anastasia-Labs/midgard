@@ -29,10 +29,10 @@ import { CONFIRMED_LEDGER_BASE_MISMATCH } from "../../src/landed-blocks/holds.js
 import { ownFoldRow } from "../../src/landed-blocks/journal.js";
 import type { LandedBlockPorts } from "../../src/landed-blocks/ports.js";
 import { Frontier, insertRow } from "../../src/landed-blocks/store.js";
-import { computeLedgerMpfRootFromLedgerEntries } from "../../src/mpf/index.js";
+import { computeLedgerMpfRootFromLedgerEntries } from "../../src/mpf/ledger-hydration.js";
 import { NodeConfig } from "../../src/services/config.js";
 import { withFollowerWrite } from "../../src/services/follower-write-gate.js";
-import { buildDaPayloadInsert } from "../../src/workers/commit-block-header/da-payload.js";
+import { buildDaPayloadInsert } from "../../src/workers/commit-block-header/da-payload.build-da-payload-insert.js";
 import { resolvePendingJournalLedgerState } from "../../src/workers/commit-block-header/pending-journal.js";
 import {
   makeMidgardTxOutput,

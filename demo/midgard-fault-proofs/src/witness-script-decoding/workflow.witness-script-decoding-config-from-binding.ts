@@ -6,10 +6,8 @@ import {
 } from "@al-ft/midgard-sdk";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
-import {
-  type FaultProofFieldGrammarDeployment,
-  resolveFaultProofFieldGrammarDeployment,
-} from "../field-grammar-certificate.js";
+import { resolveFaultProofFieldGrammarDeployment } from "../field-grammar-certificate.resolve-fault-proof-field-grammar-deployment.js";
+import type { FaultProofFieldGrammarDeployment } from "../field-grammar-certificate.route-fault-proof-field-grammar.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { PLUTUS_SCRIPT_REFUSED_RESULT_BASE } from "../script-decode/item-record.js";
 import type { ScriptDecodeDeployment } from "../script-decode/submit.js";

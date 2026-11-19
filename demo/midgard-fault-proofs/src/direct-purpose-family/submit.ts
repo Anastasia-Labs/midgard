@@ -12,13 +12,12 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { faultProofFieldOpening } from "../field-opening.js";
+import { faultProofFieldOpening } from "../field-opening.publish-fault-proof-field-carriage.js";
 import {
   phasMembershipRewardAddress,
   type ResolvedProverSigner,
 } from "../runtime.js";
-import { completeStep, fundStep } from "../step-completion.js";
-import { finishStep } from "../step-completion.js";
+import { completeStep, finishStep, fundStep } from "../step-completion.js";
 import { PHAS_MEMBERSHIP_WITHDRAW_TITLE } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {

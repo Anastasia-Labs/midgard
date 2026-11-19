@@ -3,11 +3,9 @@ import { outRefLabel } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
 import { CANONICAL_DECODABILITY_CATEGORY_LABEL } from "../src/canonical-decodability/contracts.js";
-import {
-  buildCanonicalDecodabilityInit,
-  buildCanonicalDecodabilityStep01,
-  buildCanonicalDecodabilityStep02,
-} from "../src/index.js";
+import { buildCanonicalDecodabilityInit } from "../src/canonical-decodability/submit-canonical-decodability-init.js";
+import { buildCanonicalDecodabilityStep01 } from "../src/canonical-decodability/submit-canonical-decodability-step-01.js";
+import { buildCanonicalDecodabilityStep02 } from "../src/canonical-decodability/submit-canonical-decodability-step-02.js";
 import { buildLinearFaultCancel } from "../src/linear-fault-cancel.js";
 import {
   buildCanonicalDecodabilityBodyFixture,
@@ -16,7 +14,7 @@ import {
   publishCanonicalDecodabilityReferenceScripts,
   setupCanonicalDecodabilityScenario,
 } from "./support/canonical-decodability-emulator.js";
-import { expectSingleUtxoWithUnit } from "./support/submit-init-emulator-shared.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 const initializedScenario = async () => {

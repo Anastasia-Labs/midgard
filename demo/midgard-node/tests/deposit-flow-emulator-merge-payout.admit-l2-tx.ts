@@ -3,8 +3,8 @@ import { expect } from "vitest";
 import {
   type ReconciliationReport,
   STATE_RECONCILIATION_CHECK_IDS,
-  stateReconciliationProgram,
-} from "../src/commands/state-reconciliation.js";
+} from "../src/commands/state-reconciliation.compares.js";
+import { stateReconciliationProgram } from "../src/commands/state-reconciliation.state-reconciliation-program.js";
 import {
   Effect,
   MempoolDB,

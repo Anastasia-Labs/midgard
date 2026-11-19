@@ -26,20 +26,20 @@ import {
   inputExistenceChronologyFixture,
 } from "./helpers/input-existence-chronology-fixture.js";
 import { chronologySeedDeposits } from "./helpers/input-existence-chronology-seed.js";
+import {
+  alignUnixTimeToEmulatorSlotBoundary,
+  funderPaymentKeyHash,
+} from "./support/emulator/emulator-context.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { runInputExistenceRoute } from "./support/emulator/input-existence-route.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { nodeForcedVerdict } from "./support/emulator/node-forced-verdict.js";
 import { submitSecondHeaderTx } from "./support/emulator/setup-tx.js";
-import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
+import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
+import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.build-decoding-block-fixture.js";
 import { submitRawInputExistenceStep } from "./support/raw-input-existence-step.js";
-import { registerPexcludesExclusionRewardAccount } from "./support/submit-init-emulator-fixtures.js";
-import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  funderPaymentKeyHash,
-  submitSetupTx,
-} from "./support/submit-init-emulator-shared.js";
+import { registerPexcludesExclusionRewardAccount } from "./support/submit-init/wallet.js";
 import { depositEventsRetainedBlock } from "./support/transition-trace-retained.deposit-events-retained-block.js";
 
 type Case =

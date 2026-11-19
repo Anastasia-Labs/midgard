@@ -10,26 +10,24 @@ import {
 } from "@al-ft/midgard-validation";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildTransactionOutputNonCanonicalStep01Accepted,
-  buildTransactionOutputNonCanonicalStep02,
-  buildTransactionOutputNonCanonicalStep04,
-} from "../src/transaction-output-non-canonical/index.js";
+import { buildTransactionOutputNonCanonicalStep01Accepted } from "../src/transaction-output-non-canonical/submit-step-01-accepted.js";
+import { buildTransactionOutputNonCanonicalStep02 } from "../src/transaction-output-non-canonical/submit-step-02.js";
+import { buildTransactionOutputNonCanonicalStep04 } from "../src/transaction-output-non-canonical/submit-step-04.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { longAssetNameOutput } from "./support/long-asset-name-value.js";
-import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
+import { setupFraudulentBlock } from "./support/submit-init/removal.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,
 } from "./support/submit-unjournaled.js";
+import { readOutputScanState } from "./support/transaction-output-non-canonical-emulator.continue-raw.js";
 import {
   publishOutputFieldCarriage,
-  readOutputScanState,
   submitOutputStep04Raw,
-} from "./support/transaction-output-non-canonical-emulator.js";
+} from "./support/transaction-output-non-canonical-emulator.publish-output-field-carriage.js";
 import { record } from "./transaction-output-non-canonical-lifecycle.record-fit.js";
 import {
   committedInclusions,

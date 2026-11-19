@@ -40,8 +40,8 @@ import {
   type ValidationTraceSelectionPlan,
 } from "../src/validation-trace-dispute/one-step-plan.js";
 import type { FraudProofFamilyWorkflowAdapter } from "../src/workflow/orchestrator.js";
+import { network } from "./support/emulator/blueprints.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
-import { network } from "./support/submit-init-emulator-shared.js";
 import { expectWithinWalletMoveShape } from "./support/validation-trace-dispute-move-fees.js";
 import {
   defendTwoThreads,

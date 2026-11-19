@@ -5,16 +5,16 @@
 import { buildStep01 } from "../../src/double-spend/submit-step-01.js";
 import { buildStep02 } from "../../src/double-spend/submit-step-02.js";
 import { buildStep03 } from "../../src/double-spend/submit-step-03.js";
-import { buildStep04 } from "../../src/double-spend/submit-step-04.js";
+import { buildStep04 } from "../../src/double-spend/submit-step-04.submit-step04.js";
 import { neSubmitStep01 } from "../../src/non-existent-input/submit-step-01.js";
 import { neSubmitStep02 } from "../../src/non-existent-input/submit-step-02.js";
 import { neSubmitStep03 } from "../../src/non-existent-input/submit-step-03.js";
-import { neSubmitStep04 } from "../../src/non-existent-input/submit-step-04.js";
-import { buildInit } from "../../src/submit-init.js";
-import { buildInvalidRangeStep01 } from "../../src/submit-invalid-range-step-01.js";
-import { buildInvalidRangeStep02V1 } from "../../src/submit-invalid-range-step-02.js";
-import { buildZeroInputStep01 } from "../../src/submit-zero-input-step-01.js";
-import { buildZeroInputStep02V1 } from "../../src/submit-zero-input-step-02.js";
+import { neSubmitStep04 } from "../../src/non-existent-input/submit-step-04.ne-submit-step04.js";
+import { buildInit } from "../../src/submit-init.submit-init.js";
+import { buildInvalidRangeStep01 } from "../../src/submit-invalid-range-step-01.submit-invalid-range-step01.js";
+import { buildInvalidRangeStep02V1 } from "../../src/submit-invalid-range-step-02.submit-invalid-range-step02-v1.js";
+import { buildZeroInputStep01 } from "../../src/submit-zero-input-step-01.submit-zero-input-step01.js";
+import { buildZeroInputStep02V1 } from "../../src/submit-zero-input-step-02.submit-zero-input-step02-v1.js";
 import { unjournaled, unjournaledTurns } from "./submit-unjournaled.js";
 
 export const submitInit = unjournaled(buildInit);

@@ -4,10 +4,8 @@ import type { RetainedDaPayloadSource } from "@al-ft/midgard-fault-proofs";
 import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk";
 
 import { assertWatcherL1AvailabilityPayloadSource } from "../availability/published-payload.js";
-import {
-  assertVerifiedWatcherDeploymentIdentity,
-  type VerifiedWatcherDeploymentIdentity,
-} from "../runtime/deployment-identity.js";
+import { assertVerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
+import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.parse-trust-roots.js";
 
 const reads = new AsyncLocalStorage<
   Readonly<{

@@ -1,13 +1,13 @@
 import { Worker } from "node:worker_threads";
 
 import { LedgerSignatureVerifierUnavailableError } from "@al-ft/midgard-core";
-import {
-  type LocalScriptEvalResult,
-  type MidgardCekVerdictRequest,
-  type PhaseAConfig,
-  type PhaseAResult,
-  type QueuedTx,
-} from "@al-ft/midgard-validation";
+import type { MidgardCekVerdictRequest } from "@al-ft/midgard-validation/phase-b";
+import type {
+  LocalScriptEvalResult,
+  PhaseAConfig,
+  PhaseAResult,
+  QueuedTx,
+} from "@al-ft/midgard-validation/types";
 import { Context, Data, Effect, Metric } from "effect";
 
 import {

@@ -22,7 +22,8 @@ import {
   COMMIT_REJECT_CODE_SPENDS_REJECTED_OUTPUT,
   COMMIT_REJECT_CODE_TRACE_UNAVAILABLE,
 } from "../src/mpf/commit-rejection.js";
-import { type MidgardMpf, processMpfs } from "../src/mpf/index.js";
+import { processMpfs } from "../src/mpf/process.process-mpfs.js";
+import type { MidgardMpf } from "../src/mpf/store.midgard-mpf.js";
 import { forcedProjectionEntry } from "./helpers/commit-da-frame-forced-projection.js";
 import {
   at,

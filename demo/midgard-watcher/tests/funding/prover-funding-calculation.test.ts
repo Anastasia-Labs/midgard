@@ -3,10 +3,16 @@ import "@al-ft/midgard-fault-proofs";
 import "@lucid-evolution/lucid";
 import "vitest";
 import "../../src/funding/prover-funding.js";
-import "../../src/funding/prover-funding-calculation.js";
-import "../../src/funding/prover-funding-reservation.js";
-import "../../src/runtime/deployment-identity.js";
-import "../support/deployment-authority-fixture.js";
+import "../../src/funding/prover-funding-calculation.aggregate-watcher-prover-funding-sweep.js";
+import "../../src/funding/prover-funding-calculation.capital-flow.js";
+import "../../src/funding/prover-funding-calculation.calculate-watcher-prover-funding.js";
+import "../../src/funding/prover-funding-reservation.watcher-prover-funding-reservation-store.js";
+import "../../src/funding/prover-funding-reservation.parse-watcher-prover-funding-reservation-record.js";
+import "../../src/funding/prover-funding-reservation.plan-watcher-prover-funding-reservation.js";
+import "../../src/runtime/deployment-identity.watcher-deployment-availability-challenge-authority.js";
+import "../../src/runtime/deployment-identity.verify-watcher-user-event-script-binding.js";
+import "../support/deployment-authority-fixture.build-watcher-deployment-authority-fixture.js";
+import "../support/deployment-authority-fixture.build-watcher-authority-contracts.js";
 import "./prover-funding-calculation.transaction-cbor.js";
 import "./prover-funding-calculation.runtime-authority.js";
 
@@ -23,22 +29,20 @@ import { describe, expect, it } from "vitest";
 
 import {
   aggregateWatcherProverFundingSweep,
-  assertWatcherProverFundingCalculation,
   assertWatcherRuntimeProverFundingCalculation,
-  calculateWatcherProverFunding,
   calculateWatcherRuntimeProverFunding,
-} from "../../src/funding/prover-funding-calculation.js";
+} from "../../src/funding/prover-funding-calculation.aggregate-watcher-prover-funding-sweep.js";
+import { calculateWatcherProverFunding } from "../../src/funding/prover-funding-calculation.calculate-watcher-prover-funding.js";
+import { assertWatcherProverFundingCalculation } from "../../src/funding/prover-funding-calculation.capital-flow.js";
+import { makeWatcherProverFundingReservationRecord } from "../../src/funding/prover-funding-reservation.parse-watcher-prover-funding-reservation-record.js";
 import {
-  assertWatcherProverFundingReservationPlan,
-  makeWatcherProverFundingReservationRecord,
   planWatcherProverFundingReservation,
   restoreWatcherProverFundingReservationPlan,
-} from "../../src/funding/prover-funding-reservation.js";
-import { watcherDeploymentReleaseEconomicsAuthority } from "../../src/runtime/deployment-identity.js";
-import {
-  makeWatcherDeploymentAuthorityFixture,
-  WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS,
-} from "../support/deployment-authority-fixture.js";
+} from "../../src/funding/prover-funding-reservation.plan-watcher-prover-funding-reservation.js";
+import { assertWatcherProverFundingReservationPlan } from "../../src/funding/prover-funding-reservation.watcher-prover-funding-reservation-store.js";
+import { watcherDeploymentReleaseEconomicsAuthority } from "../../src/runtime/deployment-identity.watcher-deployment-availability-challenge-authority.js";
+import { WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS } from "../support/deployment-authority-fixture.build-watcher-authority-contracts.js";
+import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.build-watcher-deployment-authority-fixture.js";
 import { runtimeAuthority } from "./prover-funding-calculation.runtime-authority.js";
 import {
   baseWalletAddress,

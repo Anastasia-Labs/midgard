@@ -5,8 +5,8 @@ import {
   makeOutput,
   outRefFromByte,
 } from "../../midgard-validation/tests/validation-fixtures.js";
-import { Globals } from "../src/services/globals.js";
-import { makeMempoolLedgerCacheService } from "../src/services/mempool-ledger-cache.js";
+import { Globals } from "../src/services/globals.globals.js";
+import { makeMempoolLedgerCacheService } from "../src/services/mempool-ledger-cache.make-mempool-ledger-cache-service.js";
 import { row, snapshot } from "./mempool-ledger-cache.row.js";
 
 describe("canonical history cache retirement", () => {

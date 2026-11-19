@@ -10,15 +10,13 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { CML, getAddressDetails } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { buildInit } from "../src/submit-init.js";
+import { buildInit } from "../src/submit-init.submit-init.js";
 import { createDoubleSpendRawL1ObservationPort } from "../src/workflow/double-spend-adapter.create-double-spend-raw-l1-observation-port.js";
 import type { ManifestBoundDoubleSpendWorkflow } from "../src/workflow/double-spend-adapter.preflight-of.js";
-import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.js";
-import {
-  createFraudProofWorkflowRegistry,
-  type FraudProofFamilyWorkflowAdapter,
-  type FraudProofWorkflowRunResult,
-} from "../src/workflow/orchestrator.js";
+import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
+import type { FraudProofFamilyWorkflowAdapter } from "../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
+import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
+import { createFraudProofWorkflowRegistry } from "../src/workflow/orchestrator.immutable-fraud-proof-workflow-registry.js";
 import { runAdmittedFraudProofWorkflow } from "../src/workflow/orchestrator.run-admitted-fraud-proof-workflow.js";
 import { withDoubleSpendOwnThreadReclaim } from "../src/workflow/own-thread-reclaim.special-families.js";
 import {
@@ -31,20 +29,20 @@ import {
 } from "../src/workflow/release-finality-policy.js";
 import { FraudProofResolvedByAnotherRecordError } from "../src/workflow/resolved-by-another-record.js";
 import { recordCrossBlockRawEmulator } from "./support/cross-block-raw-emulator.js";
-import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
+import { network } from "./support/emulator/blueprints.js";
+import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
+import {
+  makeHeader,
+  withPlaceholderDeposit,
+} from "./support/emulator/header-fixtures.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
+import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
 import {
   expectResolvedWithReclaim,
   walletLovelace,
 } from "./support/own-thread-reclaim-expectations.js";
-import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  makeFaultProofEmulatorHarness,
-  makeHeader,
-  network,
-  publishRemovalReferenceScripts,
-  submitSetupTx,
-  withPlaceholderDeposit,
-} from "./support/submit-init-emulator-shared.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
 import {

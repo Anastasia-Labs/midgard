@@ -10,11 +10,9 @@ import type {
   CompleteCanonicalReplay,
   CompleteCanonicalReplayContext,
 } from "../../src/workflow/complete-replay.js";
-import {
-  authenticatedStateQueueObservationDigest,
-  classifyHeader,
-  createHeaderClassifier,
-} from "../../src/workflow/header-classifier.js";
+import { authenticatedStateQueueObservationDigest } from "../../src/workflow/header-classifier.authenticated-state-queue-observation-digest.js";
+import { classifyHeader } from "../../src/workflow/header-classifier.classify-header.js";
+import { createHeaderClassifier } from "../../src/workflow/header-classifier.create-header-classifier.js";
 import type { FraudProofReleaseFinalityAuthority } from "../../src/workflow/release-finality-policy.js";
 import { fixtureLedgerAt } from "./fixture-ledger.js";
 

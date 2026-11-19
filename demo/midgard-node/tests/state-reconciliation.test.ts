@@ -1,7 +1,10 @@
 import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "vitest";
-import "../src/commands/state-reconciliation.js";
+import "../src/commands/state-reconciliation.check-ledger-cache.js";
+import "../src/commands/state-reconciliation.state-reconciliation-program.js";
+import "../src/commands/state-reconciliation.walk-merged-chain.js";
+import "../src/commands/state-reconciliation.compares.js";
 import "./state-reconciliation.consistent-sql.js";
 
 import { describe, expect, it } from "vitest";
@@ -9,10 +12,10 @@ import { describe, expect, it } from "vitest";
 import {
   evaluateStateReconciliation,
   formatStateReconciliationReport,
-  readNativeRootFromLevelCopy,
-  redactSensitive,
-  STATE_RECONCILIATION_CHECK_IDS,
-} from "../src/commands/state-reconciliation.js";
+} from "../src/commands/state-reconciliation.check-ledger-cache.js";
+import { STATE_RECONCILIATION_CHECK_IDS } from "../src/commands/state-reconciliation.compares.js";
+import { readNativeRootFromLevelCopy } from "../src/commands/state-reconciliation.state-reconciliation-program.js";
+import { redactSensitive } from "../src/commands/state-reconciliation.walk-merged-chain.js";
 import {
   cacheRowOf,
   CONFIRMED,

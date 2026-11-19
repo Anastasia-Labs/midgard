@@ -18,11 +18,9 @@
 import { assertTransactionSourceInclusionRootAuthenticated } from "@al-ft/midgard-sdk";
 
 import { type CheckedLedger } from "../ledger-at.js";
-import {
-  type PreparedDoubleSpendOutput,
-  prepareDoubleSpendFromTransactions,
-} from "../prepare-double-spend.js";
-import { prepareInputNoIdxFromCanonicalEvidence } from "../prepare-input-no-idx.js";
+import type { PreparedDoubleSpendOutput } from "../prepare-double-spend.encode-l2-transaction-source-value.js";
+import { prepareDoubleSpendFromTransactions } from "../prepare-double-spend.prepare-double-spend-from-transactions.js";
+import { prepareInputNoIdxFromCanonicalEvidence } from "../prepare-input-no-idx.prepare-input-no-idx-from-canonical-evidence.js";
 import {
   type PreparedInvalidRangeOutput,
   prepareInvalidRangeFromTransactions,

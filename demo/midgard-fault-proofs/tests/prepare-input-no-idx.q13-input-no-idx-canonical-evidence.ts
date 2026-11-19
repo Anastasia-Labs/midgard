@@ -1,5 +1,5 @@
-import { encodeCbor } from "@al-ft/midgard-core";
 import {
+  encodeCbor,
   encodeMidgardFieldPreimage,
   midgardFieldCommitment,
   selectMidgardFieldCarriageTier,
@@ -9,10 +9,8 @@ import { h28 } from "@al-ft/midgard-test-support/hex";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import {
-  midgardTxOutputFromCanonicalCbor,
-  prepareInputNoIdxFromTransactions,
-} from "../src/prepare-input-no-idx.js";
+import { midgardTxOutputFromCanonicalCbor } from "../src/prepare-input-no-idx.midgard-tx-output-from-canonical-cbor.js";
+import { prepareInputNoIdxFromTransactions } from "../src/prepare-input-no-idx.prepare-input-no-idx-from-transactions.js";
 import {
   committedTransactionsRoot,
   producerTx,

@@ -49,7 +49,7 @@ import {
 } from "../../src/l1-follower/fault-proof-l1-source.js";
 import { rawUtxo } from "../../src/l1-follower/reads.js";
 import { createTxInputsResolver } from "../../src/l1-follower/tx-inputs.js";
-import { WATCHER_EMULATOR_HISTORY_RECIPE } from "../support/deployment-authority-fixture.js";
+import { WATCHER_EMULATOR_HISTORY_RECIPE } from "../support/deployment-authority-fixture.build-watcher-authority-contracts.js";
 import {
   ELSEWHERE_ADDRESS_HEX,
   type FollowerUserEvents,

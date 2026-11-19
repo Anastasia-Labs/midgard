@@ -26,14 +26,13 @@ import {
   writeFollowerView,
 } from "../helpers/follower-view.js";
 import {
-  address1,
   databaseFixtureBytes,
   databaseOutputReferenceId,
   databaseTxHash,
-  isolatedDb,
-  ledgerEntry1,
-  makeHistoryWithdrawalEntry,
-} from "./fixtures.js";
+} from "./fixtures.bytes.js";
+import { isolatedDb } from "./fixtures.environment.js";
+import { makeHistoryWithdrawalEntry } from "./fixtures.events.js";
+import { address1, ledgerEntry1 } from "./fixtures.ledger.js";
 import { populateUnrelatedWalletViewEntries } from "./wallet-view.unrelated-ledger-entries.js";
 
 const withdrawal = (

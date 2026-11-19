@@ -29,7 +29,7 @@ import {
 } from "../src/workflow/funding-reservation-permit.assert-validation-dispute-funding.js";
 import { VALIDATION_DISPUTE_MOVE_BINDING } from "../src/workflow/funding-reservation-permit.assert-validation-dispute-move.js";
 import { exactResolvedOutputCbor } from "../src/workflow/funding-reservation-permit.create-workflow-funding-reservation-permit.js";
-import { network } from "./support/submit-init-emulator-shared.js";
+import { network } from "./support/emulator/blueprints.js";
 import {
   bodyOutputs,
   disputeTerms,

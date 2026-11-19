@@ -1,7 +1,5 @@
-import {
-  assertWorkflowJournalActuation,
-  workflowJournalIsReconciliationOnly,
-} from "./actuation-permit.js";
+import { assertWorkflowJournalActuation } from "./actuation-permit.assert-workflow-actuation-permit-identity.js";
+import { workflowJournalIsReconciliationOnly } from "./actuation-permit.js";
 import type { WorkflowAdapterRunnerInput } from "./adapters.js";
 import type { FraudProofWorkflowJournalStore } from "./journal.js";
 import { FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED } from "./orchestrator.fraud-proof-workflow-run-result.js";

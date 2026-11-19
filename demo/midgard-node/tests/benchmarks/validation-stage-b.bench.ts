@@ -13,21 +13,26 @@ import "@al-ft/midgard-core/codec";
 import "@al-ft/midgard-core/consensus-profile";
 import "@al-ft/midgard-sdk";
 import "@al-ft/midgard-validation";
+import "@al-ft/midgard-validation/phase-a";
 import "@effect/sql";
 import "@effect/sql-pg";
 import "@lucid-evolution/lucid";
 import "effect";
 import "vitest";
 import "../../src/database/index.js";
-import "../../src/fibers/tx-queue-processor.js";
+import "../../src/fibers/tx-queue-processor.tx-queue-processor-drain-once.js";
+import "../../src/fibers/tx-queue-processor.classify-plutus-evaluation-failure.js";
 import "../../src/open-loop-corpus-format.js";
-import "../../src/services/config.js";
+import "../../src/services/config.make-config.js";
 import "../../src/services/database.js";
-import "../../src/services/globals.js";
+import "../../src/services/globals.globals.js";
 import "../../src/services/lucid.js";
-import "../../src/services/mempool-ledger-cache.js";
-import "../../src/services/validation-pool.js";
-import "../../src/services/write-behind.js";
+import "../../src/services/mempool-ledger-cache.make-mempool-ledger-cache-service.js";
+import "../../src/services/mempool-ledger-cache.mempool-ledger-cache-service.js";
+import "../../src/services/validation-pool.fixed-validation-worker-pool.js";
+import "../../src/services/validation-pool.bundled-worker-exec-argv.js";
+import "../../src/services/write-behind.make-write-behind.js";
+import "../../src/services/write-behind.summarize-write-behind-telemetry.js";
 import "../../src/workers/utils/validation-pool.js";
 import "../helpers/deposit-projection.js";
 import "./validation-stage-b.stage-breplica-report.js";
@@ -46,12 +51,9 @@ import { promisify } from "node:util";
 import { computeMidgardNativeTxFullHashFromCanonicalCbor } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  deserializePhaseACandidate,
-  type PhaseAResult,
-  type QueuedTx,
-  runPhaseAValidation,
-} from "@al-ft/midgard-validation";
+import { deserializePhaseACandidate } from "@al-ft/midgard-validation";
+import { runPhaseAValidation } from "@al-ft/midgard-validation/phase-a";
+import type { PhaseAResult, QueuedTx } from "@al-ft/midgard-validation/types";
 import { SqlClient } from "@effect/sql";
 import { type Address, Data as LucidData } from "@lucid-evolution/lucid";
 import { Duration, Effect, Fiber, Metric, Option } from "effect";
@@ -63,7 +65,6 @@ import {
   MigrationRunner,
 } from "../../src/database/index.js";
 import {
-  txQueueProcessorDrainOnce,
   validationBatchDurationSummary,
   validationBatchDurationTimer,
   validationClaimDurationTimer,
@@ -71,31 +72,34 @@ import {
   validationMempoolInsertDurationTimer,
   validationPhaseADurationTimer,
   validationPhaseBDurationTimer,
-} from "../../src/fibers/tx-queue-processor.js";
-import type { OpenLoopCorpusRow } from "../../src/open-loop-corpus-format.js";
-import { nodeUtxoFromCorpusFunding } from "../../src/open-loop-corpus-format.js";
-import { NodeConfig } from "../../src/services/config.js";
-import { BatchSql } from "../../src/services/database.js";
-import { Globals } from "../../src/services/globals.js";
-import { Lucid } from "../../src/services/lucid.js";
+} from "../../src/fibers/tx-queue-processor.classify-plutus-evaluation-failure.js";
+import { txQueueProcessorDrainOnce } from "../../src/fibers/tx-queue-processor.tx-queue-processor-drain-once.js";
 import {
-  makeMempoolLedgerCacheService,
+  nodeUtxoFromCorpusFunding,
+  type OpenLoopCorpusRow,
+} from "../../src/open-loop-corpus-format.js";
+import { NodeConfig } from "../../src/services/config.make-config.js";
+import { BatchSql } from "../../src/services/database.js";
+import { Globals } from "../../src/services/globals.globals.js";
+import { Lucid } from "../../src/services/lucid.js";
+import { makeMempoolLedgerCacheService } from "../../src/services/mempool-ledger-cache.make-mempool-ledger-cache-service.js";
+import {
   MempoolLedgerCache,
   validationLedgerCacheDeltaApplyCounter,
   validationLedgerCacheFullReloadCounter,
-} from "../../src/services/mempool-ledger-cache.js";
+} from "../../src/services/mempool-ledger-cache.mempool-ledger-cache-service.js";
 import {
-  FixedValidationWorkerPool,
   ValidationPool,
   type ValidationPoolService,
   ValidationWorkerError,
-} from "../../src/services/validation-pool.js";
+} from "../../src/services/validation-pool.bundled-worker-exec-argv.js";
+import { FixedValidationWorkerPool } from "../../src/services/validation-pool.fixed-validation-worker-pool.js";
+import { makeWriteBehind } from "../../src/services/write-behind.make-write-behind.js";
 import {
-  makeWriteBehind,
   readWriteBehindTelemetry,
   summarizeWriteBehindTelemetry,
   WriteBehind,
-} from "../../src/services/write-behind.js";
+} from "../../src/services/write-behind.summarize-write-behind-telemetry.js";
 import { packPhaseAJob } from "../../src/workers/utils/validation-pool.js";
 import { projectDepositsToMempoolLedger } from "../helpers/deposit-projection.js";
 import { insertDeposits } from "../helpers/event-rows.js";

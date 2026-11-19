@@ -29,20 +29,22 @@ import {
   validationTraceDefenderDeadlineMs,
 } from "../src/validation-trace-dispute/threads.js";
 import { validationTraceRunState } from "../src/validation-trace-dispute/waiting.js";
+import type { FraudProofWorkflowTerminal } from "../src/workflow/journal.js";
+import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import {
-  admitFraudProofRawL1Snapshot,
   deriveFraudProofRawL1CompletedTerminal,
   deriveFraudProofRawL1FamilyStage,
   type FraudProofRawL1CompletedTerminal,
-  type FraudProofRawL1FamilyDefinition,
+} from "../src/workflow/raw-l1-family-derivation.derive-fraud-proof-raw-l1-family-stage.js";
+import { fraudProofRawL1SnapshotRequestForFamily } from "../src/workflow/raw-l1-family-derivation.derive-terminal.js";
+import {
   type FraudProofRawL1HistoryReader,
   fraudProofRawL1HistoryReader,
-  fraudProofRawL1SnapshotRequestForFamily,
-} from "../src/workflow/index.js";
-import type { FraudProofWorkflowTerminal } from "../src/workflow/journal.js";
-import type { FraudProofWorkflowRunResult } from "../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
-import { expectStateQueueHeaderOrder } from "./support/submit-init-emulator-fixtures.js";
-import { network } from "./support/submit-init-emulator-shared.js";
+} from "../src/workflow/raw-l1-family-derivation.lost-defense-slash.js";
+import type { FraudProofRawL1FamilyDefinition } from "../src/workflow/raw-l1-family-derivation.state-queue-topology.js";
+import { admitFraudProofRawL1Snapshot } from "../src/workflow/raw-l1-snapshot.admit-fraud-proof-raw-l1-snapshot.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
 import { anotherParty } from "./support/validation-trace-dispute-foreign-verify.js";
 import {
   awaitLastSlotAtOrBefore,

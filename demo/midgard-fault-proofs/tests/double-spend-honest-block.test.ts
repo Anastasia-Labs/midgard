@@ -4,15 +4,13 @@ import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-prof
 import { generateSeedPhrase } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { buildStep04 } from "../src/double-spend/submit-step-04.js";
+import { parseSpendInputCbors } from "../src/double-spend/submit-step-03.js";
+import { buildStep04 } from "../src/double-spend/submit-step-04.submit-step04.js";
+import { parseSubmitStep01TxInclusion } from "../src/step-support.js";
 import { submitRawDoubleSpendStep04 } from "./support/double-spend-step04-raw.js";
+import { network } from "./support/emulator/blueprints.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
-import {
-  parseSpendInputCbors,
-  parseSubmitStep01TxInclusion,
-} from "./support/legacy-submit-emulator.js";
 import { stageDoubleSpendStep04 } from "./support/submit-init/double-spend-staging.js";
-import { network } from "./support/submit-init-emulator-shared.js";
 import { submitTurnsUnjournaled } from "./support/submit-unjournaled.js";
 
 describe("double-spend proof against an honest block", () => {

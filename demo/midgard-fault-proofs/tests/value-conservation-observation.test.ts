@@ -5,10 +5,8 @@ import * as artifactAdmission from "../src/value-not-preserved/artifact.js";
 import { CONSERVATION_POSITIONS } from "../src/value-not-preserved/contracts.js";
 import * as fieldPrerequisite from "../src/value-not-preserved/field-prerequisite.js";
 import { conservationDatum } from "../src/value-not-preserved/submit-union.js";
-import {
-  createManifestBoundValueConservationWorkflow,
-  type ManifestBoundValueConservationWorkflowConfig,
-} from "../src/value-not-preserved/workflow.js";
+import { createManifestBoundValueConservationWorkflow } from "../src/value-not-preserved/workflow.create-manifest-bound-value-conservation-workflow.js";
+import type { ManifestBoundValueConservationWorkflowConfig } from "../src/value-not-preserved/workflow.value-conservation-references.js";
 import * as cursorRuntime from "../src/workflow/cursor-family-runtime.js";
 import * as deployment from "../src/workflow/deployment-manifest-binding.js";
 import * as observations from "../src/workflow/family-l1-observation.js";

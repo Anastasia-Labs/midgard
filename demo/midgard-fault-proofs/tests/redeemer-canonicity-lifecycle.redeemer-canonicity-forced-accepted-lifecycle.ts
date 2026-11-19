@@ -11,17 +11,17 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../src/linear-fault-family.js";
+import { detectRedeemerCanonicityFromCanonicalBlock } from "../src/redeemer-canonicity/authenticated-workflow.js";
 import {
-  buildRedeemerCanonicityStep01Forced,
-  buildRedeemerCanonicityStep02,
-  buildRedeemerCanonicityStep03,
-  detectRedeemerCanonicityFromCanonicalBlock,
   prepareRedeemerCanonicityEvidence,
   redeemerCanonicityEvidenceCloses,
-  RedeemerCanonicityStep03DatumSchema,
-} from "../src/redeemer-canonicity/index.js";
-import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
-import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
+} from "../src/redeemer-canonicity/family.js";
+import { RedeemerCanonicityStep03DatumSchema } from "../src/redeemer-canonicity/schemas.js";
+import { buildRedeemerCanonicityStep01Forced } from "../src/redeemer-canonicity/submit-step-01.js";
+import { buildRedeemerCanonicityStep02 } from "../src/redeemer-canonicity/submit-step-02.js";
+import { buildRedeemerCanonicityStep03 } from "../src/redeemer-canonicity/submit-step-03.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
 import {
   emitFit,
   familyContracts,
@@ -35,13 +35,11 @@ import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
-import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
-import {
-  buildInvalidForcedTransitionTraceFixture,
-  createRecordingLeaseCoordinator,
-} from "./support/submit-init-emulator-fixtures.js";
-import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
+import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init/forced-transitions.js";
+import { createRecordingLeaseCoordinator } from "./support/submit-init/removal.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,

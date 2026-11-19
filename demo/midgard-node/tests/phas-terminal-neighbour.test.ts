@@ -8,9 +8,11 @@ import {
   keyValuePhasNonMembershipProof,
   keyValuePhasProof,
   keyValuePhasRoot,
+} from "../src/workers/utils/mpf/phas.key-value-phas-non-membership-proof.js";
+import {
   verifyKeyValuePhasMembershipProof,
   verifyKeyValuePhasNonMembershipProof,
-} from "../src/mpf/index.js";
+} from "../src/workers/utils/mpf/phas.traverse-phas-proof.js";
 
 describe("PHAS terminal neighbour", () => {
   // path(04) = 6 4 2 2 ..., path(0106) = 6 a 9 5 ..., path(05) = f b 3 d ...

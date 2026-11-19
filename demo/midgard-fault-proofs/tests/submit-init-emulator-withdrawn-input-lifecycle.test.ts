@@ -3,17 +3,13 @@ import { FraudProofTokenDatum } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildWithdrawnInputStep03,
-  submitRemoveFraudulentBlock,
-} from "../src/index.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import { buildWithdrawnInputStep03 } from "../src/withdrawn-input/submit-withdrawn-input-step-03.js";
+import { network } from "./support/emulator/blueprints.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
-import { expectStateQueueHeaderOrder } from "./support/submit-init-emulator-fixtures.js";
-import {
-  buildRemovalDeploymentInfo,
-  network,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
+import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 import {
   advanceWithdrawnInputToStep03,

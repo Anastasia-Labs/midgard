@@ -10,7 +10,10 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
 import { stringifyJson } from "./json-file.js";
-import { buildTrieView, requireProof } from "./prepare-double-spend.js";
+import {
+  buildTrieView,
+  requireProof,
+} from "./prepare-double-spend.resolve-double-spend-pair.js";
 import {
   classifyFabricatedDepositFault,
   decodeCommittedDepositLeaf,

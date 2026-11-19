@@ -21,15 +21,15 @@ import {
 } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 
+import { scriptDecodeRunDatum } from "../src/script-decode/data.js";
+import { stageScriptDecodeBytes } from "../src/script-decode/stage.js";
 import {
   bindScriptDecodeRun,
   buildScriptDecodeWalk,
   buildScriptDecodeWalkTx,
   type ScriptDecodeDeployment,
-  scriptDecodeRunDatum,
   scriptDecodeWalkStakes,
-  stageScriptDecodeBytes,
-} from "../src/script-decode/index.js";
+} from "../src/script-decode/submit.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
 import { injectScriptDecodeDeployment } from "./support/script-decode-emulator.js";
 import { WALK_SHAPES } from "./support/script-decode-walk-shapes.js";

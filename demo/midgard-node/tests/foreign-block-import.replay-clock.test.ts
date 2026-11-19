@@ -33,8 +33,9 @@ vi.mock("@al-ft/midgard-validation", async (importOriginal) => {
     },
   };
 });
-import { encodeForcedInclusionValueV1 } from "../src/database/forcedTransactions.js";
-import { encodeTransitionStepCbor } from "../src/mpf/transition-cbor.js";
+import { encodeTransitionStepCbor } from "@al-ft/midgard-fault-proofs/block-replay";
+
+import { encodeForcedInclusionValueV1 } from "../src/database/forcedTransactions.encode-forced-inclusion-value-v1.js";
 import { fixture, rebind, verdict } from "./foreign-block-import.fixture.js";
 import {
   makeMidgardTxOutput,

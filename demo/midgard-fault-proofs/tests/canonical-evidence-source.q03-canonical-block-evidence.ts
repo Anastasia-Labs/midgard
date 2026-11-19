@@ -13,12 +13,10 @@ import {
   authenticateTransactionsInclusionRoots,
   canonicalBlockEvidenceFromVerifiedPayload,
   fetchCanonicalBlockEvidence,
-} from "../src/evidence/index.js";
-import {
-  DaLibp2pRetainedDaSource,
-  fetchRetainedDaPayloadByHeaderHash,
-  type RetainedDaLibp2pTransport,
-} from "../src/transition-trace/fetch.js";
+} from "../src/evidence/canonical-block-evidence.js";
+import type { RetainedDaLibp2pTransport } from "../src/transition-trace/fetch.admit-retained-da-provenance.js";
+import { DaLibp2pRetainedDaSource } from "../src/transition-trace/fetch.da-libp2p-retained-da-source.js";
+import { fetchRetainedDaPayloadByHeaderHash } from "../src/transition-trace/fetch.fetch-retained-da-payload-by-header-hash.js";
 import {
   DA_PROVENANCE,
   doubleSpendBlock,

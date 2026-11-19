@@ -12,27 +12,21 @@ import {
 import { CML, getAddressDetails } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import {
-  buildTransactionOutputNonCanonicalStep01Forced,
-  buildTransactionOutputNonCanonicalStep02,
-  buildTransactionOutputNonCanonicalStep03,
-} from "../src/transaction-output-non-canonical/index.js";
-import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
+import { buildTransactionOutputNonCanonicalStep01Forced } from "../src/transaction-output-non-canonical/submit-step-01-forced.js";
+import { buildTransactionOutputNonCanonicalStep02 } from "../src/transaction-output-non-canonical/submit-step-02.js";
+import { buildTransactionOutputNonCanonicalStep03 } from "../src/transaction-output-non-canonical/submit-step-03.js";
+import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
+import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
-import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  submitSetupTx,
-} from "./support/submit-init-emulator-shared.js";
+import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,
 } from "./support/submit-unjournaled.js";
-import {
-  buildForcedOutputFixture,
-  TRANSACTION_OUTPUT_SCAN_CHUNK_BYTES,
-} from "./support/transaction-output-non-canonical-emulator.js";
+import { buildForcedOutputFixture } from "./support/transaction-output-non-canonical-emulator.build-forced-output-fixture.js";
+import { TRANSACTION_OUTPUT_SCAN_CHUNK_BYTES } from "./support/transaction-output-non-canonical-emulator.continue-raw.js";
 import { record } from "./transaction-output-non-canonical-lifecycle.record-fit.js";
 import {
   type Evidence,

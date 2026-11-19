@@ -2,10 +2,8 @@
  * The import checker's kills (`ImportCheckConfig`): one script run is
  * killed `floor + a * declared cpu + b * bytes` after it starts.
  */
-import {
-  type MidgardCekVerdictRequest,
-  type MidgardCommittedScriptRun,
-} from "@al-ft/midgard-validation";
+import type { MidgardCekVerdictRequest } from "@al-ft/midgard-validation/phase-b";
+import type { MidgardCommittedScriptRun } from "@al-ft/midgard-validation/types";
 
 import { type ImportCheckLoad } from "../database/importChecks.loads.js";
 import { type ImportCheckConfig } from "../services/config.import-check.js";

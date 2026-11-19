@@ -14,9 +14,9 @@ import { describe, expect, it, vi } from "vitest";
 
 import { parseArgs } from "../src/bin.js";
 import { proofMaterialsAddress } from "../src/funding/proof-materials-address.js";
-import { sealManifestBoundNetworkIdRuntime } from "../src/network-id/workflow-adapter.js";
+import { sealManifestBoundNetworkIdRuntime } from "../src/network-id/workflow-adapter.seal-manifest-bound-network-id-runtime.js";
 import type { RetainedDaPayloadSource } from "../src/transition-trace/fetch.js";
-import { WORKFLOW_ACTUATION_PERMIT } from "../src/workflow/actuation-permit.js";
+import { WORKFLOW_ACTUATION_PERMIT } from "../src/workflow/actuation-permit.create-workflow-reconciliation-permit-controller.js";
 import {
   MissingWorkflowAdaptersError,
   validateWorkflowAdapterCoverage,
@@ -28,15 +28,13 @@ import {
   runFraudProofWorkflowCli,
   workflowReadinessReport,
 } from "../src/workflow/cli.js";
-import { DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
-import { requireManifestBoundReferenceScriptUtxo } from "../src/workflow/deployment-manifest-binding.js";
-import { WORKFLOW_FUNDING_RESERVATION_PERMIT } from "../src/workflow/funding-reservation-permit.js";
-import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.js";
-import {
-  createFraudProofWorkflowRegistry,
-  type FraudProofFamilyWorkflowAdapter,
-  runFraudProofWorkflowFromRetainedDa,
-} from "../src/workflow/orchestrator.js";
+import { DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.detect-double-withdraws.js";
+import { requireManifestBoundReferenceScriptUtxo } from "../src/workflow/deployment-manifest-binding.assert-deployment-info-matches-manifest.js";
+import { WORKFLOW_FUNDING_RESERVATION_PERMIT } from "../src/workflow/funding-reservation-permit.workflow-funding-reservation-port.js";
+import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
+import type { FraudProofFamilyWorkflowAdapter } from "../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
+import { createFraudProofWorkflowRegistry } from "../src/workflow/orchestrator.immutable-fraud-proof-workflow-registry.js";
+import { runFraudProofWorkflowFromRetainedDa } from "../src/workflow/orchestrator.run-fraud-proof-workflow-from-retained-da.js";
 import { WORKFLOW_RUNNER_FACTORIES } from "../src/workflow/runtime.js";
 import {
   authenticatedHeaderObservation,

@@ -1,4 +1,5 @@
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
+import { encodeEventToStepValueCbor } from "@al-ft/midgard-fault-proofs/block-replay";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
@@ -10,7 +11,6 @@ import {
   type RetainedTransitionTraceMember,
   type TransitionTraceSourceEvent,
 } from "./trace-events.js";
-import { encodeEventToStepValueCbor } from "./transition-cbor.js";
 import {
   assertCanonicalTransitionPhaseOrder,
   assertUniqueTransitionSourceEvents,

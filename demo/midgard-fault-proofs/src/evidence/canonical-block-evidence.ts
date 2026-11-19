@@ -35,14 +35,10 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import type { NodeTransactionPayload } from "../prepare-double-spend.js";
-import {
-  fetchRetainedDaPayloadByHeaderHash,
-  type RetainedDaPayloadSource,
-} from "../transition-trace/fetch.js";
-import {
-  reconstructDaPayload,
-  type TransitionTraceReconstruction,
-} from "../transition-trace/reconstruct.js";
+import type { RetainedDaPayloadSource } from "../transition-trace/fetch.admit-retained-da-provenance.js";
+import { fetchRetainedDaPayloadByHeaderHash } from "../transition-trace/fetch.fetch-retained-da-payload-by-header-hash.js";
+import { reconstructDaPayload } from "../transition-trace/reconstruct.reconstruct-da-payload.js";
+import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.transition-trace-reconstruction.js";
 
 export const CANONICAL_BLOCK_EVIDENCE_SCHEMA_VERSION =
   "midgard-canonical-block-evidence-v1" as const;

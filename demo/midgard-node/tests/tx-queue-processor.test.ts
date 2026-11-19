@@ -1,12 +1,12 @@
-import type { PhaseAValidatedTx } from "@al-ft/midgard-validation";
+import type { PhaseAValidatedTx } from "@al-ft/midgard-validation/types";
 import { Cause, Effect, Logger, LogLevel, Ref, Schedule } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
   ADMISSION_REJECT_CODE_PENDING_WITHDRAWAL_INPUT,
   refusePendingWithdrawalInputs,
-  repeatScheduledWithCauseLogging,
-} from "../src/fibers/tx-queue-processor.js";
+} from "../src/fibers/tx-queue-processor.classify-plutus-evaluation-failure.js";
+import { repeatScheduledWithCauseLogging } from "../src/fibers/tx-queue-processor.run-phase-afor-batch.js";
 import {
   DRIVER_RECOMPUTE_PENDING,
   followerWriteHeld,

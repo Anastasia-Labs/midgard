@@ -8,7 +8,7 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 import { expect, vi } from "vitest";
 
-import { walletAddress } from "../support/fault-proof-funding-fixture.js";
+import { walletAddress } from "../support/fault-proof-funding-fixture.sources-for.js";
 import {
   type Fixture,
   fundingOf,

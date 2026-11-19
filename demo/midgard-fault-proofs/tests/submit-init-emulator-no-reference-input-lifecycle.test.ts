@@ -27,13 +27,24 @@ import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "effect";
 import "vitest";
-import "../src/field-opening.js";
-import "../src/index.js";
+import "../src/field-opening.plan-fault-proof-field-opening.js";
+import "../src/submit-no-reference-input-step-04.submit-no-reference-input-step04.js";
+import "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import "../src/submit-no-reference-input-step-01.js";
+import "../src/submit-no-reference-input-step-02.js";
+import "../src/submit-no-reference-input-step-03.js";
 import "../src/ne-proofs.js";
-import "./support/legacy-submit-emulator.js";
+import "../src/submit-init.submit-init.js";
 import "./support/no-reference-input-emulator.js";
-import "./support/submit-init-emulator-fixtures.js";
-import "./support/submit-init-emulator-shared.js";
+import "./support/submit-init/queue-assertions.js";
+import "./support/submit-init/wallet.js";
+import "./support/emulator/expect-onchain-refusal.js";
+import "./support/emulator/emulator-context.js";
+import "./support/emulator/blueprints.js";
+import "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import "./support/emulator/removal-deployment.build-removal-deployment-info.js";
+import "./support/emulator/harness.js";
+import "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
 import "./submit-init-emulator-no-reference-input-lifecycle.drive-no-reference-input-to-step04.js";
 
 import {
@@ -47,11 +58,9 @@ import { Data, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { planFaultProofFieldOpening } from "../src/field-opening.js";
-import {
-  submitNoReferenceInputStep04,
-  submitRemoveFraudulentBlock,
-} from "../src/index.js";
+import { planFaultProofFieldOpening } from "../src/field-opening.plan-fault-proof-field-opening.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import { submitNoReferenceInputStep04 } from "../src/submit-no-reference-input-step-04.submit-no-reference-input-step04.js";
 import {
   driveNoReferenceInputToStep04,
   makeNoReferenceInputHarness,
@@ -59,6 +68,9 @@ import {
   TIER2_REFERENCE_INPUT_COUNT,
   tier2ReferenceInputs,
 } from "./submit-init-emulator-no-reference-input-lifecycle.drive-no-reference-input-to-step04.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { requireInputExistenceTerminalResult } from "./support/input-existence-execution-context.js";
 import {
   buildNoReferenceInputFixture,
@@ -66,12 +78,7 @@ import {
   noReferenceInputOutRef,
 } from "./support/no-reference-input-emulator.js";
 import { submitRawInputExistenceStep } from "./support/raw-input-existence-step.js";
-import { expectStateQueueHeaderOrder } from "./support/submit-init-emulator-fixtures.js";
-import {
-  expectOnchainRefusal,
-  expectSingleUtxoWithUnit,
-  network,
-} from "./support/submit-init-emulator-shared.js";
+import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 describe("no-reference-input emulator lifecycle", () => {

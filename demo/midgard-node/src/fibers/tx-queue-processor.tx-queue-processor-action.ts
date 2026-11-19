@@ -1,7 +1,5 @@
-import {
-  processedTxFromValidatedTx,
-  RejectCodes,
-} from "@al-ft/midgard-validation";
+import { processedTxFromValidatedTx } from "@al-ft/midgard-validation";
+import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { SqlClient } from "@effect/sql/SqlClient";
 import { Duration, Effect, Exit, Metric, Ref, SubscriptionRef } from "effect";
 
@@ -10,14 +8,12 @@ import { DatabaseError } from "../database/utils/common.js";
 import { l1SlotNow } from "../l1-heads.js";
 import { canonicalSlotConfigForLucid } from "../lucid-time.js";
 import { runAtFollowerView } from "../services/follower-write-gate.js";
-import {
-  Globals,
-  Lucid,
-  MempoolLedgerCache,
-  NodeConfig,
-  ValidationPool,
-  WriteBehind,
-} from "../services/index.js";
+import { Globals } from "../services/globals.globals.js";
+import { NodeConfig } from "../services/index.js";
+import { Lucid } from "../services/lucid.js";
+import { MempoolLedgerCache } from "../services/mempool-ledger-cache.mempool-ledger-cache-service.js";
+import { ValidationPool } from "../services/validation-pool.bundled-worker-exec-argv.js";
+import { WriteBehind } from "../services/write-behind.summarize-write-behind-telemetry.js";
 import {
   decideAdmissionBatch,
   summarizeRejections,

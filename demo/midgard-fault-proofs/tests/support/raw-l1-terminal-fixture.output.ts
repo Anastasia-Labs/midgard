@@ -5,14 +5,16 @@ import {
   scriptHashToCredential,
 } from "@lucid-evolution/lucid";
 
+import type { FraudProofRawL1Utxo } from "../../src/workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
 import {
   computeFraudProofReleaseEconomicsPolicyDigest,
-  computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
-  FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-  type FraudProofRawL1Utxo,
   type VerifiedFraudProofReleaseEconomicsPolicy,
-} from "../../src/workflow/index.js";
+} from "../../src/workflow/release-economics-policy.js";
+import {
+  computeFraudProofReleaseFinalityPolicyDigest,
+  FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
+} from "../../src/workflow/release-finality-policy.js";
 
 export const hash32 = (byte: string): string => byte.repeat(32);
 

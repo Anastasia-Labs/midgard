@@ -10,7 +10,7 @@ import {
 } from "@al-ft/midgard-l1-follower";
 import { type Cause, Deferred, Effect, FiberRef } from "effect";
 
-import { ADMISSION_WRITE_SHUTDOWN_FLUSH_MS } from "../services/admission-writer.js";
+import { ADMISSION_WRITE_SHUTDOWN_FLUSH_MS } from "../services/admission-writer.validate-options.js";
 import { findStartupStepFailure } from "../services/startup-waiting.js";
 import {
   findTransientBudgetExhausted,

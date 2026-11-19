@@ -26,7 +26,9 @@ import { buildAndSubmitCommitmentBlockAction } from "../src/fibers/block-commitm
 import { applyOwnBlocks } from "../src/landed-blocks/own-blocks.js";
 import { rollBackRows } from "../src/landed-blocks/settlements.js";
 import { retrieveRows } from "../src/landed-blocks/store.js";
-import { Globals, Lucid, MidgardContracts } from "../src/services/index.js";
+import { Globals } from "../src/services/globals.globals.js";
+import { Lucid } from "../src/services/lucid.js";
+import { MidgardContracts } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import type { SubmittedAwaitingConfirmationOutput } from "../src/workers/utils/commit-block-header.js";
 import { makeCardanoSignedMapOutputTxBytes } from "./helpers/cardano-native-fixtures.js";
 import { testDriverRecompute, testWrite } from "./helpers/driver-recompute.js";

@@ -1,5 +1,5 @@
 import "@al-ft/midgard-sdk";
-import "../../../src/index.js";
+import "../../../src/runtime.fraud-proof-deployment-entries-by-category.js";
 import "../../../src/transition-trace/yield-references.js";
 import "./header-fixtures.js";
 import "./removal-deployment.require-reference-script-auth-policy.js";

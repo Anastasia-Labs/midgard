@@ -20,8 +20,8 @@ import { describe, expect, it } from "vitest";
 import {
   nativeEvaluationPages,
   nativeEvaluationResult,
-  nativeSignerSet,
-} from "../src/execution-native-script-invalid/index.js";
+} from "../src/execution-native-script-invalid/evaluate.js";
+import { nativeSignerSet } from "../src/execution-native-script-invalid/signers.js";
 import {
   keyHashOf,
   native,

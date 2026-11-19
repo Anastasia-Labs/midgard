@@ -10,7 +10,7 @@ import { journaledIntent, openPlan } from "../services/intent-journal.js";
 import type { WalletViewUnavailable } from "../services/intent-journal.wallet-view.js";
 import { deploymentInitializationNonceOutRefKeys } from "./reference-scripts.deployment-initialization-nonces.js";
 import { utxoOutRefKey } from "./reference-scripts.fetch-reference-script-utxos-program.js";
-import { handleSignSubmit } from "./utils.js";
+import { handleSignSubmit } from "./utils.await-submitted-transaction-confirmation.js";
 import { buildRewardRegistrationsTx } from "./utils.reward-registration-funding.js";
 import {
   readSelectedWalletFunding,

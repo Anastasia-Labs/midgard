@@ -13,12 +13,12 @@ import {
 import { Effect } from "effect";
 
 import type { OperatorLifecycleReferenceScripts } from "./emulator/reference-scripts.js";
+import { onboardEmulatorOperator } from "./emulator/setup-tx.onboard-emulator-operator.js";
+import type { ProvedDoubleSpendFixture } from "./submit-init/double-spend.js";
 import {
-  type ProvedDoubleSpendFixture,
   submitSuccessorBlockTx,
   type SuccessorBlockFixture,
-} from "./submit-init-emulator-fixtures.js";
-import { onboardEmulatorOperator } from "./submit-init-emulator-shared.js";
+} from "./submit-init/successor.js";
 
 /** What enrolling and retiring operators read of a deployment: the
  * proved fixture, or any emulator deployment shaped like it. */

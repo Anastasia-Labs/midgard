@@ -9,23 +9,23 @@ import {
   SignerWitnessScanDatumSchema,
   SignerWitnessTerminalDatumSchema,
 } from "../signer-witness-scan/schemas.js";
-import { PROTECTED_OUTPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
-import { CURSOR_FAMILY_TRANSACTION_PORT } from "../workflow/cursor-family-adapter.js";
+import { PROTECTED_OUTPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
+import { CURSOR_FAMILY_TRANSACTION_PORT } from "../workflow/cursor-family-adapter.admit-reference-scripts.js";
 import {
   captureCursorRemoval,
   cursorFamilyActionInput,
   cursorStringField,
 } from "../workflow/cursor-family-runtime.js";
-import {
-  assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
-} from "../workflow/deployment-manifest-binding.js";
+import { assertManifestBoundWorkflowSigner } from "../workflow/deployment-manifest-binding.assert-deployment-info-matches-manifest.js";
+import { bindFraudProofWorkflowDeployment } from "../workflow/deployment-manifest-binding.js";
 import {
   CORE_WITNESS_ROLES,
+  type FamilyDeploymentContext,
+} from "../workflow/family-definition.family-adapter-arm.js";
+import {
   cursorStepContractNames,
   defineFamily,
-  type FamilyDeploymentContext,
-} from "../workflow/family-definition.js";
+} from "../workflow/family-definition.family-definition.js";
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";

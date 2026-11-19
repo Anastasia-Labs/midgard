@@ -8,10 +8,8 @@
 import { acceptedVerdictSubject } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildMintItemNonCanonicalStep01Accepted,
-  buildMintItemNonCanonicalStep02,
-} from "../src/mint-item-non-canonical/index.js";
+import { buildMintItemNonCanonicalStep01Accepted } from "../src/mint-item-non-canonical/submit-step-01-accepted.js";
+import { buildMintItemNonCanonicalStep02 } from "../src/mint-item-non-canonical/submit-step-02.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { fieldPreimageCertificateCount } from "./support/captured-step-turns.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
@@ -26,7 +24,7 @@ import {
   lateMalformedMintItems,
   mintField,
 } from "./support/mint-item-vectors.js";
-import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
+import { setupFraudulentBlock } from "./support/submit-init/removal.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,

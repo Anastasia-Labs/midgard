@@ -9,12 +9,12 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { fabricatedProofValidity } from "../src/fabricated-proof-validity.js";
-import { deriveFabricatedDepositStep01Handoff } from "../src/submit-fabricated-deposit-step-01.js";
+import { deriveFabricatedDepositStep01Handoff } from "../src/submit-fabricated-deposit-step-01.derive-fabricated-deposit-step01-handoff.js";
 import {
   deriveFabricatedDepositStep03Handoff,
   parseSubmitFabricatedDepositAuthenticContent,
 } from "../src/submit-fabricated-deposit-step-03.js";
-import { deriveFabricatedWithdrawalStep01Handoff } from "../src/submit-fabricated-withdrawal-step-01.js";
+import { deriveFabricatedWithdrawalStep01Handoff } from "../src/submit-fabricated-withdrawal-step-01.derive-fabricated-withdrawal-step01-handoff.js";
 import {
   deriveFabricatedWithdrawalStep03Handoff,
   parseSubmitFabricatedWithdrawalAuthenticContent,

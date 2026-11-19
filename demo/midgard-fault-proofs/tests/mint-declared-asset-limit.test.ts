@@ -21,17 +21,19 @@ import {
 } from "../src/mint-declared-asset-limit/contracts.js";
 import {
   advanceMintDeclaredFold,
+  foldMintDeclaredAssetLimit,
+  mintDeclaredAssetLimitEvidenceCloses,
+  MintDeclaredAssetLimitFoldStateSchema,
+  prepareMintDeclaredAssetLimitEvidence,
+} from "../src/mint-declared-asset-limit/family.advance-mint-declared-fold.js";
+import {
   classifyMintDeclaredAssetLimitFinding,
   decodeMintDeclaredPolicyHeader,
-  foldMintDeclaredAssetLimit,
   initialMintDeclaredFoldCursor,
   MINT_DECLARED_ASSET_LIMIT_CATEGORY,
   MINT_DECLARED_ASSET_LIMIT_CATEGORY_ID,
-  mintDeclaredAssetLimitEvidenceCloses,
-  MintDeclaredAssetLimitFoldStateSchema,
-  mintDeclaredFoldStateData,
-  prepareMintDeclaredAssetLimitEvidence,
-} from "../src/mint-declared-asset-limit/family.js";
+} from "../src/mint-declared-asset-limit/family.begin-mint-declared-policy.js";
+import { mintDeclaredFoldStateData } from "../src/mint-declared-asset-limit/family.mint-declared-fold-state-data.js";
 import {
   MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID,
   type MintDeclaredAssetLimitReplayDetection,

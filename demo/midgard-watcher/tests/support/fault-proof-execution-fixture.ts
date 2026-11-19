@@ -13,14 +13,14 @@ import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "@al-ft/midgard-fault-proofs/test-s
 import type { UTxO } from "@lucid-evolution/lucid";
 import { type Mock, vi } from "vitest";
 
-import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.js";
+import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
 import { createWatcherFaultProofExecution } from "../../src/fault-proofs/fault-proof-execution.js";
-import { createWatcherProverFundingAuthorityFactory } from "../../src/funding/prover-funding-authority.js";
+import { createWatcherProverFundingAuthorityFactory } from "../../src/funding/prover-funding-authority.create-watcher-prover-funding-authority-factory.js";
+import { setupFundingRecoveryFixture } from "./fault-proof-funding-fixture.setup-funding-recovery-fixture.js";
 import {
   deploymentIdentity,
-  setupFundingRecoveryFixture,
   walletAddress,
-} from "./fault-proof-funding-fixture.js";
+} from "./fault-proof-funding-fixture.sources-for.js";
 import {
   emptyWorkflowJournal,
   TEST_JOURNAL_KEY,

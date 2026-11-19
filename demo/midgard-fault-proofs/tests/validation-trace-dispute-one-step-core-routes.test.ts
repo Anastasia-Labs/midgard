@@ -30,12 +30,14 @@ import {
   parseFaultProofBlueprint,
 } from "@al-ft/midgard-sdk";
 import {
-  type MidgardCekCoreStepWitness,
-  type MidgardCekDirectValueWitness,
-  type MidgardCekSemanticBuiltinWitness,
   midgardCekSemanticGroup,
   type MidgardCekStagedBuiltinMaterial,
 } from "@al-ft/midgard-validation";
+import type { MidgardCekDirectValueWitness } from "@al-ft/midgard-validation/cek-builtin";
+import type {
+  MidgardCekCoreStepWitness,
+  MidgardCekSemanticBuiltinWitness,
+} from "@al-ft/midgard-validation/cek-machine";
 import { Data, validatorToScriptHash } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

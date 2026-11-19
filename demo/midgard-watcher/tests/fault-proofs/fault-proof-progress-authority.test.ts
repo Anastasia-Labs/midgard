@@ -10,18 +10,18 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import * as DecisionJournal from "../../src/fault-proofs/fault-decision-journal.js";
-import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.js";
+import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
 import { createWatcherFaultProofProgressAuthority } from "../../src/fault-proofs/fault-proof-progress-authority.js";
-import { watcherFaultProofDeadline } from "../../src/fault-proofs/fault-proof-supervisor.js";
+import { watcherFaultProofDeadline } from "../../src/fault-proofs/fault-proof-supervisor.validate-job.js";
 import { isWatcherProofDecisionMissingError } from "../../src/fault-proofs/watcher-decision-hold.js";
 import { WATCHER_JOURNAL_DATABASE_FILE } from "../../src/fault-proofs/watcher-journal-database.js";
-import { unsafeAdmitWatcherStateQueueObservationForReplayTest } from "../../src/indexers/authenticated-state-queue-observation.js";
-import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.js";
+import { unsafeAdmitWatcherStateQueueObservationForReplayTest } from "../../src/indexers/authenticated-state-queue-observation.parse-persisted-observation.js";
+import { watcherSha256CanonicalJson } from "../../src/storage/durable-store.canonical-json.js";
+import { setupFundingRecoveryFixture } from "../support/fault-proof-funding-fixture.setup-funding-recovery-fixture.js";
 import {
   cleanupFundingRecoveryFixtures,
   deploymentIdentity,
-  setupFundingRecoveryFixture,
-} from "../support/fault-proof-funding-fixture.js";
+} from "../support/fault-proof-funding-fixture.sources-for.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
 import { testStorageRoot } from "../support/test-storage-root.js";

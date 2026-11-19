@@ -12,8 +12,8 @@ import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canon
 import {
   type CanonicalViolationDetection,
   classifyCanonicalBlockViolations,
-} from "../src/workflow/classification.js";
-import { DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
+} from "../src/workflow/classification.classify-canonical-block-violations.js";
+import { DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.detect-double-withdraws.js";
 import {
   acceptedTransactionSubject,
   BLOCK_SUBJECT,
@@ -32,7 +32,7 @@ import {
   buildFixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
-import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
+import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.build-decoding-block-fixture.js";
 
 export const evidenceFor = async (
   block: Pick<

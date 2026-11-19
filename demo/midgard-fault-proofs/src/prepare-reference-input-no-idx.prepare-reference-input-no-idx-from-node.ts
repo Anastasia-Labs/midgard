@@ -1,12 +1,10 @@
-import {
-  admitCanonicalEvidenceForProofBuild,
-  type CanonicalBlockEvidence,
-} from "./evidence/index.js";
+import type { CanonicalBlockEvidence } from "./evidence/canonical-block-evidence.js";
+import { admitCanonicalEvidenceForProofBuild } from "./evidence/prepare-from-evidence.js";
 import { parseHex } from "./json-file.js";
 import {
   fetchNodeBlockTransactions,
   readNodeTransactionPayloadsFile,
-} from "./prepare-double-spend.js";
+} from "./prepare-double-spend.encode-l2-transaction-source-value.js";
 import {
   type PreparedReferenceInputNoIdxOutput,
   type PrepareReferenceInputNoIdxCliConfig,

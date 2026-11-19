@@ -13,7 +13,7 @@ import {
   type DecodedRootEntry,
   eventKeyFingerprint,
   type TransitionTraceReconstruction,
-} from "../transition-trace/reconstruct.js";
+} from "../transition-trace/reconstruct.transition-trace-reconstruction.js";
 import { withdrawalSubject } from "../workflow/detection-subject.js";
 import { collectReplayFindings } from "../workflow/replay-prerequisite.js";
 import { prepareWithdrawalMistag } from "./prepare-withdrawal-mistag.js";

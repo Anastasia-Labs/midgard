@@ -10,12 +10,10 @@ import { Data } from "@lucid-evolution/lucid";
 
 import { eventLedgerBefore } from "../../src/event-ledger.js";
 import { ledgerEntriesRoot, type LedgerEntry } from "../../src/ledger-at.js";
-import { classifyCanonicalBlockViolations } from "../../src/workflow/classification.js";
-import {
-  type CompleteCanonicalReplay,
-  completeCanonicalReplayPredecessorLedger,
-  createCompleteCanonicalReplayUnion,
-} from "../../src/workflow/complete-replay.js";
+import { classifyCanonicalBlockViolations } from "../../src/workflow/classification.classify-canonical-block-violations.js";
+import { completeCanonicalReplayPredecessorLedger } from "../../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { createCompleteCanonicalReplayUnion } from "../../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
+import type { CompleteCanonicalReplay } from "../../src/workflow/complete-replay.replay-context-identity.js";
 import { CanonicalReplayPrerequisiteError } from "../../src/workflow/replay-prerequisite.js";
 import {
   buildFixtureTransaction,

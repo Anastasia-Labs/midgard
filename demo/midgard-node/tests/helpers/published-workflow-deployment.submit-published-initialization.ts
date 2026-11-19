@@ -10,11 +10,11 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { inspectSignedTxValidityInterval } from "../../src/transactions/utils.await-required-output-visibility.js";
 import {
-  inspectSignedTxValidityInterval,
   parseOutsideValidityIntervalDetails,
   resolveEarlyValidityRetry,
-} from "../../src/transactions/utils.js";
+} from "../../src/transactions/utils.parse-structured-outside-validity-interval-details.js";
 
 // The user accepted the hard limit without reserve for these two roles only.
 export const hardLimitAcceptedContracts = new Set<string>([

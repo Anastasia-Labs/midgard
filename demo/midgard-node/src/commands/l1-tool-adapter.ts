@@ -15,7 +15,7 @@ import {
   openAdapterScoped,
 } from "../services/l1-adapter.js";
 import { Lucid } from "../services/lucid.js";
-import { MidgardContractServices } from "../services/midgard-contracts.js";
+import { MidgardContractServices } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import { openToolL1Access } from "./l1-command-access.js";
 
 const openTool = (config: NodeConfigDep) =>

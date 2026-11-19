@@ -5,15 +5,17 @@ import {
   makeDeploymentMarker,
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION as WATCHER_DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION,
+  SIGNED_DEPLOYMENT_RELEASE_SCHEMA_VERSION as WATCHER_SIGNED_DEPLOYMENT_IDENTITY_SCHEMA_VERSION,
+} from "@al-ft/midgard-core/deployment-release";
 import { expect } from "vitest";
 
 import {
-  makeWatcherDeploymentIdentitySignaturePayload,
-  WATCHER_DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION,
-  WATCHER_SIGNED_DEPLOYMENT_IDENTITY_SCHEMA_VERSION,
   WatcherDeploymentIdentityError,
   type WatcherDeploymentIdentityPolicy,
-} from "../../src/runtime/deployment-identity.js";
+} from "../../src/runtime/deployment-identity.catalogue-category-to-contract.js";
+import { makeWatcherDeploymentIdentitySignaturePayload } from "../../src/runtime/deployment-identity.parse-policy.js";
 import {
   appliedScriptHashes,
   BLUEPRINT_HASH,

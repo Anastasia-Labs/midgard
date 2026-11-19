@@ -10,17 +10,19 @@ import { expect } from "vitest";
 import { buildCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
 import {
   applyFieldItemWidthIllegalScripts,
-  buildFieldItemWidthIllegalCancel,
-  buildFieldItemWidthIllegalStep01Accepted,
-  buildFieldItemWidthIllegalStep01Forced,
-  buildFieldItemWidthIllegalStep02,
-  buildFieldItemWidthIllegalStep03,
   FIELD_ITEM_WIDTH_ILLEGAL_BLUEPRINT_TITLES,
-  type FieldItemWidthEvidence,
-  type FieldItemWidthFinding,
   type FieldItemWidthIllegalContracts,
-} from "../src/field-item-width-illegal/index.js";
-import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
+} from "../src/field-item-width-illegal/contracts.js";
+import type {
+  FieldItemWidthEvidence,
+  FieldItemWidthFinding,
+} from "../src/field-item-width-illegal/field-item-width-illegal.evidence.js";
+import { buildFieldItemWidthIllegalCancel } from "../src/field-item-width-illegal/submit-cancel.js";
+import { buildFieldItemWidthIllegalStep01Accepted } from "../src/field-item-width-illegal/submit-step-01-accepted.js";
+import { buildFieldItemWidthIllegalStep01Forced } from "../src/field-item-width-illegal/submit-step-01-forced.js";
+import { buildFieldItemWidthIllegalStep02 } from "../src/field-item-width-illegal/submit-step-02.js";
+import { buildFieldItemWidthIllegalStep03 } from "../src/field-item-width-illegal/submit-step-03.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import type { SubmitStep01TxInclusion } from "../src/step-support.js";
 import type { OwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
@@ -33,20 +35,22 @@ import {
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
 import {
   expectRegisteredChainParity,
   familyStepsFromRegisteredChain,
 } from "./support/emulator/registered-chain.js";
-import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { TRACED_REFUSALS } from "./support/emulator/traced-refusals.js";
 import {
   compactCborHex,
-  submitWidthStep02Raw,
-  submitWidthStep03Raw,
   type WidthShape,
   witnessSetCompactCborHex,
-} from "./support/field-item-width-illegal-shapes.js";
-import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
+} from "./support/field-item-width-illegal-shapes.build-accepted-width-inclusions.js";
+import {
+  submitWidthStep02Raw,
+  submitWidthStep03Raw,
+} from "./support/field-item-width-illegal-shapes.submit-width-step02-raw.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,

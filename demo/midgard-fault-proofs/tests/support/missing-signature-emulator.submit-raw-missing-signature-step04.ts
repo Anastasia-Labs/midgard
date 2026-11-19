@@ -8,13 +8,13 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { faultProofFieldOpening } from "../../src/field-opening.js";
+import { faultProofFieldOpening } from "../../src/field-opening.publish-fault-proof-field-carriage.js";
 import { stepWalletFunding } from "../../src/funding/plain-funding-output.js";
+import { planMissingSignatureAddressWitnessesOpening } from "../../src/missing-signature/evidence.js";
 import {
-  planMissingSignatureAddressWitnessesOpening,
   requireMissingSignatureStepState,
   requireMissingSignatureThreadUtxo,
-} from "../../src/missing-signature/index.js";
+} from "../../src/missing-signature/submit-common.js";
 import { outputWithDatumAndUnitPredicate } from "../../src/tx-layout.js";
 import { walletOnlyValidTo } from "../../src/wallet-only-validity.js";
 import { witnessMintingPolicyCarriage } from "../../src/witness-reference-scripts.js";

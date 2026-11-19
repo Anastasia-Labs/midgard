@@ -20,18 +20,17 @@ import {
 } from "../src/database/index.js";
 import { COMMIT_ANCHOR_NOT_CANONICAL_MESSAGE } from "../src/database/pendingBlockFinalizations.assert-canonical-event-members.js";
 import { DatabaseError } from "../src/database/utils/common.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
 import { FollowerWriteFixture } from "../src/services/follower-write-gate.js";
-import { Lucid, NodeConfig } from "../src/services/index.js";
+import { Lucid } from "../src/services/lucid.js";
 import {
   NoInlineSubmitDefer,
   TxSignError,
   TxSubmitError,
-} from "../src/transactions/utils.js";
+} from "../src/transactions/utils.await-required-output-visibility.js";
 import { commitSubmitDeferError } from "../src/workers/commit-block-header/build-unsigned-tx.js";
-import {
-  submitDepositOnlyCommit,
-  submitTxBackedCommit,
-} from "../src/workers/commit-block-header/submission.js";
+import { submitDepositOnlyCommit } from "../src/workers/commit-block-header/submission.submit-deposit-only-commit.js";
+import { submitTxBackedCommit } from "../src/workers/commit-block-header/submission.submit-tx-backed-commit.js";
 import type { WorkerInput } from "../src/workers/utils/commit-block-header.js";
 import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 

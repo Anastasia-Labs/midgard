@@ -2,17 +2,17 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
+import { evaluateStateReconciliation } from "../src/commands/state-reconciliation.check-ledger-cache.js";
 import {
   type CheckId,
-  evaluateStateReconciliation,
   type JournalSummary,
   type L1StateView,
   type NativeRootObservation,
   type SqlDepositRow,
   type SqlStateSnapshot,
   STATE_RECONCILIATION_CHECK_IDS,
-  type StateReconciliationInput,
-} from "../src/commands/state-reconciliation.js";
+} from "../src/commands/state-reconciliation.compares.js";
+import type { StateReconciliationInput } from "../src/commands/state-reconciliation.walk-merged-chain.js";
 
 /**
  * Pure evaluator coverage: one consistent world where every check passes, and

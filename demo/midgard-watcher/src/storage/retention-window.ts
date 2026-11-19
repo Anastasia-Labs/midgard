@@ -14,12 +14,12 @@ import {
   retentionDeadlineForBlock,
 } from "@al-ft/midgard-core";
 
-import {
-  type VerifiedWatcherDeploymentIdentity,
-  verifyWatcherDeploymentIdentity,
-  type WatcherDeploymentIdentityPolicy,
-  type WatcherDeploymentTrustRoot,
-} from "../runtime/deployment-identity.js";
+import type {
+  WatcherDeploymentIdentityPolicy,
+  WatcherDeploymentTrustRoot,
+} from "../runtime/deployment-identity.catalogue-category-to-contract.js";
+import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.parse-trust-roots.js";
+import { verifyWatcherDeploymentIdentity } from "../runtime/deployment-identity.verify-watcher-deployment-identity.js";
 
 const WATCHER_RETENTION_WINDOW_SCHEMA_VERSION =
   "midgard-watcher-retention-window-v1" as const;

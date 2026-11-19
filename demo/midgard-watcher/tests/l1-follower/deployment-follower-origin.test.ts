@@ -10,10 +10,8 @@ import { SIM_ORIGIN } from "@al-ft/midgard-l1-follower/testing";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { openWatcherDeploymentFollower } from "../../src/l1-follower/deployment-follower.js";
-import {
-  verifyWatcherDeploymentIdentity,
-  watcherDeploymentProtocolScriptAuthority,
-} from "../../src/runtime/deployment-identity.js";
+import { verifyWatcherDeploymentIdentity } from "../../src/runtime/deployment-identity.verify-watcher-deployment-identity.js";
+import { watcherDeploymentProtocolScriptAuthority } from "../../src/runtime/deployment-identity.verify-watcher-user-event-script-binding.js";
 import {
   canonicalIdentity,
   withManifestId,

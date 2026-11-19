@@ -24,13 +24,13 @@ import type { LucidEvolution } from "@lucid-evolution/lucid";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
 import type { FraudProofSignedTransactionRecovery } from "../workflow/l1-source.js";
-import type { FraudProofWorkflowAdapterContext } from "../workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
   type FraudProofFamilyWorkflowAdapter,
+  type FraudProofWorkflowAdapterContext,
   type FraudProofWorkflowObservation,
-} from "../workflow/orchestrator.js";
+} from "../workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import { readOwnOutputs } from "../workflow/own-outputs.js";
 import type { FraudProofAuthenticatedPublicationObserver } from "../workflow/raw-l1-publication-observation.js";
 import {

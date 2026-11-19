@@ -2,7 +2,7 @@ import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import { expect, it, vi } from "vitest";
 
 import { prepareThroughPermit } from "../funding/superseded-attempt-replacement.js";
-import { FixtureProcessStop } from "../support/fault-proof-funding-fixture.js";
+import { FixtureProcessStop } from "../support/fault-proof-funding-fixture.process-stop.js";
 import type { setup } from "./fault-proof-objective-progress.test.js";
 
 /** W2: the prepare commits a pending attempt with its preflight and intent,

@@ -1,6 +1,6 @@
 import { deploymentFamilyStepNames } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { type AuthenticatedStateQueueHeaderObservation } from "@al-ft/midgard-sdk";
 import {
+  type AuthenticatedStateQueueHeaderObservation,
   DoubleSpendStep02Datum,
   DoubleSpendStep03Datum,
   DoubleSpendStep04Datum,
@@ -9,11 +9,13 @@ import {
 import type { UTxO } from "@lucid-evolution/lucid";
 
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import { DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
+import { DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.detect-double-withdraws.js";
 import {
   assertManifestBoundWorkflowSigner,
-  bindFraudProofWorkflowDeployment,
   releaseFinalityAuthorityFromDeploymentBinding,
+} from "./deployment-manifest-binding.assert-deployment-info-matches-manifest.js";
+import {
+  bindFraudProofWorkflowDeployment,
   requireManifestBoundReferenceScriptUtxo,
 } from "./deployment-manifest-binding.js";
 import { createDoubleSpendConstrainedWorkflowAdapter } from "./double-spend-adapter.create-double-spend-constrained-workflow-adapter.js";
@@ -29,10 +31,10 @@ import {
 } from "./double-spend-adapter.preflight-of.js";
 import { observeFraudProofWorkflowHeader } from "./family-l1-observation.js";
 import type { FraudProofWorkflowJournalStore } from "./journal.js";
+import type { FraudProofFamilyWorkflowAdapter } from "./orchestrator.fraud-proof-family-workflow-adapter.js";
+import type { FraudProofWorkflowRunResult } from "./orchestrator.fraud-proof-workflow-run-result.js";
 import {
   createFraudProofWorkflowRegistry,
-  type FraudProofFamilyWorkflowAdapter,
-  type FraudProofWorkflowRunResult,
   runFraudProofWorkflowFromRetainedDa,
 } from "./orchestrator.js";
 import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy.js";

@@ -1,3 +1,9 @@
+import {
+  encodeEventToStepValueCbor,
+  encodeTransitionEventKeyCbor,
+  encodeTransitionIntegerCbor,
+  encodeTransitionStepCbor,
+} from "@al-ft/midgard-fault-proofs/block-replay";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -5,24 +11,20 @@ import { describe, expect, it } from "vitest";
 import * as DepositsDB from "../src/database/deposits.js";
 import * as ForcedDB from "../src/database/forcedTransactions.js";
 import {
-  encodeEventToStepValueCbor,
-  encodeTransitionEventKeyCbor,
-  encodeTransitionIntegerCbor,
-  encodeTransitionStepCbor,
-} from "../src/mpf/transition-cbor.js";
-import type { DaPayloadBlockContent } from "../src/workers/commit-block-header/submission.assert-pre-submit-da-payload-size.js";
-import { commitDaPayloadForSizing } from "../src/workers/commit-block-header/submission.assert-pre-submit-da-payload-size.js";
+  commitDaPayloadForSizing,
+  type DaPayloadBlockContent,
+} from "../src/workers/commit-block-header/submission.assert-pre-submit-da-payload-size.js";
 import {
   depositTraceAggregatesByPrefix,
   measureDaPayloadPrefixes,
 } from "../src/workers/commit-block-header/submission.measure-da-prefixes.js";
+import { commitDaFrameStepDownPassBound } from "../src/workers/utils/commit-block-planner.da-frame-decision.js";
 import {
-  commitDaFrameStepDownPassBound,
   DA_PAYLOAD_UPPER_BOUND_HEADER,
   DA_PAYLOAD_UPPER_BOUND_HEADER_HASH,
   selectCommitTxCandidates,
   stepDownCommitSelectionToDaFrame,
-} from "../src/workers/utils/commit-block-planner.js";
+} from "../src/workers/utils/commit-block-planner.select-commit-tx-candidates.js";
 import {
   blockContentFor,
   header,

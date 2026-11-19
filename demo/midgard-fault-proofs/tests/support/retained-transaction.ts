@@ -18,7 +18,7 @@ import { Effect } from "effect";
 import {
   buildRetainedValidationBlockFixture,
   placeholderValidationTraceEntries,
-} from "./retained-reason-classifier.js";
+} from "./retained-reason-classifier.build-retained-validation-block-fixture.js";
 
 /**
  * Commit an operator's transaction verdict against caller-supplied ledger

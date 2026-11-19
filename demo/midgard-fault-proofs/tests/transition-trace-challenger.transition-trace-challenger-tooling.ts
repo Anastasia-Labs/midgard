@@ -26,25 +26,29 @@ import { describe, expect, it } from "vitest";
 import { fetchFraudProofEvidence } from "../src/evidence/fraud-proof-evidence.js";
 import { detectFieldPreimageLengthCompleteReplay } from "../src/field-preimage-length-mismatch/evidence.js";
 import { prepareAcceptedFieldPreimageLengthMismatch } from "../src/field-preimage-length-mismatch/prepare-accepted.js";
+import { detectTransitionTraceFaults } from "../src/transition-trace/detect.detect-single-ledger-transitions.js";
+import type { RetainedDaLibp2pTransport } from "../src/transition-trace/fetch.admit-retained-da-provenance.js";
+import { DaLibp2pRetainedDaSource } from "../src/transition-trace/fetch.da-libp2p-retained-da-source.js";
+import { fetchRetainedDaPayloadByHeaderHash } from "../src/transition-trace/fetch.fetch-retained-da-payload-by-header-hash.js";
+import { reconstructDaPayload } from "../src/transition-trace/reconstruct.reconstruct-da-payload.js";
 import {
-  buildEventToStepMismatchFault,
-  buildIndexedTraceProof,
   buildInvalidForcedTransactionNoOpWitness,
   buildL2TransactionTransitionWitness,
   buildOmittedDueL1EventFault,
+  type OmittedDueL1EventEvidence,
+  type OutOfWindowSourceEventEvidence,
+} from "../src/transition-trace/witnesses.build-omitted-due-l1-event-fault.js";
+import {
   buildOutOfWindowSourceEventFault,
+  buildTransitionFaultProof,
+} from "../src/transition-trace/witnesses.build-out-of-window-source-event-fault.js";
+import { buildIndexedTraceProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
+import {
+  buildEventToStepMismatchFault,
   buildSourceNonMembershipProof,
   buildSourcePhaseMismatchFault,
   buildTraceBoundaryFault,
-  buildTransitionFaultProof,
-  DaLibp2pRetainedDaSource,
-  detectTransitionTraceFaults,
-  fetchRetainedDaPayloadByHeaderHash,
-  type OmittedDueL1EventEvidence,
-  type OutOfWindowSourceEventEvidence,
-  reconstructDaPayload,
-  type RetainedDaLibp2pTransport,
-} from "../src/transition-trace/index.js";
+} from "../src/transition-trace/witnesses.build-source-non-membership-proof.js";
 import { buildL2ReplayFixture } from "./transition-trace-challenger.build-l2-replay-fixture.js";
 import {
   authenticatedObservation,

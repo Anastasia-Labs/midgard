@@ -14,14 +14,12 @@ import {
 import { Effect } from "effect";
 
 import { IntentJournalWithoutFollower } from "../../src/services/intent-journal.js";
-import {
-  buildAtomicProtocolInitTxProgram,
-  ensureAtomicProtocolInitReferenceScriptsProgram,
-} from "../../src/transactions/initialization.js";
+import { ensureAtomicProtocolInitReferenceScriptsProgram } from "../../src/transactions/initialization.derive-operator-da-params.js";
+import { buildAtomicProtocolInitTxProgram } from "../../src/transactions/initialization.fetch-protocol-deployment-status.js";
 import {
   activateOperatorProgram,
   registerOperatorProgram,
-} from "../../src/transactions/register-active-operator.js";
+} from "../../src/transactions/register-active-operator.activate-registered-operator-program.js";
 import { ensureEventHistoryRewardAccountsRegisteredProgram } from "../../src/transactions/script-reward-registration.js";
 import {
   type CaptureSnapshot,

@@ -1,11 +1,9 @@
-import type {
-  MintAuthorizationStep03Args,
-  MintAuthorizationStep03State,
-  NativeTxWitnessSetCompact,
-} from "@al-ft/midgard-sdk";
 import {
+  type MintAuthorizationStep03Args,
   MintAuthorizationStep03Datum,
   MintAuthorizationStep03SpendRedeemer,
+  type MintAuthorizationStep03State,
+  type NativeTxWitnessSetCompact,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
@@ -22,8 +20,7 @@ import {
   planFaultProofFieldOpening,
 } from "../field-opening.js";
 import { type ResolvedProverSigner } from "../runtime.js";
-import { completeStep, fundStep } from "../step-completion.js";
-import { finishStep } from "../step-completion.js";
+import { completeStep, finishStep, fundStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts.js";
 import type { OwnOutputJournal } from "../workflow/own-outputs.js";

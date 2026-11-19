@@ -6,18 +6,16 @@
 import { CML, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { unsafeWorkflowFundingReservationSelectedOutRefsForTest } from "../src/workflow/funding-reservation-permit.js";
-import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.js";
-import {
-  createFraudProofWorkflowRegistry,
-  type FraudProofFamilyWorkflowAdapter,
-} from "../src/workflow/orchestrator.js";
+import { unsafeWorkflowFundingReservationSelectedOutRefsForTest } from "../src/workflow/funding-reservation-permit.restrict-workflow-funding-signer.js";
+import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
+import type { FraudProofFamilyWorkflowAdapter } from "../src/workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
+import { createFraudProofWorkflowRegistry } from "../src/workflow/orchestrator.immutable-fraud-proof-workflow-registry.js";
 import { runAdmittedFraudProofWorkflow } from "../src/workflow/orchestrator.run-admitted-fraud-proof-workflow.js";
 import { threadReclaimAction } from "../src/workflow/own-thread-reclaim.js";
 import { FraudProofResolvedByAnotherRecordError } from "../src/workflow/resolved-by-another-record.js";
 import { readWorkflowRuntimeFundingPolicy } from "../src/workflow/runtime-funding-policy.js";
 import { bindWorkflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
-import { releaseFinality } from "./support/raw-l1-terminal-fixture.js";
+import { releaseFinality } from "./support/raw-l1-terminal-fixture.output.js";
 import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
 import {
   makeAdapter,

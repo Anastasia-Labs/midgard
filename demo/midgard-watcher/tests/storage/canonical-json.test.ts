@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   watcherCanonicalJson,
   WatcherDurableStoreError,
-} from "../../src/storage/durable-store.js";
+} from "../../src/storage/durable-store.canonical-json.js";
 
 describe("canonical snapshot encoding", () => {
   it("reuses validated immutable history across successive snapshots", () => {

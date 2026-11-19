@@ -10,11 +10,11 @@ import {
 import { CML } from "@lucid-evolution/lucid";
 import { expect, it } from "vitest";
 
+import { setupFundingRecoveryFixture as setup } from "../support/fault-proof-funding-fixture.setup-funding-recovery-fixture.js";
 import {
   deploymentIdentity,
   finality,
-  setupFundingRecoveryFixture as setup,
-} from "../support/fault-proof-funding-fixture.js";
+} from "../support/fault-proof-funding-fixture.sources-for.js";
 
 type FundingFixture = Awaited<ReturnType<typeof setup>>;
 // An included observation of exact signed bytes, `depth` blocks below the

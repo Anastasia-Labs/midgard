@@ -2,7 +2,7 @@ import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile
 import { Effect, Layer } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
+import { AlwaysSucceedsContract } from "../src/services/always-succeeds.always-succeeds-contract.js";
 import type { NodeConfigDep } from "../src/services/config.js";
 import { FollowerL1AdapterLive } from "../src/services/l1-adapter.follower.js";
 import {
@@ -13,7 +13,7 @@ import {
 import {
   ContractDeploymentIdentity,
   MidgardContracts,
-} from "../src/services/midgard-contracts.js";
+} from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
 /** The role's follower adapter over the always-succeeds scaffold, which

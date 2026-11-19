@@ -5,10 +5,8 @@ import type {
   FamilyCategory,
   FamilyDefinition,
 } from "../workflow/family-definition.js";
-import {
-  assembleManifestBoundFamilyWorkflow,
-  runOrResumeManifestBoundFamilyWorkflow,
-} from "../workflow/manifest-bound-family-assembly.js";
+import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
+import { runOrResumeManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.run-or-resume-manifest-bound-family-workflow.js";
 import type {
   DirectWalkWorkflow,
   DirectWalkWorkflowConfig,

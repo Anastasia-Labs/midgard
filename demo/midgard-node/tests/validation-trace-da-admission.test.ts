@@ -17,7 +17,7 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { makePayloadFixture } from "../../da-committee-node/tests/helpers.js";
-import { buildPlaceholderValidationTraceMembers } from "../src/mpf/index.js";
+import { buildPlaceholderValidationTraceMembers } from "../src/mpf/validation-trace.js";
 
 /**
  * A committed block whose single forced transaction carries the validation

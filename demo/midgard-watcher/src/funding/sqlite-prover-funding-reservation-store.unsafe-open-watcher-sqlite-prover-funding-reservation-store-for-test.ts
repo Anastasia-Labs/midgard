@@ -5,7 +5,7 @@ import { createWatcherProtocolParameterHistory } from "./prover-funding.js";
 import {
   assertWatcherProverFundingReservationPlan,
   type WatcherProverFundingReservationPlan,
-} from "./prover-funding-reservation.js";
+} from "./prover-funding-reservation.watcher-prover-funding-reservation-store.js";
 import { type WatcherSqliteProverFundingReservationStoreRuntime } from "./sqlite-prover-funding-reservation-store.derive-signed-transition.js";
 import { openInternal } from "./sqlite-prover-funding-reservation-store.open-internal.js";
 

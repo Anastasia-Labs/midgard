@@ -4,17 +4,15 @@
  * ./submit-unjournaled.ts).
  */
 import { buildNativeScriptDecodingInit } from "../../src/native-script-decoding/submit-native-script-decoding-init.js";
-import {
-  buildNativeScriptDecodingStep01BindNormal,
-  buildNativeScriptDecodingStep01RecordForced,
-} from "../../src/native-script-decoding/submit-native-script-decoding-step-01.js";
+import { buildNativeScriptDecodingStep01BindNormal } from "../../src/native-script-decoding/submit-native-script-decoding-step-01.submit-native-script-decoding-step01-bind-normal.js";
+import { buildNativeScriptDecodingStep01RecordForced } from "../../src/native-script-decoding/submit-native-script-decoding-step-01.submit-native-script-decoding-step01-record-forced.js";
 import { buildNativeScriptDecodingStep02 } from "../../src/native-script-decoding/submit-native-script-decoding-step-02.js";
 import {
   buildNativeScriptDecodingStep03AdvanceOrCloseClose,
   buildNativeScriptDecodingStep03AdvanceOrCloseSegment,
-  buildNativeScriptDecodingStep03BindDescriptor,
-  buildNativeScriptDecodingStep03OpenSubject,
-} from "../../src/native-script-decoding/submit-native-script-decoding-step-03.js";
+} from "../../src/native-script-decoding/submit-native-script-decoding-step-03.submit-native-script-decoding-step03-advance-or-close-close.js";
+import { buildNativeScriptDecodingStep03BindDescriptor } from "../../src/native-script-decoding/submit-native-script-decoding-step-03.submit-native-script-decoding-step03-bind-descriptor.js";
+import { buildNativeScriptDecodingStep03OpenSubject } from "../../src/native-script-decoding/submit-native-script-decoding-step-03.submit-native-script-decoding-step03-open-subject.js";
 import { buildNativeScriptDecodingStep04 } from "../../src/native-script-decoding/submit-native-script-decoding-step-04.js";
 import { unjournaled, unjournaledTurns } from "./submit-unjournaled.js";
 

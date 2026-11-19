@@ -1,21 +1,19 @@
-import {
-  type FaultProofFieldOpeningPlan,
-  resolveFaultProofFieldCarriagePublications,
-  resolveFaultProofFieldPreimageCertificate,
-} from "../field-opening.js";
+import { resolveFaultProofFieldPreimageCertificate } from "../field-opening.certify-fault-proof-field-carriage.js";
+import type { FaultProofFieldOpeningPlan } from "../field-opening.plan-fault-proof-field-opening.js";
+import { resolveFaultProofFieldCarriagePublications } from "../field-opening.publish-fault-proof-field-carriage.js";
 import type {
   InputExistenceCategory,
   InputExistenceKind,
 } from "../input-existence/kind.js";
-import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.build-remove-fraudulent-block.js";
 import {
   type LinearFamilyAssemblyContext,
   type LinearFamilyReferenceScripts,
   MEMBERSHIP_WITNESS_ROLES,
-} from "./family-definition.js";
+} from "./family-definition.family-adapter-arm.js";
 import { type FraudProofWorkflowAction } from "./orchestrator.js";
 import type { OwnOutputJournal } from "./own-outputs.js";
-import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.js";
+import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.route-action-identity.js";
 import { admitRemovalTransaction } from "./removal-admission.js";
 import {
   workflowTransactionInputOutRefs,

@@ -22,10 +22,8 @@
  * `BENCH_IMPORT_CHECK_MINIMAL_RUNS` sets the minimal-run sample (20,000).
  */
 import { encodeCbor } from "@al-ft/midgard-core";
-import {
-  encodeMidgardCekCardanoFlatProgram,
-  type MidgardCekVerdictRequest,
-} from "@al-ft/midgard-validation";
+import { encodeMidgardCekCardanoFlatProgram } from "@al-ft/midgard-validation/cek-program";
+import type { MidgardCekVerdictRequest } from "@al-ft/midgard-validation/phase-b";
 import {
   Application,
   Builtin,
@@ -44,10 +42,8 @@ import {
   importCheckRunBytes,
 } from "../../src/import-check/kill.js";
 import { DEFAULT_IMPORT_CHECK_CONFIG } from "../../src/services/config.import-check.js";
-import {
-  evaluateImportCheckOn,
-  FixedValidationWorkerPool,
-} from "../../src/services/validation-pool.js";
+import { FixedValidationWorkerPool } from "../../src/services/validation-pool.fixed-validation-worker-pool.js";
+import { evaluateImportCheckOn } from "../../src/services/validation-pool.make-validation-pool.js";
 import { committedBlock, fundedBy } from "../import-check.fixture.js";
 import {
   init,

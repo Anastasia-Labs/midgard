@@ -27,19 +27,19 @@ import { recordWatcherFaultDecision } from "midgard-watcher/tests/support/instal
 
 import { validationTraceComputationSteps } from "../../src/validation-trace-dispute/removal.js";
 import type { ValidationTraceAwaitingCounterparty } from "../../src/validation-trace-dispute/waiting.js";
-import { createWorkflowActuationPermitController } from "../../src/workflow/actuation-permit.js";
-import { createValidationTraceDisputeCompleteCanonicalReplay } from "../../src/workflow/complete-replay.js";
-import { applyFamilyApplicationRecord } from "../../src/workflow/family-application.js";
-import { FAMILY_APPLICATION_REGISTRY } from "../../src/workflow/family-application-registry.js";
+import { createWorkflowActuationPermitController } from "../../src/workflow/actuation-permit.create-workflow-reconciliation-permit-controller.js";
+import { createValidationTraceDisputeCompleteCanonicalReplay } from "../../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
+import { applyFamilyApplicationRecord } from "../../src/workflow/family-application.apply-family-application-record.js";
+import { FAMILY_APPLICATION_REGISTRY } from "../../src/workflow/family-application-registry.family-application-registry.js";
 import type { VALIDATION_TRACE_DISPUTE_FAMILY_APPLICATION_RECORD } from "../../src/workflow/family-application-registry.validation-trace-dispute-family-application-record.js";
 import { createFraudProofFamilyRawL1ObservationPort } from "../../src/workflow/family-l1-observation.js";
-import { restrictWorkflowFundingSigner } from "../../src/workflow/funding-reservation-permit.js";
+import { restrictWorkflowFundingSigner } from "../../src/workflow/funding-reservation-permit.restrict-workflow-funding-signer.js";
+import { authenticatedStateQueueObservationDigest } from "../../src/workflow/header-classifier.authenticated-state-queue-observation-digest.js";
+import { classifyHeader } from "../../src/workflow/header-classifier.classify-header.js";
 import {
-  authenticatedStateQueueObservationDigest,
-  classifyHeader,
   createHeaderClassifier,
   headerDecisionReplayContext,
-} from "../../src/workflow/header-classifier.js";
+} from "../../src/workflow/header-classifier.create-header-classifier.js";
 import type { FraudProofWorkflowRunResult } from "../../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import {
   WORKFLOW_RUNNER_FACTORIES,
@@ -47,7 +47,7 @@ import {
 } from "../../src/workflow/runtime.js";
 import type { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
 import { network } from "./emulator/blueprints.js";
-import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.js";
+import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.build-removal-deployment-info.js";
 import { scratchDirectory } from "./scratch-directory.js";
 import {
   emulatorProtocolParameterAuthority,

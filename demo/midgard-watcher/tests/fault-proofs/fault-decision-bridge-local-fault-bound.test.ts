@@ -13,8 +13,8 @@
 import {
   FraudProofL1UnavailableError,
   LOCAL_FAULT_RUN_LIMIT,
-  ReplayLocalFault,
 } from "@al-ft/midgard-fault-proofs";
+import { ReplayLocalFault } from "@al-ft/midgard-fault-proofs/block-replay";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {

@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 import {
   deregisterOperatorProgram,
   registerOperatorProgram,
-} from "../src/transactions/register-active-operator.js";
+} from "../src/transactions/register-active-operator.activate-registered-operator-program.js";
 import {
   drainJournaledWithoutFollower,
   runWithoutFollower,

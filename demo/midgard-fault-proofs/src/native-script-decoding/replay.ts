@@ -24,10 +24,10 @@ import { keyValuePhasProof } from "../transition-trace/phas.js";
 import {
   eventKeyFingerprint,
   type TransitionTraceReconstruction,
-} from "../transition-trace/reconstruct.js";
+} from "../transition-trace/reconstruct.transition-trace-reconstruction.js";
 import { eventSubject } from "../workflow/detection-subject.js";
 import { collectReplayFindings } from "../workflow/replay-prerequisite.js";
-import { buildNativeScriptDecodingScanPlan } from "./scan-plan.js";
+import { buildNativeScriptDecodingScanPlan } from "./scan-plan.build-native-script-decoding-scan-plan.js";
 
 function failure(message: string): never {
   throw new Error(`nativeScriptDecoding: ${message}`);

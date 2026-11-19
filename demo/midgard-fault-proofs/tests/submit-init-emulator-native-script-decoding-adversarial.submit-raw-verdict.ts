@@ -2,27 +2,27 @@ import { MIDGARD_LEDGER_OUTPUT_FIELD_INDEX } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 
-import {
-  buildNativeScriptDecodingInit,
-  buildNativeScriptDecodingStep01BindNormal,
-  buildNativeScriptDecodingStep01RecordForced,
-  buildNativeScriptDecodingStep02,
-  buildNativeScriptDecodingStep03AdvanceOrCloseSegment,
-  buildNativeScriptDecodingStep03BindDescriptor,
-  buildNativeScriptDecodingStep03OpenSubject,
-  type NativeScriptDecodingContracts,
-  type NativeScriptDecodingScanPlan,
-  type NativeScriptDecodingVerdictPlan,
-  nativeScriptDecodingWindowProofs,
-  requireNativeScriptDecodingThreadUtxo,
-} from "../src/native-script-decoding/index.js";
+import type { NativeScriptDecodingContracts } from "../src/native-script-decoding/contracts.js";
+import { nativeScriptDecodingWindowProofs } from "../src/native-script-decoding/evidence.js";
+import type {
+  NativeScriptDecodingScanPlan,
+  NativeScriptDecodingVerdictPlan,
+} from "../src/native-script-decoding/scan-plan.native-script-decoding-plan-costs.js";
+import { requireNativeScriptDecodingThreadUtxo } from "../src/native-script-decoding/submit-common.js";
+import { buildNativeScriptDecodingInit } from "../src/native-script-decoding/submit-native-script-decoding-init.js";
+import { buildNativeScriptDecodingStep01BindNormal } from "../src/native-script-decoding/submit-native-script-decoding-step-01.submit-native-script-decoding-step01-bind-normal.js";
+import { buildNativeScriptDecodingStep01RecordForced } from "../src/native-script-decoding/submit-native-script-decoding-step-01.submit-native-script-decoding-step01-record-forced.js";
+import { buildNativeScriptDecodingStep02 } from "../src/native-script-decoding/submit-native-script-decoding-step-02.js";
+import { buildNativeScriptDecodingStep03AdvanceOrCloseSegment } from "../src/native-script-decoding/submit-native-script-decoding-step-03.submit-native-script-decoding-step03-advance-or-close-close.js";
+import { buildNativeScriptDecodingStep03BindDescriptor } from "../src/native-script-decoding/submit-native-script-decoding-step-03.submit-native-script-decoding-step03-bind-descriptor.js";
+import { buildNativeScriptDecodingStep03OpenSubject } from "../src/native-script-decoding/submit-native-script-decoding-step-03.submit-native-script-decoding-step03-open-subject.js";
 import type { ResolvedProverSigner } from "../src/runtime.js";
+import { network } from "./support/emulator/blueprints.js";
 import {
   type DecodingScenario,
   makeDecodingEmulatorHarness,
-  submitRawDecodingStep,
-} from "./support/native-script-decoding-emulator.js";
-import { network } from "./support/submit-init-emulator-shared.js";
+} from "./support/native-script-decoding-emulator.setup-decoding-scenario.js";
+import { submitRawDecodingStep } from "./support/native-script-decoding-emulator.submit-raw-decoding-step.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,

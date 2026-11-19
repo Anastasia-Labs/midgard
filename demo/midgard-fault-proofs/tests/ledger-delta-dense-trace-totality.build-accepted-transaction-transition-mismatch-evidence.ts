@@ -1,11 +1,11 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import {
-  detectTransitionTraceFaults,
-  type TransitionTraceDetection,
-  type TransitionTraceFaultKind,
-} from "../src/transition-trace/index.js";
+import type {
+  TransitionTraceDetection,
+  TransitionTraceFaultKind,
+} from "../src/transition-trace/detect.detect-count-faults.js";
+import { detectTransitionTraceFaults } from "../src/transition-trace/detect.detect-single-ledger-transitions.js";
 import {
   buildPayloadFixture,
   depositEventKey,

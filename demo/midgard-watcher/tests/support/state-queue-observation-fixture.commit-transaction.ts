@@ -9,8 +9,11 @@ import {
   scriptHashToCredential,
 } from "@lucid-evolution/lucid";
 
-import { watcherDeploymentProtocolScriptAuthority } from "../../src/runtime/deployment-identity.js";
-import { h28, h32 } from "./deployment-authority-fixture.js";
+import { watcherDeploymentProtocolScriptAuthority } from "../../src/runtime/deployment-identity.verify-watcher-user-event-script-binding.js";
+import {
+  h28,
+  h32,
+} from "./deployment-authority-fixture.build-watcher-authority-contracts.js";
 
 // Unit fixture only. Init/Commit shapes are copied from the ordinary SQ
 // observation tests; no Plutus evaluation, wallet signature, Cardano consensus

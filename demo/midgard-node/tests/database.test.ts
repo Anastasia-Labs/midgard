@@ -1,7 +1,7 @@
-import { registerAdmissionsTests } from "./database.test/admissions.js";
+import { registerAdmissionsTests } from "./database.test/admissions.register-admissions-tests.js";
 import { registerAvailabilityTests } from "./database.test/availability.js";
-import { registerFinalizationTests } from "./database.test/finalization.js";
-import { registerDatabaseSetup } from "./database.test/fixtures.js";
+import { registerFinalizationTests } from "./database.test/finalization.register-finalization-tests.js";
+import { registerDatabaseSetup } from "./database.test/fixtures.environment.js";
 import { registerHistoryTests } from "./database.test/history.js";
 import { registerInitializationTests } from "./database.test/initialization.js";
 import { registerLedgerTests } from "./database.test/ledger.js";

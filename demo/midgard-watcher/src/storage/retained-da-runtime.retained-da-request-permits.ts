@@ -9,10 +9,8 @@ import {
   perHeaderAlert,
 } from "../fault-proofs/per-header-alert.js";
 import { type WatcherConfig } from "../runtime/config.js";
-import {
-  assertVerifiedWatcherDeploymentIdentity,
-  type VerifiedWatcherDeploymentIdentity,
-} from "../runtime/deployment-identity.js";
+import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.parse-trust-roots.js";
+import { assertVerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.verify-watcher-user-event-script-binding.js";
 import { watcherDaFetchAlertSubject } from "../runtime/operations-observability.alert-book.js";
 import type { WatcherOperationsSink } from "../runtime/operations-observability.js";
 import {

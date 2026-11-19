@@ -19,7 +19,7 @@
 import { hashMidgardValidationMachineState } from "@al-ft/midgard-core";
 import type { MidgardVersionedScript } from "@al-ft/midgard-core/codec/versioned-script";
 import * as SDK from "@al-ft/midgard-sdk";
-import { MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES } from "@al-ft/midgard-validation";
+import { MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES } from "@al-ft/midgard-validation/cek-constant";
 import { credentialToAddress, Data } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, expect } from "vitest";
 
@@ -35,8 +35,8 @@ import {
 } from "../../src/validation-trace-dispute/one-step-plan.js";
 import { validationTraceDefenseDeadlineMs } from "../../src/validation-trace-dispute/waiting.js";
 import { parseOwnOutRef } from "../../src/workflow/own-outputs.js";
+import { network } from "./emulator/blueprints.js";
 import { expectOnchainRefusal } from "./emulator/expect-onchain-refusal.js";
-import { network } from "./submit-init-emulator-shared.js";
 import {
   firstOutputAddress,
   hopFrom,

@@ -8,7 +8,7 @@
  * wallet, never stranded. */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.js";
+import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
 import type { FraudProofFamilyWorkflowAdapter } from "../src/workflow/orchestrator.js";
 import { FraudProofResolvedByAnotherRecordError } from "../src/workflow/resolved-by-another-record.js";
 import {

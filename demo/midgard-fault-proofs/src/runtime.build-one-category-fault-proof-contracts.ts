@@ -57,10 +57,8 @@ import {
 import { type Network } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import {
-  contractDeploymentHistoryBounds,
-  type ContractDeploymentInfo,
-} from "./inspect-contracts.js";
+import type { ContractDeploymentInfo } from "./inspect-contracts.inspect-contracts-output.js";
+import { contractDeploymentHistoryBounds } from "./inspect-contracts.js";
 import { type OneCategoryFaultProofContracts } from "./runtime.category-label.js";
 import { type SupportedFaultProofCategoryName } from "./runtime.require-fault-proof-step-reference-script.js";
 

@@ -23,8 +23,8 @@ import {
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { deriveL2TransactionSourceCbor } from "../prepare-double-spend.encode-l2-transaction-source-value.js";
 import type { NodeTransactionPayload } from "../prepare-double-spend.js";
-import { deriveL2TransactionSourceCbor } from "../prepare-double-spend.js";
 import { spendInputsWitnessFromCbors } from "../spend-input-witness.js";
 import {
   nativeTxFromCoreCompact,

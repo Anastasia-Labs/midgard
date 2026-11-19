@@ -23,11 +23,12 @@ import {
   type EntryWithTimeStamp,
 } from "../src/database/utils/tx.js";
 import * as WithdrawalsDB from "../src/database/withdrawals.js";
-import { type MidgardMpf, processMpfs } from "../src/mpf/index.js";
+import { processMpfs } from "../src/mpf/process.process-mpfs.js";
+import type { MidgardMpf } from "../src/mpf/store.midgard-mpf.js";
 import {
   selectCommitTxCandidates,
   stepDownCommitSelectionToDaFrame,
-} from "../src/workers/utils/commit-block-planner.js";
+} from "../src/workers/utils/commit-block-planner.select-commit-tx-candidates.js";
 import {
   assertForcedProjectionRows,
   forcedProjectionEntry,

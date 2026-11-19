@@ -11,11 +11,11 @@ import {
   keyValuePhasNonMembershipProof,
   keyValuePhasProof,
 } from "../transition-trace/phas.js";
-import { eventKeyPhase } from "../transition-trace/reconstruct.js";
+import { eventKeyPhase } from "../transition-trace/reconstruct.transition-trace-reconstruction.js";
 import {
   buildEventToStepMembershipProof,
   buildIndexedTraceProof,
-} from "../transition-trace/witnesses.js";
+} from "../transition-trace/witnesses.build-source-membership-proof.js";
 import { deriveInputExistenceSelection } from "./selection.js";
 import {
   type OpenedProofThreadSource,

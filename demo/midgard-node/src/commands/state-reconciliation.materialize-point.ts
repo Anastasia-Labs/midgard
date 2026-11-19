@@ -2,7 +2,7 @@ import { Effect, Either, Option } from "effect";
 
 import { PendingBlockFinalizationsDB } from "../database/index.js";
 import * as Ledger from "../database/utils/ledger.js";
-import { Database } from "../services/index.js";
+import { Database } from "../services/database.js";
 import { materializeConfirmedLedgerDeltaChain } from "../transactions/state-queue/confirmed-ledger-snapshot.js";
 import {
   chainFrom,

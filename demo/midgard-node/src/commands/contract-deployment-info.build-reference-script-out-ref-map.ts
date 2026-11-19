@@ -29,7 +29,7 @@ import {
   referenceScriptRoleForContract,
 } from "../deployable-scripts.js";
 import { daAvailabilityChallengeEnvironmentInput } from "../environment.js";
-import { Lucid } from "../services/index.js";
+import { Lucid } from "../services/lucid.js";
 import { fetchReferenceScriptUtxosAt } from "../transactions/reference-scripts.js";
 
 export type ContractDeploymentInfoRefScriptUTxO = {

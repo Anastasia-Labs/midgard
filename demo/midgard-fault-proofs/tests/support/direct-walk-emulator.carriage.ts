@@ -6,13 +6,13 @@ import type { UTxO } from "@lucid-evolution/lucid";
 import type { DirectPurposeFieldPlan } from "../../src/direct-purpose-family/index.js";
 import type { DirectScriptMaterial } from "../../src/direct-script-derivation/material.js";
 import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
+import { network } from "./emulator/blueprints.js";
 import type { FaultProofEmulatorHarness } from "./emulator/harness.js";
 import {
   captureEmulatorSubmission,
   type CompleteSignedTransactionMeasurement,
-  network,
-  publishPlainReferenceScriptUtxo,
-} from "./submit-init-emulator-shared.js";
+} from "./emulator/measurement.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 import {
   certifyCarriageUnjournaled,
   publishCarriageUnjournaled,

@@ -6,16 +6,14 @@ import { describe, expect, it } from "vitest";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import { prepareValueConservationArtifact } from "../src/value-not-preserved/replay.js";
-import {
-  admitCompleteCanonicalReplayPredecessor,
-  VALUE_NOT_PRESERVED_COMPLETE_CANONICAL_REPLAY,
-} from "../src/workflow/complete-replay.js";
+import { admitCompleteCanonicalReplayPredecessor } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { VALUE_NOT_PRESERVED_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
   reencodeFixturePayload,
 } from "./helpers/canonical-block-evidence-fixture.js";
-import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
+import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.build-decoding-block-fixture.js";
 import {
   checkedLedgerAfter,
   ledgerAtAfter,
@@ -25,7 +23,7 @@ import {
   vnpOutput,
   vnpOutRef,
   vnpValue,
-} from "./support/value-not-preserved-emulator.js";
+} from "./support/value-not-preserved-emulator.build-value-not-preserved-fixture.js";
 const provenance = {
   trustClass: "public_or_permissionless_da",
   sourceId: "test/value-conservation-retained-da",

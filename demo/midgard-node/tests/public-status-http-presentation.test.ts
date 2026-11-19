@@ -55,7 +55,7 @@ import {
 } from "../src/fibers/operator-watchdog.manifest-gate.js";
 import { OPERATOR_WATCHDOG_TAKEOVER_FAILING } from "../src/fibers/operator-watchdog.takeover-retry.js";
 import { RETENTION_L1_VIEW_STALE } from "../src/fibers/retention-sweeper.js";
-import { Globals } from "../src/services/globals.js";
+import { Globals } from "../src/services/globals.globals.js";
 import {
   L1_NODE_CONFIG_FAILED,
   L1_NODE_CONFIG_UNREADABLE,
@@ -68,7 +68,7 @@ import {
   NATIVE_MPF_RESTORE_READ_TRANSIENT,
   raiseLivenessIncident,
 } from "../src/services/liveness-halt.js";
-import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.js";
+import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import type { WorkerOutput } from "../src/workers/utils/commit-block-header.js";
 import { readyz } from "./readiness-honest-degradation-route.readyz-fixture.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";

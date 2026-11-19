@@ -31,7 +31,7 @@ import {
 import { verifyConfirmedLedger } from "../src/mpf/confirmed-ledger-run.js";
 import { recordConfirmedLedgerVerification } from "../src/mpf/confirmed-ledger-verification.js";
 import { withFollowerWrite } from "../src/services/follower-write-gate.js";
-import { Globals } from "../src/services/globals.js";
+import { Globals } from "../src/services/globals.globals.js";
 import {
   CommitBaseUnverifiedError,
   verifiedLandedLedgerAt,

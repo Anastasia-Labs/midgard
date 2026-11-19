@@ -29,14 +29,14 @@ import {
 } from "./proof-material.js";
 import { type TransitionTraceReconstruction } from "./reconstruct.js";
 import {
+  buildL2TransactionTransitionWitness,
+  buildValidForcedTransactionTransitionWitness,
+} from "./witnesses.build-omitted-due-l1-event-fault.js";
+import {
   requireTraceEntry,
   sourceEventOrThrow,
 } from "./witnesses.build-source-membership-proof.js";
-import {
-  buildL2TransactionTransitionWitness,
-  buildValidForcedTransactionTransitionWitness,
-  type L2TransactionTransitionEvidence,
-} from "./witnesses.js";
+import type { L2TransactionTransitionEvidence } from "./witnesses.build-source-non-membership-proof.js";
 
 /**
  * Replay an L2 or accepted forced transaction's ledger mutation from its

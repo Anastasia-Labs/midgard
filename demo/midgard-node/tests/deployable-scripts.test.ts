@@ -7,12 +7,12 @@ import type * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { collectScriptDescriptors } from "../src/commands/contract-deployment-info.js";
+import { collectScriptDescriptors } from "../src/commands/contract-deployment-info.build-reference-script-out-ref-map.js";
 import {
   manifestDeployableScripts,
   REFERENCE_SCRIPT_COMMAND_NAMES,
 } from "../src/deployable-scripts.js";
-import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
+import { AlwaysSucceedsContract } from "../src/services/always-succeeds.always-succeeds-contract.js";
 import {
   nodeRuntimeReferenceScriptTargets,
   referenceScriptTargetsByCommand,

@@ -17,7 +17,7 @@ import {
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { describe, expect, it } from "vitest";
 
-import { expectOnchainRefusal } from "./support/submit-init-emulator-shared.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   buildCloseCase,
   buildCloseTimedOutThread,

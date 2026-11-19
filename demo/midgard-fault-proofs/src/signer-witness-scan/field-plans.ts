@@ -6,7 +6,7 @@ import {
 import {
   type FaultProofFieldOpeningPlan,
   planFaultProofFieldOpening,
-} from "../field-opening.js";
+} from "../field-opening.plan-fault-proof-field-opening.js";
 import type { SignerWitnessScanEvidence } from "./evidence.js";
 
 /** The field-7 address-witness opening every scan turn carries. */

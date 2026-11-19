@@ -14,7 +14,7 @@ import type { UTxO } from "@lucid-evolution/lucid";
 import {
   FIELD_GRAMMAR_CERTIFICATE_MINT,
   FIELD_GRAMMAR_CERTIFICATE_SPEND,
-} from "../../src/field-grammar-certificate.js";
+} from "../../src/field-grammar-certificate.resolve-fault-proof-field-grammar-deployment.js";
 import { stringifyJson } from "../../src/json-file.js";
 
 /** The deployment info with both certificate members naming `utxo`. */

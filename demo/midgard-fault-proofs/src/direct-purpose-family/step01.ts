@@ -25,7 +25,7 @@ import {
   type SubmitStep01TxInclusion,
 } from "../step-support.js";
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
-import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
+import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.build-source-membership-proof.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import type {

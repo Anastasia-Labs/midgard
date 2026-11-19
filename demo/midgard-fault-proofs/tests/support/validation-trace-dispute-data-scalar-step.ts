@@ -8,12 +8,12 @@ import {
   hashMidgardValidationMachineState,
   hashMidgardValidationWorkWitness,
 } from "@al-ft/midgard-core";
+import type { ValidationTraceSteps } from "@al-ft/midgard-validation";
 import {
   hashMidgardCekDirectValueWitness,
-  type MidgardCekCoreStepWitness,
   type MidgardCekDirectValueWitness,
-  type ValidationTraceSteps,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/cek-builtin";
+import type { MidgardCekCoreStepWitness } from "@al-ft/midgard-validation/cek-machine";
 import { plutusV3ScriptWitness } from "@al-ft/midgard-validation/tests/validation-fixtures";
 
 import type { ValidationTraceClaimMaterial } from "../../src/validation-trace-dispute/claim-material.js";

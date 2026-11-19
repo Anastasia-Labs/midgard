@@ -13,27 +13,23 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
-import { planFaultProofFieldOpening } from "../src/field-opening.js";
+import { planFaultProofFieldOpening } from "../src/field-opening.plan-fault-proof-field-opening.js";
 import {
   planNetworkIdOutputsOpening,
   type PreparedNetworkIdProof,
 } from "../src/network-id/prepare.js";
-import {
-  createNetworkIdWorkflowAdapter,
-  type NetworkIdWorkflowAdapterConfig,
-} from "../src/network-id/workflow-adapter.js";
-import { deriveL2TransactionSourceCbor } from "../src/prepare-double-spend.js";
+import type { NetworkIdWorkflowAdapterConfig } from "../src/network-id/workflow-adapter.create-network-id-raw-l1-observation-port.js";
+import { createNetworkIdWorkflowAdapter } from "../src/network-id/workflow-adapter.create-network-id-workflow-adapter.js";
+import { deriveL2TransactionSourceCbor } from "../src/prepare-double-spend.encode-l2-transaction-source-value.js";
 import { buildInit } from "../src/submit-init.js";
-import {
-  createDoubleSpendConstrainedWorkflowAdapter,
-  type DoubleSpendConstrainedWorkflowAdapterConfig,
-  type DoubleSpendWorkflowStage,
-} from "../src/workflow/double-spend-adapter.js";
+import { createDoubleSpendConstrainedWorkflowAdapter } from "../src/workflow/double-spend-adapter.create-double-spend-constrained-workflow-adapter.js";
+import type { DoubleSpendWorkflowStage } from "../src/workflow/double-spend-adapter.create-double-spend-raw-l1-observation-port.js";
+import type { DoubleSpendConstrainedWorkflowAdapterConfig } from "../src/workflow/double-spend-adapter.preflight-of.js";
 import {
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   type FraudProofWorkflowIdentity,
   type JournalJsonObject,
-} from "../src/workflow/journal.js";
+} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import type { SignedTransactionRecoveryObservation } from "../src/workflow/signed-transaction-reconciliation.js";
 import {
   type LocallyEvaluatedTransaction,

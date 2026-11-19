@@ -23,10 +23,8 @@ import {
 import { type Assets } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
-import {
-  ContractDeploymentIdentity,
-  NodeConfig as NodeConfigService,
-} from "../services/index.js";
+import { NodeConfig as NodeConfigService } from "../services/config.make-config.js";
+import { ContractDeploymentIdentity } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   fetchNodeTxStatus,
   type ResolvedWalletSeedPhrase,

@@ -3,28 +3,24 @@ import { FraudProofTokenDatum } from "@al-ft/midgard-sdk";
 import { Data, getAddressDetails } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildL2TxMistagInit,
-  buildL2TxMistagStep01,
-  buildL2TxMistagStep02,
-  L2TxMistagStep02Datum,
-  submitRemoveFraudulentBlock,
-} from "../src/index.js";
+import { L2TxMistagStep02Datum } from "../src/l2-tx-mistag/schemas.js";
+import { buildL2TxMistagInit } from "../src/l2-tx-mistag/submit-l2-tx-mistag-init.js";
+import { buildL2TxMistagStep01 } from "../src/l2-tx-mistag/submit-l2-tx-mistag-step-01.js";
+import { buildL2TxMistagStep02 } from "../src/l2-tx-mistag/submit-l2-tx-mistag-step-02.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import { network } from "./support/emulator/blueprints.js";
 import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.js";
-import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import {
   buildL2TxMistagBlockFixture,
   l2TxMistagCategory,
   publishL2TxMistagReferenceScripts,
 } from "./support/l2-tx-mistag-emulator.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
-import {
-  expectStateQueueHeaderOrder,
-  setupFraudulentBlock,
-} from "./support/submit-init-emulator-fixtures.js";
+import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
+import { setupFraudulentBlock } from "./support/submit-init/removal.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 describe("l2-tx-mistag emulator lifecycle", () => {

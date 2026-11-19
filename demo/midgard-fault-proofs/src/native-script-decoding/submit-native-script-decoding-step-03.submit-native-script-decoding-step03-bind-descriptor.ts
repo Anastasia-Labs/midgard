@@ -3,18 +3,16 @@ import {
   MIDGARD_LEDGER_OUTPUT_FIELD_INDEX,
   type MidgardLedgerOutputCommitment,
 } from "@al-ft/midgard-core";
-import type {
-  BoundedItemChunkProof,
-  NativeScriptDecodingScanThreadState,
-  Proof,
-} from "@al-ft/midgard-sdk";
 import {
+  type BoundedItemChunkProof,
   NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE,
   NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION,
   NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_MALFORMED,
   nativeScriptDecodingBoundDescriptorState,
   nativeScriptDecodingOpenedSubjectState,
+  type NativeScriptDecodingScanThreadState,
   NativeScriptDecodingStep03BindDescriptorSpendRedeemer,
+  type Proof,
 } from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -29,16 +27,16 @@ import {
 import {
   NativeScriptDecodingPlanRoutes,
   type NativeScriptDecodingScanPlan,
-} from "./scan-plan.js";
+} from "./scan-plan.native-script-decoding-plan-costs.js";
 import {
   nativeScriptDecodingSubmitError,
   requireNativeScriptDecodingThreadUtxo,
 } from "./submit-common.js";
-import type { NativeScriptDecodingStep03Build } from "./submit-native-script-decoding-step-03.advance-step03-thread.js";
 import {
   ADVANCE_OR_CLOSE_INDEX,
   advanceStep03Thread,
   BIND_DESCRIPTOR_INDEX,
+  type NativeScriptDecodingStep03Build,
   requireAnchoredItemBytes,
   requireOpenedState,
   requireStep03State,

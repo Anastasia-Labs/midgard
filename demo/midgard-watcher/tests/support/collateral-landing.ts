@@ -2,10 +2,8 @@
  * spends its collateral and creates its collateral return. */
 import type { UTxO } from "@lucid-evolution/lucid";
 
-import {
-  type setupFundingRecoveryFixture,
-  walletAddress,
-} from "./fault-proof-funding-fixture.js";
+import type { setupFundingRecoveryFixture } from "./fault-proof-funding-fixture.setup-funding-recovery-fixture.js";
+import { walletAddress } from "./fault-proof-funding-fixture.sources-for.js";
 
 export type Fixture = Awaited<ReturnType<typeof setupFundingRecoveryFixture>>;
 

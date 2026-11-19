@@ -14,31 +14,29 @@ import {
 } from "../services/intent-journal.js";
 import { observedLedgerTip } from "./ledger-tip-lower-bound.js";
 import {
-  handleSignSubmit,
   TxConfirmError,
-  TxExpiredError,
   TxSignError,
   TxSubmitError,
-} from "./utils.js";
+} from "./utils.await-required-output-visibility.js";
+import { handleSignSubmit } from "./utils.await-submitted-transaction-confirmation.js";
+import { TxExpiredError } from "./utils.tx-expiry.js";
 import { readSelectedWalletViewInputs } from "./utils.wallet-view.js";
 
-export type {
-  AbsorbConfirmedDepositConfig,
-  AddReserveFundsConfig,
-  BuiltReservePayoutTx,
-  ConcludePayoutConfig,
-  InitializePayoutConfig,
-  RefundInvalidWithdrawalConfig,
-  ReservePayoutReferenceScripts,
-} from "@al-ft/midgard-sdk";
 export {
   __reservePayoutTest,
+  type AbsorbConfirmedDepositConfig,
+  type AddReserveFundsConfig,
   assetsToValue,
   buildAbsorbConfirmedDepositToReserveTxProgram,
   buildAddReserveFundsToPayoutTxProgram,
   buildConcludePayoutTxProgram,
   buildInitializePayoutTxProgram,
   buildRefundInvalidWithdrawalTxProgram,
+  type BuiltReservePayoutTx,
+  type ConcludePayoutConfig,
+  type InitializePayoutConfig,
+  type RefundInvalidWithdrawalConfig,
+  type ReservePayoutReferenceScripts,
   ReservePayoutTxError,
   valueToAssets,
 } from "@al-ft/midgard-sdk";

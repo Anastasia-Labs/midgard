@@ -11,21 +11,21 @@ import {
 } from "../../database/index.js";
 import type * as Ledger from "../../database/utils/ledger.js";
 import { reachCommitCrashCheckpoint } from "../../e2e/commit-crash-checkpoint.js";
-import {
-  emptyRootHexProgram,
-  type LedgerDelta,
-  type NativeMpfReplayBuild,
-  type RetainedEventToStepMember,
-  type RetainedTransitionTraceMember,
-  type RetainedValidationTraceMember,
-} from "../../mpf/index.js";
+import type { LedgerDelta } from "../../mpf/ledger-delta.js";
+import { emptyRootHexProgram } from "../../mpf/store.empty-root-hex-program.js";
+import type {
+  RetainedEventToStepMember,
+  RetainedTransitionTraceMember,
+} from "../../mpf/trace-events.js";
+import type { NativeMpfReplayBuild } from "../../mpf/transition-trace.apply-trace-ledger-ops-to-mpf.js";
+import type { RetainedValidationTraceMember } from "../../mpf/validation-trace.js";
 import { configuredCommitAnchorClock } from "../../services/history-commit-window.js";
 import type { ContractDeploymentIdentityValue } from "../../services/index.js";
 import type {
   WorkerInput,
   WorkerOutput,
 } from "../utils/commit-block-header.js";
-import { selectCommitRoots } from "../utils/commit-block-planner.js";
+import { selectCommitRoots } from "../utils/commit-block-planner.plan-scheduler-aware-commit-selection.js";
 import { buildUnsignedCommitTx } from "./build-unsigned-tx.js";
 import {
   resolveDepositsRoot,

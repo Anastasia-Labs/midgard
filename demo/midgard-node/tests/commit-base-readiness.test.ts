@@ -32,7 +32,7 @@ import {
   COMMIT_WORKER_SOURCE,
   livenessReadiness,
 } from "../src/fibers/block-commitment.worker-readiness.js";
-import { Globals } from "../src/services/globals.js";
+import { Globals } from "../src/services/globals.globals.js";
 import { activeLivenessReasons } from "../src/services/liveness-halt.js";
 import { parseReadinessLine } from "../src/services/readiness-catalogue.js";
 import type { WorkerOutput } from "../src/workers/utils/commit-block-header.js";

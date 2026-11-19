@@ -15,11 +15,11 @@ import type {
   CanonicalBlockClassification,
   CanonicalViolationDetection,
 } from "../workflow/classification.js";
+import { VALIDATION_TRACE_VIOLATION_ID } from "../workflow/complete-replay.detect-accepted-transaction-faults.js";
 import {
   type CompleteCanonicalReplayContext,
-  VALIDATION_TRACE_VIOLATION_ID,
-} from "../workflow/complete-replay.js";
-import { requireReplayPredecessorLedger } from "../workflow/complete-replay.replay-context-identity.js";
+  requireReplayPredecessorLedger,
+} from "../workflow/complete-replay.replay-context-identity.js";
 import { sameJson } from "../workflow/field-carriage-prerequisite.field-carriage-prerequisite-port.js";
 import type { JournalJsonObject } from "../workflow/journal.js";
 import {

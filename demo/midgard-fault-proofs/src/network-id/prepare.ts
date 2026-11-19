@@ -7,15 +7,15 @@ import {
   type CanonicalEvidenceBuilderInput,
 } from "../evidence/prepare-from-evidence.js";
 import type { FaultProofFieldOpeningPlan } from "../field-opening.js";
-import { planFaultProofFieldOpening } from "../field-opening.js";
+import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
+import type { PreparedTxInclusionJson } from "../prepare-double-spend.encode-l2-transaction-source-value.js";
+import { requireTransactionsRootMatch } from "../prepare-double-spend.prepare-double-spend-from-transactions.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
-  type PreparedTxInclusionJson,
   requireProof,
-  requireTransactionsRootMatch,
   transactionSourceTrieItem,
-} from "../prepare-double-spend.js";
+} from "../prepare-double-spend.resolve-double-spend-pair.js";
 import type { PreparedNetworkIdAcceptedForced } from "./accepted-forced.js";
 import {
   findNetworkIdFaults,

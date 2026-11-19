@@ -1,10 +1,10 @@
 import { expect } from "vitest";
 
-import { EMULATOR_PROTOCOL_PARAMETERS } from "./emulator/protocol-parameters.js";
 import {
   type CompleteSignedTransactionMeasurement,
   measureCompleteSignedTransaction,
-} from "./submit-init-emulator-shared.js";
+} from "./emulator/measurement.js";
+import { EMULATOR_PROTOCOL_PARAMETERS } from "./emulator/protocol-parameters.js";
 
 /** The signed transaction's size and units, within the emulator's limits. */
 export const measureWithinTransactionLimits = (

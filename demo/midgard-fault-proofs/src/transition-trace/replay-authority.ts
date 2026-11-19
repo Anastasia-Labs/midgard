@@ -16,16 +16,16 @@ import {
   CanonicalReplayPrerequisiteError,
   replayPrerequisiteFailure,
 } from "../workflow/replay-prerequisite.js";
-import {
-  detectTransitionTraceFaults,
-  type TransitionTraceDetection,
-  type TransitionTraceDetectionEvidence,
-} from "./detect.js";
+import type {
+  TransitionTraceDetection,
+  TransitionTraceDetectionEvidence,
+} from "./detect.detect-count-faults.js";
+import { detectTransitionTraceFaults } from "./detect.js";
 import {
   readFreshTransitionTraceL1Events,
   type TransitionTraceL1Events,
 } from "./l1-events.js";
-import { eventKeyFingerprint } from "./reconstruct.js";
+import { eventKeyFingerprint } from "./reconstruct.transition-trace-reconstruction.js";
 import { deriveTransitionTraceReplayEvidence } from "./replay.js";
 import type {
   OmittedDueL1EventEvidence,

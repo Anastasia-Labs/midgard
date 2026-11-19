@@ -11,7 +11,7 @@ import {
   EventLedgerReplayRefusal,
 } from "../src/event-ledger.js";
 import { prepareValidationTraceArtifact } from "../src/validation-trace-dispute/detected-claim.js";
-import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
+import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
 import {
   completeCanonicalReplayPredecessorLedger,
   EVENT_PRE_STATE_UNAVAILABLE_VIOLATION_ID,
@@ -19,7 +19,7 @@ import {
 import {
   createValidationTraceDisputeCompleteCanonicalReplay,
   requireCompleteCanonicalReplayDecision,
-} from "../src/workflow/complete-replay.js";
+} from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
 import { referenceLedgerBefore } from "./helpers/event-ledger-reference.js";
 import {
   type EventSpend,

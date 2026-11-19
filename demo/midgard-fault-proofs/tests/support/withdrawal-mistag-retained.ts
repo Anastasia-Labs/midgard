@@ -5,7 +5,7 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../../src/evidence/canonical-block-evidence.js";
-import { admitCompleteCanonicalReplayPredecessor } from "../../src/workflow/complete-replay.js";
+import { admitCompleteCanonicalReplayPredecessor } from "../../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
@@ -17,7 +17,7 @@ import { ledgerAtAfter } from "./predecessor-ledger.js";
 import {
   buildWithdrawalMistagEvidenceMaterial,
   type WithdrawalMistagDirectionFixture,
-} from "./withdrawal-mistag-emulator.js";
+} from "./withdrawal-mistag-emulator.build-withdrawal-mistag-evidence-material.js";
 
 const provenance = {
   trustClass: "public_or_permissionless_da",

@@ -14,7 +14,7 @@ import {
   untilTransientExhaustion,
 } from "../src/commands/listen.exit-deadline.js";
 import { withStartupHttpServer } from "../src/commands/listen.startup-http.js";
-import { ADMISSION_WRITE_SHUTDOWN_FLUSH_MS } from "../src/services/admission-writer.js";
+import { ADMISSION_WRITE_SHUTDOWN_FLUSH_MS } from "../src/services/admission-writer.validate-options.js";
 import { startupStepFailed } from "../src/services/startup-waiting.js";
 import {
   signalTransientExhausted,

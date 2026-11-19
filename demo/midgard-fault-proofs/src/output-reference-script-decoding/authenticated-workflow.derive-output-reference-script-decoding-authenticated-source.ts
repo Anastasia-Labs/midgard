@@ -14,10 +14,10 @@ import {
   decodeTransactionMaterial,
   requireProof,
   transactionSourceTrieItem,
-} from "../prepare-double-spend.js";
+} from "../prepare-double-spend.resolve-double-spend-pair.js";
 import { parseSubmitStep01TxInclusion } from "../step-support.js";
-import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
-import { firstCanonicalViolationDetection } from "../workflow/classification.js";
+import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.build-source-membership-proof.js";
+import { firstCanonicalViolationDetection } from "../workflow/classification.classify-canonical-block-violations.js";
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import { createCanonicalFamilyArtifactPort } from "../workflow/manifest-bound-family-recovery.js";
 import {

@@ -18,11 +18,12 @@ import { describe, expect, it } from "vitest";
 
 import { proofMaterialsAddress } from "../src/funding/proof-materials-address.js";
 import {
-  resolveDoubleSpendDeploymentContracts,
   resolveInvalidRangeDeploymentContracts,
   resolveTransitionTraceDeploymentContracts,
-} from "../src/index.js";
-import { resolveNonExistentInputNoIndexInit } from "../src/submit-init.js";
+} from "../src/runtime.resolve-category-deployment-contracts.js";
+import { resolveDoubleSpendDeploymentContracts } from "../src/runtime.resolve-fault-proof-deployment-contracts.js";
+import { resolveNonExistentInputNoIndexInit } from "../src/submit-init.resolve-non-existent-input-no-index-init.js";
+import { buildInit } from "../src/submit-init.submit-init.js";
 import { TRANSITION_TRACE_YIELD_REFERENCES } from "../src/transition-trace/yield-references.js";
 import {
   catalogueFor,
@@ -35,7 +36,6 @@ import {
   referenceScriptAuthNativeScript,
 } from "./submit-init.submit-init-signer-resolution.js";
 import { laterStepEntries } from "./support/emulator/header-fixtures.js";
-import { buildInit } from "./support/legacy-submit-emulator.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 const caseConfigInitializationNonce = {

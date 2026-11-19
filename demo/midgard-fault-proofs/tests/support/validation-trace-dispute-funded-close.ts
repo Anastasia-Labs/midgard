@@ -17,7 +17,7 @@ import {
   parseValidationTraceDisputeArtifact,
   type ValidationTraceDisputeArtifact,
 } from "../../src/validation-trace-dispute/artifact.js";
-import { createWorkflowActuationPermitController } from "../../src/workflow/actuation-permit.js";
+import { createWorkflowActuationPermitController } from "../../src/workflow/actuation-permit.create-workflow-reconciliation-permit-controller.js";
 import { validationDisputeFunding } from "../../src/workflow/funding-reservation-permit.assert-validation-dispute-funding.js";
 import { exactResolvedOutputCbor } from "../../src/workflow/funding-reservation-permit.create-workflow-funding-reservation-permit.js";
 import {

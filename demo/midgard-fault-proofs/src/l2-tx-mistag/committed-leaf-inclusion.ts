@@ -5,7 +5,10 @@ import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { isCommittedInvalidNormalLeaf } from "../evidence/committed-normal-leaf-validity.js";
-import { buildTrieView, requireProof } from "../prepare-double-spend.js";
+import {
+  buildTrieView,
+  requireProof,
+} from "../prepare-double-spend.resolve-double-spend-pair.js";
 
 export type L2TxMistagCommittedLeafInclusion = Readonly<{
   transactionIndex: number;

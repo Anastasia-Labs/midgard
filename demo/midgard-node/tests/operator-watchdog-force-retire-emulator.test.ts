@@ -31,16 +31,14 @@ import {
   clearSlotAwareDueWork,
   listSlotAwareDueWork,
 } from "../src/fibers/slot-aware-due-work.js";
-import { OPERATOR_REMOVED } from "../src/l1-operator-set/index.js";
+import { OPERATOR_REMOVED } from "../src/l1-operator-set/membership.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
 import { Database } from "../src/services/database.js";
-import {
-  Globals,
-  Lucid,
-  MidgardContracts,
-  NodeConfig,
-} from "../src/services/index.js";
+import { Globals } from "../src/services/globals.globals.js";
 import type { IntentJournal } from "../src/services/intent-journal.js";
 import { HaltSource } from "../src/services/liveness-halt.js";
+import { Lucid } from "../src/services/lucid.js";
+import { MidgardContracts } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   exitValidityWindow,
   resolveOperatorScriptRefsProgram,

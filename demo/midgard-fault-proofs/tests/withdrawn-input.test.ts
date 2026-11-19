@@ -5,24 +5,22 @@ import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
-import { encodeData } from "../src/transition-trace/reconstruct.js";
+import { encodeData } from "../src/transition-trace/reconstruct.transition-trace-reconstruction.js";
 import {
   type CanonicalBlockClassification,
   classifyCanonicalBlockViolations,
-} from "../src/workflow/classification.js";
+} from "../src/workflow/classification.classify-canonical-block-violations.js";
 import {
   requireCompleteCanonicalReplayDecision,
   WITHDRAWN_INPUT_COMPLETE_CANONICAL_REPLAY,
   WITHDRAWN_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
-} from "../src/workflow/complete-replay.js";
-import {
-  admitWithdrawnInputArtifact,
-  prepareWithdrawnInputArtifact,
-} from "../src/workflow/withdrawn-input.js";
+} from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
+import { admitWithdrawnInputArtifact } from "../src/workflow/withdrawn-input.admit-withdrawn-input-artifact.js";
+import { prepareWithdrawnInputArtifact } from "../src/workflow/withdrawn-input.prepare-withdrawn-input-artifact.js";
 import {
   admitWithdrawnReferenceInputArtifact,
   prepareWithdrawnReferenceInputArtifact,
-} from "../src/workflow/withdrawn-reference-input.js";
+} from "../src/workflow/withdrawn-reference-input.admit-withdrawn-reference-input-artifact.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,

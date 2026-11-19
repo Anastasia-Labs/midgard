@@ -19,7 +19,7 @@ import {
   type FollowerWritePermit,
 } from "../../src/services/follower-write-gate.js";
 import { journaledIntent } from "../../src/services/intent-journal.js";
-import { handleSignSubmitNoConfirmation } from "../../src/transactions/utils.js";
+import { handleSignSubmitNoConfirmation } from "../../src/transactions/utils.await-submitted-transaction-confirmation.js";
 import { submitWithDurableIntent } from "../../src/workers/commit-block-header/submission.submit-with-durable-intent.js";
 import { openFollowerWriteGateAt } from "./follower-write-gate.js";
 import type { IntentEmulator } from "./intent-journal-emulator.js";

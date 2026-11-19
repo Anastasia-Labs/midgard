@@ -11,7 +11,7 @@ import {
   WATCHER_STATE_QUEUE_SNAPSHOT_SCHEMA_VERSION,
   type WatcherStateQueueHeader,
 } from "../../src/indexers/state-queue-snapshot.header-view.js";
-import { parseWatcherStateQueueSnapshot } from "../../src/indexers/state-queue-snapshot.js";
+import { parseWatcherStateQueueSnapshot } from "../../src/indexers/state-queue-snapshot.parse-watcher-state-queue-snapshot.js";
 
 type HeaderFields = Omit<
   WatcherStateQueueHeader,

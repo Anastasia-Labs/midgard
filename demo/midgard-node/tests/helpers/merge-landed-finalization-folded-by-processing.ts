@@ -2,7 +2,7 @@ import { Effect, Either } from "effect";
 import { expect } from "vitest";
 
 import { DepositsDB } from "../../src/database/index.js";
-import { mergeAction } from "../../src/fibers/merge.js";
+import { mergeAction } from "../../src/fibers/merge.merge-action.js";
 import type { MergeLifecycle } from "../merge-landed-finalization-emulator.test.js";
 
 const FOREIGN_BASE = Buffer.from("ff".repeat(28), "hex");

@@ -14,15 +14,17 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 import { proofMaterialsAddressOfFundingAddress } from "../src/funding/proof-materials-address.js";
-import { DaLibp2pRetainedDaSource } from "../src/transition-trace/fetch.js";
+import { DaLibp2pRetainedDaSource } from "../src/transition-trace/fetch.da-libp2p-retained-da-source.js";
 import {
   assertWorkflowJournalActuation,
   bindWorkflowActuationJournal,
+  workflowActuationDecisionDigest,
+} from "../src/workflow/actuation-permit.assert-workflow-actuation-permit-identity.js";
+import {
   isWorkflowActuationRevokedError,
   type WorkflowActuationCheckpoint,
-  workflowActuationDecisionDigest,
   WorkflowActuationRevokedError,
-} from "../src/workflow/actuation-permit.js";
+} from "../src/workflow/actuation-permit.create-workflow-reconciliation-permit-controller.js";
 import {
   assertWorkflowApplicationRegistry,
   installWorkflowApplicationRegistry,
@@ -31,29 +33,33 @@ import {
   WORKFLOW_ADAPTER_RUNNER,
   workflowAdapterRunner,
 } from "../src/workflow/adapters.js";
+import { applyFamilyApplicationRecord } from "../src/workflow/family-application.apply-family-application-record.js";
+import { defineFamilyApplication } from "../src/workflow/family-application.assert-family-definition-roster.js";
+import { FAMILY_APPLICATION_REGISTRY } from "../src/workflow/family-application-registry.family-application-registry.js";
 import {
-  applyFamilyApplicationRecord,
-  defineFamilyApplication,
-} from "../src/workflow/family-application.js";
-import { FAMILY_APPLICATION_REGISTRY } from "../src/workflow/family-application-registry.js";
-import {
-  assertWorkflowFundingReservationReadyToSubmit,
-  beginWorkflowFundingReservationAction,
-  bindWorkflowFundingReservationJournal,
   confirmWorkflowFundingReservationTransaction,
   reobserveWorkflowFundingReservationTransaction,
+} from "../src/workflow/funding-reservation-permit.apply-transition.js";
+import {
+  beginWorkflowFundingReservationAction,
+  bindWorkflowFundingReservationJournal,
+} from "../src/workflow/funding-reservation-permit.begin-workflow-funding-reservation-action.js";
+import { assertWorkflowFundingReservationReadyToSubmit } from "../src/workflow/funding-reservation-permit.read-workflow-funding-recovery.js";
+import {
   restrictWorkflowFundingSigner,
   unsafeWorkflowFundingReservationSelectedOutRefsForTest,
-  WorkflowFundingReservationUnavailableError,
-} from "../src/workflow/funding-reservation-permit.js";
+} from "../src/workflow/funding-reservation-permit.restrict-workflow-funding-signer.js";
+import { WorkflowFundingReservationUnavailableError } from "../src/workflow/funding-reservation-permit.workflow-funding-reservation-port.js";
+import {
+  DirectoryFraudProofWorkflowJournalStore,
+  MemoryFraudProofWorkflowJournalStore,
+} from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
 import {
   computeFraudProofWorkflowId,
-  DirectoryFraudProofWorkflowJournalStore,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
   type FraudProofWorkflowIdentity,
-  MemoryFraudProofWorkflowJournalStore,
-} from "../src/workflow/journal.js";
+} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import { continuePendingWorkflow } from "../src/workflow/pending-continuation.js";
 import {
   createFamilyApplicationWorkflowRunner,

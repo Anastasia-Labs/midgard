@@ -5,18 +5,18 @@ import {
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { forcedVerdictForRejection } from "@al-ft/midgard-fault-proofs";
-import * as SDK from "@al-ft/midgard-sdk";
-import { Data } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
-
 import {
   encodeEventToStepValueCbor,
   encodeTransitionIntegerCbor,
   encodeTransitionStepCbor,
-} from "../src/mpf/transition-cbor.js";
+} from "@al-ft/midgard-fault-proofs/block-replay";
+import * as SDK from "@al-ft/midgard-sdk";
+import { Data } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+
 import { buildPlaceholderValidationTraceMembers } from "../src/mpf/validation-trace.js";
 import { verifyAndImportBlock } from "../src/mpf/verified-block-import.js";
-import { computeDaPayloadRoots } from "../src/workers/commit-block-header/da-payload.js";
+import { computeDaPayloadRoots } from "../src/workers/commit-block-header/da-payload.compute-da-payload-roots.js";
 import { countsFromLengths, headerFor } from "./da-payload.record.js";
 import { buildNativeTx } from "./native-transaction-integration.build-native-tx.js";
 import { ALWAYS_SUCCEEDS_SPEND_SCRIPT_HEX } from "./native-transaction-integration.script-witness-item-to-versioned.js";

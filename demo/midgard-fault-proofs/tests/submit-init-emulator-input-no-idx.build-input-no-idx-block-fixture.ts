@@ -16,16 +16,18 @@ import {
   walletFromSeed,
 } from "@lucid-evolution/lucid";
 
-import { resolveProverSigner } from "../src/index.js";
-import type { SubmitStep01TxInclusion } from "../src/step-support.js";
-import { nativeTxFromCoreCompact } from "./support/legacy-submit-emulator.js";
+import { resolveProverSigner } from "../src/runtime.resolve-prover-signer.js";
+import {
+  nativeTxFromCoreCompact,
+  type SubmitStep01TxInclusion,
+} from "../src/step-support.js";
+import { network } from "./support/emulator/blueprints.js";
+import { trieRootHex } from "./support/emulator/catalogue.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import {
   l2TransactionSourceCbor as l2TransactionSourceCborV1,
-  makeFaultProofEmulatorHarness,
   makeNativeTx,
-  network,
-  trieRootHex,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/emulator/native-tx.js";
 
 /** The out-of-range output index the fraudulent spender claims. */
 export const CHALLENGED_OUTPUT_INDEX = 7n;

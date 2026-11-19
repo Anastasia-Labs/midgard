@@ -8,7 +8,6 @@ import {
   fileLedgerCheckpointStore,
   FraudProofL1CheckpointChangedError,
   isFraudProofL1WaitError,
-  isReplayLocalFault,
   isRetainedDaPayloadUnavailableError,
   type LedgerAt,
   type LedgerCheckpointStore,
@@ -17,16 +16,15 @@ import {
   type RetainedPayloadReleases,
   retainedPayloadReplaySource,
 } from "@al-ft/midgard-fault-proofs";
+import { isReplayLocalFault } from "@al-ft/midgard-fault-proofs/block-replay";
 import * as SDK from "@al-ft/midgard-sdk";
 
 import type { WatcherAuthenticatedStateQueueObservation } from "../indexers/authenticated-state-queue-observation.js";
 import { isWatcherL1TransientFailure } from "../l1/transient-failure.js";
 import type { WatcherFollowerReplaySource } from "../l1-follower/replay-source.js";
-import {
-  type VerifiedWatcherDeploymentIdentity,
-  watcherDeploymentAvailabilityChallengeAuthority,
-  watcherDeploymentProtocolScriptAuthority,
-} from "../runtime/deployment-identity.js";
+import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.parse-trust-roots.js";
+import { watcherDeploymentProtocolScriptAuthority } from "../runtime/deployment-identity.verify-watcher-user-event-script-binding.js";
+import { watcherDeploymentAvailabilityChallengeAuthority } from "../runtime/deployment-identity.watcher-deployment-availability-challenge-authority.js";
 import type { WatcherDecisionReadiness } from "../runtime/watcher-runtime.decision-driver.js";
 import { replayLocalFaultHolds } from "./replay-local-fault-bound.js";
 import type {

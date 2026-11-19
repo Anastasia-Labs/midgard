@@ -7,18 +7,24 @@ import "@lucid-evolution/lucid";
 import "effect";
 import "vitest";
 import "../src/committed-field-shape/submit-committed-field-shape-init.js";
-import "../src/field-opening.js";
+import "../src/field-opening.plan-fault-proof-field-opening.js";
+import "../src/field-opening.publish-fault-proof-field-carriage.js";
 import "../src/linear-fault-family.js";
 import "../src/linear-fault-finalize.js";
 import "../src/linear-fault-submit.js";
-import "../src/remove-fraudulent-block.js";
+import "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import "../src/spend-input-signer-missing/field-plans.js";
-import "../src/spend-input-signer-missing/index.js";
+import "../src/spend-input-signer-missing/spend-input-signer-missing.js";
+import "../src/spend-input-signer-missing/contracts.js";
+import "../src/spend-input-signer-missing/submit-cancel.js";
+import "../src/spend-input-signer-missing/submit-step-01-accepted.js";
+import "../src/spend-input-signer-missing/submit-step-01-forced.js";
+import "../src/spend-input-signer-missing/submit-step-02.js";
 import "../src/spend-input-signer-missing/schemas.js";
 import "../src/signer-witness-scan/index.js";
 import "../src/step-support.js";
 import "../src/testing/complete-lifecycle.js";
-import "../src/transition-trace/witnesses.js";
+import "../src/transition-trace/witnesses.build-source-membership-proof.js";
 import "../src/tx-layout.js";
 import "./support/emulator/blueprints.js";
 import "./support/emulator/harness.js";
@@ -26,11 +32,14 @@ import "./support/emulator/measurement.js";
 import "./support/emulator/native-tx.js";
 import "./support/emulator/reference-scripts.js";
 import "./support/emulator/registered-chain.js";
-import "./support/emulator/removal-deployment.js";
+import "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import "./support/lifecycle-coverage.js";
-import "./support/native-script-decoding-emulator.js";
-import "./support/submit-init-emulator-fixtures.js";
-import "./support/submit-init-emulator-shared.js";
+import "./support/native-script-decoding-emulator.build-decoding-block-fixture.js";
+import "./support/submit-init/transaction-material.js";
+import "./support/submit-init/successor.js";
+import "./support/submit-init/removal.js";
+import "./support/emulator/header-fixtures.js";
+import "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
 import "./spend-input-signer-missing-lifecycle.registered-contracts.js";
 import "./spend-input-signer-missing-lifecycle.commit-forced-block.js";
 import "./spend-input-signer-missing-lifecycle.family-driver.js";
@@ -45,8 +54,10 @@ import {
   encodeMidgardNativeTxCanonical,
   encodeMidgardNativeTxCompact,
 } from "@al-ft/midgard-core";
-import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core/codec/forced";
-import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
+import {
+  encodeMidgardForcedTxCanonical,
+  materializeMidgardForcedTxFromCanonical,
+} from "@al-ft/midgard-core/codec/forced";
 import {
   acceptedVerdictSubject,
   forcedVerdictSubject,
@@ -58,7 +69,7 @@ import {
   classifySpendInputSignerMissingFinding,
   SPEND_INPUT_SIGNER_MISSING_ID,
   type SpendInputSignerMissingEvidence,
-} from "../src/spend-input-signer-missing/index.js";
+} from "../src/spend-input-signer-missing/spend-input-signer-missing.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
 import {
   commitAcceptedBlock,
@@ -86,10 +97,10 @@ import {
   witnessSetCompactHex,
 } from "./spend-input-signer-missing-lifecycle.registered-contracts.js";
 import { submitScanWithForeignCertificate } from "./spend-input-signer-missing-lifecycle.submit-scan-with-foreign-certificate.js";
+import { transitionTraceOutRef } from "./support/emulator/header-fixtures.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
-import { transitionTraceOutRef } from "./support/submit-init-emulator-shared.js";
 
 describe("spendInputSignerMissing registered-chain lifecycle", () => {
   it("runs the accepted 318-witness maximum from Init through proof mint, cancelling every physical step", async () => {

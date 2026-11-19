@@ -14,8 +14,8 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { afterAll, describe, expect, it } from "vitest";
 
 import type { DirectPurposeRole } from "../src/direct-purpose-family/index.js";
-import { MISSING_SCRIPT_SOURCE_DIRECT_WALK } from "../src/missing-script-source/index.js";
 import { prepareMissingScriptSourceProof } from "../src/missing-script-source/prover.js";
+import { MISSING_SCRIPT_SOURCE_DIRECT_WALK } from "../src/missing-script-source/workflow.js";
 import { forgeEveryDirectPurposeRole } from "./support/direct-purpose-forged-successor.js";
 import {
   makeDirectWalkHarness,

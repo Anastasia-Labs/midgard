@@ -1,10 +1,6 @@
 import { createPrivateKey, createPublicKey, sign } from "node:crypto";
 
 import {
-  ledgerEd25519SignatureReady,
-  materializeMidgardNativeTxFromCanonical,
-} from "@al-ft/midgard-core";
-import {
   computeMidgardNativeTxId,
   deriveMidgardNativeTxWitnessSetCompact,
   encodeCbor,
@@ -13,14 +9,16 @@ import {
   encodeMidgardNativeTxCompact,
   encodeMidgardNativeTxWitnessSetCompact,
   encodeMidgardTxOutput,
+  ledgerEd25519SignatureReady,
+  materializeMidgardNativeTxFromCanonical,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
 import {
   encodeMidgardForcedTxCanonical,
   encodeMidgardForcedTxCompact,
+  materializeMidgardForcedTxFromCanonical,
   type MidgardForcedTxFull,
 } from "@al-ft/midgard-core/codec/forced";
-import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   AddressData,
@@ -32,22 +30,22 @@ import { Effect } from "effect";
 
 import {
   applyProtectedOutputSignerMissingScripts,
-  prepareProtectedOutputSignerMissingEvidence,
   PROTECTED_OUTPUT_SIGNER_MISSING_BLUEPRINT_TITLES,
   type ProtectedOutputSignerMissingContracts,
+} from "../src/protected-output-signer-missing/contracts.js";
+import {
+  prepareProtectedOutputSignerMissingEvidence,
   type ProtectedOutputSignerMissingEvidence,
-} from "../src/protected-output-signer-missing/index.js";
+} from "../src/protected-output-signer-missing/protected-output-signer-missing.js";
+import { network } from "./support/emulator/blueprints.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
+import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import {
   expectRegisteredChainParity,
   familyStepsFromRegisteredChain,
 } from "./support/emulator/registered-chain.js";
 import { createLifecycleCoverageRecorder } from "./support/lifecycle-coverage.js";
-import {
-  makeNativeTx,
-  network,
-} from "./support/submit-init-emulator-shared.js";
 
 export const REASON = "ProtectedOutputSignerMissing";
 

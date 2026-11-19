@@ -17,13 +17,13 @@ import {
   decodeTransactionMaterial,
   requireProof,
   transactionSourceTrieItem,
-} from "../prepare-double-spend.js";
+} from "../prepare-double-spend.resolve-double-spend-pair.js";
 import {
   parseSubmitStep01TxInclusion,
   type SubmitStep01TxInclusion,
 } from "../step-support.js";
-import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
-import { firstCanonicalViolationDetection } from "../workflow/classification.js";
+import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.build-source-membership-proof.js";
+import { firstCanonicalViolationDetection } from "../workflow/classification.classify-canonical-block-violations.js";
 import { type WitnessScriptDecodingEvidence } from "./witness-script-decoding.js";
 import { witnessScriptDecodingCompleteReplayFindings } from "./workflow.detect-witness-script-decoding-complete-replay.js";
 

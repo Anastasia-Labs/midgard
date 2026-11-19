@@ -5,11 +5,11 @@
  */
 import type { UTxO } from "@lucid-evolution/lucid";
 
+import type { DirectPurposeTransition } from "../../src/direct-purpose-family/custody.js";
 import {
   buildDirectPurposeTransitionTx,
   type DirectPurposeCustody,
-  type DirectPurposeTransition,
-} from "../../src/direct-purpose-family/index.js";
+} from "../../src/direct-purpose-family/submit.js";
 import { parseOutRef } from "../../src/runtime.js";
 import { submitUnjournaled } from "../../src/workflow/transaction-boundary.js";
 

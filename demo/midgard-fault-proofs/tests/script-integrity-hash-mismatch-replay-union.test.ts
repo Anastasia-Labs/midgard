@@ -8,10 +8,12 @@ import { describe, expect, it } from "vitest";
 import {
   createCompleteCanonicalReplayUnion,
   MINT_ITEM_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
+} from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
+import {
   SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
   TRANSACTION_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
   WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
-} from "../src/workflow/complete-replay.js";
+} from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import { unreadableItemViolations } from "./support/unreadable-item-block.js";
 
 const SIHM = SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY;

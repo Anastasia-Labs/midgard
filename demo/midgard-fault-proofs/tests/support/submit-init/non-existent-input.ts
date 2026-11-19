@@ -6,13 +6,13 @@ import {
   type TrieEntry,
 } from "../../../src/ne-proofs.js";
 import { type NeInputPreimageEntry } from "../../../src/prepare-non-existent-input.js";
-import { parseSubmitStep01TxInclusion } from "../legacy-submit-emulator.js";
+import { parseSubmitStep01TxInclusion } from "../../../src/step-support.js";
+import { trieRootHex } from "../emulator/catalogue.js";
+import { h32 } from "../emulator/header-fixtures.js";
 import {
-  h32,
   l2TransactionSourceCbor as l2TransactionSourceCborV1,
   makeNativeTx,
-  trieRootHex,
-} from "../submit-init-emulator-shared.js";
+} from "../emulator/native-tx.js";
 import {
   ADVERSARIAL_MEMBERSHIP_SIBLING_VALUE,
   adversarialMembershipSiblingKeys,

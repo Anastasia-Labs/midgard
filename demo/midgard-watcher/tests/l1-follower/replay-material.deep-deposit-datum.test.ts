@@ -12,11 +12,7 @@ import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-confi
 import type { ProjectedEvent } from "@al-ft/midgard-l1-follower/events";
 import * as SDK from "@al-ft/midgard-sdk";
 import { replaceCborItemOnce } from "@al-ft/midgard-test-support/deep-plutus-data";
-import {
-  type PhaseBConfig,
-  RejectCodes,
-  runPhaseBValidationWithPatch,
-} from "@al-ft/midgard-validation";
+import { runPhaseBValidationWithPatch } from "@al-ft/midgard-validation/phase-b";
 import {
   deepSpend,
   programScriptHash,
@@ -24,6 +20,10 @@ import {
   walkingFailingProgram,
   walkingProgram,
 } from "@al-ft/midgard-validation/tests/phase-b.deep-data.fixture";
+import {
+  type PhaseBConfig,
+  RejectCodes,
+} from "@al-ft/midgard-validation/types";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect, Either } from "effect";
 import { readUserEvent } from "midgard-node/l1-events/entries";

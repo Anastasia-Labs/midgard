@@ -20,7 +20,7 @@ import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deploym
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML, type TxSigned, type UTxO } from "@lucid-evolution/lucid";
 
-import { assertWorkflowActuationPermitIdentity } from "./actuation-permit.js";
+import { assertWorkflowActuationPermitIdentity } from "./actuation-permit.assert-workflow-actuation-permit-identity.js";
 import {
   actionKind,
   exactResolvedOutputCbor,

@@ -18,7 +18,7 @@ import {
 
 import { validationTraceMoveWindow } from "../../src/validation-trace-dispute/move-builders.js";
 import { witnessMintingPolicyCarriage } from "../../src/witness-reference-scripts.js";
-import { network } from "./submit-init-emulator-shared.js";
+import { network } from "./emulator/blueprints.js";
 import type { Scene } from "./validation-trace-dispute-open-scene.js";
 
 /** The protocol treasury a forfeited bond goes to. */

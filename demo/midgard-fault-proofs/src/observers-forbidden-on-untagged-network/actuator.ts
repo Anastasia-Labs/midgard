@@ -6,12 +6,12 @@ import { Proof } from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import { type FaultProofTurn } from "../fault-proof-turn.js";
-import { planFaultProofFieldOpening } from "../field-opening.js";
+import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
 import { requireLinearFaultThreadUtxo } from "../linear-fault-family.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { nativeTxFromCoreCompact } from "../step-support.js";
-import { buildInit } from "../submit-init.js";
+import { buildInit } from "../submit-init.submit-init.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import {
   captureCursorRemoval,

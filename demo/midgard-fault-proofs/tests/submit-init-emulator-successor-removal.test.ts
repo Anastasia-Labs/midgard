@@ -8,14 +8,14 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { RegisteredOperatorActivationRequiredError } from "../src/remove-fraudulent-block.js";
+import { RegisteredOperatorActivationRequiredError } from "../src/remove-fraudulent-block.resolve-registered-operator-removal-witness.js";
+import { onboardEmulatorOperator } from "./support/emulator/setup-tx.onboard-emulator-operator.js";
 import {
   buildProvedDoubleSpendFixture,
-  expectStateQueueHeaderOrder,
   type ProvedDoubleSpendFixture,
-  submitRemovalForFixture,
-} from "./support/submit-init-emulator-fixtures.js";
-import { onboardEmulatorOperator } from "./support/submit-init-emulator-shared.js";
+} from "./support/submit-init/double-spend.js";
+import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
+import { submitRemovalForFixture } from "./support/submit-init/removal.js";
 
 /**
  * Removal on a queue whose only active operator is the faulty one: while an

@@ -9,11 +9,9 @@ import {
   admitCanonicalEvidenceForProofBuild,
   type CanonicalEvidenceBuilderInput,
 } from "../evidence/prepare-from-evidence.js";
-import { prepareDoubleWithdrawFromCommittedLeaves } from "../prepare-double-withdraw.js";
-import {
-  buildRemoveFraudulentBlock,
-  type StateQueueMutationLeaseCoordinator,
-} from "../remove-fraudulent-block.js";
+import { prepareDoubleWithdrawFromCommittedLeaves } from "../prepare-double-withdraw.prepare-double-withdraw-from-committed-leaves.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.build-remove-fraudulent-block.js";
+import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.remove-fraudulent-block-explicit-category.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
@@ -29,10 +27,10 @@ import {
   CORE_WITNESS_ROLES,
   type LinearFamilyAssemblyContext,
   type LinearFamilyReferenceScripts,
-  type ManifestBoundLinearFamilyWorkflow,
   type ManifestBoundLinearFamilyWorkflowConfig,
-} from "./family-definition.js";
-import { normalizeJournalJson } from "./journal.js";
+} from "./family-definition.family-adapter-arm.js";
+import type { ManifestBoundLinearFamilyWorkflow } from "./family-definition.family-definition.js";
+import { normalizeJournalJson } from "./journal.fraud-proof-workflow-terminal.js";
 import {
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyTransactionPort,

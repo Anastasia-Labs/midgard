@@ -11,7 +11,7 @@
 import { buildMidgardBoundedItem } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
-import { FIELD_GRAMMAR_WALKED_COUNT_LIMIT } from "../src/field-grammar-certificate.js";
+import { FIELD_GRAMMAR_WALKED_COUNT_LIMIT } from "../src/field-grammar-certificate.route-fault-proof-field-grammar.js";
 import {
   VAN_ROSSEM_MAX_CPU_UNITS,
   VAN_ROSSEM_MAX_MEMORY_UNITS,
@@ -19,7 +19,7 @@ import {
 import {
   type WitnessScriptDecodingEvidence,
   WitnessScriptDecodingResultClasses,
-} from "../src/witness-script-decoding/index.js";
+} from "../src/witness-script-decoding/witness-script-decoding.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { deployHarnessFieldGrammarCertificate } from "./support/field-grammar-certificate-deployment-fixture.js";
@@ -27,7 +27,7 @@ import {
   MAXIMUM_FIELD_BYTES,
   scriptWitnessField,
   smallCanonicalItem,
-} from "./support/witness-script-decoding-raw.js";
+} from "./support/witness-script-decoding-raw.over-bound-field-carriage-plan.js";
 import { makeHarness } from "./witness-script-decoding-lifecycle.make-harness.js";
 import {
   forcedEvidence,

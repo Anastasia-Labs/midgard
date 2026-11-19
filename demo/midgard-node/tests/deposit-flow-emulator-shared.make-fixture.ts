@@ -23,15 +23,13 @@ import {
 import { Effect } from "effect";
 
 import { canonicalSlotConfigForLucid } from "../src/lucid-time.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
+import { Database } from "../src/services/database.js";
 import { FollowerWriteFixture } from "../src/services/follower-write-gate.js";
-import {
-  ContractDeploymentIdentity,
-  Database,
-  NodeConfig,
-} from "../src/services/index.js";
 import type { ContractDeploymentIdentityValue } from "../src/services/midgard-contracts.js";
+import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import { type AtomicProtocolInitReferenceScripts } from "../src/transactions/initialization.js";
-import { deployReferenceScriptCommandProgram } from "../src/transactions/register-active-operator.js";
+import { deployReferenceScriptCommandProgram } from "../src/transactions/reference-scripts.ensure-reference-script-targets-program.js";
 import {
   type EmulatorState,
   emulatorState,

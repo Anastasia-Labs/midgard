@@ -3,26 +3,22 @@ import { readFile } from "node:fs/promises";
 import { proofMaterialsAddressOfFundingAddress } from "@al-ft/midgard-fault-proofs";
 import { FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-sdk";
 
-import {
-  createWatcherAvailabilityRuntime,
-  type WatcherAvailabilityRuntime,
-  type WatcherAvailabilityStatusTransition,
-} from "../availability/runtime.js";
-import {
-  createWatcherFaultDecisionBridge,
-  type WatcherFaultDecisionBridge,
-} from "../fault-proofs/fault-decision-bridge.js";
-import { validateWatcherFaultDecisionJournalConfiguration } from "../fault-proofs/fault-decision-journal.js";
-import {
-  WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
-  type WatcherFaultProofApplication,
-} from "../fault-proofs/fault-proof-application.js";
+import { createWatcherAvailabilityRuntime } from "../availability/runtime.create-watcher-availability-runtime.js";
+import type {
+  WatcherAvailabilityRuntime,
+  WatcherAvailabilityStatusTransition,
+} from "../availability/runtime.release-watcher-availability-workflows.js";
+import { createWatcherFaultDecisionBridge } from "../fault-proofs/fault-decision-bridge.create-watcher-fault-decision-bridge.js";
+import type { WatcherFaultDecisionBridge } from "../fault-proofs/fault-decision-bridge.selected-target.js";
+import { validateWatcherFaultDecisionJournalConfiguration } from "../fault-proofs/fault-decision-journal.create-journal.js";
+import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../fault-proofs/fault-proof-application.js";
+import { type WatcherFaultProofApplication } from "../fault-proofs/fault-proof-application.production-dependencies.js";
 import { createWatcherFaultProofExecution } from "../fault-proofs/fault-proof-execution.js";
 import {
   createWatcherFaultProofSupervisor,
   watcherDeadlineAlertHeadroomMs,
-  type WatcherFaultProofSupervisor,
-} from "../fault-proofs/fault-proof-supervisor.js";
+} from "../fault-proofs/fault-proof-supervisor.create-watcher-fault-proof-supervisor.js";
+import type { WatcherFaultProofSupervisor } from "../fault-proofs/fault-proof-supervisor.validate-job.js";
 import { createWatcherProtocolParameterRuntimeAuthority } from "../funding/prover-funding.js";
 import type { WatcherSqliteProverFundingReservationStoreRuntime } from "../funding/sqlite-prover-funding-reservation-store.js";
 import { deriveWatcherNativeGenesisIdentity } from "../l1/native-chain-sync.derive-watcher-native-genesis-identity.js";
@@ -35,16 +31,14 @@ import { type WatcherFollowerRuntime } from "../l1-follower/follower-runtime.js"
 import { createWatcherQueueHeaderSource } from "../l1-follower/observation.js";
 import { watcherReplayCheckpointPrecedesInit } from "../l1-follower/replay-source.js";
 import { type WatcherUserEvents } from "../l1-follower/user-events.js";
-import {
-  bindWatcherRetainedDaOperations,
-  type WatcherRetainedDaOperationsBinding,
-} from "../storage/retained-da-runtime.js";
+import { bindWatcherRetainedDaOperations } from "../storage/retained-da-runtime.js";
+import { type WatcherRetainedDaOperationsBinding } from "../storage/retained-da-runtime.retained-da-request-permits.js";
 import { assertWatcherL1SlotConfigMatchesDeployment } from "./custom-network.js";
 import {
   readWatcherUserEventScriptBinding,
   verifyWatcherUserEventScriptBinding,
-  watcherDeploymentProtocolScriptAuthority,
 } from "./deployment-identity.js";
+import { watcherDeploymentProtocolScriptAuthority } from "./deployment-identity.verify-watcher-user-event-script-binding.js";
 import {
   watcherDeploymentAppliedScriptHashes,
   watcherDeploymentReleaseFinalityPolicy,

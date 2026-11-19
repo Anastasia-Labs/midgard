@@ -2,7 +2,7 @@ import type { SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
 import { Effect, Either } from "effect";
 import { expect } from "vitest";
 
-import { mergeAction } from "../../src/fibers/merge.js";
+import { mergeAction } from "../../src/fibers/merge.merge-action.js";
 import { listSlotAwareDueWork } from "../../src/fibers/slot-aware-due-work.js";
 import {
   advanceEmulatorToDueWork,

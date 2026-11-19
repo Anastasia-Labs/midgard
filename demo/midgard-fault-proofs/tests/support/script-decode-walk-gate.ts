@@ -27,10 +27,8 @@ import {
 } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import {
-  recordScriptDecode,
-  type ScriptDecodeDeployment,
-} from "../../src/script-decode/index.js";
+import { recordScriptDecode } from "../../src/script-decode/record.js";
+import type { ScriptDecodeDeployment } from "../../src/script-decode/submit.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./emulator/protocol-parameters.js";
 import { injectScriptDecodeDeployment } from "./script-decode-emulator.js";
 import {

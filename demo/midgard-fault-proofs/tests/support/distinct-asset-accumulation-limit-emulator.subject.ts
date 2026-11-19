@@ -28,20 +28,20 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { CML, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { prepareDirectScriptMaterial } from "../../src/direct-script-derivation/index.js";
+import { prepareDirectScriptMaterial } from "../../src/direct-script-derivation/material.js";
 import {
   checkLedgerAgainstRoot,
   ledgerEntriesRoot,
   type LedgerEntry,
 } from "../../src/ledger-at.js";
 import { nodeForcedVerdict } from "./emulator/node-forced-verdict.js";
-import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.js";
+import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.build-decoding-block-fixture.js";
+import { setupFraudulentBlock } from "./submit-init/removal.js";
 import {
   EMULATOR_HEADER_CLOCK_HEADROOM_MS,
   emulatorSuccessorHeaderStart,
-  setupFraudulentBlock,
   submitSuccessorBlockTx,
-} from "./submit-init-emulator-fixtures.js";
+} from "./submit-init/successor.js";
 
 /** The producer refuses an asset entry once this many precede it. */
 export const ENTRY_BOUND = Number(

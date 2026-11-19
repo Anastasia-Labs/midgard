@@ -7,8 +7,9 @@ import type {
   FraudProofRawL1ComputationStepRole,
   FraudProofRawL1FamilyDefinition,
 } from "../src/workflow/index.js";
-import { FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY } from "../src/workflow/raw-l1-snapshot.js";
-import { fixture, scriptAddress } from "./support/raw-l1-terminal-fixture.js";
+import { FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY } from "../src/workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
+import { fixture } from "./support/raw-l1-terminal-fixture.fixture.js";
+import { scriptAddress } from "./support/raw-l1-terminal-fixture.output.js";
 
 /** The port for a family whose computation thread has `stepCount` steps. */
 const portFor = async (stepCount: number) => {

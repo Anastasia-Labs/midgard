@@ -26,20 +26,20 @@ import {
 
 import type { CommittedFieldShapeContracts } from "../../src/committed-field-shape/contracts.js";
 import { type CommittedFieldShapeCatalogueCategory } from "../../src/committed-field-shape/submit-common.js";
-import { encodeL2TransactionSourceValue } from "../../src/prepare-double-spend.js";
+import { encodeL2TransactionSourceValue } from "../../src/prepare-double-spend.encode-l2-transaction-source-value.js";
 import { resolveProverSigner } from "../../src/runtime.js";
 import {
   nativeTxFromCoreCompact,
   type SubmitStep01TxInclusion,
 } from "../../src/step-support.js";
-import { l2TransactionSourceCbor as l2TransactionSourceCborV1 } from "./emulator/native-tx.js";
-import { setupFraudulentBlock } from "./submit-init-emulator-fixtures.js";
+import { network } from "./emulator/blueprints.js";
+import { makeFaultProofEmulatorHarness } from "./emulator/harness.js";
 import {
-  makeFaultProofEmulatorHarness,
+  l2TransactionSourceCbor as l2TransactionSourceCborV1,
   makeNativeTx,
-  network,
-  publishPlainReferenceScriptUtxo,
-} from "./submit-init-emulator-shared.js";
+} from "./emulator/native-tx.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { setupFraudulentBlock } from "./submit-init/removal.js";
 
 export const EMPTY = Buffer.from("80", "hex");
 

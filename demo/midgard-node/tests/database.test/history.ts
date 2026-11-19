@@ -11,16 +11,18 @@ import {
   MempoolLedgerDB,
   WithdrawalsDB,
 } from "../../src/database/index.js";
-import { resolveIncludedDepositEntriesForWindow } from "../../src/mpf/index.js";
+import { resolveIncludedDepositEntriesForWindow } from "../../src/mpf/event-window.resolve-included-forced-transaction-entries-for-window.js";
 import { insertDeposits, insertWithdrawals } from "../helpers/event-rows.js";
 import {
   databaseFixtureBytes,
   databaseOutputReferenceId,
   databaseTxHash,
-  isolatedDb,
+} from "./fixtures.bytes.js";
+import { isolatedDb } from "./fixtures.environment.js";
+import {
   makeDepositEntry,
   makeHistoryWithdrawalEntry,
-} from "./fixtures.js";
+} from "./fixtures.events.js";
 
 export const registerHistoryTests = () => {
   describe("authenticated history pointer persistence", () => {

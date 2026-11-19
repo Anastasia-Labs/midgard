@@ -3,11 +3,11 @@ import { computeHash32 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
+import { detectTransitionTraceFaults } from "../src/transition-trace/detect.detect-single-ledger-transitions.js";
 import {
   mpfProofFromWitness,
   normalizedMpfRoot,
-} from "../src/transition-trace/detect.js";
-import { detectTransitionTraceFaults } from "../src/transition-trace/index.js";
+} from "../src/transition-trace/detect.mpf-proof-from-witness.js";
 import { buildL2ReplayFixture } from "./transition-trace-challenger.build-l2-replay-fixture.js";
 import {
   buildPayloadFixture,

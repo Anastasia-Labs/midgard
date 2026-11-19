@@ -1,7 +1,7 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
-import { MpfError } from "../../../mpf/index.js";
+import { MpfError } from "../../../mpf/errors.js";
 import {
   branchRootFromNeighbors,
   computeBranchHash,

@@ -45,10 +45,9 @@ import {
 import {
   deriveL2TransactionSourceCbor,
   type NodeTransactionPayload,
-} from "./prepare-double-spend.js";
+} from "./prepare-double-spend.encode-l2-transaction-source-value.js";
 import { spendInputsWitnessFromCbors } from "./spend-input-witness.js";
-import { ledgerKeyBytesHex } from "./step-support.js";
-import { nativeTxFromCoreCompact } from "./step-support.js";
+import { ledgerKeyBytesHex, nativeTxFromCoreCompact } from "./step-support.js";
 import { keyValuePhasNonMembershipProof } from "./transition-trace/phas.js";
 
 /**

@@ -18,7 +18,7 @@ import {
   COMMIT_WORKER_FAILED,
   COMMIT_WORKER_SOURCE,
 } from "../src/fibers/block-commitment.worker-readiness.js";
-import { Globals } from "../src/services/globals.js";
+import { Globals } from "../src/services/globals.globals.js";
 import { activeLivenessReasons } from "../src/services/liveness-halt.js";
 import { findTransientBudgetExhausted } from "../src/services/transient-exhaustion.js";
 import { captureCommitWorkerFailure } from "../src/workers/commit-block-header.run-commit-block-header-worker-program.js";

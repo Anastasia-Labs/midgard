@@ -15,15 +15,16 @@ import {
   productionBuilders,
   WITNESS_ROLES,
 } from "./committed-field-shape.create-bound-transaction-port.js";
-import { COMMITTED_FIELD_SHAPE_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
+import { COMMITTED_FIELD_SHAPE_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.detect-double-withdraws.js";
 import { type CursorFamilyTransactionPort } from "./cursor-family-adapter.js";
 import { COMMITTED_FIELD_SHAPE_CURSOR_SPEC } from "./cursor-family-spec.js";
-import { cursorStepContractNames, defineFamily } from "./family-definition.js";
-import { createAuthenticatedFieldCarriagePrerequisitePort } from "./field-carriage-prerequisite.js";
 import {
-  assembleManifestBoundFamilyWorkflow,
-  runOrResumeManifestBoundFamilyWorkflow,
-} from "./manifest-bound-family-assembly.js";
+  cursorStepContractNames,
+  defineFamily,
+} from "./family-definition.family-definition.js";
+import { createAuthenticatedFieldCarriagePrerequisitePort } from "./field-carriage-prerequisite.create-authenticated-field-carriage-prerequisite-port.js";
+import { assembleManifestBoundFamilyWorkflow } from "./manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
+import { runOrResumeManifestBoundFamilyWorkflow } from "./manifest-bound-family-assembly.run-or-resume-manifest-bound-family-workflow.js";
 
 /**
  * The step-02 verdict binds the field-preimage certificate policy id, and a

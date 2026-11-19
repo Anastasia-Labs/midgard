@@ -9,7 +9,7 @@ import {
   refreshWatcherProtocolParameterRuntimeAuthority,
 } from "../../src/funding/prover-funding.js";
 import type { WatcherProverFundingReservationRecord } from "../../src/funding/prover-funding-reservation.js";
-import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
+import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.build-watcher-deployment-authority-fixture.js";
 import { ledgerParameterQuery } from "../support/ledger-protocol-parameters.js";
 import { runtimeAuthority } from "./prover-funding-calculation.runtime-authority.js";
 

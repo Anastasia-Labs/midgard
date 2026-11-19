@@ -6,16 +6,16 @@ import { isProverOwnAddress } from "@al-ft/midgard-fault-proofs";
 import { CML, coreToTxOutput } from "@lucid-evolution/lucid";
 
 import type { WatcherWorkflowJournal } from "../fault-proofs/watcher-workflow-journal.js";
-import { watcherCanonicalJson } from "../storage/durable-store.js";
+import { watcherCanonicalJson } from "../storage/durable-store.canonical-json.js";
 import type { WatcherProtocolParameterHistory } from "./prover-funding.js";
-import {
-  parseWatcherProverFundingReservationRecord,
-  type WatcherProverFundingReservationInput,
-  type WatcherProverFundingReservationPlan,
-  type WatcherProverFundingReservationRecord,
-  type WatcherProverFundingReservationStore,
-  type WatcherProverFundingReservationTransition,
-} from "./prover-funding-reservation.js";
+import { parseWatcherProverFundingReservationRecord } from "./prover-funding-reservation.parse-watcher-prover-funding-reservation-record.js";
+import type {
+  WatcherProverFundingReservationInput,
+  WatcherProverFundingReservationPlan,
+  WatcherProverFundingReservationRecord,
+  WatcherProverFundingReservationStore,
+  WatcherProverFundingReservationTransition,
+} from "./prover-funding-reservation.watcher-prover-funding-reservation-store.js";
 
 export const WATCHER_SQLITE_PROVER_FUNDING_RESERVATION_STORE =
   "midgard-watcher-sqlite-prover-funding-reservation-store-v1" as const;

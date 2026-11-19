@@ -4,10 +4,12 @@ import type { LucidEvolution, Network } from "@lucid-evolution/lucid";
 import {
   REMOVE_FRAUDULENT_BLOCK_REFERENCE_SCRIPT_NAMES,
   type RemoveFraudulentBlockReferenceScriptName,
-  type StateQueueMutationLease,
-  type StateQueueMutationLeaseCoordinator,
-} from "../remove-fraudulent-block.js";
-import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
+} from "../remove-fraudulent-block.assert-exact-fraud-slash-lovelace-conservation.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.build-remove-fraudulent-block.js";
+import type {
+  StateQueueMutationLease,
+  StateQueueMutationLeaseCoordinator,
+} from "../remove-fraudulent-block.remove-fraudulent-block-explicit-category.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { CURSOR_FAMILY_ACTION } from "./cursor-family-state.js";
 import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";

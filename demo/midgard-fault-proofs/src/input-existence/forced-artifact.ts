@@ -7,7 +7,7 @@ import { commitCountedRoot } from "../transition-trace/phas.js";
 import {
   type JournalJsonObject,
   normalizeJournalJson,
-} from "../workflow/journal.js";
+} from "../workflow/journal.fraud-proof-workflow-terminal.js";
 import type { InputExistenceKind } from "./kind.js";
 import {
   type InputExistenceForcedSource,

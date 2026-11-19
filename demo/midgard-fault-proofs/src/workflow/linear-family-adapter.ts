@@ -12,26 +12,26 @@ import {
   FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
   type FraudProofFamilyL1ObservationPort,
 } from "./family-l1-observation.js";
+import type { FraudProofWorkflowJournalEntry } from "./journal.fraud-proof-workflow-journal-event.js";
 import {
-  type FraudProofWorkflowJournalEntry,
   journalJsonDigest,
   type JournalJsonObject,
   normalizeJournalJson,
-} from "./journal.js";
+} from "./journal.fraud-proof-workflow-terminal.js";
 import type { LinearFamilyCategory } from "./linear-family-spec.js";
 import {
   linearFamilyObservation,
   reconcileLinearFamilyAction,
 } from "./linear-family-state.js";
-import type {
-  FraudProofWorkflowAction,
-  FraudProofWorkflowPreflight,
-  FraudProofWorkflowReferenceScript,
-} from "./orchestrator.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
   type FraudProofFamilyWorkflowAdapter,
+} from "./orchestrator.fraud-proof-family-workflow-adapter.js";
+import type {
+  FraudProofWorkflowAction,
+  FraudProofWorkflowPreflight,
+  FraudProofWorkflowReferenceScript,
 } from "./orchestrator.js";
 import { reconcileQueueLeaseFamily } from "./queue-lease-family-reconcile.js";
 import {

@@ -1,8 +1,8 @@
 import { Effect } from "effect";
 
 import { PendingBlockFinalizationsDB } from "../../database/index.js";
-import { Database } from "../../services/index.js";
-import { BeforeSignedTransactionSubmission } from "../../transactions/utils.js";
+import { Database } from "../../services/database.js";
+import { BeforeSignedTransactionSubmission } from "../../transactions/utils.await-required-output-visibility.js";
 import type { WorkerOutput } from "../utils/commit-block-header.js";
 
 /** Why a prepared journal makes the commit wait for the next window. */

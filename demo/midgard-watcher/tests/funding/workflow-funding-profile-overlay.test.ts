@@ -13,8 +13,8 @@ import {
   type WatcherWorkflowFundingProfileBody,
   workflowFundingProfileFromOverlay,
 } from "../../src/funding/workflow-funding-profile-overlay.js";
-import { watcherCanonicalJson } from "../../src/storage/durable-store.js";
-import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
+import { watcherCanonicalJson } from "../../src/storage/durable-store.canonical-json.js";
+import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.build-watcher-deployment-authority-fixture.js";
 
 // Ordinary signed wallet transfer, used only to test bundle serialization and
 // authentication. This is not evidence for a production workflow measurement.

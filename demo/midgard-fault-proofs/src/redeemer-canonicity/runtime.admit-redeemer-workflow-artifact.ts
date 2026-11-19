@@ -7,11 +7,9 @@ import {
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import { admitClaimedCoordinateDecimal } from "../evidence/claimed-coordinate.js";
-import {
-  type FaultProofFieldGrammarDeployment,
-  requireFaultProofFieldGrammarDeployment,
-} from "../field-grammar-certificate.js";
-import { planFaultProofFieldOpening } from "../field-opening.js";
+import { requireFaultProofFieldGrammarDeployment } from "../field-grammar-certificate.resolve-fault-proof-field-grammar-deployment.js";
+import type { FaultProofFieldGrammarDeployment } from "../field-grammar-certificate.route-fault-proof-field-grammar.js";
+import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
 import { type StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import {
@@ -24,7 +22,7 @@ import type { FraudProofWorkflowDeploymentBinding } from "../workflow/deployment
 import {
   type FamilyAssemblyContext,
   MEMBERSHIP_WITNESS_ROLES,
-} from "../workflow/family-definition.js";
+} from "../workflow/family-definition.family-adapter-arm.js";
 import type { FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import { type JournalJsonObject } from "../workflow/journal.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";

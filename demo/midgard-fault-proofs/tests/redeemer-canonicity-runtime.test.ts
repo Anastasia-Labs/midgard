@@ -2,10 +2,8 @@ import { encodeMidgardRedeemerWitnessItem } from "@al-ft/midgard-core";
 import { expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
-import {
-  admitRedeemerWorkflowArtifact,
-  prepareRedeemerCanonicityWorkflowArtifact,
-} from "../src/redeemer-canonicity/runtime.js";
+import { admitRedeemerWorkflowArtifact } from "../src/redeemer-canonicity/runtime.admit-redeemer-workflow-artifact.js";
+import { prepareRedeemerCanonicityWorkflowArtifact } from "../src/redeemer-canonicity/runtime.capture-redeemer-action.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,

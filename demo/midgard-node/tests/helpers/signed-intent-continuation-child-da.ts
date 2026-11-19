@@ -2,7 +2,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { buildAuthenticatedRootFromEncodedEntries } from "../../src/workers/commit-block-header/transition-roots.js";
+import { buildAuthenticatedRootFromEncodedEntries } from "../../src/workers/commit-block-header/transition-roots.validate-count-proof.js";
 
 const CHILD_WITHDRAWAL_ID: SDK.OutputReference = {
   transactionId: "d5".repeat(32),

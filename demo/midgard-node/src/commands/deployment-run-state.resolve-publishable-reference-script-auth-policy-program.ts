@@ -7,14 +7,14 @@ import type { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import type { ReferenceScriptCommandName } from "../deployable-scripts.js";
-import { RunStateError } from "../e2e/run-state.js";
+import { RunStateError } from "../e2e/run-state.deployment-run-identity.js";
 import type { IntentJournal } from "../services/intent-journal.js";
 import { formatAda } from "../transactions/operators/funding-preflight.js";
 import {
   type ReferencePublicationOptions,
   referencePublicationOptions,
   referenceScriptDepositLovelace,
-} from "../transactions/reference-publication.js";
+} from "../transactions/reference-publication.reference-publication-funding-required.js";
 import {
   deploymentInitializationNonceOutRefKeys,
   fetchReferenceScriptUtxosAt,

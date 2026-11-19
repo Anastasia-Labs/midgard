@@ -18,16 +18,16 @@ import { canonicalBlockEvidenceFromVerifiedPayload } from "../../src/evidence/ca
 import { buildLinearFaultCancel } from "../../src/linear-fault-cancel.js";
 import { admitMintAuthorizationWorkflowArtifact } from "../../src/mint-authorization/artifact.js";
 import { MINT_AUTHORIZATION_CATEGORY_LABEL } from "../../src/mint-authorization/contracts.js";
+import { createMintAuthorizationTransactionPort } from "../../src/mint-authorization/workflow.create-mint-authorization-transaction-port.js";
 import {
-  createMintAuthorizationTransactionPort,
   mintAuthorizationRefineAction,
   mintAuthorizationWorkflowFieldRequirement,
   mintAuthorizationWorkflowRawRequirement,
-} from "../../src/mint-authorization/workflow.js";
-import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.js";
-import { classifyCanonicalBlockViolations } from "../../src/workflow/classification.js";
-import { MINT_AUTHORIZATION_COMPLETE_CANONICAL_REPLAY } from "../../src/workflow/complete-replay.js";
-import { createCursorFamilyWorkflowAdapter } from "../../src/workflow/cursor-family-adapter.js";
+} from "../../src/mint-authorization/workflow.mint-authorization-workflow-raw-requirement.js";
+import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import { classifyCanonicalBlockViolations } from "../../src/workflow/classification.classify-canonical-block-violations.js";
+import { MINT_AUTHORIZATION_COMPLETE_CANONICAL_REPLAY } from "../../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
+import { createCursorFamilyWorkflowAdapter } from "../../src/workflow/cursor-family-adapter.create-cursor-family-workflow-adapter.js";
 import { MINT_AUTHORIZATION_CURSOR_SPEC } from "../../src/workflow/cursor-family-spec.js";
 import {
   FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
@@ -38,33 +38,37 @@ import {
   withFieldCarriagePrerequisite,
 } from "../../src/workflow/field-carriage-prerequisite.js";
 import {
-  computeFraudProofWorkflowId,
   DirectoryFraudProofWorkflowJournalStore,
-  type FraudProofWorkflowIdentity,
-  type FraudProofWorkflowJournalEvent,
-  journalJsonDigest,
   MemoryFraudProofWorkflowJournalStore,
-} from "../../src/workflow/journal.js";
+} from "../../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
+import type { FraudProofWorkflowJournalEvent } from "../../src/workflow/journal.fraud-proof-workflow-journal-event.js";
+import {
+  computeFraudProofWorkflowId,
+  type FraudProofWorkflowIdentity,
+  journalJsonDigest,
+} from "../../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import {
   createAuthenticatedRawDatumPreimagePrerequisitePort,
   withRawDatumPreimagePrerequisite,
 } from "../../src/workflow/raw-datum-preimage-prerequisite.js";
-import type { FraudProofAuthenticatedPublicationObserver } from "../../src/workflow/raw-l1-publication-observation.js";
-import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../../src/workflow/raw-l1-publication-observation.js";
+import {
+  FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
+  type FraudProofAuthenticatedPublicationObserver,
+} from "../../src/workflow/raw-l1-publication-observation.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./emulator/emulator-context.js";
 import { captureEmulatorSubmission } from "./emulator/measurement.js";
 import { publishFaultProofWitnessReferenceScripts } from "./emulator/reference-scripts.js";
-import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.js";
+import { publishRemovalReferenceScripts } from "./emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.build-removal-deployment-info.js";
 import { submitSecondHeaderTx, submitSetupTx } from "./emulator/setup-tx.js";
-import {
-  makeMintAuthorizationEmulatorHarness,
-  publishMintAuthorizationReferenceScripts,
-} from "./mint-authorization-emulator.js";
 import {
   addressWitnessItemCbors,
   buildMintAuthorizationSubject,
   directionBNativeScript,
+  makeMintAuthorizationEmulatorHarness,
   mintItemCborV1,
+  publishMintAuthorizationReferenceScripts,
   setupMintAuthorizationScenario,
 } from "./mint-authorization-emulator.js";
 import {
@@ -74,10 +78,6 @@ import {
 } from "./mint-authorization-maxima.js";
 import { runMintAuthorizationProofMaximum } from "./mint-authorization-proof-maximum.js";
 import { mintAuthorizationRetainedReferenceFixture } from "./mint-authorization-retained-reference.js";
-import {
-  publishPlainReferenceScriptUtxo,
-  publishRemovalReferenceScripts,
-} from "./submit-init-emulator-shared.js";
 import { buildAndSubmitUnjournaled } from "./submit-unjournaled.js";
 
 /** Every scenario of the suite, in the order one file running them all runs them. */

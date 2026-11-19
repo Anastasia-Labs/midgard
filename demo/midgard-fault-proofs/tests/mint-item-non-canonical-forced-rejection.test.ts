@@ -20,10 +20,8 @@ import {
 import { Data, getAddressDetails } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildMintItemNonCanonicalStep01Forced,
-  buildMintItemNonCanonicalStep04UnreachableClaim,
-} from "../src/mint-item-non-canonical/index.js";
+import { buildMintItemNonCanonicalStep01Forced } from "../src/mint-item-non-canonical/submit-step-01-forced.js";
+import { buildMintItemNonCanonicalStep04UnreachableClaim } from "../src/mint-item-non-canonical/submit-step-04.js";
 import {
   VAN_ROSSEM_MAX_CPU_UNITS,
   VAN_ROSSEM_MAX_MEMORY_UNITS,
@@ -32,18 +30,16 @@ import {
   buildCountedRoot,
   commitCountedRoot,
 } from "../src/transition-trace/phas.js";
+import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
+import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
 import { submitMintStep01ForcedUnreachableRaw } from "./support/mint-item-non-canonical-emulator.js";
 import { registeredContracts } from "./support/mint-item-non-canonical-lifecycle.js";
 import { mintField } from "./support/mint-item-vectors.js";
-import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
-import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  submitSetupTx,
-} from "./support/submit-init-emulator-shared.js";
+import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init/forced-transitions.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 import {
   MAXIMUM_PROOF_STEP_COUNT,

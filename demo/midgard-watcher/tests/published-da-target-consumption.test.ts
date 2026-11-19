@@ -2,7 +2,7 @@ import "@al-ft/midgard-core";
 import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "vitest";
-import "./support/published-block-actor.js";
+import "./support/published-block-actor.create-published-watcher-block-actor.js";
 import "./support/published-da-target-consumption.js";
 import "./published-da-target-consumption.scenario.js";
 
@@ -29,10 +29,8 @@ import {
   stateQueueUnit,
   transaction,
 } from "./published-da-target-consumption.scenario.js";
-import {
-  createPublishedWatcherBlockActor,
-  type PublishedWatcherDeployment,
-} from "./support/published-block-actor.js";
+import { createPublishedWatcherBlockActor } from "./support/published-block-actor.create-published-watcher-block-actor.js";
+import type { PublishedWatcherDeployment } from "./support/published-block-actor.is-unanswered-submission.js";
 import {
   type PublishedDaTransactionRecord,
   reconcilePublishedDaTargetConsumption,

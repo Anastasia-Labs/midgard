@@ -3,10 +3,10 @@
  * semantic group its tag selects. */
 import { StagedMaterialV1 } from "@al-ft/midgard-sdk";
 import {
-  type MidgardCekCoreStepWitness,
   midgardCekStagedBuiltinMaterialData,
   stageMidgardCekStagedBuiltinMaterial,
 } from "@al-ft/midgard-validation";
+import type { MidgardCekCoreStepWitness } from "@al-ft/midgard-validation/cek-machine";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

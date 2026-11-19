@@ -1,8 +1,8 @@
 import { FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.js";
-import { assertWatcherFaultProofLaunchScope } from "../../src/runtime/watcher-runtime.js";
+import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
+import { assertWatcherFaultProofLaunchScope } from "../../src/runtime/watcher-runtime.launch-checks.js";
 
 const INSTALLED = [...WATCHER_INSTALLED_WORKFLOW_CATEGORIES];
 

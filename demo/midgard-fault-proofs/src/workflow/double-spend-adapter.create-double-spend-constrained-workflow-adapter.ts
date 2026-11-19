@@ -7,20 +7,20 @@ import type { UTxO } from "@lucid-evolution/lucid";
 import { buildStep01 } from "../double-spend/submit-step-01.js";
 import { buildStep02 } from "../double-spend/submit-step-02.js";
 import { buildStep03 } from "../double-spend/submit-step-03.js";
-import { buildStep04 } from "../double-spend/submit-step-04.js";
+import { buildStep04 } from "../double-spend/submit-step-04.submit-step04.js";
 import { prepareDoubleSpendFromCanonicalEvidence } from "../evidence/prepare-from-evidence.js";
 import {
   certifyFaultProofFieldCarriage,
   fieldPreimageCertificateAddress,
-  resolveFaultProofFieldCarriagePublications,
   resolveFaultProofFieldPreimageCertificate,
-} from "../field-opening.js";
+} from "../field-opening.certify-fault-proof-field-carriage.js";
+import { resolveFaultProofFieldCarriagePublications } from "../field-opening.publish-fault-proof-field-carriage.js";
 import {
   buildProofChunkPublication,
   resolvePublishedProofChunks,
 } from "../publish-proof-chunks.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.build-remove-fraudulent-block.js";
 import { type StateQueueMutationLease } from "../remove-fraudulent-block.js";
-import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import { parseSubmitStep01TxInclusion } from "../step-support.js";
 import { buildInit } from "../submit-init.js";
 import { WorkflowActionChangedError } from "./action-changed.js";
@@ -48,14 +48,14 @@ import type {
   FraudProofWorkflowTerminal,
   JournalJsonObject,
 } from "./journal.js";
+import {
+  FRAUD_PROOF_WORKFLOW_ADAPTER,
+  FRAUD_PROOF_WORKFLOW_SAFETY,
+} from "./orchestrator.fraud-proof-family-workflow-adapter.js";
 import type {
   FraudProofFamilyWorkflowAdapter,
   FraudProofWorkflowAction,
   FraudProofWorkflowReconcileResult,
-} from "./orchestrator.js";
-import {
-  FRAUD_PROOF_WORKFLOW_ADAPTER,
-  FRAUD_PROOF_WORKFLOW_SAFETY,
 } from "./orchestrator.js";
 import { admitRemovalTransaction } from "./removal-admission.js";
 import { reconcileSignedWorkflowTransaction } from "./signed-transaction-reconciliation.js";

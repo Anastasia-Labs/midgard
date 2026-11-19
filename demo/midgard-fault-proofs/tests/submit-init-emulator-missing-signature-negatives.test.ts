@@ -5,13 +5,12 @@ import { describe, expect, it } from "vitest";
 
 import { buildLinearFaultCancel } from "../src/linear-fault-cancel.js";
 import { MISSING_SIGNATURE_CATEGORY_LABEL } from "../src/missing-signature/contracts.js";
-import {
-  buildMissingSignatureInit,
-  buildMissingSignatureStep01,
-  buildMissingSignatureStep02,
-  buildMissingSignatureStep03,
-  buildMissingSignatureStep04,
-} from "../src/missing-signature/index.js";
+import { buildMissingSignatureInit } from "../src/missing-signature/submit-missing-signature-init.js";
+import { buildMissingSignatureStep01 } from "../src/missing-signature/submit-missing-signature-step-01.js";
+import { buildMissingSignatureStep02 } from "../src/missing-signature/submit-missing-signature-step-02.js";
+import { buildMissingSignatureStep03 } from "../src/missing-signature/submit-missing-signature-step-03.js";
+import { buildMissingSignatureStep04 } from "../src/missing-signature/submit-missing-signature-step-04.submit-missing-signature-step04.js";
+import { network } from "./support/emulator/blueprints.js";
 import {
   makeMissingSignatureEmulatorHarness,
   MISSING_SIGNATURE_TARGET_VKEY,
@@ -19,9 +18,8 @@ import {
   missingSignatureProverDeps,
   publishMissingSignatureReferenceScripts,
   setupMissingSignatureScenario,
-} from "./support/missing-signature-emulator.js";
-import { proveMissingSignatureFault } from "./support/missing-signature-prover.js";
-import { network } from "./support/submit-init-emulator-shared.js";
+} from "./support/missing-signature-emulator.build-missing-signature-subject.js";
+import { proveMissingSignatureFault } from "./support/missing-signature-prover.prove-missing-signature-fault.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,

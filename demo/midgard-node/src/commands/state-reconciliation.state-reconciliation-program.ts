@@ -7,12 +7,10 @@ import { Clock, Effect, Either } from "effect";
 import { Level } from "level";
 
 import { parseStoredRootHex, ROOT_KEY } from "../mpf/store-primitives.js";
-import {
-  Database,
-  Lucid,
-  MidgardContracts,
-  NodeConfig,
-} from "../services/index.js";
+import { NodeConfig } from "../services/config.make-config.js";
+import { Database } from "../services/database.js";
+import { Lucid } from "../services/lucid.js";
+import { MidgardContracts } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import { READINESS_ENDPOINT } from "./readiness.js";
 import { evaluateStateReconciliation } from "./state-reconciliation.check-ledger-cache.js";
 import {

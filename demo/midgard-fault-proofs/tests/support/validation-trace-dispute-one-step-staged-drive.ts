@@ -16,10 +16,8 @@ import {
   midgardCekStagingRunChunks,
   planMidgardCekStaging,
 } from "@al-ft/midgard-sdk";
-import {
-  type MidgardCekCoreStepWitness,
-  midgardCekSemanticGroup,
-} from "@al-ft/midgard-validation";
+import { midgardCekSemanticGroup } from "@al-ft/midgard-validation";
+import type { MidgardCekCoreStepWitness } from "@al-ft/midgard-validation/cek-machine";
 import {
   CML,
   coreToTxOutput,

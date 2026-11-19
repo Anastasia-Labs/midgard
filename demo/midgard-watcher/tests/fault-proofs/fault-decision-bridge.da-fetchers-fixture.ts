@@ -11,15 +11,13 @@ import { Effect } from "effect";
 
 import { createWatcherReplayedLedger } from "../../src/fault-proofs/replayed-ledger.js";
 import type { WatcherAlertCode } from "../../src/runtime/operations-observability.js";
-import {
-  bindWatcherRetainedDaOperations,
-  createWatcherRetainedDaRuntime,
-} from "../../src/storage/retained-da-runtime.js";
+import { createWatcherRetainedDaRuntime } from "../../src/storage/retained-da-runtime.create-watcher-retained-da-runtime-owner.js";
+import { bindWatcherRetainedDaOperations } from "../../src/storage/retained-da-runtime.retained-da-request-permits.js";
 import {
   admittedConfig,
   transportFactory,
 } from "../storage/retained-da-runtime.fixtures.js";
-import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
+import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.build-watcher-deployment-authority-fixture.js";
 import type { operations } from "./fault-decision-bridge.released-fixture.js";
 
 export const AUTHORITY = makeWatcherDeploymentAuthorityFixture();

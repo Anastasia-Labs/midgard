@@ -1,5 +1,5 @@
 import { ForcedRejectionStopped } from "@al-ft/midgard-fault-proofs";
-import { RejectCodes } from "@al-ft/midgard-validation";
+import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { Effect, Logger } from "effect";
 import { describe, expect, it } from "vitest";
 

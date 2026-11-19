@@ -23,9 +23,9 @@ import { Lucid, paymentCredentialOf } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { afterAll, beforeAll, expect, it } from "vitest";
 
-import { readFinalizedDeploymentIdentity } from "../src/commands/contract-deployment-info.js";
+import { readFinalizedDeploymentIdentity } from "../src/commands/contract-deployment-info.build-deployment-manifest.js";
 import { verifyNodeRuntimeReferenceScriptsProgram } from "../src/transactions/reference-scripts.js";
-import { publishWorkflowDeployment } from "./helpers/published-workflow-deployment.js";
+import { publishWorkflowDeployment } from "./helpers/published-workflow-deployment.publish-workflow-deployment.js";
 
 let installed: Awaited<ReturnType<typeof publishWorkflowDeployment>>;
 let directory: string | undefined;

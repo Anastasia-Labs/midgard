@@ -14,12 +14,12 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK,
   ExecutionNativeScriptInvalidHonestLeaf,
   prepareExecutionNativeScriptInvalidProof,
   requireConvictingExecutionNativeScriptInvalidProof,
-} from "../src/execution-native-script-invalid/index.js";
-import { submitRemoveFraudulentBlock } from "../src/index.js";
+} from "../src/execution-native-script-invalid/prover.js";
+import { EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK } from "../src/execution-native-script-invalid/workflow.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import {
   DIRECT_WALK_STEP_BOUNDS,
   type DirectWalkHarness,
@@ -28,7 +28,11 @@ import {
   publishDirectWalkRoles,
   stepTable,
 } from "./support/direct-walk-emulator.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import {
   admissibleNativeObservers,
   machineNativeVerdict,
@@ -42,12 +46,6 @@ import {
   signingKey,
 } from "./support/execution-native-script-invalid-emulator.subject.js";
 import { rejectedFor } from "./support/script-integrity-hash-mismatch-emulator.subject.js";
-import {
-  buildRemovalDeploymentInfo,
-  expectSingleUtxoWithUnit,
-  network,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
 
 const expectWithinBounds = (steps: Parameters<typeof stepTable>[0]): void => {
   for (const { label, measurement } of steps) {

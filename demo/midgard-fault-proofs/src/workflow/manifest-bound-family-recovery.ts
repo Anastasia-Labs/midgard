@@ -2,7 +2,7 @@ import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import { workflowActuationAuthorizingDecisionDigest } from "./actuation-permit.js";
+import { workflowActuationAuthorizingDecisionDigest } from "./actuation-permit.assert-workflow-actuation-permit-identity.js";
 import {
   encodeWorkflowArtifact,
   requireWorkflowArtifactMatches,
@@ -16,15 +16,17 @@ import {
   type FraudProofFamilyL1ObservationPort,
   observeFraudProofWorkflowHeader,
 } from "./family-l1-observation.js";
+import type { FraudProofWorkflowJournalStore } from "./journal.fraud-proof-workflow-journal-event.js";
 import {
-  type FraudProofWorkflowJournalStore,
   journalJsonDigest,
   type JournalJsonObject,
-} from "./journal.js";
+} from "./journal.fraud-proof-workflow-terminal.js";
+import type {
+  FraudProofFamilyWorkflowAdapter,
+  FraudProofWorkflowTerminalVerifier,
+} from "./orchestrator.fraud-proof-family-workflow-adapter.js";
 import {
   createFraudProofWorkflowRegistry,
-  type FraudProofFamilyWorkflowAdapter,
-  type FraudProofWorkflowTerminalVerifier,
   runFraudProofWorkflowFromRetainedDa,
 } from "./orchestrator.js";
 import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy.js";

@@ -48,11 +48,11 @@ import { describe, expect, it, vi } from "vitest";
 import { runNode } from "../src/commands/listen.run-node.js";
 import { withStartupHttpServer } from "../src/commands/listen.startup-http.js";
 import { DEFAULT_IMPORT_CHECK_CONFIG } from "../src/services/config.import-check.js";
-import { NodeConfig } from "../src/services/config.js";
-import { Globals } from "../src/services/globals.js";
-import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
+import { Globals } from "../src/services/globals.globals.js";
+import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import { findStartupStepFailure } from "../src/services/startup-waiting.js";
-import { ValidationWorkerError } from "../src/services/validation-pool.js";
+import { ValidationWorkerError } from "../src/services/validation-pool.bundled-worker-exec-argv.js";
 import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
 /** Every validation worker the node started, and whether it has exited. */

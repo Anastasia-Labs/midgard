@@ -27,29 +27,27 @@ import {
 import { Data, getAddressDetails, toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import type { SubmitDaHashPreimageTxInclusion } from "../src/submit-da-hash-preimage-step-01.parse-submit-da-hash-preimage-tx-inclusion.js";
+import { buildDaHashPreimageStep01 } from "../src/submit-da-hash-preimage-step-01.submit-da-hash-preimage-step01.js";
+import { buildDaHashPreimageStep02 } from "../src/submit-da-hash-preimage-step-02.js";
+import { buildInit } from "../src/submit-init.submit-init.js";
+import { network } from "./support/emulator/blueprints.js";
+import { trieRootHex } from "./support/emulator/catalogue.js";
 import {
-  buildDaHashPreimageStep01,
-  buildDaHashPreimageStep02,
-  type SubmitDaHashPreimageTxInclusion,
-  submitRemoveFraudulentBlock,
-} from "../src/index.js";
-import { runEmulatorLifecycleStage } from "./support/emulator/emulator-context.js";
-import { buildInit } from "./support/legacy-submit-emulator.js";
-import { pinStepTranscript } from "./support/step-transcript.js";
-import {
-  expectStateQueueHeaderOrder,
-  setupFraudulentBlock as setupFraudulentBlock,
-} from "./support/submit-init-emulator-fixtures.js";
-import {
-  buildRemovalDeploymentInfo,
   expectSingleUtxoWithUnit,
+  runEmulatorLifecycleStage,
+} from "./support/emulator/emulator-context.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
+import {
   l2TransactionSourceCbor,
-  makeFaultProofEmulatorHarness,
   makeNativeTx,
-  network,
-  publishRemovalReferenceScripts,
-  trieRootHex,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/emulator/native-tx.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
+import { pinStepTranscript } from "./support/step-transcript.js";
+import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
+import { setupFraudulentBlock } from "./support/submit-init/removal.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 /**

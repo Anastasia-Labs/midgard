@@ -3,7 +3,7 @@ import { type UTxO } from "@lucid-evolution/lucid";
 import { expect, it, vi } from "vitest";
 
 import { fetchFraudProofEvidence } from "../src/evidence/fraud-proof-evidence.js";
-import { fieldPreimageCertificateAddress } from "../src/field-opening.js";
+import { fieldPreimageCertificateAddress } from "../src/field-opening.certify-fault-proof-field-carriage.js";
 import {
   fieldCertificateClaimKey,
   fieldPublicationClaimKey,

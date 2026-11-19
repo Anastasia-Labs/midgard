@@ -42,7 +42,7 @@ import { ledgerParameterQuery } from "midgard-watcher/tests/support/ledger-proto
 import type { WorkflowActuationPermit } from "../../src/workflow/actuation-permit.js";
 import type { WorkflowAdapterRunner } from "../../src/workflow/adapters.js";
 import { createWorkflowRuntimeFundingPolicy } from "../../src/workflow/runtime-funding-policy.js";
-import { SCRIPT_DECODE_SPEND_ROLE } from "../../src/workflow/script-decode-prerequisite.js";
+import { SCRIPT_DECODE_SPEND_ROLE } from "../../src/workflow/script-decode-prerequisite.deployment.js";
 
 type Category = Parameters<
   typeof createWorkflowRuntimeFundingPolicy

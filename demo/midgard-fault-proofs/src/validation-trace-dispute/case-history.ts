@@ -18,12 +18,12 @@ import {
 import { Effect } from "effect";
 
 import { addMintedAssets } from "../workflow/funding-reservation-permit.ledger-accounting.js";
-import {
-  admitFraudProofRawL1Snapshot,
-  type FraudProofRawL1SnapshotAuthority,
-  type FraudProofRawL1SnapshotRequest,
-  type FraudProofRawL1Transaction,
-} from "../workflow/raw-l1-snapshot.js";
+import { admitFraudProofRawL1Snapshot } from "../workflow/raw-l1-snapshot.admit-fraud-proof-raw-l1-snapshot.js";
+import type {
+  FraudProofRawL1SnapshotAuthority,
+  FraudProofRawL1SnapshotRequest,
+  FraudProofRawL1Transaction,
+} from "../workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
 import type { VerifiedFraudProofReleaseFinalityPolicy } from "../workflow/release-finality-policy.js";
 
 const blake2b256 = (hex: string): string =>

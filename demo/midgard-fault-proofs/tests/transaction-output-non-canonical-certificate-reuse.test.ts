@@ -12,13 +12,11 @@ import {
 import { getAddressDetails } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { planFaultProofFieldOpening } from "../src/field-opening.js";
-import {
-  buildTransactionOutputNonCanonicalStep01Forced,
-  buildTransactionOutputNonCanonicalStep02,
-} from "../src/transaction-output-non-canonical/index.js";
-import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
-import { createAuthenticatedFieldCarriagePrerequisitePort } from "../src/workflow/field-carriage-prerequisite.js";
+import { planFaultProofFieldOpening } from "../src/field-opening.plan-fault-proof-field-opening.js";
+import { buildTransactionOutputNonCanonicalStep01Forced } from "../src/transaction-output-non-canonical/submit-step-01-forced.js";
+import { buildTransactionOutputNonCanonicalStep02 } from "../src/transaction-output-non-canonical/submit-step-02.js";
+import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
+import { createAuthenticatedFieldCarriagePrerequisitePort } from "../src/workflow/field-carriage-prerequisite.create-authenticated-field-carriage-prerequisite-port.js";
 import { workflowFieldCarriageOwnOutputs } from "../src/workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import {
   createOwnOutputJournal,
@@ -35,16 +33,12 @@ import {
   fieldPreimageCertificateCount,
 } from "./support/captured-step-turns.js";
 import { createConfirmedActionJournal } from "./support/confirmed-action-journal.js";
+import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
-import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  submitSetupTx,
-} from "./support/submit-init-emulator-shared.js";
+import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
-import {
-  buildForcedOutputFixture,
-  canonicalOutputOfLength,
-} from "./support/transaction-output-non-canonical-emulator.js";
+import { buildForcedOutputFixture } from "./support/transaction-output-non-canonical-emulator.build-forced-output-fixture.js";
+import { canonicalOutputOfLength } from "./support/transaction-output-non-canonical-emulator.continue-raw.js";
 import {
   evidenceOf,
   MAXIMUM_OUTPUT_BYTES,

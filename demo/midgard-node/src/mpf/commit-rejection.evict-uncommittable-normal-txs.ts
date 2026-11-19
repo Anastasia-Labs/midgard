@@ -12,10 +12,8 @@
 
 import { findLedgerSignatureVerifierUnavailable } from "@al-ft/midgard-core";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import {
-  MidgardUplcCapabilityError,
-  type PhaseAValidatedTx,
-} from "@al-ft/midgard-validation";
+import { MidgardUplcCapabilityError } from "@al-ft/midgard-validation";
+import type { PhaseAValidatedTx } from "@al-ft/midgard-validation/types";
 import { Cause, Effect, Exit, Option } from "effect";
 
 import * as MempoolDB from "../database/mempool.js";

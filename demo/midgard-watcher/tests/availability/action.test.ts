@@ -12,7 +12,7 @@ import {
 import {
   selectWatcherAvailabilityFunding,
   watcherAvailabilityTimeoutCollateralLovelace,
-} from "../../src/availability/runtime.js";
+} from "../../src/availability/runtime.select-watcher-availability-funding.js";
 import {
   fixture,
   HEADER_END_TIME,

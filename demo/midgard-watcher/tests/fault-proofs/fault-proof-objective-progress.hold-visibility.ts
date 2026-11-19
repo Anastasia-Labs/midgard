@@ -4,7 +4,7 @@ import { expect, it, vi } from "vitest";
 import { WATCHER_FAULT_PROOF_STARTED_LATE } from "../../src/fault-proofs/fault-proof-objective-alerts.js";
 import { WATCHER_FAULT_PROOF_RESUBMISSION_REQUIRED } from "../../src/fault-proofs/fault-proof-resubmission-hold.js";
 import { createWatcherOperationsObservability } from "../../src/runtime/operations-observability.js";
-import { deploymentIdentity } from "../support/fault-proof-funding-fixture.js";
+import { deploymentIdentity } from "../support/fault-proof-funding-fixture.sources-for.js";
 import type { setup } from "./fault-proof-objective-progress.test.js";
 
 export const registerFaultProofResubmissionVisibilityTest = (

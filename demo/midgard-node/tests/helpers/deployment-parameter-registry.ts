@@ -16,10 +16,8 @@ import {
 import { Effect } from "effect";
 import { expect } from "vitest";
 
-import {
-  buildDeploymentManifest,
-  deploymentDaTransportProfile,
-} from "../../src/commands/contract-deployment-info.js";
+import { buildDeploymentManifest } from "../../src/commands/contract-deployment-info.build-deployment-manifest.js";
+import { deploymentDaTransportProfile } from "../../src/commands/contract-deployment-info.exact-protocol-parameter-snapshot.js";
 import { isPublicDeploymentProfile } from "../../src/commands/listen-public-http.js";
 import { loadPhasMembershipWithdrawalScript } from "../../src/phas-membership.js";
 import {

@@ -19,23 +19,21 @@ import {
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/index.js";
+import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
+import { detectOutputReferenceScriptDecodingCanonicalViolations } from "../src/output-reference-script-decoding/output-reference-script-decoding.canonical-findings.js";
 import {
   OutputReferenceScriptResultClasses,
   prepareOutputReferenceScriptDecodingEvidence,
-} from "../src/output-reference-script-decoding/index.js";
-import { detectOutputReferenceScriptDecodingCanonicalViolations } from "../src/output-reference-script-decoding/output-reference-script-decoding.canonical-findings.js";
-import { recordScriptDecode } from "../src/script-decode/index.js";
+} from "../src/output-reference-script-decoding/output-reference-script-decoding.js";
+import { recordScriptDecode } from "../src/script-decode/record.js";
+import { WitnessScriptDecodingResultClasses } from "../src/witness-script-decoding/witness-script-decoding.js";
+import { detectWitnessScriptDecodingCompleteReplay } from "../src/witness-script-decoding/workflow.detect-witness-script-decoding-complete-replay.js";
+import { CANONICAL_DECODABILITY_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.detect-double-withdraws.js";
 import {
-  detectWitnessScriptDecodingCompleteReplay,
-  WitnessScriptDecodingResultClasses,
-} from "../src/witness-script-decoding/index.js";
-import {
-  CANONICAL_DECODABILITY_COMPLETE_CANONICAL_REPLAY,
   NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
   OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
   WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
-} from "../src/workflow/complete-replay.js";
+} from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
@@ -47,10 +45,10 @@ import {
   commitAcceptedBlock,
   createMeasurementRecorder,
   makeOutputReferenceHarness,
-  makeOutputReferenceStages,
   OUTPUT_REFERENCE_MAX_OUTPUT_BYTES,
-  publishFamilyReferences,
-} from "./support/output-reference-script-decoding-emulator.js";
+} from "./support/output-reference-script-decoding-emulator.commit-accepted-block.js";
+import { publishFamilyReferences } from "./support/output-reference-script-decoding-emulator.commit-forced-block.js";
+import { makeOutputReferenceStages } from "./support/output-reference-script-decoding-emulator.make-output-reference-stages.js";
 import { scriptDecodeDeploymentOf } from "./support/script-decode-emulator.js";
 import {
   createTransactionJournal,
@@ -63,7 +61,7 @@ import {
   plutusReferenceOutput,
   producerVerdict,
 } from "./support/script-decode-plutus-max-shape.js";
-import { scriptWitnessField } from "./support/witness-script-decoding-raw.js";
+import { scriptWitnessField } from "./support/witness-script-decoding-raw.over-bound-field-carriage-plan.js";
 import { makeHarness } from "./witness-script-decoding-lifecycle.make-harness.js";
 import {
   acceptedEvidence,

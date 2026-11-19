@@ -32,11 +32,9 @@ import {
   type DirectPurposeSourceEvidence,
   directPurposeSourceTransitions,
 } from "../direct-purpose-family/source-walk.js";
-import {
-  buildDirectSourceIndexEvidence,
-  directOutputAddress,
-  type DirectScriptMaterial,
-} from "../direct-script-derivation/index.js";
+import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
+import { directOutputAddress } from "../direct-script-derivation/purposes.js";
+import { buildDirectSourceIndexEvidence } from "../direct-script-derivation/source-index.js";
 import {
   UNUSED_SCRIPT_WITNESS_CATEGORY_LABEL,
   unusedScriptWitnessContractRoles,

@@ -2,11 +2,9 @@ import { Effect } from "effect";
 
 import { PendingBlockFinalizationsDB } from "../database/index.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../services/history-commit-window.js";
-import {
-  type ContractDeploymentIdentityValue,
-  Lucid,
-  MidgardContracts,
-} from "../services/index.js";
+import { Lucid } from "../services/lucid.js";
+import type { ContractDeploymentIdentityValue } from "../services/midgard-contracts.load-reference-script-auth-validator.js";
+import { MidgardContracts } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import { pendingCommitEventInstants } from "./commit-block-header.pending-event-instants.js";
 import { resolveCommitAppendFenceEndTimeCapLocal } from "./commit-block-header/state-queue.js";
 import {

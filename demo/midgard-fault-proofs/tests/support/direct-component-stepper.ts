@@ -10,10 +10,8 @@ import {
 import { expect } from "vitest";
 
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
-import {
-  expectOnchainRefusal,
-  measureCompleteSignedTransaction,
-} from "./submit-init-emulator-shared.js";
+import { expectOnchainRefusal } from "./emulator/expect-onchain-refusal.js";
+import { measureCompleteSignedTransaction } from "./emulator/measurement.js";
 
 type ComponentTransition = {
   readonly label: string;

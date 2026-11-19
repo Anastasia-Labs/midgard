@@ -1,6 +1,6 @@
 /** The `distinctAssetAccumulationLimit` family's direct walk. */
 import { defineDirectWalkFamily } from "../direct-purpose-family/walk-family.js";
-import { DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
+import { DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import { DISTINCT_ASSET_ACCUMULATION_LIMIT_CURSOR_SPEC } from "../workflow/cursor-family-spec.js";
 import { DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY } from "./contracts.js";
 import { DISTINCT_ASSET_ACCUMULATION_LIMIT_FIELDS } from "./custody.js";

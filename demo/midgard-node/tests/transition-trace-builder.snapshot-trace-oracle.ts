@@ -3,17 +3,18 @@ import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";
 
+import { MidgardMpf } from "../src/mpf/store.midgard-mpf.js";
+import type {
+  RetainedTransitionTraceMember,
+  TransitionTraceSourceEvent,
+} from "../src/mpf/trace-events.js";
+import { buildTransitionTraceResult as buildTransitionTraceResultFromMpf } from "../src/mpf/transition-trace.build-transition-trace-result.js";
+import { buildEventToStepMembersFromTrace } from "../src/mpf/transition-trace.validate-transition-trace-source-events.js";
+import type { MpfBatchOp, UtxoPayloadEntry } from "../src/mpf/types.js";
 import {
-  buildEventToStepMembersFromTrace,
-  buildTransitionTraceResult as buildTransitionTraceResultFromMpf,
   keyValuePhasRoot,
   keyValuePhasRootWithCount,
-  MidgardMpf,
-  type MpfBatchOp,
-  type RetainedTransitionTraceMember,
-  type TransitionTraceSourceEvent,
-  type UtxoPayloadEntry,
-} from "../src/mpf/index.js";
+} from "../src/workers/utils/mpf/phas.key-value-phas-non-membership-proof.js";
 
 export const TRACE_PERSIST_DB = `test-transition-trace-builder-${process.pid}`;
 

@@ -18,11 +18,13 @@ import {
 
 import { type FaultProofTurn, isPrerequisiteTurn } from "./fault-proof-turn.js";
 import {
-  faultProofFieldOpening,
   parseNativeTxCompactCbor,
   planFaultProofFieldOpening,
+} from "./field-opening.plan-fault-proof-field-opening.js";
+import {
+  faultProofFieldOpening,
   publishFaultProofFieldCarriage,
-} from "./field-opening.js";
+} from "./field-opening.publish-fault-proof-field-carriage.js";
 import {
   fetchUtxoByOutRef,
   makeLucidForSubmit,
@@ -33,12 +35,11 @@ import {
   resolveInputNoIdxDeploymentContracts,
   resolveProverSigner,
 } from "./runtime.js";
-import { completeStep, fundStep } from "./step-completion.js";
-import { finishStep } from "./step-completion.js";
+import { completeStep, finishStep, fundStep } from "./step-completion.js";
 import { requireComputationThreadToken } from "./step-support.js";
 import { submitFaultProofTurns } from "./submit-fault-proof-turns.js";
-import type { InputNoIdxStep02Build } from "./submit-input-no-idx-step-02.parse-submit-input-no-idx-inputs-preimage.js";
 import {
+  type InputNoIdxStep02Build,
   type InputNoIdxStep02Layout,
   parseSubmitInputNoIdxInputsPreimage,
   requireStep02Datum,

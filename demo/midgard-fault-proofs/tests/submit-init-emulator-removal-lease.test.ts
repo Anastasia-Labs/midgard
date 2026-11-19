@@ -15,16 +15,16 @@ import { describe, expect, it } from "vitest";
 import {
   createLocalStateQueueMutationLeaseCoordinator,
   type StateQueueMutationLeaseCoordinator,
-} from "../src/remove-fraudulent-block.js";
+} from "../src/remove-fraudulent-block.remove-fraudulent-block-explicit-category.js";
+import { buildProvedDoubleSpendFixture } from "./support/submit-init/double-spend.js";
+import { expectStateQueueHeaderOrder } from "./support/submit-init/queue-assertions.js";
 import {
-  buildProvedDoubleSpendFixture,
   eventIndexes,
   expectRemovedFraudProofState,
-  expectStateQueueHeaderOrder,
   instrumentLucidForRemoval,
   type RemovalEvent,
   submitRemovalForFixture,
-} from "./support/submit-init-emulator-fixtures.js";
+} from "./support/submit-init/removal.js";
 
 const LOCAL_LEASE_RESULT = {
   token: "local-retry-until-confirmed",

@@ -5,13 +5,13 @@ import { describe, expect, it, vi } from "vitest";
 
 import * as MpfEngineStateDB from "../src/database/mpfEngineState.js";
 import { buildAndSubmitCommitmentBlockAction } from "../src/fibers/block-commitment.build-and-submit-commitment-block-action.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
+import { Globals } from "../src/services/globals.globals.js";
+import { Lucid } from "../src/services/lucid.js";
 import {
   ContractDeploymentIdentity,
-  Globals,
-  Lucid,
   MidgardContracts,
-  NodeConfig,
-} from "../src/services/index.js";
+} from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import { runCommitBlockHeaderWorkerProgram } from "../src/workers/commit-block-header.run-commit-block-header-worker-program.js";
 import type { WorkerInput } from "../src/workers/utils/commit-block-header.js";
 import { writeFollowerTip } from "./helpers/follower-view.js";

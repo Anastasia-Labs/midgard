@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { withOwnKeyActions } from "../src/validation-trace-dispute/own-key-actions.js";
-import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.js";
+import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
 import {
   FraudProofL1RefusedError,
   FraudProofL1UnavailableError,

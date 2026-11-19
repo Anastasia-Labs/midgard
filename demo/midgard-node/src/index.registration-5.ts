@@ -9,7 +9,7 @@ import {
   parseStringListOption,
   writeJson,
 } from "./commands/cli-runtime.js";
-import { runDaLibp2pPreflightFromEnv } from "./da/libp2p-producer.js";
+import { runDaLibp2pPreflightFromEnv } from "./da/libp2p-producer.probe-da-envelope-capabilities.js";
 import {
   DA_LIBP2P_RUNTIME_PROFILES,
   generateDaLibp2pRuntimeManifest,

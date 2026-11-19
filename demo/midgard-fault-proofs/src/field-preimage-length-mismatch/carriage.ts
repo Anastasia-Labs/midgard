@@ -7,13 +7,13 @@ import {
 } from "@al-ft/midgard-core";
 import { decodeMidgardForcedTxCompact } from "@al-ft/midgard-core/codec/forced";
 
+import { resolveFaultProofFieldPreimageCertificate } from "../field-opening.certify-fault-proof-field-carriage.js";
 import {
   faultProofRawFieldCarriage,
   resolveFaultProofFieldCarriagePublications,
-  resolveFaultProofFieldPreimageCertificate,
-} from "../field-opening.js";
+} from "../field-opening.publish-fault-proof-field-carriage.js";
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
-import { createRawCommittedFieldCarriagePlan } from "../workflow/field-carriage-prerequisite.js";
+import { createRawCommittedFieldCarriagePlan } from "../workflow/field-carriage-prerequisite.field-carriage-prerequisite-port.js";
 import type { OwnOutputJournal } from "../workflow/own-outputs.js";
 import type { ManifestBoundFieldPreimageLengthWorkflow } from "./authenticated-workflow.js";
 import type { AuthenticatedFieldPreimageLengthEvidence } from "./evidence.js";

@@ -6,7 +6,6 @@ import { describe, expect, it, vi } from "vitest";
 
 import { DepositsDB } from "../src/database/index.js";
 import { commitDaFrameStageGauge } from "../src/fibers/block-commitment.commit-da-frame-readiness.js";
-import { takeCommitWorkerOutput } from "../src/fibers/block-commitment.js";
 import { NO_COMMIT_BUILD_ALARMS } from "../src/services/globals.commit-build-alarms.js";
 import type { Globals } from "../src/services/globals.js";
 import { initialL1ControlPlaneActivity } from "../src/services/globals.l1-control-plane.js";
@@ -18,6 +17,7 @@ import {
 } from "../src/services/liveness-halt.js";
 import { submitDepositOnlyCommit } from "../src/workers/commit-block-header/submission.submit-deposit-only-commit.js";
 import { submitTxBackedCommit } from "../src/workers/commit-block-header/submission.submit-tx-backed-commit.js";
+import { takeCommitWorkerOutput } from "../src/workers/commit-worker-message.js";
 import {
   COMMIT_DA_FRAME_FITS_NOTICE,
   COMMIT_DA_FRAME_IDLE_NOTICE,

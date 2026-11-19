@@ -19,7 +19,7 @@ import {
   isPhasMembershipAlreadyRegisteredError,
   queryPhasMembershipRewardAccountRegisteredProgram,
 } from "../src/transactions/phas-membership-registration.js";
-import { TxSubmitError } from "../src/transactions/utils.js";
+import { TxSubmitError } from "../src/transactions/utils.await-required-output-visibility.js";
 import { runWithoutFollower } from "./helpers/intent-journal.js";
 
 const phasIdentity = SDK.phasMembershipIdentity(

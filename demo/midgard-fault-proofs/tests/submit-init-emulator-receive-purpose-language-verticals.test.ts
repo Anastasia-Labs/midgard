@@ -29,6 +29,7 @@ import {
   makeDirectWalkHarness,
   publishDirectWalkRoles,
 } from "./support/direct-walk-emulator.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
 import {
   buildMissingRedeemerSubject,
   honestForcedObserverShape,
@@ -48,7 +49,6 @@ import {
   expectTerminalRefusal,
   removeConvictedBlock,
 } from "./support/receive-purpose-language-emulator.rows.js";
-import { expectSingleUtxoWithUnit } from "./support/submit-init-emulator-shared.js";
 
 /** One receive output whose script is PlutusV3, carried as a witness. */
 const receiving = (

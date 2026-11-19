@@ -9,13 +9,13 @@ import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import { WORKFLOW_FUNDING_SHORTFALL } from "@al-ft/midgard-fault-proofs";
 import { expect, it, vi } from "vitest";
 
-import { watcherFaultProofDeadline } from "../../src/fault-proofs/fault-proof-supervisor.js";
+import { watcherFaultProofDeadline } from "../../src/fault-proofs/fault-proof-supervisor.validate-job.js";
 import { WatcherFaultProofL1RefusedError } from "../../src/l1-follower/fault-proof-l1-source.chain.js";
 import {
   createWatcherOperationsObservability,
   type WatcherOperationsSink,
 } from "../../src/runtime/operations-observability.js";
-import { deploymentIdentity } from "../support/fault-proof-funding-fixture.js";
+import { deploymentIdentity } from "../support/fault-proof-funding-fixture.sources-for.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
 import type { setup } from "./fault-proof-objective-progress.test.js";
 

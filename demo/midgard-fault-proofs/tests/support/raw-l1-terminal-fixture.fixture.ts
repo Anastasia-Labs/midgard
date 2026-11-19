@@ -19,16 +19,18 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import type { FraudProofRawL1FamilyDefinition } from "../../src/workflow/raw-l1-family-derivation.state-queue-topology.js";
 import {
   computeFraudProofRawL1PointId,
   computeFraudProofRawL1RollbackCursor,
+} from "../../src/workflow/raw-l1-snapshot.admit-fraud-proof-raw-l1-transaction.js";
+import {
   FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION,
-  type FraudProofRawL1FamilyDefinition,
   type FraudProofRawL1Snapshot,
   type FraudProofRawL1Utxo,
-  type VerifiedFraudProofReleaseEconomicsPolicy,
-  type VerifiedFraudProofReleaseFinalityPolicy,
-} from "../../src/workflow/index.js";
+} from "../../src/workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
+import type { VerifiedFraudProofReleaseEconomicsPolicy } from "../../src/workflow/release-economics-policy.js";
+import type { VerifiedFraudProofReleaseFinalityPolicy } from "../../src/workflow/release-finality-policy.js";
 import { makeHeader } from "./emulator/header-fixtures.js";
 import {
   descendantStateQueueFixture,
@@ -37,15 +39,13 @@ import {
 import { finalDescendantRemoval } from "./raw-l1-terminal-fixture.final-descendant-removal.js";
 import {
   DEPLOYMENT,
-  PROVER,
-  RELEASE,
-} from "./raw-l1-terminal-fixture.output.js";
-import {
   hash32,
   input,
   output,
   policy,
+  PROVER,
   raw,
+  RELEASE,
   releaseEconomics,
   releaseFinality,
   scriptAddress,

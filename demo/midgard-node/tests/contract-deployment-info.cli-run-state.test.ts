@@ -132,7 +132,7 @@ import "../src/index.registration-4.js";
 import {
   createDeploymentRunState,
   writeDeploymentRunStateAtomic,
-} from "../src/e2e/run-state.js";
+} from "../src/e2e/run-state.parse-deployment-run-state.js";
 import { program } from "../src/index.registration.js";
 
 /** A run state for hub-oracle nonce `txHash` with `ORIGIN` recorded. */

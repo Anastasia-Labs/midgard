@@ -6,11 +6,9 @@ import { decodeMidgardForcedTxCanonicalEnvelopeForFaultEvidence } from "@al-ft/m
 import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
-import {
-  planFaultProofFieldOpening,
-  resolveFaultProofFieldCarriagePublications,
-  resolveFaultProofFieldPreimageCertificate,
-} from "../field-opening.js";
+import { resolveFaultProofFieldPreimageCertificate } from "../field-opening.certify-fault-proof-field-carriage.js";
+import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
+import { resolveFaultProofFieldCarriagePublications } from "../field-opening.publish-fault-proof-field-carriage.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { type ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";

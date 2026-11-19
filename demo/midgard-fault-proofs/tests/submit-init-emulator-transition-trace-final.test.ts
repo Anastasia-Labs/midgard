@@ -1,4 +1,4 @@
-import { registerTransitionTraceFinalCases } from "./support/transition-trace-final-cases.js";
+import { registerTransitionTraceFinalCases } from "./support/transition-trace-final-cases.register-transition-trace-final-cases.js";
 
 // Keep these cases in separate files so Vitest gives each group a fresh process.
 registerTransitionTraceFinalCases([

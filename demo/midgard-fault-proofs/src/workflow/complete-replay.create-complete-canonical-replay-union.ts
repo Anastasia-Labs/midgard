@@ -29,7 +29,7 @@ import {
   admittedCanonicalViolationDetections,
   type CanonicalViolationDetection,
   selectsProvableFault,
-} from "./classification.js";
+} from "./classification.classify-canonical-block-violations.js";
 import {
   canonicalizeReplayJson,
   completeCanonicalReplayPredecessorLedger,

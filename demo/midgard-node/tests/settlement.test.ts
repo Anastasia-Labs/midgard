@@ -9,10 +9,10 @@ import type { SettlementAttempt } from "../src/database/settlement.js";
 import {
   canExpireSettlementAttempt,
   inspectSettlementAttempt,
-  settlementLevel,
   settlementNextPhase,
   settlementWalletAddress,
-} from "../src/services/settlement.js";
+} from "../src/services/settlement.reconcile-attempt.js";
+import { settlementLevel } from "../src/services/settlement.status.js";
 import { makeTestNodeConfig } from "./helpers/test-node-config.js";
 
 // These tests pin the new scheduler's replay boundary, which the synchronous

@@ -8,17 +8,15 @@ import { type Mock, type MockInstance, vi } from "vitest";
 import { proofMaterialsAddress } from "../../src/funding/proof-materials-address.js";
 import * as inspection from "../../src/inspect-contracts.js";
 import * as deployment from "../../src/workflow/deployment-manifest-binding.js";
-import {
-  type FamilyCategory,
-  familyStepContractNames,
-} from "../../src/workflow/family-definition.js";
+import type { FamilyCategory } from "../../src/workflow/family-definition.family-adapter-arm.js";
+import { familyStepContractNames } from "../../src/workflow/family-definition.family-definition.js";
 import * as observations from "../../src/workflow/family-l1-observation.js";
 import { FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT } from "../../src/workflow/family-l1-observation.js";
 import * as fieldCarriage from "../../src/workflow/field-carriage-prerequisite.js";
-import { assembleManifestBoundFamilyWorkflow } from "../../src/workflow/manifest-bound-family-assembly.js";
+import { assembleManifestBoundFamilyWorkflow } from "../../src/workflow/manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
 import * as proofChunks from "../../src/workflow/proof-chunk-prerequisite.js";
 import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../../src/workflow/raw-l1-publication-observation.js";
-import { FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY } from "../../src/workflow/raw-l1-snapshot.js";
+import { FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY } from "../../src/workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
 import { cursorAssemblyRuntimeFixture } from "./cursor-assembly-runtime-fixtures.js";
 import { createAuthenticatedFamilyAssemblyRuntimeFixture } from "./family-assembly-runtime-fixtures.js";
 import {

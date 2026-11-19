@@ -3,7 +3,7 @@ import { setImmediate } from "node:timers/promises";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { unsafeCreateWatcherFaultProofSupervisorForTest } from "../../src/fault-proofs/fault-proof-supervisor.js";
+import { unsafeCreateWatcherFaultProofSupervisorForTest } from "../../src/fault-proofs/fault-proof-supervisor.create-watcher-fault-proof-supervisor.js";
 
 const journalControl = vi.hoisted(() => ({
   beforeFinish: async (): Promise<void> => undefined,

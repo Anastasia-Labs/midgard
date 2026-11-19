@@ -1,7 +1,7 @@
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { bindManifestBoundFamilyWorkflow } from "../src/workflow/manifest-bound-family-assembly.js";
+import { bindManifestBoundFamilyWorkflow } from "../src/workflow/manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
 import { fieldGrammarCertificateValidatorFixture } from "./support/field-grammar-certificate-deployment-fixture.js";
 import {
   categories,

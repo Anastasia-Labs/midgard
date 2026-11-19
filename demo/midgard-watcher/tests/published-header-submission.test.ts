@@ -15,15 +15,15 @@ import {
 import { Cause, Effect, Runtime } from "effect";
 import { expect, it, vi } from "vitest";
 
+import { createPublishedWatcherBlockActor } from "./support/published-block-actor.create-published-watcher-block-actor.js";
 import {
-  createPublishedWatcherBlockActor,
   isLateSubmission,
   isUnansweredSubmission,
   PublishedTransactionExpiredError,
   PublishedTransactionSubmissionError,
   type PublishedWatcherBlock,
   type PublishedWatcherDeployment,
-} from "./support/published-block-actor.js";
+} from "./support/published-block-actor.is-unanswered-submission.js";
 
 vi.mock("@al-ft/midgard-sdk", async (importOriginal) => {
   const actual = await importOriginal<typeof SDK>();

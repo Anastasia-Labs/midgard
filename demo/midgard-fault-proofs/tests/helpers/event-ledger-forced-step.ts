@@ -9,12 +9,10 @@ import type * as SDK from "@al-ft/midgard-sdk";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../../src/evidence/canonical-block-evidence.js";
 import { ledgerEntriesRoot, type LedgerEntry } from "../../src/ledger-at.js";
-import {
-  admitCompleteCanonicalReplayPredecessor,
-  type CompleteCanonicalReplay,
-  createCompleteCanonicalReplayUnion,
-} from "../../src/workflow/complete-replay.js";
-import { buildDecodingBlockFixture } from "../support/native-script-decoding-emulator.js";
+import { admitCompleteCanonicalReplayPredecessor } from "../../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { createCompleteCanonicalReplayUnion } from "../../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
+import type { CompleteCanonicalReplay } from "../../src/workflow/complete-replay.replay-context-identity.js";
+import { buildDecodingBlockFixture } from "../support/native-script-decoding-emulator.build-decoding-block-fixture.js";
 import {
   authenticatedHeaderObservation,
   buildFixtureTransaction,

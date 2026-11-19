@@ -1,13 +1,15 @@
 import { accountAttemptCollateral } from "./collateral-accounting.js";
 import { collateralForfeitureEvent } from "./collateral-forfeiture.js";
 import {
-  abandonWorkflowFundingReservationTransaction,
   forfeitWorkflowFundingCollateral,
-  readWorkflowFundingRecordedSignedTransaction,
-  readWorkflowFundingRecovery,
   restoreWorkflowFundingCollateral,
-  type WorkflowJournalWriter,
+} from "./funding-reservation-permit.apply-transition.js";
+import {
+  abandonWorkflowFundingReservationTransaction,
+  readWorkflowFundingRecovery,
 } from "./funding-reservation-permit.js";
+import { readWorkflowFundingRecordedSignedTransaction } from "./funding-reservation-permit.read-workflow-funding-recovery.js";
+import type { WorkflowJournalWriter } from "./funding-reservation-permit.workflow-journal-writer.js";
 import type {
   FraudProofWorkflowJournalEntry,
   FraudProofWorkflowJournalEvent,

@@ -6,13 +6,13 @@ import { describe, expect, it } from "vitest";
 import {
   applyProtectedOutputSignerMissingScripts,
   PROTECTED_OUTPUT_SIGNER_MISSING_BLUEPRINT_TITLES,
-} from "../src/protected-output-signer-missing/index.js";
+} from "../src/protected-output-signer-missing/contracts.js";
 import {
-  makeFaultProofEmulatorHarness,
-  publishPlainReferenceScriptUtxo,
   readBlueprint,
   realBlueprintPath,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/emulator/blueprints.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
+import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 
 const blueprint = readBlueprint(realBlueprintPath);
 

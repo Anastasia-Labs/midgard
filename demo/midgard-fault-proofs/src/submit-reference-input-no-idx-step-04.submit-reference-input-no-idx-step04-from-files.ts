@@ -1,8 +1,8 @@
-import { resolveFaultProofFieldGrammarFromDeploymentInfo } from "./field-grammar-certificate.js";
+import { resolveFaultProofFieldGrammarFromDeploymentInfo } from "./field-grammar-certificate.resolve-fault-proof-field-grammar-from-deployment-info.js";
 import {
   parseNativeTxCompactCbor,
   parseNativeTxWitnessSetCompactCbor,
-} from "./field-opening.js";
+} from "./field-opening.plan-fault-proof-field-opening.js";
 import {
   makeLucidForSubmit,
   readJsonFile,

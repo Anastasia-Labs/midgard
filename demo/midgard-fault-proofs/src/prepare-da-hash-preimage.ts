@@ -36,11 +36,12 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
 import { stringifyJson } from "./json-file.js";
-import { buildTrieView, requireProof } from "./prepare-double-spend.js";
 import {
-  fetchRetainedDaPayloadByHeaderHash,
-  type RetainedDaPayloadSource,
-} from "./transition-trace/fetch.js";
+  buildTrieView,
+  requireProof,
+} from "./prepare-double-spend.resolve-double-spend-pair.js";
+import type { RetainedDaPayloadSource } from "./transition-trace/fetch.admit-retained-da-provenance.js";
+import { fetchRetainedDaPayloadByHeaderHash } from "./transition-trace/fetch.fetch-retained-da-payload-by-header-hash.js";
 import {
   commitCountedRoot,
   keyValuePhasRootWithCount,

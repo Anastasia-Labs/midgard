@@ -21,7 +21,7 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { parseHex, requireRecord } from "./json-file.js";
-import { midgardTxOutputFromCanonicalCbor } from "./prepare-input-no-idx.js";
+import { midgardTxOutputFromCanonicalCbor } from "./prepare-input-no-idx.midgard-tx-output-from-canonical-cbor.js";
 import {
   outRefLabel,
   type ResolvedProverSigner,

@@ -10,14 +10,12 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Metric } from "effect";
 
 import { fullScanCounter as confirmedLedgerFullScanCounter } from "../database/confirmedLedger.js";
-import {
-  buildNativeRootProbe,
-  deleteMpfStore,
-  MidgardMpf,
-  setMpfScratchBuild,
-  type TransitionTraceSourceEvent,
-} from "../mpf/index.js";
-import { ProductionNativeMpfOwnerService } from "../services/mpf-native-owner/index.js";
+import { setMpfScratchBuild } from "../mpf/engine-config.js";
+import { deleteMpfStore } from "../mpf/ledger-hydration.js";
+import { MidgardMpf } from "../mpf/store.midgard-mpf.js";
+import type { TransitionTraceSourceEvent } from "../mpf/trace-events.js";
+import { buildNativeRootProbe } from "../mpf/transition-trace.build-native-root-probe.js";
+import { ProductionNativeMpfOwnerService } from "../services/mpf-native-owner/service.production-native-mpf-owner-service.js";
 import {
   buildCanonicalFixtureEntries,
   canonicalOutrefCborFromLabel,

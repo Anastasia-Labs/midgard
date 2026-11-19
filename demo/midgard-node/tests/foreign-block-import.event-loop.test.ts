@@ -6,7 +6,7 @@
  * works, so the longest stretch without one is about one run's work, not
  * the whole rebuild's.
  */
-import { evaluateMidgardCekVerdict } from "@al-ft/midgard-validation";
+import { evaluateMidgardCekVerdict } from "@al-ft/midgard-validation/phase-b";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 

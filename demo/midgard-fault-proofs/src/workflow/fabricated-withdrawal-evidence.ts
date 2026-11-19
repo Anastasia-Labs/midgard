@@ -23,8 +23,8 @@ import {
 import {
   type FabricatedWithdrawalL1Witness,
   FabricatedWithdrawalRejection,
-  prepareFabricatedWithdrawalFromCommittedLeaves,
-} from "../prepare-fabricated-withdrawal.js";
+} from "../prepare-fabricated-withdrawal.classify-fabricated-withdrawal-fault.js";
+import { prepareFabricatedWithdrawalFromCommittedLeaves } from "../prepare-fabricated-withdrawal.prepare-fabricated-withdrawal-from-committed-leaves.js";
 import type { CanonicalViolationDetection } from "./classification.js";
 import { withdrawalSubject } from "./detection-subject.js";
 

@@ -6,14 +6,14 @@
  * a case its defender won, references published under their roles' tokens,
  * the operator's later commits, and the emulator's transaction limits, and
  * the longest-running passing script admission takes. */
-export { completeCanonicalReplayPredecessorLedger } from "../../src/workflow/complete-replay.js";
+export { completeCanonicalReplayPredecessorLedger } from "../../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 export {
   ADMITTED_TX_EX_UNITS,
   LONGEST_PASSING_SCRIPT,
 } from "../helpers/plutus-execution-block-fixture.js";
+export { network } from "./emulator/blueprints.js";
 export { publishAuthenticatedValidationDisputeControl } from "./emulator/reference-scripts.js";
 export { enrollSuccessor } from "./rotated-successor-operator.js";
-export { network } from "./submit-init-emulator-shared.js";
 export { l1SlotConfig } from "./validation-trace-claim-material.js";
 export {
   activeNodeOf,

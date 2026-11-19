@@ -6,8 +6,8 @@ import {
 import {
   deriveMidgardForcedTxProofSource,
   encodeMidgardForcedTxCanonical,
+  materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
-import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { Data, getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
@@ -25,8 +25,8 @@ import {
   nonExistentInputForcedSourceMaterial,
   type PreparedNonExistentInputWrongfulRejection,
 } from "../src/non-existent-input/wrongful-rejection.js";
-import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
-import { buildInit } from "../src/submit-init.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import { buildInit } from "../src/submit-init.submit-init.js";
 import {
   buildCountedRoot,
   commitCountedRoot,
@@ -40,16 +40,14 @@ import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { withCommitSlot } from "./support/emulator/header-fixtures.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
-import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
 import { deepProofChunks } from "./support/input-existence-deep-chunks.js";
 import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
 import { submitRawNonExistentInputForcedStep } from "./support/non-existent-input-raw-step.js";
-import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
-import {
-  publishPlainReferenceScriptUtxo,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
+import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init/forced-transitions.js";
 import {
   buildAndSubmitUnjournaled,
   certifyCarriageUnjournaled,

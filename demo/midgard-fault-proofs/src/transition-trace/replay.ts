@@ -14,10 +14,8 @@ import { classifyCommittedFieldShapeFields } from "../committed-field-shape/prep
 import { type CheckedLedger } from "../ledger-at.js";
 import { transactionHasNonCanonicalMintItem } from "../mint-item-non-canonical/replay.js";
 import { replayPrerequisiteFailure } from "../workflow/replay-prerequisite.js";
-import {
-  detectTransitionTraceFaults,
-  type TransitionTraceDetectionEvidence,
-} from "./detect.js";
+import type { TransitionTraceDetectionEvidence } from "./detect.detect-count-faults.js";
+import { detectTransitionTraceFaults } from "./detect.js";
 import {
   reopenTransitionDeposit,
   type TransitionDepositOpening,
@@ -26,7 +24,7 @@ import { createTransitionTraceLedgerReplay } from "./ledger-replay.js";
 import {
   eventKeyFingerprint,
   type TransitionTraceReconstruction,
-} from "./reconstruct.js";
+} from "./reconstruct.transition-trace-reconstruction.js";
 
 /** Exact L1 event preimages; the installed caller must admit their raw snapshot
  * before invoking this pure replay builder. This type grants no replay authority. */

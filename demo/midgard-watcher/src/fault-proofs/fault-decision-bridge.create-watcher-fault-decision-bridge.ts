@@ -18,19 +18,15 @@ import {
   type BridgeDependencies,
   type WatcherFaultDecisionBridge,
 } from "./fault-decision-bridge.selected-target.js";
-import {
-  openWatcherFaultDecisionJournal,
-  type WatcherFaultDecisionJournal,
-} from "./fault-decision-journal.js";
-import {
-  assertWatcherFaultProofApplication,
-  WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
-  type WatcherFaultProofApplication,
-} from "./fault-proof-application.js";
+import type { WatcherFaultDecisionJournal } from "./fault-decision-journal.exact-record.js";
+import { openWatcherFaultDecisionJournal } from "./fault-decision-journal.js";
+import { assertWatcherFaultProofApplication } from "./fault-proof-application.build-common-infrastructure.js";
+import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "./fault-proof-application.js";
+import { type WatcherFaultProofApplication } from "./fault-proof-application.production-dependencies.js";
 import {
   watcherFaultProofDeadline,
   type WatcherFaultProofSupervisor,
-} from "./fault-proof-supervisor.js";
+} from "./fault-proof-supervisor.validate-job.js";
 import { openWatcherJournalDatabase } from "./watcher-journal-database.js";
 import { watcherUnprovenFaultMerges } from "./watcher-unproven-fault-merges.js";
 

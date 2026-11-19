@@ -1,7 +1,11 @@
 import "@lucid-evolution/lucid";
 import "effect";
 import "vitest";
-import "../src/transactions/utils.js";
+import "../src/transactions/utils.await-required-output-visibility.js";
+import "../src/transactions/utils.submit-recovery-options.js";
+import "../src/transactions/utils.parse-structured-outside-validity-interval-details.js";
+import "../src/transactions/utils.submit-signed-tx-with-recovery.js";
+import "../src/transactions/utils.await-submitted-transaction-confirmation.js";
 import "./transactions-utils.parse-outside-validity-interval-details.js";
 import "./transactions-utils.validity-window-submit-recovery.js";
 import "./transactions-utils.fake-sign-builder.js";

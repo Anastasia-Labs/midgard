@@ -11,18 +11,30 @@ import {
 import { Effect, Either } from "effect";
 import { runWithoutFollower } from "midgard-node/tests/helpers/intent-journal";
 import {
-  OperatorRegistrationRefusal,
   registerAndActivateOperatorProgram,
   registerOperatorProgram,
-} from "midgard-node/transactions/register-active-operator";
+} from "midgard-node/transactions/register-active-operator.activate-registered-operator-program";
+import { OperatorRegistrationRefusal } from "midgard-node/transactions/register-active-operator.to-lifecycle-result";
 import { describe, expect, it } from "vitest";
 
-import { buildResolvedInit } from "../src/submit-init.js";
+import { buildResolvedInit } from "../src/submit-init.submit-resolved-init.js";
 import {
   CURATED_EMULATOR_SEEDS,
   curatedKeyHash,
 } from "./support/curated-emulator.js";
+import { network } from "./support/emulator/blueprints.js";
+import {
+  alignUnixTimeToEmulatorSlotBoundary,
+  emulatorAccountFromSeed,
+} from "./support/emulator/emulator-context.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import {
+  makeHeader,
+  withPlaceholderDeposit,
+} from "./support/emulator/header-fixtures.js";
+import { publishFaultProofWitnessReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { onboardEmulatorOperator } from "./support/emulator/setup-tx.onboard-emulator-operator.js";
+import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
 import { buildProvedFixtureDeploymentContext } from "./support/submit-init/deployment.js";
 import { buildProvedDoubleSpendFixture } from "./support/submit-init/double-spend.js";
 import {
@@ -30,16 +42,6 @@ import {
   submitRemovalForFixture,
 } from "./support/submit-init/removal.js";
 import { EMULATOR_HEADER_CLOCK_HEADROOM_MS } from "./support/submit-init/successor.js";
-import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  emulatorAccountFromSeed,
-  makeHeader,
-  network,
-  onboardEmulatorOperator,
-  publishFaultProofWitnessReferenceScripts,
-  submitSetupTx,
-  withPlaceholderDeposit,
-} from "./support/submit-init-emulator-shared.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 type DeploymentContext = Awaited<

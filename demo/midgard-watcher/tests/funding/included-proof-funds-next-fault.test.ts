@@ -19,15 +19,15 @@ import {
 } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import { afterEach, expect, it, vi } from "vitest";
 
-import { openWatcherFaultDecisionJournal } from "../../src/fault-proofs/fault-decision-journal.js";
-import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.js";
+import { openWatcherFaultDecisionJournal } from "../../src/fault-proofs/fault-decision-journal.create-journal.js";
+import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
+import { setupFundingRecoveryFixture } from "../support/fault-proof-funding-fixture.setup-funding-recovery-fixture.js";
 import {
   cleanupFundingRecoveryFixtures,
   deploymentIdentity,
   finality,
-  setupFundingRecoveryFixture,
   sourcesFor,
-} from "../support/fault-proof-funding-fixture.js";
+} from "../support/fault-proof-funding-fixture.sources-for.js";
 import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 import { correctionOn } from "./included-correction.js";
 

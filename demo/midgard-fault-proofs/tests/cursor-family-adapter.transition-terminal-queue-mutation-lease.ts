@@ -3,10 +3,8 @@ import "./cursor-family-adapter.production-cursor-family-adapter-v1.js";
 import { describe, expect, it, vi } from "vitest";
 
 import { TRANSITION_TRACE_CURSOR_SPEC } from "../src/transition-trace/workflow-spec.js";
-import {
-  createCursorFamilyWorkflowAdapter,
-  CURSOR_FAMILY_TRANSACTION_PORT,
-} from "../src/workflow/cursor-family-adapter.js";
+import { CURSOR_FAMILY_TRANSACTION_PORT } from "../src/workflow/cursor-family-adapter.admit-reference-scripts.js";
+import { createCursorFamilyWorkflowAdapter } from "../src/workflow/cursor-family-adapter.create-cursor-family-workflow-adapter.js";
 import type { FraudProofRawL1FamilyStage } from "../src/workflow/raw-l1-family-derivation.js";
 import {
   context,

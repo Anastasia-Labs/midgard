@@ -7,8 +7,8 @@ import { PgClient } from "@effect/sql-pg";
 import { Duration, Effect, Layer, Redacted } from "effect";
 
 import { MigrationRunner } from "../../src/database/index.js";
+import { NodeConfig } from "../../src/services/config.make-config.js";
 import { Database } from "../../src/services/database.js";
-import { NodeConfig } from "../../src/services/index.js";
 import { TEST_DATABASE_PREFIX } from "../test-env.js";
 
 const maintenanceLayer = (database: string) =>

@@ -5,13 +5,11 @@
  * confirmation alike. An L1 wait still reaches the caller unchanged. */
 import { describe, expect, it } from "vitest";
 
-import {
-  type FraudProofWorkflowJournalEntry,
-  MemoryFraudProofWorkflowJournalStore,
-} from "../src/workflow/journal.js";
+import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
+import type { FraudProofWorkflowJournalEntry } from "../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import { FraudProofL1UnavailableError } from "../src/workflow/l1-source.js";
 import type { FraudProofFamilyWorkflowAdapter } from "../src/workflow/orchestrator.js";
-import { FraudProofRawL1DerivationError } from "../src/workflow/raw-l1-family-derivation.js";
+import { FraudProofRawL1DerivationError } from "../src/workflow/raw-l1-family-derivation.state-queue-topology.js";
 import {
   canonicalEvidence,
   makeAdapter,

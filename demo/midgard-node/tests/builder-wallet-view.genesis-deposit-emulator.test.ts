@@ -23,20 +23,16 @@ import { Effect } from "effect";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 
 import { submitGenesisDeposits } from "../src/genesis.js";
-import {
-  Lucid as LucidService,
-  MidgardContracts,
-  NodeConfig,
-} from "../src/services/index.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
 import {
   IntentJournalWithoutFollower,
   openPlan,
 } from "../src/services/intent-journal.js";
+import { Lucid as LucidService } from "../src/services/lucid.js";
+import { MidgardContracts } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
+import { ensureAtomicProtocolInitReferenceScriptsProgram } from "../src/transactions/initialization.derive-operator-da-params.js";
 import { completeAndSubmit } from "../src/transactions/initialization.fetch-configured-nonce-utxo.js";
-import {
-  buildAtomicProtocolInitTxProgram,
-  ensureAtomicProtocolInitReferenceScriptsProgram,
-} from "../src/transactions/initialization.js";
+import { buildAtomicProtocolInitTxProgram } from "../src/transactions/initialization.fetch-protocol-deployment-status.js";
 import { ensureEventHistoryRewardAccountsRegisteredProgram } from "../src/transactions/script-reward-registration.js";
 import { selectNodeWallet } from "../src/transactions/utils.wallet-view.js";
 import {

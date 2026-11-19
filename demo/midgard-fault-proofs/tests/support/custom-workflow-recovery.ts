@@ -3,15 +3,11 @@ import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import { CML } from "@lucid-evolution/lucid";
 import { expect, vi } from "vitest";
 
-import {
-  bindWorkflowActuationJournal,
-  createWorkflowReconciliationPermitController,
-} from "../../src/workflow/actuation-permit.js";
-import { COMPLETE_CANONICAL_REPLAY } from "../../src/workflow/complete-replay.js";
-import {
-  createCursorFamilyWorkflowAdapter,
-  CURSOR_FAMILY_TRANSACTION_PORT,
-} from "../../src/workflow/cursor-family-adapter.js";
+import { bindWorkflowActuationJournal } from "../../src/workflow/actuation-permit.assert-workflow-actuation-permit-identity.js";
+import { createWorkflowReconciliationPermitController } from "../../src/workflow/actuation-permit.create-workflow-reconciliation-permit-controller.js";
+import { COMPLETE_CANONICAL_REPLAY } from "../../src/workflow/complete-replay.replay-context-identity.js";
+import { CURSOR_FAMILY_TRANSACTION_PORT } from "../../src/workflow/cursor-family-adapter.admit-reference-scripts.js";
+import { createCursorFamilyWorkflowAdapter } from "../../src/workflow/cursor-family-adapter.create-cursor-family-workflow-adapter.js";
 import {
   cursorFamilyObservation,
   type CursorFamilySpec,
@@ -25,18 +21,18 @@ import {
   HEADER_CLASSIFIER,
   HEADER_DECISION,
   type HeaderFaultDecision,
-} from "../../src/workflow/header-classifier.js";
+} from "../../src/workflow/header-classifier.authenticated-state-queue-observation-digest.js";
 import type { InstalledFraudProofCategory } from "../../src/workflow/installed-categories.js";
+import { MemoryFraudProofWorkflowJournalStore } from "../../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
+import type { FraudProofWorkflowJournalEvent } from "../../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import {
   computeFraudProofWorkflowId,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-  type FraudProofWorkflowJournalEvent,
   type FraudProofWorkflowTerminal,
   journalJsonDigest,
-  MemoryFraudProofWorkflowJournalStore,
   normalizeJournalJson,
-} from "../../src/workflow/journal.js";
+} from "../../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import type { FraudProofWorkflowRunResult } from "../../src/workflow/orchestrator.js";
 import { type FraudProofRawL1FamilyStage } from "../../src/workflow/raw-l1-family-derivation.js";
 import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../../src/workflow/raw-l1-publication-observation.js";

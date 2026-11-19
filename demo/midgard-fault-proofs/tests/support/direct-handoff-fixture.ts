@@ -7,14 +7,14 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { prepareDirectScriptMaterial } from "../../src/direct-script-derivation/index.js";
-import { reconstructDaPayload } from "../../src/transition-trace/reconstruct.js";
+import { prepareDirectScriptMaterial } from "../../src/direct-script-derivation/material.js";
+import { reconstructDaPayload } from "../../src/transition-trace/reconstruct.reconstruct-da-payload.js";
 import {
   buildCanonicalBlockFixture,
   buildFixtureTransaction,
 } from "../helpers/canonical-block-evidence-fixture.js";
 import { directSourceBatchFixture } from "./direct-source-fixture.js";
-import { network } from "./submit-init-emulator-shared.js";
+import { network } from "./emulator/blueprints.js";
 
 const emptyOrReceiveMaterial = async (empty: boolean) => {
   const outputs = empty

@@ -5,13 +5,12 @@ import { describe, expect, it } from "vitest";
 
 import { buildLinearFaultCancel } from "../src/linear-fault-cancel.js";
 import { MINT_AUTHORIZATION_CATEGORY_LABEL } from "../src/mint-authorization/contracts.js";
-import {
-  buildMintAuthorizationStep01,
-  buildMintAuthorizationStep02,
-  buildMintAuthorizationStep03WitnessAbsence,
-  buildMintAuthorizationStep04AdvanceComplete,
-} from "../src/mint-authorization/index.js";
-import { buildResolvedInit } from "../src/submit-init.js";
+import { buildMintAuthorizationStep01 } from "../src/mint-authorization/submit-mint-authorization-step-01.js";
+import { buildMintAuthorizationStep02 } from "../src/mint-authorization/submit-mint-authorization-step-02.submit-mint-authorization-step02.js";
+import { buildMintAuthorizationStep03WitnessAbsence } from "../src/mint-authorization/submit-mint-authorization-step-03.submit-mint-authorization-step03-witness-absence.js";
+import { buildMintAuthorizationStep04AdvanceComplete } from "../src/mint-authorization/submit-mint-authorization-step-04.js";
+import { buildResolvedInit } from "../src/submit-init.submit-resolved-init.js";
+import { network } from "./support/emulator/blueprints.js";
 import {
   buildMintAuthorizationSubject,
   makeMintAuthorizationEmulatorHarness,
@@ -19,7 +18,6 @@ import {
   setupMintAuthorizationScenario,
   smallMintItemCbors,
 } from "./support/mint-authorization-emulator.js";
-import { network } from "./support/submit-init-emulator-shared.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,

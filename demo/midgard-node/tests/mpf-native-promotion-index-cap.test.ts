@@ -13,12 +13,8 @@ import {
   NATIVE_MPF_PROMOTION_INDEX_CAP_SOURCE,
   nativeMpfOwnerSupervisorFiber,
 } from "../src/fibers/native-mpf-owner-supervisor.js";
-import { Globals } from "../src/services/globals.js";
+import { Globals } from "../src/services/globals.globals.js";
 import { activeLivenessReasons } from "../src/services/liveness-halt.js";
-import {
-  encodeNativeMpfEventLog,
-  ProductionNativeMpfOwnerService,
-} from "../src/services/mpf-native-owner/index.js";
 import { NativeMpfPromotionIndexCapExceeded } from "../src/services/mpf-native-owner/protocol.js";
 import { encodeStoredNode } from "../src/services/mpf-native-owner/service.encode-stored-node.js";
 import {
@@ -32,6 +28,8 @@ import {
   type StoredNode,
   type StoredValue,
 } from "../src/services/mpf-native-owner/service.normalize-owner-options.js";
+import { encodeNativeMpfEventLog } from "../src/services/mpf-native-owner/service.parse-promotion-records.js";
+import { ProductionNativeMpfOwnerService } from "../src/services/mpf-native-owner/service.production-native-mpf-owner-service.js";
 import { prepareEventFlatDigest } from "../src/workers/utils/mpf-event-flat-digest.js";
 import { nativeOwnerBinaryPath } from "./helpers/native-owner-binary.js";
 

@@ -22,9 +22,9 @@ import {
   PublicationJournal,
   type PublicationTransaction,
   publicationTransaction,
-  publishReferenceChain,
-  ReferencePublicationChain,
-} from "./helpers/reference-publication-chain.js";
+} from "./helpers/reference-publication-chain.publication-journal.js";
+import { publishReferenceChain } from "./helpers/reference-publication-chain.publish-reference-chain.js";
+import { ReferencePublicationChain } from "./helpers/reference-publication-chain.reference-publication-chain.js";
 
 const fixture = async (count = 5, largeReferences = false) => {
   const account = generateEmulatorAccount({ lovelace: 1_000_000_000_000n });

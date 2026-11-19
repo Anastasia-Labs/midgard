@@ -11,20 +11,20 @@ import {
 import { Effect } from "effect";
 import { expect } from "vitest";
 
-import { createDirectFieldPlan } from "../../src/direct-script-derivation/index.js";
+import { createDirectFieldPlan } from "../../src/direct-script-derivation/field-plan.js";
 import {
   directCarriagePublisherFunding,
   publishDirectReceiveFieldCarriage,
 } from "./direct-receive-field-carriage.js";
 import type { DirectSourceResourceFixture } from "./direct-source-resource-fixture.js";
 import {
-  captureEmulatorSubmission,
-  EMULATOR_PROTOCOL_PARAMETERS,
   network,
-  publishPlainReferenceScriptUtxo,
   readBlueprint,
   realBlueprintPath,
-} from "./submit-init-emulator-shared.js";
+} from "./emulator/blueprints.js";
+import { captureEmulatorSubmission } from "./emulator/measurement.js";
+import { EMULATOR_PROTOCOL_PARAMETERS } from "./emulator/protocol-parameters.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 
 /** A fresh emulator holding the seeded source thread at the start script, the
  * four source scripts published as references, and the field-0 carriage. The

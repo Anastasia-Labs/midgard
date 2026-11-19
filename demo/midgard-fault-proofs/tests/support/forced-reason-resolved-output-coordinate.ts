@@ -10,7 +10,7 @@ import { expect } from "vitest";
 import {
   prepareResolvedOutputAbsentInputEvidence,
   type ResolvedOutputAbsentInputEvidence,
-} from "../../src/resolved-output-non-canonical/index.js";
+} from "../../src/resolved-output-non-canonical/resolved-output-non-canonical.prepare-resolved-output-non-canonical-evidence.js";
 import { makeNativeTx } from "./emulator/native-tx.js";
 import {
   signedKeyOutput,
@@ -18,13 +18,13 @@ import {
 } from "./forced-reason-signed-native-tx.js";
 import {
   buildSubjectTransaction,
-  commitBlock,
   descriptorFor,
   makeResolvedOutputContext,
-  makeResolvedOutputStages,
   type PriorLedgerFixture,
   smallMalformedOutput,
-} from "./resolved-output-non-canonical-emulator.js";
+} from "./resolved-output-non-canonical-emulator.build-prior-ledger.js";
+import { commitBlock } from "./resolved-output-non-canonical-emulator.commit-block.js";
+import { makeResolvedOutputStages } from "./resolved-output-non-canonical-emulator.make-resolved-output-stages.js";
 
 /**
  * Fixtures for forced InputSpentOutputNonCanonical coordinates: a prior

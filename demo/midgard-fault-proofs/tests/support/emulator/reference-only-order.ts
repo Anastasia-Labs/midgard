@@ -22,14 +22,11 @@ import { Effect } from "effect";
 import { expect, vi } from "vitest";
 
 import { publishForcedOrderCarriage } from "../forced-order-settlement.js";
-import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  makeFaultProofEmulatorHarness,
-  makeHeader,
-  publishPlainReferenceScriptUtxo,
-  submitSetupTx,
-  withPlaceholderDeposit,
-} from "../submit-init-emulator-shared.js";
+import { alignUnixTimeToEmulatorSlotBoundary } from "./emulator-context.js";
+import { makeFaultProofEmulatorHarness } from "./harness.js";
+import { makeHeader, withPlaceholderDeposit } from "./header-fixtures.js";
+import { publishPlainReferenceScriptUtxo } from "./reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { submitSetupTx } from "./setup-tx.submit-setup-tx.js";
 
 export const mintReferenceOnlyOrder = async (
   capture: (label: string, cbor: string, scope: unknown) => void,

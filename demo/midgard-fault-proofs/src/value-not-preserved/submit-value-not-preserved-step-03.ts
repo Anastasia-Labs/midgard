@@ -21,11 +21,11 @@
  * COMPLETE reference-input set (carriage publications, any injected UTxO,
  * and the step's own reference script).
  */
-import type {
-  MidgardMintPolicyItem,
-  MidgardTxOutput,
+import {
+  encodeMidgardFieldItems,
+  type MidgardMintPolicyItem,
+  type MidgardTxOutput,
 } from "@al-ft/midgard-core";
-import { encodeMidgardFieldItems } from "@al-ft/midgard-core";
 import {
   MIDGARD_FIELD_INDEX,
   requireInputIndex,
@@ -45,11 +45,13 @@ import {
   isPrerequisiteTurn,
 } from "../fault-proof-turn.js";
 import {
-  faultProofFieldCarriage,
   type FaultProofFieldOpeningPlan,
   planFaultProofFieldOpening,
+} from "../field-opening.plan-fault-proof-field-opening.js";
+import {
+  faultProofFieldCarriage,
   publishFaultProofFieldCarriage,
-} from "../field-opening.js";
+} from "../field-opening.publish-fault-proof-field-carriage.js";
 import { stepWalletFunding } from "../funding/plain-funding-output.js";
 import { type ResolvedProverSigner } from "../runtime.js";
 import { finishStep } from "../step-completion.js";
@@ -59,10 +61,10 @@ import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
-import { workflowReferenceScriptsUsedByTransaction } from "../workflow/transaction-boundary.js";
 import {
   type LocallyEvaluatedTransaction,
   type UnjournaledSubmission,
+  workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary.js";
 import type { ValueNotPreservedContracts } from "./contracts.js";
 import { claimedQuantityOfValue } from "./evidence.js";

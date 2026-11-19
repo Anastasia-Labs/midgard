@@ -7,11 +7,9 @@ import {
   computeRetentionCutoff,
 } from "../src/database/retention-policy.js";
 import { retentionSweepAction } from "../src/fibers/retention-sweeper.js";
-import {
-  ContractDeploymentIdentity,
-  Globals,
-  NodeConfig,
-} from "../src/services/index.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
+import { Globals } from "../src/services/globals.globals.js";
+import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import { header } from "./helpers/own-journal-fixture.js";
 import { insertQueueTerminal } from "./helpers/queue-terminal-rows.js";
 import {

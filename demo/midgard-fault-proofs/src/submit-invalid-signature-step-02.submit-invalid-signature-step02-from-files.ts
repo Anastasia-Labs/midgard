@@ -1,4 +1,4 @@
-import { parseNativeTxCompactCbor } from "./field-opening.js";
+import { parseNativeTxCompactCbor } from "./field-opening.plan-fault-proof-field-opening.js";
 import { parseSafeNonNegativeInteger } from "./json-file.js";
 import {
   makeLucidForSubmit,

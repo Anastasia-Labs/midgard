@@ -21,10 +21,10 @@ import {
 } from "../../src/validation-trace-dispute/one-step-references.js";
 import type { ValidationTraceOneStepReferences } from "../../src/validation-trace-dispute/transactions.js";
 import { VALIDATION_TRACE_DISPUTE_REFERENCE_SCRIPTS } from "../../src/validation-trace-dispute/workflow.js";
-import { SCRIPT_DECODE_SPEND_ROLE } from "../../src/workflow/script-decode-prerequisite.js";
+import { SCRIPT_DECODE_SPEND_ROLE } from "../../src/workflow/script-decode-prerequisite.deployment.js";
+import { publishRemovalReferenceScripts } from "./emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
 import { drainProver } from "./installed-prover-wallet.js";
 import { scriptDecodeDeploymentOf } from "./script-decode-emulator.js";
-import { publishRemovalReferenceScripts } from "./submit-init-emulator-shared.js";
 import { FUNDED } from "./validation-trace-dispute-funded-verify-source.js";
 import {
   oneStepScripts,

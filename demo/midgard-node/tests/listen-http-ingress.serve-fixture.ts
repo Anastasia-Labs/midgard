@@ -15,7 +15,7 @@ import {
   createHttpIngress,
   withHttpIngress,
 } from "../src/commands/listen-http-ingress.js";
-import { NodeConfig } from "../src/services/config.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
 import {
   DEFAULT_HTTP_RATE_LIMITS,
   type HttpRateLimitPolicy,

@@ -10,17 +10,15 @@
  * `ImportCheckEvaluator`.
  */
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import {
-  type LocalScriptEvalResult,
-  type MidgardCekVerdictRequest,
-} from "@al-ft/midgard-validation";
+import type { MidgardCekVerdictRequest } from "@al-ft/midgard-validation/phase-b";
+import type { LocalScriptEvalResult } from "@al-ft/midgard-validation/types";
 import { Effect } from "effect";
 
 import {
   type ImportCheckLane,
   ValidationJobTimeoutError,
   type ValidationPoolService,
-} from "../services/validation-pool.js";
+} from "../services/validation-pool.bundled-worker-exec-argv.js";
 
 /**
  * - `evaluated`: the evaluator's result, compared with the declared budget

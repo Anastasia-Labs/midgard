@@ -13,8 +13,8 @@ import { createWatcherRuntimeReplayHost } from "../../src/runtime/watcher-runtim
 import {
   computeWatcherRuleBundleCommitment,
   makeWatcherCanonicalRuleBundle,
-} from "../../src/verification/rule-bundle.js";
-import { WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS } from "../support/deployment-authority-fixture.js";
+} from "../../src/verification/rule-bundle.parse-watcher-rule-bundle.js";
+import { WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS } from "../support/deployment-authority-fixture.build-watcher-authority-contracts.js";
 import { followerUserEventsDeployment } from "../support/follower-user-events-fixture.js";
 import { openStore } from "../support/l1-follower-store-reset.js";
 

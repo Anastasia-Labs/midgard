@@ -18,7 +18,7 @@
  * move of ours lands within the transaction limits. */
 import { hashMidgardValidationMachineState } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
-import { MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES } from "@al-ft/midgard-validation";
+import { MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES } from "@al-ft/midgard-validation/cek-constant";
 import { plutusV3ScriptWitness } from "@al-ft/midgard-validation/tests/validation-fixtures";
 import { credentialToAddress, Data } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -36,12 +36,12 @@ import {
 import { planValidationTraceThread } from "../src/validation-trace-dispute/one-step-plan.js";
 import { validationTraceDefenseDeadlineMs } from "../src/validation-trace-dispute/waiting.js";
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
+import { network } from "./support/emulator/blueprints.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   MAXIMUM_ITEM_BYTES,
   plutusItem,
 } from "./support/script-decode-plutus-max-shape.js";
-import { network } from "./support/submit-init-emulator-shared.js";
 import {
   type ComputeConstantStep,
   computeConstantStep,

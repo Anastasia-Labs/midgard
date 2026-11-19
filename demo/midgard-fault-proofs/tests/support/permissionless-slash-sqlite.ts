@@ -11,23 +11,23 @@ import {
 } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import { readFraudSlashFundingAuthority } from "../../src/remove-fraudulent-block.js";
-import { createWorkflowActuationPermitController } from "../../src/workflow/actuation-permit.js";
-import { DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY } from "../../src/workflow/complete-replay.js";
+import { readFraudSlashFundingAuthority } from "../../src/remove-fraudulent-block.assert-exact-fraud-slash-lovelace-conservation.js";
+import { createWorkflowActuationPermitController } from "../../src/workflow/actuation-permit.create-workflow-reconciliation-permit-controller.js";
+import { DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY } from "../../src/workflow/complete-replay.detect-double-withdraws.js";
+import { confirmWorkflowFundingReservationTransaction } from "../../src/workflow/funding-reservation-permit.apply-transition.js";
 import {
-  assertWorkflowFundingReservationReadyToSubmit,
   beginWorkflowFundingReservationAction,
   bindWorkflowFundingReservationJournal,
-  confirmWorkflowFundingReservationTransaction,
-  createWorkflowFundingReservationPermit,
+} from "../../src/workflow/funding-reservation-permit.begin-workflow-funding-reservation-action.js";
+import { createWorkflowFundingReservationPermit } from "../../src/workflow/funding-reservation-permit.create-workflow-funding-reservation-permit.js";
+import {
+  assertWorkflowFundingReservationReadyToSubmit,
   prepareWorkflowFundingReservationTransaction,
   readWorkflowFundingRecovery,
-} from "../../src/workflow/funding-reservation-permit.js";
-import {
-  authenticatedStateQueueObservationDigest,
-  classifyHeader,
-  createHeaderClassifier,
-} from "../../src/workflow/header-classifier.js";
+} from "../../src/workflow/funding-reservation-permit.read-workflow-funding-recovery.js";
+import { authenticatedStateQueueObservationDigest } from "../../src/workflow/header-classifier.authenticated-state-queue-observation-digest.js";
+import { classifyHeader } from "../../src/workflow/header-classifier.classify-header.js";
+import { createHeaderClassifier } from "../../src/workflow/header-classifier.create-header-classifier.js";
 import {
   computeFraudProofReleaseEconomicsPolicyDigest,
   FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,

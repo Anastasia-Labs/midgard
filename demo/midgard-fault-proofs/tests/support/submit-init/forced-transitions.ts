@@ -31,20 +31,20 @@ import { Effect } from "effect";
 
 import {
   buildCountedRoot,
-  buildInvalidForcedTransactionNoOpWitness,
-  buildTransitionFaultProof,
   keyValuePhasRootWithCount,
-  reconstructDaPayload,
-} from "../../../src/index.js";
-import { fixtureBlockSlot } from "../emulator/header-fixtures.js";
-import { recordFixtureLedger } from "../fixture-ledger.js";
+} from "../../../src/transition-trace/phas.js";
+import { reconstructDaPayload } from "../../../src/transition-trace/reconstruct.reconstruct-da-payload.js";
+import { buildInvalidForcedTransactionNoOpWitness } from "../../../src/transition-trace/witnesses.build-omitted-due-l1-event-fault.js";
+import { buildTransitionFaultProof } from "../../../src/transition-trace/witnesses.build-out-of-window-source-event-fault.js";
 import {
+  fixtureBlockSlot,
   h32,
   makeHeader,
-  makeNativeTx,
   transitionTraceDaEntry,
   transitionTraceOutRef,
-} from "../submit-init-emulator-shared.js";
+} from "../emulator/header-fixtures.js";
+import { makeNativeTx } from "../emulator/native-tx.js";
+import { recordFixtureLedger } from "../fixture-ledger.js";
 import {
   outputReferenceCbor,
   sortedDaEntries,

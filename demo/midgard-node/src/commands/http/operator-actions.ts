@@ -1,11 +1,11 @@
 import { HttpServerResponse } from "@effect/platform";
 import { Effect } from "effect";
 
-import { blockCommitmentAction } from "../../fibers/index.js";
+import { blockCommitmentAction } from "../../fibers/block-commitment.block-commitment-action.js";
 import * as Genesis from "../../genesis.js";
-import { formatLandedStateQueue } from "../../l1-state-queue/index.js";
-import { MidgardContracts } from "../../services/index.js";
+import { formatLandedStateQueue } from "../../l1-state-queue/landed.js";
 import { readLandedStateQueue } from "../../services/landed-state-queue.js";
+import { MidgardContracts } from "../../services/midgard-contracts.make-midgard-contract-runtime.js";
 import * as Initialization from "../../transactions/initialization.js";
 import { failWith500 } from "../listen-response.js";
 import { COMMIT_ENDPOINT, INIT_ENDPOINT } from "./routes.js";

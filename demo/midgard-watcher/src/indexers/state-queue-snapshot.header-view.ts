@@ -5,7 +5,7 @@ import { blake2b } from "@noble/hashes/blake2.js";
 import {
   watcherSameCanonicalJson,
   watcherSha256CanonicalJson,
-} from "../storage/durable-store.js";
+} from "../storage/durable-store.canonical-json.js";
 
 export const WATCHER_STATE_QUEUE_SNAPSHOT_SCHEMA_VERSION =
   "midgard-watcher-state-queue-snapshot-v1" as const;

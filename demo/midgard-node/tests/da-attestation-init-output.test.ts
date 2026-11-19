@@ -8,7 +8,7 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { daAttestationInitOutputLovelace } from "../src/transactions/da-attestation.js";
+import { daAttestationInitOutputLovelace } from "../src/transactions/da-attestation.fetch-unattested-headers.js";
 import { TEST_AVAILABILITY_PARAMETERS } from "./helpers/availability-challenge.js";
 
 const COINS_PER_UTXO_BYTE = 4_310n;

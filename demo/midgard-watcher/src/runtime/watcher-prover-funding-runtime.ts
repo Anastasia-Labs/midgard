@@ -4,12 +4,10 @@ import {
   isWatcherJournalUnavailableError,
 } from "../fault-proofs/watcher-journal-database.js";
 import type { WatcherProtocolParameterRuntimeAuthority } from "../funding/prover-funding.js";
-import {
-  createWatcherProverFundingAuthorityFactory,
-  type WatcherProverFundingAuthorityFactory,
-} from "../funding/prover-funding-authority.js";
+import { createWatcherProverFundingAuthorityFactory } from "../funding/prover-funding-authority.create-watcher-prover-funding-authority-factory.js";
+import type { WatcherProverFundingAuthorityFactory } from "../funding/prover-funding-authority.watcher-prover-funding-authority-factory.js";
 import type { WatcherOrphanedReservationObserver } from "../funding/prover-funding-recovery.orphaned-reservation.js";
-import { openWatcherSqliteProverFundingReservationStore } from "../funding/sqlite-prover-funding-reservation-store.js";
+import { openWatcherSqliteProverFundingReservationStore } from "../funding/sqlite-prover-funding-reservation-store.unsafe-open-watcher-sqlite-prover-funding-reservation-store-for-test.js";
 import { watcherComputationThreadPolicyId } from "../l1-follower/deployment-follower.js";
 import type { VerifiedWatcherDeploymentIdentity } from "./deployment-identity.js";
 import { watcherDeploymentAppliedScriptHashes } from "./deployment-identity.watcher-deployment-availability-challenge-authority.js";

@@ -3,14 +3,14 @@
  * that builds its step and submits it with no journal (see
  * ./submit-unjournaled.ts).
  */
+import { buildMintAuthorizationStep01 } from "../../src/mint-authorization/submit-mint-authorization-step-01.js";
+import { buildMintAuthorizationStep02 } from "../../src/mint-authorization/submit-mint-authorization-step-02.submit-mint-authorization-step02.js";
+import { buildMintAuthorizationStep03WitnessAbsence } from "../../src/mint-authorization/submit-mint-authorization-step-03.submit-mint-authorization-step03-witness-absence.js";
 import {
-  buildMintAuthorizationStep01,
-  buildMintAuthorizationStep02,
-  buildMintAuthorizationStep03WitnessAbsence,
   buildMintAuthorizationStep04AdvanceComplete,
   buildMintAuthorizationStep04ResolveNext,
-  buildMintAuthorizationStep05,
-} from "../../src/mint-authorization/index.js";
+} from "../../src/mint-authorization/submit-mint-authorization-step-04.js";
+import { buildMintAuthorizationStep05 } from "../../src/mint-authorization/submit-mint-authorization-step-05.js";
 import { unjournaled, unjournaledTurns } from "./submit-unjournaled.js";
 
 export const submitMintAuthorizationStep01 = unjournaled(

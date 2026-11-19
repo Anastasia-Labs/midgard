@@ -11,7 +11,7 @@ import { describe, expect, onTestFinished } from "vitest";
 import {
   buildDeploymentManifest,
   parseDeploymentManifest,
-} from "../src/commands/contract-deployment-info.js";
+} from "../src/commands/contract-deployment-info.build-deployment-manifest.js";
 import {
   provenManifestL1Origin,
   runStateManifestL1Origin,
@@ -19,8 +19,8 @@ import {
 import {
   createDeploymentRunState,
   writeDeploymentRunStateAtomic,
-} from "../src/e2e/run-state.js";
-import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
+} from "../src/e2e/run-state.parse-deployment-run-state.js";
+import { AlwaysSucceedsContract } from "../src/services/always-succeeds.always-succeeds-contract.js";
 import {
   buildFinalizedContractDeploymentInfo,
   ONE_SHOT_TX_HASH,

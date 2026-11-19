@@ -1,4 +1,4 @@
-import { registerTransitionTraceFinalCases } from "./support/transition-trace-final-cases.js";
+import { registerTransitionTraceFinalCases } from "./support/transition-trace-final-cases.register-transition-trace-final-cases.js";
 
 // Accepted L2 transactions at the outputs, inputs and ledger-depth extremes the
 // direct replay must carry.

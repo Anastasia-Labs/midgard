@@ -11,10 +11,12 @@ import { describe, expect, it } from "vitest";
 import {
   createCompleteCanonicalReplayUnion,
   MINT_ITEM_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
+} from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
+import {
   TRANSACTION_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
   UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY,
   WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
-} from "../src/workflow/complete-replay.js";
+} from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import type { FixtureTransactionInput } from "./helpers/canonical-block-evidence-fixture.js";
 import { redeemerItem } from "./support/missing-redeemer-emulator.purposes.js";
 import {

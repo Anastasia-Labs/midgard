@@ -2,10 +2,8 @@ import {
   decodeMidgardTxOutput,
   encodeMidgardAddressText,
 } from "@al-ft/midgard-core/codec";
-import {
-  decodeMidgardSubmittedTxFromCanonicalCbor,
-  midgardOutRefToCbor,
-} from "@al-ft/midgard-validation";
+import { midgardOutRefToCbor } from "@al-ft/midgard-validation";
+import { decodeMidgardSubmittedTxFromCanonicalCbor } from "@al-ft/midgard-validation/ledger-tx/codec";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 

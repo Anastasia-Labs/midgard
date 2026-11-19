@@ -16,15 +16,17 @@ import {
 } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
+import type { DirectPurposeReplay } from "../../src/direct-purpose-family/artifact-family.js";
 import {
-  buildDirectPurposeTransition,
   type DirectPurposeContracts,
-  type DirectPurposeReplay,
   type DirectPurposeRole,
   directPurposeRoleIndex,
-  type DirectWalkFamily,
-  type DirectWalkProof,
-} from "../../src/direct-purpose-family/index.js";
+} from "../../src/direct-purpose-family/family.js";
+import { buildDirectPurposeTransition } from "../../src/direct-purpose-family/submit.js";
+import type {
+  DirectWalkFamily,
+  DirectWalkProof,
+} from "../../src/direct-purpose-family/walk-family.js";
 import { buildNativeTxBinding } from "../../src/native-tx-binding.js";
 import { buildForcedTransactionLeafMembershipProof } from "../../src/transition-trace/witnesses.build-source-membership-proof.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
@@ -36,9 +38,9 @@ import {
   driveDirectWalkThread,
   type RoleReference,
 } from "./direct-walk-emulator.js";
+import { network } from "./emulator/blueprints.js";
 import { expectOnchainRefusal } from "./emulator/expect-onchain-refusal.js";
 import type { MissingRedeemerScenario } from "./missing-redeemer-emulator.subject.js";
-import { network } from "./submit-init-emulator-shared.js";
 import { submitDirectPurposeTransition } from "./submit-unjournaled.direct-purpose.js";
 import { buildAndSubmitUnjournaled } from "./submit-unjournaled.js";
 

@@ -7,16 +7,15 @@ import {
   retrieveUnreconciledSignedSubmission,
 } from "../database/pendingBlockFinalizations.retrieve-applied-missing-da-payloads.js";
 import { DatabaseError } from "../database/utils/common.js";
+import { Globals } from "../services/globals.globals.js";
+import { withL1ControlPlane } from "../services/globals.l1-control-plane.js";
+import { Database, NodeConfig } from "../services/index.js";
+import type { IntentJournal } from "../services/intent-journal.js";
+import { Lucid } from "../services/lucid.js";
 import {
   ContractDeploymentIdentity,
-  Database,
-  Globals,
-  Lucid,
   MidgardContracts,
-  NodeConfig,
-  withL1ControlPlane,
-} from "../services/index.js";
-import type { IntentJournal } from "../services/intent-journal.js";
+} from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import { WorkerError } from "../workers/utils/common.js";
 import { buildAndSubmitCommitmentBlockAction } from "./block-commitment.build-and-submit-commitment-block-action.js";
 import { publishCommitAnchorReadiness } from "./block-commitment.commit-anchor-readiness.js";

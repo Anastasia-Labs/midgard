@@ -3,8 +3,8 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import { directRedeemerAt } from "../direct-script-derivation/index.js";
 import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
+import { directRedeemerAt } from "../direct-script-derivation/redeemers.js";
 import {
   type DirectPurposeFieldPlan,
   type DirectPurposeTransition,

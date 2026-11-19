@@ -2,7 +2,7 @@ import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { type ParsedArgs, usage } from "./bin.parsed-args.js";
-import { parseNetwork } from "./inspect-contracts.js";
+import { parseNetwork } from "./inspect-contracts.parse-contract-deployment-info.js";
 import { stringifyJson } from "./json-file.js";
 
 /**

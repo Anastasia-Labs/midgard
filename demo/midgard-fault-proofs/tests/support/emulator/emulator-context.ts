@@ -17,7 +17,7 @@ import {
 import { Effect } from "effect";
 import { expect } from "vitest";
 
-import { resolveProverSigner } from "../../../src/index.js";
+import { resolveProverSigner } from "../../../src/runtime.resolve-prover-signer.js";
 import { type Blueprint, getCompiledScript, network } from "./blueprints.js";
 
 /**

@@ -7,13 +7,11 @@ import { acceptedVerdictSubject } from "@al-ft/midgard-sdk";
 import { getAddressDetails } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildRedeemerCanonicityStep01Accepted,
-  buildRedeemerCanonicityStep02,
-  buildRedeemerCanonicityStep03,
-  prepareRedeemerCanonicityEvidence,
-} from "../src/redeemer-canonicity/index.js";
-import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
+import { prepareRedeemerCanonicityEvidence } from "../src/redeemer-canonicity/family.js";
+import { buildRedeemerCanonicityStep01Accepted } from "../src/redeemer-canonicity/submit-step-01.js";
+import { buildRedeemerCanonicityStep02 } from "../src/redeemer-canonicity/submit-step-02.js";
+import { buildRedeemerCanonicityStep03 } from "../src/redeemer-canonicity/submit-step-03.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import {
   emitFit,
   familyContracts,
@@ -24,7 +22,7 @@ import {
 import {
   type CommittedFieldShapeEmulatorHarness,
   setupCommittedFieldShapeScenario,
-} from "./support/committed-field-shape-emulator.js";
+} from "./support/committed-field-shape-emulator.committed-field-shape-scenario-material.js";
 import { network } from "./support/emulator/blueprints.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import {
@@ -33,14 +31,14 @@ import {
 } from "./support/emulator/header-fixtures.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
-import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
+import { createRecordingLeaseCoordinator } from "./support/submit-init/removal.js";
 import {
-  createRecordingLeaseCoordinator,
   emulatorSuccessorHeaderStart,
   submitSuccessorBlockTx,
-} from "./support/submit-init-emulator-fixtures.js";
-import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
+} from "./support/submit-init/successor.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,

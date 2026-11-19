@@ -6,7 +6,7 @@ import type { Status } from "../src/database/txAdmissions.js";
 import {
   makeRecentTxIds,
   type RecentTxId,
-} from "../src/services/admission-writer.js";
+} from "../src/services/admission-writer.recent-tx-ids.js";
 
 const STATUSES: readonly Status[] = [
   "queued",

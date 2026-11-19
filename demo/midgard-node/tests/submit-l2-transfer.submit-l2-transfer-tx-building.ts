@@ -8,21 +8,19 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import {
-  runPhaseAValidation,
-  runPhaseBValidationWithPatch,
-} from "@al-ft/midgard-validation";
+import { runPhaseAValidation } from "@al-ft/midgard-validation/phase-a";
+import { runPhaseBValidationWithPatch } from "@al-ft/midgard-validation/phase-b";
 import { CML, valueToAssets, walletFromSeed } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { type NodeUtxo } from "../src/commands/command-utils.js";
+import { selectTransferInputs } from "../src/commands/submit-l2-transfer.compare-assets-by-coverage.js";
 import {
   buildTerminalDrainTx,
   buildTransferTx,
   buildTransferTxWithMinFee,
-  selectTransferInputs,
-} from "../src/commands/submit-l2-transfer.js";
+} from "../src/commands/transfer-build-core.build-terminal-drain-tx.js";
 import { toQueuedTx } from "./helpers/local-l2-transfer.js";
 import {
   mkNodeUtxo,

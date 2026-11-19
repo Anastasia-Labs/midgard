@@ -4,14 +4,12 @@ import { readFileSync } from "node:fs";
 import { paymentCredentialOf } from "@lucid-evolution/lucid";
 import { makeGenuineDeploymentRegistryForTest } from "midgard-node/tests/helpers/deployment-parameter-registry";
 
-import { buildResolvedInit } from "../../src/submit-init.js";
+import { buildResolvedInit } from "../../src/submit-init.submit-resolved-init.js";
+import { realBlueprintPath } from "./emulator/blueprints.js";
+import { alignUnixTimeToEmulatorSlotBoundary } from "./emulator/emulator-context.js";
 import { commitInitializedProvedFixtureHeader } from "./submit-init/commit-header.js";
 import { buildProvedFixtureDeploymentContext } from "./submit-init/deployment.js";
 import { EMULATOR_HEADER_CLOCK_HEADROOM_MS } from "./submit-init/successor.js";
-import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  realBlueprintPath,
-} from "./submit-init-emulator-shared.js";
 
 /** Actual SDK publication and Init; no synthetic deployment authority. */
 export const makeGenuineFundingInitCaptureForTest = async () => {

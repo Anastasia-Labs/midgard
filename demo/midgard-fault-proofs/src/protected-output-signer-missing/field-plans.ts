@@ -7,7 +7,7 @@ import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/
 import {
   type FaultProofFieldOpeningPlan,
   planFaultProofFieldOpening,
-} from "../field-opening.js";
+} from "../field-opening.plan-fault-proof-field-opening.js";
 import type { ProtectedOutputSignerMissingEvidence } from "./protected-output-signer-missing.js";
 
 export const planProtectedOutputSignerOutputOpening = ({

@@ -12,12 +12,13 @@ import {
   DepositsDB,
   PendingBlockFinalizationsDB,
 } from "../src/database/index.js";
-import { mergeAction, type MergeActionResult } from "../src/fibers/merge.js";
+import { mergeAction } from "../src/fibers/merge.merge-action.js";
+import type { MergeActionResult } from "../src/fibers/merge.registered-merge-due-work-skip.js";
 import { runLedgerPayloadAudit } from "../src/fibers/mpf-payload-audit.js";
 import { listSlotAwareDueWork } from "../src/fibers/slot-aware-due-work.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/services/history-commit-window.js";
 import { IntentJournal } from "../src/services/intent-journal.js";
-import { MempoolLedgerCache } from "../src/services/mempool-ledger-cache.js";
+import { MempoolLedgerCache } from "../src/services/mempool-ledger-cache.mempool-ledger-cache-service.js";
 import {
   advanceEmulatorPastLatestBlockEndTime,
   advanceEmulatorPastUnixTime,

@@ -7,7 +7,7 @@
  */
 import { describe, it } from "vitest";
 
-import { transitionTraceFinalCaseRunner } from "./support/transition-trace-final-cases.js";
+import { transitionTraceFinalCaseRunner } from "./support/transition-trace-final-cases.register-transition-trace-final-cases.js";
 import {
   MAXIMUM,
   MAXIMUM_LIFECYCLE_TIMEOUT,

@@ -19,23 +19,19 @@ import {
 } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { openWatcherFaultDecisionJournal } from "../../src/fault-proofs/fault-decision-journal.js";
-import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.js";
+import { openWatcherFaultDecisionJournal } from "../../src/fault-proofs/fault-decision-journal.create-journal.js";
+import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
 import { createWatcherFaultProofExecution } from "../../src/fault-proofs/fault-proof-execution.js";
-import {
-  createWatcherFaultProofSupervisor,
-  watcherFaultProofDeadline,
-} from "../../src/fault-proofs/fault-proof-supervisor.js";
+import { createWatcherFaultProofSupervisor } from "../../src/fault-proofs/fault-proof-supervisor.create-watcher-fault-proof-supervisor.js";
+import { watcherFaultProofDeadline } from "../../src/fault-proofs/fault-proof-supervisor.validate-job.js";
 import { openWatcherJournalDatabase } from "../../src/fault-proofs/watcher-journal-database.js";
+import { setupFundingRecoveryFixture } from "../support/fault-proof-funding-fixture.setup-funding-recovery-fixture.js";
 import {
   cleanupFundingRecoveryFixtures,
   deploymentIdentity,
-  setupFundingRecoveryFixture,
-  walletAddress,
-} from "../support/fault-proof-funding-fixture.js";
-import {
   finality,
   sourcesFor,
+  walletAddress,
 } from "../support/fault-proof-funding-fixture.sources-for.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
 import { completedTerminalWriter } from "../support/funding-recovery-completed-terminal.js";

@@ -37,9 +37,9 @@ import {
   LEDGER_SIGNATURE_VERIFIER_UNAVAILABLE,
 } from "../src/commands/listen-startup.await-ledger-signature-verifier.js";
 import { DEFAULT_IMPORT_CHECK_CONFIG } from "../src/services/config.import-check.js";
-import { NodeConfig } from "../src/services/config.js";
-import { Globals } from "../src/services/globals.js";
-import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
+import { Globals } from "../src/services/globals.globals.js";
+import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import { findStartupStepFailure } from "../src/services/startup-waiting.js";
 import {
   INJECTED_LIBSODIUM_FAILURE,

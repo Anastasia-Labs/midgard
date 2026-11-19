@@ -2,7 +2,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { type LucidEvolution } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { activateOperatorProgram } from "../src/transactions/register-active-operator.js";
+import { activateOperatorProgram } from "../src/transactions/register-active-operator.activate-registered-operator-program.js";
 import { withoutFollowerJournal } from "./helpers/intent-journal.js";
 import {
   addActivatedOperatorAbove,

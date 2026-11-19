@@ -10,8 +10,8 @@ import {
   buildWithdrawnReferenceInputStep03,
   prepareWithdrawnReferenceInput,
 } from "../src/withdrawn-reference-input/index.js";
-import { expectOnchainRefusal } from "./support/native-script-decoding-emulator.js";
-import { network } from "./support/submit-init-emulator-shared.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,
@@ -21,11 +21,13 @@ import {
   publishWithdrawnReferenceInputReferenceScripts,
   setupWithdrawnReferenceInputScenario,
   setupWithdrawnReferenceInputUncheckedScenario,
-  submitRawWithdrawnReferenceInputStep02,
-  submitRawWithdrawnReferenceInputStep03,
   WITHDRAWN_REFERENCE_INPUT_ACCUSED_OUTREF,
   withdrawnReferenceInputInfo,
-} from "./support/withdrawn-reference-input-emulator.js";
+} from "./support/withdrawn-reference-input-emulator.setup-withdrawn-reference-input-unchecked-scenario.js";
+import {
+  submitRawWithdrawnReferenceInputStep02,
+  submitRawWithdrawnReferenceInputStep03,
+} from "./support/withdrawn-reference-input-emulator.submit-raw-withdrawn-reference-input-step03.js";
 
 type Harness = Awaited<
   ReturnType<typeof makeWithdrawnReferenceInputEmulatorHarness>

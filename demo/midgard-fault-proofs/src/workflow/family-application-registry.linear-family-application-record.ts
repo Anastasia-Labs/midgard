@@ -6,13 +6,15 @@ import { type ResolvedProverSigner } from "../runtime.js";
 import {
   type ManifestBoundDaHashPreimageWorkflow,
   runOrResumeManifestBoundDaHashPreimageWorkflow,
-} from "./da-hash-preimage.js";
+} from "./da-hash-preimage.create-bound-da-hash-preimage-transaction-port.js";
 import {
   createManifestBoundDoubleSpendWorkflow,
-  type ManifestBoundDoubleSpendWorkflow,
-  type ManifestBoundDoubleSpendWorkflowConfig,
   runOrResumeManifestBoundDoubleSpendWorkflow,
-} from "./double-spend-adapter.js";
+} from "./double-spend-adapter.create-manifest-bound-double-spend-workflow.js";
+import type {
+  ManifestBoundDoubleSpendWorkflow,
+  ManifestBoundDoubleSpendWorkflowConfig,
+} from "./double-spend-adapter.preflight-of.js";
 import {
   assertFamilyDefinitionRoster,
   defineFamilyApplication,
@@ -21,7 +23,7 @@ import {
   familyDefinitionRoster,
   familyStepRole,
   type LinearFamilyApplicationRecord,
-} from "./family-application.js";
+} from "./family-application.assert-family-definition-roster.js";
 import {
   LINEAR_FAMILY_REQUIREMENTS,
   optionalReplayContext,
@@ -45,10 +47,8 @@ import {
   type LinearFamilyCategory,
   linearFamilySpec,
 } from "./linear-family-spec.js";
-import {
-  assembleManifestBoundFamilyWorkflow,
-  runOrResumeManifestBoundFamilyWorkflow,
-} from "./manifest-bound-family-assembly.js";
+import { assembleManifestBoundFamilyWorkflow } from "./manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
+import { runOrResumeManifestBoundFamilyWorkflow } from "./manifest-bound-family-assembly.run-or-resume-manifest-bound-family-workflow.js";
 import { withDoubleSpendOwnThreadReclaim } from "./own-thread-reclaim.special-families.js";
 
 /**

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { assertWatcherStateQueueObservation } from "../../src/indexers/authenticated-state-queue-observation.js";
-import { RELEASE_FINALITY_DEPTH } from "../../src/indexers/authenticated-state-queue-observation.parse-persisted-header.js";
+import {
+  assertWatcherStateQueueObservation,
+  RELEASE_FINALITY_DEPTH,
+} from "../../src/indexers/authenticated-state-queue-observation.parse-persisted-header.js";
 import {
   followerUserEventsDeployment,
   openFollowerUserEvents,

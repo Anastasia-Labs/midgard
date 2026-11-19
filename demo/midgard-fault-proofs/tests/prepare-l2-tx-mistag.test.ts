@@ -12,11 +12,11 @@ import { commitCountedRootProgram, ROOT_DOMAINS } from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { prepareL2TxMistagFromTransactions } from "../src/index.js";
+import { prepareL2TxMistagFromTransactions } from "../src/l2-tx-mistag/prepare-l2-tx-mistag.js";
 import {
   deriveL2TransactionSourceCbor,
   type NodeTransactionPayload,
-} from "../src/prepare-double-spend.js";
+} from "../src/prepare-double-spend.encode-l2-transaction-source-value.js";
 
 const payload = (
   validity: "TxIsValid" | "TxIsInvalid",

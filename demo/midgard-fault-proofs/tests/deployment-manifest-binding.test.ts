@@ -31,15 +31,13 @@ vi.mock("../src/runtime.js", async (load) => ({
   resolveFaultProofDeploymentContracts: dependencies.resolve,
 }));
 
-import {
-  parseContractDeploymentInfo,
-  parseContractDeploymentReferenceScriptAuthPolicyId,
-} from "../src/inspect-contracts.js";
-import { fraudSlashEconomicsFromDeploymentManifest } from "../src/remove-fraudulent-block.js";
+import { parseContractDeploymentReferenceScriptAuthPolicyId } from "../src/inspect-contracts.inspect-fraud-proof-catalogue-category-readiness.js";
+import { parseContractDeploymentInfo } from "../src/inspect-contracts.parse-contract-deployment-info.js";
+import { fraudSlashEconomicsFromDeploymentManifest } from "../src/remove-fraudulent-block.assert-exact-fraud-slash-lovelace-conservation.js";
 import {
   bindFraudProofTerminalDeployment,
   bindFraudProofWorkflowDeployment,
-} from "../src/workflow/deployment-manifest-binding.js";
+} from "../src/workflow/deployment-manifest-binding.bind-fraud-proof-deployment.js";
 import {
   RELEASE_L1_FINALITY_POLICY,
   validateVerifiedFraudProofReleaseFinalityPolicy,

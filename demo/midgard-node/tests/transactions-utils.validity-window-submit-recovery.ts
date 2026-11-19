@@ -3,11 +3,9 @@ import { OgmiosJsonRpcError } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  NoInlineSubmitDefer,
-  resolveEarlyValidityRetryDelayMs,
-  submitSignedTxWithRecovery,
-} from "../src/transactions/utils.js";
+import { NoInlineSubmitDefer } from "../src/transactions/utils.await-required-output-visibility.js";
+import { resolveEarlyValidityRetryDelayMs } from "../src/transactions/utils.parse-structured-outside-validity-interval-details.js";
+import { submitSignedTxWithRecovery } from "../src/transactions/utils.submit-signed-tx-with-recovery.js";
 import { runWithoutFollower, TEST_INTENT } from "./helpers/intent-journal.js";
 import {
   expectNoInlineSubmitDefer,

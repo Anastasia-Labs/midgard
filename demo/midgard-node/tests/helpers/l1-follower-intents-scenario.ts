@@ -18,10 +18,8 @@ import { encodeSimTx, type SimTx } from "@al-ft/midgard-l1-follower/testing";
 import * as SDK from "@al-ft/midgard-sdk";
 import { expect } from "vitest";
 
-import {
-  stateQueueProjection,
-  stateQueueTrackedSet,
-} from "../../src/l1-state-queue/index.js";
+import { stateQueueTrackedSet } from "../../src/l1-state-queue/config.js";
+import { stateQueueProjection } from "../../src/l1-state-queue/projection.js";
 import { nodeFamilyPredicate } from "../../src/services/l1-follower.intent-predicates.js";
 import { createNodeIntentStage } from "../../src/services/l1-follower.intents.js";
 import {

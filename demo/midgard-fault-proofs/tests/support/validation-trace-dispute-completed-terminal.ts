@@ -1,11 +1,9 @@
 /** The completed-workflow check's read of a removed block from its
  * authenticated L1 view. */
-import {
-  admitFraudProofRawL1Snapshot,
-  deriveFraudProofRawL1CompletedTerminal,
-  fraudProofRawL1HistoryReader,
-  fraudProofRawL1SnapshotRequestForFamily,
-} from "../../src/workflow/index.js";
+import { deriveFraudProofRawL1CompletedTerminal } from "../../src/workflow/raw-l1-family-derivation.derive-fraud-proof-raw-l1-family-stage.js";
+import { fraudProofRawL1SnapshotRequestForFamily } from "../../src/workflow/raw-l1-family-derivation.derive-terminal.js";
+import { fraudProofRawL1HistoryReader } from "../../src/workflow/raw-l1-family-derivation.lost-defense-slash.js";
+import { admitFraudProofRawL1Snapshot } from "../../src/workflow/raw-l1-snapshot.admit-fraud-proof-raw-l1-snapshot.js";
 import type { Scene } from "./validation-trace-dispute-open-scene.js";
 import type { RecordedRemoval } from "./validation-trace-dispute-removal-l1.js";
 

@@ -22,15 +22,15 @@ import {
   nativeTxOf,
   registeredFamily,
 } from "./script-integrity-hash-missing-lifecycle.registered-family.js";
-import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
+import { network } from "./support/emulator/blueprints.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   funderPaymentKeyHash,
-  makeFaultProofEmulatorHarness,
-  network,
-  publishPlainReferenceScriptUtxo,
-  submitSetupTx,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/emulator/emulator-context.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
+import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
+import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.build-decoding-block-fixture.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 /**

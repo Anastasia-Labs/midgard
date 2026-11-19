@@ -9,7 +9,8 @@ import { Duration, Effect, Metric, Ref } from "effect";
 
 import { DatabaseError } from "../../database/utils/common.js";
 import { emitQueueStateMetrics } from "../../fibers/queue-metrics.js";
-import { Database, Globals, NodeConfig } from "../../services/index.js";
+import { Globals } from "../../services/globals.globals.js";
+import { Database, NodeConfig } from "../../services/index.js";
 import {
   type IntentJournal,
   journaledIntent,
@@ -20,14 +21,16 @@ import {
   referenceScriptByName,
 } from "../reference-scripts.js";
 import {
+  TxConfirmError,
+  TxSignError,
+  TxSubmitError,
+} from "../utils.await-required-output-visibility.js";
+import {
   awaitSubmittedTransactionConfirmation,
   fetchFirstBlockTxs,
   signSubmitTransaction,
-  TxConfirmError,
-  TxExpiredError,
-  TxSignError,
-  TxSubmitError,
 } from "../utils.js";
+import { TxExpiredError } from "../utils.tx-expiry.js";
 import {
   DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING,
   mergeSubmitValidityEvidence,

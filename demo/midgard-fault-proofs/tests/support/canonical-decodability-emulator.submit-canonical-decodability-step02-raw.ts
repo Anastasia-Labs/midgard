@@ -17,11 +17,11 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import type { CanonicalDecodabilityContracts } from "../../src/canonical-decodability/contracts.js";
 import {
-  type CanonicalDecodabilityContracts,
   requireCanonicalDecodabilityReferenceScript,
   requireCanonicalDecodabilityThreadUtxo,
-} from "../../src/canonical-decodability/index.js";
+} from "../../src/canonical-decodability/submit-common.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   type ResolvedProverSigner,

@@ -7,12 +7,10 @@ import {
 import { Data, getAddressDetails, toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildCanonicalDecodabilityInit,
-  buildCanonicalDecodabilityStep01,
-  buildCanonicalDecodabilityStep02,
-  submitRemoveFraudulentBlock,
-} from "../src/index.js";
+import { buildCanonicalDecodabilityInit } from "../src/canonical-decodability/submit-canonical-decodability-init.js";
+import { buildCanonicalDecodabilityStep01 } from "../src/canonical-decodability/submit-canonical-decodability-step-01.js";
+import { buildCanonicalDecodabilityStep02 } from "../src/canonical-decodability/submit-canonical-decodability-step-02.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import {
   buildCanonicalDecodabilityBodyFixture,
   makeCanonicalDecodabilityEmulatorHarness,
@@ -20,12 +18,10 @@ import {
   publishCanonicalDecodabilityReferenceScripts,
   setupCanonicalDecodabilityScenario,
 } from "./support/canonical-decodability-emulator.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
-import {
-  buildRemovalDeploymentInfo,
-  expectSingleUtxoWithUnit,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 describe("canonical-decodability real-fault lifecycle", () => {

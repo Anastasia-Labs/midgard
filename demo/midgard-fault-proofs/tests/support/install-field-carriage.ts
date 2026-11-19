@@ -17,10 +17,8 @@ import { resolveFaultProofFieldPreimageCertificate } from "../../src/field-openi
 import type { FaultProofFieldOpeningPlan } from "../../src/field-opening.plan-fault-proof-field-opening.js";
 import { resolveFaultProofFieldCarriagePublications } from "../../src/field-opening.publish-fault-proof-field-carriage.js";
 import type { ResolvedProverSigner } from "../../src/runtime.js";
-import {
-  createAuthenticatedFieldCarriagePrerequisitePort,
-  type FieldCarriageRequirement,
-} from "../../src/workflow/field-carriage-prerequisite.js";
+import { createAuthenticatedFieldCarriagePrerequisitePort } from "../../src/workflow/field-carriage-prerequisite.create-authenticated-field-carriage-prerequisite-port.js";
+import type { FieldCarriageRequirement } from "../../src/workflow/field-carriage-prerequisite.field-carriage-prerequisite-port.js";
 import { workflowFieldCarriageOwnOutputs } from "../../src/workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import {
   FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,

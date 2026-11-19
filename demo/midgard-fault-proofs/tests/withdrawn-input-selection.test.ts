@@ -16,21 +16,21 @@ import { describe, expect, it } from "vitest";
 import {
   type CanonicalBlockClassification,
   classifyCanonicalBlockViolations,
-} from "../src/workflow/classification.js";
+} from "../src/workflow/classification.classify-canonical-block-violations.js";
+import {
+  WITHDRAWN_INPUT_COMPLETE_CANONICAL_REPLAY,
+  WITHDRAWN_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
+} from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
 import {
   NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
   NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY,
-  WITHDRAWN_INPUT_COMPLETE_CANONICAL_REPLAY,
-  WITHDRAWN_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
-} from "../src/workflow/complete-replay.js";
-import {
-  admitWithdrawnInputArtifact,
-  prepareWithdrawnInputArtifact,
-} from "../src/workflow/withdrawn-input.js";
+} from "../src/workflow/complete-replay.detect-double-withdraws.js";
+import { admitWithdrawnInputArtifact } from "../src/workflow/withdrawn-input.admit-withdrawn-input-artifact.js";
+import { prepareWithdrawnInputArtifact } from "../src/workflow/withdrawn-input.prepare-withdrawn-input-artifact.js";
 import {
   admitWithdrawnReferenceInputArtifact,
   prepareWithdrawnReferenceInputArtifact,
-} from "../src/workflow/withdrawn-reference-input.js";
+} from "../src/workflow/withdrawn-reference-input.admit-withdrawn-reference-input-artifact.js";
 import { withdrawalOf } from "./helpers/event-ledger-seeded-blocks.js";
 import { inputExistenceChronologyFixture } from "./helpers/input-existence-chronology-fixture.js";
 

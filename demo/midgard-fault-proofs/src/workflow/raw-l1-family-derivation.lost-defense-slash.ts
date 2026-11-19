@@ -19,13 +19,13 @@ import {
   type FraudProofRawL1TerminalDefinition,
   mintQuantity,
 } from "./raw-l1-family-derivation.state-queue-topology.js";
-import {
-  admitFraudProofRawL1Snapshot,
-  type FraudProofRawL1Snapshot,
-  type FraudProofRawL1SnapshotAuthority,
-  type FraudProofRawL1Transaction,
-  type FraudProofRawL1Utxo,
-} from "./raw-l1-snapshot.js";
+import type {
+  FraudProofRawL1Snapshot,
+  FraudProofRawL1SnapshotAuthority,
+  FraudProofRawL1Transaction,
+  FraudProofRawL1Utxo,
+} from "./raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
+import { admitFraudProofRawL1Snapshot } from "./raw-l1-snapshot.js";
 import type { VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
 
 /** One token's complete authenticated L1 history. */

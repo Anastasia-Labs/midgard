@@ -5,16 +5,16 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  buildListenRouter,
   encodePipelineStatusOldestActive,
   type PipelineStatusOldestActiveRow,
-} from "../src/commands/listen-router.js";
+} from "../src/commands/http/pipeline-status.js";
+import { buildListenRouter } from "../src/commands/http/router.js";
 import { PendingBlockFinalizationsDB } from "../src/database/index.js";
 import { Frontier } from "../src/landed-blocks/store.js";
 import { BatchSql } from "../src/services/database.js";
 import { withFollowerWrite } from "../src/services/follower-write-gate.js";
-import { Globals } from "../src/services/index.js";
-import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.js";
+import { Globals } from "../src/services/globals.globals.js";
+import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   insertOwnJournal,
   simCommitTxHash,

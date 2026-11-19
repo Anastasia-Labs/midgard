@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
+import { parseWatcherConfig } from "../../src/runtime/config.parse-watcher-config.js";
 import {
-  parseWatcherConfig,
   WATCHER_CONFIG_SCHEMA_VERSION,
   WatcherConfigError,
   type WatcherConfigErrorCode,
-} from "../../src/runtime/config.js";
+} from "../../src/runtime/config.watcher-config.js";
 
 export const PEER_A =
   "/dns4/da-a.example/tcp/443/p2p/12D3KooWAbcdefghijkmnopqrstuvwxyz12345";

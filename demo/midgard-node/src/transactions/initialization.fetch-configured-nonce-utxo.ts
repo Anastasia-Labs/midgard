@@ -25,12 +25,12 @@ import {
   DEFAULT_DEPLOYMENT_VALIDITY_WINDOW_MS,
 } from "./initialization.atomic-protocol-init-reference-scripts-from-publications.js";
 import {
-  handleSignSubmit,
   TxConfirmError,
-  TxExpiredError,
   TxSignError,
   TxSubmitError,
-} from "./utils.js";
+} from "./utils.await-required-output-visibility.js";
+import { handleSignSubmit } from "./utils.await-submitted-transaction-confirmation.js";
+import { TxExpiredError } from "./utils.tx-expiry.js";
 import {
   readSelectedWalletView,
   readSelectedWalletViewInputs,

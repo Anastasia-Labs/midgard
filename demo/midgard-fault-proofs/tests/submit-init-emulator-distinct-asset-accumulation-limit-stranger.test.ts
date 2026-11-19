@@ -19,17 +19,15 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import type { DirectPurposeTransition } from "../src/direct-purpose-family/custody.js";
 import {
   type DirectPurposeRole,
   directPurposeRoleValidator,
-  type DirectPurposeTransition,
-} from "../src/direct-purpose-family/index.js";
-import {
-  DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
-  DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY,
-  prepareDistinctAssetAccumulationLimitProof,
-} from "../src/distinct-asset-accumulation-limit/index.js";
-import { faultProofFieldOpening } from "../src/field-opening.js";
+} from "../src/direct-purpose-family/family.js";
+import { DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY } from "../src/distinct-asset-accumulation-limit/contracts.js";
+import { prepareDistinctAssetAccumulationLimitProof } from "../src/distinct-asset-accumulation-limit/prover.js";
+import { DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK } from "../src/distinct-asset-accumulation-limit/workflow.js";
+import { faultProofFieldOpening } from "../src/field-opening.publish-fault-proof-field-carriage.js";
 import {
   getCompiledScript,
   phasMembershipRewardAddress,
@@ -46,8 +44,8 @@ import {
   type DistinctAssetSubjectShape,
   setupDistinctAssetScenario,
 } from "./support/distinct-asset-accumulation-limit-emulator.subject.js";
+import { network } from "./support/emulator/blueprints.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
-import { network } from "./support/submit-init-emulator-shared.js";
 import { submitDirectPurposeTransition } from "./support/submit-unjournaled.direct-purpose.js";
 
 const STRANGER_FUNDING_LOVELACE = 1_000_000_000n;

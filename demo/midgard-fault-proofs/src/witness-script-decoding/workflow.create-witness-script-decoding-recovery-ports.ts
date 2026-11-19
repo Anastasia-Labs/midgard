@@ -5,12 +5,12 @@ import {
 import type { UTxO } from "@lucid-evolution/lucid";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { planFaultProofFieldOpening } from "../field-opening.js";
+import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import {
   CURSOR_FAMILY_TRANSACTION_PORT,
   type CursorFamilyTransactionPort,
-} from "../workflow/cursor-family-adapter.js";
+} from "../workflow/cursor-family-adapter.admit-reference-scripts.js";
 import {
   captureCursorRemoval,
   cursorFamilyActionInput,
@@ -22,7 +22,7 @@ import {
   type FamilyAssemblyContext,
   type FamilyDeploymentContext,
   type LinearFamilyPrerequisiteInput,
-} from "../workflow/family-definition.js";
+} from "../workflow/family-definition.family-adapter-arm.js";
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import type { FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";

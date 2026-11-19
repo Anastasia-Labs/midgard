@@ -5,13 +5,13 @@ import { expect } from "vitest";
 import {
   witnessScriptDecodingCheckpoint,
   type WitnessScriptDecodingEvidence,
-} from "../src/witness-script-decoding/index.js";
+} from "../src/witness-script-decoding/witness-script-decoding.js";
 import { type CompleteSignedTransactionMeasurement } from "./support/emulator/measurement.js";
 import { createLifecycleCoverageRecorder } from "./support/lifecycle-coverage.js";
 import {
   DEEP_MAXIMUM_DEPTH,
   type WitnessSetCarriage,
-} from "./support/witness-script-decoding-raw.js";
+} from "./support/witness-script-decoding-raw.over-bound-field-carriage-plan.js";
 
 export const CATEGORY_ID = "00000022";
 

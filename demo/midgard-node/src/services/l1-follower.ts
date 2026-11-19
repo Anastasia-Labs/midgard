@@ -66,19 +66,17 @@ import {
 } from "@al-ft/midgard-l1-follower";
 import { Effect, Ref, Runtime } from "effect";
 
+import { forcedAdmissionDivergences } from "../forced-orders/admission-divergence.js";
 import {
-  forcedAdmissionDivergences,
   forcedOrderIngestionHook,
   NO_CONTENT_SOURCE,
-} from "../forced-orders/index.js";
+} from "../forced-orders/ingest.js";
 import { createFollowerDriver } from "../l1-events/driver.js";
-import { neglectedEventSourcesOf } from "../l1-operator-set/index.js";
-import { landedStateQueueHook } from "../l1-state-queue/index.js";
-import {
-  type ConfirmedLedgerPosition,
-  landedBlockHook,
-  nodeLandedBlockPorts,
-} from "../landed-blocks/index.js";
+import { neglectedEventSourcesOf } from "../l1-operator-set/neglected-event.js";
+import { landedStateQueueHook } from "../l1-state-queue/hook.js";
+import { landedBlockHook } from "../landed-blocks/hook.js";
+import { nodeLandedBlockPorts } from "../landed-blocks/node-ports.js";
+import type { ConfirmedLedgerPosition } from "../landed-blocks/position.js";
 import {
   canonicalSlotConfigForLucid,
   unixTimeToSlotForConfig,
@@ -122,9 +120,11 @@ import { Lucid } from "./lucid.js";
 import {
   availabilityParametersFromExplicitEnvironment,
   availabilityParametersFromManifest,
+} from "./midgard-contracts.load-reference-script-auth-validator.js";
+import {
   ContractDeploymentIdentity,
   MidgardContracts,
-} from "./midgard-contracts.js";
+} from "./midgard-contracts.make-midgard-contract-runtime.js";
 import { signalTransientExhausted } from "./transient-exhaustion.js";
 
 /** The follower over `plan`, once the node's network magic is known. */

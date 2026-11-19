@@ -9,7 +9,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import {
   awaitReferenceScriptPublicationReadiness,
   waitForPublicationAuthorityExpiry,
-} from "./helpers/published-workflow-deployment.js";
+} from "./helpers/published-workflow-deployment.submit-published-initialization.js";
 
 afterEach(() => vi.useRealTimers());
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { makeCanonicalDecodabilityEmulatorHarness } from "./support/canonical-decodability-emulator.js";
-import { publishPlainReferenceScriptUtxo } from "./support/submit-init-emulator-shared.js";
+import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 
 describe("canonicalDecodability signed publication fit", () => {
   it("publishes every step's reference script within the signed-transaction reserve", async () => {

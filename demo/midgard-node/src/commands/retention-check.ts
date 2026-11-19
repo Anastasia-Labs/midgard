@@ -13,8 +13,8 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
 import { fetchRetentionL1View } from "../fibers/retention-sweeper.js";
-import { newestTerminalOutcome } from "../l1-queue-terminals/index.js";
-import { ContractDeploymentIdentity } from "../services/index.js";
+import { newestTerminalOutcome } from "../l1-queue-terminals/terminal-outcome.js";
+import { ContractDeploymentIdentity } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import { parseNonNegativeIntegerOption } from "./cli-options.js";
 
 /**

@@ -1,8 +1,8 @@
 import "vitest";
-import "../src/remove-fraudulent-block.js";
+import "../src/remove-fraudulent-block.remove-fraudulent-block-explicit-category.js";
 import "../src/workflow/action-changed.js";
 import "../src/workflow/family-l1-observation.js";
-import "../src/workflow/journal.js";
+import "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import "../src/workflow/linear-family-adapter.js";
 import "../src/workflow/linear-family-state.js";
 import "../src/workflow/transaction-boundary.js";
@@ -14,12 +14,12 @@ import {
   createLocalStateQueueMutationLeaseCoordinator,
   LOCAL_STATE_QUEUE_MUTATION_LEASE_SOURCE,
   LOCAL_STATE_QUEUE_MUTATION_LEASE_TOKEN,
-} from "../src/remove-fraudulent-block.js";
+} from "../src/remove-fraudulent-block.remove-fraudulent-block-explicit-category.js";
 import { WorkflowActionChangedError } from "../src/workflow/action-changed.js";
 import {
   type JournalJsonObject,
   normalizeJournalJson,
-} from "../src/workflow/journal.js";
+} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import { createLinearFamilyWorkflowAdapter } from "../src/workflow/linear-family-adapter.js";
 import { linearFamilyObservation } from "../src/workflow/linear-family-state.js";
 import type { FraudProofRawL1FamilyStage } from "../src/workflow/raw-l1-family-derivation.js";

@@ -39,7 +39,7 @@ import { validationTraceOneStepHolder } from "../../src/validation-trace-dispute
 import { validationTraceDefenseDeadlineMs } from "../../src/validation-trace-dispute/waiting.js";
 import { parseOwnOutRef } from "../../src/workflow/own-outputs.js";
 import { ADMITTED_TX_EX_UNITS } from "../helpers/plutus-execution-block-fixture.js";
-import { network } from "./submit-init-emulator-shared.js";
+import { network } from "./emulator/blueprints.js";
 import {
   expectRealMoveFee,
   landedMoveFee,

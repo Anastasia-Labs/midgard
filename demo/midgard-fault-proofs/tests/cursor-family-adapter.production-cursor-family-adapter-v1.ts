@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { WorkflowActionChangedError } from "../src/workflow/action-changed.js";
-import { createCursorFamilyWorkflowAdapter } from "../src/workflow/cursor-family-adapter.js";
+import { createCursorFamilyWorkflowAdapter } from "../src/workflow/cursor-family-adapter.create-cursor-family-workflow-adapter.js";
 import {
   type JournalJsonObject,
   normalizeJournalJson,
-} from "../src/workflow/journal.js";
+} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import type { FraudProofRawL1FamilyStage } from "../src/workflow/raw-l1-family-derivation.js";
 import { workflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
 import {

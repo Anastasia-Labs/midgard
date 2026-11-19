@@ -15,7 +15,9 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { Effect, Either, Option, Runtime } from "effect";
 
-import { AdmissionWriter, Globals, NodeConfig } from "../../services/index.js";
+import { AdmissionWriter } from "../../services/admission-writer.validate-options.js";
+import { Globals } from "../../services/globals.globals.js";
+import { NodeConfig } from "../../services/index.js";
 import type {
   SubmitCheckOutcome,
   SubmitCheckPool,

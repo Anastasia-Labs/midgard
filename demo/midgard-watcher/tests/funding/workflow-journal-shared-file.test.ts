@@ -9,10 +9,8 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 import { afterEach, expect, it } from "vitest";
 
-import {
-  cleanupFundingRecoveryFixtures,
-  setupFundingRecoveryFixture as setup,
-} from "../support/fault-proof-funding-fixture.js";
+import { setupFundingRecoveryFixture as setup } from "../support/fault-proof-funding-fixture.setup-funding-recovery-fixture.js";
+import { cleanupFundingRecoveryFixtures } from "../support/fault-proof-funding-fixture.sources-for.js";
 import { prepareThroughPermit } from "./superseded-attempt-replacement.js";
 
 // The workflow journal, the funding reservations and the replay transcripts

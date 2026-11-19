@@ -7,13 +7,15 @@ import {
   type FamilyResolvedReferenceScripts,
   type FamilyRosterDefinition,
   familyStepRole,
-} from "./family-application.js";
+} from "./family-application.assert-family-definition-roster.js";
+import type {
+  FaultProofWitnessRole,
+  ManifestBoundFamilyWorkflowConfig,
+} from "./family-definition.family-adapter-arm.js";
 import {
   familyStepContractNames,
-  type FaultProofWitnessRole,
   type ManifestBoundFamilyWorkflow,
-  type ManifestBoundFamilyWorkflowConfig,
-} from "./family-definition.js";
+} from "./family-definition.family-definition.js";
 import { type LinearFamilyCategory } from "./linear-family-spec.js";
 
 export const requiredReference = (

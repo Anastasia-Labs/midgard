@@ -10,16 +10,18 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data, type Lucid, type UTxO } from "@lucid-evolution/lucid";
 
-import type { SubmitStep01TxInclusion } from "../../src/step-support.js";
-import { nativeTxFromCoreCompact } from "../../src/step-support.js";
-import { setupFraudulentBlock } from "./submit-init-emulator-fixtures.js";
+import {
+  nativeTxFromCoreCompact,
+  type SubmitStep01TxInclusion,
+} from "../../src/step-support.js";
+import { trieRootHex } from "./emulator/catalogue.js";
+import { makeFaultProofEmulatorHarness } from "./emulator/harness.js";
 import {
   l2TransactionSourceCbor as l2TransactionSourceCborV1,
-  makeFaultProofEmulatorHarness,
   makeNativeTx,
-  publishPlainReferenceScriptUtxo,
-  trieRootHex,
-} from "./submit-init-emulator-shared.js";
+} from "./emulator/native-tx.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { setupFraudulentBlock } from "./submit-init/removal.js";
 
 /**
  * Bytes one address witness occupies in a §5.1 field preimage: the canonical

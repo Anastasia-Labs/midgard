@@ -8,11 +8,9 @@ import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { PendingBlockFinalizationsDB } from "../src/database/index.js";
-import {
-  keyValuePhasRoot,
-  ledgerOutputToInsertBatchOp,
-} from "../src/mpf/index.js";
-import { buildAuthenticatedRootFromEncodedEntries } from "../src/workers/commit-block-header/transition-roots.js";
+import { ledgerOutputToInsertBatchOp } from "../src/mpf/ledger-delta.js";
+import { buildAuthenticatedRootFromEncodedEntries } from "../src/workers/commit-block-header/transition-roots.validate-count-proof.js";
+import { keyValuePhasRoot } from "../src/workers/utils/mpf/phas.key-value-phas-non-membership-proof.js";
 import { makeOutRefCbor } from "./midgard-output-helpers.js";
 import { deterministicFixtureBytes } from "./utils.js";
 

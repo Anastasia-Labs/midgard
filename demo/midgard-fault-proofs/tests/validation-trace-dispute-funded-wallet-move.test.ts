@@ -23,17 +23,19 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { VALIDATION_TRACE_MOVE_FEE_CAP_LOVELACE } from "../src/validation-trace-dispute/move-fee.js";
 import { VALIDATION_TRACE_CASE_CONVICTED } from "../src/validation-trace-dispute/removal.js";
-import { VALIDATION_TRACE_THREAD_AWAITING } from "../src/validation-trace-dispute/threads.js";
-import { validationTraceCaseExpiryMs } from "../src/validation-trace-dispute/threads.js";
+import {
+  VALIDATION_TRACE_THREAD_AWAITING,
+  validationTraceCaseExpiryMs,
+} from "../src/validation-trace-dispute/threads.js";
 import { validationTraceRunState } from "../src/validation-trace-dispute/waiting.js";
 import { VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED } from "../src/workflow/funding-reservation-permit.validation-dispute-wallet-move-reserve.js";
+import { network } from "./support/emulator/blueprints.js";
 import {
   drainProver,
   drainProverToOneCoin,
   topUpProver,
 } from "./support/installed-prover-wallet.js";
 import { watchLedger } from "./support/own-outputs-installed.js";
-import { network } from "./support/submit-init-emulator-shared.js";
 import {
   confirmedMoves,
   type FundedMoves,

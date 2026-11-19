@@ -1,16 +1,12 @@
 import { acceptedVerdictSubject } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import {
-  faultProofFieldOpening,
-  planFaultProofFieldOpening,
-} from "../src/field-opening.js";
+import { planFaultProofFieldOpening } from "../src/field-opening.plan-fault-proof-field-opening.js";
+import { faultProofFieldOpening } from "../src/field-opening.publish-fault-proof-field-carriage.js";
 import { nextMintFieldCursor } from "../src/mint-item-non-canonical/field-scan.js";
-import {
-  buildMintItemNonCanonicalStep01Accepted,
-  buildMintItemNonCanonicalStep02,
-  buildMintItemNonCanonicalStep04,
-} from "../src/mint-item-non-canonical/index.js";
+import { buildMintItemNonCanonicalStep01Accepted } from "../src/mint-item-non-canonical/submit-step-01-accepted.js";
+import { buildMintItemNonCanonicalStep02 } from "../src/mint-item-non-canonical/submit-step-02.js";
+import { buildMintItemNonCanonicalStep04 } from "../src/mint-item-non-canonical/submit-step-04.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
@@ -37,7 +33,7 @@ import {
   mintField,
   mintItem,
 } from "./support/mint-item-vectors.js";
-import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
+import { setupFraudulentBlock } from "./support/submit-init/removal.js";
 import {
   buildAndSubmitUnjournaled,
   type SubmittedStep,

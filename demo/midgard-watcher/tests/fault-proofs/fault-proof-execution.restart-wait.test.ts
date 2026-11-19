@@ -13,14 +13,14 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { openWatcherFaultDecisionJournal } from "../../src/fault-proofs/fault-decision-journal.js";
-import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.js";
-import { unsafeCreateWatcherFaultProofSupervisorForTest } from "../../src/fault-proofs/fault-proof-supervisor.js";
+import { openWatcherFaultDecisionJournal } from "../../src/fault-proofs/fault-decision-journal.create-journal.js";
+import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
+import { unsafeCreateWatcherFaultProofSupervisorForTest } from "../../src/fault-proofs/fault-proof-supervisor.create-watcher-fault-proof-supervisor.js";
 import { setupFaultProofExecution } from "../support/fault-proof-execution-fixture.js";
 import {
   cleanupFundingRecoveryFixtures,
   deploymentIdentity,
-} from "../support/fault-proof-funding-fixture.js";
+} from "../support/fault-proof-funding-fixture.sources-for.js";
 import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 
 const paths: string[] = [];

@@ -7,10 +7,8 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
-import {
-  parseContractDeploymentInfo,
-  parseContractDeploymentReferenceScriptAuthPolicyId,
-} from "../inspect-contracts.js";
+import { parseContractDeploymentReferenceScriptAuthPolicyId } from "../inspect-contracts.js";
+import { parseContractDeploymentInfo } from "../inspect-contracts.parse-contract-deployment-info.js";
 import { resolveFaultProofDeploymentContracts } from "../runtime.js";
 import {
   assertDeploymentInfoMatchesManifest,

@@ -9,11 +9,11 @@ import {
 import { Effect } from "effect";
 import { expect, it, vi } from "vitest";
 
-import {
-  createPublishedWatcherBlockActor,
-  type PublishedWatcherBlock,
-  type PublishedWatcherDeployment,
-} from "./support/published-block-actor.js";
+import { createPublishedWatcherBlockActor } from "./support/published-block-actor.create-published-watcher-block-actor.js";
+import type {
+  PublishedWatcherBlock,
+  PublishedWatcherDeployment,
+} from "./support/published-block-actor.is-unanswered-submission.js";
 
 vi.mock("midgard-node/transactions/register-active-operator", () => ({
   registerOperatorProgram: () => Effect.void,

@@ -5,16 +5,14 @@ import {
   MIDGARD_POSIX_TIME_NONE,
   verifyMidgardNativeScript,
 } from "@al-ft/midgard-core";
-import type {
-  MintAuthorizationEvaluateState,
-  MintAuthorizationStep05State,
-} from "@al-ft/midgard-sdk";
 import {
   hashHexWithBlake2b,
   MIDGARD_FIELD_INDEX,
   MINT_AUTHORIZATION_DIRECTION_SCRIPT_UNSATISFIED,
   MintAuthorizationEvaluateDatum,
+  type MintAuthorizationEvaluateState,
   MintAuthorizationStep05Datum,
+  type MintAuthorizationStep05State,
   requireReferenceInputIndex,
 } from "@al-ft/midgard-sdk";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
@@ -32,9 +30,9 @@ import { createOwnOutputJournal } from "../workflow/own-outputs.js";
 import { createRawDatumPreimageRequirement } from "../workflow/raw-datum-preimage-prerequisite.js";
 import { mintAuthorizationEvaluationPreimage } from "./evaluate.js";
 import { mintAuthorizationSubmitError } from "./submit-common.js";
-import type { MintAuthorizationStep03Build } from "./submit-mint-authorization-step-03.submit-prepared-step03.js";
 import {
   buildPreparedStep03,
+  type MintAuthorizationStep03Build,
   prepareThread,
   STEP_LABEL,
   type Step03Shared,

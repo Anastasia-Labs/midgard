@@ -17,20 +17,16 @@ import {
 } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import {
-  fieldPreimageCertificateAddress,
-  planFaultProofFieldOpening,
-} from "../../src/field-opening.js";
+import { fieldPreimageCertificateAddress } from "../../src/field-opening.certify-fault-proof-field-carriage.js";
+import { planFaultProofFieldOpening } from "../../src/field-opening.plan-fault-proof-field-opening.js";
 import type { ResolvedProverSigner } from "../../src/runtime.js";
-import {
-  createDoubleSpendConstrainedWorkflowAdapter,
-  type DoubleSpendConstrainedWorkflowAdapterConfig,
-  type DoubleSpendWorkflowStage,
-} from "../../src/workflow/double-spend-adapter.js";
+import { createDoubleSpendConstrainedWorkflowAdapter } from "../../src/workflow/double-spend-adapter.create-double-spend-constrained-workflow-adapter.js";
+import type { DoubleSpendWorkflowStage } from "../../src/workflow/double-spend-adapter.create-double-spend-raw-l1-observation-port.js";
+import type { DoubleSpendConstrainedWorkflowAdapterConfig } from "../../src/workflow/double-spend-adapter.preflight-of.js";
 import {
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   type JournalJsonObject,
-} from "../../src/workflow/journal.js";
+} from "../../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import type { FraudProofWorkflowAction } from "../../src/workflow/orchestrator.js";
 import {
   buildFixtureTransaction,

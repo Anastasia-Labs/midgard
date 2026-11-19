@@ -14,8 +14,8 @@ import { memoizeForRun } from "@al-ft/midgard-test-support/run-shared-fixtures";
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { buildContractDeploymentInfoFromContracts } from "../../src/commands/contract-deployment-info.js";
-import { loadRealBlueprintSha256 } from "../../src/services/midgard-contracts.js";
+import { buildContractDeploymentInfoFromContracts } from "../../src/commands/contract-deployment-info.build-contract-deployment-info-from-contracts.js";
+import { loadRealBlueprintSha256 } from "../../src/services/midgard-contracts.load-reference-script-auth-validator.js";
 import { loadRealMidgardContractsForTest } from "./real-midgard-contracts.js";
 
 /**

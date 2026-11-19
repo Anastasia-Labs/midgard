@@ -11,25 +11,27 @@ import { Effect, Ref, Runtime } from "effect";
 
 import type { DriverHook } from "../l1-events/driver.js";
 import {
-  createOperatorSetMirror,
   databaseActivityRecord,
   memoryActivityRecord,
-  type NeglectedEventSources,
   type OperatorActivityRecord,
-  type OperatorSetConfig,
-  operatorSetHook,
+} from "../l1-operator-set/activity.js";
+import type { OperatorSetConfig } from "../l1-operator-set/config.js";
+import { operatorSetHook } from "../l1-operator-set/hook.js";
+import { publishOperatorMembership } from "../l1-operator-set/membership.js";
+import type { NeglectedEventSources } from "../l1-operator-set/neglected-event.js";
+import { createOperatorSetMirror } from "../l1-operator-set/set.js";
+import {
   publishedOperatorSetOf,
-  publishOperatorMembership,
-  stateQueueStrikeFactsOf,
   stateQueueTailOf,
-} from "../l1-operator-set/index.js";
+} from "../l1-operator-set/snapshot.js";
+import { stateQueueStrikeFactsOf } from "../l1-operator-set/strike-facts.js";
 import type { LandedStateQueue } from "../l1-state-queue/index.js";
 import { resolveOwnOperatorKeyHashProgram } from "../transactions/operators/takeover.js";
 import type { NodeConfig } from "./config.js";
 import type { Database } from "./database.js";
 import { Globals } from "./globals.globals.js";
 import { Lucid } from "./lucid.js";
-import { ContractDeploymentIdentity } from "./midgard-contracts.js";
+import { ContractDeploymentIdentity } from "./midgard-contracts.make-midgard-contract-runtime.js";
 
 export type FollowerOperatorSet = Readonly<{
   /** The driver hook; undefined when the operator key is unreadable. */

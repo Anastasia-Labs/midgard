@@ -2,12 +2,12 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import { fetchUtxoByOutRef, parseOutRef } from "../runtime.js";
-import { buildInit } from "../submit-init.js";
+import { buildInit } from "../submit-init.submit-init.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import {
   CURSOR_FAMILY_TRANSACTION_PORT,
   type CursorFamilyTransactionPort,
-} from "../workflow/cursor-family-adapter.js";
+} from "../workflow/cursor-family-adapter.admit-reference-scripts.js";
 import {
   captureCursorRemoval,
   cursorFamilyActionInput,
@@ -22,12 +22,10 @@ import {
   transitionTraceProofChunks,
   transitionTraceTimedProofNeedsChunks,
 } from "./proof-carriage.js";
-import {
-  buildTransitionTraceFinal,
-  buildTransitionTraceRoute,
-  TRANSITION_TRACE_FINAL_REFERENCE_SCRIPT_ENTRIES,
-  transitionTraceFinalIndex,
-} from "./submit.js";
+import { transitionTraceFinalIndex } from "./submit.make-transition-trace-final-spend-redeemer.js";
+import { TRANSITION_TRACE_FINAL_REFERENCE_SCRIPT_ENTRIES } from "./submit.make-transition-trace-route-spend-redeemer.js";
+import { buildTransitionTraceFinal } from "./submit.submit-transition-trace-final.js";
+import { buildTransitionTraceRoute } from "./submit.submit-transition-trace-route.js";
 import {
   type Prepared,
   type TransitionContext,

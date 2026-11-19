@@ -44,8 +44,8 @@ import {
   type NativeMpfOwnerService,
   NativeMpfRootNotRetained,
 } from "../services/mpf-native-owner/protocol.js";
-import { encodeNativeMpfEventLog } from "../services/mpf-native-owner/service.js";
-import { rebuildWorkingLedger } from "../services/working-ledger-recompute.js";
+import { encodeNativeMpfEventLog } from "../services/mpf-native-owner/service.parse-promotion-records.js";
+import { rebuildWorkingLedger } from "../services/working-ledger-recompute.rebuild.js";
 import { sha256Hex } from "../sha256.js";
 import { LANDED_BLOCK_REBASE_FAILED } from "./holds.js";
 import { depositOutputs } from "./ledger.js";

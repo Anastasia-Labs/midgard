@@ -9,21 +9,21 @@ import { Effect } from "effect";
 import { Level } from "level";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
-import { MidgardMpf } from "../src/mpf/index.js";
+import { MidgardMpf } from "../src/mpf/store.midgard-mpf.js";
 import {
-  buildNativeRootProbe,
   buildTransactionsSourceRoot,
-  buildTransitionTraceResult,
   type NativeMpfBuildContext,
-} from "../src/mpf/index.js";
+} from "../src/mpf/transition-trace.apply-trace-ledger-ops-to-mpf.js";
+import { buildNativeRootProbe } from "../src/mpf/transition-trace.build-native-root-probe.js";
+import { buildTransitionTraceResult } from "../src/mpf/transition-trace.build-transition-trace-result.js";
+import { NativeMpfWorkerPortClient } from "../src/services/mpf-native-owner/client.js";
 import {
   assertNativeOwnerRuntimeMemoryBudget,
-  encodeNativeMpfEventLog,
   type NativeMpfEventOp,
-  NativeMpfWorkerPortClient,
   parseNativeOwnerCgroupMemoryLimit,
-  ProductionNativeMpfOwnerService,
-} from "../src/services/mpf-native-owner/index.js";
+} from "../src/services/mpf-native-owner/service.normalize-owner-options.js";
+import { encodeNativeMpfEventLog } from "../src/services/mpf-native-owner/service.parse-promotion-records.js";
+import { ProductionNativeMpfOwnerService } from "../src/services/mpf-native-owner/service.production-native-mpf-owner-service.js";
 import {
   createEventFlatDigest,
   prepareEventFlatDigest,

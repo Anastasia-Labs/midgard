@@ -13,7 +13,7 @@ import {
 import { runOperatorCommand } from "./index.registration-8.js";
 import * as DaAttestation from "./transactions/da-attestation.js";
 import * as OperatorCommands from "./transactions/operators/commands.js";
-import { commitExplicitBlockHeaderProgram } from "./workers/commit-block-header.js";
+import { commitExplicitBlockHeaderProgram } from "./workers/commit-block-header.commit-explicit-block-header-program.js";
 
 program
   .command("slash-duplicate-operator")

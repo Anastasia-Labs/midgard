@@ -5,6 +5,12 @@ import {
   type DaPayloadEmissionMode,
   maxDaPayloadInnerBytes,
 } from "@al-ft/midgard-core/da-payload-sizing";
+import {
+  encodeEventToStepValueCbor,
+  encodeTransitionEventKeyCbor,
+  encodeTransitionIntegerCbor,
+  encodeTransitionStepCbor,
+} from "@al-ft/midgard-fault-proofs/block-replay";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Either, Logger } from "effect";
 
@@ -18,17 +24,14 @@ import type {
   RetainedValidationTraceMember,
 } from "../../src/mpf/index.js";
 import {
-  encodeEventToStepValueCbor,
-  encodeTransitionEventKeyCbor,
-  encodeTransitionIntegerCbor,
-  encodeTransitionStepCbor,
-} from "../../src/mpf/transition-cbor.js";
-import { NodeConfig, type NodeConfigDep } from "../../src/services/config.js";
+  NodeConfig,
+  type NodeConfigDep,
+} from "../../src/services/config.make-config.js";
 import { assertPreSubmitDaPayloadSize } from "../../src/workers/commit-block-header/submission.assert-pre-submit-da-payload-size.js";
 import {
   type CommitBatchBudgetLimits,
   DEFAULT_COMMIT_BATCH_BUDGET_LIMITS,
-} from "../../src/workers/utils/commit-block-planner.js";
+} from "../../src/workers/utils/commit-block-planner.commit-scheduler-evidence-key.js";
 import { makeTestNodeConfig } from "./test-node-config.js";
 
 // A canonical V1 transaction: the pre-submit check re-derives its source

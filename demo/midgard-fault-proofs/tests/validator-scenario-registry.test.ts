@@ -12,7 +12,7 @@ import * as ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 import { sourceFacetPaths } from "../../../scripts/lib/source-facets.mjs";
-import { FAMILY_APPLICATION_REGISTRY } from "../src/workflow/family-application-registry.js";
+import { FAMILY_APPLICATION_REGISTRY } from "../src/workflow/family-application-registry.family-application-registry.js";
 import {
   FAMILY_SCENARIOS,
   UNMAPPED_FAMILIES,

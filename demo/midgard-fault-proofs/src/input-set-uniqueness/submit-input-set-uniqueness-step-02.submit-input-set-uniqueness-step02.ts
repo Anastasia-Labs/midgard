@@ -30,15 +30,16 @@ import {
   type PrerequisiteTurn,
 } from "../fault-proof-turn.js";
 import {
-  faultProofFieldCarriage,
-  faultProofFieldOpening,
   type FaultProofFieldOpeningPlan,
   planFaultProofFieldOpening,
+} from "../field-opening.plan-fault-proof-field-opening.js";
+import {
+  faultProofFieldCarriage,
+  faultProofFieldOpening,
   publishFaultProofFieldCarriage,
-} from "../field-opening.js";
+} from "../field-opening.publish-fault-proof-field-carriage.js";
 import { type ResolvedProverSigner } from "../runtime.js";
-import { completeStep, fundStep } from "../step-completion.js";
-import { finishStep } from "../step-completion.js";
+import { completeStep, finishStep, fundStep } from "../step-completion.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
@@ -57,9 +58,9 @@ import {
   requireInputSetUniquenessStepState,
   requireInputSetUniquenessThreadUtxo,
 } from "./submit-common.js";
-import type { InputSetUniquenessStep02Build } from "./submit-input-set-uniqueness-step-02.assert-input-set-uniqueness-claim-convicts.js";
 import {
   assertInputSetUniquenessClaimConvicts,
+  type InputSetUniquenessStep02Build,
   STEP_LABEL,
   type Step02SpendLayout,
   uniqueUtxos,

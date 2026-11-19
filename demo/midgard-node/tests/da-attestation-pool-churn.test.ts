@@ -6,7 +6,7 @@ import {
   applyWithDaBondPoolChurnRetry,
   DA_ATTESTATION_APPLY_POOL_CHURN_ATTEMPTS,
   isDaBondPoolAttestationSkip,
-} from "../src/transactions/da-attestation.js";
+} from "../src/transactions/da-attestation.fetch-unattested-headers.js";
 
 const HEADER_HASH = "ab".repeat(28);
 

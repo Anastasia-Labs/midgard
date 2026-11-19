@@ -37,12 +37,12 @@ import {
   resolveLiveWalletUtxo,
 } from "./reference-scripts.wallet-view-utxos.js";
 import {
-  handleSignSubmit,
   TxConfirmError,
-  TxExpiredError,
   TxSignError,
   TxSubmitError,
-} from "./utils.js";
+} from "./utils.await-required-output-visibility.js";
+import { handleSignSubmit } from "./utils.await-submitted-transaction-confirmation.js";
+import { TxExpiredError } from "./utils.tx-expiry.js";
 import { readSelectedWalletView } from "./utils.wallet-view.js";
 
 export const resolveExistingReferenceScriptPublication = (

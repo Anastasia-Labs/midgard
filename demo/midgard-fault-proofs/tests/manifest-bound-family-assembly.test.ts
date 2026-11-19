@@ -1,10 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { INSTALLED_FRAUD_PROOF_CATEGORY_ORDER } from "../src/workflow/installed-categories.js";
-import {
-  assembleManifestBoundFamilyWorkflow,
-  runOrResumeManifestBoundFamilyWorkflow,
-} from "../src/workflow/manifest-bound-family-assembly.js";
+import { assembleManifestBoundFamilyWorkflow } from "../src/workflow/manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
+import { runOrResumeManifestBoundFamilyWorkflow } from "../src/workflow/manifest-bound-family-assembly.run-or-resume-manifest-bound-family-workflow.js";
 import * as orchestrator from "../src/workflow/orchestrator.js";
 import {
   categories,

@@ -23,7 +23,7 @@ import {
   datumProver,
   selectOwnFraudProofRecord,
 } from "../fraud-proof-record-selection.js";
-import { FraudProofRawL1DerivationError } from "../workflow/raw-l1-family-derivation.js";
+import { FraudProofRawL1DerivationError } from "../workflow/raw-l1-family-derivation.state-queue-topology.js";
 import type { NetworkIdWorkflowAdapterConfig } from "./workflow-adapter.create-network-id-raw-l1-observation-port.js";
 import { createNetworkIdForcedStepContract } from "./workflow-adapter.forced-step-contract.js";
 import { CATEGORY } from "./workflow-adapter.prepared-from-artifact.js";

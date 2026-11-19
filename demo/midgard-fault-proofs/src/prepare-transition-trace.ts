@@ -2,13 +2,11 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { readCborHexFile, stringifyJson } from "./json-file.js";
-import {
-  detectTransitionTraceFaults,
-  reconstructDaPayload,
-  type TransitionTraceDetection,
-  transitionTraceFinalIndex,
-} from "./transition-trace/index.js";
+import type { TransitionTraceDetection } from "./transition-trace/detect.detect-count-faults.js";
+import { detectTransitionTraceFaults } from "./transition-trace/detect.detect-single-ledger-transitions.js";
 import { makeTransitionProofMaterial } from "./transition-trace/proof-material.js";
+import { reconstructDaPayload } from "./transition-trace/reconstruct.reconstruct-da-payload.js";
+import { transitionTraceFinalIndex } from "./transition-trace/submit.make-transition-trace-final-spend-redeemer.js";
 
 export const TRANSITION_TRACE_PREPARE_SCHEMA_VERSION =
   "midgard-transition-trace-prepare-v1" as const;

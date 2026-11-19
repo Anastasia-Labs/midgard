@@ -3,14 +3,12 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { admitMinFeeForcedArtifact } from "../src/min-fee-forced-artifact.js";
-import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import { network } from "./support/emulator/blueprints.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { makeMinFeeWrongfulRejectionScenario as setup } from "./support/min-fee-wrongful-emulator.js";
-import {
-  buildRemovalDeploymentInfo,
-  network,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
 
 describe("minFee wrongful rejection registered lifecycle", () => {
   it.each([999n, 1_000n])(

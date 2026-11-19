@@ -6,8 +6,10 @@ import {
   midgardFieldCommitment,
 } from "@al-ft/midgard-core";
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core/codec";
-import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
-import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
+import {
+  deriveMidgardForcedTxProofSource,
+  materializeMidgardForcedTxFromCanonical,
+} from "@al-ft/midgard-core/codec/forced";
 import {
   acceptedVerdictSubject,
   AddressData,
@@ -22,8 +24,8 @@ import { Data, getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { planFaultProofFieldOpening } from "../src/field-opening.js";
-import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
+import { planFaultProofFieldOpening } from "../src/field-opening.plan-fault-proof-field-opening.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import { nativeTxFromCoreCompact } from "../src/step-support.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
@@ -44,12 +46,12 @@ import {
   makeNativeTx,
 } from "./support/emulator/native-tx.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
-import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
 import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
-import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
-import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
-import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
+import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init/forced-transitions.js";
+import { setupFraudulentBlock } from "./support/submit-init/removal.js";
 import { submitCommittedFieldShapeInit } from "./support/submit-unjournaled.committed-field-shape.js";
 import { publishCarriageUnjournaled } from "./support/submit-unjournaled.js";
 import {

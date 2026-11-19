@@ -2,29 +2,25 @@ import { outRefLabel } from "@al-ft/midgard-core";
 import type * as SDK from "@al-ft/midgard-sdk";
 import { expect } from "vitest";
 
-import {
-  submitNoReferenceInputStep01,
-  submitNoReferenceInputStep02,
-  submitNoReferenceInputStep03,
-} from "../src/index.js";
+import { buildInit } from "../src/submit-init.submit-init.js";
+import { submitNoReferenceInputStep01 } from "../src/submit-no-reference-input-step-01.js";
+import { submitNoReferenceInputStep02 } from "../src/submit-no-reference-input-step-02.js";
+import { submitNoReferenceInputStep03 } from "../src/submit-no-reference-input-step-03.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import {
   inputExistenceExecutionContext,
   publishInputExistenceSelectionCarriage,
 } from "./support/input-existence-execution-context.js";
-import { buildInit } from "./support/legacy-submit-emulator.js";
 import {
   NO_REFERENCE_INPUT_ABSENT_PRODUCER_TX_ID,
   type NoReferenceInputFixture,
   noReferenceInputOutRef,
 } from "./support/no-reference-input-emulator.js";
-import { registerPexcludesExclusionRewardAccount } from "./support/submit-init-emulator-fixtures.js";
-import {
-  buildRemovalDeploymentInfo,
-  expectSingleUtxoWithUnit,
-  makeFaultProofEmulatorHarness,
-  network,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
+import { registerPexcludesExclusionRewardAccount } from "./support/submit-init/wallet.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 export const makeNoReferenceInputHarness = async () =>

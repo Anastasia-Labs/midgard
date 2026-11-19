@@ -7,7 +7,7 @@ import {
   watcherDeploymentReleaseEconomicsAuthority,
   watcherDeploymentReleaseFinalityAuthority,
 } from "midgard-watcher";
-import { makeWatcherDeploymentAuthorityFixture } from "midgard-watcher/tests/support/deployment-authority-fixture";
+import { makeWatcherDeploymentAuthorityFixture } from "midgard-watcher/tests/support/deployment-authority-fixture.build-watcher-deployment-authority-fixture";
 
 import {
   validationTraceComputationSteps,
@@ -23,15 +23,17 @@ import type { FraudProofRawL1FamilyDefinition } from "../../src/workflow/raw-l1-
 import {
   FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
   type FraudProofRawL1SnapshotAuthority,
-} from "../../src/workflow/raw-l1-snapshot.js";
+} from "../../src/workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
 import type { VerifiedFraudProofReleaseEconomicsPolicy } from "../../src/workflow/release-economics-policy.js";
 import type { VerifiedFraudProofReleaseFinalityPolicy } from "../../src/workflow/release-finality-policy.js";
 import type { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
-import type { RemovalReferenceScriptPublications } from "./emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
-import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.js";
+import {
+  publishRemovalReferenceScripts,
+  type RemovalReferenceScriptPublications,
+} from "./emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.build-removal-deployment-info.js";
 import { emulatorSignedTransactionRecovery } from "./emulator-signed-recovery.js";
 import { fixtureLeaseCoordinator } from "./script-decode-installed-host.js";
-import { publishRemovalReferenceScripts } from "./submit-init-emulator-shared.js";
 import type { Scene } from "./validation-trace-dispute-open-scene.js";
 
 type Snapshot = Awaited<

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { makeInputSetUniquenessEmulatorHarness } from "./support/input-set-uniqueness-emulator.js";
-import { publishPlainReferenceScriptUtxo } from "./support/submit-init-emulator-shared.js";
+import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { makeInputSetUniquenessEmulatorHarness } from "./support/input-set-uniqueness-emulator.build-input-set-uniqueness-fixture.js";
 
 describe("input-set-uniqueness direction-complete publication fit", () => {
   it("publishes every applied physical validator below the reliability reserve", async () => {

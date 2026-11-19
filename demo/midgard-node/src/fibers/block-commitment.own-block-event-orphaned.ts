@@ -4,7 +4,7 @@ import {
   describePoisonedOwnHeaders,
   readPoisonedOwnHeaders,
 } from "../database/poisoned-own-headers.js";
-import { Globals } from "../services/index.js";
+import { Globals } from "../services/globals.globals.js";
 import {
   clearLivenessIncident,
   raiseLivenessIncident,

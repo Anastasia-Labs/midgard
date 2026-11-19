@@ -23,7 +23,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import {
   buildFraudProofCatalogueDeploymentInfo,
   fraudProofsToIndexedValidators,
-} from "../src/transactions/initialization.js";
+} from "../src/transactions/initialization.atomic-protocol-init-reference-scripts-from-publications.js";
 import { makeFinalizedDeploymentManifestFixture } from "./helpers/finalized-deployment-manifest.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 

@@ -9,15 +9,15 @@ import { afterEach, expect, vi } from "vitest";
 import { createFieldPreimageLengthRecoveryPorts } from "../src/field-preimage-length-mismatch/recovery.js";
 import { FIELD_PREIMAGE_LENGTH_CURSOR_SPEC } from "../src/field-preimage-length-mismatch/workflow-spec.js";
 import type { StateQueueMutationLeaseCoordinator } from "../src/remove-fraudulent-block.js";
-import { createCursorFamilyWorkflowAdapter } from "../src/workflow/cursor-family-adapter.js";
+import { createCursorFamilyWorkflowAdapter } from "../src/workflow/cursor-family-adapter.create-cursor-family-workflow-adapter.js";
 import { createFraudProofFamilyRawL1ObservationPort } from "../src/workflow/family-l1-observation.js";
+import { DirectoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
+import type { FraudProofWorkflowJournalEvent } from "../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import {
   computeFraudProofWorkflowId,
-  DirectoryFraudProofWorkflowJournalStore,
   type FraudProofWorkflowIdentity,
-  type FraudProofWorkflowJournalEvent,
   journalJsonDigest,
-} from "../src/workflow/journal.js";
+} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
 import {
   computeFraudProofReleaseEconomicsPolicyDigest,
   FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
@@ -36,15 +36,13 @@ import { recordCrossBlockRawEmulator } from "./support/cross-block-raw-emulator.
 import { network } from "./support/emulator/blueprints.js";
 import { makeHeader } from "./support/emulator/header-fixtures.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import {
-  countedTransactionsRoot,
   emulatorSuccessorHeaderStart,
   submitSuccessorBlockTx,
-} from "./support/submit-init-emulator-fixtures.js";
-import {
-  buildRemovalDeploymentInfo,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/submit-init/successor.js";
+import { countedTransactionsRoot } from "./support/submit-init/transaction-material.js";
 
 const recorders = new Set<ReturnType<typeof recordCrossBlockRawEmulator>>();
 afterEach(() => {

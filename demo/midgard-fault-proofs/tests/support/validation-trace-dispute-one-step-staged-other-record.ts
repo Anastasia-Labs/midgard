@@ -25,7 +25,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { expect, vi } from "vitest";
 
-import { resolveProverSigner } from "../../src/index.js";
+import { resolveProverSigner } from "../../src/runtime.resolve-prover-signer.js";
 import {
   type ConfirmedValidationTraceStage,
   confirmedValidationTraceStages,
@@ -33,16 +33,14 @@ import {
 import { VALIDATION_TRACE_CASE_OPEN } from "../../src/validation-trace-dispute/adapter.js";
 import { VALIDATION_TRACE_STAGING_RECLAIM } from "../../src/validation-trace-dispute/one-step-staging-journal.js";
 import { validationTraceDefenseDeadlineMs } from "../../src/validation-trace-dispute/waiting.js";
-import {
-  type FraudProofWorkflowJournalEntry,
-  MemoryFraudProofWorkflowJournalStore,
-} from "../../src/workflow/journal.js";
+import { MemoryFraudProofWorkflowJournalStore } from "../../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
+import type { FraudProofWorkflowJournalEntry } from "../../src/workflow/journal.fraud-proof-workflow-journal-event.js";
 import type { FraudProofWorkflowRunResult } from "../../src/workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import type { FraudProofFamilyWorkflowAdapter } from "../../src/workflow/orchestrator.js";
 import { parseOwnOutRef } from "../../src/workflow/own-outputs.js";
 import { RELEASE_FINALITY_POLICY } from "../workflow.make-adapter.js";
+import { network } from "./emulator/blueprints.js";
 import { emulatorSignedTransactionRecovery } from "./emulator-signed-recovery.js";
-import { network } from "./submit-init-emulator-shared.js";
 import {
   awaitLastSlotAtOrBefore,
   liveCase,

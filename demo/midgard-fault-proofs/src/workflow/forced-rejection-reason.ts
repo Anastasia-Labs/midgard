@@ -1,10 +1,10 @@
 import * as SDK from "@al-ft/midgard-sdk";
+import { resolveRejectionReason } from "@al-ft/midgard-validation";
 import {
   type RejectCode,
   RejectCodes,
   type RejectedTx,
-  resolveRejectionReason,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/types";
 
 /** What the writer reads from a Phase A/B rejection. */
 export type ForcedRejection = Pick<

@@ -8,16 +8,18 @@ import {
 } from "@lucid-evolution/lucid";
 import { vi } from "vitest";
 
-import { DaLibp2pRetainedDaSource } from "../src/transition-trace/fetch.js";
+import { DaLibp2pRetainedDaSource } from "../src/transition-trace/fetch.da-libp2p-retained-da-source.js";
 import {
   beginWorkflowFundingReservationAction,
   bindWorkflowFundingReservationJournal,
-  createWorkflowFundingReservationPermit,
-  prepareWorkflowFundingReservationTransaction,
-  unsafeWorkflowFundingReservationSelectedOutRefsForTest,
-  type WorkflowFundingReservationPort,
-  type WorkflowFundingReservationSnapshot,
-} from "../src/workflow/funding-reservation-permit.js";
+} from "../src/workflow/funding-reservation-permit.begin-workflow-funding-reservation-action.js";
+import { createWorkflowFundingReservationPermit } from "../src/workflow/funding-reservation-permit.create-workflow-funding-reservation-permit.js";
+import { prepareWorkflowFundingReservationTransaction } from "../src/workflow/funding-reservation-permit.read-workflow-funding-recovery.js";
+import { unsafeWorkflowFundingReservationSelectedOutRefsForTest } from "../src/workflow/funding-reservation-permit.restrict-workflow-funding-signer.js";
+import type {
+  WorkflowFundingReservationPort,
+  WorkflowFundingReservationSnapshot,
+} from "../src/workflow/funding-reservation-permit.workflow-funding-reservation-port.js";
 import type { FraudProofWorkflowAction } from "../src/workflow/orchestrator.js";
 import {
   createWorkflowRuntimeFundingPolicy,

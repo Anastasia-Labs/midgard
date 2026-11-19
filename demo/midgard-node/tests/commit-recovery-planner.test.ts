@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   rootsMatchConfirmedHeader,
   shouldSkipIdleCommitBehindUnmergedTail,
-} from "../src/workers/utils/commit-block-planner.js";
+} from "../src/workers/utils/commit-block-planner.plan-scheduler-aware-commit-selection.js";
 
 describe("commit recovery planner", () => {
   it("checks computed roots against confirmed header roots", () => {

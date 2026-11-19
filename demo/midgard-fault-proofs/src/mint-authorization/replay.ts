@@ -12,10 +12,10 @@ import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidenc
 import { retainedOutputReferenceScript } from "../evidence/retained-ledger-output.js";
 import { type CheckedLedger } from "../ledger-at.js";
 import { transactionHasNonCanonicalMintItem } from "../mint-item-non-canonical/replay.js";
-import { decodeTransactionMaterial } from "../prepare-double-spend.js";
+import { decodeTransactionMaterial } from "../prepare-double-spend.resolve-double-spend-pair.js";
 import { keyValuePhasProof } from "../transition-trace/phas.js";
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
-import { buildEventToStepMembershipProof } from "../transition-trace/witnesses.js";
+import { buildEventToStepMembershipProof } from "../transition-trace/witnesses.build-source-membership-proof.js";
 import { acceptedTransactionSubject } from "../workflow/detection-subject.js";
 import {
   collectReplayFindingBatches,

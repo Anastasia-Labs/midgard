@@ -8,12 +8,12 @@ import {
 import { Data } from "@lucid-evolution/lucid";
 import { expect, it, vi } from "vitest";
 
+import { createAuthenticatedFieldCarriagePrerequisitePort } from "../src/workflow/field-carriage-prerequisite.create-authenticated-field-carriage-prerequisite-port.js";
 import {
-  createAuthenticatedFieldCarriagePrerequisitePort,
   FIELD_CARRIAGE_PREREQUISITE,
   FIELD_CARRIAGE_RECOVERY,
   RAW_DATUM_PREIMAGE_PREREQUISITE,
-} from "../src/workflow/field-carriage-prerequisite.js";
+} from "../src/workflow/field-carriage-prerequisite.field-carriage-prerequisite-port.js";
 import type { FraudProofWorkflowAction } from "../src/workflow/orchestrator.js";
 import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../src/workflow/raw-l1-publication-observation.js";
 

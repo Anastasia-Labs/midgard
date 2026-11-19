@@ -25,9 +25,11 @@ import {
   referenceScriptLedgerBytes,
   type ReferenceScriptSweepLimits,
   ReferenceScriptSweepRefusal,
+} from "../src/transactions/reference-script-sweep.reference-script-fee.js";
+import {
   type ReferenceScriptSweepResult,
   sweepRetiredReferenceScriptsProgram,
-} from "../src/transactions/reference-script-sweep.js";
+} from "../src/transactions/reference-script-sweep.sweep-retired-reference-scripts-program.js";
 import { resolveReferenceScriptUtxo } from "../src/transactions/reference-scripts.js";
 import {
   drainJournaledWithoutFollower,

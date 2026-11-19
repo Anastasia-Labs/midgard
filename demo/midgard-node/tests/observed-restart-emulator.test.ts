@@ -6,7 +6,7 @@ import { expect, it, vi } from "vitest";
 import { PendingBlockFinalizationsDB } from "../src/database/index.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/services/history-commit-window.js";
 import { IntentJournalWithoutFollower } from "../src/services/intent-journal.js";
-import { MempoolLedgerCache } from "../src/services/mempool-ledger-cache.js";
+import { MempoolLedgerCache } from "../src/services/mempool-ledger-cache.mempool-ledger-cache-service.js";
 import {
   advanceEmulatorPastLatestBlockEndTime,
   advanceEmulatorPastUnixTime,

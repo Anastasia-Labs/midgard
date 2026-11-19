@@ -9,10 +9,8 @@ import type { ResolvedProverSigner } from "../runtime.js";
 import { findScriptDecodeRecord } from "../script-decode/record.js";
 import type { FraudProofFamilyWorkflowAdapter } from "../workflow/orchestrator.js";
 import type { FraudProofAuthenticatedPublicationObserver } from "../workflow/raw-l1-publication-observation.js";
-import {
-  createScriptDecodePrerequisitePort,
-  withScriptDecodePrerequisite,
-} from "../workflow/script-decode-prerequisite.js";
+import { createScriptDecodePrerequisitePort } from "../workflow/script-decode-prerequisite.create-script-decode-prerequisite-port.js";
+import { withScriptDecodePrerequisite } from "../workflow/script-decode-prerequisite.with-script-decode-prerequisite.js";
 import {
   parseValidationTraceAction,
   VALIDATION_TRACE_DISPUTE_ACTION,

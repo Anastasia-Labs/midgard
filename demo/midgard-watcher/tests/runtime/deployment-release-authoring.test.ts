@@ -12,7 +12,7 @@ import {
   authorWatcherDeploymentRelease,
   type WatcherExistingAuthorityPolicy,
 } from "../../src/runtime/deployment-release-authoring.js";
-import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
+import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.build-watcher-deployment-authority-fixture.js";
 
 const BLUEPRINT_JSON = '{"preamble":{"title":"release-authoring-test"}}';
 const { manifest } = makeWatcherDeploymentAuthorityFixture({

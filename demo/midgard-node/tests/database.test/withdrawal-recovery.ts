@@ -4,9 +4,10 @@ import { Effect, Option } from "effect";
 import { describe, expect } from "vitest";
 
 import { WithdrawalsDB } from "../../src/database/index.js";
-import { resolveIncludedWithdrawalEntriesForWindow } from "../../src/mpf/event-window.js";
+import { resolveIncludedWithdrawalEntriesForWindow } from "../../src/mpf/event-window.resolve-included-forced-transaction-entries-for-window.js";
 import { insertWithdrawals } from "../helpers/event-rows.js";
-import { isolatedDb, makeHistoryWithdrawalEntry } from "./fixtures.js";
+import { isolatedDb } from "./fixtures.environment.js";
+import { makeHistoryWithdrawalEntry } from "./fixtures.events.js";
 
 /** A withdrawal reopened from `header`, as a disposed block's journal
  * leaves it (`disposeJournals`): unclassified, awaiting, its revision

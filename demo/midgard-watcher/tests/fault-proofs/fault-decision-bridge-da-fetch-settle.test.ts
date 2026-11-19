@@ -12,7 +12,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import { watcherDaFetchAlertSubject } from "../../src/runtime/operations-observability.alert-book.js";
-import { registerWatcherDaFetcher } from "../../src/storage/retained-da-runtime.js";
+import { registerWatcherDaFetcher } from "../../src/storage/retained-da-runtime.retained-da-request-permits.js";
 import {
   active,
   AUTHORITY,

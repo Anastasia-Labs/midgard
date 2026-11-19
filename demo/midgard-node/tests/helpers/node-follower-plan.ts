@@ -7,7 +7,7 @@ import type { L1Origin } from "@al-ft/midgard-core/l1-origin";
 import type { OutRef } from "@al-ft/midgard-l1-follower";
 import { Effect } from "effect";
 
-import { AlwaysSucceedsContract } from "../../src/services/always-succeeds.js";
+import { AlwaysSucceedsContract } from "../../src/services/always-succeeds.always-succeeds-contract.js";
 import { l1FollowerPlan } from "../../src/services/l1-follower.plan.js";
 import { withRealEventHistoryForTest } from "./event-history.js";
 

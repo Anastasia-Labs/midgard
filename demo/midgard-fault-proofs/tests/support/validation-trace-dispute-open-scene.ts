@@ -27,7 +27,7 @@ import { detectedValidationTraceClaim } from "../../src/validation-trace-dispute
 import {
   createValidationTraceDisputeCompleteCanonicalReplay,
   requireCompleteCanonicalReplayDecision,
-} from "../../src/workflow/complete-replay.js";
+} from "../../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
 import {
   FAILING_SCRIPT,
   nativeSpendSeedDeposit,
@@ -43,19 +43,21 @@ import {
   type ScriptSpend,
 } from "../helpers/plutus-execution-block-fixture.js";
 import { recordCrossBlockRawEmulator } from "./cross-block-raw-emulator.js";
-import { awaitHeaderCommitWindow } from "./emulator/family-history.js";
-import { submitSuccessorBlockTx } from "./submit-init/successor.js";
+import { network } from "./emulator/blueprints.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
-  type FaultProofEmulatorHarness,
-  fixtureBlockSlot,
   fundedProverEmulatorAccount,
   funderPaymentKeyHash,
+} from "./emulator/emulator-context.js";
+import { awaitHeaderCommitWindow } from "./emulator/family-history.js";
+import {
+  type FaultProofEmulatorHarness,
   makeFaultProofEmulatorHarness,
-  network,
-  publishPlainReferenceScriptUtxo,
-  submitSetupTx,
-} from "./submit-init-emulator-shared.js";
+} from "./emulator/harness.js";
+import { fixtureBlockSlot } from "./emulator/header-fixtures.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { submitSetupTx } from "./emulator/setup-tx.submit-setup-tx.js";
+import { submitSuccessorBlockTx } from "./submit-init/successor.js";
 import { depositEventsRetainedBlock } from "./transition-trace-retained.deposit-events-retained-block.js";
 import { l1SlotConfig } from "./validation-trace-claim-material.js";
 

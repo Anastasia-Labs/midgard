@@ -3,7 +3,7 @@ import { type CheckedLedger } from "../ledger-at.js";
 import {
   type JournalJsonObject,
   normalizeJournalJson,
-} from "../workflow/journal.js";
+} from "../workflow/journal.fraud-proof-workflow-terminal.js";
 import type { FraudProofRawL1Snapshot } from "../workflow/raw-l1-snapshot.js";
 import type { TransitionDepositOpening } from "./history-opening.js";
 import {

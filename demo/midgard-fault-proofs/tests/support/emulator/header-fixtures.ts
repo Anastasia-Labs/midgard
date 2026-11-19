@@ -3,8 +3,10 @@ import {
   DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
   deploymentFamilyStepNames,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
+import {
+  type L1SlotConfig,
+  NAMED_NETWORK_L1_SLOT_CONFIGS,
+} from "@al-ft/midgard-core/l1-slot-config";
 import {
   EMPTY_HEADER_TRANSITION_COMMITMENTS,
   EMPTY_MERKLE_TREE_ROOT,
@@ -14,7 +16,7 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import { encodeData } from "../../../src/index.js";
+import { encodeData } from "../../../src/transition-trace/reconstruct.transition-trace-reconstruction.js";
 
 export const SETUP_OUTPUT_INDEX = {
   stateQueueRoot: 3n,

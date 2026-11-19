@@ -1,17 +1,17 @@
 import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk";
 
 import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import { TRANSACTION_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
+import { TRANSACTION_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import { type CursorFamilyTransactionPort } from "../workflow/cursor-family-adapter.js";
 import {
   cursorStepContractNames,
   defineFamily,
-} from "../workflow/family-definition.js";
+} from "../workflow/family-definition.family-definition.js";
 import { type FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import {
   assembleBoundManifestBoundFamilyWorkflow,
   bindManifestBoundFamilyWorkflow,
-} from "../workflow/manifest-bound-family-assembly.js";
+} from "../workflow/manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
 import {
   executeManifestBoundFamilyRecovery,
   type ManifestBoundFamilyWorkflowWithRecovery,

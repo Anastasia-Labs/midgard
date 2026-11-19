@@ -1,6 +1,6 @@
 import { isFinal } from "@al-ft/midgard-l1-follower/heads";
 
-import { watcherSha256CanonicalJson } from "../storage/durable-store.js";
+import { watcherSha256CanonicalJson } from "../storage/durable-store.canonical-json.js";
 import { MAX_RECORDS as MAX_DECISIONS } from "./fault-decision-journal.exact-record.js";
 import type { WatcherInstalledWorkflowCategory } from "./fault-proof-application.js";
 import type {

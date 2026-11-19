@@ -7,10 +7,8 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import {
-  admitFraudProofRawL1Snapshot,
-  type FraudProofRawL1SnapshotRequest,
-} from "../src/workflow/raw-l1-snapshot.js";
+import { admitFraudProofRawL1Snapshot } from "../src/workflow/raw-l1-snapshot.admit-fraud-proof-raw-l1-snapshot.js";
+import type { FraudProofRawL1SnapshotRequest } from "../src/workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
 import {
   computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,

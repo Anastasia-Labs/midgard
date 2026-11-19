@@ -34,7 +34,7 @@ import {
   fieldGrammarOfCarriagePlan,
   planFieldGrammarBatches,
   reuseOrCertifyFaultProofFieldGrammar,
-} from "../src/field-grammar-certificate.js";
+} from "../src/field-grammar-certificate.certify-fault-proof-field-grammar.js";
 import { faultProofRawFieldCarriage } from "../src/field-opening.publish-fault-proof-field-carriage.js";
 import {
   VAN_ROSSEM_MAX_CPU_UNITS,

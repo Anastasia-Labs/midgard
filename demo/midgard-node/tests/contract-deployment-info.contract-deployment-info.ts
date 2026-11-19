@@ -20,20 +20,22 @@ import { describe, expect, it as unitIt } from "vitest";
 import {
   buildContractDeploymentInfoFromContracts,
   buildContractDeploymentInfoProgram,
+} from "../src/commands/contract-deployment-info.build-contract-deployment-info-from-contracts.js";
+import {
   buildDeploymentManifest,
-  buildReferenceScriptOutRefMap,
-  cardanoProtocolParametersIdentity,
-  cardanoProtocolParametersIdentityFromLedger,
   defaultContractDeploymentInfoOutputPath,
-  ledgerProtocolParametersReader,
   parseDeploymentManifest,
   verifyDeploymentManifestAgainstConfig,
-} from "../src/commands/contract-deployment-info.js";
-import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
+} from "../src/commands/contract-deployment-info.build-deployment-manifest.js";
+import { buildReferenceScriptOutRefMap } from "../src/commands/contract-deployment-info.build-reference-script-out-ref-map.js";
 import {
-  midgardContractsFromDeploymentManifest,
-  parseRuntimeDeploymentManifest,
-} from "../src/services/midgard-contracts.js";
+  cardanoProtocolParametersIdentity,
+  cardanoProtocolParametersIdentityFromLedger,
+  ledgerProtocolParametersReader,
+} from "../src/commands/contract-deployment-info.exact-protocol-parameter-snapshot.js";
+import { AlwaysSucceedsContract } from "../src/services/always-succeeds.always-succeeds-contract.js";
+import { parseRuntimeDeploymentManifest } from "../src/services/midgard-contracts.load-reference-script-auth-validator.js";
+import { midgardContractsFromDeploymentManifest } from "../src/services/midgard-contracts.midgard-contracts-from-deployment-manifest.js";
 import { nodeRuntimeReferenceScriptTargets } from "../src/transactions/reference-scripts.js";
 import {
   buildFinalizedContractDeploymentInfo,

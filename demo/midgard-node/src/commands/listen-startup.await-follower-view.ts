@@ -29,7 +29,7 @@ import {
 } from "../l1-events/driver.js";
 import { LANDED_BLOCK_REBASE_FAILED } from "../landed-blocks/holds.js";
 import { followerWriteGateReasons } from "../services/follower-write-gate.local.js";
-import { Globals } from "../services/globals.js";
+import { Globals } from "../services/globals.globals.js";
 import { currentLivenessReasons } from "../services/globals.liveness-reasons.js";
 import { l1FollowerReadiness } from "../services/l1-follower.readiness.js";
 import {

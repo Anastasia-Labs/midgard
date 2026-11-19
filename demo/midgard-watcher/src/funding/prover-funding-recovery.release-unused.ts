@@ -6,11 +6,11 @@ import { openWatcherJournalDatabase } from "../fault-proofs/watcher-journal-data
 import type { WatcherWorkflowJournal } from "../fault-proofs/watcher-workflow-journal.js";
 import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
 import type { WatcherOrphanedReservations } from "./prover-funding-recovery.orphaned-reservation.js";
-import {
-  parseWatcherProverFundingReservationRecord,
-  type WatcherProverFundingReservationRecord,
-  type WatcherProverFundingReservationStore,
-} from "./prover-funding-reservation.js";
+import { parseWatcherProverFundingReservationRecord } from "./prover-funding-reservation.parse-watcher-prover-funding-reservation-record.js";
+import type {
+  WatcherProverFundingReservationRecord,
+  WatcherProverFundingReservationStore,
+} from "./prover-funding-reservation.watcher-prover-funding-reservation-store.js";
 
 type ReservationHold = WatcherDecisionHold & Readonly<{ kind: "reservation" }>;
 

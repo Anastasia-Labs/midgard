@@ -1,5 +1,5 @@
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import { VALUE_NOT_PRESERVED_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
+import { VALUE_NOT_PRESERVED_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.create-complete-canonical-replay-union.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import type { FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import {

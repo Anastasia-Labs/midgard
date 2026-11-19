@@ -15,11 +15,11 @@ import {
   parseL1SlotConfig,
 } from "@al-ft/midgard-core/l1-slot-config";
 
-import {
-  verifyWatcherDeploymentIdentity,
-  type WatcherDeploymentIdentityPolicy,
-  type WatcherDeploymentTrustRoot,
-} from "../runtime/deployment-identity.js";
+import type {
+  WatcherDeploymentIdentityPolicy,
+  WatcherDeploymentTrustRoot,
+} from "../runtime/deployment-identity.catalogue-category-to-contract.js";
+import { verifyWatcherDeploymentIdentity } from "../runtime/deployment-identity.verify-watcher-deployment-identity.js";
 import {
   canonicalJsonValue,
   denseArray,

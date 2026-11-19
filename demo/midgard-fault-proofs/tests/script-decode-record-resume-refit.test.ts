@@ -16,14 +16,16 @@ import {
 import { describe, expect, it } from "vitest";
 
 import { proofMaterialsAddress } from "../src/funding/proof-materials-address.js";
+import { scriptDecodeRunTokenName } from "../src/script-decode/data.js";
 import {
   recordScriptDecode,
-  type ScriptDecodeDeployment,
-  scriptDecodeRunTokenName,
-  scriptDecodeStagingDatums,
   ScriptDecodeWalkRejectedError,
+} from "../src/script-decode/record.js";
+import {
+  type ScriptDecodeDeployment,
+  scriptDecodeStagingDatums,
   transactionExUnits,
-} from "../src/script-decode/index.js";
+} from "../src/script-decode/submit.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
 import { injectScriptDecodeDeployment } from "./support/script-decode-emulator.js";

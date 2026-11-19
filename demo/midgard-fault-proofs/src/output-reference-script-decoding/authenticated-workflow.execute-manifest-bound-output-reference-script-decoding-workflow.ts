@@ -3,14 +3,14 @@ import { type FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import {
   assembleBoundManifestBoundFamilyWorkflow,
   bindManifestBoundFamilyWorkflow,
-} from "../workflow/manifest-bound-family-assembly.js";
+} from "../workflow/manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
 import {
   createCanonicalFamilyArtifactPort,
   executeManifestBoundFamilyRecovery,
   type ManifestBoundFamilyWorkflowWithRecovery,
   withManifestBoundFamilyRecovery,
 } from "../workflow/manifest-bound-family-recovery.js";
-import { scriptDecodeDeploymentFromReferences } from "../workflow/script-decode-prerequisite.js";
+import { scriptDecodeDeploymentFromReferences } from "../workflow/script-decode-prerequisite.deployment.js";
 import { type WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
 import {
   createOutputReferenceScriptDecodingBoundConfig,

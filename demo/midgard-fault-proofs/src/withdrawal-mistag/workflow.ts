@@ -16,14 +16,12 @@ import {
 } from "../runtime.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import {
-  type CompleteCanonicalReplayContext,
-  WITHDRAWAL_MISTAG_COMPLETE_CANONICAL_REPLAY,
-} from "../workflow/complete-replay.js";
+import { WITHDRAWAL_MISTAG_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.create-complete-canonical-replay-union.js";
+import type { CompleteCanonicalReplayContext } from "../workflow/complete-replay.replay-context-identity.js";
 import {
   CURSOR_FAMILY_TRANSACTION_PORT,
   type CursorFamilyTransactionPort,
-} from "../workflow/cursor-family-adapter.js";
+} from "../workflow/cursor-family-adapter.admit-reference-scripts.js";
 import {
   captureCursorRemoval,
   cursorFamilyActionInput,
@@ -31,19 +29,19 @@ import {
   cursorStringField,
 } from "../workflow/cursor-family-runtime.js";
 import { WITHDRAWAL_MISTAG_CURSOR_SPEC } from "../workflow/cursor-family-spec.js";
+import { CORE_WITNESS_ROLES } from "../workflow/family-definition.family-adapter-arm.js";
 import {
-  CORE_WITNESS_ROLES,
   cursorStepContractNames,
   defineFamily,
-} from "../workflow/family-definition.js";
+} from "../workflow/family-definition.family-definition.js";
 import type { FieldCarriagePrerequisitePort } from "../workflow/field-carriage-prerequisite.js";
-import type { JournalJsonObject } from "../workflow/journal.js";
-import type { FraudProofWorkflowJournalStore } from "../workflow/journal.js";
+import type {
+  FraudProofWorkflowJournalStore,
+  JournalJsonObject,
+} from "../workflow/journal.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
-import {
-  assembleManifestBoundFamilyWorkflow,
-  runOrResumeManifestBoundFamilyWorkflow,
-} from "../workflow/manifest-bound-family-assembly.js";
+import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
+import { runOrResumeManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-family-assembly.run-or-resume-manifest-bound-family-workflow.js";
 import type { FraudProofWorkflowAction } from "../workflow/orchestrator.js";
 import { createStructuredDataPreimageRequirement } from "../workflow/raw-datum-preimage-prerequisite.js";
 import { journaledStepTransaction } from "../workflow/step-transaction.js";
@@ -55,13 +53,13 @@ import {
 import type { WithdrawalMistagContracts } from "./contracts.js";
 import { buildWithdrawalMistagInit } from "./submit-withdrawal-mistag-init.js";
 import { buildWithdrawalMistagStep05 } from "./submit-withdrawal-mistag-step-05.js";
+import { withdrawalMistagStepPayloadCbor } from "./submit-withdrawal-mistag-steps.step-args.js";
 import {
   buildWithdrawalMistagStep01,
   buildWithdrawalMistagStep02,
   buildWithdrawalMistagStep03,
   buildWithdrawalMistagStep04,
-  withdrawalMistagStepPayloadCbor,
-} from "./submit-withdrawal-mistag-steps.js";
+} from "./submit-withdrawal-mistag-steps.submit-withdrawal-mistag-intermediate-step.js";
 
 export type WithdrawalMistagWorkflowReferenceScripts = Readonly<{
   steps: readonly [UTxO, UTxO, UTxO, UTxO, UTxO];

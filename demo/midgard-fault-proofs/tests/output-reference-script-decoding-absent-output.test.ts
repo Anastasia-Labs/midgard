@@ -11,12 +11,12 @@ import { encodeCbor } from "@al-ft/midgard-core";
 import { forcedVerdictSubject } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { FIELD_GRAMMAR_WALKED_COUNT_LIMIT } from "../src/field-grammar-certificate.js";
+import { FIELD_GRAMMAR_WALKED_COUNT_LIMIT } from "../src/field-grammar-certificate.route-fault-proof-field-grammar.js";
 import {
   type OutputReferenceScriptDecodingEvidence,
   OutputReferenceScriptResultClasses,
   prepareOutputReferenceScriptDecodingEvidence,
-} from "../src/output-reference-script-decoding/index.js";
+} from "../src/output-reference-script-decoding/output-reference-script-decoding.js";
 import {
   VAN_ROSSEM_MAX_CPU_UNITS,
   VAN_ROSSEM_MAX_MEMORY_UNITS,
@@ -24,16 +24,18 @@ import {
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { deployHarnessFieldGrammarCertificate } from "./support/field-grammar-certificate-deployment-fixture.js";
 import {
-  commitForcedBlock,
   createMeasurementRecorder,
-  type ForcedLeaf,
   makeOutputReferenceHarness,
-  makeOutputReferenceStages,
   outputWithNativeScript,
-  publishFamilyReferences,
   signatureScript,
   subjectTransaction,
-} from "./support/output-reference-script-decoding-emulator.js";
+} from "./support/output-reference-script-decoding-emulator.commit-accepted-block.js";
+import {
+  commitForcedBlock,
+  type ForcedLeaf,
+  publishFamilyReferences,
+} from "./support/output-reference-script-decoding-emulator.commit-forced-block.js";
+import { makeOutputReferenceStages } from "./support/output-reference-script-decoding-emulator.make-output-reference-stages.js";
 
 const recorder = createMeasurementRecorder();
 

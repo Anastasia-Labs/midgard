@@ -8,10 +8,8 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
-import {
-  type ContractDeploymentInfo,
-  parseContractDeploymentInfo,
-} from "./inspect-contracts.js";
+import type { ContractDeploymentInfo } from "./inspect-contracts.inspect-contracts-output.js";
+import { parseContractDeploymentInfo } from "./inspect-contracts.js";
 import {
   type ReferenceScriptName,
   type RemoveFraudulentBlockCategoryLabel,

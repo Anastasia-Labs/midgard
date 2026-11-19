@@ -6,9 +6,9 @@ import { describe, expect } from "vitest";
 
 import {
   parseReconciliationResult,
-  reconcileTxCommittedProgram,
   RECONCILIATION_SCHEMA_VERSION,
-} from "../../src/commands/reconcile.js";
+} from "../../src/commands/reconcile.parse-reconciliation-result.js";
+import { reconcileTxCommittedProgram } from "../../src/commands/reconcile.reconcile-reference-scripts-complete-program.js";
 import {
   AddressHistoryDB,
   BlocksDB,
@@ -23,28 +23,24 @@ import {
   TxAdmissionsDB,
   TxUtils,
 } from "../../src/database/index.js";
-import { NodeConfig } from "../../src/services/config.js";
+import { NodeConfig } from "../../src/services/config.make-config.js";
 import { BatchSql } from "../../src/services/database.js";
-import {
-  makeWriteBehind,
-  WriteBehind,
-} from "../../src/services/write-behind.js";
+import { makeWriteBehind } from "../../src/services/write-behind.make-write-behind.js";
+import { WriteBehind } from "../../src/services/write-behind.summarize-write-behind-telemetry.js";
 import { ProcessedTx } from "../../src/utils.js";
 import { resetApplicationTables } from ".././utils.js";
+import { databaseFixtureBytes, databaseTxHash } from "./fixtures.bytes.js";
+import { isolatedDb } from "./fixtures.environment.js";
 import {
   address1,
   address2,
   blockHeader1,
   blockHeader2,
-  databaseFixtureBytes,
-  databaseTxHash,
-  isolatedDb,
   ledgerEntry1,
   ledgerEntry2,
   makeValidNativeImmutableEntry,
   removeTimestampFromLedgerEntry,
   removeTimestampFromTxEntry,
-  retrieveAllMempool,
   tx1,
   tx2,
   tx3,
@@ -52,7 +48,8 @@ import {
   txEntry2,
   txId1,
   txId2,
-} from "./fixtures.js";
+} from "./fixtures.ledger.js";
+import { retrieveAllMempool } from "./fixtures.submission.js";
 
 export const registerLedgerTests = () => {
   describe("StateQueueMutationLeasesDB", () => {

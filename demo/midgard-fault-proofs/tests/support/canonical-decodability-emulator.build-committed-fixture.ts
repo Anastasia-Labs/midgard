@@ -20,23 +20,19 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Data, type Script, type UTxO } from "@lucid-evolution/lucid";
 
-import {
-  type CanonicalDecodabilityContracts,
-  prepareCanonicalDecodability,
-} from "../../src/canonical-decodability/index.js";
-import { encodeL2TransactionSourceValue } from "../../src/prepare-double-spend.js";
+import type { CanonicalDecodabilityContracts } from "../../src/canonical-decodability/contracts.js";
+import { prepareCanonicalDecodability } from "../../src/canonical-decodability/prepare-canonical-decodability.js";
+import { encodeL2TransactionSourceValue } from "../../src/prepare-double-spend.encode-l2-transaction-source-value.js";
 import {
   nativeTxFromCoreCompact,
   type SubmitStep01TxInclusion,
 } from "../../src/step-support.js";
-import { setupFraudulentBlock } from "./submit-init-emulator-fixtures.js";
-import {
-  makeFaultProofEmulatorHarness,
-  makeNativeTx,
-  publishPlainReferenceScriptUtxo,
-  registerChunkedVerifyRewardAccount,
-  trieRootHex,
-} from "./submit-init-emulator-shared.js";
+import { trieRootHex } from "./emulator/catalogue.js";
+import { registerChunkedVerifyRewardAccount } from "./emulator/emulator-context.js";
+import { makeFaultProofEmulatorHarness } from "./emulator/harness.js";
+import { makeNativeTx } from "./emulator/native-tx.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { setupFraudulentBlock } from "./submit-init/removal.js";
 
 export const CANONICAL_DECODABILITY_BODY_FIELD_INDEX = 2;
 

@@ -13,13 +13,13 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { watcherDeploymentAppliedScriptHashes } from "../../src/runtime/deployment-identity.js";
+import { watcherDeploymentAppliedScriptHashes } from "../../src/runtime/deployment-identity.watcher-deployment-availability-challenge-authority.js";
+import { setupFundingRecoveryFixture as setup } from "../support/fault-proof-funding-fixture.setup-funding-recovery-fixture.js";
 import {
   deploymentIdentity,
   key,
-  setupFundingRecoveryFixture as setup,
   walletAddress,
-} from "../support/fault-proof-funding-fixture.js";
+} from "../support/fault-proof-funding-fixture.sources-for.js";
 import {
   assertConfirmedFundingHistoryRetained,
   retireConfirmedFundingAttempts,

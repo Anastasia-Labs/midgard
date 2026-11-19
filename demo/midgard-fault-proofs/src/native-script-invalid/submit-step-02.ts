@@ -22,11 +22,11 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { isPrerequisiteTurn } from "../fault-proof-turn.js";
+import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
 import {
   faultProofFieldOpening,
-  planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
-} from "../field-opening.js";
+} from "../field-opening.publish-fault-proof-field-carriage.js";
 import {
   linearFaultStepLabel,
   requireLinearFaultReferenceScript,
@@ -37,17 +37,19 @@ import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import {
   advanceFieldGrammarCheckpoint,
-  advanceFieldSemanticCheckpoint,
   encodeFieldGrammarCheckpoint,
   encodeFieldSemanticCheckpoint,
   fieldGrammarCheckpointIsComplete,
   hashFieldGrammarCheckpoint,
   hashFieldSemanticCheckpoint,
   initialFieldGrammarCheckpoint,
+} from "../staged-field-walk/grammar-checkpoint.js";
+import {
+  advanceFieldSemanticCheckpoint,
   initialFieldSemanticCheckpoint,
   resolveFieldGrammarCheckpoint,
   resolveFieldSemanticCheckpoint,
-} from "../staged-field-walk/index.js";
+} from "../staged-field-walk/semantic-checkpoint.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   createOwnOutputJournal,

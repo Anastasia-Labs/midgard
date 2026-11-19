@@ -7,8 +7,8 @@ import {
   type TxSigned,
 } from "@lucid-evolution/lucid";
 
+import { network } from "./emulator/blueprints.js";
 import { type ProvedDoubleSpendFixture } from "./submit-init-emulator-fixtures.js";
-import { network } from "./submit-init-emulator-shared.js";
 
 const economics = SDK.getProtocolParameters(network);
 

@@ -13,16 +13,16 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import { INPUT_SET_UNIQUENESS_WRONGFUL_REJECTION_VIOLATION_ID } from "../src/input-set-uniqueness/replay.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import {
-  admitInputSetUniquenessForcedArtifact,
   INPUT_SET_UNIQUENESS_FORCED_ARTIFACT,
   InputSetUniquenessForcedSourceSchema,
-  type ManifestBoundInputSetUniquenessWorkflowConfig,
-} from "../src/workflow/input-set-uniqueness.js";
+} from "../src/workflow/input-set-uniqueness.admit-accepted-input-set-uniqueness-artifact.js";
+import { admitInputSetUniquenessForcedArtifact } from "../src/workflow/input-set-uniqueness.admit-input-set-uniqueness-forced-artifact.js";
+import type { ManifestBoundInputSetUniquenessWorkflowConfig } from "../src/workflow/input-set-uniqueness.create-transaction-port.js";
 import { makeHeader } from "./support/emulator/header-fixtures.js";
 import {
   buildInputSetUniquenessFixture,
   isuOutRef,
-} from "./support/input-set-uniqueness-emulator.js";
+} from "./support/input-set-uniqueness-emulator.build-input-set-uniqueness-fixture.js";
 
 const makeArtifact = async () => {
   const fixture = await buildInputSetUniquenessFixture({

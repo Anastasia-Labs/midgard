@@ -20,10 +20,10 @@ import {
 import { ensureNodeRuntimeReferenceScriptsProgram } from "./reference-scripts.js";
 import {
   TxConfirmError,
-  TxExpiredError,
   TxSignError,
   TxSubmitError,
-} from "./utils.js";
+} from "./utils.await-required-output-visibility.js";
+import { TxExpiredError } from "./utils.tx-expiry.js";
 
 /**
  * Builds the `DaParamsDatum` this node writes at protocol initialization.

@@ -3,10 +3,8 @@ import "./transactions-utils.sign-submit-wrapper-recovery-options.js";
 import { Deferred, Effect, Fiber } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  BeforeSignedTransactionSubmission,
-  submitSignedTxWithRecovery,
-} from "../src/transactions/utils.js";
+import { BeforeSignedTransactionSubmission } from "../src/transactions/utils.await-required-output-visibility.js";
+import { submitSignedTxWithRecovery } from "../src/transactions/utils.submit-signed-tx-with-recovery.js";
 import {
   runWithoutFollower,
   TEST_INTENT,

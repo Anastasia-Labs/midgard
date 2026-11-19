@@ -9,8 +9,8 @@ import { encodeCborBytes } from "@al-ft/midgard-core/codec/cbor";
 import {
   deriveMidgardForcedTxProofSource,
   encodeMidgardForcedTxCanonical,
+  materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
-import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import {
   ForcedInclusionTxV1Schema,
   forcedVerdictSubject,
@@ -29,7 +29,7 @@ import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
 import { makeNetworkIdEmulatorHarness } from "./support/network-id-emulator.js";
-import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
+import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init/forced-transitions.js";
 
 export const network = "Custom" as const;
 

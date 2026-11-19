@@ -8,8 +8,10 @@ import {
   materializeMidgardNativeTxFromCanonical,
 } from "@al-ft/midgard-core";
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core/codec";
-import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
-import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
+import {
+  deriveMidgardForcedTxProofSource,
+  materializeMidgardForcedTxFromCanonical,
+} from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -20,14 +22,14 @@ import {
 import { expect } from "vitest";
 
 import type { CanonicalBlockEvidence } from "../../src/evidence/canonical-block-evidence.js";
-import { planFaultProofFieldOpening } from "../../src/field-opening.js";
+import { planFaultProofFieldOpening } from "../../src/field-opening.plan-fault-proof-field-opening.js";
 import { buildLinearFaultCancel } from "../../src/linear-fault-cancel.js";
 import { MIN_FEE_CATEGORY_LABEL } from "../../src/min-fee-contracts.js";
 import {
   MIN_FEE_FORCED_ARTIFACT,
   prepareMinFeeForcedArtifact,
 } from "../../src/min-fee-forced-artifact.js";
-import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.js";
+import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import { forcedTxFromCoreCompact } from "../../src/step-support.js";
 import { buildMinFeeStep01Forced } from "../../src/submit-min-fee-forced-step-01.js";
 import { buildMinFeeInit } from "../../src/submit-min-fee-init.js";
@@ -39,20 +41,18 @@ import {
   buildCountedRoot,
   commitCountedRoot,
 } from "../../src/transition-trace/phas.js";
-import { eventKeyFingerprint } from "../../src/transition-trace/reconstruct.js";
+import { eventKeyFingerprint } from "../../src/transition-trace/reconstruct.transition-trace-reconstruction.js";
 import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
+import { network } from "./emulator/blueprints.js";
+import { alignUnixTimeToEmulatorSlotBoundary } from "./emulator/emulator-context.js";
+import { makeFaultProofEmulatorHarness } from "./emulator/harness.js";
 import { captureEmulatorSubmission } from "./emulator/measurement.js";
 import { makeNativeTx } from "./emulator/native-tx.js";
-import { buildInvalidForcedTransitionTraceFixture } from "./submit-init-emulator-fixtures.js";
-import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  buildRemovalDeploymentInfo,
-  makeFaultProofEmulatorHarness,
-  network,
-  publishPlainReferenceScriptUtxo,
-  publishRemovalReferenceScripts,
-  submitSetupTx,
-} from "./submit-init-emulator-shared.js";
+import { publishRemovalReferenceScripts } from "./emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.build-removal-deployment-info.js";
+import { submitSetupTx } from "./emulator/setup-tx.submit-setup-tx.js";
+import { buildInvalidForcedTransitionTraceFixture } from "./submit-init/forced-transitions.js";
 import {
   buildAndSubmitUnjournaled,
   certifyCarriageUnjournaled,

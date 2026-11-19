@@ -8,9 +8,9 @@ import {
   FraudProofL1CheckpointChangedError,
   FraudProofL1UnavailableError,
   type LedgerCheckpoint,
-  ReplayLocalFault,
   type RetainedDaPayloadSource,
 } from "@al-ft/midgard-fault-proofs";
+import { ReplayLocalFault } from "@al-ft/midgard-fault-proofs/block-replay";
 import { buildCanonicalBlockFixture } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";

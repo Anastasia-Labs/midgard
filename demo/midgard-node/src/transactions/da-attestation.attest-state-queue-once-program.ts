@@ -6,16 +6,18 @@ import { Effect, Option } from "effect";
 
 import { DaPayloadsDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
-import { NodeConfig } from "../services/config.js";
+import { NodeConfig } from "../services/config.make-config.js";
+import { Database } from "../services/database.js";
+import { type IntentJournal, openPlan } from "../services/intent-journal.js";
+import { Lucid } from "../services/lucid.js";
 import {
   availabilityParametersFromExplicitEnvironment,
   availabilityParametersFromManifest,
+} from "../services/midgard-contracts.load-reference-script-auth-validator.js";
+import {
   ContractDeploymentIdentity,
-  Database,
-  Lucid,
   MidgardContracts,
-} from "../services/index.js";
-import { type IntentJournal, openPlan } from "../services/intent-journal.js";
+} from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import { attestHeader } from "./da-attestation.attest-header.js";
 import {
   type AttestStateQueueHeaderResult,
@@ -31,10 +33,10 @@ import {
 } from "./da-attestation.fetch-unattested-headers.js";
 import {
   TxConfirmError,
-  TxExpiredError,
   TxSignError,
   TxSubmitError,
-} from "./utils.js";
+} from "./utils.await-required-output-visibility.js";
+import { TxExpiredError } from "./utils.tx-expiry.js";
 
 export const attestStateQueueOnceProgram = (
   options: AttestStateQueueOnceOptions = {},

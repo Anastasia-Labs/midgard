@@ -1,13 +1,13 @@
+import {
+  encodeEventToStepValueCbor,
+  encodeTransitionIntegerCbor,
+  encodeTransitionStepCbor,
+} from "@al-ft/midgard-fault-proofs/block-replay";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import {
-  encodeEventToStepValueCbor,
-  encodeTransitionIntegerCbor,
-  encodeTransitionStepCbor,
-} from "../src/mpf/transition-cbor.js";
 import { MINT_ADMITTED_UNDECODABLE } from "./forced-mint-boundary.fixtures.js";
 import { fixture, rebind, verdict } from "./foreign-block-import.fixture.js";
 

@@ -15,13 +15,13 @@ import { describe, expect } from "vitest";
 
 import * as TxAdmissionsDB from "../src/database/txAdmissions.js";
 import { DatabaseError } from "../src/database/utils/common.js";
+import { makeAdmissionWriterWithOptions } from "../src/services/admission-writer.make-admission-writer-with-options.js";
 import {
   admissionWriteLostCounter,
   type AdmissionWriteRequest,
   admissionWriteRetryCounter,
   admissionWriterShardForTxId,
-  makeAdmissionWriterWithOptions,
-} from "../src/services/admission-writer.js";
+} from "../src/services/admission-writer.validate-options.js";
 
 type Settlement = readonly [label: string, written: boolean];
 

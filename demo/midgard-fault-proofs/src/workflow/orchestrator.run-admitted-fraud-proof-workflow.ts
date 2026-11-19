@@ -4,10 +4,10 @@ import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import { WorkflowActionChangedError } from "./action-changed.js";
 import {
   assertWorkflowJournalActuation,
-  type WorkflowActuationCheckpoint,
   workflowActuationDecisionDigest,
-  workflowJournalIsReconciliationOnly,
-} from "./actuation-permit.js";
+} from "./actuation-permit.assert-workflow-actuation-permit-identity.js";
+import type { WorkflowActuationCheckpoint } from "./actuation-permit.create-workflow-reconciliation-permit-controller.js";
+import { workflowJournalIsReconciliationOnly } from "./actuation-permit.js";
 import {
   isCollateralForfeitureEvent,
   notFoundIfNeverResent,
@@ -15,36 +15,44 @@ import {
 } from "./collateral-forfeiture.js";
 import { isFinalWorkflowCompletion } from "./completion-finality.js";
 import {
-  appendWorkflowJournalEvents,
-  assertWorkflowFundingReservationReadyToSubmit,
-  asWorkflowFundingShortfall,
   confirmWorkflowFundingReservationTransaction,
   conflictWorkflowFundingReservationTransaction,
-  prepareWorkflowFundingReservationTransaction,
-  readWorkflowFundingRecovery,
   releaseIdleWorkflowFundingReservation,
   releaseUnfundedWorkflowFundingInputs,
+} from "./funding-reservation-permit.apply-transition.js";
+import { workflowJournalAdmitsReconciliationReclaim } from "./funding-reservation-permit.begin-workflow-funding-reservation-action.js";
+import {
+  assertWorkflowFundingReservationReadyToSubmit,
+  prepareWorkflowFundingReservationTransaction,
+  readWorkflowFundingRecovery,
   releaseWorkflowFundingReservation,
-  WorkflowFundingReservationUnavailableError,
-  WorkflowFundingShortfallError,
-  workflowJournalAdmitsReconciliationReclaim,
   workflowJournalHasFundingReservation,
-  type WorkflowJournalWriter,
 } from "./funding-reservation-permit.js";
+import { WorkflowFundingReservationUnavailableError } from "./funding-reservation-permit.workflow-funding-reservation-port.js";
+import {
+  asWorkflowFundingShortfall,
+  WorkflowFundingShortfallError,
+} from "./funding-reservation-permit.workflow-funding-shortfall.js";
+import {
+  appendWorkflowJournalEvents,
+  type WorkflowJournalWriter,
+} from "./funding-reservation-permit.workflow-journal-writer.js";
+import { validateFraudProofWorkflowJournal } from "./journal.directory-fraud-proof-workflow-journal-store.js";
+import type {
+  FraudProofWorkflowJournalEntry,
+  FraudProofWorkflowJournalEvent,
+  FraudProofWorkflowJournalStore,
+} from "./journal.fraud-proof-workflow-journal-event.js";
 import {
   computeFraudProofWorkflowId,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-  type FraudProofWorkflowJournalEntry,
-  type FraudProofWorkflowJournalEvent,
-  type FraudProofWorkflowJournalStore,
   type FraudProofWorkflowTerminal,
   journalJsonDigest,
   type JournalJsonObject,
   normalizeFraudProofWorkflowIdentity,
   normalizeJournalJson,
-  validateFraudProofWorkflowJournal,
-} from "./journal.js";
+} from "./journal.fraud-proof-workflow-terminal.js";
 import { FraudProofL1CheckpointChangedError } from "./l1-source.js";
 import { adoptLandedSupersededAttempt } from "./orchestrator.adopt-landed-superseded-attempt.js";
 import { beginFundedWorkflowAction } from "./orchestrator.begin-funded-workflow-action.js";

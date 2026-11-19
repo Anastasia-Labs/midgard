@@ -11,27 +11,31 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  createDirectWalkTransactionPort,
-  DIRECT_PURPOSE_FIELDS,
   type DirectPurposePlannedArtifact,
-  type DirectPurposeReplay,
-  type DirectPurposeRole,
-  directPurposeStep01Datum,
-  type DirectWalkFamily,
-  type DirectWalkPortConfig,
-  type DirectWalkProof,
   planDirectPurposeArtifact,
-} from "../src/direct-purpose-family/index.js";
-import { DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK } from "../src/distinct-asset-accumulation-limit/index.js";
-import { EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK } from "../src/execution-native-script-invalid/index.js";
+} from "../src/direct-purpose-family/artifact.js";
+import type { DirectPurposeReplay } from "../src/direct-purpose-family/artifact-family.js";
+import { DIRECT_PURPOSE_FIELDS } from "../src/direct-purpose-family/custody.js";
+import type { DirectPurposeRole } from "../src/direct-purpose-family/family.js";
+import { directPurposeStep01Datum } from "../src/direct-purpose-family/step01.js";
+import {
+  createDirectWalkTransactionPort,
+  type DirectWalkPortConfig,
+} from "../src/direct-purpose-family/transaction-port.js";
+import type {
+  DirectWalkFamily,
+  DirectWalkProof,
+} from "../src/direct-purpose-family/walk-family.js";
+import { DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK } from "../src/distinct-asset-accumulation-limit/workflow.js";
+import { EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK } from "../src/execution-native-script-invalid/workflow.js";
 import { EXECUTION_SOURCE_SCRIPT_DECODING_DIRECT_WALK } from "../src/execution-source-script-decoding/index.js";
 import type { LedgerEntry } from "../src/ledger-at.js";
 import { MISSING_REDEEMER_DIRECT_WALK } from "../src/missing-redeemer/index.js";
-import { MISSING_SCRIPT_SOURCE_DIRECT_WALK } from "../src/missing-script-source/index.js";
+import { MISSING_SCRIPT_SOURCE_DIRECT_WALK } from "../src/missing-script-source/workflow.js";
 import { RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK } from "../src/receive-purpose-language/index.js";
-import { SCRIPT_INTEGRITY_HASH_MISMATCH_DIRECT_WALK } from "../src/script-integrity-hash-mismatch/index.js";
+import { SCRIPT_INTEGRITY_HASH_MISMATCH_DIRECT_WALK } from "../src/script-integrity-hash-mismatch/workflow.js";
 import { UNUSED_REDEEMER_DIRECT_WALK } from "../src/unused-redeemer/index.js";
-import { UNUSED_SCRIPT_WITNESS_DIRECT_WALK } from "../src/unused-script-witness/index.js";
+import { UNUSED_SCRIPT_WITNESS_DIRECT_WALK } from "../src/unused-script-witness/workflow.js";
 import { deepSourceInputs } from "./support/direct-purpose-deep-source.js";
 import {
   type DirectWalkCategory,

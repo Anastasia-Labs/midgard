@@ -3,21 +3,19 @@
  * datum selects the planned transition that continues it. */
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
-import {
-  resolveFaultProofFieldCarriagePublications,
-  resolveFaultProofFieldPreimageCertificate,
-} from "../field-opening.js";
+import { resolveFaultProofFieldPreimageCertificate } from "../field-opening.certify-fault-proof-field-carriage.js";
+import { resolveFaultProofFieldCarriagePublications } from "../field-opening.publish-fault-proof-field-carriage.js";
 import { resolvePublishedProofChunks } from "../publish-proof-chunks.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { parseOutRef, type ResolvedProverSigner } from "../runtime.js";
-import { buildInit } from "../submit-init.js";
+import { buildInit } from "../submit-init.submit-init.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import type { CompleteCanonicalReplayContext } from "../workflow/complete-replay.js";
 import { parseComputationThreadStage } from "../workflow/computation-thread-steps.js";
 import {
   CURSOR_FAMILY_TRANSACTION_PORT,
   type CursorFamilyTransactionPort,
-} from "../workflow/cursor-family-adapter.js";
+} from "../workflow/cursor-family-adapter.admit-reference-scripts.js";
 import {
   captureCursorRemoval,
   cursorFamilyActionInput,

@@ -6,14 +6,12 @@ import {
   encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core/codec";
 import { hexToBytes } from "@al-ft/midgard-core/hex";
+import { encodeTransactionRootValue } from "@al-ft/midgard-fault-proofs/block-replay";
 import * as SDK from "@al-ft/midgard-sdk";
 
-import {
-  encodeTransactionRootValue,
-  ledgerOutputToInsertBatchOp,
-  type MpfInsertBatchOp,
-  type TransitionTraceSourceEvent,
-} from "../mpf/index.js";
+import { ledgerOutputToInsertBatchOp } from "../mpf/ledger-delta.js";
+import type { TransitionTraceSourceEvent } from "../mpf/trace-events.js";
+import type { MpfInsertBatchOp } from "../mpf/types.js";
 import { parseOpenLoopCorpusLine } from "../open-loop-corpus-format.js";
 
 export const canonicalOutrefCborFromLabel = (label: string): Buffer => {

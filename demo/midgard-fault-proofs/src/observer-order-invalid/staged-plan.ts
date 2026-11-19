@@ -2,13 +2,15 @@ import { computeHash32, decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
 
 import {
   advanceFieldGrammarCheckpoint,
-  advanceFieldSemanticCheckpoint,
   encodeFieldSemanticCheckpoint,
   type FieldGrammarCheckpoint,
   type FieldSemanticCheckpoint,
   initialFieldGrammarCheckpoint,
+} from "../staged-field-walk/grammar-checkpoint.js";
+import {
+  advanceFieldSemanticCheckpoint,
   initialFieldSemanticCheckpoint,
-} from "../staged-field-walk/index.js";
+} from "../staged-field-walk/semantic-checkpoint.js";
 import {
   OBSERVER_ORDER_INVALID_ITEM_BUDGET,
   scanObserverOrderInvalid,

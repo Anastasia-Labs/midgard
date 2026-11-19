@@ -18,14 +18,12 @@ import {
 } from "@lucid-evolution/lucid";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  parseReconciliationResult,
-  reconcileReferenceScriptsBeforeAuthPolicy,
-} from "../src/commands/reconcile.js";
+import { parseReconciliationResult } from "../src/commands/reconcile.parse-reconciliation-result.js";
+import { reconcileReferenceScriptsBeforeAuthPolicy } from "../src/commands/reconcile.reconcile-reference-scripts-complete-program.js";
 import {
   createDeploymentRunState,
   writeDeploymentRunStateAtomic,
-} from "../src/e2e/run-state.js";
+} from "../src/e2e/run-state.parse-deployment-run-state.js";
 
 const makeTempDir = createTrackedTempDirFactory("midgard-reconcile-ref-");
 

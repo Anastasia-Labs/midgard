@@ -1,7 +1,5 @@
-import {
-  admitCanonicalEvidenceForProofBuild,
-  type CanonicalBlockEvidence,
-} from "./evidence/index.js";
+import type { CanonicalBlockEvidence } from "./evidence/canonical-block-evidence.js";
+import { admitCanonicalEvidenceForProofBuild } from "./evidence/prepare-from-evidence.js";
 import { type PreparedInputNoIdxOutput } from "./prepare-input-no-idx.midgard-tx-output-from-canonical-cbor.js";
 import { prepareInputNoIdxFromTransactions } from "./prepare-input-no-idx.prepare-input-no-idx-from-transactions.js";
 

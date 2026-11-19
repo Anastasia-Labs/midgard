@@ -2,10 +2,8 @@ import { FraudProofL1UnavailableError } from "@al-ft/midgard-fault-proofs";
 import { DaAvailabilityReadScopeExpiredError } from "@al-ft/midgard-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  createWatcherAvailabilityRuntime,
-  type WatcherAvailabilityStatusTransition,
-} from "../../src/availability/runtime.js";
+import { createWatcherAvailabilityRuntime } from "../../src/availability/runtime.create-watcher-availability-runtime.js";
+import type { WatcherAvailabilityStatusTransition } from "../../src/availability/runtime.release-watcher-availability-workflows.js";
 import type { WatcherAuthenticatedStateQueueObservation } from "../../src/indexers/authenticated-state-queue-observation.js";
 import type { VerifiedWatcherDeploymentIdentity } from "../../src/runtime/deployment-identity.js";
 import type { WatcherProcessConfig } from "../../src/runtime/process-config.js";

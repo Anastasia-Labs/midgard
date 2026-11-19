@@ -16,8 +16,8 @@ import {
   type DaLocalSignerConfig,
   daLocalSigners,
 } from "midgard-node/da/local-signers";
-import { availabilityParametersFromManifest } from "midgard-node/services/midgard-contracts";
-import { daAttestationInitOutputLovelace } from "midgard-node/transactions/da-attestation";
+import { availabilityParametersFromManifest } from "midgard-node/services/midgard-contracts.load-reference-script-auth-validator";
+import { daAttestationInitOutputLovelace } from "midgard-node/transactions/da-attestation.fetch-unattested-headers";
 import {
   activateOperatorProgram,
   registerOperatorProgram,

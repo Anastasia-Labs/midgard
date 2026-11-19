@@ -8,7 +8,7 @@
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { type MidgardCekVerdictRequest } from "@al-ft/midgard-validation";
+import type { MidgardCekVerdictRequest } from "@al-ft/midgard-validation/phase-b";
 import { Clock, Effect, TestClock, TestContext } from "effect";
 import { afterEach, beforeEach } from "vitest";
 
@@ -32,12 +32,10 @@ import {
 import { makeNegativeCache } from "../src/import-check/negative-cache.js";
 import { processRow } from "../src/landed-blocks/settlements.js";
 import { type ImportCheckConfig } from "../src/services/config.import-check.js";
-import { Globals } from "../src/services/globals.js";
-import {
-  evaluateImportCheckOn,
-  FixedValidationWorkerPool,
-  type ImportCheckLane,
-} from "../src/services/validation-pool.js";
+import { Globals } from "../src/services/globals.globals.js";
+import type { ImportCheckLane } from "../src/services/validation-pool.bundled-worker-exec-argv.js";
+import { FixedValidationWorkerPool } from "../src/services/validation-pool.fixed-validation-worker-pool.js";
+import { evaluateImportCheckOn } from "../src/services/validation-pool.make-validation-pool.js";
 import type { ValidationWorkerInit } from "../src/workers/utils/validation-pool.js";
 import { testWrite } from "./helpers/driver-recompute.js";
 import {

@@ -12,15 +12,15 @@ import {
   prepareResolvedOutputNonCanonicalEvidence,
   type ResolvedOutputCoordinate,
   type ResolvedOutputEvidence,
-  type ResolvedOutputForcedSource,
-} from "../../src/resolved-output-non-canonical/index.js";
+} from "../../src/resolved-output-non-canonical/resolved-output-non-canonical.prepare-resolved-output-non-canonical-evidence.js";
+import type { ResolvedOutputForcedSource } from "../../src/resolved-output-non-canonical/submit-step-01-forced.js";
+import { transitionTraceOutRef } from "./emulator/header-fixtures.js";
 import { captureEmulatorSubmission } from "./emulator/measurement.js";
 import {
   type PriorLedgerFixture,
   resolvedOutputReason,
 } from "./resolved-output-non-canonical-emulator.build-prior-ledger.js";
 import { type CommittedBlock } from "./resolved-output-non-canonical-emulator.commit-block.js";
-import { transitionTraceOutRef } from "./submit-init-emulator-shared.js";
 
 /**
  * Evidence from the retained prior ledger and the committed transaction. For

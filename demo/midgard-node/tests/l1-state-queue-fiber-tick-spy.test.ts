@@ -31,15 +31,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { attestationTimeoutCorrectionAction } from "../src/fibers/attestation-timeout-correction.attestation-timeout-correction-action.js";
 import { fetchRetentionL1View } from "../src/fibers/retention-sweeper.js";
-import {
-  ContractDeploymentIdentity,
-  Globals,
-  Lucid,
-  MidgardContracts,
-  NodeConfig,
-} from "../src/services/index.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
+import { Globals } from "../src/services/globals.globals.js";
 import type { IntentJournal } from "../src/services/intent-journal.js";
 import { landedStateQueueSnapshot } from "../src/services/landed-state-queue.js";
+import { Lucid } from "../src/services/lucid.js";
+import {
+  ContractDeploymentIdentity,
+  MidgardContracts,
+} from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import { fetchUnattestedHeaders } from "../src/transactions/da-attestation.fetch-unattested-headers.js";
 import {
   fetchCanonicalMergeCandidateReadiness,

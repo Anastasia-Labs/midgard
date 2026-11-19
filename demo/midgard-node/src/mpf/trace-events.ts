@@ -2,6 +2,7 @@
  * Transition-trace source events and their event keys.
  */
 
+import { encodeTransitionEventKeyCbor } from "@al-ft/midgard-fault-proofs/block-replay";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -10,7 +11,6 @@ import * as DepositsDB from "../database/deposits.js";
 import * as ForcedTransactionsDB from "../database/forcedTransactions.js";
 import * as WithdrawalsDB from "../database/withdrawals.js";
 import { MpfError } from "./errors.js";
-import { encodeTransitionEventKeyCbor } from "./transition-cbor.js";
 import { type MpfBatchOp } from "./types.js";
 
 export type TransitionTraceSourceEvent = {

@@ -9,15 +9,9 @@ import {
   type WorkflowActuationPermit,
 } from "@al-ft/midgard-fault-proofs";
 
-import {
-  assertWatcherStateQueueObservation,
-  type WatcherAuthenticatedStateQueueObservation,
-} from "../indexers/authenticated-state-queue-observation.js";
+import { type WatcherAuthenticatedStateQueueObservation } from "../indexers/authenticated-state-queue-observation.parse-persisted-header.js";
 import type { WatcherProofRetention } from "../l1-follower/proof-retention.js";
-import {
-  openWatcherFaultDecisionJournal,
-  type WatcherFaultDecisionJournal,
-} from "./fault-decision-journal.js";
+import type { WatcherFaultDecisionJournal } from "./fault-decision-journal.exact-record.js";
 import type { WatcherInstalledWorkflowCategory } from "./fault-proof-application.js";
 import { createWatcherProofObjectiveCleanup } from "./fault-proof-objective-cleanup.js";
 import {
@@ -58,6 +52,8 @@ export type {
   WatcherFaultProofProgressContext,
   WatcherFaultProofProgressRequest,
 } from "./fault-proof-progress-authority.types.js";
+import { assertWatcherStateQueueObservation } from "../indexers/authenticated-state-queue-observation.js";
+import { openWatcherFaultDecisionJournal } from "./fault-decision-journal.js";
 
 type Objective = {
   decision: HeaderFaultDecision;

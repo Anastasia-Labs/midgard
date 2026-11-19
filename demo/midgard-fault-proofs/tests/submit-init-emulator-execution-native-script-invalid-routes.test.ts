@@ -17,10 +17,8 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import type { ExecutionNativeScriptInvalidEntry } from "../src/execution-native-script-invalid/index.js";
-import {
-  EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK,
-  prepareExecutionNativeScriptInvalidProof,
-} from "../src/execution-native-script-invalid/index.js";
+import { prepareExecutionNativeScriptInvalidProof } from "../src/execution-native-script-invalid/prover.js";
+import { EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK } from "../src/execution-native-script-invalid/workflow.js";
 import type { LedgerEntry } from "../src/ledger-at.js";
 import {
   DIRECT_WALK_STEP_BOUNDS,
@@ -29,6 +27,7 @@ import {
   publishDirectWalkRoles,
   stepTable,
 } from "./support/direct-walk-emulator.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
 import {
   admissibleNativeObservers,
   buildNativeSubject,
@@ -45,7 +44,6 @@ import {
   plutusScript,
   rejectedFor,
 } from "./support/script-integrity-hash-mismatch-emulator.subject.js";
-import { expectSingleUtxoWithUnit } from "./support/submit-init-emulator-shared.js";
 
 /** A native script that holds, distinct per `depth`. */
 const holding = (depth: number): MidgardVersionedScript => {

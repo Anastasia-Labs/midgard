@@ -6,10 +6,10 @@
 import { generateSeedPhrase } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { buildInit } from "../src/submit-init.js";
+import { buildInit } from "../src/submit-init.submit-init.js";
 import { WALLET_ONLY_VALIDITY_MS } from "../src/wallet-only-validity.js";
+import { network } from "./support/emulator/blueprints.js";
 import { stageDoubleSpendStep04 } from "./support/submit-init/double-spend-staging.js";
-import { network } from "./support/submit-init-emulator-shared.js";
 import { expectWalletOnlyValidity } from "./support/wallet-only-validity.js";
 
 describe("dispute init validity window", () => {

@@ -29,10 +29,8 @@ import {
   type PreparedDaHashPreimageOutput,
 } from "../prepare-da-hash-preimage.js";
 import { TransitionTraceChallengerError } from "../transition-trace/errors.js";
-import {
-  fetchRetainedDaPayloadByHeaderHash,
-  type RetainedDaPayloadSource,
-} from "../transition-trace/fetch.js";
+import type { RetainedDaPayloadSource } from "../transition-trace/fetch.admit-retained-da-provenance.js";
+import { fetchRetainedDaPayloadByHeaderHash } from "../transition-trace/fetch.fetch-retained-da-payload-by-header-hash.js";
 import {
   type CanonicalBlockEvidence,
   canonicalBlockEvidenceFromVerifiedPayload,

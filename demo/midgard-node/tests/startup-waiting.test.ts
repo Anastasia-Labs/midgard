@@ -23,7 +23,7 @@ import { describe, expect, it } from "vitest";
 import { withStartupHttpServer } from "../src/commands/listen.startup-http.js";
 import { DatabaseError } from "../src/database/utils/common.js";
 import { refreshAdmissionBacklogGaugeOnStartup } from "../src/fibers/admission-backlog-gauge.js";
-import { ConfigError } from "../src/services/config.js";
+import { ConfigError } from "../src/services/config.make-config.js";
 import { constructLucidOnStartup } from "../src/services/lucid.js";
 import {
   ADMISSION_BACKLOG_UNREAD,

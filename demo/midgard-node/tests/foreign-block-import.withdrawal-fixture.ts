@@ -4,16 +4,16 @@ import {
   midgardAddressFromText,
 } from "@al-ft/midgard-core/codec";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
+import {
+  encodeEventToStepValueCbor,
+  encodeTransitionStepCbor,
+} from "@al-ft/midgard-fault-proofs/block-replay";
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { foreignReplayMaterial } from "../src/landed-blocks/replay-foreign.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../src/mpf/ledger-hydration.js";
-import {
-  encodeEventToStepValueCbor,
-  encodeTransitionStepCbor,
-} from "../src/mpf/transition-cbor.js";
 import {
   type ImportedBlockReplayContext,
   verifyAndImportBlock,

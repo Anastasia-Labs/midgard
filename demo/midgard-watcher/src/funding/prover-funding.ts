@@ -7,17 +7,17 @@ import {
 import { deriveDeploymentManifestCardanoProtocolParametersFromLedger } from "@al-ft/midgard-l1-follower/protocol-parameters";
 
 import { isWatcherL1TransientFailure } from "../l1/transient-failure.js";
+import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.parse-trust-roots.js";
+import { assertVerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.verify-watcher-user-event-script-binding.js";
 import {
-  assertVerifiedWatcherDeploymentIdentity,
   assertWatcherDeploymentProtocolParameterAuthority,
-  type VerifiedWatcherDeploymentIdentity,
   watcherDeploymentProtocolParameterAuthority,
-} from "../runtime/deployment-identity.js";
+} from "../runtime/deployment-identity.watcher-deployment-availability-challenge-authority.js";
 import { createWatcherProtocolParameterHistoryStorage } from "./prover-funding-parameter-history.js";
 import {
   type WatcherProverFundingReservationRecord,
   WatcherProverFundingUnavailableError,
-} from "./prover-funding-reservation.js";
+} from "./prover-funding-reservation.watcher-prover-funding-reservation-store.js";
 
 export const WATCHER_PROTOCOL_PARAMETER_RUNTIME_AUTHORITY =
   "midgard-watcher-production-protocol-parameter-runtime-authority-v1" as const;

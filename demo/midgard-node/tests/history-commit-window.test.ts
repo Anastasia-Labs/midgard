@@ -6,7 +6,7 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import type { CommitAnchor } from "../src/database/commit-anchor.js";
-import { FORCED_ORDERS_TABLE } from "../src/forced-orders/index.js";
+import { FORCED_ORDERS_TABLE } from "../src/forced-orders/schema.js";
 import {
   FollowerWrite,
   type FollowerWritePermit,

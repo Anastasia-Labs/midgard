@@ -23,11 +23,11 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import type { CanonicalDecodabilityContracts } from "../../src/canonical-decodability/contracts.js";
 import {
-  type CanonicalDecodabilityContracts,
   requireCanonicalDecodabilityReferenceScript,
   requireCanonicalDecodabilityThreadUtxo,
-} from "../../src/canonical-decodability/index.js";
+} from "../../src/canonical-decodability/submit-common.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   encodeRawPhasMembershipProofRedeemer,
@@ -48,7 +48,7 @@ import {
   type FaultProofWitnessReferenceScripts,
   witnessWithdrawalValidatorCarriage,
 } from "../../src/witness-reference-scripts.js";
-import { network } from "./submit-init-emulator-shared.js";
+import { network } from "./emulator/blueprints.js";
 
 /**
  * The successor a raw step-01 transaction writes: the walk state back at step

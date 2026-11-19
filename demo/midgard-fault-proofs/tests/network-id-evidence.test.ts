@@ -17,7 +17,7 @@ import { describe, expect, it } from "vitest";
 import {
   authenticateTransactionsInclusionRoots,
   canonicalBlockEvidenceFromVerifiedPayload,
-} from "../src/evidence/index.js";
+} from "../src/evidence/canonical-block-evidence.js";
 import {
   findNetworkIdFaults,
   requireNetworkIdFault,
@@ -27,7 +27,7 @@ import {
   planNetworkIdOutputsOpening,
   prepareNetworkIdFromCanonicalEvidence,
 } from "../src/network-id/prepare.js";
-import { encodeData } from "../src/transition-trace/reconstruct.js";
+import { encodeData } from "../src/transition-trace/reconstruct.transition-trace-reconstruction.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,

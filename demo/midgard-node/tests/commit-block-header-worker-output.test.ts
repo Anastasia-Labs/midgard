@@ -10,34 +10,36 @@ import { describe, expect, it } from "vitest";
 
 import {
   preLeaseCommitSchedulerTargetMs,
+  shouldAttemptCommitPipeline,
+} from "../src/fibers/block-commitment.should-skip-for-detailed-scheduler-due-work.js";
+import {
   releaseCommitMutationWorkerPhase,
   releaseCommitSchedulerAlignmentPhase,
-  shouldAttemptCommitPipeline,
   shouldRunPreLeaseSchedulerAlignment,
   tryAcquireCommitMutationWorkerPhase,
   tryAcquireCommitSchedulerAlignmentPhase,
-} from "../src/fibers/block-commitment.js";
+} from "../src/fibers/block-commitment.should-skip-for-registered-commit-due-work.js";
+import { Globals } from "../src/services/globals.globals.js";
 import {
   HISTORY_COMMIT_LANDING_MARGIN_MS,
   HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
 } from "../src/services/history-commit-window.js";
-import { Globals } from "../src/services/index.js";
 import {
   shouldPreserveCommitMpfRoots,
   shouldShortCircuitIdleCommitAttempt,
   workerPreIngestionDueWorkOutputFromPlan,
-} from "../src/workers/commit-block-header.js";
+} from "../src/workers/commit-block-header.commit-explicit-block-header-program.js";
 import type { WorkerOutput } from "../src/workers/utils/commit-block-header.js";
 import {
   COMMIT_MINIMUM_FUTURE_BUFFER_MS,
   resolveHistoryCommitBlockTime,
   resolveLatestFeasibleCommitEndTime,
 } from "../src/workers/utils/commit-end-time.js";
+import { resolveSchedulerFirstAppointmentValidityWindow } from "../src/workers/utils/scheduler-refresh.resolve-scheduler-refresh-witness-selection.js";
 import {
   captureSchedulerSlotSnapshot,
-  resolveSchedulerFirstAppointmentValidityWindow,
   schedulerStateCoversCommitTarget,
-} from "../src/workers/utils/scheduler-refresh.js";
+} from "../src/workers/utils/scheduler-refresh.scheduler-refresh-due-work-from-no-inline-submit-defer.js";
 
 const dueWork = {
   kind: "commit_scheduler_refresh",

@@ -11,7 +11,7 @@ import {
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 import { prepareInvalidSignatureFromCanonicalEvidence } from "../evidence/prepare-from-evidence.js";
-import { planFaultProofFieldOpening } from "../field-opening.js";
+import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
 import {
   admitInvalidSignatureForcedArtifact,
   INVALID_SIGNATURE_FORCED_ARTIFACT,
@@ -27,7 +27,7 @@ import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-
 import {
   CHUNKED_VERIFY_WITNESS_ROLES,
   type LinearFamilyReferenceScripts,
-} from "./family-definition.js";
+} from "./family-definition.family-adapter-arm.js";
 import {
   type AdmittedArtifact,
   EVEN_HEX,
@@ -44,7 +44,10 @@ import {
   record,
   safeNatural,
 } from "./invalid-signature.parse-address-witnesses.js";
-import { type JournalJsonObject, normalizeJournalJson } from "./journal.js";
+import {
+  type JournalJsonObject,
+  normalizeJournalJson,
+} from "./journal.fraud-proof-workflow-terminal.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
 
 export const admitInvalidSignatureArtifact = (

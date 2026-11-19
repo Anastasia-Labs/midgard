@@ -15,10 +15,15 @@ import {
 } from "../src/input-existence/prepare.js";
 import { buildInputExistenceStep } from "../src/input-existence/submit.js";
 import { checkLedgerAgainstRoot } from "../src/ledger-at.js";
-import { buildInit } from "../src/submit-init.js";
+import { buildInit } from "../src/submit-init.submit-init.js";
 import { keyValuePhasNonMembershipProof } from "../src/transition-trace/phas.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
 import type { InputChronology } from "./helpers/input-existence-chronology-fixture.js";
+import { network } from "./support/emulator/blueprints.js";
+import {
+  alignUnixTimeToEmulatorSlotBoundary,
+  funderPaymentKeyHash,
+} from "./support/emulator/emulator-context.js";
 import {
   expectOnchainRefusal,
   type RefusalPin,
@@ -26,20 +31,15 @@ import {
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
+import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
+import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
 import {
   checkStepFit,
   startChronologyJourney,
 } from "./support/input-existence-chronology-journey.js";
-import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
-import { registerPexcludesExclusionRewardAccount } from "./support/submit-init-emulator-fixtures.js";
-import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  buildRemovalDeploymentInfo,
-  funderPaymentKeyHash,
-  network,
-  publishPlainReferenceScriptUtxo,
-  submitSetupTx,
-} from "./support/submit-init-emulator-shared.js";
+import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.build-decoding-block-fixture.js";
+import { registerPexcludesExclusionRewardAccount } from "./support/submit-init/wallet.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 const TIMEOUT = 600_000;

@@ -6,11 +6,9 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 import { afterEach, expect, it } from "vitest";
 
-import { parseWatcherProverFundingReservationRecord } from "../../src/funding/prover-funding-reservation.js";
-import {
-  cleanupFundingRecoveryFixtures,
-  setupFundingRecoveryFixture as setup,
-} from "../support/fault-proof-funding-fixture.js";
+import { parseWatcherProverFundingReservationRecord } from "../../src/funding/prover-funding-reservation.parse-watcher-prover-funding-reservation-record.js";
+import { setupFundingRecoveryFixture as setup } from "../support/fault-proof-funding-fixture.setup-funding-recovery-fixture.js";
+import { cleanupFundingRecoveryFixtures } from "../support/fault-proof-funding-fixture.sources-for.js";
 import { openFixtureFundingStore } from "../support/fault-proof-funding-fixture.workflow-store.js";
 
 afterEach(async () => {

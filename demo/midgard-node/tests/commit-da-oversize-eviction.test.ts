@@ -7,7 +7,7 @@ import { DepositsDB } from "../src/database/index.js";
 import { DatabaseError } from "../src/database/utils/common.js";
 import type { EntryWithTimeStamp } from "../src/database/utils/tx.js";
 import { COMMIT_REJECT_CODE_DA_OVERSIZE } from "../src/mpf/commit-rejection.js";
-import { NodeConfig } from "../src/services/config.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
 import { buildOnVerifiedCommitBaseProgram } from "../src/workers/commit-block-header.build-on-verified-base-program.js";
 import { databaseOperationsProgram } from "../src/workers/commit-block-header.database-operations-program.js";
 import {

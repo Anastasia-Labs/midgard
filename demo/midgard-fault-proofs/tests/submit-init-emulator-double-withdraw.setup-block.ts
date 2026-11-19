@@ -14,11 +14,11 @@ import {
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   funderPaymentKeyHash,
-  makeFaultProofEmulatorHarness,
-  makeHeader,
-  publishPlainReferenceScriptUtxo,
-  submitSetupTx,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/emulator/emulator-context.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
+import { makeHeader } from "./support/emulator/header-fixtures.js";
+import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { submitSetupTx } from "./support/emulator/setup-tx.submit-setup-tx.js";
 
 export const FIRST_ID: SDK.OutputReference = {
   transactionId: "8b".repeat(32),

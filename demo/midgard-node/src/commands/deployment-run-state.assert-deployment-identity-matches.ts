@@ -4,9 +4,9 @@ import { type ReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
 
 import {
   type DeploymentRunIdentity,
-  loadDeploymentRunState,
   RunStateError,
-} from "../e2e/run-state.js";
+} from "../e2e/run-state.deployment-run-identity.js";
+import { loadDeploymentRunState } from "../e2e/run-state.parse-deployment-run-state.js";
 import * as ContractDeploymentInfo from "./contract-deployment-info.js";
 import {
   type DeploymentRunCliOptions,

@@ -4,9 +4,9 @@ import { describe, expect, it } from "vitest";
 
 import { buildLinearFaultCancel } from "../src/linear-fault-cancel.js";
 import { parseOutRef } from "../src/runtime.js";
-import { buildInit } from "../src/submit-init.js";
+import { buildInit } from "../src/submit-init.submit-init.js";
+import { network } from "./support/emulator/blueprints.js";
 import { stageDoubleSpendStep04 } from "./support/submit-init/double-spend-staging.js";
-import { network } from "./support/submit-init-emulator-shared.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 const THREADS_PER_ROUND = 8;

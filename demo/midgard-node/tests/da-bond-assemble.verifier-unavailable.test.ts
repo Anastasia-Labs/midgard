@@ -8,7 +8,7 @@ import { LedgerSignatureVerifierUnavailableError } from "@al-ft/midgard-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { failCli } from "../src/commands/cli-runtime.js";
-import { daBondAssembleCommand } from "../src/commands/da-bond.js";
+import { daBondAssembleCommand } from "../src/commands/da-bond.da-bond-withdraw-build-command.js";
 import { readDaBondWitnessFile } from "../src/commands/da-bond-files.js";
 
 vi.mock(

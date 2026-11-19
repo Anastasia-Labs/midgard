@@ -16,22 +16,20 @@ import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import {
-  CANONICAL_DECODABILITY_BLUEPRINT_TITLES,
-  prepareCanonicalDecodability,
-  requireCanonicalDecodabilityReferenceScript,
-} from "../src/canonical-decodability/index.js";
+import { CANONICAL_DECODABILITY_BLUEPRINT_TITLES } from "../src/canonical-decodability/contracts.js";
+import { prepareCanonicalDecodability } from "../src/canonical-decodability/prepare-canonical-decodability.js";
+import { requireCanonicalDecodabilityReferenceScript } from "../src/canonical-decodability/submit-common.js";
 import { measureBlueprintValidatorBytes } from "../src/runtime.js";
 import {
   buildCanonicalDecodabilityBodyFixture,
   network,
 } from "./support/canonical-decodability-emulator.js";
 import {
-  EMULATOR_PROTOCOL_PARAMETERS,
-  makeNativeTx,
   readBlueprint,
   realBlueprintPath,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/emulator/blueprints.js";
+import { makeNativeTx } from "./support/emulator/native-tx.js";
+import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
 
 const dataBytes = (hex: string): number => hex.length / 2;
 

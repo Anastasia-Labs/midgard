@@ -18,21 +18,17 @@ import {
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { hashMidgardValidationRejectionReasonV1 } from "@al-ft/midgard-core/validation-trace";
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  RejectCodes,
-  replayValidationVerdictEvent,
-} from "@al-ft/midgard-validation";
+import { replayValidationVerdictEvent } from "@al-ft/midgard-validation";
+import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { Data } from "@lucid-evolution/lucid";
 import { decodeDaPayloadStrict } from "da-committee-node/da/payload";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { ForcedTransactionsDB } from "../src/database/index.js";
-import {
-  buildPlaceholderValidationTraceMembers,
-  classifyForcedTransactions,
-  computeUtxoPayloadRoot,
-} from "../src/mpf/index.js";
+import { classifyForcedTransactions } from "../src/mpf/event-window.classify-forced-transactions.js";
+import { computeUtxoPayloadRoot } from "../src/mpf/payload-size.js";
+import { buildPlaceholderValidationTraceMembers } from "../src/mpf/validation-trace.js";
 import {
   canonicalTransaction,
   forcedEntry,

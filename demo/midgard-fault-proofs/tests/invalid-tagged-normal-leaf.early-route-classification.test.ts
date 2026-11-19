@@ -20,18 +20,16 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { fetchFraudProofEvidence } from "../src/evidence/fraud-proof-evidence.js";
+import { createCompleteCanonicalReplayUnion } from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
+import { CANONICAL_DECODABILITY_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.detect-double-withdraws.js";
 import {
-  CANONICAL_DECODABILITY_COMPLETE_CANONICAL_REPLAY,
-  createCompleteCanonicalReplayUnion,
   FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
   L2_TX_MISTAG_COMPLETE_CANONICAL_REPLAY,
-} from "../src/workflow/complete-replay.js";
-import {
-  authenticatedStateQueueObservationDigest,
-  classifyHeader,
-  createHeaderClassifier,
-} from "../src/workflow/header-classifier.js";
-import { prepareL2TxMistagRawArtifact } from "../src/workflow/l2-tx-mistag.js";
+} from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
+import { authenticatedStateQueueObservationDigest } from "../src/workflow/header-classifier.authenticated-state-queue-observation-digest.js";
+import { classifyHeader } from "../src/workflow/header-classifier.classify-header.js";
+import { createHeaderClassifier } from "../src/workflow/header-classifier.create-header-classifier.js";
+import { prepareL2TxMistagRawArtifact } from "../src/workflow/l2-tx-mistag.parse-artifact.js";
 import {
   computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,

@@ -11,7 +11,7 @@ import {
 } from "../../database/index.js";
 import type { DatabaseError } from "../../database/utils/common.js";
 import type { MpfError } from "../../mpf/index.js";
-import { buildAuthenticatedRootFromEncodedEntries } from "./transition-roots.js";
+import { buildAuthenticatedRootFromEncodedEntries } from "./transition-roots.validate-count-proof.js";
 
 export const resolveDepositsRoot = (
   depositEntries: readonly DepositsDB.Entry[],

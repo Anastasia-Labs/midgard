@@ -1,10 +1,8 @@
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import type { UTxO } from "@lucid-evolution/lucid";
 
-import {
-  type WorkflowActuationPermit,
-  workflowActuationPermitIsReconciliationOnly,
-} from "./actuation-permit.js";
+import { workflowActuationPermitIsReconciliationOnly } from "./actuation-permit.assert-workflow-actuation-permit-identity.js";
+import type { WorkflowActuationPermit } from "./actuation-permit.create-workflow-reconciliation-permit-controller.js";
 import {
   assertManifestBoundWorkflowIdentity,
   FAMILY_APPLICATION_RECORD,

@@ -19,25 +19,25 @@ import {
 } from "../../src/spend-input-witness.js";
 import { selectFeeInput } from "../../src/step-support.js";
 import type { FaultProofWitnessReferenceScripts } from "../../src/witness-reference-scripts.js";
-import { registerChunkedVerifyRewardAccount } from "./emulator/emulator-context.js";
+import {
+  alignUnixTimeToEmulatorSlotBoundary,
+  funderPaymentKeyHash,
+  registerChunkedVerifyRewardAccount,
+} from "./emulator/emulator-context.js";
+import { makeFaultProofEmulatorHarness } from "./emulator/harness.js";
 import { publishFaultProofWitnessReferenceScripts } from "./emulator/reference-scripts.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
+import { submitSetupTx } from "./emulator/setup-tx.submit-setup-tx.js";
 import {
   fieldPreimageOf,
   type MintAuthorizationSubject,
 } from "./mint-authorization-emulator.large-mint-item-cbors.js";
+import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.build-decoding-block-fixture.js";
 import {
-  buildDecodingBlockFixture,
   buildDecodingLedgerFixture,
   type DecodingBlockFixture,
   type DecodingLedgerFixture,
-} from "./native-script-decoding-emulator.js";
-import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  funderPaymentKeyHash,
-  makeFaultProofEmulatorHarness,
-  publishPlainReferenceScriptUtxo,
-  submitSetupTx,
-} from "./submit-init-emulator-shared.js";
+} from "./native-script-decoding-emulator.build-decoding-ledger-fixture.js";
 
 /**
  * Materialises the committed native transaction from its four door preimages.

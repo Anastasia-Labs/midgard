@@ -4,7 +4,7 @@ import { Effect } from "effect";
 import { describe, expect } from "vitest";
 
 import { AdmissionSql, BatchSql } from "../../src/services/database.js";
-import { isolatedDb } from "./fixtures.js";
+import { isolatedDb } from "./fixtures.environment.js";
 
 export const registerInitializationTests = () => {
   describe("Database: initialization and basic operations", () => {

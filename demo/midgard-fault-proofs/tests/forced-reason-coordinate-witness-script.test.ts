@@ -14,11 +14,11 @@ import {
 } from "@al-ft/midgard-validation/tests/validation-fixtures";
 import { describe, expect, it } from "vitest";
 
-import { WitnessScriptDecodingResultClasses } from "../src/witness-script-decoding/index.js";
+import { WitnessScriptDecodingResultClasses } from "../src/witness-script-decoding/witness-script-decoding.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { nodeForcedVerdict } from "./support/emulator/node-forced-verdict.js";
-import { decodingItemFromPayload } from "./support/native-script-decoding-emulator.js";
-import { witnessSetCarriageOf } from "./support/witness-script-decoding-raw.js";
+import { decodingItemFromPayload } from "./support/native-script-decoding-emulator.build-decoding-ledger-fixture.js";
+import { witnessSetCarriageOf } from "./support/witness-script-decoding-raw.over-bound-field-carriage-plan.js";
 import { makeHarness } from "./witness-script-decoding-lifecycle.make-harness.js";
 import {
   acceptedEvidence,

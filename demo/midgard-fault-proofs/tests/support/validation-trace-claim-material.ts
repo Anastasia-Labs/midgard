@@ -17,7 +17,7 @@ import {
   type CommittedL2Event,
   plutusReplayInput,
 } from "../../src/validation-trace-dispute/replay.js";
-import { completeCanonicalReplayPredecessorLedger } from "../../src/workflow/complete-replay.js";
+import { completeCanonicalReplayPredecessorLedger } from "../../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import type { plutusExecutionBlockFixture } from "../helpers/plutus-execution-block-fixture.js";
 
 export const l1SlotConfig = NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod;

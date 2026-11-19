@@ -2,23 +2,21 @@ import { outRefLabel } from "@al-ft/midgard-core";
 import { expect } from "vitest";
 
 import { inputExistenceWithPublishedFields } from "../src/input-existence/field-carriage.js";
+import { neSubmitStep01 } from "../src/non-existent-input/submit-step-01.js";
+import { neSubmitStep02 } from "../src/non-existent-input/submit-step-02.js";
+import { buildInit } from "../src/submit-init.submit-init.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
+import {
+  captureEmulatorSubmission,
+  type CompleteSignedTransactionMeasurement,
+} from "./support/emulator/measurement.js";
 import {
   inputExistenceExecutionContext,
   publishInputExistenceSelectionCarriage,
 } from "./support/input-existence-execution-context.js";
-import {
-  buildInit,
-  neSubmitStep01,
-  neSubmitStep02,
-} from "./support/legacy-submit-emulator.js";
-import { buildNonExistentInputFixture } from "./support/submit-init-emulator-fixtures.js";
-import {
-  captureEmulatorSubmission,
-  type CompleteSignedTransactionMeasurement,
-  expectSingleUtxoWithUnit,
-  makeFaultProofEmulatorHarness,
-  network,
-} from "./support/submit-init-emulator-shared.js";
+import { buildNonExistentInputFixture } from "./support/submit-init/non-existent-input.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 /** Real shared source/selection stages, including each required publication. */

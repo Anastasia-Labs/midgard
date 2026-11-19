@@ -27,10 +27,8 @@ import {
   type NativeTxWitnessSetCompact,
 } from "@al-ft/midgard-sdk";
 
-import {
-  type FaultProofFieldOpeningPlan,
-  planFaultProofFieldOpening,
-} from "../field-opening.js";
+import { planFaultProofFieldOpening } from "../field-opening.js";
+import { type FaultProofFieldOpeningPlan } from "../field-opening.plan-fault-proof-field-opening.js";
 import { MISSING_SIGNATURE_CATEGORY_LABEL } from "./contracts.js";
 import { missingSignatureSubmitError } from "./submit-common.js";
 

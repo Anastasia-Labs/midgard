@@ -14,12 +14,14 @@ import {
 import {
   parseSubmitL2TransferConfig,
   ResumableNativeTransferSubmitError,
+} from "../src/commands/submit-l2-transfer.compare-assets-by-coverage.js";
+import {
   submitL2TransferCommandProgram,
   TRANSFER_SUBMISSION_JOURNAL_DIR_ENV,
   transferSubmissionJournalPath,
-} from "../src/commands/submit-l2-transfer.js";
-import { NodeConfig } from "../src/services/config.js";
-import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.js";
+} from "../src/commands/submit-l2-transfer.submission-journal.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
+import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   admitted,
   connectionRefused,

@@ -1,5 +1,5 @@
 import { createWatcherProtocolParameterRuntimeAuthority } from "../../src/funding/prover-funding.js";
-import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
+import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.build-watcher-deployment-authority-fixture.js";
 import { ledgerParameterQuery } from "../support/ledger-protocol-parameters.js";
 
 export const runtimeAuthority = async (

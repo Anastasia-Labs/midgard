@@ -1,15 +1,13 @@
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 
+import type { HeaderFaultDecision } from "./header-classifier.authenticated-state-queue-observation-digest.js";
+import { requireRunnableHeaderFault } from "./header-classifier.require-runnable-header-fault.js";
+import { validateFraudProofWorkflowJournal } from "./journal.directory-fraud-proof-workflow-journal-store.js";
+import type { FraudProofWorkflowJournalEntry } from "./journal.fraud-proof-workflow-journal-event.js";
 import {
-  type HeaderFaultDecision,
-  requireRunnableHeaderFault,
-} from "./header-classifier.js";
-import {
-  type FraudProofWorkflowJournalEntry,
   journalJsonDigest,
   normalizeJournalJson,
-  validateFraudProofWorkflowJournal,
-} from "./journal.js";
+} from "./journal.fraud-proof-workflow-terminal.js";
 
 export const WORKFLOW_ACTUATION_PERMIT =
   "midgard-production-workflow-actuation-permit-v1" as const;

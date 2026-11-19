@@ -5,7 +5,7 @@ import {
   readTransitionProof,
   type TransitionProofInput,
 } from "./proof-material.js";
-import { eventKeyFingerprint } from "./reconstruct.js";
+import { eventKeyFingerprint } from "./reconstruct.transition-trace-reconstruction.js";
 
 export const transitionTraceProofEventKey = (
   proof: TransitionProofInput,

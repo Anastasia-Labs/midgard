@@ -30,11 +30,12 @@ import "./support/emulator/measurement.js";
 import "./support/emulator/native-tx.js";
 import "./support/emulator/reference-scripts.js";
 import "./support/emulator/registered-chain.js";
-import "./support/emulator/removal-deployment.js";
+import "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import "./support/emulator/setup-tx.js";
 import "./support/lifecycle-coverage.js";
-import "./support/submit-init-emulator-fixtures.js";
-import "./support/submit-init-emulator-shared.js";
+import "./support/submit-init/forced-transitions.js";
+import "./support/submit-init/removal.js";
+import "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
 import "./mint-declared-asset-limit-lifecycle.registered-contracts.js";
 import "./mint-declared-asset-limit-lifecycle.expect-positive-margins.js";
 
@@ -46,8 +47,10 @@ import {
   midgardFieldCommitment,
   selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core";
-import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
-import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
+import {
+  deriveMidgardForcedTxProofSource,
+  materializeMidgardForcedTxFromCanonical,
+} from "@al-ft/midgard-core/codec/forced";
 import {
   acceptedVerdictSubject,
   fieldOpeningForField,
@@ -117,14 +120,12 @@ import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
-import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
 import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
-import {
-  buildInvalidForcedTransitionTraceFixture,
-  setupFraudulentBlock,
-} from "./support/submit-init-emulator-fixtures.js";
-import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
+import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init/forced-transitions.js";
+import { setupFraudulentBlock } from "./support/submit-init/removal.js";
 import {
   submitCommittedFieldShapeInit,
   submitMintDeclaredAssetLimitStep01Accepted,

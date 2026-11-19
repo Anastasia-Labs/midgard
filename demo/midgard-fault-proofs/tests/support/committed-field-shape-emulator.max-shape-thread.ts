@@ -10,8 +10,8 @@ import { type CommittedFieldClaim } from "@al-ft/midgard-sdk";
 import { type UTxO } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import { faultProofRawFieldCarriage } from "../../src/field-opening.js";
-import { buildCommittedFieldShapeInit } from "../../src/index.js";
+import { buildCommittedFieldShapeInit } from "../../src/committed-field-shape/submit-committed-field-shape-init.js";
+import { faultProofRawFieldCarriage } from "../../src/field-opening.publish-fault-proof-field-carriage.js";
 import {
   type CertifiedCommittedField,
   expectStageFit,
@@ -23,11 +23,9 @@ import {
   type CommittedFieldShapeScenarioKind,
   publishCommittedFieldShapeReferenceScripts,
   setupCommittedFieldShapeScenario,
-} from "./committed-field-shape-emulator.js";
-import {
-  captureEmulatorSubmission,
-  network,
-} from "./submit-init-emulator-shared.js";
+} from "./committed-field-shape-emulator.committed-field-shape-scenario-material.js";
+import { network } from "./emulator/blueprints.js";
+import { captureEmulatorSubmission } from "./emulator/measurement.js";
 import { buildAndSubmitUnjournaled } from "./submit-unjournaled.js";
 
 export const LABEL = "committed-field-shape-max";

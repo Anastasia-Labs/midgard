@@ -4,7 +4,7 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import type { DoubleWithdrawContracts } from "../double-withdraw/contracts.js";
-import { DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
+import { DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import {
   type AssemblyContext,
   type BoundDoubleWithdrawTransactionsConfig,
@@ -15,12 +15,10 @@ import {
   productionBuilders,
   WITNESS_ROLES,
 } from "./double-withdraw.create-bound-transaction-port.js";
-import { defineLinearFamily } from "./family-definition.js";
+import { defineLinearFamily } from "./family-definition.family-definition.js";
 import { type LinearFamilyTransactionPort } from "./linear-family-adapter.js";
-import {
-  assembleManifestBoundFamilyWorkflow,
-  runOrResumeManifestBoundFamilyWorkflow,
-} from "./manifest-bound-family-assembly.js";
+import { assembleManifestBoundFamilyWorkflow } from "./manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
+import { runOrResumeManifestBoundFamilyWorkflow } from "./manifest-bound-family-assembly.run-or-resume-manifest-bound-family-workflow.js";
 
 const contracts = (context: AssemblyContext): DoubleWithdrawContracts => {
   const { binding } = context;

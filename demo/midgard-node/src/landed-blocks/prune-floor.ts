@@ -27,12 +27,9 @@ import {
 } from "@al-ft/midgard-l1-follower";
 import { Effect } from "effect";
 
-import {
-  enteredSlot,
-  queueElementOf,
-  stateQueueProjection,
-  type StateQueueProjectionConfig,
-} from "../l1-state-queue/index.js";
+import type { StateQueueProjectionConfig } from "../l1-state-queue/config.js";
+import { enteredSlot, queueElementOf } from "../l1-state-queue/landed.js";
+import { stateQueueProjection } from "../l1-state-queue/projection.js";
 import type { Database } from "../services/database.js";
 import { earliestAdmissionSlot } from "./replay-foreign.complete.js";
 import { Frontier, retrieveRows } from "./store.js";

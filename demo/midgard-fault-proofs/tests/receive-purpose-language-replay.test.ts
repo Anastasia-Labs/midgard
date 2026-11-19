@@ -9,15 +9,17 @@ import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import { type LedgerEntry, singleLedgerAt } from "../src/ledger-at.js";
-import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
+import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
+import { admitCompleteCanonicalReplayPredecessor } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
-  admitCompleteCanonicalReplayPredecessor,
   createCompleteCanonicalReplayUnion,
+  requireCompleteCanonicalReplayDecision,
+} from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
+import {
   NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
   NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY,
-  RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY,
-  requireCompleteCanonicalReplayDecision,
-} from "../src/workflow/complete-replay.js";
+} from "../src/workflow/complete-replay.detect-double-withdraws.js";
+import { RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
 import {
   buildMissingRedeemerBlock,

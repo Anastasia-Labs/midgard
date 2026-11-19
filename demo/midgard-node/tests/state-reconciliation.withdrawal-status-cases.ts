@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { evaluateStateReconciliation } from "../src/commands/state-reconciliation.js";
+import { evaluateStateReconciliation } from "../src/commands/state-reconciliation.check-ledger-cache.js";
 import {
   CONFIRMED,
   expectOnlyFailure,

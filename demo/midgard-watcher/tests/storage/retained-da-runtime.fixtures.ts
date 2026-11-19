@@ -1,9 +1,7 @@
 import { type Mock, vi } from "vitest";
 
-import {
-  parseWatcherConfig,
-  WATCHER_CONFIG_SCHEMA_VERSION,
-} from "../../src/runtime/config.js";
+import { parseWatcherConfig } from "../../src/runtime/config.parse-watcher-config.js";
+import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.watcher-config.js";
 import type { WatcherPublicDaRequest } from "../../src/storage/public-da-client.js";
 import {
   encodeWatcherPublicDaFrame,

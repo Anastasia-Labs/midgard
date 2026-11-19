@@ -3,18 +3,16 @@ import {
   NetworkIdStep02Datum,
 } from "@al-ft/midgard-sdk";
 
-import { resolveFaultProofFieldGrammarDeployment } from "../field-grammar-certificate.js";
+import { resolveFaultProofFieldGrammarDeployment } from "../field-grammar-certificate.resolve-fault-proof-field-grammar-deployment.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import { NETWORK_ID_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
-import {
-  bindFraudProofWorkflowDeployment,
-  releaseFinalityAuthorityFromDeploymentBinding,
-} from "../workflow/deployment-manifest-binding.js";
+import { NETWORK_ID_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.detect-double-withdraws.js";
+import { releaseFinalityAuthorityFromDeploymentBinding } from "../workflow/deployment-manifest-binding.assert-deployment-info-matches-manifest.js";
+import { bindFraudProofWorkflowDeployment } from "../workflow/deployment-manifest-binding.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import type { FraudProofWorkflowJournalStore } from "../workflow/journal.js";
+import type { FraudProofWorkflowRunResult } from "../workflow/orchestrator.fraud-proof-workflow-run-result.js";
 import {
   createFraudProofWorkflowRegistry,
-  type FraudProofWorkflowRunResult,
   runFraudProofWorkflowFromRetainedDa,
 } from "../workflow/orchestrator.js";
 import { type WalletOnlySend } from "../workflow/wallet-only-send-gate.js";

@@ -2,7 +2,7 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import * as Ledger from "../src/database/utils/ledger.js";
-import { shouldHydrateCommitBaseEntries } from "../src/workers/commit-block-header.js";
+import { shouldHydrateCommitBaseEntries } from "../src/workers/commit-block-header.pending-user-event-counts-up-to.js";
 import { indexSelectedLedgerOutputs } from "../src/workers/utils/mpf/withdrawal-classification.js";
 
 describe("withdrawal classification selected state", () => {

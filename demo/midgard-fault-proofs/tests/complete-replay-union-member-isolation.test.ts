@@ -10,13 +10,11 @@ import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import { ValidationTraceReplayHeldError } from "../src/validation-trace-dispute/replay-hold.js";
-import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
+import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
 import { EVENT_PRE_STATE_UNAVAILABLE_VIOLATION_ID } from "../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { createCompleteCanonicalReplayUnion } from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
 import { completeReplayer } from "../src/workflow/complete-replay.detect-double-withdraws.js";
-import {
-  createCompleteCanonicalReplayUnion,
-  L2_TX_MISTAG_COMPLETE_CANONICAL_REPLAY,
-} from "../src/workflow/complete-replay.js";
+import { L2_TX_MISTAG_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import {
   acceptedTransactionSubject,
   eventOrder,

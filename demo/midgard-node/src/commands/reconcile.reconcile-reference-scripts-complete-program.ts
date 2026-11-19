@@ -12,10 +12,12 @@ import {
   TxRejectionsDB,
 } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
-import { loadDeploymentRunState } from "../e2e/run-state.js";
-import { Database, Lucid, MidgardContracts } from "../services/index.js";
+import { loadDeploymentRunState } from "../e2e/run-state.parse-deployment-run-state.js";
+import { Database } from "../services/database.js";
 import type { IntentJournal } from "../services/intent-journal.js";
+import { Lucid } from "../services/lucid.js";
 import { readConfiguredDeploymentManifest } from "../services/midgard-contracts.load-reference-script-auth-validator.js";
+import { MidgardContracts } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   ensureNodeRuntimeReferenceScriptsProgram,
   verifyNodeRuntimeReferenceScriptsProgram,

@@ -59,13 +59,12 @@ import {
   resolveL1NowMsOrRefuse,
 } from "./register-active-operator/clock.js";
 import {
-  handleSignSubmit,
-  rebuildOnTxExpiry,
   TxConfirmError,
-  TxExpiredError,
   TxSignError,
   TxSubmitError,
-} from "./utils.js";
+} from "./utils.await-required-output-visibility.js";
+import { handleSignSubmit } from "./utils.await-submitted-transaction-confirmation.js";
+import { rebuildOnTxExpiry, TxExpiredError } from "./utils.tx-expiry.js";
 
 type OperatorLifecycleError =
   | SDK.StateQueueError

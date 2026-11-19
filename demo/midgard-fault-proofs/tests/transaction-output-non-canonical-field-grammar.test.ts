@@ -13,15 +13,13 @@ import {
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import {
-  FIELD_GRAMMAR_WALKED_ITEM_LIMIT,
-  fieldGrammarCertificateAddress,
-} from "../src/field-grammar-certificate.js";
+import { fieldGrammarCertificateAddress } from "../src/field-grammar-certificate.certify-fault-proof-field-grammar.js";
+import { FIELD_GRAMMAR_WALKED_ITEM_LIMIT } from "../src/field-grammar-certificate.route-fault-proof-field-grammar.js";
 import {
   VAN_ROSSEM_MAX_CPU_UNITS,
   VAN_ROSSEM_MAX_MEMORY_UNITS,
 } from "../src/proof-fit/van-rossem.js";
-import { buildTransactionOutputNonCanonicalStep02 } from "../src/transaction-output-non-canonical/index.js";
+import { buildTransactionOutputNonCanonicalStep02 } from "../src/transaction-output-non-canonical/submit-step-02.js";
 import { createManifestBoundTransactionOutputNonCanonicalSubmission } from "../src/transaction-output-non-canonical/workflow.create-manifest-bound-transaction-output-non-canonical-submission.js";
 import {
   transactionOutputNonCanonicalConfigFromBinding,
@@ -34,12 +32,12 @@ import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { deployFieldGrammarCertificate } from "./support/field-grammar-certificate-deployment-fixture.js";
-import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
+import { setupFraudulentBlock } from "./support/submit-init/removal.js";
 import {
   submitBoundUnjournaled,
   submitTurnsUnjournaled,
 } from "./support/submit-unjournaled.js";
-import { MALFORMED_OUTPUT } from "./support/transaction-output-non-canonical-emulator.js";
+import { MALFORMED_OUTPUT } from "./support/transaction-output-non-canonical-emulator.continue-raw.js";
 import {
   committedInclusions,
   evidenceOf,

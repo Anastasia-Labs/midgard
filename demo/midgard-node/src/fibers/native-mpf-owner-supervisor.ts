@@ -1,6 +1,6 @@
 import { Effect, Metric, Ref, Schedule } from "effect";
 
-import { Globals } from "../services/globals.js";
+import { Globals } from "../services/globals.globals.js";
 import {
   clearLivenessIncident,
   raiseLivenessIncident,

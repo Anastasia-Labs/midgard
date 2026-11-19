@@ -15,7 +15,7 @@ import { Data } from "@lucid-evolution/lucid";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { CompleteCanonicalReplayIsolation } from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
-import { classifyHeader } from "../src/workflow/header-classifier.js";
+import { classifyHeader } from "../src/workflow/header-classifier.classify-header.js";
 import {
   buildCanonicalBlockFixture,
   buildFixtureTransaction,
@@ -28,7 +28,7 @@ import {
 } from "./support/catalogue-retained-classification.setup.js";
 import { redeemerItem } from "./support/missing-redeemer-emulator.purposes.js";
 import { plutusScript } from "./support/missing-redeemer-emulator.subject.js";
-import { buildRetainedValidationBlockFixture } from "./support/retained-reason-classifier.js";
+import { buildRetainedValidationBlockFixture } from "./support/retained-reason-classifier.build-retained-validation-block-fixture.js";
 
 afterEach(() => {
   transport.raw = undefined;

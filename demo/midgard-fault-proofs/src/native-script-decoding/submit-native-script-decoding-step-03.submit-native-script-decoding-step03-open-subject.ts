@@ -1,13 +1,11 @@
-import type {
-  FieldOpening,
-  NativeScriptDecodingScanThreadState,
-} from "@al-ft/midgard-sdk";
 import {
   encodeMidgardTxInputCanonical,
+  type FieldOpening,
   type MidgardTxInput,
   NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION,
   NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_MALFORMED,
   nativeScriptDecodingOpenedSubjectState,
+  type NativeScriptDecodingScanThreadState,
   NativeScriptDecodingStep03OpenSubjectSpendRedeemer,
 } from "@al-ft/midgard-sdk";
 import {
@@ -22,11 +20,11 @@ import {
   type FaultProofTurn,
   isPrerequisiteTurn,
 } from "../fault-proof-turn.js";
+import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
 import {
   faultProofFieldOpening,
-  planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
-} from "../field-opening.js";
+} from "../field-opening.publish-fault-proof-field-carriage.js";
 import { type ResolvedProverSigner } from "../runtime.js";
 import {
   createOwnOutputJournal,
@@ -42,10 +40,10 @@ import {
   nativeScriptDecodingSubmitError,
   requireNativeScriptDecodingThreadUtxo,
 } from "./submit-common.js";
-import type { NativeScriptDecodingStep03Build } from "./submit-native-script-decoding-step-03.advance-step03-thread.js";
 import {
   advanceStep03Thread,
   BIND_DESCRIPTOR_INDEX,
+  type NativeScriptDecodingStep03Build,
   OPEN_SUBJECT_INDEX,
   OPEN_SUBJECT_LABEL,
   requirePreOpenState,

@@ -7,10 +7,8 @@ import {
 import { CML, toUnit } from "@lucid-evolution/lucid";
 import { expect, it, onTestFinished, vi } from "vitest";
 
-import {
-  createCursorFamilyWorkflowAdapter,
-  CURSOR_FAMILY_TRANSACTION_PORT,
-} from "../src/workflow/cursor-family-adapter.js";
+import { CURSOR_FAMILY_TRANSACTION_PORT } from "../src/workflow/cursor-family-adapter.admit-reference-scripts.js";
+import { createCursorFamilyWorkflowAdapter } from "../src/workflow/cursor-family-adapter.create-cursor-family-workflow-adapter.js";
 import {
   createFraudProofFamilyAuthenticatedL1TerminalVerifier,
   createFraudProofFamilyRawL1ObservationPort,
@@ -18,21 +16,21 @@ import {
 import {
   DirectoryFraudProofWorkflowJournalStore,
   validateFraudProofWorkflowJournal,
-} from "../src/workflow/journal.js";
-import { createFraudProofWorkflowRegistry } from "../src/workflow/orchestrator.js";
+} from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
+import { createFraudProofWorkflowRegistry } from "../src/workflow/orchestrator.immutable-fraud-proof-workflow-registry.js";
 import { runAdmittedFraudProofWorkflow } from "../src/workflow/orchestrator.run-admitted-fraud-proof-workflow.js";
 import {
   FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
   type FraudProofRawL1Snapshot,
-} from "../src/workflow/raw-l1-snapshot.js";
+} from "../src/workflow/raw-l1-snapshot.compute-fraud-proof-raw-l1-snapshot-evidence-digest.js";
 import { signed, transaction } from "./cursor-family-adapter.terminal.js";
+import { fixture } from "./support/raw-l1-terminal-fixture.fixture.js";
 import {
-  fixture,
   hash32,
   output,
   raw,
   releaseFinality,
-} from "./support/raw-l1-terminal-fixture.js";
+} from "./support/raw-l1-terminal-fixture.output.js";
 import { noSignedRead } from "./support/terminal-verifier.js";
 import { makeAdapter } from "./workflow.make-adapter.js";
 

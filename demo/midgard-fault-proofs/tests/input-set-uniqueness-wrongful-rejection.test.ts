@@ -4,7 +4,7 @@ import {
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { planFaultProofFieldOpening } from "../src/field-opening.js";
+import { planFaultProofFieldOpening } from "../src/field-opening.plan-fault-proof-field-opening.js";
 import { detectInputSetUniquenessForcedReplay } from "../src/input-set-uniqueness/replay.js";
 import {
   bindForcedDuplicateInput,
@@ -15,7 +15,7 @@ import {
   buildInputSetUniquenessFixture,
   isuItemCbor,
   isuOutRef,
-} from "./support/input-set-uniqueness-emulator.js";
+} from "./support/input-set-uniqueness-emulator.build-input-set-uniqueness-fixture.js";
 
 const reason = {
   DuplicateInput: {

@@ -14,9 +14,9 @@ import {
   claimedFieldItems,
   claimedItem,
 } from "../evidence/claimed-coordinate.js";
-import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
+import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.build-source-membership-proof.js";
 import { forcedTransactionSubject } from "../workflow/detection-subject.js";
-import { nativeScriptInvalidSignerSet } from "./evidence-machine.js";
+import { nativeScriptInvalidSignerSet } from "./evidence-machine.native-script-invalid-signer-set.js";
 
 /** The witness item's script, or undefined when the item does not decode. */
 const decodedWitnessScript = (item: Uint8Array) => {

@@ -1,6 +1,6 @@
 /** The `receivePurposeLanguage` family's direct walk. */
 import { defineDirectWalkFamily } from "../direct-purpose-family/walk-family.js";
-import { RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
+import { RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import { RECEIVE_PURPOSE_LANGUAGE_CURSOR_SPEC } from "../workflow/cursor-family-spec.js";
 import { RECEIVE_PURPOSE_LANGUAGE_FAMILY } from "./contracts.js";
 import { RECEIVE_PURPOSE_LANGUAGE_ARTIFACT_FAMILY } from "./replay.js";

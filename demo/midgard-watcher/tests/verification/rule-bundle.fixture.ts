@@ -4,24 +4,28 @@ import {
   computeDeploymentManifestJsonDigest,
   makeDeploymentMarker,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION as WATCHER_DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION,
+  SIGNED_DEPLOYMENT_RELEASE_SCHEMA_VERSION as WATCHER_SIGNED_DEPLOYMENT_IDENTITY_SCHEMA_VERSION,
+} from "@al-ft/midgard-core/deployment-release";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { expect } from "vitest";
 
 import {
-  makeWatcherDeploymentIdentitySignaturePayload,
-  verifyWatcherDeploymentIdentity,
-  WATCHER_DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION,
-  WATCHER_SIGNED_DEPLOYMENT_IDENTITY_SCHEMA_VERSION,
   WatcherDeploymentIdentityError,
   type WatcherDeploymentIdentityErrorCode,
   type WatcherDeploymentIdentityPolicy,
-} from "../../src/runtime/deployment-identity.js";
+} from "../../src/runtime/deployment-identity.catalogue-category-to-contract.js";
+import { makeWatcherDeploymentIdentitySignaturePayload } from "../../src/runtime/deployment-identity.parse-policy.js";
+import { verifyWatcherDeploymentIdentity } from "../../src/runtime/deployment-identity.verify-watcher-deployment-identity.js";
+import {
+  WatcherRuleBundleError,
+  type WatcherRuleBundleErrorCode,
+} from "../../src/verification/rule-bundle.canonical-json-value.js";
 import {
   computeWatcherRuleBundleCommitment,
   makeWatcherCanonicalRuleBundle,
-  WatcherRuleBundleError,
-  type WatcherRuleBundleErrorCode,
-} from "../../src/verification/rule-bundle.js";
+} from "../../src/verification/rule-bundle.parse-watcher-rule-bundle.js";
 import {
   appliedScriptHashes,
   BLUEPRINT_HASH,

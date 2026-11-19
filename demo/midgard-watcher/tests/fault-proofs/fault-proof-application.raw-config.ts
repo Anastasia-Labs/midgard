@@ -23,12 +23,10 @@ import type {
   WatcherFaultProofL1,
   WatcherFaultProofStartupInvocation,
 } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
-import {
-  parseWatcherConfig,
-  WATCHER_CONFIG_SCHEMA_VERSION,
-} from "../../src/runtime/config.js";
+import { parseWatcherConfig } from "../../src/runtime/config.parse-watcher-config.js";
+import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.watcher-config.js";
 import { WatcherPublicDaLibp2pTransport } from "../../src/storage/public-da-libp2p-transport.js";
-import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.js";
+import { makeWatcherDeploymentAuthorityFixture } from "../support/deployment-authority-fixture.build-watcher-deployment-authority-fixture.js";
 
 export const AUTHORITY = makeWatcherDeploymentAuthorityFixture();
 

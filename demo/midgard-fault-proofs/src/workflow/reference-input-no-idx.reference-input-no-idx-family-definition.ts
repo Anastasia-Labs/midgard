@@ -5,14 +5,12 @@ import {
   ReferenceInputNoIdxStep04Datum,
 } from "@al-ft/midgard-sdk";
 
-import { requireFaultProofFieldGrammarDeployment } from "../field-grammar-certificate.js";
-import { REFERENCE_INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
-import { defineLinearFamily } from "./family-definition.js";
+import { requireFaultProofFieldGrammarDeployment } from "../field-grammar-certificate.resolve-fault-proof-field-grammar-deployment.js";
+import { REFERENCE_INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
+import { defineLinearFamily } from "./family-definition.family-definition.js";
 import { type FieldCarriageRequirement } from "./field-carriage-prerequisite.js";
-import {
-  assembleManifestBoundFamilyWorkflow,
-  runOrResumeManifestBoundFamilyWorkflow,
-} from "./manifest-bound-family-assembly.js";
+import { assembleManifestBoundFamilyWorkflow } from "./manifest-bound-family-assembly.assemble-bound-manifest-bound-family-workflow.js";
+import { runOrResumeManifestBoundFamilyWorkflow } from "./manifest-bound-family-assembly.run-or-resume-manifest-bound-family-workflow.js";
 import {
   admitReferenceInputNoIdxArtifact,
   WITNESS_ROLES,

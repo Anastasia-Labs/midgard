@@ -12,7 +12,7 @@ import { setupFaultProofExecution } from "../support/fault-proof-execution-fixtu
 import {
   cleanupFundingRecoveryFixtures,
   walletAddress,
-} from "../support/fault-proof-funding-fixture.js";
+} from "../support/fault-proof-funding-fixture.sources-for.js";
 
 afterEach(cleanupFundingRecoveryFixtures);
 

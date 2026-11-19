@@ -14,10 +14,8 @@ import {
   stepDatum,
 } from "../direct-purpose-family/custody.js";
 import type { DirectPurposeSourceEvidence } from "../direct-purpose-family/source-walk.js";
-import {
-  directOutputAddress,
-  type DirectScriptMaterial,
-} from "../direct-script-derivation/index.js";
+import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
+import { directOutputAddress } from "../direct-script-derivation/purposes.js";
 import type { FittedPage } from "../page-fit.js";
 import { SCRIPT_INTEGRITY_HASH_MISMATCH_CATEGORY_LABEL } from "./contracts.js";
 import {

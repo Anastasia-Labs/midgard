@@ -3,28 +3,24 @@ import { FraudProofTokenDatum } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildMinAdaInit,
-  buildMinAdaStep03,
-  buildMinAdaStep04,
-  buildMinAdaTxStep01,
-  buildMinAdaTxStep02,
-  submitRemoveFraudulentBlock,
-} from "../src/index.js";
+import { buildMinAdaInit } from "../src/min-ada/submit-init.js";
+import { buildMinAdaTxStep01 } from "../src/min-ada/submit-step-01.js";
+import { buildMinAdaTxStep02 } from "../src/min-ada/submit-step-02.submit-min-ada-tx-step02.js";
+import { buildMinAdaStep03 } from "../src/min-ada/submit-step-03.js";
+import { buildMinAdaStep04 } from "../src/min-ada/submit-step-04.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import {
   buildMinAdaTxEmulatorFixture,
   makeMinAdaEmulatorHarness,
   publishFinalFamilyReferenceScripts,
-} from "./support/final-catalogue-emulator.js";
+} from "./support/final-catalogue-emulator.build-min-ada-tx-emulator-fixture.js";
 import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
-import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
-import {
-  buildRemovalDeploymentInfo,
-  expectSingleUtxoWithUnit,
-  network,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
+import { setupFraudulentBlock } from "./support/submit-init/removal.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,

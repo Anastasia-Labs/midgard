@@ -1,4 +1,4 @@
-import { evaluateMidgardCekVerdict } from "@al-ft/midgard-validation";
+import { evaluateMidgardCekVerdict } from "@al-ft/midgard-validation/phase-b";
 import { Effect } from "effect";
 
 import type { ValidationPoolService } from "../../src/services/validation-pool.js";

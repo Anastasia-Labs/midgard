@@ -12,7 +12,7 @@ import {
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { deriveTransactionOutputScan } from "../transaction-output-non-canonical/transaction-output-non-canonical.js";
-import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
+import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.build-source-membership-proof.js";
 import { verdictDetectionSubject } from "../workflow/detection-subject.js";
 
 export const NETWORK_ID_MISMATCH_REASON = "NetworkIdMismatch" as const;

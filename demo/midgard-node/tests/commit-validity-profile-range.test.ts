@@ -13,7 +13,7 @@ import {
   commitValidityEndTimeCapMs,
   resolveCommitValidityInterval,
 } from "../src/workers/utils/commit-end-time.js";
-import { resolveSchedulerRefreshValidityWindow } from "../src/workers/utils/scheduler-refresh.js";
+import { resolveSchedulerRefreshValidityWindow } from "../src/workers/utils/scheduler-refresh.resolve-scheduler-refresh-witness-selection.js";
 
 const { PROFILE_MAX_VALIDITY_RANGE_MS } = vi.hoisted(() => ({
   PROFILE_MAX_VALIDITY_RANGE_MS: 300_000,

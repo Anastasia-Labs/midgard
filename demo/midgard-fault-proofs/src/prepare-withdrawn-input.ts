@@ -21,14 +21,14 @@ import {
   type CanonicalBlockEvidence,
 } from "./evidence/canonical-block-evidence.js";
 import { stringifyJson } from "./json-file.js";
+import type { NodeTransactionPayload } from "./prepare-double-spend.encode-l2-transaction-source-value.js";
+import { requireTransactionsRootMatch } from "./prepare-double-spend.prepare-double-spend-from-transactions.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
-  type NodeTransactionPayload,
   requireProof,
-  requireTransactionsRootMatch,
   transactionSourceTrieItem,
-} from "./prepare-double-spend.js";
+} from "./prepare-double-spend.resolve-double-spend-pair.js";
 import { type SubmitStep01TxInclusion } from "./step-support.js";
 import {
   type PreparedWithdrawnInputEvidence,

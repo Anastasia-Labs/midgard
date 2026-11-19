@@ -9,29 +9,25 @@ import { Data, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildMissingSignatureInit,
-  buildMissingSignatureStep01,
-  buildMissingSignatureStep02,
-  buildMissingSignatureStep03,
-  buildMissingSignatureStep04,
-} from "../src/missing-signature/index.js";
-import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
+import { buildMissingSignatureInit } from "../src/missing-signature/submit-missing-signature-init.js";
+import { buildMissingSignatureStep01 } from "../src/missing-signature/submit-missing-signature-step-01.js";
+import { buildMissingSignatureStep02 } from "../src/missing-signature/submit-missing-signature-step-02.js";
+import { buildMissingSignatureStep03 } from "../src/missing-signature/submit-missing-signature-step-03.js";
+import { buildMissingSignatureStep04 } from "../src/missing-signature/submit-missing-signature-step-04.submit-missing-signature-step04.js";
+import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import { network } from "./support/emulator/blueprints.js";
+import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
+import { publishRemovalReferenceScripts } from "./support/emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.build-removal-deployment-info.js";
 import {
   makeMissingSignatureEmulatorHarness,
   missingSignatureFinding,
   missingSignatureProverDeps,
   publishMissingSignatureReferenceScripts,
   setupMissingSignatureScenario,
-} from "./support/missing-signature-emulator.js";
-import { proveMissingSignatureFault } from "./support/missing-signature-prover.js";
+} from "./support/missing-signature-emulator.build-missing-signature-subject.js";
+import { proveMissingSignatureFault } from "./support/missing-signature-prover.prove-missing-signature-fault.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
-import {
-  buildRemovalDeploymentInfo,
-  expectSingleUtxoWithUnit,
-  network,
-  publishRemovalReferenceScripts,
-} from "./support/submit-init-emulator-shared.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,

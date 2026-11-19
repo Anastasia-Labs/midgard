@@ -17,7 +17,7 @@ import {
   readTransitionProof,
   transitionProofHistorySource,
 } from "../src/transition-trace/proof-material.js";
-import { reconstructDaPayload } from "../src/transition-trace/reconstruct.js";
+import { reconstructDaPayload } from "../src/transition-trace/reconstruct.reconstruct-da-payload.js";
 import {
   leafMembershipProof,
   membershipProof,

@@ -12,8 +12,8 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
-import { detectTransitionTraceFaults } from "../src/transition-trace/detect.js";
-import { eventKeyFingerprint } from "../src/transition-trace/reconstruct.js";
+import { detectTransitionTraceFaults } from "../src/transition-trace/detect.detect-single-ledger-transitions.js";
+import { eventKeyFingerprint } from "../src/transition-trace/reconstruct.transition-trace-reconstruction.js";
 import {
   provenTransitionEventKeyCbor,
   transitionTraceDetectionId,
@@ -21,7 +21,7 @@ import {
 import {
   type CanonicalViolationDetection,
   classifyCanonicalBlockViolations,
-} from "../src/workflow/classification.js";
+} from "../src/workflow/classification.classify-canonical-block-violations.js";
 import {
   acceptedTransactionSubject,
   eventKeyCborSubject,
@@ -37,7 +37,7 @@ import {
   buildFixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
-import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
+import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.build-decoding-block-fixture.js";
 
 const ORDER_KEY = { transactionId: "31".repeat(32), outputIndex: 0n };
 

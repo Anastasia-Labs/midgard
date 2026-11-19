@@ -2,11 +2,9 @@ import { InputSetUniquenessVerdictSubjectSchema } from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import {
-  type FaultProofFieldOpeningPlan,
-  resolveFaultProofFieldCarriagePublications,
-  resolveFaultProofFieldPreimageCertificate,
-} from "../field-opening.js";
+import { resolveFaultProofFieldPreimageCertificate } from "../field-opening.certify-fault-proof-field-carriage.js";
+import type { FaultProofFieldOpeningPlan } from "../field-opening.plan-fault-proof-field-opening.js";
+import { resolveFaultProofFieldCarriagePublications } from "../field-opening.publish-fault-proof-field-carriage.js";
 import type { InputSetUniquenessContracts } from "../input-set-uniqueness/contracts.js";
 import {
   detectInputSetUniquenessForcedReplay,
@@ -18,18 +16,18 @@ import {
   decodeTransactionMaterial,
   requireProof,
   transactionSourceTrieItem,
-} from "../prepare-double-spend.js";
+} from "../prepare-double-spend.resolve-double-spend-pair.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.build-remove-fraudulent-block.js";
 import { type StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
-import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import { type ResolvedProverSigner } from "../runtime.js";
-import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
+import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.build-source-membership-proof.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
 import {
   CHUNKED_VERIFY_WITNESS_ROLES,
   type LinearFamilyAssemblyContext,
   type LinearFamilyReferenceScripts,
-} from "./family-definition.js";
+} from "./family-definition.family-adapter-arm.js";
 import {
   claimIdentity,
   claimJson,
@@ -45,7 +43,7 @@ import {
   admitInputSetUniquenessForcedArtifact,
   selectedIdentity,
 } from "./input-set-uniqueness.admit-input-set-uniqueness-forced-artifact.js";
-import { normalizeJournalJson } from "./journal.js";
+import { normalizeJournalJson } from "./journal.fraud-proof-workflow-terminal.js";
 import { exactJournalRecord } from "./native-index-artifact.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
 import type { OwnOutputJournal } from "./own-outputs.js";

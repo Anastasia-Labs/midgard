@@ -35,8 +35,8 @@ import { exactResolvedOutputCbor } from "../src/workflow/funding-reservation-per
 import { VALIDATION_DISPUTE_CLOSE_BINDING } from "../src/workflow/funding-reservation-permit.validation-dispute-close-authority.js";
 import type { FraudProofWorkflowAction } from "../src/workflow/orchestrator.js";
 import { parseOwnOutRef } from "../src/workflow/own-outputs.js";
+import { network } from "./support/emulator/blueprints.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
-import { network } from "./support/submit-init-emulator-shared.js";
 import {
   outRefOf,
   spentBy,

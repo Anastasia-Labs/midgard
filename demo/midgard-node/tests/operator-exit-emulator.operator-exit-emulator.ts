@@ -6,7 +6,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { registerOperatorProgram } from "../src/transactions/register-active-operator.js";
+import { registerOperatorProgram } from "../src/transactions/register-active-operator.activate-registered-operator-program.js";
 import { withoutFollowerJournal } from "./helpers/intent-journal.js";
 import {
   appointFirstSchedulerOperator,

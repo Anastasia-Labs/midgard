@@ -21,17 +21,15 @@ import {
   awaitLandedStateQueueOnStartup,
   landedStateQueueStartupReasons,
 } from "../src/commands/listen-startup.await-landed-state-queue.js";
-import {
-  landedElements,
-  STATE_QUEUE_UNHEALTHY,
-} from "../src/l1-state-queue/index.js";
-import { Globals } from "../src/services/globals.js";
+import { STATE_QUEUE_UNHEALTHY } from "../src/l1-state-queue/hook.js";
+import { landedElements } from "../src/l1-state-queue/landed.js";
+import { Globals } from "../src/services/globals.globals.js";
 import {
   awaitLandedStateQueueSnapshot,
   readLandedStateQueue,
   requireLandedStateQueue,
 } from "../src/services/landed-state-queue.js";
-import { MidgardContracts } from "../src/services/midgard-contracts.js";
+import { MidgardContracts } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import { seedLandedStateQueue } from "./helpers/landed-state-queue.js";
 import {
   nodeDatum,

@@ -5,13 +5,13 @@ import {
 } from "@al-ft/midgard-core/da-transport";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import {
-  DaLibp2pRetainedDaSource,
-  fetchRetainedDaPayloadByHeaderHash,
-  isRetainedDaPayloadUnavailableError,
-  type RetainedDaLibp2pTransport,
-  type RetainedDaPayloadSource,
-} from "../src/transition-trace/index.js";
+import type {
+  RetainedDaLibp2pTransport,
+  RetainedDaPayloadSource,
+} from "../src/transition-trace/fetch.admit-retained-da-provenance.js";
+import { DaLibp2pRetainedDaSource } from "../src/transition-trace/fetch.da-libp2p-retained-da-source.js";
+import { fetchRetainedDaPayloadByHeaderHash } from "../src/transition-trace/fetch.fetch-retained-da-payload-by-header-hash.js";
+import { isRetainedDaPayloadUnavailableError } from "../src/transition-trace/fetch.retained-da-payload-unavailable.js";
 import { buildPayloadFixture } from "./transition-trace-challenger.build-payload-fixture.js";
 
 type Fixture = Awaited<ReturnType<typeof buildPayloadFixture>>;

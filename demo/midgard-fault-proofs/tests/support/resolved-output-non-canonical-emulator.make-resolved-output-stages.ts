@@ -19,20 +19,19 @@ import {
 } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import {
-  faultProofFieldOpening,
-  planFaultProofFieldOpening,
-} from "../../src/field-opening.js";
+import { planFaultProofFieldOpening } from "../../src/field-opening.plan-fault-proof-field-opening.js";
+import { faultProofFieldOpening } from "../../src/field-opening.publish-fault-proof-field-carriage.js";
 import {
   requireLinearFaultReferenceScript,
   requireLinearFaultThreadUtxo,
 } from "../../src/linear-fault-family.js";
-import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.js";
+import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
+import type {
+  ResolvedOutputAbsentInputEvidence,
+  ResolvedOutputCoordinate,
+  ResolvedOutputEvidence,
+} from "../../src/resolved-output-non-canonical/resolved-output-non-canonical.prepare-resolved-output-non-canonical-evidence.js";
 import {
-  type ResolvedOutputAbsentInputEvidence,
-  type ResolvedOutputCoordinate,
-  type ResolvedOutputEvidence,
-  type ResolvedOutputForcedSource,
   ResolvedOutputStep01RedeemerSchema,
   ResolvedOutputStep02DatumSchema,
   ResolvedOutputStep02RedeemerSchema,
@@ -43,7 +42,8 @@ import {
   ResolvedOutputStep04RedeemerSchema,
   ResolvedOutputStep05DatumSchema,
   ResolvedOutputStep05RedeemerSchema,
-} from "../../src/resolved-output-non-canonical/index.js";
+} from "../../src/resolved-output-non-canonical/schemas.js";
+import type { ResolvedOutputForcedSource } from "../../src/resolved-output-non-canonical/submit-step-01-forced.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
 import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import {
@@ -51,7 +51,8 @@ import {
   type CompleteSignedTransactionMeasurement,
 } from "./emulator/measurement.js";
 import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.js";
-import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.js";
+import { publishRemovalReferenceScripts } from "./emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.build-removal-deployment-info.js";
 import {
   FAMILY,
   network,
@@ -62,7 +63,6 @@ import {
   type Captured,
   forcedSourceOf,
 } from "./resolved-output-non-canonical-emulator.resolved-output-evidence.js";
-import { publishRemovalReferenceScripts } from "./submit-init-emulator-shared.js";
 import { submitCommittedFieldShapeInit } from "./submit-unjournaled.committed-field-shape.js";
 import {
   submitLinearFaultContinue,

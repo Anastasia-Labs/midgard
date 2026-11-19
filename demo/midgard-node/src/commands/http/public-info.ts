@@ -4,11 +4,9 @@ import { ParsedSearchParams } from "@effect/platform/HttpServerRequest";
 import { Effect } from "effect";
 
 import { blockTransactionPage } from "../../database/http-read-pages.js";
-import {
-  ContractDeploymentIdentity,
-  Lucid,
-  NodeConfig,
-} from "../../services/index.js";
+import { NodeConfig } from "../../services/index.js";
+import { Lucid } from "../../services/lucid.js";
+import { ContractDeploymentIdentity } from "../../services/midgard-contracts.make-midgard-contract-runtime.js";
 import { encodeReadPage, parseReadPage } from "../listen-read-page.js";
 import { failWith500 } from "../listen-response.js";
 import * as ProtocolInfoCommand from "../protocol-info.js";

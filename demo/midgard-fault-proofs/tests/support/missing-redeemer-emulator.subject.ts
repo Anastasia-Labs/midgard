@@ -27,31 +27,31 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { prepareDirectScriptMaterial } from "../../src/direct-script-derivation/index.js";
+import { prepareDirectScriptMaterial } from "../../src/direct-script-derivation/material.js";
 import {
   checkLedgerAgainstRoot,
   ledgerEntriesRoot,
   type LedgerEntry,
 } from "../../src/ledger-at.js";
+import {
+  alignUnixTimeToEmulatorSlotBoundary,
+  funderPaymentKeyHash,
+} from "./emulator/emulator-context.js";
 import { nodeForcedVerdict } from "./emulator/node-forced-verdict.js";
+import { submitSetupTx } from "./emulator/setup-tx.submit-setup-tx.js";
 import {
   missingRedeemerPurposeFields,
   type MissingRedeemerPurposeScript,
   type MissingRedeemerPurposeShape,
   redeemerItem,
 } from "./missing-redeemer-emulator.purposes.js";
-import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.js";
+import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.build-decoding-block-fixture.js";
+import { setupFraudulentBlock } from "./submit-init/removal.js";
 import {
   EMULATOR_HEADER_CLOCK_HEADROOM_MS,
   emulatorSuccessorHeaderStart,
-  setupFraudulentBlock,
   submitSuccessorBlockTx,
-} from "./submit-init-emulator-fixtures.js";
-import {
-  alignUnixTimeToEmulatorSlotBoundary,
-  funderPaymentKeyHash,
-  submitSetupTx,
-} from "./submit-init-emulator-shared.js";
+} from "./submit-init/successor.js";
 
 export const plutusScript = (
   seed: number,

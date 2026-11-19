@@ -2,9 +2,11 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { createTransitionTraceEventAuthority } from "../src/transition-trace/l1-events.js";
-import { requireTransitionTraceL1Events } from "../src/transition-trace/l1-events.js";
-import { TRANSITION_TRACE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
+import {
+  createTransitionTraceEventAuthority,
+  requireTransitionTraceL1Events,
+} from "../src/transition-trace/l1-events.js";
+import { TRANSITION_TRACE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";
 import type { FraudProofRawL1Snapshot } from "../src/workflow/raw-l1-snapshot.js";
 import {
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
@@ -13,11 +15,9 @@ import {
 } from "../src/workflow/release-finality-policy.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
 import { fraudProofL1SourceForTest } from "./support/fraud-proof-l1-source.js";
-import {
-  buildRetainedPlutusIdentityFixture,
-  captureRetainedPlutusIdentityOrigins,
-  classifyRetainedReasonFixture,
-} from "./support/retained-reason-classifier.js";
+import { buildRetainedPlutusIdentityFixture } from "./support/retained-reason-classifier.build-retained-plutus-fixture.js";
+import { captureRetainedPlutusIdentityOrigins } from "./support/retained-reason-classifier.capture-retained-plutus-identity-origins.js";
+import { classifyRetainedReasonFixture } from "./support/retained-reason-classifier.classify-retained-reason-fixture.js";
 import {
   capture,
   captureInput,

@@ -2,11 +2,11 @@ import type { DatabaseSync } from "node:sqlite";
 
 import { parseSignedWorkflowTransactionRetirement } from "@al-ft/midgard-fault-proofs";
 
-import {
-  parseWatcherProverFundingReservationRecord,
-  type WatcherProverFundingReservationRecord,
-  type WatcherProverFundingReservationStore,
-} from "./prover-funding-reservation.js";
+import { parseWatcherProverFundingReservationRecord } from "./prover-funding-reservation.parse-watcher-prover-funding-reservation-record.js";
+import type {
+  WatcherProverFundingReservationRecord,
+  WatcherProverFundingReservationStore,
+} from "./prover-funding-reservation.watcher-prover-funding-reservation-store.js";
 import { nextRecord } from "./sqlite-prover-funding-reservation-store.derive-signed-transition.js";
 import type {
   RecordedAttempt,

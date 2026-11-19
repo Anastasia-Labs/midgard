@@ -6,6 +6,7 @@ import "@al-ft/midgard-core/codec/cbor";
 import "@al-ft/midgard-core/consensus-profile";
 import "@al-ft/midgard-sdk";
 import "@al-ft/midgard-validation";
+import "@al-ft/midgard-validation/types";
 import "@lucid-evolution/lucid";
 import "da-committee-node/da/payload";
 import "effect";
@@ -13,7 +14,8 @@ import "vitest";
 import "../../midgard-validation/tests/validation-fixtures.js";
 import "../../da-committee-node/tests/helpers.js";
 import "../src/database/index.js";
-import "../src/mpf/index.js";
+import "../src/mpf/validation-trace.js";
+import "../src/mpf/event-window.classify-forced-transactions.js";
 import "./midgard-output-helpers.js";
 import "./forced-transactions.make-signed-effectful-transaction.js";
 
@@ -24,10 +26,8 @@ import { decodeSingleCbor, encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  buildCanonicalMidgardLedgerEntryOutputMaterial,
-  RejectCodes,
-} from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
+import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -37,10 +37,8 @@ import {
   ForcedTransactionsDB,
   PendingBlockFinalizationsDB,
 } from "../src/database/index.js";
-import {
-  buildPlaceholderValidationTraceMembers,
-  classifyForcedTransactions,
-} from "../src/mpf/index.js";
+import { classifyForcedTransactions } from "../src/mpf/event-window.classify-forced-transactions.js";
+import { buildPlaceholderValidationTraceMembers } from "../src/mpf/validation-trace.js";
 import {
   encodedTransaction,
   forcedEntry,

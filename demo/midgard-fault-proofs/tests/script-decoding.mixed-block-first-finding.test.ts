@@ -2,24 +2,24 @@ import { encodeCbor, encodeMidgardTxOutput } from "@al-ft/midgard-core";
 import type * as SDK from "@al-ft/midgard-sdk";
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
-import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/index.js";
+import {
+  type CanonicalBlockEvidence,
+  canonicalBlockEvidenceFromVerifiedPayload,
+} from "../src/evidence/canonical-block-evidence.js";
 import {
   deriveOutputReferenceScriptDecodingEvidenceFromCanonicalBlock,
   prepareOutputReferenceScriptDecodingRecoveryMaterial,
 } from "../src/output-reference-script-decoding/authenticated-workflow.derive-output-reference-script-decoding-authenticated-source.js";
 import { prepareWitnessScriptDecodingRecoveryMaterial } from "../src/witness-script-decoding/workflow.create-witness-script-decoding-recovery-ports.js";
 import { deriveWitnessScriptDecodingEvidenceFromCanonicalBlock } from "../src/witness-script-decoding/workflow.derive-witness-script-decoding-authenticated-source.js";
-import { classifyCanonicalBlockViolations } from "../src/workflow/classification.js";
+import { classifyCanonicalBlockViolations } from "../src/workflow/classification.classify-canonical-block-violations.js";
 import { completeReplayer } from "../src/workflow/complete-replay.detect-double-withdraws.js";
 import {
   OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
   WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
-} from "../src/workflow/complete-replay.js";
-import {
-  classifyHeader,
-  createHeaderClassifier,
-} from "../src/workflow/header-classifier.js";
+} from "../src/workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
+import { classifyHeader } from "../src/workflow/header-classifier.classify-header.js";
+import { createHeaderClassifier } from "../src/workflow/header-classifier.create-header-classifier.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
@@ -33,8 +33,8 @@ import {
 import {
   outputWithPlutusScript,
   outputWithRawNativePayload,
-} from "./support/output-reference-script-decoding-emulator.js";
-import { buildRetainedPlutusIdentityFixture } from "./support/retained-reason-classifier.js";
+} from "./support/output-reference-script-decoding-emulator.commit-accepted-block.js";
+import { buildRetainedPlutusIdentityFixture } from "./support/retained-reason-classifier.build-retained-plutus-fixture.js";
 
 afterEach(() => {
   transport.raw = undefined;

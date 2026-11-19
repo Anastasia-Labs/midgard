@@ -8,11 +8,9 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
-import {
-  type VerifiedWatcherDeploymentIdentity,
-  watcherDeploymentAvailabilityChallengeAuthority,
-  watcherDeploymentProtocolScriptAuthority,
-} from "../runtime/deployment-identity.js";
+import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.parse-trust-roots.js";
+import { watcherDeploymentProtocolScriptAuthority } from "../runtime/deployment-identity.verify-watcher-user-event-script-binding.js";
+import { watcherDeploymentAvailabilityChallengeAuthority } from "../runtime/deployment-identity.watcher-deployment-availability-challenge-authority.js";
 
 /** Resolve only immutable outrefs and scripts authenticated by the signed release. */
 export const createWatcherAvailabilityDeployment = async (

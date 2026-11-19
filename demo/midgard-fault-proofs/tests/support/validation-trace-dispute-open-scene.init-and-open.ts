@@ -5,7 +5,7 @@ import { toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { buildResolvedInit } from "../../src/submit-init.submit-resolved-init.js";
-import { network } from "./submit-init-emulator-shared.js";
+import { network } from "./emulator/blueprints.js";
 import { buildAndSubmitUnjournaled } from "./submit-unjournaled.js";
 import type { Block, Scene } from "./validation-trace-dispute-open-scene.js";
 import { measureWithinTransactionLimits } from "./validation-trace-dispute-transaction-limits.js";

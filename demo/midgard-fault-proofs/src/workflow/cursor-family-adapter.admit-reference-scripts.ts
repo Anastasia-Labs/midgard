@@ -4,11 +4,14 @@ import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidenc
 import type { StateQueueMutationLease } from "../remove-fraudulent-block.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import type { CompleteCanonicalReplayContext } from "./complete-replay.js";
+import {
+  journalJsonDigest,
+  normalizeJournalJson,
+} from "./journal.fraud-proof-workflow-terminal.js";
 import type {
   FraudProofWorkflowJournalEntry,
   JournalJsonObject,
 } from "./journal.js";
-import { journalJsonDigest, normalizeJournalJson } from "./journal.js";
 import {
   type FraudProofFamilyWorkflowAdapter,
   type FraudProofWorkflowAction,

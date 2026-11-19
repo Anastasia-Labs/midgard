@@ -5,16 +5,18 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   parseTimeoutCorrectionJournal,
+  type TimeoutCorrectionJournal,
+} from "../src/remove-unattested-block.parse-timeout-correction-journal.js";
+import {
   planNextTimeoutCorrection,
   reconcileCompletedTimeoutCorrectionJournal,
   reconcileLastTimeoutCorrectionStep,
-  recoverTimeoutCorrectionAttempt,
   reopenRolledBackTimeoutCorrectionSteps,
   selectTimeoutCorrectionTarget,
   type TimeoutCorrectionAttemptObservation,
-  type TimeoutCorrectionJournal,
   type TimeoutCorrectionRecovery,
-} from "../src/remove-unattested-block.js";
+} from "../src/remove-unattested-block.reconcile-last-timeout-correction-step.js";
+import { recoverTimeoutCorrectionAttempt } from "../src/remove-unattested-block.recover-timeout-correction-attempt.js";
 const h = (byte: string) => byte.repeat(28);
 const tx = (byte: string) => byte.repeat(32);
 const address = credentialToAddress("Preprod", { type: "Key", hash: h("dd") });

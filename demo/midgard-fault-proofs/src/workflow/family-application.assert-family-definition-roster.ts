@@ -5,13 +5,13 @@ import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-bl
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import type { CompleteCanonicalReplayContext } from "./complete-replay.js";
+import { familyStepContractNames } from "./family-definition.family-definition.js";
 import type {
   FamilyCategory,
   FaultProofWitnessRole,
   ManifestBoundFamilyWorkflow,
   ManifestBoundFamilyWorkflowConfig,
 } from "./family-definition.js";
-import { familyStepContractNames } from "./family-definition.js";
 import type { FraudProofWorkflowJournalStore } from "./journal.js";
 import type { FraudProofL1Source } from "./l1-source.js";
 import type { LinearFamilyCategory } from "./linear-family-spec.js";

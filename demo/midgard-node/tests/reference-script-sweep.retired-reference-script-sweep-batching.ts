@@ -3,12 +3,12 @@ import "./reference-script-sweep.retired-reference-script-sweep-scope.js";
 import { type Assets, assetsToValue, toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { summarizeReferenceScriptSweepPlan } from "../src/transactions/reference-script-sweep.build-reference-script-sweep-plan.js";
 import {
   referenceScriptFee,
   referenceScriptLedgerBytes,
-  summarizeReferenceScriptSweepPlan,
-  valueCborBytes,
-} from "../src/transactions/reference-script-sweep.js";
+} from "../src/transactions/reference-script-sweep.reference-script-fee.js";
+import { valueCborBytes } from "../src/transactions/reference-script-sweep.select-retired-reference-script-utxos.js";
 import {
   applyBatch,
   batchOutRefs,

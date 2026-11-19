@@ -6,14 +6,14 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { buildReferenceScriptSweepPlan } from "../src/transactions/reference-script-sweep.build-reference-script-sweep-plan.js";
 import {
-  buildReferenceScriptSweepPlan,
   type LiveReferenceScriptDeployment,
   type ReferenceScriptSweepLimits,
   type ReferenceScriptSweepPlan,
   ReferenceScriptSweepRefusal,
   type RetiredAuthPolicyDisposition,
-} from "../src/transactions/reference-script-sweep.js";
+} from "../src/transactions/reference-script-sweep.reference-script-fee.js";
 
 export const WALLET =
   "addr_test1qq7kh4kps5dknl2ntzp57r5yywjc6uld79nd9vqwa9hrsvwxtp05cv8ax7wyws8r3h8ut00q0axzvm3dlz0nd7exu8csgx4p7w";

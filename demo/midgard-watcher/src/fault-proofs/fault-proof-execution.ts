@@ -17,11 +17,11 @@ import { type UTxO, utxoToCore } from "@lucid-evolution/lucid";
 import {
   assertWatcherProverFundingAuthorityFactory,
   type WatcherProverFundingAuthorityFactory,
-} from "../funding/prover-funding-authority.js";
-import { WatcherProverFundingUnavailableError } from "../funding/prover-funding-reservation.js";
+} from "../funding/prover-funding-authority.watcher-prover-funding-authority-factory.js";
+import { WatcherProverFundingUnavailableError } from "../funding/prover-funding-reservation.watcher-prover-funding-reservation-store.js";
 import { isWatcherL1TransientFailure } from "../l1/transient-failure.js";
 import type { WatcherOperationsSink } from "../runtime/operations-observability.js";
-import { watcherSha256CanonicalJson } from "../storage/durable-store.js";
+import { watcherSha256CanonicalJson } from "../storage/durable-store.canonical-json.js";
 import { isWatcherRetainedDaTransportUnavailable } from "../storage/retained-da-transport-unavailable.js";
 import type {
   WatcherCompletedFaultProofVerification,

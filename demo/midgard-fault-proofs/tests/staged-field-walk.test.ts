@@ -3,20 +3,22 @@ import { describe, expect, it } from "vitest";
 
 import {
   advanceFieldGrammarCheckpoint,
-  advanceFieldSemanticCheckpoint,
   decodeFieldGrammarCheckpoint,
-  decodeFieldSemanticCheckpoint,
   encodeFieldGrammarCheckpoint,
   encodeFieldSemanticCheckpoint,
   fieldGrammarCheckpointIsComplete,
-  fieldSemanticCheckpointIsComplete,
   hashFieldGrammarCheckpoint,
   hashFieldSemanticCheckpoint,
   initialFieldGrammarCheckpoint,
+} from "../src/staged-field-walk/grammar-checkpoint.js";
+import {
+  advanceFieldSemanticCheckpoint,
+  decodeFieldSemanticCheckpoint,
+  fieldSemanticCheckpointIsComplete,
   initialFieldSemanticCheckpoint,
   resolveFieldGrammarCheckpoint,
   resolveFieldSemanticCheckpoint,
-} from "../src/staged-field-walk/index.js";
+} from "../src/staged-field-walk/semantic-checkpoint.js";
 
 const TX_ID = "11".repeat(32);
 const scripts = Array.from({ length: 65 }, (_, index) => ({

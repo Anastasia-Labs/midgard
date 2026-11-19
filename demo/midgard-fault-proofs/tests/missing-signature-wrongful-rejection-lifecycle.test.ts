@@ -14,18 +14,16 @@ import {
 } from "../src/missing-signature/forced-artifact.js";
 import * as family from "../src/missing-signature/index.js";
 import { buildMissingSignatureForcedCancel } from "../src/missing-signature/submit-forced.js";
-import { buildRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
+import { buildRemoveFraudulentBlock } from "../src/remove-fraudulent-block.build-remove-fraudulent-block.js";
 import { workflowFieldCarriageOwnOutputs } from "../src/workflow/field-carriage-prerequisite.own-carriage-claims.js";
+import { DirectoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.directory-fraud-proof-workflow-journal-store.js";
 import {
   computeFraudProofWorkflowId,
-  DirectoryFraudProofWorkflowJournalStore,
   type FraudProofWorkflowIdentity,
   journalJsonDigest,
-} from "../src/workflow/journal.js";
-import {
-  createMissingSignatureFieldPrerequisite,
-  unsafeCreateMissingSignatureTransactionPortForTest,
-} from "../src/workflow/missing-signature.js";
+} from "../src/workflow/journal.fraud-proof-workflow-terminal.js";
+import { unsafeCreateMissingSignatureTransactionPortForTest } from "../src/workflow/missing-signature.create-manifest-bound-missing-signature-workflow.js";
+import { createMissingSignatureFieldPrerequisite } from "../src/workflow/missing-signature.create-missing-signature-field-prerequisite.js";
 import { missingSignatureObservation } from "../src/workflow/missing-signature-state.js";
 import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../src/workflow/raw-l1-publication-observation.js";
 import {

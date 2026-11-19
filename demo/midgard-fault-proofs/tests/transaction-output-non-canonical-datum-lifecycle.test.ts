@@ -9,14 +9,14 @@ import {
 import { acceptedVerdictSubject } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
+import { buildTransactionOutputNonCanonicalStep01Accepted } from "../src/transaction-output-non-canonical/submit-step-01-accepted.js";
+import { buildTransactionOutputNonCanonicalStep02 } from "../src/transaction-output-non-canonical/submit-step-02.js";
 import {
-  buildTransactionOutputNonCanonicalStep01Accepted,
-  buildTransactionOutputNonCanonicalStep02,
   buildTransactionOutputNonCanonicalStep03Datum,
-  buildTransactionOutputNonCanonicalStep04,
   transactionOutputDatumScanState,
   transactionOutputDatumStepArgs,
-} from "../src/transaction-output-non-canonical/index.js";
+} from "../src/transaction-output-non-canonical/submit-step-03-datum.js";
+import { buildTransactionOutputNonCanonicalStep04 } from "../src/transaction-output-non-canonical/submit-step-04.js";
 import { densePlutusData } from "./support/dense-plutus-data.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
@@ -25,7 +25,7 @@ import {
 } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { nodeForcedVerdict } from "./support/emulator/node-forced-verdict.js";
-import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
+import { setupFraudulentBlock } from "./support/submit-init/removal.js";
 import {
   buildAndSubmitUnjournaled,
   submitTurnsUnjournaled,
@@ -33,10 +33,12 @@ import {
 import {
   outputWithInlineDatum,
   readOutputScanState,
+  TRANSACTION_OUTPUT_SCAN_CHUNK_BYTES,
+} from "./support/transaction-output-non-canonical-emulator.continue-raw.js";
+import {
   submitOutputStep03DatumRaw,
   submitOutputStep04Raw,
-  TRANSACTION_OUTPUT_SCAN_CHUNK_BYTES,
-} from "./support/transaction-output-non-canonical-emulator.js";
+} from "./support/transaction-output-non-canonical-emulator.publish-output-field-carriage.js";
 import {
   DATUM_OFFSET,
   EXACT_TERMINAL_DATUM,

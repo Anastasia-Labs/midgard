@@ -3,15 +3,13 @@ import {
   decodeMidgardScriptWitnessFieldPreimage,
   hashMidgardVersionedScript,
 } from "@al-ft/midgard-core";
-import type {
-  MintAuthorizationStep04State,
-  MintAuthorizationWitnessScanState,
-} from "@al-ft/midgard-sdk";
 import {
   MIDGARD_FIELD_INDEX,
   MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT,
   MintAuthorizationStep04Datum,
+  type MintAuthorizationStep04State,
   MintAuthorizationWitnessScanDatum,
+  type MintAuthorizationWitnessScanState,
   requireReferenceInputIndex,
 } from "@al-ft/midgard-sdk";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
@@ -27,9 +25,9 @@ import {
 import { createOwnOutputJournal } from "../workflow/own-outputs.js";
 import { createRawDatumPreimageRequirement } from "../workflow/raw-datum-preimage-prerequisite.js";
 import { mintAuthorizationSubmitError } from "./submit-common.js";
-import type { MintAuthorizationStep03Build } from "./submit-mint-authorization-step-03.submit-prepared-step03.js";
 import {
   buildPreparedStep03,
+  type MintAuthorizationStep03Build,
   prepareThread,
   STEP_LABEL,
   type Step03Shared,

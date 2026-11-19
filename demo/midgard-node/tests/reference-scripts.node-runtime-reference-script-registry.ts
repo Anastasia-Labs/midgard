@@ -4,7 +4,7 @@ import { type LucidEvolution, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
+import { AlwaysSucceedsContract } from "../src/services/always-succeeds.always-succeeds-contract.js";
 import {
   nodeRuntimeReferenceScriptTargets,
   REFERENCE_SCRIPT_COMMAND_NAMES,

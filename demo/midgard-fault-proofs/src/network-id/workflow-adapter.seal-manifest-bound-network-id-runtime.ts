@@ -9,8 +9,8 @@ import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scr
 import {
   assertManifestBoundWorkflowSigner,
   type FraudProofWorkflowDeploymentBinding,
-  requireManifestBoundReferenceScriptUtxo,
-} from "../workflow/deployment-manifest-binding.js";
+} from "../workflow/deployment-manifest-binding.assert-deployment-info-matches-manifest.js";
+import { requireManifestBoundReferenceScriptUtxo } from "../workflow/deployment-manifest-binding.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import {
   type FraudProofFamilyWorkflowAdapter,

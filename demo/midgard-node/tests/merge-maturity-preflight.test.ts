@@ -14,16 +14,14 @@ import {
 } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { NodeConfig } from "../src/services/config.make-config.js";
 import {
   FollowerWrite,
   FollowerWriteFixture,
   type FollowerWritePermit,
 } from "../src/services/follower-write-gate.js";
-import {
-  Globals,
-  L1ControlPlaneTimeoutError,
-  NodeConfig,
-} from "../src/services/index.js";
+import { Globals } from "../src/services/globals.globals.js";
+import { L1ControlPlaneTimeoutError } from "../src/services/globals.next-l1-provider-health-evidence.js";
 import {
   INTENT_JOURNAL_NO_VIEW,
   IntentJournal,
@@ -35,7 +33,7 @@ import {
   type StateQueueSnapshotReason,
 } from "../src/services/landed-state-queue.js";
 import { Lucid as LucidService } from "../src/services/lucid.js";
-import { MidgardContracts } from "../src/services/midgard-contracts.js";
+import { MidgardContracts } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import type { SubmittedMergeTx } from "../src/transactions/state-queue/merge-to-confirmed-state.js";
 import { TEST_PLAN } from "./helpers/intent-journal.js";
 import { lucidServiceStub } from "./helpers/lucid-service-stub.js";
@@ -111,9 +109,9 @@ vi.mock("../src/database/index.js", async (importOriginal) => {
 
 import {
   mergeAction,
-  type MergeActionResult,
   MergeIntentJournalUnavailable,
-} from "../src/fibers/merge.js";
+} from "../src/fibers/merge.merge-action.js";
+import type { MergeActionResult } from "../src/fibers/merge.registered-merge-due-work-skip.js";
 import { slotAwareDueWorkRegistry } from "../src/fibers/slot-aware-due-work.js";
 
 const fakeContracts = {

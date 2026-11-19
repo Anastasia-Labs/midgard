@@ -4,7 +4,7 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import { directPurposeAt } from "../direct-script-derivation/index.js";
+import { directPurposeAt } from "../direct-script-derivation/purposes.js";
 import {
   type DirectPurposeIndices,
   type DirectPurposeTransition,

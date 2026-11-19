@@ -14,7 +14,7 @@ import {
   TxAdmissionsDB,
   TxRejectionsDB,
 } from "../../src/database/index.js";
-import { NodeConfig } from "../../src/services/config.js";
+import { NodeConfig } from "../../src/services/config.make-config.js";
 import { Database } from "../../src/services/database.js";
 
 const operatorEnabled = process.env.BENCH_PHASE1_OPERATOR === "1";

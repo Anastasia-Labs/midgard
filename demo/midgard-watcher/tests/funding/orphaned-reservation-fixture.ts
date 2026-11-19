@@ -1,9 +1,9 @@
-import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.js";
-import { createWatcherProverFundingAuthorityFactory } from "../../src/funding/prover-funding-authority.js";
+import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";
+import { createWatcherProverFundingAuthorityFactory } from "../../src/funding/prover-funding-authority.create-watcher-prover-funding-authority-factory.js";
 import {
   deploymentIdentity,
   walletAddress,
-} from "../support/fault-proof-funding-fixture.js";
+} from "../support/fault-proof-funding-fixture.sources-for.js";
 import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 import type { Fixture } from "./superseded-attempt-replacement.js";
 

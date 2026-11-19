@@ -13,11 +13,11 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { isPrerequisiteTurn } from "../fault-proof-turn.js";
+import { reuseOrCertifyFaultProofFieldCarriage } from "../field-opening.certify-fault-proof-field-carriage.js";
 import {
   faultProofFieldOpening,
   publishFaultProofFieldCarriage,
-  reuseOrCertifyFaultProofFieldCarriage,
-} from "../field-opening.js";
+} from "../field-opening.publish-fault-proof-field-carriage.js";
 import {
   type LinearFaultContracts,
   requireLinearFaultReferenceScript,

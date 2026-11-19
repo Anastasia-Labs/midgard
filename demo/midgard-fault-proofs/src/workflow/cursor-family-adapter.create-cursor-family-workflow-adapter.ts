@@ -26,15 +26,15 @@ import {
   FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,
   type FraudProofFamilyL1ObservationPort,
 } from "./family-l1-observation.js";
+import { normalizeJournalJson } from "./journal.fraud-proof-workflow-terminal.js";
 import type { JournalJsonObject } from "./journal.js";
-import { normalizeJournalJson } from "./journal.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
   type FraudProofFamilyWorkflowAdapter,
   type FraudProofWorkflowAction,
   type FraudProofWorkflowObservation,
-} from "./orchestrator.js";
+} from "./orchestrator.fraud-proof-family-workflow-adapter.js";
 import { reconcileQueueLeaseFamily } from "./queue-lease-family-reconcile.js";
 import { submitCapturedTransaction } from "./transaction-boundary.js";
 

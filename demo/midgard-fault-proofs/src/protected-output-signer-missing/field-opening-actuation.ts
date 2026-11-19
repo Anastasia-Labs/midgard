@@ -9,12 +9,12 @@ import {
   type FaultProofTurn,
   isPrerequisiteTurn,
 } from "../fault-proof-turn.js";
+import { reuseOrCertifyFaultProofFieldCarriage } from "../field-opening.certify-fault-proof-field-carriage.js";
+import type { FaultProofFieldOpeningPlan } from "../field-opening.plan-fault-proof-field-opening.js";
 import {
   faultProofFieldOpening,
-  type FaultProofFieldOpeningPlan,
   publishFaultProofFieldCarriage,
-  reuseOrCertifyFaultProofFieldCarriage,
-} from "../field-opening.js";
+} from "../field-opening.publish-fault-proof-field-carriage.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import {
   createOwnOutputJournal,

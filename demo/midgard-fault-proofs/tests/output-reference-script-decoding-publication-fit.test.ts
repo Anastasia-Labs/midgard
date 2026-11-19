@@ -6,13 +6,13 @@ import { describe, expect, it } from "vitest";
 import {
   applyOutputReferenceScriptDecodingScripts,
   OUTPUT_REFERENCE_SCRIPT_DECODING_BLUEPRINT_TITLES,
-} from "../src/output-reference-script-decoding/index.js";
+} from "../src/output-reference-script-decoding/contracts.js";
 import {
-  makeFaultProofEmulatorHarness,
-  publishPlainReferenceScriptUtxo,
   readBlueprint,
   realBlueprintPath,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/emulator/blueprints.js";
+import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
+import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 
 const blueprint = readBlueprint(realBlueprintPath);
 

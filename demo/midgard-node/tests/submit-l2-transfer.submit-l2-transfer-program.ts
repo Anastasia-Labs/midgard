@@ -17,12 +17,14 @@ import {
 import {
   FANOUT_NATIVE_TRANSFER_SUBMIT_RETRY_POLICY,
   parseSubmitL2TransferConfig,
+} from "../src/commands/submit-l2-transfer.compare-assets-by-coverage.js";
+import { submitL2TransferProgram } from "../src/commands/submit-l2-transfer.prepare-l2-terminal-drain-program.js";
+import {
   prepareL2TransferProgram,
-  submitL2TransferProgram,
   submitNativeTransferTx,
-} from "../src/commands/submit-l2-transfer.js";
-import { NodeConfig } from "../src/services/config.js";
-import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.js";
+} from "../src/commands/submit-l2-transfer.submit-native-transfer-tx.js";
+import { NodeConfig } from "../src/services/config.make-config.js";
+import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.make-midgard-contract-runtime.js";
 import {
   launchDeploymentIdentity,
   mkNodeUtxo,

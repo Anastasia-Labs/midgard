@@ -6,7 +6,7 @@ import {
   loadWatcherRuleBundle,
   makeWatcherCanonicalRuleBundle,
   parseWatcherRuleBundle,
-} from "../../src/verification/rule-bundle.js";
+} from "../../src/verification/rule-bundle.parse-watcher-rule-bundle.js";
 import { h32 } from "./rule-bundle.canonical-manifest-identity.js";
 import { clone, fixture, rejected } from "./rule-bundle.fixture.js";
 

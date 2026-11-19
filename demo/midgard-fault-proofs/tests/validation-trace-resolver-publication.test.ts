@@ -32,12 +32,12 @@ import { describe, expect, it } from "vitest";
 import { VAN_ROSSEM_PUBLICATION_RESERVE_BYTES } from "../src/proof-fit/van-rossem.js";
 import {
   alwaysSucceedsBlueprintPath,
-  buildMinimalFaultProofContracts,
-  EMULATOR_PROTOCOL_PARAMETERS,
-  publishPlainReferenceScriptUtxo,
   readBlueprint,
   realBlueprintPath,
-} from "./support/submit-init-emulator-shared.js";
+} from "./support/emulator/blueprints.js";
+import { buildMinimalFaultProofContracts } from "./support/emulator/contracts.build-minimal-fault-proof-contracts.js";
+import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
+import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.publish-operator-lifecycle-reference-scripts.js";
 
 /**
  * Entry names in `semanticResolvers` order: the 82 keys of the `semantics`

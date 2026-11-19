@@ -9,23 +9,21 @@ import {
 import { DatabaseError } from "../database/utils/common.js";
 import { successorHoldsAllPendingHere } from "../l2-peer/successor-holds-pending.js";
 import { idleCommitBuildAlarms } from "../services/globals.commit-build-alarms.js";
-import { publishMempoolLedgerDelta } from "../services/globals.js";
+import { Globals } from "../services/globals.globals.js";
 import {
   forgetLoggedState,
   logOnStateChange,
 } from "../services/globals.liveness-reasons.js";
+import { publishMempoolLedgerDelta } from "../services/globals.with-l1-control-plane-held.js";
 import { HISTORY_COMMIT_LANDING_MARGIN_MS } from "../services/history-commit-window.js";
-import {
-  Database,
-  Globals,
-  Lucid,
-  MidgardContracts,
-} from "../services/index.js";
+import { Database } from "../services/index.js";
 import type { IntentJournal } from "../services/intent-journal.js";
 import {
   landedStateQueueSnapshot,
   type StateQueueSnapshot,
 } from "../services/landed-state-queue.js";
+import { Lucid } from "../services/lucid.js";
+import { MidgardContracts } from "../services/midgard-contracts.make-midgard-contract-runtime.js";
 import { WorkerOutput } from "../workers/utils/commit-block-header.js";
 import type { CommitSchedulerStateQueueEvidence } from "../workers/utils/commit-block-planner.js";
 import { COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../workers/utils/commit-end-time.js";

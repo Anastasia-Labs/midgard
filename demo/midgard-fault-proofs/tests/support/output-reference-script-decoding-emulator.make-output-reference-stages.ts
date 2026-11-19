@@ -2,29 +2,37 @@ import { type UTxO } from "@lucid-evolution/lucid";
 
 import { buildCommittedFieldShapeInit } from "../../src/committed-field-shape/submit-committed-field-shape-init.js";
 import type { FaultProofFieldGrammarDeployment } from "../../src/field-grammar-certificate.js";
-import { planFaultProofFieldOpening } from "../../src/field-opening.js";
+import { planFaultProofFieldOpening } from "../../src/field-opening.plan-fault-proof-field-opening.js";
+import type { OutputReferenceScriptDecodingEvidence } from "../../src/output-reference-script-decoding/output-reference-script-decoding.js";
+import { buildOutputReferenceScriptDecodingCancel } from "../../src/output-reference-script-decoding/submit-cancel.js";
+import { buildOutputReferenceScriptDecodingStep01Accepted } from "../../src/output-reference-script-decoding/submit-step-01-accepted.js";
 import {
-  buildOutputReferenceScriptDecodingCancel,
-  buildOutputReferenceScriptDecodingStep01Accepted,
   buildOutputReferenceScriptDecodingStep01Forced,
   buildOutputReferenceScriptDecodingStep01ForcedRaw,
+} from "../../src/output-reference-script-decoding/submit-step-01-forced.js";
+import {
   buildOutputReferenceScriptDecodingStep02,
   buildOutputReferenceScriptDecodingStep02Raw,
-  buildOutputReferenceScriptDecodingStep03,
-  buildOutputReferenceScriptDecodingStep04,
+} from "../../src/output-reference-script-decoding/submit-step-02.js";
+import { buildOutputReferenceScriptDecodingStep03 } from "../../src/output-reference-script-decoding/submit-step-03.js";
+import { buildOutputReferenceScriptDecodingStep04 } from "../../src/output-reference-script-decoding/submit-step-04.js";
+import {
   buildOutputReferenceScriptDecodingStep05,
   buildOutputReferenceScriptDecodingStep05Raw,
-  buildOutputReferenceScriptDecodingStep06,
-  buildOutputReferenceScriptDecodingStep06Raw,
-  type OutputReferenceScriptDecodingEvidence,
   type OutputReferenceScriptScanArgs,
   type OutputReferenceScriptScanState,
-} from "../../src/output-reference-script-decoding/index.js";
-import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.js";
+} from "../../src/output-reference-script-decoding/submit-step-05.js";
+import {
+  buildOutputReferenceScriptDecodingStep06,
+  buildOutputReferenceScriptDecodingStep06Raw,
+} from "../../src/output-reference-script-decoding/submit-step-06.js";
+import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import { type SubmitStep01TxInclusion } from "../../src/step-support.js";
 import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { captureEmulatorSubmission } from "./emulator/measurement.js";
-import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.js";
+import { publishRemovalReferenceScripts } from "./emulator/reference-scripts.publish-fault-proof-witness-reference-scripts.js";
+import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.build-removal-deployment-info.js";
+import { submitSetupTx } from "./emulator/setup-tx.submit-setup-tx.js";
 import {
   type AcceptedSubject,
   type Measurement,
@@ -33,10 +41,6 @@ import {
 } from "./output-reference-script-decoding-emulator.commit-accepted-block.js";
 import { type ForcedLeaf } from "./output-reference-script-decoding-emulator.commit-forced-block.js";
 import { recordPlutusItem } from "./script-decode-emulator.js";
-import {
-  publishRemovalReferenceScripts,
-  submitSetupTx,
-} from "./submit-init-emulator-shared.js";
 import {
   buildAndSubmitUnjournaled,
   certifyCarriageUnjournaled,

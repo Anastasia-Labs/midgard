@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseWatcherConfig } from "../../src/runtime/config.js";
+import { parseWatcherConfig } from "../../src/runtime/config.parse-watcher-config.js";
 import {
   rejected,
   validConfig,

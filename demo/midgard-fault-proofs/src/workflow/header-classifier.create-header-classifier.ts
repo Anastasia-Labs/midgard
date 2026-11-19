@@ -8,11 +8,11 @@ import {
   requireTransitionTraceEventAuthority,
   type TransitionTraceEventAuthority,
 } from "../transition-trace/l1-events.js";
-import {
-  type CompleteCanonicalReplay,
-  type CompleteCanonicalReplayContext,
-  requireCompleteCanonicalReplayBundle,
-} from "./complete-replay.js";
+import { requireCompleteCanonicalReplayBundle } from "./complete-replay.detect-double-withdraws.js";
+import type {
+  CompleteCanonicalReplay,
+  CompleteCanonicalReplayContext,
+} from "./complete-replay.replay-context-identity.js";
 import {
   admittedClassifiers,
   admittedDecisions,

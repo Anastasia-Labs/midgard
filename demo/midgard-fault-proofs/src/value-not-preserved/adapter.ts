@@ -6,7 +6,7 @@ import { WorkflowActionChangedError } from "../workflow/action-changed.js";
 import {
   journalJsonDigest,
   type JournalJsonObject,
-} from "../workflow/journal.js";
+} from "../workflow/journal.fraud-proof-workflow-terminal.js";
 import type { FraudProofSignedTransactionRecovery } from "../workflow/l1-source.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
@@ -14,7 +14,7 @@ import {
   type FraudProofFamilyWorkflowAdapter,
   type FraudProofWorkflowObservation,
   type FraudProofWorkflowReconcileResult,
-} from "../workflow/orchestrator.js";
+} from "../workflow/orchestrator.fraud-proof-family-workflow-adapter.js";
 import { reconcileSignedWorkflowTransaction } from "../workflow/signed-transaction-reconciliation.js";
 import {
   bindWorkflowPreflightTransaction,
