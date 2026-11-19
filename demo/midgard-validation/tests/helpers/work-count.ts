@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
 
-import { midgardBlake2bReady } from "@al-ft/midgard-core";
+import { midgardBlake2b, midgardBlake2bReady } from "@al-ft/midgard-core";
 
 import { MidgardCekSemanticStore } from "../../src/cek-executor.semantic-store.js";
 
@@ -21,19 +21,32 @@ import { MidgardCekSemanticStore } from "../../src/cek-executor.semantic-store.j
  * growing array, is not counted; the non-gating wall-clock benchmarks under
  * `bench/` are the only check on it.
  *
- * Every Midgard digest goes through midgard-core's `midgardBlake2b`, which
- * hashes with libsodium once libsodium is ready. libsodium is midgard-core's
- * dependency, so it is resolved from there: the counter then wraps the very
- * module instance the hashing uses. The store is wrapped on its prototype, so
+ * Every Midgard digest goes through midgard-core's `midgardBlake2b` or
+ * `midgardBlake2b256`, which hash with libsodium once libsodium is ready: a
+ * message of up to 64 KiB through the C export `_crypto_generichash` of its
+ * wasm module, a longer one through the streaming `crypto_generichash_update`.
+ * The counter wraps both (the wrapper's own one-shot calls the same export).
+ * libsodium is midgard-core's dependency, so it is resolved from there: the
+ * counter then wraps the very module instance the hashing uses. The export
+ * starts as a stub that replaces itself with the wasm function on its first
+ * call, which would also replace a wrapper installed before it; the counter
+ * therefore hashes once before wrapping, and refuses the run if the wrapper
+ * is no longer installed at its end. The store is wrapped on its prototype, so
  * every store instance the run creates is counted.
  */
 
 type Sodium = {
-  crypto_generichash: (
-    outputLength: number,
-    message: Uint8Array,
-    key: null,
-  ) => Uint8Array;
+  libsodium: {
+    _crypto_generichash: (
+      output: number,
+      outputLength: number,
+      input: number,
+      inputLengthLow: number,
+      inputLengthHigh: number,
+      key: number,
+      keyLength: number,
+    ) => number;
+  };
   crypto_generichash_update: (state: unknown, message: Uint8Array) => void;
 };
 
@@ -65,7 +78,10 @@ export const measureWork = async <T>(
   if (!(await midgardBlake2bReady)) {
     throw new Error("libsodium is not ready; Blake2b work cannot be counted");
   }
-  const oneShot = sodium.crypto_generichash;
+  // Binds the export (see above) before it is captured.
+  midgardBlake2b(new Uint8Array(0), { dkLen: 32 });
+  const module = sodium.libsodium;
+  const oneShot = module._crypto_generichash;
   const update = sodium.crypto_generichash_update;
   const store = MidgardCekSemanticStore.prototype as unknown as Record<
     (typeof STORE_READS)[number],
@@ -74,14 +90,32 @@ export const measureWork = async <T>(
   const reads = STORE_READS.map((name) => [name, store[name]] as const);
   let hashedBytes = 0;
   let storeReads = 0;
-  sodium.crypto_generichash = (outputLength, message, key) => {
-    hashedBytes += message.length;
-    return oneShot(outputLength, message, key);
+  const countedOneShot: typeof oneShot = (
+    output,
+    outputLength,
+    input,
+    inputLengthLow,
+    inputLengthHigh,
+    key,
+    keyLength,
+  ) => {
+    hashedBytes += inputLengthLow + inputLengthHigh * 2 ** 32;
+    return oneShot(
+      output,
+      outputLength,
+      input,
+      inputLengthLow,
+      inputLengthHigh,
+      key,
+      keyLength,
+    );
   };
-  sodium.crypto_generichash_update = (state, message) => {
+  const countedUpdate: typeof update = (state, message) => {
     hashedBytes += message.length;
     update(state, message);
   };
+  module._crypto_generichash = countedOneShot;
+  sodium.crypto_generichash_update = countedUpdate;
   for (const [name, read] of reads) {
     store[name] = function (this: unknown, ...args: unknown[]) {
       storeReads += 1;
@@ -92,8 +126,16 @@ export const measureWork = async <T>(
     const result = await run();
     return { result, hashedBytes, storeReads };
   } finally {
-    sodium.crypto_generichash = oneShot;
+    const counted =
+      module._crypto_generichash === countedOneShot &&
+      sodium.crypto_generichash_update === countedUpdate;
+    module._crypto_generichash = oneShot;
     sodium.crypto_generichash_update = update;
     for (const [name, read] of reads) store[name] = read;
+    if (!counted)
+      // eslint-disable-next-line no-unsafe-finally
+      throw new Error(
+        "a Blake2b hook was replaced; hashed bytes went uncounted",
+      );
   }
 };

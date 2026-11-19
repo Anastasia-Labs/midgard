@@ -16,8 +16,8 @@ import {
 } from "../cek-executor.js";
 import {
   type CekContextRun,
+  cekCoreWitnessCbor,
   type CekWitnessAt,
-  cekWitnessCbor,
 } from "./cek-producer.context-step.js";
 import { sameSummary } from "./trace-descriptor-summary.js";
 import {
@@ -62,16 +62,13 @@ export const runCekExecution = (input: {
   }
 
   let stop = null as PhaseOutcome | null;
+  const coreWitness = cekCoreWitnessCbor(at, contextControl, exUnits);
   const coreStep = (step: MidgardCekExecutionStep): boolean => {
     const { pre, post } = step;
-    push(
-      "cek",
-      cekWitnessCbor(at, contextControl, {
-        activeStateHash: hashMidgardCekMachineState(pre),
-        exUnits,
-      }),
-      { kind: "cekCoreStep", step },
-    );
+    push("cek", coreWitness(hashMidgardCekMachineState(pre)), {
+      kind: "cekCoreStep",
+      step,
+    });
     budget.cpu = at.completedCpu + post.cpu;
     budget.memory = at.completedMemory + post.memory;
     if (

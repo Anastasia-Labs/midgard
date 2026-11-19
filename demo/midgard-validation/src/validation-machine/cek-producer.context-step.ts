@@ -97,6 +97,60 @@ export const cekWitnessCbor = (
     purposeIndex: core === undefined ? -1n : contextControl!.purposeIndex,
   });
 
+/**
+ * `cekWitnessCbor(at, contextControl, { activeStateHash, exUnits })` for each
+ * core step of one execution, whose witnesses differ only in the active
+ * state hash. On the first call the witness is encoded at three placeholder
+ * hashes: all 0x00, all 0xff, and the bytes 0..31 in order. The three
+ * encodings must have the same length and be equal outside one 32-byte slot
+ * that holds each placeholder exactly, or this throws. Each call copies the
+ * first encoding and writes the hash into that slot. Anything but a 32-byte
+ * `Uint8Array` is encoded in full.
+ */
+export const cekCoreWitnessCbor = (
+  at: CekWitnessAt,
+  contextControl: MidgardCekContextControl,
+  exUnits: { readonly steps: bigint; readonly memory: bigint },
+): ((activeStateHash: Uint8Array) => Buffer) => {
+  const encode = (activeStateHash: Uint8Array) =>
+    cekWitnessCbor(at, contextControl, { activeStateHash, exUnits });
+  let template: { readonly bytes: Buffer; readonly slot: number } | null = null;
+  const slotted = () => {
+    const zeros = Buffer.alloc(32, 0x00);
+    const ones = Buffer.alloc(32, 0xff);
+    const ordinals = Buffer.from(Array.from({ length: 32 }, (_, i) => i));
+    const low = encode(zeros);
+    const high = encode(ones);
+    const ordered = encode(ordinals);
+    const slot = low.findIndex((byte, index) => byte !== high[index]);
+    const holds = (bytes: Buffer, placeholder: Buffer) =>
+      bytes.length === low.length &&
+      bytes.subarray(0, slot).equals(low.subarray(0, slot)) &&
+      bytes.subarray(slot, slot + 32).equals(placeholder) &&
+      bytes.subarray(slot + 32).equals(low.subarray(slot + 32));
+    if (
+      slot < 0 ||
+      !holds(low, zeros) ||
+      !holds(high, ones) ||
+      !holds(ordered, ordinals)
+    )
+      throw new Error("CEK core witness has no single active state hash slot");
+    return { bytes: low, slot };
+  };
+  return (activeStateHash) => {
+    if (
+      !(activeStateHash instanceof Uint8Array) ||
+      activeStateHash.length !== 32
+    )
+      return encode(activeStateHash);
+    template ??= slotted();
+    const witness = Buffer.allocUnsafe(template.bytes.length);
+    template.bytes.copy(witness);
+    witness.set(activeStateHash, template.slot);
+    return witness;
+  };
+};
+
 /** One execution's context build: what its steps read, and the push of a
  * context witness at a control. */
 export type CekContextRun = {

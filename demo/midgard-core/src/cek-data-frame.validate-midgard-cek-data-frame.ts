@@ -4,7 +4,7 @@ import {
   type MidgardCekDataSequenceSummary,
   type MidgardCekDataSummary,
 } from "./cek-semantic.js";
-import { midgardBlake2b } from "./codec/blake2b.js";
+import { midgardBlake2b256 } from "./codec/blake2b.js";
 import { encodeCbor } from "./codec/cbor.js";
 import { ensureHash32, type Hash32 } from "./codec/hash.js";
 import {
@@ -64,15 +64,7 @@ export const MidgardCekDataFrameTags = Object.freeze({
 } as const);
 
 const hash32 = (domain: Bytes, preimage: Bytes): Hash32 =>
-  ensureHash32(
-    midgardBlake2b(
-      Buffer.concat([Buffer.from(domain), Buffer.from(preimage)]),
-      {
-        dkLen: 32,
-      },
-    ),
-    "cek_data_frame_hash",
-  );
+  midgardBlake2b256([domain, preimage]);
 
 const boundedBigInt = (
   value: bigint,
@@ -96,7 +88,10 @@ export const boundedCount = (value: number, fieldName: string): number => {
 
 export const exactOptionalHash = (value: Bytes, fieldName: string): Buffer => {
   if (value.length === 0) return Buffer.alloc(0);
-  return Buffer.from(ensureHash32(value, fieldName));
+  // `ensureHash32` copies any `Uint8Array`, but only views an `ArrayBuffer`.
+  return value instanceof Uint8Array
+    ? ensureHash32(value, fieldName)
+    : Buffer.from(ensureHash32(value, fieldName));
 };
 
 export const exactSummary = (

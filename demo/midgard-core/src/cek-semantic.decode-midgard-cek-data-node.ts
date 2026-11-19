@@ -1,4 +1,4 @@
-import { midgardBlake2b } from "./codec/blake2b.js";
+import { midgardBlake2b256 } from "./codec/blake2b.js";
 import { decodeSingleCbor, encodeCbor } from "./codec/cbor.js";
 import { ensureHash32, type Hash32 } from "./codec/hash.js";
 
@@ -21,18 +21,14 @@ export const UINT64_MAX = 0xffff_ffff_ffff_ffffn;
 export type Bytes = Uint8Array;
 
 export const hash32 = (domain: Uint8Array, preimage: Uint8Array): Hash32 =>
-  ensureHash32(
-    midgardBlake2b(
-      Buffer.concat([Buffer.from(domain), Buffer.from(preimage)]),
-      {
-        dkLen: 32,
-      },
-    ),
-    "cek_semantic_hash",
-  );
+  midgardBlake2b256([domain, preimage]);
 
+/** `value` as a fresh 32-byte copy; `ensureHash32` already copies any
+ * `Uint8Array`, but only views an `ArrayBuffer`. */
 export const exactHash = (value: Bytes, fieldName: string): Buffer =>
-  Buffer.from(ensureHash32(value, fieldName));
+  value instanceof Uint8Array
+    ? ensureHash32(value, fieldName)
+    : Buffer.from(ensureHash32(value, fieldName));
 
 export const asArray = (
   value: unknown,

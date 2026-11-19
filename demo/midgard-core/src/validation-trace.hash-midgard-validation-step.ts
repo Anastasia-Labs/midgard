@@ -1,4 +1,4 @@
-import { midgardBlake2b } from "./codec/blake2b.js";
+import { midgardBlake2b256 } from "./codec/blake2b.js";
 import { ensureHash32, type Hash32 } from "./codec/hash.js";
 import { MIDGARD_CONSENSUS_LIMITS } from "./consensus-profile.js";
 import {
@@ -133,7 +133,7 @@ export const hashMidgardValidationWorkWitness = ({
   if (offset !== out.length) {
     return fail("work witness preimage length mismatch", offset.toString());
   }
-  return ensureHash32(midgardBlake2b(out, { dkLen: 32 }), "domain_hash");
+  return midgardBlake2b256([out]);
 };
 
 const HASH32_HEAD = Buffer.from([0x58, 0x20]);
@@ -205,12 +205,7 @@ export const hashMidgardValidationMachineState = (
     executionMemory > MAX_UINT64
   ) {
     const encoded = encodeMidgardValidationMachineState(state);
-    return ensureHash32(
-      midgardBlake2b(Buffer.concat([STATE_HASH_DOMAIN, encoded]), {
-        dkLen: 32,
-      }),
-      "domain_hash",
-    );
+    return midgardBlake2b256([STATE_HASH_DOMAIN, encoded]);
   }
   validateVerdictRejectionBinding(
     state.verdict,
@@ -277,8 +272,5 @@ export const hashMidgardValidationMachineState = (
     state.rejectionCodeHash,
     "state.rejection_code_hash",
   );
-  return ensureHash32(
-    midgardBlake2b(out.subarray(0, offset), { dkLen: 32 }),
-    "domain_hash",
-  );
+  return midgardBlake2b256([out.subarray(0, offset)]);
 };

@@ -1,4 +1,4 @@
-import { midgardBlake2b } from "./codec/blake2b.js";
+import { midgardBlake2b, midgardBlake2b256 } from "./codec/blake2b.js";
 import { asBigInt, encodeCbor } from "./codec/cbor.js";
 import {
   MidgardTxCodecError,
@@ -206,13 +206,9 @@ export const exactCode = <T extends string>(
   return name;
 };
 
+/** Blake2b-256 of `domain || bytes`, as a fresh buffer. */
 export const hashDomain = (domain: Uint8Array, bytes: Uint8Array): Hash32 =>
-  ensureHash32(
-    midgardBlake2b(Buffer.concat([Buffer.from(domain), Buffer.from(bytes)]), {
-      dkLen: 32,
-    }),
-    "domain_hash",
-  );
+  midgardBlake2b256([domain, bytes]);
 
 /** Exact event-key hash committed into every validation-machine state. */
 export const hashMidgardValidationEventKey = (

@@ -41,11 +41,13 @@ export const MACHINE_STARTUP_CPU = 100n;
 
 export const MACHINE_STARTUP_MEMORY = 100n;
 
+/** `root` as hex, read through a view rather than a copy. */
 export const rootHex = (root: Bytes): string =>
-  Buffer.from(root).toString("hex");
+  Buffer.from(root.buffer, root.byteOffset, root.byteLength).toString("hex");
 
+/** Whether `left` and `right` hold the same bytes; neither is copied. */
 export const sameBytes = (left: Bytes, right: Bytes): boolean =>
-  Buffer.from(left).equals(Buffer.from(right));
+  left.byteLength === right.byteLength && Buffer.compare(left, right) === 0;
 
 export const exactState = (
   pre: MidgardCekMachineState,

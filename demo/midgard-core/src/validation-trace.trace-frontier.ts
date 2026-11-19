@@ -1,8 +1,8 @@
+import { midgardBlake2b256 } from "./codec/blake2b.js";
 import { ensureHash32, type Hash32 } from "./codec/hash.js";
 import { MIDGARD_CONSENSUS_LIMITS } from "./consensus-profile.js";
 import {
   fail,
-  hashDomain,
   TRACE_BRANCH_DOMAIN,
   TRACE_LEAF_DOMAIN,
 } from "./validation-trace.encode-midgard-validation-machine-state.js";
@@ -14,25 +14,29 @@ import {
  * next power of two with the last state's leaf.
  */
 
+/** `value` as `ensureHash32` reads (or refuses) it, without copying a
+ * 32-byte `Uint8Array`. */
+const checkHash32 = (value: Uint8Array, fieldName: string): Uint8Array =>
+  value instanceof Uint8Array && value.length === 32
+    ? value
+    : ensureHash32(value, fieldName);
+
 /** The trace leaf of one machine-state hash. */
 export const midgardValidationTraceLeafHash = (stateHash: Uint8Array): Hash32 =>
-  hashDomain(
+  midgardBlake2b256([
     TRACE_LEAF_DOMAIN,
-    ensureHash32(stateHash, "validation_trace.state_hash"),
-  );
+    checkHash32(stateHash, "validation_trace.state_hash"),
+  ]);
 
 /** The trace branch over two child roots. */
 export const midgardValidationTraceBranchHash = (
   left: Uint8Array,
   right: Uint8Array,
-): Hash32 =>
-  hashDomain(
-    TRACE_BRANCH_DOMAIN,
-    Buffer.concat([
-      ensureHash32(left, "validation_trace.left"),
-      ensureHash32(right, "validation_trace.right"),
-    ]),
-  );
+): Hash32 => {
+  const leftHash = checkHash32(left, "validation_trace.left");
+  const rightHash = checkHash32(right, "validation_trace.right");
+  return midgardBlake2b256([TRACE_BRANCH_DOMAIN, leftHash, rightHash]);
+};
 
 /**
  * Roots of runs of one repeated state: entry `k` is the root of a subtree of
