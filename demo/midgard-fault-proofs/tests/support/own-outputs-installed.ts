@@ -473,11 +473,9 @@ export const emulatorWallClock = () => {
   };
 };
 
-/**
- * Takes `utxo` (at `lucid`'s wallet) off the chain, its ada going to
- * `to`: the chain as it is once the transaction that created it is rolled
- * back for good. Recorded as the world acting, not the application.
- */
+/** Takes `utxo` (at `lucid`'s key, declared: it sits at the proof-materials
+ * address, not the seed wallet's own) off the chain, its ada going to `to`:
+ * the chain once its transaction is rolled back for good, as the world acts. */
 export const removeOutput = async (
   watch: LedgerWatch,
   lucid: LucidEvolution,
@@ -489,6 +487,7 @@ export const removeOutput = async (
     const unsigned = await lucid
       .newTx()
       .collectFrom([utxo])
+      .addSignerKey(getAddressDetails(utxo.address).paymentCredential!.hash)
       .complete({
         presetWalletInputs: [utxo],
         coinSelection: false,

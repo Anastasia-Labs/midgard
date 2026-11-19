@@ -86,6 +86,7 @@ export const spendByKey = async (scene: Scene, outRef: string) => {
   const spend = await lucid
     .newTx()
     .collectFrom([utxo!])
+    .addSignerKey(scene.h.proverSigner.paymentKeyHash)
     .complete({ coinSelection: false });
   await (await spend.sign.withWallet().complete()).submit();
   scene.h.emulator.awaitBlock(1);
