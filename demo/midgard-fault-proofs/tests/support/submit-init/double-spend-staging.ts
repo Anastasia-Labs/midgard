@@ -14,14 +14,14 @@ import {
 import { expect } from "vitest";
 
 import type { ResolvedProverSigner } from "../../../src/runtime.js";
-import type { FraudProofPreSubmitBoundary } from "../../../src/workflow/transaction-boundary.js";
+import type { LocallyEvaluatedTransaction } from "../../../src/workflow/transaction-boundary.js";
 import {
+  buildInit,
+  buildStep01,
+  buildStep02,
+  buildStep03,
   parseSpendInputCbors,
   parseSubmitStep01TxInclusion,
-  submitInit,
-  submitStep01,
-  submitStep02,
-  submitStep03,
 } from "../legacy-submit-emulator.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
@@ -36,6 +36,10 @@ import {
   submitSetupTx,
   withPlaceholderDeposit,
 } from "../submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  submitTurnsUnjournaled,
+} from "../submit-unjournaled.js";
 import { commitInitializedProvedFixtureHeader } from "./commit-header.js";
 import { buildProvedFixtureDeploymentContext } from "./deployment.js";
 import { buildTransactionInclusionFixture } from "./inclusion.js";
@@ -54,7 +58,7 @@ import {
 } from "./transaction-material.js";
 
 export type DoubleSpendFixtureOptions = {
-  /** Successors committed before `submitInit` mints the computation thread. */
+  /** Successors committed before `buildInit` mints the computation thread. */
   readonly successorCount?: number;
   /** Optional second violation used by cross-family Q53 idempotency tests. */
   readonly headerMinimumFee?: bigint;
@@ -65,15 +69,17 @@ export type DoubleSpendFixtureOptions = {
   readonly seeds?: Parameters<typeof buildProvedFixtureDeploymentContext>[2];
   /** Commit a block whose two transactions spend disjoint inputs. */
   readonly honestBlock?: boolean;
-  /** The signer and pre-submit boundary step 03 is built under, in place of
-   * the prover's own. */
+  /** The signer step 03 is built under, in place of the prover's own, and a
+   * check its signed transaction meets before submission. */
   readonly step03Funding?: (context: {
     readonly emulator: Emulator;
     readonly funderLucid: LucidEvolution;
     readonly proverSigner: ResolvedProverSigner;
   }) => Promise<{
     readonly signer: ResolvedProverSigner;
-    readonly preSubmitBoundary: FraudProofPreSubmitBoundary;
+    readonly beforeSubmit: (
+      transaction: LocallyEvaluatedTransaction,
+    ) => Promise<void>;
   }>;
 };
 
@@ -276,7 +282,7 @@ export const stageDoubleSpendStep04 = async ({
   const fraudulentBlockOutRef =
     successors[0]?.continuedAnchorOutRef ?? setup.fraudulentBlockOutRef;
   const submitInitCapture = await captureEmulatorSubmission(emulator, () =>
-    submitInit({
+    buildAndSubmitUnjournaled(buildInit, {
       lucid: proverLucid,
       blueprint: realBlueprint,
       deploymentInfo,
@@ -318,7 +324,7 @@ export const stageDoubleSpendStep04 = async ({
     [submitInitResult.computationThreadUnit, 1n],
   ]);
 
-  const step01Result = await submitStep01({
+  const step01Result = await buildAndSubmitUnjournaled(buildStep01, {
     lucid: proverLucid,
     blueprint: realBlueprint,
     deploymentInfo,
@@ -359,7 +365,7 @@ export const stageDoubleSpendStep04 = async ({
     1n,
   );
 
-  const step02Result = await submitStep02({
+  const step02Result = await buildAndSubmitUnjournaled(buildStep02, {
     lucid: proverLucid,
     blueprint: realBlueprint,
     deploymentInfo,
@@ -408,7 +414,7 @@ export const stageDoubleSpendStep04 = async ({
     funderLucid,
     proverSigner,
   });
-  const step03Result = await submitStep03({
+  const step03Result = await submitTurnsUnjournaled(buildStep03, {
     lucid: proverLucid,
     blueprint: realBlueprint,
     deploymentInfo,
@@ -416,7 +422,7 @@ export const stageDoubleSpendStep04 = async ({
     signer: step03Signer?.signer ?? proverSigner,
     ...(step03Signer === undefined
       ? {}
-      : { preSubmitBoundary: step03Signer.preSubmitBoundary }),
+      : { beforeSubmit: step03Signer.beforeSubmit }),
     threadOutRef: outRefLabel(thirdStepUtxo),
     tx1SpendInputCbors: parseSpendInputCbors(
       transactionInclusion.tx1SpendInputCbors,

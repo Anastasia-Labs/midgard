@@ -15,10 +15,9 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY_LABEL as FAMILY,
   type OutputReferenceScriptDecodingContracts,
@@ -54,7 +53,7 @@ export const findOutputReferenceScriptControlIndex = (
   );
 };
 
-export const submitOutputReferenceScriptDecodingStep03 = async ({
+export const buildOutputReferenceScriptDecodingStep03 = async ({
   lucid,
   contracts,
   categoryId,
@@ -62,8 +61,6 @@ export const submitOutputReferenceScriptDecodingStep03 = async ({
   threadOutRef,
   evidence,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: OutputReferenceScriptDecodingContracts;
@@ -72,8 +69,6 @@ export const submitOutputReferenceScriptDecodingStep03 = async ({
   readonly threadOutRef: string;
   readonly evidence: OutputReferenceScriptDecodingEvidence;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 2;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
@@ -166,7 +161,7 @@ export const submitOutputReferenceScriptDecodingStep03 = async ({
       OutputReferenceStep03RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -178,14 +173,12 @@ export const submitOutputReferenceScriptDecodingStep03 = async ({
     nextDatum,
     redeemer,
     carriageUtxos: [],
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined)
     throw new Error(`${FAMILY}: step03 layout unresolved`);
   return {
-    txHash,
-    nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
     terminal,
   };
 };

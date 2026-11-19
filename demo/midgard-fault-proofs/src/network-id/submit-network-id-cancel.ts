@@ -1,10 +1,9 @@
 /** Explicit Q35 prover cancellation from any physical step of the family. */
 import type { UTxO } from "@lucid-evolution/lucid";
 
-import { submitLinearFaultCancel } from "../linear-fault-cancel.js";
+import { buildLinearFaultCancel } from "../linear-fault-cancel.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   NETWORK_ID_CATEGORY_LABEL,
   type NetworkIdContracts,
@@ -40,7 +39,7 @@ export const networkIdPhysicalSteps = (
 };
 
 export type SubmitNetworkIdCancelParams = {
-  readonly lucid: Parameters<typeof submitLinearFaultCancel>[0]["lucid"];
+  readonly lucid: Parameters<typeof buildLinearFaultCancel>[0]["lucid"];
   readonly contracts: NetworkIdContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
@@ -48,17 +47,15 @@ export type SubmitNetworkIdCancelParams = {
   /** Published reference script for the step the thread is locked at. */
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 };
 
 export type SubmitNetworkIdCancelResult = Awaited<
-  ReturnType<typeof submitLinearFaultCancel>
+  ReturnType<typeof buildLinearFaultCancel>
 > & {
   readonly cancelledStep: NetworkIdPhysicalStep;
 };
 
-export const submitNetworkIdCancel = async (
+export const buildNetworkIdCancel = async (
   params: SubmitNetworkIdCancelParams,
 ): Promise<SubmitNetworkIdCancelResult> => {
   if (params.witnessReferenceScripts == null) {
@@ -67,7 +64,7 @@ export const submitNetworkIdCancel = async (
     );
   }
   const physical = networkIdPhysicalSteps(params.contracts);
-  const result = await submitLinearFaultCancel({
+  const result = await buildLinearFaultCancel({
     lucid: params.lucid,
     family: NETWORK_ID_CATEGORY_LABEL,
     steps: physical.map(([, step]) => step),
@@ -77,8 +74,6 @@ export const submitNetworkIdCancel = async (
     threadOutRef: params.threadOutRef,
     referenceScriptUtxo: params.referenceScriptUtxo,
     witnessReferenceScripts: params.witnessReferenceScripts,
-    preSubmitBoundary: params.preSubmitBoundary,
-    awaitConfirmation: params.awaitConfirmation,
   });
   const cancelled = physical[result.cancelledStepIndex];
   if (cancelled === undefined)

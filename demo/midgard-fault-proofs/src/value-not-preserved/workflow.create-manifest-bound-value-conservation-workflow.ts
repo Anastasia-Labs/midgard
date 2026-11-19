@@ -9,7 +9,7 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { planFaultProofFieldOpening } from "../field-opening.js";
-import { submitInit } from "../submit-init.js";
+import { buildInit } from "../submit-init.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import { completeCanonicalReplayPredecessorLedger } from "../workflow/complete-replay.js";
 import { captureCursorRemoval } from "../workflow/cursor-family-runtime.js";
@@ -46,7 +46,7 @@ import {
   admitFraudProofRawL1Snapshot,
   type FraudProofRawL1ComputationStepRole,
 } from "../workflow/raw-l1-snapshot.js";
-import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
+import { journaledStepTransaction } from "../workflow/step-transaction.js";
 import { createValueConservationAdapter } from "./adapter.js";
 import { admitValueConservationArtifact } from "./artifact.js";
 import {
@@ -66,11 +66,11 @@ import {
   ValueNotPreservedStep04Datum,
 } from "./schemas.js";
 import {
+  buildConservationAcceptedSource,
+  buildConservationAction,
   conservationDatum,
   ConservationRawDatumSchema,
   conservationStep,
-  submitConservationAcceptedSource,
-  submitConservationAction,
 } from "./submit-union.js";
 import {
   fromRaw,
@@ -400,132 +400,129 @@ export const createManifestBoundValueConservationWorkflow = async (
           ),
         });
       return {
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            if (context.action.input.stage === "init") {
-              await submitInit({
-                lucid: config.lucid,
-                blueprint: binding.blueprint,
-                deploymentInfo: binding.deploymentInfo,
-                network: binding.network,
-                signer: config.signer,
-                fraudCategory: "valueNotPreserved",
-                fraudulentBlockOutRef: text(
-                  context.action.input,
-                  "stateQueueBlockOutRef",
-                ),
-                fraudulentHeaderHash: config.headerHash,
-                witnessReferenceScripts: config.referenceScripts.witnesses,
-                preSubmitBoundary,
-                awaitConfirmation: false,
-              });
-              return;
-            }
-            const { selected } = await actionAt(
-              context.action,
-              context.artifact,
-            );
-            const threadOutRef = text(context.action.input, "threadOutRef");
-            const referenceScriptUtxo =
-              selected.position === "entry"
-                ? config.referenceScripts.steps[0]
-                : config.referenceScripts.union[selected.position];
-            if (selected.position === "unionAcceptedSource") {
-              if (admitted.accepted === undefined)
-                throw new Error("value conservation: accepted source absent");
-              const raw = (await snapshot()).scopes
-                .flatMap((scope) => scope.utxos)
-                .find((utxo) => utxo.outRef === threadOutRef);
-              if (raw === undefined)
-                throw new Error(
-                  "value conservation: authenticated source thread absent",
-                );
-              const publishedProofChunks = await resolveDirectFirstProofChunks({
-                action: context.action,
-                lucid: config.lucid,
-                address: config.signer.proofMaterialsAddress,
-                proofCbor: admitted.artifact.acceptedProofCbor!,
-              });
-              await submitConservationAcceptedSource({
-                lucid: config.lucid,
-                blueprint: binding.blueprint,
-                network: binding.network,
-                contracts,
-                source: admitted.source,
-                signer: config.signer,
-                threadUtxo: fromRaw(raw),
-                threadToken: {
-                  unit:
-                    contracts.computationThread.policyId +
-                    binding.definition.categoryId +
-                    config.headerHash,
+        transaction: (
+          await journaledStepTransaction(
+            await (async () => {
+              if (context.action.input.stage === "init") {
+                return await buildInit({
+                  lucid: config.lucid,
+                  blueprint: binding.blueprint,
+                  deploymentInfo: binding.deploymentInfo,
+                  network: binding.network,
+                  signer: config.signer,
+                  fraudCategory: "valueNotPreserved",
+                  fraudulentBlockOutRef: text(
+                    context.action.input,
+                    "stateQueueBlockOutRef",
+                  ),
                   fraudulentHeaderHash: config.headerHash,
-                },
-                stateQueueBlockOutRef: text(
-                  context.action.input,
-                  "stateQueueBlockOutRef",
-                ),
-                txInclusion: admitted.accepted,
-                publishedProofChunks,
+                  witnessReferenceScripts: config.referenceScripts.witnesses,
+                });
+              }
+              const { selected } = await actionAt(
+                context.action,
+                context.artifact,
+              );
+              const threadOutRef = text(context.action.input, "threadOutRef");
+              const referenceScriptUtxo =
+                selected.position === "entry"
+                  ? config.referenceScripts.steps[0]
+                  : config.referenceScripts.union[selected.position];
+              if (selected.position === "unionAcceptedSource") {
+                if (admitted.accepted === undefined)
+                  throw new Error("value conservation: accepted source absent");
+                const raw = (await snapshot()).scopes
+                  .flatMap((scope) => scope.utxos)
+                  .find((utxo) => utxo.outRef === threadOutRef);
+                if (raw === undefined)
+                  throw new Error(
+                    "value conservation: authenticated source thread absent",
+                  );
+                const publishedProofChunks =
+                  await resolveDirectFirstProofChunks({
+                    action: context.action,
+                    lucid: config.lucid,
+                    address: config.signer.proofMaterialsAddress,
+                    proofCbor: admitted.artifact.acceptedProofCbor!,
+                  });
+                return await buildConservationAcceptedSource({
+                  lucid: config.lucid,
+                  blueprint: binding.blueprint,
+                  network: binding.network,
+                  contracts,
+                  source: admitted.source,
+                  signer: config.signer,
+                  threadUtxo: fromRaw(raw),
+                  threadToken: {
+                    unit:
+                      contracts.computationThread.policyId +
+                      binding.definition.categoryId +
+                      config.headerHash,
+                    fraudulentHeaderHash: config.headerHash,
+                  },
+                  stateQueueBlockOutRef: text(
+                    context.action.input,
+                    "stateQueueBlockOutRef",
+                  ),
+                  txInclusion: admitted.accepted,
+                  publishedProofChunks,
+                  referenceScriptUtxo,
+                  witnessReferenceScripts: config.referenceScripts.witnesses,
+                });
+              }
+              const fieldIndex =
+                selected.fieldIndex ??
+                (selected.position === "unionOutputScan" ? 2 : undefined);
+              const resolvedField =
+                await fieldPrerequisite.resolveAuthenticated({
+                  headerHash: config.headerHash,
+                  action: context.action,
+                  artifact: context.artifact,
+                  entries: context.entries,
+                });
+              const field =
+                fieldIndex === undefined
+                  ? undefined
+                  : {
+                      planned: planFaultProofFieldOpening({
+                        anchorSourceKind:
+                          admitted.source.claim === "ForcedConservation"
+                            ? 1n
+                            : 0n,
+                        fieldIndex,
+                        anchorTxId: admitted.source.transaction_id,
+                        nativeTxCompactCbor: admitted.nativeTxCompactCbor,
+                        itemCbors: decodeMidgardFieldPreimage(
+                          Buffer.from(admitted.fields[fieldIndex], "hex"),
+                        ),
+                        owner: config.signer.paymentKeyHash,
+                        publish: true,
+                        label: "value conservation",
+                      }),
+                      carriageUtxos: resolvedField.publications,
+                      ...(resolvedField.certificate === undefined
+                        ? {}
+                        : { certificateUtxo: resolvedField.certificate }),
+                    };
+              return await buildConservationAction({
+                lucid: config.lucid,
+                contracts,
+                categoryId: binding.definition.categoryId,
+                headerHash: config.headerHash,
+                signer: config.signer,
+                threadOutRef,
+                action: selected,
                 referenceScriptUtxo,
+                ...(field === undefined ? {} : { field }),
+                ...(selected.position === "unionOutputScan"
+                  ? { chunkUtxos: resolvedField.publications }
+                  : {}),
                 witnessReferenceScripts: config.referenceScripts.witnesses,
-                preSubmitBoundary,
-                awaitConfirmation: false,
               });
-              return;
-            }
-            const fieldIndex =
-              selected.fieldIndex ??
-              (selected.position === "unionOutputScan" ? 2 : undefined);
-            const resolvedField = await fieldPrerequisite.resolveAuthenticated({
-              headerHash: config.headerHash,
-              action: context.action,
-              artifact: context.artifact,
-              entries: context.entries,
-            });
-            const field =
-              fieldIndex === undefined
-                ? undefined
-                : {
-                    planned: planFaultProofFieldOpening({
-                      anchorSourceKind:
-                        admitted.source.claim === "ForcedConservation"
-                          ? 1n
-                          : 0n,
-                      fieldIndex,
-                      anchorTxId: admitted.source.transaction_id,
-                      nativeTxCompactCbor: admitted.nativeTxCompactCbor,
-                      itemCbors: decodeMidgardFieldPreimage(
-                        Buffer.from(admitted.fields[fieldIndex], "hex"),
-                      ),
-                      owner: config.signer.paymentKeyHash,
-                      publish: true,
-                      label: "value conservation",
-                    }),
-                    carriageUtxos: resolvedField.publications,
-                    ...(resolvedField.certificate === undefined
-                      ? {}
-                      : { certificateUtxo: resolvedField.certificate }),
-                  };
-            await submitConservationAction({
-              lucid: config.lucid,
-              contracts,
-              categoryId: binding.definition.categoryId,
-              headerHash: config.headerHash,
-              signer: config.signer,
-              threadOutRef,
-              action: selected,
-              referenceScriptUtxo,
-              ...(field === undefined ? {} : { field }),
-              ...(selected.position === "unionOutputScan"
-                ? { chunkUtxos: resolvedField.publications }
-                : {}),
-              witnessReferenceScripts: config.referenceScripts.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            })(),
+            `value-not-preserved ${context.action.actionId}`,
+          )
+        ).transaction,
       };
     },
     confirmed: async (context) => {

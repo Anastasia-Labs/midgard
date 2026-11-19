@@ -23,7 +23,7 @@ import "./workflow/transaction-boundary.js";
 import "./submit-zero-input-step-01.types.js";
 import "./submit-zero-input-step-01.submit-zero-input-step01.js";
 import "./submit-zero-input-step-01.submit-zero-input-step01-from-files.js";
-export { submitZeroInputStep01 } from "./submit-zero-input-step-01.submit-zero-input-step01.js";
+export { buildZeroInputStep01 } from "./submit-zero-input-step-01.submit-zero-input-step01.js";
 export { submitZeroInputStep01FromFiles } from "./submit-zero-input-step-01.submit-zero-input-step01-from-files.js";
 export {
   type SubmitZeroInputStep01CliConfig,

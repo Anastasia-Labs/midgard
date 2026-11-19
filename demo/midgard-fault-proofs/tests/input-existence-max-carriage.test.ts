@@ -16,20 +16,13 @@ import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import {
-  certifyFaultProofFieldCarriage,
-  publishFaultProofFieldCarriage,
-} from "../src/field-opening.js";
-import {
   admitInputExistenceArtifact,
   inputExistenceArtifact,
 } from "../src/input-existence/artifact.js";
 import { prepareInputExistence } from "../src/input-existence/prepare.js";
-import { submitInputExistenceStep } from "../src/input-existence/submit.js";
-import {
-  type PublishedProofChunk,
-  publishProofChunks,
-} from "../src/publish-proof-chunks.js";
-import { submitInit } from "../src/submit-init.js";
+import { buildInputExistenceStep } from "../src/input-existence/submit.js";
+import type { PublishedProofChunk } from "../src/publish-proof-chunks.js";
+import { buildInit } from "../src/submit-init.js";
 import { commitCountedRoot } from "../src/transition-trace/phas.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
@@ -51,6 +44,12 @@ import {
   publishPlainReferenceScriptUtxo,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  certifyCarriageUnjournaled,
+  publishCarriageUnjournaled,
+  publishProofChunks,
+} from "./support/submit-unjournaled.js";
 import {
   syntheticDeepInsertProof,
   syntheticDeepMembershipProof,
@@ -298,17 +297,17 @@ describe("registered maximum event/transition counted membership", () => {
           })
         ).utxo;
         const tag = `field${field}-${shape}-${partial ? "eight-partial" : "packed"}`;
-        const fieldChunks = await publishFaultProofFieldCarriage({
+        const fieldChunks = await publishCarriageUnjournaled({
           ownOutputs,
           lucid: h.proverLucid,
           signer: h.proverSigner,
           planned: prepared.fieldPlan,
           publisherAddress: h.proverSigner.proofMaterialsAddress,
           label: tag,
-          preSubmitBoundary: ({ signed }) =>
+          beforeSubmit: ({ signed }) =>
             captureSigned(tag + "-field-publication", signed.toCBOR()),
         });
-        const certificate = await certifyFaultProofFieldCarriage({
+        const certificate = await certifyCarriageUnjournaled({
           ownOutputs,
           lucid: h.proverLucid,
           network,
@@ -320,7 +319,7 @@ describe("registered maximum event/transition counted membership", () => {
           chunkUtxos: fieldChunks,
           compactCbor: prepared.source.compactCbor,
           witnessSetCompactCbor: prepared.source.witnessSetCompactCbor,
-          preSubmitBoundary: ({ signed }) =>
+          beforeSubmit: ({ signed }) =>
             captureSigned(tag + "-field-certification", signed.toCBOR()),
         });
         const allFieldCarriage = [...fieldChunks, certificate.certificateUtxo];
@@ -340,7 +339,7 @@ describe("registered maximum event/transition counted membership", () => {
                   lucid: h.proverLucid,
                   signer: h.proverSigner,
                   proofCbor: part,
-                  preSubmitBoundary: ({ signed }) =>
+                  beforeSubmit: ({ signed }) =>
                     captureSigned(
                       tag + "-" + label + "-proof-publication",
                       signed.toCBOR(),
@@ -362,7 +361,7 @@ describe("registered maximum event/transition counted membership", () => {
           h.contracts,
           h.catalogue,
         );
-        const init = await submitInit({
+        const init = await buildAndSubmitUnjournaled(buildInit, {
           lucid: h.proverLucid,
           blueprint: h.realBlueprint,
           deploymentInfo,
@@ -371,7 +370,7 @@ describe("registered maximum event/transition counted membership", () => {
           fraudCategory: category,
           fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
           witnessReferenceScripts: h.witnessReferenceScripts,
-          preSubmitBoundary: ({ signed }) =>
+          beforeSubmit: ({ signed }) =>
             captureSigned(tag + "-init", signed.toCBOR()),
         });
         let threadOutRef = `${init.txHash}#${init.firstStepOutputIndex}`;
@@ -381,7 +380,7 @@ describe("registered maximum event/transition counted membership", () => {
             `step${stepIndex + 1}`,
           );
           const submitted = await captureEmulatorSubmission(h.emulator, () =>
-            submitInputExistenceStep({
+            buildAndSubmitUnjournaled(buildInputExistenceStep, {
               lucid: h.proverLucid,
               blueprint: h.realBlueprint,
               network,
@@ -406,7 +405,7 @@ describe("registered maximum event/transition counted membership", () => {
               fieldCarriageUtxos: allFieldCarriage,
               certificatePolicyId: cert.policyId,
               publishedProofChunks: chunks,
-              preSubmitBoundary: ({ signed }) =>
+              beforeSubmit: ({ signed }) =>
                 captureSigned(tag + `-step${stepIndex + 1}`, signed.toCBOR()),
             }),
           );

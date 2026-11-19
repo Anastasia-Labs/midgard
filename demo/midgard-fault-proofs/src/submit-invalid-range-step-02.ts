@@ -13,6 +13,6 @@ export {
   type SubmitInvalidRangeStep02Result,
 } from "./submit-invalid-range-step-02.make-invalid-range-step02-spend-redeemer.js";
 export {
+  buildInvalidRangeStep02V1,
   submitInvalidRangeStep02FromFiles,
-  submitInvalidRangeStep02V1,
 } from "./submit-invalid-range-step-02.submit-invalid-range-step02-v1.js";

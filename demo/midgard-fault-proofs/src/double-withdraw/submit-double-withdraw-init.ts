@@ -1,7 +1,7 @@
 import {
-  submitResolvedInit,
+  buildResolvedInit,
+  type ResolvedInitBuild,
   type SubmitResolvedInitParams,
-  type SubmitResolvedInitResult,
 } from "../submit-init.js";
 import {
   DOUBLE_WITHDRAW_CATEGORY_LABEL,
@@ -12,21 +12,21 @@ import {
   doubleWithdrawSubmitError,
 } from "./submit-common.js";
 
-export type SubmitDoubleWithdrawInitResult = SubmitResolvedInitResult;
+export type DoubleWithdrawInitBuild = ResolvedInitBuild;
 
-export const submitDoubleWithdrawInit = async (
+export const buildDoubleWithdrawInit = async (
   params: Omit<SubmitResolvedInitParams, "contracts" | "category"> & {
     readonly contracts: DoubleWithdrawContracts;
     readonly category: DoubleWithdrawCatalogueCategory;
   },
-): Promise<SubmitDoubleWithdrawInitResult> => {
+): Promise<DoubleWithdrawInitBuild> => {
   const { contracts, category } = params;
   if (category.scriptHash !== contracts.steps[0].spendingScriptHash) {
     throw doubleWithdrawSubmitError(
       `catalogue category registers ${category.scriptHash}, but step-01 hashes to ${contracts.steps[0].spendingScriptHash}.`,
     );
   }
-  return await submitResolvedInit({
+  return await buildResolvedInit({
     ...params,
     label: DOUBLE_WITHDRAW_CATEGORY_LABEL,
   });

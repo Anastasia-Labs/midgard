@@ -11,7 +11,7 @@ import {
   inputExistenceExecutionContext,
   publishInputExistenceSelectionCarriage,
 } from "./support/input-existence-execution-context.js";
-import { submitInit } from "./support/legacy-submit-emulator.js";
+import { buildInit } from "./support/legacy-submit-emulator.js";
 import {
   NO_REFERENCE_INPUT_ABSENT_PRODUCER_TX_ID,
   type NoReferenceInputFixture,
@@ -25,6 +25,7 @@ import {
   network,
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 export const makeNoReferenceInputHarness = async () =>
   makeFaultProofEmulatorHarness({
@@ -70,7 +71,7 @@ export const driveNoReferenceInputToStep04 = async ({
       : { removalReferenceScripts: removalPublications.published },
   );
   const stageArguments = { ...context.arguments, deploymentInfo };
-  const init = await submitInit({
+  const init = await buildAndSubmitUnjournaled(buildInit, {
     lucid: harness.proverLucid,
     blueprint: harness.realBlueprint,
     deploymentInfo,
@@ -86,7 +87,7 @@ export const driveNoReferenceInputToStep04 = async ({
     init.firstStepAddress,
     init.computationThreadUnit,
   );
-  const step01 = await submitNoReferenceInputStep01({
+  const step01 = await buildAndSubmitUnjournaled(submitNoReferenceInputStep01, {
     ...stageArguments,
     threadOutRef: outRefLabel(first),
   });
@@ -95,13 +96,13 @@ export const driveNoReferenceInputToStep04 = async ({
     harness,
     context.prepared,
   );
-  const step02 = await submitNoReferenceInputStep02({
+  const step02 = await buildAndSubmitUnjournaled(submitNoReferenceInputStep02, {
     ...stageArguments,
     ...fieldCarriage,
     threadOutRef: step01.nextThreadOutRef,
   });
   expect(step02.selectedInput).toEqual(context.prepared.selectedInput);
-  const step03 = await submitNoReferenceInputStep03({
+  const step03 = await buildAndSubmitUnjournaled(submitNoReferenceInputStep03, {
     ...stageArguments,
     threadOutRef: step02.nextThreadOutRef,
   });

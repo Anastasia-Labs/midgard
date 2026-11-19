@@ -7,12 +7,12 @@ import {
   NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION,
 } from "@al-ft/midgard-sdk";
 
-import { type NativeScriptDecodingFinding } from "./finding.js";
+import { type NativeScriptDecodingFinding } from "../../src/native-script-decoding/finding.js";
+import { type NativeScriptDecodingScanPlan } from "../../src/native-script-decoding/scan-plan.js";
 import {
   type DriveState,
   step03TxCount,
-} from "./prover.locate-native-script-decoding-thread.js";
-import { type NativeScriptDecodingScanPlan } from "./scan-plan.js";
+} from "./native-script-decoding-prover.locate-native-script-decoding-thread.js";
 
 export const remainingTxCount = (
   cursor: DriveState,

@@ -21,15 +21,16 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { type ResolvedProverSigner } from "../runtime.js";
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
 } from "../witness-reference-scripts.js";
 import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
 } from "../workflow/transaction-boundary.js";
 import {
   WITHDRAWN_INPUT_CATEGORY_LABEL,
@@ -42,15 +43,18 @@ import {
   withdrawnInputSubmitError,
 } from "./submit-common.js";
 
-export type SubmitWithdrawnInputStep03Result = {
-  readonly txHash: string;
+export type WithdrawnInputStep03Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly fraudProofOutRef: string;
   readonly fraudProofUnit: string;
   readonly fraudProofAddress: string;
   readonly fraudulentHeaderHash: string;
 };
 
-export const submitWithdrawnInputStep03 = async ({
+export type SubmitWithdrawnInputStep03Result =
+  UnjournaledSubmission<WithdrawnInputStep03Build>;
+
+export const buildWithdrawnInputStep03 = async ({
   lucid,
   contracts,
   categoryId,
@@ -59,8 +63,6 @@ export const submitWithdrawnInputStep03 = async ({
   withdrawalMembership,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: WithdrawnInputContracts;
@@ -70,9 +72,7 @@ export const submitWithdrawnInputStep03 = async ({
   readonly withdrawalMembership: WithdrawalSourceMembershipProof;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitWithdrawnInputStep03Result> => {
+}): Promise<WithdrawnInputStep03Build> => {
   const { threadUtxo, threadToken } = await requireWithdrawnInputThreadUtxo({
     lucid,
     contracts,
@@ -230,34 +230,28 @@ export const submitWithdrawnInputStep03 = async ({
   ) {
     throw withdrawnInputSubmitError("step-03 layout was not resolved.");
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: "withdrawn-input step-03",
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: "V1 fraud-proof withdrawn-input step-03",
-          utxo: referenceScriptUtxo,
-          expectedScript: contracts.steps[2].spendingScript,
-        },
-        {
-          role: "V1 fraud-proof computation-thread minting",
-          utxo: witnessReferenceScripts?.computationThreadMint,
-          expectedScript: contracts.computationThread.mintingScript,
-        },
-        {
-          role: "V1 fraud-proof token minting",
-          utxo: witnessReferenceScripts?.fraudProofMint,
-          expectedScript: contracts.fraudProof.mintingScript,
-        },
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: "V1 fraud-proof withdrawn-input step-03",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.steps[2].spendingScript,
+      },
+      {
+        role: "V1 fraud-proof computation-thread minting",
+        utxo: witnessReferenceScripts?.computationThreadMint,
+        expectedScript: contracts.computationThread.mintingScript,
+      },
+      {
+        role: "V1 fraud-proof token minting",
+        utxo: witnessReferenceScripts?.fraudProofMint,
+        expectedScript: contracts.fraudProof.mintingScript,
+      },
+    ],
   });
   return {
-    txHash,
-    fraudProofOutRef: `${txHash}#${layout.outputIndex.toString()}`,
+    transaction,
+    fraudProofOutRef: `${transaction.txHash}#${layout.outputIndex.toString()}`,
     fraudProofUnit,
     fraudProofAddress: contracts.fraudProof.spendingScriptAddress,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,

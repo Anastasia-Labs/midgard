@@ -3,15 +3,15 @@ import {
   PROOF_THREAD_SOURCE_KIND_FORCED,
 } from "@al-ft/midgard-sdk";
 
-import { submitCommittedFieldShapeInit } from "../committed-field-shape/submit-committed-field-shape-init.js";
+import { buildCommittedFieldShapeInit } from "../committed-field-shape/submit-committed-field-shape-init.js";
+import { isPrerequisiteTurn } from "../fault-proof-turn.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
-import { submitRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import { requireScriptDecodeRecordForItem } from "../script-decode/record.js";
 import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   type ManifestBoundOutputReferenceScriptDecodingConfig,
   type OutputReferenceScriptDecodingRuntimeLoader,
@@ -19,21 +19,20 @@ import {
 } from "./authenticated-workflow.create-output-reference-script-decoding-bound-config.js";
 import { OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY_LABEL } from "./contracts.js";
 import { type OutputReferenceScriptDecodingEvidence } from "./output-reference-script-decoding.js";
-import { submitOutputReferenceScriptDecodingCancel } from "./submit-cancel.js";
-import { submitOutputReferenceScriptDecodingStep01Accepted } from "./submit-step-01-accepted.js";
-import { submitOutputReferenceScriptDecodingStep01Forced } from "./submit-step-01-forced.js";
-import { submitOutputReferenceScriptDecodingStep02 } from "./submit-step-02.js";
-import { submitOutputReferenceScriptDecodingStep03 } from "./submit-step-03.js";
-import { submitOutputReferenceScriptDecodingStep04 } from "./submit-step-04.js";
-import { submitOutputReferenceScriptDecodingStep05 } from "./submit-step-05.js";
-import { submitOutputReferenceScriptDecodingStep06 } from "./submit-step-06.js";
+import { buildOutputReferenceScriptDecodingCancel } from "./submit-cancel.js";
+import { buildOutputReferenceScriptDecodingStep01Accepted } from "./submit-step-01-accepted.js";
+import { buildOutputReferenceScriptDecodingStep01Forced } from "./submit-step-01-forced.js";
+import { buildOutputReferenceScriptDecodingStep02 } from "./submit-step-02.js";
+import { buildOutputReferenceScriptDecodingStep03 } from "./submit-step-03.js";
+import { buildOutputReferenceScriptDecodingStep04 } from "./submit-step-04.js";
+import { buildOutputReferenceScriptDecodingStep05 } from "./submit-step-05.js";
+import { buildOutputReferenceScriptDecodingStep06 } from "./submit-step-06.js";
 import { type OutputReferenceScriptDecodingStage } from "./workflow.js";
 
 export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
   config,
   observe,
   resolveStage,
-  preSubmitBoundary,
   stateQueueMutationLeaseCoordinator,
   ownOutputs = createOwnOutputJournal(),
 }: {
@@ -42,7 +41,6 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
     identity: string,
   ) => Promise<OutputReferenceScriptDecodingStage>;
   readonly resolveStage: OutputReferenceScriptDecodingRuntimeLoader["resolveStage"];
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
@@ -66,7 +64,7 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
       );
     const stage = await resolveStage({ action, evidence });
     if (action === "submitInit") {
-      const result = await submitCommittedFieldShapeInit({
+      const result = await buildCommittedFieldShapeInit({
         lucid: config.lucid,
         blueprint: config.binding.blueprint,
         network: config.binding.network,
@@ -77,17 +75,17 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
         fraudulentBlockOutRef: stage.fraudulentBlockOutRef,
         fraudulentHeaderHash: config.binding.definition.headerHash,
         witnessReferenceScripts: config.referenceScripts.witnesses,
-        preSubmitBoundary,
       });
       return {
+        transaction: result.transaction,
         stage: "step01" as const,
-        txHash: result.txHash,
-        outputReference: `${result.txHash}#${result.firstStepOutputIndex.toString()}`,
+        txHash: result.transaction.txHash,
+        outputReference: `${result.transaction.txHash}#${result.firstStepOutputIndex.toString()}`,
       };
     }
     if (action === "submitStep01") {
       if (evidence.subject.source_kind === PROOF_THREAD_SOURCE_KIND_ACCEPTED) {
-        const result = await submitOutputReferenceScriptDecodingStep01Accepted({
+        const result = await buildOutputReferenceScriptDecodingStep01Accepted({
           lucid: config.lucid,
           blueprint: config.binding.blueprint,
           network: config.binding.network,
@@ -103,11 +101,11 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
           txInclusion: required(stage.acceptedInclusion, "accepted inclusion"),
           referenceScriptUtxo: config.referenceScripts.step01,
           witnessReferenceScripts: config.referenceScripts.witnesses,
-          preSubmitBoundary,
         });
         return {
+          transaction: result.transaction,
           stage: "step02" as const,
-          txHash: result.txHash,
+          txHash: result.transaction.txHash,
           outputReference: result.nextThreadOutRef,
         };
       }
@@ -115,7 +113,7 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
         throw new Error(
           "outputReferenceScriptDecoding evidence source kind is invalid",
         );
-      const result = await submitOutputReferenceScriptDecodingStep01Forced({
+      const result = await buildOutputReferenceScriptDecodingStep01Forced({
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -127,16 +125,16 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
           membership: required(stage.forcedMembership, "forced membership"),
         },
         referenceScriptUtxo: config.referenceScripts.step01,
-        preSubmitBoundary,
       });
       return {
+        transaction: result.transaction,
         stage: "step02" as const,
-        txHash: result.txHash,
+        txHash: result.transaction.txHash,
         outputReference: result.nextThreadOutRef,
       };
     }
     if (action === "submitStep02") {
-      const result = await submitOutputReferenceScriptDecodingStep02({
+      const result = await buildOutputReferenceScriptDecodingStep02({
         ownOutputs,
         lucid: config.lucid,
         contracts: config.contracts,
@@ -155,20 +153,19 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
         publishCarriage: true,
         certificateReferenceScriptUtxo:
           config.referenceScripts.fieldPreimageCertificateMint,
-        publicationPreSubmitBoundary: preSubmitBoundary,
-        certificatePreSubmitBoundary: preSubmitBoundary,
         fieldGrammar: config.fieldGrammar,
         referenceScriptUtxo: config.referenceScripts.step02,
-        preSubmitBoundary,
       });
+      if (isPrerequisiteTurn(result)) return result;
       return {
+        transaction: result.transaction,
         stage: result.nextStage,
-        txHash: result.txHash,
+        txHash: result.transaction.txHash,
         outputReference: result.nextThreadOutRef,
       };
     }
     if (action === "submitOutputScan") {
-      const result = await submitOutputReferenceScriptDecodingStep03({
+      const result = await buildOutputReferenceScriptDecodingStep03({
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -176,13 +173,13 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
         threadOutRef: required(stage.threadOutRef, "step03 thread out-ref"),
         evidence,
         referenceScriptUtxo: config.referenceScripts.step03,
-        preSubmitBoundary,
       });
       return {
+        transaction: result.transaction,
         stage: result.terminal
           ? ("referenceBind" as const)
           : ("outputScan" as const),
-        txHash: result.txHash,
+        txHash: result.transaction.txHash,
         outputReference: result.nextThreadOutRef,
       };
     }
@@ -193,7 +190,7 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
         item: Buffer.from(evidence.referenceScriptItemHex, "hex"),
         label: OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY_LABEL,
       });
-      const result = await submitOutputReferenceScriptDecodingStep04({
+      const result = await buildOutputReferenceScriptDecodingStep04({
         ownOutputs,
         lucid: config.lucid,
         contracts: config.contracts,
@@ -218,20 +215,19 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
         certificateReferenceScriptUtxo:
           config.referenceScripts.fieldPreimageCertificateMint,
         publishCarriage: true,
-        publicationPreSubmitBoundary: preSubmitBoundary,
-        certificatePreSubmitBoundary: preSubmitBoundary,
         fieldGrammar: config.fieldGrammar,
         referenceScriptUtxo: config.referenceScripts.step04,
-        preSubmitBoundary,
       });
+      if (isPrerequisiteTurn(result)) return result;
       return {
+        transaction: result.transaction,
         stage: "scan" as const,
-        txHash: result.txHash,
+        txHash: result.transaction.txHash,
         outputReference: result.nextThreadOutRef,
       };
     }
     if (action === "submitStructuralScan") {
-      const result = await submitOutputReferenceScriptDecodingStep05({
+      const result = await buildOutputReferenceScriptDecodingStep05({
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -239,16 +235,16 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
         threadOutRef: required(stage.threadOutRef, "step05 thread out-ref"),
         evidence,
         referenceScriptUtxo: config.referenceScripts.step05,
-        preSubmitBoundary,
       });
       return {
+        transaction: result.transaction,
         stage: result.closed ? ("step06" as const) : ("scan" as const),
-        txHash: result.txHash,
+        txHash: result.transaction.txHash,
         outputReference: result.nextThreadOutRef,
       };
     }
     if (action === "submitStep06") {
-      const result = await submitOutputReferenceScriptDecodingStep06({
+      const result = await buildOutputReferenceScriptDecodingStep06({
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -257,15 +253,15 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
         evidence,
         referenceScriptUtxo: config.referenceScripts.step06,
         witnessReferenceScripts: config.referenceScripts.witnesses,
-        preSubmitBoundary,
       });
       return {
+        transaction: result.transaction,
         stage: "proven" as const,
-        txHash: result.txHash,
+        txHash: result.transaction.txHash,
         outputReference: null,
       };
     }
-    const result = await submitRemoveFraudulentBlock({
+    const result = await buildRemoveFraudulentBlock({
       lucid: config.lucid,
       blueprint: config.binding.blueprint,
       deploymentInfo: config.binding.deploymentInfo,
@@ -281,14 +277,18 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
             "outputReferenceScriptDecoding production removal requires a state-queue mutation lease coordinator",
           );
         })(),
-      awaitConfirmation: true,
       validFrom: stage.validFrom,
       validTo: stage.validTo,
-      preSubmitBoundary,
     });
     return {
-      stage: "removed" as const,
-      txHash: result.txHash,
+      transaction: result.transaction,
+      stateQueueMutationLease: result.stateQueueMutationLease,
+      // A removal of a successor leaves the fraud proof in place.
+      stage:
+        result.kind === "remove-target"
+          ? ("removed" as const)
+          : ("proven" as const),
+      txHash: result.transaction.txHash,
       outputReference: null,
     };
   },
@@ -311,7 +311,7 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
             : current === "referenceBind"
               ? 3
               : 4;
-    const result = await submitOutputReferenceScriptDecodingCancel({
+    const result = await buildOutputReferenceScriptDecodingCancel({
       lucid: config.lucid,
       contracts: config.contracts,
       categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -325,11 +325,11 @@ export const createManifestBoundOutputReferenceScriptDecodingSubmission = ({
         config.referenceScripts.step05,
       ][index]!,
       witnessReferenceScripts: config.referenceScripts.witnesses,
-      preSubmitBoundary,
     });
     return {
+      transaction: result.transaction,
       stage: "cancelled" as const,
-      txHash: result.txHash,
+      txHash: result.transaction.txHash,
       outputReference: null,
     };
   },

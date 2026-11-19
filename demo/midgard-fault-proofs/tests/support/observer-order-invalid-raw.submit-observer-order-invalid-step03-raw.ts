@@ -16,8 +16,8 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../../src/linear-fault-family.js";
-import { submitLinearFaultFinalize } from "../../src/linear-fault-finalize.js";
-import { submitLinearFaultContinue } from "../../src/linear-fault-submit.js";
+import { buildLinearFaultFinalize } from "../../src/linear-fault-finalize.js";
+import { buildLinearFaultContinue } from "../../src/linear-fault-submit.js";
 import type { ObserverOrderInvalidContracts } from "../../src/observer-order-invalid/contracts.js";
 import { type ObserverOrderInvalidEvidence } from "../../src/observer-order-invalid/family.js";
 import {
@@ -42,6 +42,10 @@ import {
   resolveObserverOpening,
 } from "./observer-order-invalid-raw.resolve-observer-opening.js";
 import { type ObserverOrderScanSuccessor } from "./observer-order-invalid-raw.submit-observer-order-invalid-step02-raw.js";
+import {
+  buildAndSubmitTransactionUnjournaled,
+  buildAndSubmitUnjournaled,
+} from "./submit-unjournaled.js";
 
 /**
  * Step 03 with every prover-supplied value exposed: the resumed checkpoint
@@ -200,7 +204,7 @@ export const submitObserverOrderInvalidStep03Raw = async ({
       ObserverOrderInvalidStep03RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  return await submitLinearFaultContinue({
+  return await buildAndSubmitTransactionUnjournaled(buildLinearFaultContinue, {
     lucid,
     signer,
     threadUtxo,
@@ -255,7 +259,7 @@ export const submitObserverOrderInvalidStep04Raw = async ({
     family: FAMILY,
     stepIndex,
   });
-  return await submitLinearFaultFinalize({
+  return await buildAndSubmitUnjournaled(buildLinearFaultFinalize, {
     lucid,
     family: FAMILY,
     stepIndex,

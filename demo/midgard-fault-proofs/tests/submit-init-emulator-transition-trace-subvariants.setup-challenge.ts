@@ -14,7 +14,7 @@ import {
   prepareFamilyHistory,
 } from "./support/emulator/family-history.js";
 import { measureCompleteSignedTransaction } from "./support/emulator/measurement.js";
-import { submitInit } from "./support/legacy-submit-emulator.js";
+import { buildInit } from "./support/legacy-submit-emulator.js";
 import { sortedDaEntries } from "./support/submit-init-emulator-fixtures.js";
 import {
   buildRemovalDeploymentInfo,
@@ -27,6 +27,10 @@ import {
   transitionTraceDaEntry,
   transitionTraceOutRef,
 } from "./support/submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  type SubmittedStep,
+} from "./support/submit-unjournaled.js";
 import { publishTransitionTraceYields } from "./support/transition-trace-yields.js";
 
 export const historyRecords: unknown[] = [];
@@ -271,7 +275,7 @@ export const setupChallenge = async ({
     },
   );
   historyRecords.push({ header, headerHash: setup.headerHash, deploymentInfo });
-  const init = await submitInit({
+  const init = await buildAndSubmitUnjournaled(buildInit, {
     lucid: harness.proverLucid,
     blueprint: harness.realBlueprint,
     deploymentInfo,
@@ -350,7 +354,7 @@ export const firstThreadUtxo = async ({
   init,
 }: {
   readonly harness: Harness;
-  readonly init: Awaited<ReturnType<typeof submitInit>>;
+  readonly init: SubmittedStep<typeof buildInit>;
 }) =>
   await expectSingleUtxoWithUnit(
     harness.proverLucid,

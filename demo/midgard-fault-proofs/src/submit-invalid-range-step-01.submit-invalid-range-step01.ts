@@ -45,7 +45,8 @@ import {
   resolveFraudulentHeaderHash,
   resolveInvalidRangeDeploymentContracts,
 } from "./runtime.js";
-import { completeStep, fundStep, submitStep } from "./step-completion.js";
+import { completeStep, fundStep } from "./step-completion.js";
+import { finishStep } from "./step-completion.js";
 import {
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
   requireComputationThreadToken,
@@ -53,22 +54,16 @@ import {
   requireNativeTxMatchesCompactCbor,
   type SubmitStep01TxInclusion,
 } from "./step-support.js";
-import {
-  type InvalidRangeStep01Layout,
-  type SubmitInvalidRangeStep01Result,
-} from "./submit-invalid-range-step-01.types.js";
+import type { InvalidRangeStep01Build } from "./submit-invalid-range-step-01.types.js";
+import { type InvalidRangeStep01Layout } from "./submit-invalid-range-step-01.types.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessSpendingValidatorCarriage,
   witnessWithdrawalValidatorCarriage,
 } from "./witness-reference-scripts.js";
-import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
-} from "./workflow/transaction-boundary.js";
 
-export const submitInvalidRangeStep01 = async ({
+export const buildInvalidRangeStep01 = async ({
   lucid,
   blueprint,
   deploymentInfo,
@@ -80,8 +75,6 @@ export const submitInvalidRangeStep01 = async ({
   publishedProofChunks,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -101,9 +94,7 @@ export const submitInvalidRangeStep01 = async ({
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitInvalidRangeStep01Result> => {
+}): Promise<InvalidRangeStep01Build> => {
   const resolvedDeployment = await resolveInvalidRangeDeploymentContracts({
     blueprint,
     deploymentInfo,
@@ -360,39 +351,33 @@ export const submitInvalidRangeStep01 = async ({
       "BuildTxWithRedeemer did not resolve invalid-range step 01 layout.",
     );
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: "invalid-range step-01",
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: "V1 fraud-proof invalid-range step-01",
-          utxo: referenceScriptUtxo,
-          expectedScript: contracts.invalidRange.steps[0].spendingScript,
-        },
-        {
-          role: "membership proof withdrawal",
-          utxo: witnessReferenceScripts?.phasMembershipWithdraw,
-          expectedScript: phasMembershipScript,
-        },
-        {
-          role: "V1 MPF chunked-verify withdrawal",
-          utxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
-          expectedScript: chunkedVerifyScript,
-        },
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: "V1 fraud-proof invalid-range step-01",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.invalidRange.steps[0].spendingScript,
+      },
+      {
+        role: "membership proof withdrawal",
+        utxo: witnessReferenceScripts?.phasMembershipWithdraw,
+        expectedScript: phasMembershipScript,
+      },
+      {
+        role: "V1 MPF chunked-verify withdrawal",
+        utxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
+        expectedScript: chunkedVerifyScript,
+      },
+    ],
   });
 
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
     threadOutRef,
-    nextThreadOutRef: `${txHash}#${resolvedLayout.outputIndex.toString()}`,
+    nextThreadOutRef: `${transaction.txHash}#${resolvedLayout.outputIndex.toString()}`,
     stateQueueBlockOutRef,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadPolicyId: contracts.computationThread.policyId,
@@ -412,6 +397,5 @@ export const submitInvalidRangeStep01 = async ({
     ),
     proofCarriage: carriedByChunks ? "published-chunks" : "redeemer",
     publishedChunkOutRefs: chunks.map((chunk) => chunk.outRef),
-    awaitedConfirmation: awaitConfirmation,
   };
 };

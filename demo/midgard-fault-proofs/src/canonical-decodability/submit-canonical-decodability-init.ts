@@ -1,8 +1,8 @@
 /** Pre-registration canonical-decodability thread initialization. */
 import {
-  submitResolvedInit,
+  buildResolvedInit,
+  type ResolvedInitBuild,
   type SubmitResolvedInitParams,
-  type SubmitResolvedInitResult,
 } from "../submit-init.js";
 import {
   CANONICAL_DECODABILITY_CATEGORY_LABEL,
@@ -13,14 +13,14 @@ import {
   canonicalDecodabilitySubmitError,
 } from "./submit-common.js";
 
-export type SubmitCanonicalDecodabilityInitResult = SubmitResolvedInitResult;
+export type CanonicalDecodabilityInitBuild = ResolvedInitBuild;
 
-export const submitCanonicalDecodabilityInit = async (
+export const buildCanonicalDecodabilityInit = async (
   params: Omit<SubmitResolvedInitParams, "contracts" | "category"> & {
     readonly contracts: CanonicalDecodabilityContracts;
     readonly category: CanonicalDecodabilityCatalogueCategory;
   },
-): Promise<SubmitCanonicalDecodabilityInitResult> => {
+): Promise<CanonicalDecodabilityInitBuild> => {
   const { contracts, category } = params;
   if (category.scriptHash !== contracts.steps[0].spendingScriptHash) {
     throw canonicalDecodabilitySubmitError(
@@ -32,7 +32,7 @@ export const submitCanonicalDecodabilityInit = async (
       "catalogue category id must be exactly four lowercase hexadecimal bytes.",
     );
   }
-  return await submitResolvedInit({
+  return await buildResolvedInit({
     ...params,
     label: CANONICAL_DECODABILITY_CATEGORY_LABEL,
     // Journal roles predate the shared init; kept so recorded preflights

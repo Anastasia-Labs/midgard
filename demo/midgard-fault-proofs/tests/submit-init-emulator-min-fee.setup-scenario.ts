@@ -3,9 +3,9 @@ import { type UTxO } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
 import {
+  buildMinFeeInit,
+  buildMinFeeStep01,
   prepareMinFeeFromTransactions,
-  submitMinFeeInit,
-  submitMinFeeStep01,
 } from "../src/index.js";
 import { parseSubmitStep01TxInclusion } from "../src/step-support.js";
 import type { MinFeeFieldItemCbors } from "../src/submit-min-fee-step-02.js";
@@ -23,6 +23,7 @@ import {
   publishPlainReferenceScriptUtxo,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 /**
  * 365 committed spend inputs (constant §5.3 stride of 40 bytes each) make a
@@ -157,7 +158,7 @@ export const initThread = async (
   harness: Harness,
   scenario: Awaited<ReturnType<typeof setupScenario>>,
 ) =>
-  await submitMinFeeInit({
+  await buildAndSubmitUnjournaled(buildMinFeeInit, {
     lucid: harness.proverLucid,
     blueprint: harness.realBlueprint,
     network,
@@ -174,7 +175,7 @@ export const advanceStep01 = async (
   scenario: Awaited<ReturnType<typeof setupScenario>>,
   threadOutRef: string,
 ) =>
-  await submitMinFeeStep01({
+  await buildAndSubmitUnjournaled(buildMinFeeStep01, {
     lucid: harness.proverLucid,
     blueprint: harness.realBlueprint,
     contracts: harness.minFee,

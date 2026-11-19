@@ -24,12 +24,11 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
+  buildDirectPurposeInit,
+  buildDirectPurposeStep01Forced,
   type DirectPurposeRole,
   directPurposeRoleValidator,
   type DirectPurposeTransition,
-  submitDirectPurposeInit,
-  submitDirectPurposeStep01Forced,
-  submitDirectPurposeTransition,
 } from "../src/direct-purpose-family/index.js";
 import { faultProofFieldOpening } from "../src/field-opening.js";
 import {
@@ -60,6 +59,8 @@ import {
   expectSingleUtxoWithUnit,
   network,
 } from "./support/submit-init-emulator-shared.js";
+import { submitDirectPurposeTransition } from "./support/submit-unjournaled.direct-purpose.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 import {
   driveUnusedRedeemerThread,
   unusedRedeemerVerdict,
@@ -319,7 +320,7 @@ describe("unused-redeemer steps refuse a party other than the thread's prover", 
   it("refuses a stranger's forced step-01, then takes the prover's", async () => {
     const s = await scene(FORCED_OUT_OF_RANGE);
     const { harness, scenario } = s;
-    const init = await submitDirectPurposeInit({
+    const init = await buildAndSubmitUnjournaled(buildDirectPurposeInit, {
       family: UNUSED_REDEEMER_FAMILY,
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
@@ -350,17 +351,20 @@ describe("unused-redeemer steps refuse a party other than the thread's prover", 
     expect(outRefLabel(await threadAt(s, firstStep, unit))).toBe(
       outRefLabel(thread),
     );
-    const step01 = await submitDirectPurposeStep01Forced({
-      family: UNUSED_REDEEMER_FAMILY,
-      lucid: harness.proverLucid,
-      contracts: harness.direct,
-      categoryId: harness.category.categoryId,
-      signer: harness.proverSigner,
-      threadOutRef: outRefLabel(thread),
-      material: scenario.material,
-      referenceScriptUtxo: s.reference("step01"),
-      reconstruction: scenario.block.reconstruction,
-    });
+    const step01 = await buildAndSubmitUnjournaled(
+      buildDirectPurposeStep01Forced,
+      {
+        family: UNUSED_REDEEMER_FAMILY,
+        lucid: harness.proverLucid,
+        contracts: harness.direct,
+        categoryId: harness.category.categoryId,
+        signer: harness.proverSigner,
+        threadOutRef: outRefLabel(thread),
+        material: scenario.material,
+        referenceScriptUtxo: s.reference("step01"),
+        reconstruction: scenario.block.reconstruction,
+      },
+    );
     const advanced = await threadAt(
       s,
       harness.direct.steps[1]!.spendingScriptAddress,

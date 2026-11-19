@@ -15,9 +15,9 @@ export {
   withdrawalMistagStepPayloadCbor,
 } from "./submit-withdrawal-mistag-steps.step-args.js";
 export {
-  submitWithdrawalMistagIntermediateStep,
-  submitWithdrawalMistagStep01,
-  submitWithdrawalMistagStep02,
-  submitWithdrawalMistagStep03,
-  submitWithdrawalMistagStep04,
+  buildWithdrawalMistagIntermediateStep,
+  buildWithdrawalMistagStep01,
+  buildWithdrawalMistagStep02,
+  buildWithdrawalMistagStep03,
+  buildWithdrawalMistagStep04,
 } from "./submit-withdrawal-mistag-steps.submit-withdrawal-mistag-intermediate-step.js";

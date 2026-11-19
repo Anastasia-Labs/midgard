@@ -9,19 +9,8 @@ import { Data } from "@lucid-evolution/lucid";
 import { getAddressDetails } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import {
-  certifyFaultProofFieldCarriage,
-  planFaultProofFieldOpening,
-  publishFaultProofFieldCarriage,
-} from "../src/field-opening.js";
-import {
-  type BoundDuplicateInput,
-  submitInputSetUniquenessForcedStep01,
-  submitInputSetUniquenessInit,
-  submitInputSetUniquenessStep03,
-  submitInputSetUniquenessStep04Advance,
-  submitInputSetUniquenessStep04Finalize,
-} from "../src/input-set-uniqueness/index.js";
+import { planFaultProofFieldOpening } from "../src/field-opening.js";
+import { type BoundDuplicateInput } from "../src/input-set-uniqueness/index.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
@@ -46,6 +35,17 @@ import {
   network,
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
+import {
+  submitInputSetUniquenessForcedStep01,
+  submitInputSetUniquenessInit,
+  submitInputSetUniquenessStep03,
+  submitInputSetUniquenessStep04Advance,
+  submitInputSetUniquenessStep04Finalize,
+} from "./support/submit-unjournaled.input-set-uniqueness.js";
+import {
+  certifyCarriageUnjournaled,
+  publishCarriageUnjournaled,
+} from "./support/submit-unjournaled.js";
 
 /** The accused pair of a forced `DuplicateInput` rejection. */
 export type AccusedInputPair = Omit<BoundDuplicateInput, "subject">;
@@ -168,13 +168,13 @@ export const exerciseForcedLifecycle = async ({
   expect(spendPlan.plan.tier).toBe("Inline");
   expect(referencePlan.plan.tier).toBe("Certified");
   const spendPublication = {
-    result: [] as Awaited<ReturnType<typeof publishFaultProofFieldCarriage>>,
+    result: [] as Awaited<ReturnType<typeof publishCarriageUnjournaled>>,
     measurements: [] as CompleteSignedTransactionMeasurement[],
   };
   const referencePublication = await captureEmulatorSubmission(
     harness.emulator,
     () =>
-      publishFaultProofFieldCarriage({
+      publishCarriageUnjournaled({
         ownOutputs,
         lucid: harness.proverLucid,
         signer: harness.proverSigner,
@@ -203,7 +203,7 @@ export const exerciseForcedLifecycle = async ({
     chunks: typeof spendPublication.result,
   ) =>
     await captureEmulatorSubmission(harness.emulator, () =>
-      certifyFaultProofFieldCarriage({
+      certifyCarriageUnjournaled({
         ownOutputs,
         lucid: harness.proverLucid,
         network,

@@ -21,10 +21,10 @@ import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
+  buildWithdrawnInputInit,
+  buildWithdrawnInputStep01,
+  buildWithdrawnInputStep02,
   prepareWithdrawnInputFromMaterial,
-  submitWithdrawnInputInit,
-  submitWithdrawnInputStep01,
-  submitWithdrawnInputStep02,
   type WithdrawnInputCatalogueCategory,
 } from "../../src/index.js";
 import type { SubmitStep01TxInclusion } from "../../src/step-support.js";
@@ -41,6 +41,10 @@ import {
   submitSetupTx,
   trieRootHex,
 } from "./submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  submitTurnsUnjournaled,
+} from "./submit-unjournaled.js";
 
 export type WithdrawnInputFixtureMode =
   | "fault"
@@ -309,7 +313,7 @@ export const makeWithdrawnInputEmulatorScenario = async (
     scriptHash: contracts.steps[0].spendingScriptHash,
     membershipProofCbor: category.membershipProofCbor,
   };
-  const init = await submitWithdrawnInputInit({
+  const init = await buildAndSubmitUnjournaled(buildWithdrawnInputInit, {
     lucid: harness.proverLucid,
     blueprint: harness.realBlueprint,
     network,
@@ -340,7 +344,7 @@ export const makeWithdrawnInputEmulatorScenario = async (
 export const advanceWithdrawnInputToStep03 = async (
   scenario: Awaited<ReturnType<typeof makeWithdrawnInputEmulatorScenario>>,
 ) => {
-  const step01 = await submitWithdrawnInputStep01({
+  const step01 = await buildAndSubmitUnjournaled(buildWithdrawnInputStep01, {
     lucid: scenario.harness.proverLucid,
     blueprint: scenario.harness.realBlueprint,
     contracts: scenario.contracts,
@@ -353,7 +357,7 @@ export const advanceWithdrawnInputToStep03 = async (
     referenceScriptUtxo: scenario.references[0],
     witnessReferenceScripts: scenario.harness.witnessReferenceScripts,
   });
-  const step02 = await submitWithdrawnInputStep02({
+  const step02 = await submitTurnsUnjournaled(buildWithdrawnInputStep02, {
     lucid: scenario.harness.proverLucid,
     contracts: scenario.contracts,
     categoryId: scenario.category.categoryId,

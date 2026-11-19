@@ -7,11 +7,10 @@ import {
 } from "../src/field-opening.js";
 import { nextMintFieldCursor } from "../src/mint-item-non-canonical/field-scan.js";
 import {
-  submitMintItemNonCanonicalStep01Accepted,
-  submitMintItemNonCanonicalStep02,
-  submitMintItemNonCanonicalStep04,
+  buildMintItemNonCanonicalStep01Accepted,
+  buildMintItemNonCanonicalStep02,
+  buildMintItemNonCanonicalStep04,
 } from "../src/mint-item-non-canonical/index.js";
-import { captureLocallyEvaluatedTransaction } from "../src/workflow/transaction-boundary.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
@@ -39,6 +38,11 @@ import {
   mintItem,
 } from "./support/mint-item-vectors.js";
 import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
+import {
+  buildAndSubmitUnjournaled,
+  type SubmittedStep,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 
 describe("mintItemNonCanonical registered Lucid Evolution lifecycle", () => {
   it("proves grammar and ordering faults, refuses honest mint/burn and forged evidence, cancels, resumes and removes", async () => {
@@ -168,7 +172,7 @@ describe("mintItemNonCanonical registered Lucid Evolution lifecycle", () => {
           init.result.firstStepOutputIndex,
         );
         return measured(() =>
-          submitMintItemNonCanonicalStep01Accepted({
+          buildAndSubmitUnjournaled(buildMintItemNonCanonicalStep01Accepted, {
             lucid: harness.proverLucid,
             blueprint: harness.realBlueprint,
             network: "Custom",
@@ -240,7 +244,7 @@ describe("mintItemNonCanonical registered Lucid Evolution lifecycle", () => {
       const open = async () => {
         let openingRef = bound.nextThreadOutRef;
         let carriage:
-          | Awaited<ReturnType<typeof submitMintItemNonCanonicalStep02>>
+          | SubmittedStep<typeof buildMintItemNonCanonicalStep02>
           | undefined;
         for (;;) {
           if (carriage !== undefined) {
@@ -261,7 +265,7 @@ describe("mintItemNonCanonical registered Lucid Evolution lifecycle", () => {
             continue;
           }
           const advanced = await measured(() =>
-            submitMintItemNonCanonicalStep02({
+            submitTurnsUnjournaled(buildMintItemNonCanonicalStep02, {
               ...common(openingRef, 1),
               evidence,
               nativeTxCompactCbor: inclusion.nativeTxCompactCbor,
@@ -424,13 +428,11 @@ describe("mintItemNonCanonical registered Lucid Evolution lifecycle", () => {
         };
         if (i === 0) {
           const finalized = await measured(() =>
-            submitMintItemNonCanonicalStep04(args),
+            buildAndSubmitUnjournaled(buildMintItemNonCanonicalStep04, args),
           );
           expect(finalized.fraudProofUnit).toBeTruthy();
         } else {
-          await captureLocallyEvaluatedTransaction((preSubmitBoundary) =>
-            submitMintItemNonCanonicalStep04({ ...args, preSubmitBoundary }),
-          );
+          await buildMintItemNonCanonicalStep04(args);
           await registered.cancel(threadOutRef, 3);
         }
       }

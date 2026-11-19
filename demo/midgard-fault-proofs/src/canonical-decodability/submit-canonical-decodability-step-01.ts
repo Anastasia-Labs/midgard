@@ -48,7 +48,8 @@ import {
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
 } from "../runtime.js";
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import {
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
   requireNativeTxMatchesCompactCbor,
@@ -59,8 +60,10 @@ import {
   type FaultProofWitnessReferenceScripts,
   witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
-import { workflowReferenceScriptsUsedByTransaction } from "../workflow/transaction-boundary.js";
+import {
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
+} from "../workflow/transaction-boundary.js";
 import type { CanonicalDecodabilityContracts } from "./contracts.js";
 import { deriveCanonicalDecodabilityNextOutput } from "./derive-canonical-decodability-next-output.js";
 import { prepareCanonicalDecodability } from "./prepare-canonical-decodability.js";
@@ -73,8 +76,8 @@ import {
 
 const STEP_LABEL = canonicalDecodabilityStepLabel(0);
 
-export type SubmitCanonicalDecodabilityStep01Result = {
-  readonly txHash: string;
+export type CanonicalDecodabilityStep01Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -92,10 +95,12 @@ export type SubmitCanonicalDecodabilityStep01Result = {
   readonly verdict: number | null;
   readonly inputIndex: number;
   readonly outputIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
 
-export const submitCanonicalDecodabilityStep01 = async ({
+export type SubmitCanonicalDecodabilityStep01Result =
+  UnjournaledSubmission<CanonicalDecodabilityStep01Build>;
+
+export const buildCanonicalDecodabilityStep01 = async ({
   lucid,
   blueprint,
   contracts,
@@ -114,8 +119,6 @@ export const submitCanonicalDecodabilityStep01 = async ({
   fieldCertificatePolicyId,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -139,9 +142,7 @@ export const submitCanonicalDecodabilityStep01 = async ({
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitCanonicalDecodabilityStep01Result> => {
+}): Promise<CanonicalDecodabilityStep01Build> => {
   const { threadUtxo, threadToken } =
     await requireCanonicalDecodabilityThreadUtxo({
       lucid,
@@ -408,38 +409,32 @@ export const submitCanonicalDecodabilityStep01 = async ({
       "BuildTxWithRedeemer did not resolve the step-01 layout.",
     );
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: "canonical-decodability step-01",
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: "V1 fraud-proof canonical-decodability step-01",
-          utxo: referenceScriptUtxo,
-          expectedScript: contracts.steps[0].spendingScript,
-        },
-        {
-          role: "membership proof withdrawal",
-          utxo: witnessReferenceScripts?.phasMembershipWithdraw,
-          expectedScript: phasMembershipScript,
-        },
-        {
-          role: "V1 MPF chunked-verify withdrawal",
-          utxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
-          expectedScript: chunkedVerifyScript,
-        },
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: "V1 fraud-proof canonical-decodability step-01",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.steps[0].spendingScript,
+      },
+      {
+        role: "membership proof withdrawal",
+        utxo: witnessReferenceScripts?.phasMembershipWithdraw,
+        expectedScript: phasMembershipScript,
+      },
+      {
+        role: "V1 MPF chunked-verify withdrawal",
+        utxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
+        expectedScript: chunkedVerifyScript,
+      },
+    ],
   });
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
     threadOutRef,
-    nextThreadOutRef: `${txHash}#${resolvedLayout.outputIndex.toString()}`,
+    nextThreadOutRef: `${transaction.txHash}#${resolvedLayout.outputIndex.toString()}`,
     stateQueueBlockOutRef,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadUnit: threadToken.unit,
@@ -450,6 +445,5 @@ export const submitCanonicalDecodabilityStep01 = async ({
     verdict: nextOutput.verdict,
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
-    awaitedConfirmation: awaitConfirmation,
   };
 };

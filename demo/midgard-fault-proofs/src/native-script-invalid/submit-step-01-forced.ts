@@ -19,11 +19,10 @@ import {
   requireLinearFaultReferenceScript,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { requireInitialStepDatum } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { NativeScriptInvalidContracts } from "./contracts.js";
 
 type NativeScriptInvalidStep01SpendRedeemer = Data.Static<
@@ -54,7 +53,7 @@ type ForcedPayload = Omit<
   readonly membership: ForcedTransactionSourceMembershipProof;
 };
 
-export const submitNativeScriptInvalidStep01Forced = async ({
+export const buildNativeScriptInvalidStep01Forced = async ({
   lucid,
   contracts,
   categoryId,
@@ -63,8 +62,6 @@ export const submitNativeScriptInvalidStep01Forced = async ({
   state,
   forcedSource,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: NativeScriptInvalidContracts;
@@ -74,8 +71,6 @@ export const submitNativeScriptInvalidStep01Forced = async ({
   readonly state: NativeScriptInvalidStep02State;
   readonly forcedSource: ForcedPayload;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   if (state.subject.direction !== 1n)
     throw new Error(
@@ -140,7 +135,7 @@ export const submitNativeScriptInvalidStep01Forced = async ({
       NativeScriptInvalidStep01SpendRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -151,10 +146,11 @@ export const submitNativeScriptInvalidStep01Forced = async ({
     nextAddress: contracts.steps[1].spendingScriptAddress,
     nextDatum: datum,
     redeemer,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined)
     throw new Error("nativeScriptInvalid: layout unresolved");
-  return { txHash, nextThreadOutRef: `${txHash}#${outputIndex.toString()}` };
+  return {
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
+  };
 };

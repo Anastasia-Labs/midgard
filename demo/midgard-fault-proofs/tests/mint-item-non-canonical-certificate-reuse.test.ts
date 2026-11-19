@@ -9,8 +9,8 @@ import { acceptedVerdictSubject } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
-  submitMintItemNonCanonicalStep01Accepted,
-  submitMintItemNonCanonicalStep02,
+  buildMintItemNonCanonicalStep01Accepted,
+  buildMintItemNonCanonicalStep02,
 } from "../src/mint-item-non-canonical/index.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { fieldPreimageCertificateCount } from "./support/captured-step-turns.js";
@@ -27,6 +27,10 @@ import {
   mintField,
 } from "./support/mint-item-vectors.js";
 import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
+import {
+  buildAndSubmitUnjournaled,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 
 const MAXIMUM_TURNS = 40;
 
@@ -67,26 +71,29 @@ describe("mintItemNonCanonical step 02 over a Certified mint field", () => {
     expect(evidence.canonical).toBe(false);
     expect(evidence.carriage).toBe("Certified");
     const init = await registered.init(setup.fraudulentBlockOutRef);
-    const bound = await submitMintItemNonCanonicalStep01Accepted({
-      lucid: harness.proverLucid,
-      blueprint: harness.realBlueprint,
-      network: "Custom",
-      contracts,
-      signer: harness.proverSigner,
-      finding: evidence,
-      threadUtxo: await registered.threadUtxoOf(
-        init.result.txHash,
-        init.result.firstStepOutputIndex,
-      ),
-      threadToken: {
-        unit: init.result.computationThreadUnit,
-        fraudulentHeaderHash: init.result.fraudulentHeaderHash,
+    const bound = await buildAndSubmitUnjournaled(
+      buildMintItemNonCanonicalStep01Accepted,
+      {
+        lucid: harness.proverLucid,
+        blueprint: harness.realBlueprint,
+        network: "Custom",
+        contracts,
+        signer: harness.proverSigner,
+        finding: evidence,
+        threadUtxo: await registered.threadUtxoOf(
+          init.result.txHash,
+          init.result.firstStepOutputIndex,
+        ),
+        threadToken: {
+          unit: init.result.computationThreadUnit,
+          fraudulentHeaderHash: init.result.fraudulentHeaderHash,
+        },
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+        txInclusion: inclusion,
+        referenceScriptUtxo: references[0]!,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       },
-      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-      txInclusion: inclusion,
-      referenceScriptUtxo: references[0]!,
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-    });
+    );
     const certificates = () =>
       fieldPreimageCertificateCount({
         lucid: harness.proverLucid,
@@ -97,15 +104,18 @@ describe("mintItemNonCanonical step 02 over a Certified mint field", () => {
     let threadOutRef = bound.nextThreadOutRef;
     const counts: bigint[] = [];
     for (let turn = 0; turn < MAXIMUM_TURNS; turn += 1) {
-      const advanced = await submitMintItemNonCanonicalStep02({
-        ...common(threadOutRef, 1),
-        ownOutputs,
-        evidence,
-        nativeTxCompactCbor: inclusion.nativeTxCompactCbor,
-        witnessSetCompactCbor: witnessSetCborOf(tx),
-        publishCarriage: evidence.carriage === "RawUtxo",
-        certificateReferenceScriptUtxo: certificateReference,
-      });
+      const advanced = await submitTurnsUnjournaled(
+        buildMintItemNonCanonicalStep02,
+        {
+          ...common(threadOutRef, 1),
+          ownOutputs,
+          evidence,
+          nativeTxCompactCbor: inclusion.nativeTxCompactCbor,
+          witnessSetCompactCbor: witnessSetCborOf(tx),
+          publishCarriage: evidence.carriage === "RawUtxo",
+          certificateReferenceScriptUtxo: certificateReference,
+        },
+      );
       expect(advanced.carriageTier).toBe("Certified");
       counts.push(await certificates());
       threadOutRef = advanced.nextThreadOutRef;

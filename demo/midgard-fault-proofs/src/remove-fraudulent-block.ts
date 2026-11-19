@@ -21,6 +21,7 @@ import "./remove-fraudulent-block.resolve-state-queue-slashing-approach.js";
 import "./remove-fraudulent-block.make-state-queue-remove-mint-redeemer.js";
 import "./remove-fraudulent-block.submit-remove-fraudulent-block.js";
 import "./remove-fraudulent-block.submit-remove-fraudulent-block-from-files.js";
+
 export {
   fraudRemovalUsesWalletCoinSelection,
   fraudSlashEconomicsFromDeploymentManifest,
@@ -37,6 +38,11 @@ export {
   STATE_QUEUE_REMOVAL_VALIDITY_BACKDATE_MS,
   STATE_QUEUE_REMOVAL_VALIDITY_WINDOW_MS,
 } from "./remove-fraudulent-block.assert-exact-fraud-slash-lovelace-conservation.js";
+export {
+  buildRemoveFraudulentBlock,
+  type RemoveFraudulentBlockBuild,
+  type RemoveFraudulentBlockContext,
+} from "./remove-fraudulent-block.build-remove-fraudulent-block.js";
 export {
   createLocalStateQueueMutationLeaseCoordinator,
   LOCAL_STATE_QUEUE_MUTATION_LEASE_SOURCE,

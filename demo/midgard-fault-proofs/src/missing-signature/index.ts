@@ -2,7 +2,6 @@ export * from "./contracts.js";
 export * from "./evidence.js";
 export * from "./finding.js";
 export * from "./forced-artifact.js";
-export * from "./prover.js";
 export * from "./submit-common.js";
 export * from "./submit-forced.js";
 export * from "./submit-missing-signature-init.js";

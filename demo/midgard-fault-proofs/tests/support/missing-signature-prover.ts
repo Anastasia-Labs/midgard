@@ -11,17 +11,17 @@
 import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "effect";
-import "../runtime.js";
-import "./finding.js";
-import "./submit-common.js";
-import "./submit-missing-signature-init.js";
-import "./submit-missing-signature-step-01.js";
-import "./submit-missing-signature-step-02.js";
-import "./submit-missing-signature-step-03.js";
-import "./submit-missing-signature-step-04.js";
-import "./prover.assert-evidence-coherent.js";
-import "./prover.run-missing-signature-prover.js";
-import "./prover.prove-missing-signature-fault.js";
+import "../../src/runtime.js";
+import "../../src/missing-signature/finding.js";
+import "../../src/missing-signature/submit-common.js";
+import "../../src/missing-signature/submit-missing-signature-init.js";
+import "../../src/missing-signature/submit-missing-signature-step-01.js";
+import "../../src/missing-signature/submit-missing-signature-step-02.js";
+import "../../src/missing-signature/submit-missing-signature-step-03.js";
+import "../../src/missing-signature/submit-missing-signature-step-04.js";
+import "./missing-signature-prover.assert-evidence-coherent.js";
+import "./missing-signature-prover.run-missing-signature-prover.js";
+import "./missing-signature-prover.prove-missing-signature-fault.js";
 export {
   locateMissingSignatureThread,
   MISSING_SIGNATURE_PROVER_POLICY_DEFAULTS,
@@ -35,6 +35,6 @@ export {
   type MissingSignatureReferenceScripts,
   type MissingSignatureSubjectEvidence,
   type MissingSignatureThreadPosition,
-} from "./prover.assert-evidence-coherent.js";
-export { proveMissingSignatureFault } from "./prover.prove-missing-signature-fault.js";
-export { runMissingSignatureProver } from "./prover.run-missing-signature-prover.js";
+} from "./missing-signature-prover.assert-evidence-coherent.js";
+export { proveMissingSignatureFault } from "./missing-signature-prover.prove-missing-signature-fault.js";
+export { runMissingSignatureProver } from "./missing-signature-prover.run-missing-signature-prover.js";

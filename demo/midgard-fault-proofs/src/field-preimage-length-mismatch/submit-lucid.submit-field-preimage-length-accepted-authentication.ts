@@ -15,33 +15,28 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import { requireInitialStepDatum } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
-import { workflowReferenceScriptsUsedByTransaction } from "../workflow/transaction-boundary.js";
 import type { ManifestBoundFieldPreimageLengthConfig } from "./config.js";
+import type { FieldPreimageLengthForcedDispatchBuild } from "./submit-lucid.submit-field-preimage-length-cancel.js";
 import {
   type FieldPreimageLengthClaimResolver,
   LABEL,
   requireReference,
   requireThread,
-  type SubmitFieldPreimageLengthForcedDispatchResult,
 } from "./submit-lucid.submit-field-preimage-length-cancel.js";
 import type { PreparedFieldPreimageLengthWorkflow } from "./workflow.js";
 
 /** Real Lucid step-01 dispatch; step 02 derives direction from the authenticated leaf. */
-export const submitFieldPreimageLengthForcedDispatch = async ({
+export const buildFieldPreimageLengthForcedDispatch = async ({
   config,
   threadOutRef,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly config: ManifestBoundFieldPreimageLengthConfig;
   readonly threadOutRef: string;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitFieldPreimageLengthForcedDispatchResult> => {
+}): Promise<FieldPreimageLengthForcedDispatchBuild> => {
   const { threadUtxo, threadToken, step } = await requireThread({
     config,
     threadOutRef,
@@ -110,24 +105,18 @@ export const submitFieldPreimageLengthForcedDispatch = async ({
     throw new Error(`${LABEL}: forced dispatch layout did not resolve`);
   }
   const resolvedLayout = layout;
-  const txHash = await submitStep(config.lucid, signed, {
-    label: `${LABEL} step-01 forced`,
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: "V1 field-preimage-length step-01",
-          utxo: reference,
-          expectedScript: step.spendingScript,
-        },
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: "V1 field-preimage-length step-01",
+        utxo: reference,
+        expectedScript: step.spendingScript,
+      },
+    ],
   });
   return {
-    txHash,
-    nextThreadOutRef: `${txHash}#${resolvedLayout.outputIndex.toString()}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${resolvedLayout.outputIndex.toString()}`,
     computationThreadUnit: threadToken.unit,
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
@@ -135,15 +124,13 @@ export const submitFieldPreimageLengthForcedDispatch = async ({
 };
 
 /** Authenticates an accepted source's inline field opening into terminal state. */
-export const submitFieldPreimageLengthAcceptedAuthentication = async ({
+export const buildFieldPreimageLengthAcceptedAuthentication = async ({
   config,
   threadOutRef,
   claim,
   claimResolver,
   prepared,
   carriageReferenceInputs = [],
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly config: ManifestBoundFieldPreimageLengthConfig;
   readonly threadOutRef: string;
@@ -151,9 +138,7 @@ export const submitFieldPreimageLengthAcceptedAuthentication = async ({
   readonly claimResolver?: FieldPreimageLengthClaimResolver;
   readonly prepared: PreparedFieldPreimageLengthWorkflow;
   readonly carriageReferenceInputs?: readonly UTxO[];
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitFieldPreimageLengthForcedDispatchResult> => {
+}): Promise<FieldPreimageLengthForcedDispatchBuild> => {
   if (prepared.direction !== "wrongfulAcceptance") {
     throw new Error(
       `${LABEL}: accepted authenticator received forced evidence`,
@@ -235,24 +220,18 @@ export const submitFieldPreimageLengthAcceptedAuthentication = async ({
   );
   if (layout === undefined) throw new Error(`${LABEL}: layout did not resolve`);
   const resolved = layout;
-  const txHash = await submitStep(config.lucid, signed, {
-    label: `${LABEL} step-02`,
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: "V1 field-preimage-length accepted step-02",
-          utxo: reference,
-          expectedScript: step.spendingScript,
-        },
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: "V1 field-preimage-length accepted step-02",
+        utxo: reference,
+        expectedScript: step.spendingScript,
+      },
+    ],
   });
   return {
-    txHash,
-    nextThreadOutRef: `${txHash}#${resolved.outputIndex.toString()}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${resolved.outputIndex.toString()}`,
     computationThreadUnit: threadToken.unit,
     inputIndex: Number(resolved.inputIndex),
     outputIndex: Number(resolved.outputIndex),

@@ -14,6 +14,10 @@ import {
   type ResolvedProverSigner,
   type SubmitProviderConfig,
 } from "./runtime.js";
+import {
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
+} from "./workflow/transaction-boundary.js";
 
 /** Prepared reference-inputs preimage produced by `prepare-reference-input-no-idx`. */
 export type SubmitReferenceInputNoIdxReferenceInputsPreimage = {
@@ -94,8 +98,8 @@ export type SubmitReferenceInputNoIdxStep02CliConfig = SubmitProviderConfig & {
   readonly awaitConfirmation?: boolean;
 };
 
-export type SubmitReferenceInputNoIdxStep02Result = {
-  readonly txHash: string;
+export type ReferenceInputNoIdxStep02Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -117,8 +121,10 @@ export type SubmitReferenceInputNoIdxStep02Result = {
   readonly badReferenceInputOutputIndex: number;
   readonly inputIndex: number;
   readonly outputIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
+
+export type SubmitReferenceInputNoIdxStep02Result =
+  UnjournaledSubmission<ReferenceInputNoIdxStep02Build>;
 
 export type ReferenceInputNoIdxStep02Layout = {
   readonly inputIndex: bigint;

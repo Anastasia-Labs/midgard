@@ -46,7 +46,7 @@ const interruptedRemoval = async () => {
   let submissions = 0;
   await expect(
     submitRemovalForFixture(fixture, {
-      preSubmitBoundary: async () => {
+      beforeSubmit: async () => {
         submissions += 1;
         if (submissions > 1) throw new Error("prover stopped");
       },

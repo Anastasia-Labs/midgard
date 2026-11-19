@@ -15,10 +15,9 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { RedeemerCanonicityContracts } from "./contracts.js";
 import { redeemerDataScanState, redeemerDataStepArgs } from "./data-plan.js";
 import type { RedeemerCanonicityEvidence } from "./family.js";
@@ -51,7 +50,7 @@ type DataScanState = {
  * data's verdict. The planned step is the one whose checkpoint the thread
  * holds, so a restart resumes where the chain stands.
  */
-export const submitRedeemerCanonicityStep02Data = async ({
+export const buildRedeemerCanonicityStep02Data = async ({
   lucid,
   contracts,
   categoryId,
@@ -59,8 +58,6 @@ export const submitRedeemerCanonicityStep02Data = async ({
   threadOutRef,
   evidence,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: RedeemerCanonicityContracts;
@@ -69,8 +66,6 @@ export const submitRedeemerCanonicityStep02Data = async ({
   readonly threadOutRef: string;
   readonly evidence: RedeemerCanonicityEvidence;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const plan = evidence.dataPlan;
   if (plan === null)
@@ -155,7 +150,7 @@ export const submitRedeemerCanonicityStep02Data = async ({
       RedeemerCanonicityStep02DataRedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -167,14 +162,12 @@ export const submitRedeemerCanonicityStep02Data = async ({
     nextDatum,
     redeemer,
     carriageUtxos: [],
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined)
     throw new Error(`${FAMILY}: step-02 data layout unresolved`);
   return {
-    txHash,
-    nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
     finished,
     nextStage: finished ? ("step03" as const) : ("step02Data" as const),
   };

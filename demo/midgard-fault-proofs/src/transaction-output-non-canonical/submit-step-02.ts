@@ -12,6 +12,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { isPrerequisiteTurn } from "../fault-proof-turn.js";
 import {
   type FaultProofFieldGrammarDeployment,
   routeFaultProofFieldGrammar,
@@ -27,14 +28,13 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { TransactionOutputNonCanonicalContracts } from "./contracts.js";
 import {
   TransactionOutputStep02DatumSchema,
@@ -47,7 +47,7 @@ import {
   transactionOutputScanControlData,
 } from "./transaction-output-non-canonical.js";
 
-export const submitTransactionOutputNonCanonicalStep02 = async ({
+export const buildTransactionOutputNonCanonicalStep02 = async ({
   lucid,
   contracts,
   categoryId,
@@ -61,11 +61,7 @@ export const submitTransactionOutputNonCanonicalStep02 = async ({
   certificateUtxo: suppliedCertificateUtxo,
   certificateReferenceScriptUtxo,
   referenceScriptUtxo,
-  publicationPreSubmitBoundary,
-  certificatePreSubmitBoundary,
   fieldGrammar,
-  preSubmitBoundary,
-  awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
@@ -81,12 +77,8 @@ export const submitTransactionOutputNonCanonicalStep02 = async ({
   readonly certificateUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
   readonly certificateReferenceScriptUtxo?: UTxO;
-  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly certificatePreSubmitBoundary?: FraudProofPreSubmitBoundary;
   /** The field grammar certificate, for a field past the walked limit. */
   readonly fieldGrammar?: FaultProofFieldGrammarDeployment;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
 }) => {
@@ -136,8 +128,8 @@ export const submitTransactionOutputNonCanonicalStep02 = async ({
       planned,
       publisherAddress: signer.proofMaterialsAddress,
       label: "transaction-output-non-canonical field opening",
-      preSubmitBoundary: publicationPreSubmitBoundary,
     }));
+  if (isPrerequisiteTurn(carriageUtxos)) return carriageUtxos;
   const certificateUtxo =
     suppliedCertificateUtxo ??
     (planned.plan.tier === "Certified"
@@ -156,9 +148,9 @@ export const submitTransactionOutputNonCanonicalStep02 = async ({
           chunkUtxos: carriageUtxos,
           compactCbor: nativeTxCompactCbor,
           witnessSetCompactCbor,
-          preSubmitBoundary: certificatePreSubmitBoundary,
         })
       : undefined);
+  if (isPrerequisiteTurn(certificateUtxo)) return certificateUtxo;
   const grammar = await routeFaultProofFieldGrammar({
     lucid,
     signer,
@@ -249,7 +241,7 @@ export const submitTransactionOutputNonCanonicalStep02 = async ({
       TransactionOutputStep02RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -265,16 +257,14 @@ export const submitTransactionOutputNonCanonicalStep02 = async ({
       ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
       ...grammar.referenceInputs,
     ],
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined)
     throw new Error(
       "transaction-output-non-canonical: step-02 layout unresolved",
     );
   return {
-    txHash,
-    nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
     carriageTier: planned.plan.tier,
     nextStage: evidence.absent ? ("step04" as const) : ("step03" as const),
   };

@@ -30,14 +30,14 @@ import {
   requireInputExistenceTerminalResult,
 } from "./support/input-existence-execution-context.js";
 import {
-  neSubmitStep01,
-  neSubmitStep02,
-  neSubmitStep03,
-  neSubmitStep04,
   parseSubmitStep01TxInclusion,
   submitInit,
   submitInvalidRangeStep01,
   submitInvalidRangeStep02V1,
+  submitNonExistentInputStep01,
+  submitNonExistentInputStep02,
+  submitNonExistentInputStep03,
+  submitNonExistentInputStep04,
   submitZeroInputStep01,
   submitZeroInputStep02V1,
 } from "./support/legacy-submit-emulator.js";
@@ -859,7 +859,7 @@ describe("fault-proof emulator integration", () => {
     const step01ResultCapture = await captureEmulatorSubmission(
       emulator,
       async () =>
-        neSubmitStep01({
+        submitNonExistentInputStep01({
           ...stageArguments,
           threadOutRef: outRefLabel(firstStepUtxo),
         }),
@@ -897,7 +897,7 @@ describe("fault-proof emulator integration", () => {
       ).toString("hex"),
     };
     await expect(
-      neSubmitStep02({
+      submitNonExistentInputStep02({
         ...stageArguments,
         prepared: { ...context.prepared, source: tamperedSource },
         threadOutRef: outRefLabel(secondStepUtxo),
@@ -919,7 +919,7 @@ describe("fault-proof emulator integration", () => {
     const step02ResultCapture = await captureEmulatorSubmission(
       emulator,
       async () =>
-        neSubmitStep02({
+        submitNonExistentInputStep02({
           ...stageArguments,
           ...selectionCarriage,
           threadOutRef: outRefLabel(secondStepUtxo),
@@ -938,7 +938,7 @@ describe("fault-proof emulator integration", () => {
     const step03ResultCapture = await captureEmulatorSubmission(
       emulator,
       async () =>
-        neSubmitStep03({
+        submitNonExistentInputStep03({
           ...stageArguments,
           threadOutRef: outRefLabel(thirdStepUtxo),
         }),
@@ -956,7 +956,7 @@ describe("fault-proof emulator integration", () => {
     const step04ResultCapture = await captureEmulatorSubmission(
       emulator,
       async () =>
-        neSubmitStep04({
+        submitNonExistentInputStep04({
           ...stageArguments,
           threadOutRef: outRefLabel(fourthStepUtxo),
         }),

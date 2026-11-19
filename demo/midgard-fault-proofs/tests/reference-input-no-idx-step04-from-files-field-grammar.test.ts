@@ -27,13 +27,22 @@ vi.mock("../src/runtime.make-lucid-for-submit.js", async (load) => ({
   ...(await load<typeof import("../src/runtime.make-lucid-for-submit.js")>()),
   makeLucidForSubmit: async () => hooks.lucid,
 }));
+// The command's submission calls the step's builder once and returns what it
+// built, so nothing reaches the provider.
+vi.mock("../src/submit-fault-proof-turns.js", async (load) => ({
+  ...(await load<typeof import("../src/submit-fault-proof-turns.js")>()),
+  submitFaultProofTurns: vi.fn(
+    async (build: (args: unknown) => Promise<unknown>, args: unknown) =>
+      await build(args),
+  ),
+}));
 vi.mock(
   "../src/submit-reference-input-no-idx-step-04.submit-reference-input-no-idx-step04.js",
   () => ({
-    submitReferenceInputNoIdxStep04: vi.fn(async () => ({ txHash: "00" })),
+    buildReferenceInputNoIdxStep04: vi.fn(async () => ({ txHash: "00" })),
   }),
 );
-const { submitReferenceInputNoIdxStep04 } = await import(
+const { buildReferenceInputNoIdxStep04 } = await import(
   "../src/submit-reference-input-no-idx-step-04.submit-reference-input-no-idx-step04.js"
 );
 
@@ -97,10 +106,10 @@ beforeAll(async () => {
 
 describe("submit-reference-input-no-idx-step-04 from files and the field grammar certificate", () => {
   it("hands the step the certificate deployment and the producer's witness set", async () => {
-    vi.mocked(submitReferenceInputNoIdxStep04).mockClear();
+    vi.mocked(buildReferenceInputNoIdxStep04).mockClear();
     await built.run(true);
-    expect(submitReferenceInputNoIdxStep04).toHaveBeenCalledTimes(1);
-    const [call] = vi.mocked(submitReferenceInputNoIdxStep04).mock.calls[0]!;
+    expect(buildReferenceInputNoIdxStep04).toHaveBeenCalledTimes(1);
+    const [call] = vi.mocked(buildReferenceInputNoIdxStep04).mock.calls[0]!;
     expect(call.fieldGrammar).toEqual(built.grammar.fieldGrammar);
     expect(call.witnessSetCompactCbor).toBe(
       built.fixture.producingWitnessSetCompactCbor,
@@ -108,10 +117,10 @@ describe("submit-reference-input-no-idx-step-04 from files and the field grammar
   });
 
   it("fails naming the certificate members when the deployment info lacks them", async () => {
-    vi.mocked(submitReferenceInputNoIdxStep04).mockClear();
+    vi.mocked(buildReferenceInputNoIdxStep04).mockClear();
     await expect(built.run(false)).rejects.toThrow(
       `${LABEL} deployment lacks the field grammar certificate members fieldGrammarCertificateSpend and fieldGrammarCertificateMint`,
     );
-    expect(submitReferenceInputNoIdxStep04).not.toHaveBeenCalled();
+    expect(buildReferenceInputNoIdxStep04).not.toHaveBeenCalled();
   });
 });

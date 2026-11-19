@@ -8,14 +8,15 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  buildWithdrawalMistagStep01,
+  buildWithdrawalMistagStep02,
+  buildWithdrawalMistagStep03,
+  buildWithdrawalMistagStep04,
   prepareWithdrawalMistag,
-  submitWithdrawalMistagStep01,
-  submitWithdrawalMistagStep02,
-  submitWithdrawalMistagStep03,
-  submitWithdrawalMistagStep04,
 } from "../src/withdrawal-mistag/index.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { expectSingleUtxoWithUnit } from "./support/submit-init-emulator-shared.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 import {
   buildWithdrawalMistagEvidenceMaterial,
   driveWithdrawalMistagToFraud,
@@ -125,7 +126,7 @@ describe("withdrawal-mistag over a committed l1_datum the typed encoder cannot r
     // Step-01's membership check refuses these bytes. The refusal is not
     // pinned: step-01 built with traces is too large to publish.
     await expectOnchainRefusal(() =>
-      submitWithdrawalMistagStep01({
+      buildAndSubmitUnjournaled(buildWithdrawalMistagStep01, {
         lucid: harness.proverLucid,
         contracts: harness.withdrawalMistag,
         signer: harness.proverSigner,
@@ -182,31 +183,40 @@ describe("withdrawal-mistag over a committed l1_datum the typed encoder cannot r
       prepared: scenario.prepared,
     };
     const init = await initWithdrawalMistagThread({ harness, scenario });
-    const step01 = await submitWithdrawalMistagStep01({
-      ...common,
-      threadOutRef: init.nextThreadOutRef,
-      hubOracleUtxo: scenario.setup.hubOracle,
-      stateQueueBlockUtxo: await withdrawalMistagBlockUtxo({
-        harness,
-        scenario,
-      }),
-      referenceScriptUtxo: refs[0],
-    });
-    const step02 = await submitWithdrawalMistagStep02({
-      ...common,
-      threadOutRef: step01.nextThreadOutRef,
-      referenceScriptUtxo: refs[1],
-    });
-    const step03 = await submitWithdrawalMistagStep03({
-      ...common,
-      threadOutRef: step02.nextThreadOutRef,
-      referenceScriptUtxo: refs[2],
-    });
+    const step01 = await buildAndSubmitUnjournaled(
+      buildWithdrawalMistagStep01,
+      {
+        ...common,
+        threadOutRef: init.nextThreadOutRef,
+        hubOracleUtxo: scenario.setup.hubOracle,
+        stateQueueBlockUtxo: await withdrawalMistagBlockUtxo({
+          harness,
+          scenario,
+        }),
+        referenceScriptUtxo: refs[0],
+      },
+    );
+    const step02 = await buildAndSubmitUnjournaled(
+      buildWithdrawalMistagStep02,
+      {
+        ...common,
+        threadOutRef: step01.nextThreadOutRef,
+        referenceScriptUtxo: refs[1],
+      },
+    );
+    const step03 = await buildAndSubmitUnjournaled(
+      buildWithdrawalMistagStep03,
+      {
+        ...common,
+        threadOutRef: step02.nextThreadOutRef,
+        referenceScriptUtxo: refs[2],
+      },
+    );
     // Step-04 judges the committed bytes valid and payable and refuses to
     // forward a claim that agrees with that verdict.
     await expectOnchainRefusal(
       () =>
-        submitWithdrawalMistagStep04({
+        buildAndSubmitUnjournaled(buildWithdrawalMistagStep04, {
           ...common,
           threadOutRef: step03.nextThreadOutRef,
           referenceScriptUtxo: refs[3],

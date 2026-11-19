@@ -23,14 +23,13 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { ObserverOrderInvalidContracts } from "./contracts.js";
 import type { ObserverOrderInvalidEvidence } from "./family.js";
 import {
@@ -47,7 +46,7 @@ export type ObserverOrderInvalidStep02Action = Readonly<{
   kind: "authenticate";
 }>;
 
-export const submitObserverOrderInvalidStep02 = async ({
+export const buildObserverOrderInvalidStep02 = async ({
   lucid,
   contracts,
   categoryId,
@@ -58,8 +57,6 @@ export const submitObserverOrderInvalidStep02 = async ({
   staged,
   action,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
@@ -72,8 +69,6 @@ export const submitObserverOrderInvalidStep02 = async ({
   readonly staged: ObserverOrderInvalidStagedPlan;
   readonly action: ObserverOrderInvalidStep02Action;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
 }) => {
@@ -188,7 +183,7 @@ export const submitObserverOrderInvalidStep02 = async ({
       ObserverOrderInvalidStep02RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -202,10 +197,11 @@ export const submitObserverOrderInvalidStep02 = async ({
     carriageUtxos,
     extraReferenceInputs:
       certificateUtxo === undefined ? [] : [certificateUtxo],
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined)
     throw new Error("observerOrderInvalid: step-02 layout unresolved");
-  return { txHash, nextThreadOutRef: `${txHash}#${outputIndex.toString()}` };
+  return {
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
+  };
 };

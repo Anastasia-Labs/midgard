@@ -19,11 +19,11 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { type ResolvedProverSigner } from "../runtime.js";
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, finishStep, fundStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
 } from "../workflow/transaction-boundary.js";
 import type { NativeScriptDecodingContracts } from "./contracts.js";
 import {
@@ -44,8 +44,8 @@ export const STEP_04_INDEX = 5 as const;
 export const OPEN_SUBJECT_LABEL =
   nativeScriptDecodingStepLabel(OPEN_SUBJECT_INDEX);
 
-export type SubmitNativeScriptDecodingStep03Result = {
-  readonly txHash: string;
+export type NativeScriptDecodingStep03Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -59,8 +59,10 @@ export type SubmitNativeScriptDecodingStep03Result = {
   readonly scanState: NativeScriptDecodingScanThreadState;
   readonly inputIndex: number;
   readonly outputIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
+
+export type SubmitNativeScriptDecodingStep03Result =
+  UnjournaledSubmission<NativeScriptDecodingStep03Build>;
 
 // ## Shared plumbing
 
@@ -178,8 +180,6 @@ export const advanceStep03Thread = async ({
   buildRedeemer,
   carriageUtxos,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: NativeScriptDecodingContracts;
@@ -196,9 +196,10 @@ export const advanceStep03Thread = async ({
   ) => string;
   readonly carriageUtxos: readonly UTxO[];
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation: boolean;
-}): Promise<{ readonly txHash: string; readonly layout: Step03Layout }> => {
+}): Promise<{
+  readonly transaction: LocallyEvaluatedTransaction;
+  readonly layout: Step03Layout;
+}> => {
   const stepLabel = nativeScriptDecodingStepLabel(spendingStepIndex);
   const funding = await fundStep(lucid, {
     signer,
@@ -264,35 +265,28 @@ export const advanceStep03Thread = async ({
       : spendingStepIndex === BIND_DESCRIPTOR_INDEX
         ? "V1 fraud-proof native-script-decoding step-03 bind-descriptor"
         : "V1 fraud-proof native-script-decoding step-03 advance-or-close";
-  const txHash = await submitStep(lucid, signed, {
-    label: stepLabel,
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: referenceRole,
-          utxo: referenceScriptUtxo,
-          expectedScript: contracts.steps[spendingStepIndex].spendingScript,
-        },
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: referenceRole,
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.steps[spendingStepIndex].spendingScript,
+      },
+    ],
   });
-  return { txHash, layout: resolvedLayout };
+  return { transaction, layout: resolvedLayout };
 };
 
 export const step03Result = ({
-  txHash,
+  transaction,
   layout,
   signer,
   threadOutRef,
   threadToken,
   destinationAddress,
   scanState,
-  awaitConfirmation,
 }: {
-  readonly txHash: string;
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly layout: Step03Layout;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
@@ -302,19 +296,17 @@ export const step03Result = ({
   };
   readonly destinationAddress: string;
   readonly scanState: NativeScriptDecodingScanThreadState;
-  readonly awaitConfirmation: boolean;
-}): SubmitNativeScriptDecodingStep03Result => ({
-  txHash,
+}): NativeScriptDecodingStep03Build => ({
+  transaction,
   walletSource: signer.source,
   proverAddress: signer.address,
   fraudProver: signer.paymentKeyHash,
   threadOutRef,
-  nextThreadOutRef: `${txHash}#${layout.outputIndex.toString()}`,
+  nextThreadOutRef: `${transaction.txHash}#${layout.outputIndex.toString()}`,
   fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
   computationThreadUnit: threadToken.unit,
   destinationAddress,
   scanState,
   inputIndex: Number(layout.inputIndex),
   outputIndex: Number(layout.outputIndex),
-  awaitedConfirmation: awaitConfirmation,
 });

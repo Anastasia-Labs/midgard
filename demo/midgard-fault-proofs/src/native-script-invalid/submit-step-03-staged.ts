@@ -18,6 +18,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { isPrerequisiteTurn } from "../fault-proof-turn.js";
 import {
   faultProofFieldOpening,
   planFaultProofFieldOpening,
@@ -29,14 +30,13 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   NATIVE_SCRIPT_INVALID_CATEGORY_LABEL as FAMILY,
   type NativeScriptInvalidContracts,
@@ -65,7 +65,7 @@ const Redeemer = asDataType<Redeemer>(
   NativeScriptInvalidStep03SpendRedeemerSchema,
 );
 
-export const submitNativeScriptInvalidStep03StartSignerScan = async ({
+export const buildNativeScriptInvalidStep03StartSignerScan = async ({
   lucid,
   contracts,
   categoryId,
@@ -79,9 +79,6 @@ export const submitNativeScriptInvalidStep03StartSignerScan = async ({
   publishedCarriageUtxos,
   certificateUtxo,
   referenceScriptUtxo,
-  publicationPreSubmitBoundary,
-  preSubmitBoundary,
-  awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
@@ -97,9 +94,6 @@ export const submitNativeScriptInvalidStep03StartSignerScan = async ({
   readonly publishedCarriageUtxos?: readonly UTxO[];
   readonly certificateUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
-  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
 }) => {
@@ -163,8 +157,8 @@ export const submitNativeScriptInvalidStep03StartSignerScan = async ({
       planned,
       publisherAddress: signer.proofMaterialsAddress,
       label: `${label} staged field 7`,
-      preSubmitBoundary: publicationPreSubmitBoundary,
     }));
+  if (isPrerequisiteTurn(carriageUtxos)) return carriageUtxos;
   const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
@@ -222,7 +216,7 @@ export const submitNativeScriptInvalidStep03StartSignerScan = async ({
       Redeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -236,13 +230,11 @@ export const submitNativeScriptInvalidStep03StartSignerScan = async ({
     carriageUtxos,
     extraReferenceInputs:
       certificateUtxo === undefined ? [] : [certificateUtxo],
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined) throw new Error(`${label}: unresolved layout`);
   return {
-    txHash,
-    nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
     checkpointBytes: next.checkpointBytes,
     checkpointHash: next.checkpointHash,
     signerCount: next.signerCount,

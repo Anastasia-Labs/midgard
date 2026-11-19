@@ -56,11 +56,11 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
+  buildInputNoIdxStep01,
+  buildInputNoIdxStep02,
+  buildInputNoIdxStep03,
+  buildInputNoIdxStep04,
   midgardTxOutputFromCanonicalCbor,
-  submitInputNoIdxStep01,
-  submitInputNoIdxStep02,
-  submitInputNoIdxStep03,
-  submitInputNoIdxStep04,
   submitRemoveFraudulentBlock,
 } from "../src/index.js";
 import {
@@ -76,7 +76,7 @@ import {
   measureStep02ProofTransaction,
   startInputNoIdxStep02Thread,
 } from "./submit-init-emulator-input-no-idx.measure-step02-proof-transaction.js";
-import { submitInit } from "./support/legacy-submit-emulator.js";
+import { buildInit } from "./support/legacy-submit-emulator.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
 import {
   expectStateQueueHeaderOrder,
@@ -89,6 +89,10 @@ import {
   network,
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 
 describe("input-no-idx fault-proof emulator lifecycle", () => {
   it("proves and removes an out-of-range spend-input block end to end", async () => {
@@ -141,7 +145,7 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
     });
 
     // ## init
-    const initResult = await submitInit({
+    const initResult = await buildAndSubmitUnjournaled(buildInit, {
       lucid: proverLucid,
       witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
@@ -173,21 +177,24 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
     );
 
     // ## step-01: bind the bad transaction to the committed header
-    const step01Result = await submitInputNoIdxStep01({
-      lucid: proverLucid,
-      referenceScriptUtxo:
-        harness.faultProofReferenceScripts.fraudProofNonExistentInputNoIndex!
-          .utxo,
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: proverSigner,
-      threadOutRef: outRefLabel(firstStepUtxo),
-      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-      txInclusion: fixture.badTxInclusion,
-      awaitConfirmation: true,
-    });
+    const step01Result = await buildAndSubmitUnjournaled(
+      buildInputNoIdxStep01,
+      {
+        lucid: proverLucid,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofNonExistentInputNoIndex!
+            .utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        threadOutRef: outRefLabel(firstStepUtxo),
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+        txInclusion: fixture.badTxInclusion,
+        awaitConfirmation: true,
+      },
+    );
     expect(step01Result.badTxId).toBe(fixture.badTxId);
     // #604: the thread carries the §2.5 anchor, not field 0's commitment.
     expect(step01Result.verifiedTxId).toBe(fixture.badTxId);
@@ -207,7 +214,7 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
     const directCapture = await captureEmulatorSubmission(
       emulator,
       async () =>
-        await submitInputNoIdxStep02({
+        await submitTurnsUnjournaled(buildInputNoIdxStep02, {
           lucid: proverLucid,
           referenceScriptUtxo:
             harness.faultProofReferenceScripts
@@ -262,21 +269,24 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
     });
 
     // ## step-03: bind the producing transaction from the same block
-    const step03Result = await submitInputNoIdxStep03({
-      lucid: proverLucid,
-      referenceScriptUtxo:
-        harness.faultProofReferenceScripts
-          .fraudProofNonExistentInputNoIndexStep03!.utxo,
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: proverSigner,
-      threadOutRef: outRefLabel(thirdStepUtxo),
-      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-      txInclusion: fixture.producingTxInclusion,
-      awaitConfirmation: true,
-    });
+    const step03Result = await buildAndSubmitUnjournaled(
+      buildInputNoIdxStep03,
+      {
+        lucid: proverLucid,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts
+            .fraudProofNonExistentInputNoIndexStep03!.utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        threadOutRef: outRefLabel(thirdStepUtxo),
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+        txInclusion: fixture.producingTxInclusion,
+        awaitConfirmation: true,
+      },
+    );
     expect(step03Result.producingTxId).toBe(fixture.producingTxId);
 
     const fourthStepUtxo = await expectSingleUtxoWithUnit(
@@ -293,7 +303,7 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
     });
 
     // ## step-04: open the outputs commitment and mint the permanent token
-    const step04Result = await submitInputNoIdxStep04({
+    const step04Result = await submitTurnsUnjournaled(buildInputNoIdxStep04, {
       lucid: proverLucid,
       referenceScriptUtxo:
         harness.faultProofReferenceScripts
@@ -403,7 +413,7 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
     const proofCapture = await captureEmulatorSubmission(
       harness.emulator,
       async () =>
-        await submitInputNoIdxStep02({
+        await submitTurnsUnjournaled(buildInputNoIdxStep02, {
           lucid: harness.proverLucid,
           referenceScriptUtxo:
             harness.faultProofReferenceScripts
@@ -499,7 +509,7 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
     const capture = await captureEmulatorSubmission(
       harness.emulator,
       async () =>
-        await submitInputNoIdxStep02({
+        await submitTurnsUnjournaled(buildInputNoIdxStep02, {
           lucid: harness.proverLucid,
           referenceScriptUtxo:
             harness.faultProofReferenceScripts
@@ -594,7 +604,7 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
     });
     const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue);
 
-    const initResult = await submitInit({
+    const initResult = await buildAndSubmitUnjournaled(buildInit, {
       lucid: proverLucid,
       witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
@@ -613,21 +623,24 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
 
     // Steps 01-03 carry no verdict: a valid block advances just as far, which
     // is why the family's adjudication lives in step 04.
-    const step01Result = await submitInputNoIdxStep01({
-      lucid: proverLucid,
-      referenceScriptUtxo:
-        harness.faultProofReferenceScripts.fraudProofNonExistentInputNoIndex!
-          .utxo,
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: proverSigner,
-      threadOutRef: outRefLabel(firstStepUtxo),
-      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-      txInclusion: fixture.badTxInclusion,
-      awaitConfirmation: true,
-    });
+    const step01Result = await buildAndSubmitUnjournaled(
+      buildInputNoIdxStep01,
+      {
+        lucid: proverLucid,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofNonExistentInputNoIndex!
+            .utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        threadOutRef: outRefLabel(firstStepUtxo),
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+        txInclusion: fixture.badTxInclusion,
+        awaitConfirmation: true,
+      },
+    );
     const secondStepUtxo = await expectSingleUtxoWithUnit(
       proverLucid,
       step01Result.secondStepAddress,
@@ -638,7 +651,7 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
     // does not open the committed spend-inputs hash is refused before any
     // transaction is built.
     await expect(
-      submitInputNoIdxStep02({
+      submitTurnsUnjournaled(buildInputNoIdxStep02, {
         lucid: proverLucid,
         referenceScriptUtxo:
           harness.faultProofReferenceScripts
@@ -657,7 +670,7 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
       }),
     ).rejects.toThrow(/the disputed transaction commits at §2\.5 field 0/u);
 
-    const step02Result = await submitInputNoIdxStep02({
+    const step02Result = await submitTurnsUnjournaled(buildInputNoIdxStep02, {
       lucid: proverLucid,
       referenceScriptUtxo:
         harness.faultProofReferenceScripts
@@ -679,21 +692,24 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
       step02Result.thirdStepAddress,
       initResult.computationThreadUnit,
     );
-    const step03Result = await submitInputNoIdxStep03({
-      lucid: proverLucid,
-      referenceScriptUtxo:
-        harness.faultProofReferenceScripts
-          .fraudProofNonExistentInputNoIndexStep03!.utxo,
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: proverSigner,
-      threadOutRef: outRefLabel(thirdStepUtxo),
-      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-      txInclusion: fixture.producingTxInclusion,
-      awaitConfirmation: true,
-    });
+    const step03Result = await buildAndSubmitUnjournaled(
+      buildInputNoIdxStep03,
+      {
+        lucid: proverLucid,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts
+            .fraudProofNonExistentInputNoIndexStep03!.utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        threadOutRef: outRefLabel(thirdStepUtxo),
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+        txInclusion: fixture.producingTxInclusion,
+        awaitConfirmation: true,
+      },
+    );
     const fourthStepUtxo = await expectSingleUtxoWithUnit(
       proverLucid,
       step03Result.fourthStepAddress,
@@ -703,7 +719,7 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
     // Plane 2 — the valid-block verdict: index 0 exists in the producing
     // transaction, so finalization is refused off-chain...
     await expect(
-      submitInputNoIdxStep04({
+      submitTurnsUnjournaled(buildInputNoIdxStep04, {
         lucid: proverLucid,
         referenceScriptUtxo:
           harness.faultProofReferenceScripts
@@ -725,7 +741,7 @@ describe("input-no-idx fault-proof emulator lifecycle", () => {
     // ...and on-chain, if a prover strips the producer's outputs to fake an
     // empty list, the outputs commitment no longer opens.
     await expect(
-      submitInputNoIdxStep04({
+      submitTurnsUnjournaled(buildInputNoIdxStep04, {
         lucid: proverLucid,
         referenceScriptUtxo:
           harness.faultProofReferenceScripts

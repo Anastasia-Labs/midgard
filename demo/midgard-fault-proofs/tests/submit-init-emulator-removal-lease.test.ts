@@ -12,7 +12,10 @@
 
 import { describe, expect, it } from "vitest";
 
-import { createLocalStateQueueMutationLeaseCoordinator } from "../src/remove-fraudulent-block.js";
+import {
+  createLocalStateQueueMutationLeaseCoordinator,
+  type StateQueueMutationLeaseCoordinator,
+} from "../src/remove-fraudulent-block.js";
 import {
   buildProvedDoubleSpendFixture,
   eventIndexes,
@@ -29,7 +32,66 @@ const LOCAL_LEASE_RESULT = {
   released: true,
 } as const;
 
+/** A coordinator whose one lease records each call made on it, in order. */
+const recordingCoordinator = () => {
+  const calls: string[] = [];
+  const coordinator: StateQueueMutationLeaseCoordinator = {
+    acquire: async () => {
+      calls.push("acquire");
+      return {
+        token: "recorded",
+        source: "recording",
+        renew: async () => {
+          calls.push("renew");
+        },
+        release: async () => {
+          calls.push("release");
+        },
+        fail: async () => {
+          calls.push("fail");
+        },
+      };
+    },
+  };
+  return { calls, coordinator };
+};
+
 describe("fault-proof emulator integration", () => {
+  it.each([
+    // The first build's post-acquire refetch: the builder that acquired the
+    // lease fails it.
+    { pass: "first", failStateQueueUtxosAtCall: 2, submitted: 0 },
+    // The second build's topology load, after the successor removal is
+    // confirmed: the driver holding the lease fails it.
+    { pass: "second", failStateQueueUtxosAtCall: 3, submitted: 1 },
+  ])(
+    "fails the held lease exactly once, and never releases it, when the $pass build of a non-tail removal throws",
+    async ({ failStateQueueUtxosAtCall, submitted }) => {
+      const fixture = await buildProvedDoubleSpendFixture({
+        successorCount: 1,
+      });
+      const events: RemovalEvent[] = [];
+      const { calls, coordinator } = recordingCoordinator();
+      await expect(
+        submitRemovalForFixture(fixture, {
+          lucid: instrumentLucidForRemoval({
+            lucid: fixture.proverLucid,
+            contracts: fixture.contracts,
+            events,
+            failStateQueueUtxosAtCall,
+          }),
+          stateQueueMutationLeaseCoordinator: coordinator,
+        }),
+      ).rejects.toThrow("instrumented state-queue topology load failure");
+      expect(eventIndexes(events, "awaitTx")).toHaveLength(submitted);
+      expect(calls.filter((call) => call === "acquire")).toHaveLength(1);
+      expect(calls.filter((call) => call === "fail")).toHaveLength(1);
+      expect(calls).not.toContain("release");
+      expect(calls.at(-1)).toBe("fail");
+    },
+    240_000,
+  );
+
   it("removes a non-tail block under the local coordinator, confirming and refetching between peels", async () => {
     const fixture = await buildProvedDoubleSpendFixture({ successorCount: 1 });
     const events: RemovalEvent[] = [];

@@ -10,12 +10,11 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  proveMissingSignatureFault,
-  submitMissingSignatureInit,
-  submitMissingSignatureStep01,
-  submitMissingSignatureStep02,
-  submitMissingSignatureStep03,
-  submitMissingSignatureStep04,
+  buildMissingSignatureInit,
+  buildMissingSignatureStep01,
+  buildMissingSignatureStep02,
+  buildMissingSignatureStep03,
+  buildMissingSignatureStep04,
 } from "../src/missing-signature/index.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import {
@@ -25,6 +24,7 @@ import {
   publishMissingSignatureReferenceScripts,
   setupMissingSignatureScenario,
 } from "./support/missing-signature-emulator.js";
+import { proveMissingSignatureFault } from "./support/missing-signature-prover.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
 import {
   buildRemovalDeploymentInfo,
@@ -32,6 +32,10 @@ import {
   network,
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 
 describe("missing-signature positive emulator lifecycle", () => {
   it("proves through the core, refuses a duplicate proof, and removes/slashes the fraudulent block", async () => {
@@ -179,7 +183,7 @@ describe("missing-signature positive emulator lifecycle", () => {
         lucid: harness.funderLucid,
         contracts: harness.missingSignature,
       });
-    const init = await submitMissingSignatureInit({
+    const init = await buildAndSubmitUnjournaled(buildMissingSignatureInit, {
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,
@@ -195,7 +199,7 @@ describe("missing-signature positive emulator lifecycle", () => {
       fraudulentBlockOutRef: scenario.setup.fraudulentBlockOutRef,
       witnessReferenceScripts: harness.witnessReferenceScripts,
     });
-    const one = await submitMissingSignatureStep01({
+    const one = await buildAndSubmitUnjournaled(buildMissingSignatureStep01, {
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,
@@ -208,7 +212,7 @@ describe("missing-signature positive emulator lifecycle", () => {
       referenceScriptUtxo: step01Ref,
       witnessReferenceScripts: harness.witnessReferenceScripts,
     });
-    const two = await submitMissingSignatureStep02({
+    const two = await submitTurnsUnjournaled(buildMissingSignatureStep02, {
       lucid: harness.proverLucid,
       contracts: harness.missingSignature,
       categoryId: harness.category.categoryId,
@@ -219,7 +223,7 @@ describe("missing-signature positive emulator lifecycle", () => {
       badRequiredSignerHashIndex: 0n,
       referenceScriptUtxo: step02Ref,
     });
-    const three = await submitMissingSignatureStep03({
+    const three = await buildAndSubmitUnjournaled(buildMissingSignatureStep03, {
       lucid: harness.proverLucid,
       contracts: harness.missingSignature,
       categoryId: harness.category.categoryId,
@@ -228,7 +232,7 @@ describe("missing-signature positive emulator lifecycle", () => {
       missingRequiredSignerVkey: findingVkey(),
       referenceScriptUtxo: step03Ref,
     });
-    const four = await submitMissingSignatureStep04({
+    const four = await submitTurnsUnjournaled(buildMissingSignatureStep04, {
       lucid: harness.proverLucid,
       contracts: harness.missingSignature,
       categoryId: harness.category.categoryId,

@@ -12,6 +12,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { isPrerequisiteTurn } from "../fault-proof-turn.js";
 import {
   type FaultProofFieldGrammarDeployment,
   type FaultProofFieldGrammarRoute,
@@ -29,14 +30,13 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY_LABEL as FAMILY,
   type OutputReferenceScriptDecodingContracts,
@@ -62,7 +62,7 @@ import {
  * classified entry point below, which plans the opening for the bound
  * subject itself.
  */
-export const submitOutputReferenceScriptDecodingStep02Raw = async ({
+export const buildOutputReferenceScriptDecodingStep02Raw = async ({
   lucid,
   contracts,
   categoryId,
@@ -74,8 +74,6 @@ export const submitOutputReferenceScriptDecodingStep02Raw = async ({
   certificateUtxo,
   grammar = WALKED_FIELD_GRAMMAR_ROUTE,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: OutputReferenceScriptDecodingContracts;
@@ -89,8 +87,6 @@ export const submitOutputReferenceScriptDecodingStep02Raw = async ({
   /** How step 02 reads the field; walked by default. */
   readonly grammar?: FaultProofFieldGrammarRoute;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 1;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
@@ -200,7 +196,7 @@ export const submitOutputReferenceScriptDecodingStep02Raw = async ({
       OutputReferenceStep02RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -216,14 +212,12 @@ export const submitOutputReferenceScriptDecodingStep02Raw = async ({
       ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
       ...grammar.referenceInputs,
     ],
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined)
     throw new Error(`${FAMILY}: step02 layout unresolved`);
   return {
-    txHash,
-    nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
     carriageTier: planned.plan.tier,
     carriageUtxos,
     certificateUtxo,
@@ -231,7 +225,7 @@ export const submitOutputReferenceScriptDecodingStep02Raw = async ({
   };
 };
 
-export const submitOutputReferenceScriptDecodingStep02 = async ({
+export const buildOutputReferenceScriptDecodingStep02 = async ({
   lucid,
   contracts,
   categoryId,
@@ -245,11 +239,7 @@ export const submitOutputReferenceScriptDecodingStep02 = async ({
   certificateUtxo: suppliedCertificate,
   certificateReferenceScriptUtxo,
   referenceScriptUtxo,
-  publicationPreSubmitBoundary,
-  certificatePreSubmitBoundary,
   fieldGrammar,
-  preSubmitBoundary,
-  awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
@@ -265,12 +255,8 @@ export const submitOutputReferenceScriptDecodingStep02 = async ({
   readonly certificateUtxo?: UTxO;
   readonly certificateReferenceScriptUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
-  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly certificatePreSubmitBoundary?: FraudProofPreSubmitBoundary;
   /** The field grammar certificate, for a field past the walked limit. */
   readonly fieldGrammar?: FaultProofFieldGrammarDeployment;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
 }) => {
@@ -297,8 +283,8 @@ export const submitOutputReferenceScriptDecodingStep02 = async ({
       planned,
       publisherAddress: signer.proofMaterialsAddress,
       label: `${FAMILY} field 2`,
-      preSubmitBoundary: publicationPreSubmitBoundary,
     }));
+  if (isPrerequisiteTurn(carriageUtxos)) return carriageUtxos;
   // A certificate already on chain (the workflow's certify action ran) is
   // reused; only an absent one is minted here.
   const certificateUtxo =
@@ -318,9 +304,9 @@ export const submitOutputReferenceScriptDecodingStep02 = async ({
           chunkUtxos: carriageUtxos,
           compactCbor: nativeTxCompactCbor,
           witnessSetCompactCbor,
-          preSubmitBoundary: certificatePreSubmitBoundary,
         })
       : undefined);
+  if (isPrerequisiteTurn(certificateUtxo)) return certificateUtxo;
   const grammar = await routeFaultProofFieldGrammar({
     lucid,
     signer,
@@ -344,7 +330,7 @@ export const submitOutputReferenceScriptDecodingStep02 = async ({
     fieldGrammar: evidence.outputIndex < 0n ? undefined : fieldGrammar,
     label: `${FAMILY} field 2`,
   });
-  return await submitOutputReferenceScriptDecodingStep02Raw({
+  return await buildOutputReferenceScriptDecodingStep02Raw({
     lucid,
     contracts,
     categoryId,
@@ -356,7 +342,5 @@ export const submitOutputReferenceScriptDecodingStep02 = async ({
     certificateUtxo,
     grammar,
     referenceScriptUtxo,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
 };

@@ -13,10 +13,10 @@ import { Data, getAddressDetails } from "@lucid-evolution/lucid";
 import { expect, it } from "vitest";
 
 import {
-  submitMintItemNonCanonicalStep01Forced,
-  submitMintItemNonCanonicalStep02,
-  submitMintItemNonCanonicalStep03,
-  submitMintItemNonCanonicalStep04,
+  buildMintItemNonCanonicalStep01Forced,
+  buildMintItemNonCanonicalStep02,
+  buildMintItemNonCanonicalStep03,
+  buildMintItemNonCanonicalStep04,
 } from "../src/mint-item-non-canonical/index.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
@@ -34,6 +34,10 @@ import {
   alignUnixTimeToEmulatorSlotBoundary,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 
 it("authenticates a wrongly accepted forced mint and refuses a forged forced leaf/direction", async () => {
   const harness = await makeFaultProofEmulatorHarness({
@@ -148,7 +152,7 @@ it("authenticates a wrongly accepted forced mint and refuses a forged forced lea
     },
   );
   await expectOnchainRefusal(() =>
-    submitMintItemNonCanonicalStep01Forced({
+    buildAndSubmitUnjournaled(buildMintItemNonCanonicalStep01Forced, {
       ...common(),
       forcedSource: {
         header,
@@ -159,30 +163,39 @@ it("authenticates a wrongly accepted forced mint and refuses a forged forced lea
       },
     }),
   );
-  const bound = await submitMintItemNonCanonicalStep01Forced({
-    ...common(),
-    forcedSource: {
-      header,
-      membership,
+  const bound = await buildAndSubmitUnjournaled(
+    buildMintItemNonCanonicalStep01Forced,
+    {
+      ...common(),
+      forcedSource: {
+        header,
+        membership,
+      },
     },
-  });
+  );
   threadOutRef = bound.nextThreadOutRef;
-  const opened = await submitMintItemNonCanonicalStep02({
+  const opened = await submitTurnsUnjournaled(buildMintItemNonCanonicalStep02, {
     ...registered.common(threadOutRef, 1),
     evidence,
     nativeTxCompactCbor: source.compactCbor.toString("hex"),
     witnessSetCompactCbor: witnessSetCborOf(tx),
   });
   threadOutRef = opened.nextThreadOutRef;
-  const scanned = await submitMintItemNonCanonicalStep03({
-    ...registered.common(threadOutRef, 2),
-    evidence,
-  });
+  const scanned = await buildAndSubmitUnjournaled(
+    buildMintItemNonCanonicalStep03,
+    {
+      ...registered.common(threadOutRef, 2),
+      evidence,
+    },
+  );
   expect(scanned.terminal).toBe(true);
-  const finalized = await submitMintItemNonCanonicalStep04({
-    ...registered.common(scanned.nextThreadOutRef, 3),
-    evidence,
-    witnessReferenceScripts: harness.witnessReferenceScripts,
-  });
+  const finalized = await buildAndSubmitUnjournaled(
+    buildMintItemNonCanonicalStep04,
+    {
+      ...registered.common(scanned.nextThreadOutRef, 3),
+      evidence,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
+    },
+  );
   expect(finalized.fraudProofUnit).toBeTruthy();
 }, 120_000);

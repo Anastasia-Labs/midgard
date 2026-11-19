@@ -34,7 +34,7 @@ import {
   requireLinearFaultReferenceScript,
   requireLinearFaultThreadUtxo,
 } from "../../src/linear-fault-family.js";
-import { submitLinearFaultContinue } from "../../src/linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../../src/linear-fault-submit.js";
 import type { ObserversForbiddenContracts } from "../../src/observers-forbidden-on-untagged-network/contracts.js";
 import {
   classifyObserversForbiddenFinding,
@@ -53,6 +53,7 @@ import {
 import { buildCountedRoot } from "../../src/transition-trace/phas.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
 import { l2TransactionSourceCbor, makeNativeTx } from "./emulator/native-tx.js";
+import { buildAndSubmitTransactionUnjournaled } from "./submit-unjournaled.js";
 
 export const FAMILY = "observers-forbidden-on-untagged-network";
 
@@ -332,7 +333,7 @@ export const submitObserversForbiddenStep01ForcedRaw = async ({
       ObserversForbiddenStep01RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  return await submitLinearFaultContinue({
+  return await buildAndSubmitTransactionUnjournaled(buildLinearFaultContinue, {
     lucid,
     signer,
     threadUtxo,

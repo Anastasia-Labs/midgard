@@ -1,6 +1,6 @@
 import { Data } from "@lucid-evolution/lucid";
 
-import { submitInit } from "../submit-init.js";
+import { buildInit } from "../submit-init.js";
 import {
   CURSOR_FAMILY_TRANSACTION_PORT,
   type CursorFamilyTransactionPort,
@@ -36,18 +36,18 @@ import {
   scriptIntegritySemanticHash,
 } from "./staged-plan.js";
 import {
-  submitScriptIntegrityHashMissingStep01Accepted,
-  submitScriptIntegrityHashMissingStep01Forced,
-  submitScriptIntegrityHashMissingStep02Accepted,
-  submitScriptIntegrityHashMissingStep02Binding,
-  submitScriptIntegrityHashMissingStep03Direct,
+  buildScriptIntegrityHashMissingStep01Accepted,
+  buildScriptIntegrityHashMissingStep01Forced,
+  buildScriptIntegrityHashMissingStep02Accepted,
+  buildScriptIntegrityHashMissingStep02Binding,
+  buildScriptIntegrityHashMissingStep03Direct,
 } from "./submit-direct.js";
 import {
-  submitScriptIntegrityHashMissingRedeemerGrammar,
-  submitScriptIntegrityHashMissingScriptGrammar,
-  submitScriptIntegrityHashMissingScriptScan,
-  submitScriptIntegrityHashMissingStep03,
-  submitScriptIntegrityHashMissingStep04,
+  buildScriptIntegrityHashMissingRedeemerGrammar,
+  buildScriptIntegrityHashMissingScriptGrammar,
+  buildScriptIntegrityHashMissingScriptScan,
+  buildScriptIntegrityHashMissingStep03,
+  buildScriptIntegrityHashMissingStep04,
 } from "./submitters.js";
 
 export const createScriptIntegrityHashMissingTransactionPort = (
@@ -97,8 +97,8 @@ export const createScriptIntegrityHashMissingTransactionPort = (
     };
 
     if (input.stage === "init")
-      return await captured(async (preSubmitBoundary) => {
-        await submitInit({
+      return await captured(
+        await buildInit({
           lucid: config.lucid,
           blueprint: config.binding.blueprint,
           deploymentInfo: config.binding.deploymentInfo,
@@ -111,74 +111,71 @@ export const createScriptIntegrityHashMissingTransactionPort = (
           ),
           fraudulentHeaderHash: admitted.artifact.headerHash,
           witnessReferenceScripts: config.references.witnesses,
-          preSubmitBoundary,
-          awaitConfirmation: false,
-        });
-      });
+        }),
+        "script-integrity-hash-missing init",
+      );
 
-    if (input.stage === "step_01")
-      return await captured(async (preSubmitBoundary) => {
-        const common = {
-          lucid: config.lucid,
-          contracts: config.contracts,
-          categoryId,
-          signer: config.signer,
-          threadOutRef: threadOutRef(),
-          referenceScriptUtxo: config.references.steps[0],
-          preSubmitBoundary,
-          awaitConfirmation: false,
-        } as const;
-        if (admitted.source.acceptedInclusion !== undefined)
-          await submitScriptIntegrityHashMissingStep01Accepted({
-            ...common,
-            blueprint: config.binding.blueprint,
-            network: config.binding.network,
-            stateQueueBlockOutRef: cursorStringField(
-              input,
-              "stateQueueBlockOutRef",
-            ),
-            txInclusion: admitted.source.acceptedInclusion,
-            witnessReferenceScripts: config.references.witnesses,
-          });
-        else
-          await submitScriptIntegrityHashMissingStep01Forced({
-            ...common,
-            direction: admitted.source.forcedDirection!,
-          });
-      });
+    if (input.stage === "step_01") {
+      const common = {
+        lucid: config.lucid,
+        contracts: config.contracts,
+        categoryId,
+        signer: config.signer,
+        threadOutRef: threadOutRef(),
+        referenceScriptUtxo: config.references.steps[0],
+      } as const;
+      return await captured(
+        admitted.source.acceptedInclusion !== undefined
+          ? await buildScriptIntegrityHashMissingStep01Accepted({
+              ...common,
+              blueprint: config.binding.blueprint,
+              network: config.binding.network,
+              stateQueueBlockOutRef: cursorStringField(
+                input,
+                "stateQueueBlockOutRef",
+              ),
+              txInclusion: admitted.source.acceptedInclusion,
+              witnessReferenceScripts: config.references.witnesses,
+            })
+          : await buildScriptIntegrityHashMissingStep01Forced({
+              ...common,
+              direction: admitted.source.forcedDirection!,
+            }),
+        "script-integrity-hash-missing step_01",
+      );
+    }
 
-    if (input.stage === "step_02")
-      return await captured(async (preSubmitBoundary) => {
-        const common = {
-          lucid: config.lucid,
-          contracts: config.contracts,
-          categoryId,
-          signer: config.signer,
-          threadOutRef: threadOutRef(),
-          referenceScriptUtxo: config.references.steps[1],
-          preSubmitBoundary,
-          awaitConfirmation: false,
-        } as const;
-        if (admitted.source.acceptedInclusion !== undefined)
-          await submitScriptIntegrityHashMissingStep02Accepted({
-            ...common,
-            header: admitted.source.header,
-            subject: admitted.evidence.subject as never,
-            witnessSetHash: witnessHash,
-          });
-        else
-          await submitScriptIntegrityHashMissingStep02Binding({
-            ...common,
-            header: admitted.source.forcedHeader!,
-            forcedMembership: admitted.source.forcedMembership!,
-            witnessSetHash: witnessHash,
-          });
-      });
+    if (input.stage === "step_02") {
+      const common = {
+        lucid: config.lucid,
+        contracts: config.contracts,
+        categoryId,
+        signer: config.signer,
+        threadOutRef: threadOutRef(),
+        referenceScriptUtxo: config.references.steps[1],
+      } as const;
+      return await captured(
+        admitted.source.acceptedInclusion !== undefined
+          ? await buildScriptIntegrityHashMissingStep02Accepted({
+              ...common,
+              header: admitted.source.header,
+              subject: admitted.evidence.subject as never,
+              witnessSetHash: witnessHash,
+            })
+          : await buildScriptIntegrityHashMissingStep02Binding({
+              ...common,
+              header: admitted.source.forcedHeader!,
+              forcedMembership: admitted.source.forcedMembership!,
+              witnessSetHash: witnessHash,
+            }),
+        "script-integrity-hash-missing step_02",
+      );
+    }
 
     if (input.stage === "step_03") {
       if (direct(admitted))
-        return await captured(async (preSubmitBoundary) => {
-          await submitScriptIntegrityHashMissingStep03Direct({
+        return await captured(
+          await buildScriptIntegrityHashMissingStep03Direct({
             lucid: config.lucid,
             contracts: config.contracts,
             categoryId,
@@ -188,14 +185,13 @@ export const createScriptIntegrityHashMissingTransactionPort = (
             nativeTxCompactCbor: admitted.evidence.nativeTxCompactCbor,
             witnessSet,
             referenceScriptUtxo: config.references.steps[2],
-            preSubmitBoundary,
-            awaitConfirmation: false,
-          });
-        });
+          }),
+          "script-integrity-hash-missing step_03",
+        );
       const field = await resolveField(config, admitted.scriptPlan, ownOutputs);
       const first = admitted.staged.grammar[0]!;
-      return await captured(async (preSubmitBoundary) => {
-        await submitScriptIntegrityHashMissingStep03({
+      return await captured(
+        await buildScriptIntegrityHashMissingStep03({
           lucid: config.lucid,
           contracts: config.contracts,
           categoryId,
@@ -220,10 +216,9 @@ export const createScriptIntegrityHashMissingTransactionPort = (
               item_budget: BigInt(SCRIPT_INTEGRITY_HASH_MISSING_ITEM_BUDGET),
             },
           }),
-          preSubmitBoundary,
-          awaitConfirmation: false,
-        });
-      });
+        }),
+        "script-integrity-hash-missing buildScriptIntegrityHashMissingStep03",
+      );
     }
 
     if (input.stage === "step_04") {
@@ -242,8 +237,8 @@ export const createScriptIntegrityHashMissingTransactionPort = (
       const current = admitted.staged.grammar[index]!;
       const next = admitted.staged.grammar[index + 1];
       const closes = next === undefined;
-      return await captured(async (preSubmitBoundary) => {
-        await submitScriptIntegrityHashMissingScriptGrammar({
+      return await captured(
+        await buildScriptIntegrityHashMissingScriptGrammar({
           lucid: config.lucid,
           contracts: config.contracts,
           categoryId,
@@ -299,10 +294,9 @@ export const createScriptIntegrityHashMissingTransactionPort = (
                     ),
                   },
                 },
-          preSubmitBoundary,
-          awaitConfirmation: false,
-        });
-      });
+        }),
+        "script-integrity-hash-missing buildScriptIntegrityHashMissingScriptGrammar",
+      );
     }
 
     if (input.stage === "step_05") {
@@ -325,8 +319,8 @@ export const createScriptIntegrityHashMissingTransactionPort = (
       // and closes the field.
       const closes =
         next === undefined || index + 1 === admitted.staged.semantic.length - 1;
-      return await captured(async (preSubmitBoundary) => {
-        await submitScriptIntegrityHashMissingScriptScan({
+      return await captured(
+        await buildScriptIntegrityHashMissingScriptScan({
           lucid: config.lucid,
           contracts: config.contracts,
           categoryId,
@@ -358,10 +352,9 @@ export const createScriptIntegrityHashMissingTransactionPort = (
               encodeScriptIntegritySemanticCheckpoint(current).toString("hex"),
             item_budget: BigInt(SCRIPT_INTEGRITY_HASH_MISSING_ITEM_BUDGET),
           }),
-          preSubmitBoundary,
-          awaitConfirmation: false,
-        });
-      });
+        }),
+        "script-integrity-hash-missing buildScriptIntegrityHashMissingScriptScan",
+      );
     }
 
     if (input.stage === "step_06") {
@@ -374,8 +367,8 @@ export const createScriptIntegrityHashMissingTransactionPort = (
       const phase = state.data.phase as Record<string, unknown>;
       if ("ScriptComplete" in phase) {
         const first = admitted.staged.redeemerGrammar[0]!;
-        return await captured(async (preSubmitBoundary) => {
-          await submitScriptIntegrityHashMissingRedeemerGrammar({
+        return await captured(
+          await buildScriptIntegrityHashMissingRedeemerGrammar({
             lucid: config.lucid,
             contracts: config.contracts,
             categoryId,
@@ -401,10 +394,9 @@ export const createScriptIntegrityHashMissingTransactionPort = (
                 item_budget: BigInt(SCRIPT_INTEGRITY_HASH_MISSING_ITEM_BUDGET),
               },
             }),
-            preSubmitBoundary,
-            awaitConfirmation: false,
-          });
-        });
+          }),
+          "script-integrity-hash-missing step_06",
+        );
       }
       const currentHash = phaseHash(state, "RedeemerGrammar");
       const index = admitted.staged.redeemerGrammar.findIndex(
@@ -417,8 +409,8 @@ export const createScriptIntegrityHashMissingTransactionPort = (
       const current = admitted.staged.redeemerGrammar[index]!;
       const next = admitted.staged.redeemerGrammar[index + 1];
       const closes = next === undefined;
-      return await captured(async (preSubmitBoundary) => {
-        await submitScriptIntegrityHashMissingRedeemerGrammar({
+      return await captured(
+        await buildScriptIntegrityHashMissingRedeemerGrammar({
           lucid: config.lucid,
           contracts: config.contracts,
           categoryId,
@@ -475,15 +467,14 @@ export const createScriptIntegrityHashMissingTransactionPort = (
                     ),
                   },
                 },
-          preSubmitBoundary,
-          awaitConfirmation: false,
-        });
-      });
+        }),
+        "script-integrity-hash-missing buildScriptIntegrityHashMissingRedeemerGrammar",
+      );
     }
 
     if (input.stage === "step_07")
-      return await captured(async (preSubmitBoundary) => {
-        await submitScriptIntegrityHashMissingStep04({
+      return await captured(
+        await buildScriptIntegrityHashMissingStep04({
           lucid: config.lucid,
           contracts: config.contracts,
           categoryId,
@@ -491,10 +482,9 @@ export const createScriptIntegrityHashMissingTransactionPort = (
           threadOutRef: threadOutRef(),
           referenceScriptUtxo: config.references.steps[6],
           witnessReferenceScripts: config.references.witnesses,
-          preSubmitBoundary,
-          awaitConfirmation: false,
-        });
-      });
+        }),
+        "script-integrity-hash-missing step_07",
+      );
 
     if (input.stage === "remove")
       return await captureCursorRemoval({

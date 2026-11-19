@@ -2,11 +2,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  submitMissingSignatureInit,
-  submitMissingSignatureStep01,
-  submitMissingSignatureStep02,
-  submitMissingSignatureStep03,
-  submitMissingSignatureStep04,
+  buildMissingSignatureInit,
+  buildMissingSignatureStep01,
+  buildMissingSignatureStep02,
+  buildMissingSignatureStep03,
+  buildMissingSignatureStep04,
 } from "../src/missing-signature/index.js";
 import {
   makeMissingSignatureEmulatorHarness,
@@ -19,6 +19,10 @@ import {
   expectOnchainRefusal,
   network,
 } from "./support/submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 
 describe("missing-signature adversarial emulator polarity", () => {
   it("refuses every honest-path local forgery and rejects the guard-bypassing conviction at step-04 on-chain", async () => {
@@ -36,7 +40,7 @@ describe("missing-signature adversarial emulator polarity", () => {
         lucid: harness.funderLucid,
         contracts: harness.missingSignature,
       });
-    const init = await submitMissingSignatureInit({
+    const init = await buildAndSubmitUnjournaled(buildMissingSignatureInit, {
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,
@@ -52,7 +56,7 @@ describe("missing-signature adversarial emulator polarity", () => {
       fraudulentBlockOutRef: scenario.setup.fraudulentBlockOutRef,
       witnessReferenceScripts: harness.witnessReferenceScripts,
     });
-    const one = await submitMissingSignatureStep01({
+    const one = await buildAndSubmitUnjournaled(buildMissingSignatureStep01, {
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,
@@ -67,7 +71,7 @@ describe("missing-signature adversarial emulator polarity", () => {
     });
 
     await expect(
-      submitMissingSignatureStep02({
+      submitTurnsUnjournaled(buildMissingSignatureStep02, {
         lucid: harness.proverLucid,
         contracts: harness.missingSignature,
         categoryId: harness.category.categoryId,
@@ -80,7 +84,7 @@ describe("missing-signature adversarial emulator polarity", () => {
       }),
     ).rejects.toThrow(/outside the 1-item/u);
     await expect(
-      submitMissingSignatureStep02({
+      submitTurnsUnjournaled(buildMissingSignatureStep02, {
         lucid: harness.proverLucid,
         contracts: harness.missingSignature,
         categoryId: harness.category.categoryId,
@@ -93,7 +97,7 @@ describe("missing-signature adversarial emulator polarity", () => {
       }),
     ).rejects.toThrow(/not the .* commits|not the disputed transaction/u);
 
-    const two = await submitMissingSignatureStep02({
+    const two = await submitTurnsUnjournaled(buildMissingSignatureStep02, {
       lucid: harness.proverLucid,
       contracts: harness.missingSignature,
       categoryId: harness.category.categoryId,
@@ -105,7 +109,7 @@ describe("missing-signature adversarial emulator polarity", () => {
       referenceScriptUtxo: step02Ref,
     });
     await expect(
-      submitMissingSignatureStep03({
+      buildAndSubmitUnjournaled(buildMissingSignatureStep03, {
         lucid: harness.proverLucid,
         contracts: harness.missingSignature,
         categoryId: harness.category.categoryId,
@@ -115,7 +119,7 @@ describe("missing-signature adversarial emulator polarity", () => {
         referenceScriptUtxo: step03Ref,
       }),
     ).rejects.toThrow(/not the thread's accused/u);
-    const three = await submitMissingSignatureStep03({
+    const three = await buildAndSubmitUnjournaled(buildMissingSignatureStep03, {
       lucid: harness.proverLucid,
       contracts: harness.missingSignature,
       categoryId: harness.category.categoryId,
@@ -127,7 +131,7 @@ describe("missing-signature adversarial emulator polarity", () => {
 
     // Plane one: the honest builder refuses before paying.
     await expect(
-      submitMissingSignatureStep04({
+      submitTurnsUnjournaled(buildMissingSignatureStep04, {
         lucid: harness.proverLucid,
         contracts: harness.missingSignature,
         categoryId: harness.category.categoryId,

@@ -41,5 +41,5 @@ import "./mint-scan.js";
 import "./submit-common.js";
 import "./submit-mint-authorization-step-02.submit-mint-authorization-step02-result.js";
 import "./submit-mint-authorization-step-02.submit-mint-authorization-step02.js";
-export { submitMintAuthorizationStep02 } from "./submit-mint-authorization-step-02.submit-mint-authorization-step02.js";
+export { buildMintAuthorizationStep02 } from "./submit-mint-authorization-step-02.submit-mint-authorization-step02.js";
 export { type SubmitMintAuthorizationStep02Result } from "./submit-mint-authorization-step-02.submit-mint-authorization-step02-result.js";

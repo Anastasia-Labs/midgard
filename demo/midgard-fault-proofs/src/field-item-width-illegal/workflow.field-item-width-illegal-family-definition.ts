@@ -6,7 +6,6 @@ import { decodeMidgardForcedTxCompact } from "@al-ft/midgard-core/codec/forced";
 import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk";
 
 import { planFaultProofFieldOpening } from "../field-opening.js";
-import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { FIELD_ITEM_WIDTH_ILLEGAL_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import { CURSOR_FAMILY_TRANSACTION_PORT } from "../workflow/cursor-family-adapter.js";
 import {
@@ -24,15 +23,8 @@ import {
   defineFamily,
 } from "../workflow/family-definition.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
-import {
-  captureLocallyEvaluatedTransaction,
-  workflowTransactionInputOutRefs,
-} from "../workflow/transaction-boundary.js";
-import {
-  type FieldItemWidthEvidence,
-  type FieldItemWidthJournal,
-  runFieldItemWidthProof,
-} from "./field-item-width-illegal.js";
+import { journaledStepTransaction } from "../workflow/step-transaction.js";
+import { workflowTransactionInputOutRefs } from "../workflow/transaction-boundary.js";
 import {
   FieldItemWidthStep02DatumSchema,
   FieldItemWidthStep03DatumSchema,
@@ -40,8 +32,6 @@ import {
 import {
   createFieldItemWidthIllegalBoundConfig,
   createFieldItemWidthIllegalRawL1StageResolver,
-  FIELD_ITEM_WIDTH_ILLEGAL_WORKFLOW,
-  type FieldItemWidthIllegalRuntimeLoader,
   type LoadManifestBoundFieldItemWidthIllegalConfig,
   type ManifestBoundFieldItemWidthIllegalConfig,
 } from "./workflow.create-field-item-width-illegal-raw-l1-stage-resolver.js";
@@ -73,37 +63,6 @@ export const loadManifestBoundFieldItemWidthIllegalConfig = async (
   });
 
   return createFieldItemWidthIllegalBoundConfig(input, binding);
-};
-
-export const createManifestBoundFieldItemWidthIllegalRuntime = ({
-  config,
-  journal,
-  observe,
-  resolveStage,
-  stateQueueMutationLeaseCoordinator,
-}: {
-  readonly config: ManifestBoundFieldItemWidthIllegalConfig;
-  readonly journal: FieldItemWidthJournal;
-  readonly observe: FieldItemWidthIllegalRuntimeLoader["observe"];
-  readonly resolveStage: FieldItemWidthIllegalRuntimeLoader["resolveStage"];
-  readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
-}) => {
-  const submission = createManifestBoundFieldItemWidthIllegalSubmission({
-    config,
-    observe,
-    resolveStage,
-    stateQueueMutationLeaseCoordinator,
-  });
-  return Object.freeze({
-    runtimeVersion: FIELD_ITEM_WIDTH_ILLEGAL_WORKFLOW,
-    config,
-    runOrResume: async (evidence: FieldItemWidthEvidence) =>
-      await runFieldItemWidthProof({
-        evidence,
-        journal,
-        submission,
-      }),
-  });
 };
 
 export const FIELD_ITEM_WIDTH_ILLEGAL_FAMILY_DEFINITION = defineFamily<
@@ -167,32 +126,31 @@ export const FIELD_ITEM_WIDTH_ILLEGAL_FAMILY_DEFINITION = defineFamily<
             throw new Error(
               `${category} cursor action is outside its exact topology`,
             );
-          const transaction = await captureLocallyEvaluatedTransaction(
-            async (preSubmitBoundary) => {
-              const submission =
-                createManifestBoundFieldItemWidthIllegalSubmission({
-                  ownOutputs: workflowFieldCarriageOwnOutputs({
-                    category,
-                    entries,
-                  }),
-                  config,
-                  preSubmitBoundary,
-                  observe: async () =>
-                    fieldItemWidthStageFromL1(
-                      (
-                        await l1.observe({
-                          headerHash: binding.definition.headerHash,
-                        })
-                      ).stage,
-                    ),
-                  resolveStage: createFieldItemWidthIllegalRawL1StageResolver({
-                    config,
-                    l1,
-                    source: admitted.source,
-                  }),
-                });
-              await submission.submit(familyAction, admitted.evidence);
+          const submission = createManifestBoundFieldItemWidthIllegalSubmission(
+            {
+              ownOutputs: workflowFieldCarriageOwnOutputs({
+                category,
+                entries,
+              }),
+              config,
+              observe: async () =>
+                fieldItemWidthStageFromL1(
+                  (
+                    await l1.observe({
+                      headerHash: binding.definition.headerHash,
+                    })
+                  ).stage,
+                ),
+              resolveStage: createFieldItemWidthIllegalRawL1StageResolver({
+                config,
+                l1,
+                source: admitted.source,
+              }),
             },
+          );
+          const { transaction } = await journaledStepTransaction(
+            await submission.submit(familyAction, admitted.evidence),
+            `${category} ${familyAction}`,
           );
           if (
             input.stage !== "init" &&

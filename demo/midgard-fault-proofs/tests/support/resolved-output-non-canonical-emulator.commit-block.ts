@@ -25,7 +25,7 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import { submitResolvedOutputNonCanonicalStep01Accepted } from "../../src/resolved-output-non-canonical/index.js";
+import { buildResolvedOutputNonCanonicalStep01Accepted } from "../../src/resolved-output-non-canonical/index.js";
 import { nativeTxFromCoreCompact } from "../../src/step-support.js";
 import { buildCountedRoot } from "../../src/transition-trace/phas.js";
 import { l2TransactionSourceCbor } from "./emulator/native-tx.js";
@@ -55,7 +55,7 @@ export type CommittedBlock = Readonly<{
   witnessSetCompactCborHex: string;
   accepted?: {
     readonly txInclusion: Parameters<
-      typeof submitResolvedOutputNonCanonicalStep01Accepted
+      typeof buildResolvedOutputNonCanonicalStep01Accepted
     >[0]["txInclusion"];
     readonly transactionsRoot: string;
   };

@@ -12,11 +12,10 @@ import {
 } from "@al-ft/midgard-sdk";
 import { type BuildTxWithRedeemer, Data, toUnit } from "@lucid-evolution/lucid";
 
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import { witnessMintingPolicyCarriage } from "../witness-reference-scripts.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
-import { workflowReferenceScriptsUsedByTransaction } from "../workflow/transaction-boundary.js";
 import type { ManifestBoundFieldPreimageLengthConfig } from "./config.js";
 import {
   LABEL,
@@ -24,16 +23,12 @@ import {
   requireThread,
 } from "./submit-lucid.submit-field-preimage-length-cancel.js";
 
-export const submitFieldPreimageLengthTerminal = async ({
+export const buildFieldPreimageLengthTerminal = async ({
   config,
   threadOutRef,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly config: ManifestBoundFieldPreimageLengthConfig;
   readonly threadOutRef: string;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const { threadUtxo, threadToken, step } = await requireThread({
     config,
@@ -156,34 +151,28 @@ export const submitFieldPreimageLengthTerminal = async ({
   if (layout === undefined || threadMintIndex === undefined)
     throw new Error(`${LABEL}: terminal layout did not resolve`);
   const resolved = layout;
-  const txHash = await submitStep(config.lucid, signed, {
-    label: `${LABEL} step-04`,
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: "V1 field-preimage-length terminal",
-          utxo: reference,
-          expectedScript: step.spendingScript,
-        },
-        {
-          role: "thread mint",
-          utxo: config.referenceScripts.witnesses.computationThreadMint,
-          expectedScript: config.contracts.computationThread.mintingScript,
-        },
-        {
-          role: "proof mint",
-          utxo: config.referenceScripts.witnesses.fraudProofMint,
-          expectedScript: config.contracts.fraudProof.mintingScript,
-        },
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: "V1 field-preimage-length terminal",
+        utxo: reference,
+        expectedScript: step.spendingScript,
+      },
+      {
+        role: "thread mint",
+        utxo: config.referenceScripts.witnesses.computationThreadMint,
+        expectedScript: config.contracts.computationThread.mintingScript,
+      },
+      {
+        role: "proof mint",
+        utxo: config.referenceScripts.witnesses.fraudProofMint,
+        expectedScript: config.contracts.fraudProof.mintingScript,
+      },
+    ],
   });
   return {
-    txHash,
-    fraudProofOutRef: `${txHash}#${resolved.outputIndex.toString()}`,
+    transaction,
+    fraudProofOutRef: `${transaction.txHash}#${resolved.outputIndex.toString()}`,
     fraudProofUnit,
   };
 };

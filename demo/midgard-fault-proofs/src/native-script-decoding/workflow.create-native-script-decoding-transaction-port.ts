@@ -13,7 +13,7 @@ import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
 } from "../step-support.js";
-import { submitInit } from "../submit-init.js";
+import { buildInit } from "../submit-init.js";
 import { keyValuePhasProof } from "../transition-trace/phas.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import { type CompleteCanonicalReplayContext } from "../workflow/complete-replay.js";
@@ -30,24 +30,24 @@ import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { workflowConfirmedTransactions } from "../workflow/own-outputs.js";
-import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
+import { journaledStepTransaction } from "../workflow/step-transaction.js";
 import {
   admitNativeScriptDecodingWorkflowArtifact,
   prepareNativeScriptDecodingWorkflowArtifact,
 } from "./artifact.js";
 import type { NativeScriptDecodingContracts } from "./contracts.js";
 import {
-  submitNativeScriptDecodingStep01BindNormal,
-  submitNativeScriptDecodingStep01RecordForced,
+  buildNativeScriptDecodingStep01BindNormal,
+  buildNativeScriptDecodingStep01RecordForced,
 } from "./submit-native-script-decoding-step-01.js";
-import { submitNativeScriptDecodingStep02 } from "./submit-native-script-decoding-step-02.js";
+import { buildNativeScriptDecodingStep02 } from "./submit-native-script-decoding-step-02.js";
 import {
-  submitNativeScriptDecodingStep03AdvanceOrCloseClose,
-  submitNativeScriptDecodingStep03AdvanceOrCloseSegment,
-  submitNativeScriptDecodingStep03BindDescriptor,
-  submitNativeScriptDecodingStep03OpenSubject,
+  buildNativeScriptDecodingStep03AdvanceOrCloseClose,
+  buildNativeScriptDecodingStep03AdvanceOrCloseSegment,
+  buildNativeScriptDecodingStep03BindDescriptor,
+  buildNativeScriptDecodingStep03OpenSubject,
 } from "./submit-native-script-decoding-step-03.js";
-import { submitNativeScriptDecodingStep04 } from "./submit-native-script-decoding-step-04.js";
+import { buildNativeScriptDecodingStep04 } from "./submit-native-script-decoding-step-04.js";
 
 export type NativeScriptDecodingWorkflowReferenceScripts = Readonly<{
   steps: readonly [UTxO, UTxO, UTxO, UTxO, UTxO, UTxO];
@@ -149,195 +149,191 @@ export const createNativeScriptDecodingTransactionPort = (
         ),
       });
     return {
-      transaction: await captureLocallyEvaluatedTransaction(
-        async (preSubmitBoundary) => {
-          if (input.stage === "init") {
-            await submitInit({
-              lucid: config.lucid,
-              blueprint: config.binding.blueprint,
-              deploymentInfo: config.binding.deploymentInfo,
-              network: config.binding.network,
-              signer: config.signer,
-              fraudCategory: "nativeScriptDecoding",
-              fraudulentBlockOutRef: cursorStringField(
-                input,
-                "stateQueueBlockOutRef",
-              ),
-              fraudulentHeaderHash: a.current.headerHash,
-              witnessReferenceScripts: config.references.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-            return;
-          }
-          const threadOutRef = cursorStringField(input, "threadOutRef");
-          const common = {
-            lucid: config.lucid,
-            contracts: config.contracts,
-            categoryId: config.binding.resolvedContracts.category.categoryId,
-            signer: config.signer,
-            threadOutRef,
-            preSubmitBoundary,
-            awaitConfirmation: false,
-          };
-          switch (input.stage) {
-            case "step_01":
-              if (a.coordinate.sourceKind === 1)
-                await submitNativeScriptDecodingStep01RecordForced({
-                  ...common,
-                  referenceScriptUtxo: config.references.steps[0],
-                });
-              else {
-                const inclusion = await sourceInclusion(a);
-                await submitNativeScriptDecodingStep01BindNormal({
-                  ...common,
-                  blueprint: config.binding.blueprint,
-                  network: config.binding.network,
-                  stateQueueBlockOutRef: cursorStringField(
-                    input,
-                    "stateQueueBlockOutRef",
-                  ),
-                  txInclusion: inclusion,
-                  publishedProofChunks: await resolvePublishedProofChunks({
-                    lucid: config.lucid,
-                    address: config.signer.proofMaterialsAddress,
-                    proofCbor: inclusion.txMembershipProofCbor,
-                    ownTransactions: workflowConfirmedTransactions(entries),
-                  }),
-                  referenceScriptUtxo: config.references.steps[0],
-                  witnessReferenceScripts: config.references.witnesses,
-                });
-              }
-              return;
-            case "step_02":
-              await submitNativeScriptDecodingStep02({
-                ...common,
-                reconstruction: a.current,
-                forcedOrderKey:
-                  "ForcedTransactionEventKey" in a.eventKey
-                    ? a.eventKey.ForcedTransactionEventKey.tx_order_id
-                    : undefined,
-                chosenOutpoint:
-                  a.direction === 0n
-                    ? {
-                        sourceKind: BigInt(a.coordinate.outpointSourceKind),
-                        cursor: BigInt(a.coordinate.outpointCursor),
-                      }
-                    : undefined,
-                referenceScriptUtxo: config.references.steps[1],
-              });
-              return;
-            case "step_03": {
-              const planned = namesField(a)
-                ? subjectPlan(a, config.signer.paymentKeyHash)
-                : null;
-              const published =
-                planned === null
-                  ? []
-                  : await resolveFaultProofFieldCarriagePublications({
-                      ownOutputs,
-                      lucid: config.lucid,
-                      planned,
-                      publisherAddress: config.signer.proofMaterialsAddress,
-                    });
-              const certificate =
-                planned === null
-                  ? undefined
-                  : await resolveFaultProofFieldPreimageCertificate({
-                      ownOutputs,
-                      lucid: config.lucid,
-                      planned,
-                      certificatePolicyId:
-                        config.contracts.fieldPreimageCertificatePolicyId,
-                      network: config.binding.network,
-                    });
-              await submitNativeScriptDecodingStep03OpenSubject({
-                ownOutputs,
-                ...common,
-                nativeTxCompactCbor:
-                  a.material.proofSource.compactCbor.toString("hex"),
-                subjectFieldInputs: a.subjectFieldInputs,
-                publishCarriage: true,
-                publishedCarriageUtxos: published,
-                certificateUtxo: certificate ?? undefined,
-                referenceScriptUtxo: config.references.steps[2],
-              });
-              return;
-            }
-            case "step_04": {
-              if (a.descriptorCbor === null || a.ledgerTrie === null)
-                throw new Error(
-                  "nativeScriptDecoding missing descriptor evidence",
-                );
-              const outpoint =
-                a.subjectFieldInputs[Number(a.coordinate.outpointCursor)]!;
-              await submitNativeScriptDecodingStep03BindDescriptor({
-                ...common,
-                outpointKeyCbor: Buffer.from(
-                  SDK.encodeMidgardTxInputCanonical(outpoint),
-                ).toString("hex"),
-                descriptorCbor: a.descriptorCbor.toString("hex"),
-                ledgerTrie: a.ledgerTrie,
-                plan: a.plan ?? undefined,
-                referenceScriptItemBytes:
-                  a.referenceScriptItemBytes ?? undefined,
-                referenceScriptUtxo: config.references.steps[3],
-              });
-              return;
-            }
-            case "step_05": {
-              if (a.plan === null || a.referenceScriptItemBytes === null)
-                throw new Error("nativeScriptDecoding missing scan evidence");
-              const utxos = await config.lucid.utxosByOutRef([
-                parseOutRef(threadOutRef, "nativeScriptDecoding thread"),
-              ]);
-              if (utxos.length !== 1 || !utxos[0]!.datum)
-                throw new Error("nativeScriptDecoding scan thread absent");
-              const datum = Data.from(
-                utxos[0]!.datum,
-                SDK.NativeScriptDecodingStep03AdvanceOrCloseDatum,
-              );
-              if (datum.data === null)
-                throw new Error("nativeScriptDecoding absent scan datum");
-              const hash = datum.data.machine_state_hash;
-              const segment = a.plan.segments.find(
-                (item) => item.controlBefore.hashHex === hash,
-              );
-              if (segment !== undefined)
-                await submitNativeScriptDecodingStep03AdvanceOrCloseSegment({
-                  ...common,
-                  segment,
-                  referenceScriptItemBytes: a.referenceScriptItemBytes,
-                  referenceScriptUtxo: config.references.steps[4],
-                });
-              else {
-                if (a.plan.verdict.control?.hashHex !== hash)
-                  throw new Error(
-                    "nativeScriptDecoding scan checkpoint differs from deterministic plan",
-                  );
-                await submitNativeScriptDecodingStep03AdvanceOrCloseClose({
-                  ...common,
-                  verdict: a.plan.verdict,
-                  referenceScriptItemBytes: a.referenceScriptItemBytes,
-                  referenceScriptUtxo: config.references.steps[4],
-                });
-              }
-              return;
-            }
-            case "step_06":
-              await submitNativeScriptDecodingStep04({
-                ...common,
-                referenceScriptUtxo: config.references.steps[5],
+      transaction: (
+        await journaledStepTransaction(
+          await (async () => {
+            if (input.stage === "init") {
+              return await buildInit({
+                lucid: config.lucid,
+                blueprint: config.binding.blueprint,
+                deploymentInfo: config.binding.deploymentInfo,
+                network: config.binding.network,
+                signer: config.signer,
+                fraudCategory: "nativeScriptDecoding",
+                fraudulentBlockOutRef: cursorStringField(
+                  input,
+                  "stateQueueBlockOutRef",
+                ),
+                fraudulentHeaderHash: a.current.headerHash,
                 witnessReferenceScripts: config.references.witnesses,
               });
-              return;
-            default:
-              throw new Error(
-                `nativeScriptDecoding unsupported stage ${input.stage}`,
-              );
-          }
-        },
-      ),
+            }
+            const threadOutRef = cursorStringField(input, "threadOutRef");
+            const common = {
+              lucid: config.lucid,
+              contracts: config.contracts,
+              categoryId: config.binding.resolvedContracts.category.categoryId,
+              signer: config.signer,
+              threadOutRef,
+            };
+            switch (input.stage) {
+              case "step_01":
+                if (a.coordinate.sourceKind === 1)
+                  return await buildNativeScriptDecodingStep01RecordForced({
+                    ...common,
+                    referenceScriptUtxo: config.references.steps[0],
+                  });
+                else {
+                  const inclusion = await sourceInclusion(a);
+                  return await buildNativeScriptDecodingStep01BindNormal({
+                    ...common,
+                    blueprint: config.binding.blueprint,
+                    network: config.binding.network,
+                    stateQueueBlockOutRef: cursorStringField(
+                      input,
+                      "stateQueueBlockOutRef",
+                    ),
+                    txInclusion: inclusion,
+                    publishedProofChunks: await resolvePublishedProofChunks({
+                      lucid: config.lucid,
+                      address: config.signer.proofMaterialsAddress,
+                      proofCbor: inclusion.txMembershipProofCbor,
+                      ownTransactions: workflowConfirmedTransactions(entries),
+                    }),
+                    referenceScriptUtxo: config.references.steps[0],
+                    witnessReferenceScripts: config.references.witnesses,
+                  });
+                }
+              case "step_02":
+                return await buildNativeScriptDecodingStep02({
+                  ...common,
+                  reconstruction: a.current,
+                  forcedOrderKey:
+                    "ForcedTransactionEventKey" in a.eventKey
+                      ? a.eventKey.ForcedTransactionEventKey.tx_order_id
+                      : undefined,
+                  chosenOutpoint:
+                    a.direction === 0n
+                      ? {
+                          sourceKind: BigInt(a.coordinate.outpointSourceKind),
+                          cursor: BigInt(a.coordinate.outpointCursor),
+                        }
+                      : undefined,
+                  referenceScriptUtxo: config.references.steps[1],
+                });
+              case "step_03": {
+                const planned = namesField(a)
+                  ? subjectPlan(a, config.signer.paymentKeyHash)
+                  : null;
+                const published =
+                  planned === null
+                    ? []
+                    : await resolveFaultProofFieldCarriagePublications({
+                        ownOutputs,
+                        lucid: config.lucid,
+                        planned,
+                        publisherAddress: config.signer.proofMaterialsAddress,
+                      });
+                const certificate =
+                  planned === null
+                    ? undefined
+                    : await resolveFaultProofFieldPreimageCertificate({
+                        ownOutputs,
+                        lucid: config.lucid,
+                        planned,
+                        certificatePolicyId:
+                          config.contracts.fieldPreimageCertificatePolicyId,
+                        network: config.binding.network,
+                      });
+                return await buildNativeScriptDecodingStep03OpenSubject({
+                  ownOutputs,
+                  ...common,
+                  nativeTxCompactCbor:
+                    a.material.proofSource.compactCbor.toString("hex"),
+                  subjectFieldInputs: a.subjectFieldInputs,
+                  publishCarriage: true,
+                  publishedCarriageUtxos: published,
+                  certificateUtxo: certificate ?? undefined,
+                  referenceScriptUtxo: config.references.steps[2],
+                });
+              }
+              case "step_04": {
+                if (a.descriptorCbor === null || a.ledgerTrie === null)
+                  throw new Error(
+                    "nativeScriptDecoding missing descriptor evidence",
+                  );
+                const outpoint =
+                  a.subjectFieldInputs[Number(a.coordinate.outpointCursor)]!;
+                return await buildNativeScriptDecodingStep03BindDescriptor({
+                  ...common,
+                  outpointKeyCbor: Buffer.from(
+                    SDK.encodeMidgardTxInputCanonical(outpoint),
+                  ).toString("hex"),
+                  descriptorCbor: a.descriptorCbor.toString("hex"),
+                  ledgerTrie: a.ledgerTrie,
+                  plan: a.plan ?? undefined,
+                  referenceScriptItemBytes:
+                    a.referenceScriptItemBytes ?? undefined,
+                  referenceScriptUtxo: config.references.steps[3],
+                });
+              }
+              case "step_05": {
+                if (a.plan === null || a.referenceScriptItemBytes === null)
+                  throw new Error("nativeScriptDecoding missing scan evidence");
+                const utxos = await config.lucid.utxosByOutRef([
+                  parseOutRef(threadOutRef, "nativeScriptDecoding thread"),
+                ]);
+                if (utxos.length !== 1 || !utxos[0]!.datum)
+                  throw new Error("nativeScriptDecoding scan thread absent");
+                const datum = Data.from(
+                  utxos[0]!.datum,
+                  SDK.NativeScriptDecodingStep03AdvanceOrCloseDatum,
+                );
+                if (datum.data === null)
+                  throw new Error("nativeScriptDecoding absent scan datum");
+                const hash = datum.data.machine_state_hash;
+                const segment = a.plan.segments.find(
+                  (item) => item.controlBefore.hashHex === hash,
+                );
+                if (segment !== undefined)
+                  return await buildNativeScriptDecodingStep03AdvanceOrCloseSegment(
+                    {
+                      ...common,
+                      segment,
+                      referenceScriptItemBytes: a.referenceScriptItemBytes,
+                      referenceScriptUtxo: config.references.steps[4],
+                    },
+                  );
+                else {
+                  if (a.plan.verdict.control?.hashHex !== hash)
+                    throw new Error(
+                      "nativeScriptDecoding scan checkpoint differs from deterministic plan",
+                    );
+                  return await buildNativeScriptDecodingStep03AdvanceOrCloseClose(
+                    {
+                      ...common,
+                      verdict: a.plan.verdict,
+                      referenceScriptItemBytes: a.referenceScriptItemBytes,
+                      referenceScriptUtxo: config.references.steps[4],
+                    },
+                  );
+                }
+              }
+              case "step_06":
+                return await buildNativeScriptDecodingStep04({
+                  ...common,
+                  referenceScriptUtxo: config.references.steps[5],
+                  witnessReferenceScripts: config.references.witnesses,
+                });
+              default:
+                throw new Error(
+                  `nativeScriptDecoding unsupported stage ${input.stage}`,
+                );
+            }
+          })(),
+          `native-script-decoding ${input.stage}`,
+        )
+      ).transaction,
     };
   },
 });

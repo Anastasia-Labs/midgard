@@ -18,8 +18,9 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import {
+  buildFaultProofFieldGrammarBatch,
   fieldGrammarCertificateAddress,
-  reuseOrCertifyFaultProofFieldGrammar,
+  resumeFaultProofFieldGrammar,
 } from "../field-grammar-certificate.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
@@ -30,7 +31,6 @@ import type {
   FraudProofWorkflowAction,
   FraudProofWorkflowObservation,
 } from "../workflow/orchestrator.js";
-import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import {
   confirmedValidationTraceStages,
   parseValidationTraceAction,
@@ -372,24 +372,23 @@ export const validationTraceFieldGrammarCertification = ({
       const { sourceKind, compactCbor, witnessSetCompactCbor } =
         material.fieldSource();
       const policyId = deployment.fieldPreimageCertificate?.policyId;
-      const captured = await captureLocallyEvaluatedTransaction(
-        async (boundary) =>
-          await reuseOrCertifyFaultProofFieldGrammar({
-            lucid,
-            network: deployment.network,
-            signer,
-            plan: validationTraceFieldGrammarPlan(material, fieldIndex, owner),
-            source: { sourceKind, compactCbor, witnessSetCompactCbor },
-            certificateValidator: certificate.validator,
-            certificateReferenceScriptUtxo: certificate.reference,
-            carriageUtxos:
-              carriage === undefined ? [] : carriageReads(carriage),
-            ...(policyId === undefined
-              ? {}
-              : { fieldPreimageCertificatePolicyId: policyId }),
-            preSubmitBoundary: boundary,
-          }),
-      );
+      const certification = {
+        lucid,
+        network: deployment.network,
+        signer,
+        plan: validationTraceFieldGrammarPlan(material, fieldIndex, owner),
+        source: { sourceKind, compactCbor, witnessSetCompactCbor },
+        certificateValidator: certificate.validator,
+        certificateReferenceScriptUtxo: certificate.reference,
+        carriageUtxos: carriage === undefined ? [] : carriageReads(carriage),
+        ...(policyId === undefined
+          ? {}
+          : { fieldPreimageCertificatePolicyId: policyId }),
+      };
+      const { transaction: captured } = await buildFaultProofFieldGrammarBatch({
+        ...certification,
+        from: await resumeFaultProofFieldGrammar(certification),
+      });
       return {
         signed: captured.signed,
         referenceScripts: captured.referenceScripts,

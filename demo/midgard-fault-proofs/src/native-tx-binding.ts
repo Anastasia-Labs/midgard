@@ -29,17 +29,15 @@ import {
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
 } from "./runtime.js";
-import { completeStep, fundStep, submitStep } from "./step-completion.js";
+import { completeStep, fundStep } from "./step-completion.js";
+import { finishStep } from "./step-completion.js";
 import {
   requireNativeTxMatchesCompactCbor,
   type SubmitStep01TxInclusion,
 } from "./step-support.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 import { type FaultProofWitnessReferenceScripts } from "./witness-reference-scripts.js";
-import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
-} from "./workflow/transaction-boundary.js";
+import { type LocallyEvaluatedTransaction } from "./workflow/transaction-boundary.js";
 
 /** Structural contract view the shared binding step reads. */
 export type NativeTxBindingContracts = {
@@ -82,7 +80,7 @@ const requireStepReferenceScript = ({
 };
 
 export type NativeTxBindingResult = {
-  readonly txHash: string;
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly nextThreadOutRef: string;
   readonly inputIndex: number;
   readonly outputIndex: number;
@@ -91,7 +89,7 @@ export type NativeTxBindingResult = {
 };
 
 /** Shared body of the two bare-`NativeTxInclusionArgs` binding steps. */
-export const submitNativeTxBinding = async ({
+export const buildNativeTxBinding = async ({
   lucid,
   blueprint,
   network,
@@ -109,8 +107,6 @@ export const submitNativeTxBinding = async ({
   publishedProofChunks = [],
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -138,9 +134,6 @@ export const submitNativeTxBinding = async ({
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  /** Runs after local evaluation/signing and before provider submission. */
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation: boolean;
 }): Promise<NativeTxBindingResult> => {
   const label = nativeTxBindingStepLabel(stepIndex);
   const [hubOracleUtxo, stateQueueBlockUtxo] = await Promise.all([
@@ -272,25 +265,19 @@ export const submitNativeTxBinding = async ({
       `BuildTxWithRedeemer did not resolve ${label} layout.`,
     );
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: label,
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: `${label}-spend`,
-          utxo: stepReference,
-          expectedScript: contracts.steps[stepIndex].spendingScript,
-        },
-        ...carriage.referenceScriptCandidates,
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: `${label}-spend`,
+        utxo: stepReference,
+        expectedScript: contracts.steps[stepIndex].spendingScript,
+      },
+      ...carriage.referenceScriptCandidates,
+    ],
   });
   return {
-    txHash,
-    nextThreadOutRef: `${txHash}#${layout.outputIndex.toString()}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${layout.outputIndex.toString()}`,
     inputIndex: Number(layout.inputIndex),
     outputIndex: Number(layout.outputIndex),
     hubOracleRefInputIndex: Number(layout.hubOracleRefInputIndex),

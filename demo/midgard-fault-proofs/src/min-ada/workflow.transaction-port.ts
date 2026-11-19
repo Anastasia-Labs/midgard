@@ -20,13 +20,13 @@ import {
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { workflowConfirmedTransactions } from "../workflow/own-outputs.js";
-import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
-import { submitMinAdaInit } from "./submit-init.js";
-import { submitMinAdaTxStep01 } from "./submit-step-01.js";
-import { submitMinAdaStep01Forced } from "./submit-step-01-forced.js";
-import { submitMinAdaTxStep02 } from "./submit-step-02.js";
-import { submitMinAdaStep03 } from "./submit-step-03.js";
-import { submitMinAdaStep04 } from "./submit-step-04.js";
+import { journaledStepTransaction } from "../workflow/step-transaction.js";
+import { buildMinAdaInit } from "./submit-init.js";
+import { buildMinAdaTxStep01 } from "./submit-step-01.js";
+import { buildMinAdaStep01Forced } from "./submit-step-01-forced.js";
+import { buildMinAdaTxStep02 } from "./submit-step-02.js";
+import { buildMinAdaStep03 } from "./submit-step-03.js";
+import { buildMinAdaStep04 } from "./submit-step-04.js";
 import {
   type BoundConfig,
   isForced,
@@ -62,9 +62,9 @@ export const transactionPort = (
     const threadOutRef = () => cursorStringField(input, "threadOutRef");
     if (input.stage === "init") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitMinAdaInit({
+        transaction: (
+          await journaledStepTransaction(
+            await buildMinAdaInit({
               lucid: config.lucid,
               blueprint: config.binding.blueprint,
               deploymentInfo: config.binding.deploymentInfo,
@@ -76,11 +76,10 @@ export const transactionPort = (
               ),
               fraudulentHeaderHash: admitted.artifact.headerHash,
               witnessReferenceScripts: config.references.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "min-ada buildMinAdaInit",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "step_01") {
@@ -96,49 +95,50 @@ export const transactionPort = (
         throw new Error("min-ada transaction proof disappeared");
       }
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            const shared = {
-              lucid: config.lucid,
-              contracts: config.contracts,
-              categoryId,
-              network: config.binding.network,
-              signer: config.signer,
-              threadOutRef: threadOutRef(),
-              stateQueueBlockOutRef: cursorStringField(
-                input,
-                "stateQueueBlockOutRef",
-              ),
-              prepared: admitted.prepared,
-              referenceScriptUtxo: config.references.steps[0],
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            } as const;
-            if (isForced(admitted)) {
-              await submitMinAdaStep01Forced({
-                ...shared,
-                state: admitted.prepared.state,
-                forcedSource: admitted.forcedSource,
-              });
-            } else {
-              await submitMinAdaTxStep01({
-                ...shared,
-                blueprint: config.binding.blueprint,
+        transaction: (
+          await journaledStepTransaction(
+            await (async () => {
+              const shared = {
+                lucid: config.lucid,
+                contracts: config.contracts,
+                categoryId,
+                network: config.binding.network,
+                signer: config.signer,
+                threadOutRef: threadOutRef(),
+                stateQueueBlockOutRef: cursorStringField(
+                  input,
+                  "stateQueueBlockOutRef",
+                ),
                 prepared: admitted.prepared,
-                publishedProofChunks: chunks,
-                witnessReferenceScripts: config.references.witnesses,
-              });
-            }
-          },
-        ),
+                referenceScriptUtxo: config.references.steps[0],
+              } as const;
+              if (isForced(admitted)) {
+                return await buildMinAdaStep01Forced({
+                  ...shared,
+                  state: admitted.prepared.state,
+                  forcedSource: admitted.forcedSource,
+                });
+              } else {
+                return await buildMinAdaTxStep01({
+                  ...shared,
+                  blueprint: config.binding.blueprint,
+                  prepared: admitted.prepared,
+                  publishedProofChunks: chunks,
+                  witnessReferenceScripts: config.references.witnesses,
+                });
+              }
+            })(),
+            "min-ada step_01",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "step_02") {
       const carriage = await resolveField({ ownOutputs, config, admitted });
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitMinAdaTxStep02({
+        transaction: (
+          await journaledStepTransaction(
+            await buildMinAdaTxStep02({
               ownOutputs,
               lucid: config.lucid,
               contracts: config.contracts,
@@ -152,18 +152,19 @@ export const transactionPort = (
                 : { certificateUtxo: carriage.certificate }),
               referenceScriptUtxo: config.references.steps[1],
               yieldReferenceScriptUtxo: config.references.yields.tx,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "min-ada buildMinAdaTxStep02",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "step_03") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitMinAdaStep03({
+        transaction: (
+          await journaledStepTransaction<
+            Awaited<ReturnType<typeof buildMinAdaStep03>>
+          >(
+            await buildMinAdaStep03({
               lucid: config.lucid,
               contracts: config.contracts,
               categoryId,
@@ -171,18 +172,17 @@ export const transactionPort = (
               threadOutRef: threadOutRef(),
               outputItemCbors: admitted.prepared.outputItemCbors,
               referenceScriptUtxo: config.references.steps[2],
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "min-ada buildMinAdaStep03",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "step_04") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitMinAdaStep04({
+        transaction: (
+          await journaledStepTransaction(
+            await buildMinAdaStep04({
               lucid: config.lucid,
               contracts: config.contracts,
               categoryId,
@@ -190,11 +190,10 @@ export const transactionPort = (
               threadOutRef: threadOutRef(),
               referenceScriptUtxo: config.references.steps[3],
               witnessReferenceScripts: config.references.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "min-ada buildMinAdaStep04",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "remove") {

@@ -4,7 +4,7 @@ import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-prof
 import { generateSeedPhrase } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { submitStep04 } from "../src/double-spend/submit-step-04.js";
+import { buildStep04 } from "../src/double-spend/submit-step-04.js";
 import { submitRawDoubleSpendStep04 } from "./support/double-spend-step04-raw.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
@@ -13,6 +13,7 @@ import {
 } from "./support/legacy-submit-emulator.js";
 import { stageDoubleSpendStep04 } from "./support/submit-init/double-spend-staging.js";
 import { network } from "./support/submit-init-emulator-shared.js";
+import { submitTurnsUnjournaled } from "./support/submit-unjournaled.js";
 
 describe("double-spend proof against an honest block", () => {
   it("lets a fresh key reach step 04, then refuses the proof at the final input comparison", async () => {
@@ -32,7 +33,7 @@ describe("double-spend proof against an honest block", () => {
 
     // The builder refuses: tx2 does not spend the input the thread carries.
     await expect(
-      submitStep04({
+      submitTurnsUnjournaled(buildStep04, {
         lucid: staged.proverLucid,
         blueprint: staged.realBlueprint,
         deploymentInfo: staged.deploymentInfo,

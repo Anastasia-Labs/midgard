@@ -1,16 +1,16 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { type Script, type UTxO } from "@lucid-evolution/lucid";
 
+import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.js";
 import { fetchUtxoByOutRef, parseOutRef } from "../../src/runtime.js";
 import {
+  buildWithdrawalMistagInit,
+  buildWithdrawalMistagStep01,
+  buildWithdrawalMistagStep02,
+  buildWithdrawalMistagStep03,
+  buildWithdrawalMistagStep04,
+  buildWithdrawalMistagStep05,
   prepareWithdrawalMistag,
-  submitRemoveWithdrawalMistagFraudulentBlock,
-  submitWithdrawalMistagInit,
-  submitWithdrawalMistagStep01,
-  submitWithdrawalMistagStep02,
-  submitWithdrawalMistagStep03,
-  submitWithdrawalMistagStep04,
-  submitWithdrawalMistagStep05,
 } from "../../src/withdrawal-mistag/index.js";
 import {
   captureEmulatorSubmission,
@@ -25,8 +25,8 @@ import {
   publishPlainReferenceScriptUtxo,
   publishRemovalReferenceScripts,
   submitSetupTx,
-  WITHDRAWAL_MISTAG_REMOVAL_DEPLOYMENT_ENTRY,
 } from "./submit-init-emulator-shared.js";
+import { buildAndSubmitUnjournaled } from "./submit-unjournaled.js";
 import {
   buildWithdrawalMistagEvidenceMaterial,
   makeWithdrawalMistagEmulatorHarness,
@@ -179,7 +179,7 @@ export const driveWithdrawalMistagToFraud = async ({
   );
   const blockUtxo = await withdrawalMistagBlockUtxo({ harness, scenario });
   const step01 = await stage("step-01", () =>
-    submitWithdrawalMistagStep01({
+    buildAndSubmitUnjournaled(buildWithdrawalMistagStep01, {
       lucid: harness.proverLucid,
       contracts: harness.withdrawalMistag,
       signer: harness.proverSigner,
@@ -192,7 +192,7 @@ export const driveWithdrawalMistagToFraud = async ({
     }),
   );
   const step02 = await stage("step-02", () =>
-    submitWithdrawalMistagStep02({
+    buildAndSubmitUnjournaled(buildWithdrawalMistagStep02, {
       lucid: harness.proverLucid,
       contracts: harness.withdrawalMistag,
       signer: harness.proverSigner,
@@ -203,7 +203,7 @@ export const driveWithdrawalMistagToFraud = async ({
     }),
   );
   const step03 = await stage("step-03", () =>
-    submitWithdrawalMistagStep03({
+    buildAndSubmitUnjournaled(buildWithdrawalMistagStep03, {
       lucid: harness.proverLucid,
       contracts: harness.withdrawalMistag,
       signer: harness.proverSigner,
@@ -214,7 +214,7 @@ export const driveWithdrawalMistagToFraud = async ({
     }),
   );
   const step04 = await stage("step-04", () =>
-    submitWithdrawalMistagStep04({
+    buildAndSubmitUnjournaled(buildWithdrawalMistagStep04, {
       lucid: harness.proverLucid,
       contracts: harness.withdrawalMistag,
       signer: harness.proverSigner,
@@ -225,7 +225,7 @@ export const driveWithdrawalMistagToFraud = async ({
     }),
   );
   const fraud = await stage("step-05", () =>
-    submitWithdrawalMistagStep05({
+    buildAndSubmitUnjournaled(buildWithdrawalMistagStep05, {
       lucid: harness.proverLucid,
       contracts: harness.withdrawalMistag,
       signer: harness.proverSigner,
@@ -255,7 +255,7 @@ export const initWithdrawalMistagThread = async ({
   >;
   readonly scenario: Awaited<ReturnType<typeof setupWithdrawalMistagScenario>>;
 }) =>
-  await submitWithdrawalMistagInit({
+  await buildAndSubmitUnjournaled(buildWithdrawalMistagInit, {
     lucid: harness.proverLucid,
     blueprint: harness.realBlueprint,
     network,
@@ -309,14 +309,13 @@ export const removeWithdrawalMistagBlock = async ({
     { removalReferenceScripts: removalReferenceScripts.published },
   );
   const now = BigInt(harness.emulator.now());
-  return await submitRemoveWithdrawalMistagFraudulentBlock({
+  return await submitRemoveFraudulentBlock({
     lucid: harness.proverLucid,
     blueprint: harness.realBlueprint,
     deploymentInfo,
     network,
     signer: harness.proverSigner,
-    contracts: harness.withdrawalMistag,
-    firstStepDeploymentEntry: WITHDRAWAL_MISTAG_REMOVAL_DEPLOYMENT_ENTRY,
+    fraudCategory: "withdrawalMistag",
     fraudulentHeaderHash: scenario.setup.headerHash,
     awaitConfirmation: true,
     requireReferenceScripts: true,

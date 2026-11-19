@@ -52,7 +52,8 @@ import {
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
 } from "../runtime.js";
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import {
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
   requireInitialStepDatum,
@@ -65,8 +66,10 @@ import {
   witnessSpendingValidatorCarriage,
   witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
-import { workflowReferenceScriptsUsedByTransaction } from "../workflow/transaction-boundary.js";
+import {
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
+} from "../workflow/transaction-boundary.js";
 import type { InputSetUniquenessContracts } from "./contracts.js";
 import {
   inputSetUniquenessStepLabel,
@@ -77,8 +80,8 @@ import {
 
 const STEP_LABEL = inputSetUniquenessStepLabel(0);
 
-export type SubmitInputSetUniquenessStep01Result = {
-  readonly txHash: string;
+export type InputSetUniquenessStep01Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -91,10 +94,12 @@ export type SubmitInputSetUniquenessStep01Result = {
   readonly stepState: InputSetUniquenessStep02State;
   readonly inputIndex: number;
   readonly outputIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
 
-export const submitInputSetUniquenessStep01 = async ({
+export type SubmitInputSetUniquenessStep01Result =
+  UnjournaledSubmission<InputSetUniquenessStep01Build>;
+
+export const buildInputSetUniquenessStep01 = async ({
   lucid,
   blueprint,
   contracts,
@@ -107,8 +112,6 @@ export const submitInputSetUniquenessStep01 = async ({
   publishedProofChunks,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -125,9 +128,7 @@ export const submitInputSetUniquenessStep01 = async ({
   readonly referenceScriptUtxo?: UTxO;
   /** Published witness reference scripts required by this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitInputSetUniquenessStep01Result> => {
+}): Promise<InputSetUniquenessStep01Build> => {
   const { threadUtxo, threadToken } = await requireInputSetUniquenessThreadUtxo(
     {
       lucid,
@@ -341,45 +342,38 @@ export const submitInputSetUniquenessStep01 = async ({
       "BuildTxWithRedeemer did not resolve the step-01 layout.",
     );
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: "input-set-uniqueness step-01",
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: "V1 fraud-proof input-set-uniqueness step-01",
-          utxo: referenceScriptUtxo,
-          expectedScript: contracts.steps[0].spendingScript,
-        },
-        {
-          role: "membership proof withdrawal",
-          utxo: witnessReferenceScripts?.phasMembershipWithdraw,
-          expectedScript: phasMembershipScript,
-        },
-        {
-          role: "V1 MPF chunked-verify withdrawal",
-          utxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
-          expectedScript: chunkedVerifyScript,
-        },
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: "V1 fraud-proof input-set-uniqueness step-01",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.steps[0].spendingScript,
+      },
+      {
+        role: "membership proof withdrawal",
+        utxo: witnessReferenceScripts?.phasMembershipWithdraw,
+        expectedScript: phasMembershipScript,
+      },
+      {
+        role: "V1 MPF chunked-verify withdrawal",
+        utxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
+        expectedScript: chunkedVerifyScript,
+      },
+    ],
   });
 
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
     threadOutRef,
-    nextThreadOutRef: `${txHash}#${resolvedLayout.outputIndex.toString()}`,
+    nextThreadOutRef: `${transaction.txHash}#${resolvedLayout.outputIndex.toString()}`,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadUnit: threadToken.unit,
     secondStepAddress: contracts.steps[1].spendingScriptAddress,
     stepState,
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
-    awaitedConfirmation: awaitConfirmation,
   };
 };

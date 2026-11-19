@@ -164,19 +164,15 @@ it.each(["init", "dispatch", "authenticate", "finalize"] as const)(
     const transaction = captured();
     const target =
       selected === "init"
-        ? "submitFieldPreimageLengthInit"
+        ? "buildFieldPreimageLengthInit"
         : selected === "dispatch"
-          ? "submitFieldPreimageLengthAcceptedDispatch"
+          ? "buildFieldPreimageLengthAcceptedDispatch"
           : selected === "authenticate"
-            ? "submitFieldPreimageLengthAcceptedAuthentication"
-            : "submitFieldPreimageLengthTerminal";
-    type Input = Parameters<(typeof submitters)[typeof target]>[0];
+            ? "buildFieldPreimageLengthAcceptedAuthentication"
+            : "buildFieldPreimageLengthTerminal";
     const submit = vi
       .spyOn(submitters, target)
-      .mockImplementation(async (input: Input) => {
-        await input.preSubmitBoundary?.(transaction);
-        throw new Error("capture did not interrupt before submission");
-      });
+      .mockImplementation(async () => ({ transaction }) as never);
     const result = await recovery.transactions.capture({
       action: required(headerHash, stage),
       artifact,
@@ -213,7 +209,7 @@ it("rejects a mismatched physical branch and yields a changed selected header be
     stateQueueBlockOutRef: outRef("66"),
   });
   stage.value = { kind: "not_started", stateQueueBlockOutRef: outRef("88") };
-  const submit = vi.spyOn(submitters, "submitFieldPreimageLengthInit");
+  const submit = vi.spyOn(submitters, "buildFieldPreimageLengthInit");
   await expect(
     recovery.transactions.capture({ action, artifact, entries: [] }),
   ).rejects.toBeInstanceOf(WorkflowActionChangedError);

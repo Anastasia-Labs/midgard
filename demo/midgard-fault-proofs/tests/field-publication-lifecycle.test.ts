@@ -11,12 +11,10 @@ import {
 import { Effect } from "effect";
 import { afterEach, expect, it, vi } from "vitest";
 
-import {
-  type FaultProofFieldOpeningPlan,
-  publishFaultProofFieldCarriage,
-} from "../src/field-opening.js";
+import { type FaultProofFieldOpeningPlan } from "../src/field-opening.js";
 import { fieldPublicationClaimKey } from "../src/field-opening.own-field-carriage.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
+import { publishCarriageUnjournaled } from "./support/submit-unjournaled.js";
 
 const address = credentialToAddress("Custom", {
   type: "Key",
@@ -152,7 +150,7 @@ it.each(["none", "ours", "unrelated"] as const)(
       );
       return true;
     });
-    const result = await publishFaultProofFieldCarriage({
+    const result = await publishCarriageUnjournaled({
       ownOutputs,
       lucid,
       signer: {
@@ -168,7 +166,7 @@ it.each(["none", "ours", "unrelated"] as const)(
       beforePublication: async () => {
         events.push("begin");
       },
-      preSubmitBoundary: async ({ txHash }) => {
+      beforeSubmit: async ({ txHash }) => {
         events.push(`persist:${outputs.length}`);
         expect(txHash).toMatch(/^[0-9a-f]{64}$/u);
       },
@@ -203,6 +201,9 @@ it.each(["none", "ours", "unrelated"] as const)(
       `persist:${at(1)}`,
       "submit:1",
       `included:${at(1)}`,
+      // Each call after a publication reads every live chunk again, so the
+      // last one confirms the first chunk once more before the second.
+      `confirm:${at(0)}`,
       `confirm:${at(1)}`,
     ]);
   },

@@ -22,12 +22,11 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultFinalize } from "../linear-fault-finalize.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultFinalize } from "../linear-fault-finalize.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   NATIVE_SCRIPT_INVALID_CATEGORY_LABEL as FAMILY,
   type NativeScriptInvalidContracts,
@@ -62,7 +61,7 @@ const samePeaks = (
       peak.hash === Buffer.from(right[index]!.hash).toString("hex"),
   );
 
-export const submitNativeScriptInvalidStep05 = async ({
+export const buildNativeScriptInvalidStep05 = async ({
   lucid,
   contracts,
   categoryId,
@@ -76,8 +75,6 @@ export const submitNativeScriptInvalidStep05 = async ({
   nodeBudget = NATIVE_SCRIPT_INVALID_NODE_BATCH,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: NativeScriptInvalidContracts;
@@ -92,8 +89,6 @@ export const submitNativeScriptInvalidStep05 = async ({
   readonly nodeBudget?: number;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 4;
   const label = linearFaultStepLabel(FAMILY, stepIndex);
@@ -180,7 +175,7 @@ export const submitNativeScriptInvalidStep05 = async ({
     signer_queries: signerQueries,
   };
   if (transition.complete) {
-    const result = await submitLinearFaultFinalize({
+    const result = await buildLinearFaultFinalize({
       lucid,
       family: FAMILY,
       stepIndex,
@@ -215,8 +210,6 @@ export const submitNativeScriptInvalidStep05 = async ({
             },
       referenceScriptUtxo,
       witnessReferenceScripts,
-      preSubmitBoundary,
-      awaitConfirmation,
     });
     return {
       ...result,
@@ -279,7 +272,7 @@ export const submitNativeScriptInvalidStep05 = async ({
       Redeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -290,14 +283,12 @@ export const submitNativeScriptInvalidStep05 = async ({
     nextAddress: contracts.steps[stepIndex].spendingScriptAddress,
     nextDatum,
     redeemer: spendRedeemer,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined) throw new Error(`${label}: unresolved layout`);
   return {
-    txHash,
+    transaction,
     action: starts ? "StartScriptScan" : "ResumeScriptScan",
-    nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
     cursorBytes: transition.nextCursorBytes,
     cursorHash: transition.nextCursorHash,
     frames: transition.nextFrames,

@@ -2,12 +2,13 @@ import { decodeMidgardNativeTxCompact } from "@al-ft/midgard-core";
 import { Proof } from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
+import { type FaultProofTurn } from "../fault-proof-turn.js";
 import { planFaultProofFieldOpening } from "../field-opening.js";
 import { requireLinearFaultThreadUtxo } from "../linear-fault-family.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { nativeTxFromCoreCompact } from "../step-support.js";
-import { submitInit } from "../submit-init.js";
+import { buildInit } from "../submit-init.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import {
   captureCursorRemoval,
@@ -16,10 +17,8 @@ import {
 import type { FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import type { FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
 import type { OwnOutputJournal } from "../workflow/own-outputs.js";
-import {
-  captureLocallyEvaluatedTransaction,
-  type LocallyEvaluatedTransaction,
-} from "../workflow/transaction-boundary.js";
+import { journaledStepTransaction } from "../workflow/step-transaction.js";
+import { type LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import {
   admitObserverOrderInvalidArtifact,
   ObserverOrderInvalidForcedSourcePayloadSchema,
@@ -27,15 +26,15 @@ import {
 import type { ObserverOrderInvalidContracts } from "./contracts.js";
 import { OBSERVER_ORDER_INVALID_CATEGORY } from "./family.js";
 import {
-  submitObserverOrderInvalidStep01Accepted,
-  submitObserverOrderInvalidStep01Forced,
+  buildObserverOrderInvalidStep01Accepted,
+  buildObserverOrderInvalidStep01Forced,
 } from "./submit-step-01.js";
 import {
+  buildObserverOrderInvalidStep02,
   type ObserverOrderInvalidStep02Action,
-  submitObserverOrderInvalidStep02,
 } from "./submit-step-02.js";
-import { submitObserverOrderInvalidStep03 } from "./submit-step-03.js";
-import { submitObserverOrderInvalidStep04 } from "./submit-step-04.js";
+import { buildObserverOrderInvalidStep03 } from "./submit-step-03.js";
+import { buildObserverOrderInvalidStep04 } from "./submit-step-04.js";
 
 export type ObserverOrderInvalidWorkflowReferenceScripts = Readonly<{
   steps: readonly [UTxO, UTxO, UTxO, UTxO];
@@ -134,16 +133,16 @@ const inclusionFromArtifact = (
 };
 
 const capture = async (
-  submit: Parameters<typeof captureLocallyEvaluatedTransaction>[0],
+  built: FaultProofTurn<{ readonly transaction: LocallyEvaluatedTransaction }>,
+  label: string,
 ): Promise<ObserverOrderInvalidCapturedAction> =>
   Object.freeze({
-    transaction: await captureLocallyEvaluatedTransaction(submit),
+    transaction: (await journaledStepTransaction(built, label)).transaction,
   });
 
 /**
- * Concrete family actuator. Every proof builder reaches the local-evaluation
- * boundary with `awaitConfirmation:false`; the durable workflow owns the only
- * subsequent submit authority.
+ * Concrete family actuator. Every proof builder returns its signed transaction
+ * unsubmitted; the durable workflow owns the only submit authority.
  */
 export const createObserverOrderInvalidActuator = (
   config: BoundObserverOrderInvalidActuatorConfig,
@@ -164,8 +163,8 @@ export const createObserverOrderInvalidActuator = (
         throw new Error("observerOrderInvalid artifact changed bound header");
       const categoryId = config.binding.resolvedContracts.category.categoryId;
       if (action.stage === "init")
-        return await capture(async (preSubmitBoundary) => {
-          await submitInit({
+        return await capture(
+          await buildInit({
             lucid: config.lucid,
             blueprint: config.binding.blueprint,
             deploymentInfo: config.binding.deploymentInfo,
@@ -175,10 +174,9 @@ export const createObserverOrderInvalidActuator = (
             fraudulentBlockOutRef: action.stateQueueBlockOutRef,
             fraudulentHeaderHash: admitted.artifact.headerHash,
             witnessReferenceScripts: config.references.witnesses,
-            preSubmitBoundary,
-            awaitConfirmation: false,
-          });
-        });
+          }),
+          "observer-order-invalid init",
+        );
       if (action.stage === "step_01") {
         const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
           lucid: config.lucid,
@@ -188,42 +186,40 @@ export const createObserverOrderInvalidActuator = (
           stepIndex: 0,
           threadOutRef: action.threadOutRef,
         });
-        return await capture(async (preSubmitBoundary) => {
-          const common = {
-            lucid: config.lucid,
-            contracts: config.contracts,
-            signer: config.signer,
-            finding: admitted.evidence,
-            referenceScriptUtxo: config.references.steps[0],
-            preSubmitBoundary,
-            awaitConfirmation: false,
-          } as const;
-          if (admitted.artifact.sourceKind === "accepted")
-            await submitObserverOrderInvalidStep01Accepted({
-              ...common,
-              blueprint: config.binding.blueprint,
-              network: config.binding.network,
-              threadUtxo,
-              threadToken,
-              stateQueueBlockOutRef: action.stateQueueBlockOutRef,
-              txInclusion: inclusionFromArtifact(admitted),
-              witnessReferenceScripts: config.references.witnesses,
-            });
-          else
-            await submitObserverOrderInvalidStep01Forced({
-              ...common,
-              categoryId,
-              threadOutRef: action.threadOutRef,
-              forcedSource: Data.from(
-                admitted.artifact.forcedSourceCbor,
-                ObserverOrderInvalidForcedSourcePayloadSchema as never,
-              ) as Readonly<Record<string, unknown>>,
-            });
-        });
+        const common = {
+          lucid: config.lucid,
+          contracts: config.contracts,
+          signer: config.signer,
+          finding: admitted.evidence,
+          referenceScriptUtxo: config.references.steps[0],
+        } as const;
+        return await capture(
+          admitted.artifact.sourceKind === "accepted"
+            ? await buildObserverOrderInvalidStep01Accepted({
+                ...common,
+                blueprint: config.binding.blueprint,
+                network: config.binding.network,
+                threadUtxo,
+                threadToken,
+                stateQueueBlockOutRef: action.stateQueueBlockOutRef,
+                txInclusion: inclusionFromArtifact(admitted),
+                witnessReferenceScripts: config.references.witnesses,
+              })
+            : await buildObserverOrderInvalidStep01Forced({
+                ...common,
+                categoryId,
+                threadOutRef: action.threadOutRef,
+                forcedSource: Data.from(
+                  admitted.artifact.forcedSourceCbor,
+                  ObserverOrderInvalidForcedSourcePayloadSchema as never,
+                ) as Readonly<Record<string, unknown>>,
+              }),
+          "observer-order-invalid step_01",
+        );
       }
       if (action.stage === "step_02")
-        return await capture(async (preSubmitBoundary) => {
-          await submitObserverOrderInvalidStep02({
+        return await capture(
+          await buildObserverOrderInvalidStep02({
             ownOutputs,
             lucid: config.lucid,
             contracts: config.contracts,
@@ -235,13 +231,12 @@ export const createObserverOrderInvalidActuator = (
             staged: admitted.staged,
             action: action.action,
             referenceScriptUtxo: config.references.steps[1],
-            preSubmitBoundary,
-            awaitConfirmation: false,
-          });
-        });
+          }),
+          "observer-order-invalid step_02",
+        );
       if (action.stage === "step_03")
-        return await capture(async (preSubmitBoundary) => {
-          await submitObserverOrderInvalidStep03({
+        return await capture(
+          await buildObserverOrderInvalidStep03({
             ownOutputs,
             lucid: config.lucid,
             contracts: config.contracts,
@@ -253,13 +248,12 @@ export const createObserverOrderInvalidActuator = (
             staged: admitted.staged,
             walkOrdinal: action.walkOrdinal,
             referenceScriptUtxo: config.references.steps[2],
-            preSubmitBoundary,
-            awaitConfirmation: false,
-          });
-        });
+          }),
+          "observer-order-invalid step_03",
+        );
       if (action.stage === "step_04")
-        return await capture(async (preSubmitBoundary) => {
-          await submitObserverOrderInvalidStep04({
+        return await capture(
+          await buildObserverOrderInvalidStep04({
             lucid: config.lucid,
             contracts: config.contracts,
             categoryId,
@@ -268,10 +262,9 @@ export const createObserverOrderInvalidActuator = (
             evidence: admitted.evidence,
             referenceScriptUtxo: config.references.steps[3],
             witnessReferenceScripts: config.references.witnesses,
-            preSubmitBoundary,
-            awaitConfirmation: false,
-          });
-        });
+          }),
+          "observer-order-invalid step_04",
+        );
       return await captureCursorRemoval({
         category: OBSERVER_ORDER_INVALID_CATEGORY,
         lucid: config.lucid,

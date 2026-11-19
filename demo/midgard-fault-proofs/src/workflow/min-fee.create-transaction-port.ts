@@ -8,10 +8,10 @@ import {
 } from "../field-opening.js";
 import type { MinFeeContracts } from "../min-fee-contracts.js";
 import { prepareMinFeeForcedArtifact } from "../min-fee-forced-artifact.js";
-import { submitMinFeeStep01Forced } from "../submit-min-fee-forced-step-01.js";
-import { submitMinFeeInit } from "../submit-min-fee-init.js";
-import { submitMinFeeStep01 } from "../submit-min-fee-step-01.js";
-import { submitMinFeeStep02 } from "../submit-min-fee-step-02.js";
+import { buildMinFeeStep01Forced } from "../submit-min-fee-forced-step-01.js";
+import { buildMinFeeInit } from "../submit-min-fee-init.js";
+import { buildMinFeeStep01 } from "../submit-min-fee-step-01.js";
+import { buildMinFeeStep02 } from "../submit-min-fee-step-02.js";
 import {
   type LinearFamilyFieldCarriageRequirement,
   type ManifestBoundLinearFamilyWorkflow,
@@ -40,7 +40,7 @@ import {
 } from "./min-fee.parse-artifact.js";
 import type { OwnOutputJournal } from "./own-outputs.js";
 import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.js";
-import { captureLocallyEvaluatedTransaction } from "./transaction-boundary.js";
+import { journaledStepTransaction } from "./step-transaction.js";
 
 const resolveFieldCarriages = async (
   config: BoundConfig,
@@ -127,9 +127,9 @@ export const createTransactionPort = (
     const input = actionInput(action);
     if (input.stage === "init") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitMinFeeInit({
+        transaction: (
+          await journaledStepTransaction(
+            await buildMinFeeInit({
               lucid: config.lucid,
               blueprint: config.blueprint,
               network: config.network,
@@ -143,19 +143,18 @@ export const createTransactionPort = (
               ),
               fraudulentHeaderHash: config.headerHash,
               witnessReferenceScripts: config.referenceScripts.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "min-fee buildMinFeeInit",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "step_01") {
       if (admitted.forced !== null)
         return Object.freeze({
-          transaction: await captureLocallyEvaluatedTransaction(
-            async (preSubmitBoundary) => {
-              await submitMinFeeStep01Forced({
+          transaction: (
+            await journaledStepTransaction(
+              await buildMinFeeStep01Forced({
                 lucid: config.lucid,
                 contracts: config.contracts,
                 categoryId: config.category.categoryId,
@@ -164,11 +163,10 @@ export const createTransactionPort = (
                 state: admitted.forced.evidence.state,
                 forcedSource: admitted.forced.forcedSource,
                 referenceScriptUtxo: config.referenceScripts.steps[0],
-                preSubmitBoundary,
-                awaitConfirmation: false,
-              });
-            },
-          ),
+              }),
+              "min-fee buildMinFeeStep01Forced",
+            )
+          ).transaction,
         });
       const chunks = await resolveDirectFirstProofChunks({
         action,
@@ -177,9 +175,9 @@ export const createTransactionPort = (
         proofCbor: admitted.artifact.txMembershipProofCbor,
       });
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitMinFeeStep01({
+        transaction: (
+          await journaledStepTransaction(
+            await buildMinFeeStep01({
               lucid: config.lucid,
               blueprint: config.blueprint,
               contracts: config.contracts,
@@ -195,11 +193,10 @@ export const createTransactionPort = (
               publishedProofChunks: chunks,
               referenceScriptUtxo: config.referenceScripts.steps[0],
               witnessReferenceScripts: config.referenceScripts.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "min-fee buildMinFeeStep01",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "step_02") {
@@ -209,9 +206,9 @@ export const createTransactionPort = (
         ownOutputs,
       );
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitMinFeeStep02({
+        transaction: (
+          await journaledStepTransaction(
+            await buildMinFeeStep02({
               ownOutputs,
               lucid: config.lucid,
               contracts: config.contracts,
@@ -227,11 +224,10 @@ export const createTransactionPort = (
               existingPublicationUtxos: carriages.publications,
               publishMissingCarriages: false,
               publishCarriages: admitted.forced !== null,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "min-fee buildMinFeeStep02",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "remove") {

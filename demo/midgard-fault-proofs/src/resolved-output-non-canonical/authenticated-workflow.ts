@@ -61,5 +61,4 @@ export {
   executeManifestBoundResolvedOutputNonCanonicalWorkflow,
   type ManifestBoundResolvedOutputNonCanonicalWorkflow,
   RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION,
-  runOrResumeManifestBoundResolvedOutputNonCanonicalWorkflow,
 } from "./authenticated-workflow.run-or-resume-manifest-bound-resolved-output-non-canonical-workflow.js";

@@ -15,10 +15,9 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { TransactionOutputNonCanonicalContracts } from "./contracts.js";
 import {
   TransactionOutputScanControlSchema,
@@ -31,7 +30,7 @@ import {
   transactionOutputScanControlData,
 } from "./transaction-output-non-canonical.js";
 
-export const submitTransactionOutputNonCanonicalStep03 = async ({
+export const buildTransactionOutputNonCanonicalStep03 = async ({
   lucid,
   contracts,
   categoryId,
@@ -39,8 +38,6 @@ export const submitTransactionOutputNonCanonicalStep03 = async ({
   threadOutRef,
   evidence,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: TransactionOutputNonCanonicalContracts;
@@ -55,8 +52,6 @@ export const submitTransactionOutputNonCanonicalStep03 = async ({
   readonly certificateUtxo?: UTxO;
   readonly certificateReferenceScriptUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 2;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
@@ -196,7 +191,7 @@ export const submitTransactionOutputNonCanonicalStep03 = async ({
       TransactionOutputStep03RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -208,16 +203,14 @@ export const submitTransactionOutputNonCanonicalStep03 = async ({
     nextDatum,
     redeemer,
     carriageUtxos: [],
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined)
     throw new Error(
       "transaction-output-non-canonical: step-03 layout unresolved",
     );
   return {
-    txHash,
-    nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
     /** The envelope scan finished. */
     terminal: outcome !== 0n,
     nextStage:

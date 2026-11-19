@@ -20,12 +20,8 @@ import {
 import { expect } from "vitest";
 
 import type { CanonicalBlockEvidence } from "../../src/evidence/canonical-block-evidence.js";
-import {
-  certifyFaultProofFieldCarriage,
-  planFaultProofFieldOpening,
-  publishFaultProofFieldCarriage,
-} from "../../src/field-opening.js";
-import { submitLinearFaultCancel } from "../../src/linear-fault-cancel.js";
+import { planFaultProofFieldOpening } from "../../src/field-opening.js";
+import { buildLinearFaultCancel } from "../../src/linear-fault-cancel.js";
 import { MIN_FEE_CATEGORY_LABEL } from "../../src/min-fee-contracts.js";
 import {
   MIN_FEE_FORCED_ARTIFACT,
@@ -33,11 +29,11 @@ import {
 } from "../../src/min-fee-forced-artifact.js";
 import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.js";
 import { forcedTxFromCoreCompact } from "../../src/step-support.js";
-import { submitMinFeeStep01Forced } from "../../src/submit-min-fee-forced-step-01.js";
-import { submitMinFeeInit } from "../../src/submit-min-fee-init.js";
+import { buildMinFeeStep01Forced } from "../../src/submit-min-fee-forced-step-01.js";
+import { buildMinFeeInit } from "../../src/submit-min-fee-init.js";
 import {
+  buildMinFeeStep02,
   type MinFeeFieldItemCbors,
-  submitMinFeeStep02,
 } from "../../src/submit-min-fee-step-02.js";
 import {
   buildCountedRoot,
@@ -57,6 +53,12 @@ import {
   publishRemovalReferenceScripts,
   submitSetupTx,
 } from "./submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  certifyCarriageUnjournaled,
+  publishCarriageUnjournaled,
+  submitTurnsUnjournaled,
+} from "./submit-unjournaled.js";
 import { syntheticDeepMembershipProof } from "./synthetic-deep-proof.js";
 
 export const makeMinFeeWrongfulRejectionScenario = async (
@@ -246,7 +248,7 @@ export const makeMinFeeWrongfulRejectionScenario = async (
     scriptPublications.push(publication.publicationMeasurement);
   }
   const init = () =>
-    submitMinFeeInit({
+    buildAndSubmitUnjournaled(buildMinFeeInit, {
       lucid: h.proverLucid,
       blueprint: h.realBlueprint,
       network,
@@ -263,7 +265,7 @@ export const makeMinFeeWrongfulRejectionScenario = async (
       witnessReferenceScripts: h.witnessReferenceScripts,
     });
   const bind = (threadOutRef: string, overrides = {}) =>
-    submitMinFeeStep01Forced({
+    buildAndSubmitUnjournaled(buildMinFeeStep01Forced, {
       lucid: h.proverLucid,
       contracts,
       categoryId: category.categoryId,
@@ -294,7 +296,7 @@ export const makeMinFeeWrongfulRejectionScenario = async (
             }),
         label: "min-fee maximum field",
       });
-      const published = await publishFaultProofFieldCarriage({
+      const published = await publishCarriageUnjournaled({
         ownOutputs,
         lucid: h.proverLucid,
         signer: h.proverSigner,
@@ -309,7 +311,7 @@ export const makeMinFeeWrongfulRejectionScenario = async (
           script: h.contracts.fieldPreimageCertificate.mintingScript,
           label: "min-fee field certificate",
         });
-        const certificate = await certifyFaultProofFieldCarriage({
+        const certificate = await certifyCarriageUnjournaled({
           ownOutputs,
           lucid: h.proverLucid,
           network,
@@ -332,7 +334,7 @@ export const makeMinFeeWrongfulRejectionScenario = async (
     threadOutRef: string,
     unsafeSkipLocalViolationCheckForTest = false,
   ) =>
-    submitMinFeeStep02({
+    submitTurnsUnjournaled(buildMinFeeStep02, {
       ownOutputs,
       lucid: h.proverLucid,
       contracts,
@@ -351,7 +353,7 @@ export const makeMinFeeWrongfulRejectionScenario = async (
       unsafeSkipLocalViolationCheckForTest,
     });
   const cancel = (threadOutRef: string, step: number) =>
-    submitLinearFaultCancel({
+    buildAndSubmitUnjournaled(buildLinearFaultCancel, {
       lucid: h.proverLucid,
       family: MIN_FEE_CATEGORY_LABEL,
       steps: contracts.steps,

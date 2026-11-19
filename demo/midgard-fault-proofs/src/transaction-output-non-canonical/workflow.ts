@@ -37,8 +37,6 @@ import "./workflow.create-transaction-output-non-canonical-recovery-ports.js";
 import "./workflow.run-or-resume-manifest-bound-transaction-output-non-canonical-workflow.js";
 export { createManifestBoundTransactionOutputNonCanonicalSubmission } from "./workflow.create-manifest-bound-transaction-output-non-canonical-submission.js";
 export {
-  createManifestBoundTransactionOutputNonCanonicalRuntime,
-  loadTransactionOutputNonCanonicalRuntime,
   type ManifestBoundTransactionOutputNonCanonicalWorkflowConfig,
   prepareTransactionOutputNonCanonicalRecoveryMaterial,
 } from "./workflow.create-transaction-output-non-canonical-recovery-ports.js";
@@ -57,7 +55,6 @@ export {
   createTransactionOutputNonCanonicalRecoveryAdapter,
   executeManifestBoundTransactionOutputNonCanonicalWorkflow,
   type ManifestBoundTransactionOutputNonCanonicalWorkflow,
-  runOrResumeManifestBoundTransactionOutputNonCanonicalWorkflow,
   TRANSACTION_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION,
 } from "./workflow.run-or-resume-manifest-bound-transaction-output-non-canonical-workflow.js";
 export {

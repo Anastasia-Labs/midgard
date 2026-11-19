@@ -1,28 +1,24 @@
 import { type UTxO } from "@lucid-evolution/lucid";
 
-import { submitCommittedFieldShapeInit } from "../../src/committed-field-shape/submit-committed-field-shape-init.js";
+import { buildCommittedFieldShapeInit } from "../../src/committed-field-shape/submit-committed-field-shape-init.js";
 import type { FaultProofFieldGrammarDeployment } from "../../src/field-grammar-certificate.js";
+import { planFaultProofFieldOpening } from "../../src/field-opening.js";
 import {
-  certifyFaultProofFieldCarriage,
-  planFaultProofFieldOpening,
-  publishFaultProofFieldCarriage,
-} from "../../src/field-opening.js";
-import {
+  buildOutputReferenceScriptDecodingCancel,
+  buildOutputReferenceScriptDecodingStep01Accepted,
+  buildOutputReferenceScriptDecodingStep01Forced,
+  buildOutputReferenceScriptDecodingStep01ForcedRaw,
+  buildOutputReferenceScriptDecodingStep02,
+  buildOutputReferenceScriptDecodingStep02Raw,
+  buildOutputReferenceScriptDecodingStep03,
+  buildOutputReferenceScriptDecodingStep04,
+  buildOutputReferenceScriptDecodingStep05,
+  buildOutputReferenceScriptDecodingStep05Raw,
+  buildOutputReferenceScriptDecodingStep06,
+  buildOutputReferenceScriptDecodingStep06Raw,
   type OutputReferenceScriptDecodingEvidence,
   type OutputReferenceScriptScanArgs,
   type OutputReferenceScriptScanState,
-  submitOutputReferenceScriptDecodingCancel,
-  submitOutputReferenceScriptDecodingStep01Accepted,
-  submitOutputReferenceScriptDecodingStep01Forced,
-  submitOutputReferenceScriptDecodingStep01ForcedRaw,
-  submitOutputReferenceScriptDecodingStep02,
-  submitOutputReferenceScriptDecodingStep02Raw,
-  submitOutputReferenceScriptDecodingStep03,
-  submitOutputReferenceScriptDecodingStep04,
-  submitOutputReferenceScriptDecodingStep05,
-  submitOutputReferenceScriptDecodingStep05Raw,
-  submitOutputReferenceScriptDecodingStep06,
-  submitOutputReferenceScriptDecodingStep06Raw,
 } from "../../src/output-reference-script-decoding/index.js";
 import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.js";
 import { type SubmitStep01TxInclusion } from "../../src/step-support.js";
@@ -41,6 +37,12 @@ import {
   publishRemovalReferenceScripts,
   submitSetupTx,
 } from "./submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  certifyCarriageUnjournaled,
+  publishCarriageUnjournaled,
+  submitTurnsUnjournaled,
+} from "./submit-unjournaled.js";
 
 export const makeOutputReferenceStages = ({
   context,
@@ -63,7 +65,7 @@ export const makeOutputReferenceStages = ({
 
   const init = async () =>
     await captured(() =>
-      submitCommittedFieldShapeInit({
+      buildAndSubmitUnjournaled(buildCommittedFieldShapeInit, {
         lucid,
         blueprint: harness.realBlueprint,
         network,
@@ -102,23 +104,26 @@ export const makeOutputReferenceStages = ({
     txInclusion: SubmitStep01TxInclusion,
   ) =>
     await captured(async () =>
-      submitOutputReferenceScriptDecodingStep01Accepted({
-        lucid,
-        blueprint: harness.realBlueprint,
-        network,
-        contracts,
-        signer,
-        finding,
-        threadUtxo: await threadUtxoOf(threadOf(initialized)),
-        threadToken: {
-          unit: initialized.computationThreadUnit,
-          fraudulentHeaderHash: initialized.fraudulentHeaderHash,
+      buildAndSubmitUnjournaled(
+        buildOutputReferenceScriptDecodingStep01Accepted,
+        {
+          lucid,
+          blueprint: harness.realBlueprint,
+          network,
+          contracts,
+          signer,
+          finding,
+          threadUtxo: await threadUtxoOf(threadOf(initialized)),
+          threadToken: {
+            unit: initialized.computationThreadUnit,
+            fraudulentHeaderHash: initialized.fraudulentHeaderHash,
+          },
+          stateQueueBlockOutRef: fraudulentBlockOutRef,
+          txInclusion,
+          referenceScriptUtxo: references[0]!,
+          witnessReferenceScripts: harness.witnessReferenceScripts,
         },
-        stateQueueBlockOutRef: fraudulentBlockOutRef,
-        txInclusion,
-        referenceScriptUtxo: references[0]!,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-      }),
+      ),
     );
   const step01Forced = async (
     threadOutRef: string,
@@ -127,34 +132,40 @@ export const makeOutputReferenceStages = ({
     header: Parameters<typeof submitSetupTx>[0]["header"],
   ) =>
     await captured(() =>
-      submitOutputReferenceScriptDecodingStep01Forced({
+      buildAndSubmitUnjournaled(
+        buildOutputReferenceScriptDecodingStep01Forced,
+        {
+          lucid,
+          contracts,
+          categoryId,
+          signer,
+          threadOutRef,
+          evidence,
+          forcedSource: {
+            header,
+            membership: leaf.membership,
+          },
+          referenceScriptUtxo: references[0]!,
+        },
+      ),
+    );
+  const step01ForcedRaw = async (
+    args: Omit<
+      Parameters<typeof buildOutputReferenceScriptDecodingStep01ForcedRaw>[0],
+      "lucid" | "contracts" | "categoryId" | "signer" | "referenceScriptUtxo"
+    >,
+  ) =>
+    await buildAndSubmitUnjournaled(
+      buildOutputReferenceScriptDecodingStep01ForcedRaw,
+      {
         lucid,
         contracts,
         categoryId,
         signer,
-        threadOutRef,
-        evidence,
-        forcedSource: {
-          header,
-          membership: leaf.membership,
-        },
         referenceScriptUtxo: references[0]!,
-      }),
+        ...args,
+      },
     );
-  const step01ForcedRaw = async (
-    args: Omit<
-      Parameters<typeof submitOutputReferenceScriptDecodingStep01ForcedRaw>[0],
-      "lucid" | "contracts" | "categoryId" | "signer" | "referenceScriptUtxo"
-    >,
-  ) =>
-    await submitOutputReferenceScriptDecodingStep01ForcedRaw({
-      lucid,
-      contracts,
-      categoryId,
-      signer,
-      referenceScriptUtxo: references[0]!,
-      ...args,
-    });
   const step02 = async (
     threadOutRef: string,
     evidence: OutputReferenceScriptDecodingEvidence,
@@ -170,7 +181,7 @@ export const makeOutputReferenceStages = ({
     } = {},
   ) =>
     await captured(() =>
-      submitOutputReferenceScriptDecodingStep02({
+      submitTurnsUnjournaled(buildOutputReferenceScriptDecodingStep02, {
         ownOutputs,
         lucid,
         contracts,
@@ -205,7 +216,7 @@ export const makeOutputReferenceStages = ({
     let windows = 0;
     for (;;) {
       const scan = await captured(() =>
-        submitOutputReferenceScriptDecodingStep03({
+        buildAndSubmitUnjournaled(buildOutputReferenceScriptDecodingStep03, {
           lucid,
           contracts,
           categoryId,
@@ -245,7 +256,7 @@ export const makeOutputReferenceStages = ({
           )
         : (record ?? undefined);
     return await captured(() =>
-      submitOutputReferenceScriptDecodingStep04({
+      submitTurnsUnjournaled(buildOutputReferenceScriptDecodingStep04, {
         ownOutputs,
         lucid,
         contracts,
@@ -266,7 +277,7 @@ export const makeOutputReferenceStages = ({
     evidence: OutputReferenceScriptDecodingEvidence,
   ) =>
     await captured(() =>
-      submitOutputReferenceScriptDecodingStep05({
+      buildAndSubmitUnjournaled(buildOutputReferenceScriptDecodingStep05, {
         lucid,
         contracts,
         categoryId,
@@ -302,23 +313,26 @@ export const makeOutputReferenceStages = ({
     nextState: OutputReferenceScriptScanState,
     nextStepIndex: 4 | 5,
   ) =>
-    await submitOutputReferenceScriptDecodingStep05Raw({
-      lucid,
-      contracts,
-      categoryId,
-      signer,
-      threadOutRef,
-      args,
-      nextState,
-      nextStepIndex,
-      referenceScriptUtxo: references[4]!,
-    });
+    await buildAndSubmitUnjournaled(
+      buildOutputReferenceScriptDecodingStep05Raw,
+      {
+        lucid,
+        contracts,
+        categoryId,
+        signer,
+        threadOutRef,
+        args,
+        nextState,
+        nextStepIndex,
+        referenceScriptUtxo: references[4]!,
+      },
+    );
   const step06 = async (
     threadOutRef: string,
     evidence: OutputReferenceScriptDecodingEvidence,
   ) =>
     await captured(() =>
-      submitOutputReferenceScriptDecodingStep06({
+      buildAndSubmitUnjournaled(buildOutputReferenceScriptDecodingStep06, {
         lucid,
         contracts,
         categoryId,
@@ -330,18 +344,21 @@ export const makeOutputReferenceStages = ({
       }),
     );
   const step06Raw = async (threadOutRef: string) =>
-    await submitOutputReferenceScriptDecodingStep06Raw({
-      lucid,
-      contracts,
-      categoryId,
-      signer,
-      threadOutRef,
-      referenceScriptUtxo: references[5]!,
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-    });
+    await buildAndSubmitUnjournaled(
+      buildOutputReferenceScriptDecodingStep06Raw,
+      {
+        lucid,
+        contracts,
+        categoryId,
+        signer,
+        threadOutRef,
+        referenceScriptUtxo: references[5]!,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+      },
+    );
   const cancel = async (threadOutRef: string, stepIndex: number) =>
     await captured(() =>
-      submitOutputReferenceScriptDecodingCancel({
+      buildAndSubmitUnjournaled(buildOutputReferenceScriptDecodingCancel, {
         lucid,
         contracts,
         categoryId,
@@ -409,7 +426,7 @@ export const makeOutputReferenceStages = ({
       label: "output-reference foreign field 2",
     });
     signer.selectWallet(lucid);
-    const carriageUtxos = await publishFaultProofFieldCarriage({
+    const carriageUtxos = await publishCarriageUnjournaled({
       ownOutputs,
       lucid,
       signer,
@@ -419,7 +436,7 @@ export const makeOutputReferenceStages = ({
     });
     if (planned.plan.tier !== "Certified")
       throw new Error("foreign field is not certified");
-    const { certificateUtxo } = await certifyFaultProofFieldCarriage({
+    const { certificateUtxo } = await certifyCarriageUnjournaled({
       ownOutputs,
       lucid,
       network,
@@ -440,16 +457,19 @@ export const makeOutputReferenceStages = ({
     evidence: OutputReferenceScriptDecodingEvidence,
     carriage: Awaited<ReturnType<typeof certifyForeignField>>,
   ) =>
-    await submitOutputReferenceScriptDecodingStep02Raw({
-      lucid,
-      contracts,
-      categoryId,
-      signer,
-      threadOutRef,
-      evidence,
-      ...carriage,
-      referenceScriptUtxo: references[1]!,
-    });
+    await buildAndSubmitUnjournaled(
+      buildOutputReferenceScriptDecodingStep02Raw,
+      {
+        lucid,
+        contracts,
+        categoryId,
+        signer,
+        threadOutRef,
+        evidence,
+        ...carriage,
+        referenceScriptUtxo: references[1]!,
+      },
+    );
 
   return {
     init,

@@ -32,12 +32,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildNativeScriptDecodingScanPlan,
-  NATIVE_SCRIPT_DECODING_PROVER_POLICY_DEFAULTS,
   type NativeScriptDecodingFinding,
   NativeScriptDecodingPlanRoutes,
   NativeScriptDecodingProvability,
-  type NativeScriptDecodingProverDeps,
-  proveNativeScriptDecodingFault,
 } from "../src/native-script-decoding/index.js";
 import {
   decodingMalformedMultiChunkItem,
@@ -45,6 +42,11 @@ import {
   publishDecodingReferenceScripts,
   setupDecodingScenario,
 } from "./support/native-script-decoding-emulator.js";
+import {
+  NATIVE_SCRIPT_DECODING_PROVER_POLICY_DEFAULTS,
+  type NativeScriptDecodingProverDeps,
+  proveNativeScriptDecodingFault,
+} from "./support/native-script-decoding-prover.js";
 import {
   expectSingleUtxoWithUnit,
   network,

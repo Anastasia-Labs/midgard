@@ -4,8 +4,8 @@ import { Data, getAddressDetails } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
 import {
+  buildTransitionTraceProof,
   submitRemoveFraudulentBlock,
-  submitTransitionTraceProof,
 } from "../src/index.js";
 import {
   type DeploymentInfo,
@@ -18,6 +18,7 @@ import {
   expectSingleUtxoWithUnit,
   network,
 } from "./support/submit-init-emulator-shared.js";
+import type { SubmittedStep } from "./support/submit-unjournaled.js";
 
 export const removeAndAssertPermanentProof = async ({
   harness,
@@ -28,7 +29,7 @@ export const removeAndAssertPermanentProof = async ({
   readonly harness: Harness;
   readonly setup: Setup;
   readonly deploymentInfo: DeploymentInfo;
-  readonly proofResult: Awaited<ReturnType<typeof submitTransitionTraceProof>>;
+  readonly proofResult: SubmittedStep<typeof buildTransitionTraceProof>;
 }) => {
   const proofUtxo = await expectSingleUtxoWithUnit(
     harness.proverLucid,

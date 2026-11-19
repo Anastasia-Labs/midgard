@@ -110,9 +110,9 @@
  * cardinalities on the same route, in the closing row of this file.
  *
  * **#612 (2026-08-17) — the routing gap is closed, and the closure is driven
- * below.** All three legacy submitters (`submitStep03`, `submitStep04`,
+ * below.** All three legacy submitters (`buildStep03`, `buildStep04`,
  * `neSubmitStep02`) now expose the same programmatic `publishCarriage` option
- * `submitInputNoIdxStep02` shipped with: `publish` demotes the ladder's
+ * `buildInputNoIdxStep02` shipped with: `publish` demotes the ladder's
  * `Inline` pick to tier 2, the preimage publishes once as raw carriage (§8.7)
  * and the step references it for a handful of index bytes. The routed row at
  * the bottom of this file drives BOTH families through the full admissible

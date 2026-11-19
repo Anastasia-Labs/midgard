@@ -10,11 +10,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import {
-  certifyFaultProofFieldCarriage,
-  type FaultProofFieldOpeningPlan,
-  publishFaultProofFieldCarriage,
-} from "../../src/field-opening.js";
+import { type FaultProofFieldOpeningPlan } from "../../src/field-opening.js";
 import { type ResolvedProverSigner } from "../../src/runtime.js";
 import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { network } from "./emulator/blueprints.js";
@@ -25,6 +21,10 @@ import {
 import { EXECUTION_RESERVE_FRACTION } from "./emulator/proof-fit.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./emulator/protocol-parameters.js";
 import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.js";
+import {
+  certifyCarriageUnjournaled,
+  publishCarriageUnjournaled,
+} from "./submit-unjournaled.js";
 
 export type CertifiedCommittedField = Readonly<{
   plan: MidgardFieldCarriagePlan;
@@ -126,7 +126,7 @@ export const publishCertifiedCommittedField = async ({
     plan,
   };
   const publication = await captureEmulatorSubmission(emulator, () =>
-    publishFaultProofFieldCarriage({
+    publishCarriageUnjournaled({
       ownOutputs,
       lucid,
       signer,
@@ -146,7 +146,7 @@ export const publishCertifiedCommittedField = async ({
     })
   ).utxo;
   const minted = await captureEmulatorSubmission(emulator, () =>
-    certifyFaultProofFieldCarriage({
+    certifyCarriageUnjournaled({
       ownOutputs,
       lucid,
       network,

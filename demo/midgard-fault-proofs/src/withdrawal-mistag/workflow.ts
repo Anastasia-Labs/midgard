@@ -46,19 +46,19 @@ import {
 } from "../workflow/manifest-bound-family-assembly.js";
 import type { FraudProofWorkflowAction } from "../workflow/orchestrator.js";
 import { createStructuredDataPreimageRequirement } from "../workflow/raw-datum-preimage-prerequisite.js";
-import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
+import { journaledStepTransaction } from "../workflow/step-transaction.js";
 import {
   admitWithdrawalMistagWorkflowArtifact,
   prepareWithdrawalMistagWorkflowArtifact,
 } from "./artifact.js";
 import type { WithdrawalMistagContracts } from "./contracts.js";
-import { submitWithdrawalMistagInit } from "./submit-withdrawal-mistag-init.js";
-import { submitWithdrawalMistagStep05 } from "./submit-withdrawal-mistag-step-05.js";
+import { buildWithdrawalMistagInit } from "./submit-withdrawal-mistag-init.js";
+import { buildWithdrawalMistagStep05 } from "./submit-withdrawal-mistag-step-05.js";
 import {
-  submitWithdrawalMistagStep01,
-  submitWithdrawalMistagStep02,
-  submitWithdrawalMistagStep03,
-  submitWithdrawalMistagStep04,
+  buildWithdrawalMistagStep01,
+  buildWithdrawalMistagStep02,
+  buildWithdrawalMistagStep03,
+  buildWithdrawalMistagStep04,
   withdrawalMistagStepPayloadCbor,
 } from "./submit-withdrawal-mistag-steps.js";
 
@@ -158,110 +158,105 @@ export const createWithdrawalMistagTransactionPort = (
             })
           ).publications;
     return {
-      transaction: await captureLocallyEvaluatedTransaction(
-        async (preSubmitBoundary) => {
-          if (input.stage === "init") {
-            if (
-              config.binding.resolvedContracts.category.categoryId !==
-              "00000014"
-            )
-              throw new Error("withdrawalMistag catalogue identity changed");
-            await submitWithdrawalMistagInit({
-              lucid: config.lucid,
-              contracts: config.contracts,
-              blueprint: config.binding.blueprint,
-              network: config.binding.network,
-              signer: config.signer,
-              category: {
-                ...config.binding.resolvedContracts.category,
-                categoryId: "00000014",
-              },
-              catalogue: config.binding.catalogue,
-              fraudulentBlockOutRef: cursorStringField(
-                input,
-                "stateQueueBlockOutRef",
-              ),
-              fraudulentHeaderHash: prepared.challengedHeaderHash,
-              witnessReferenceScripts: config.references.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-            return;
-          }
-          const common = {
-            lucid: config.lucid,
-            contracts: config.contracts,
-            signer: config.signer,
-            prepared,
-            evidenceReferences,
-            threadOutRef: cursorStringField(input, "threadOutRef"),
-            preSubmitBoundary,
-            awaitConfirmation: false,
-          };
-          switch (input.stage) {
-            case "step_01": {
-              const [hubOracleUtxo, stateQueueBlockUtxo] = await Promise.all([
-                requireSingletonUtxo({
-                  lucid: config.lucid,
-                  address: credentialToAddress(
-                    config.binding.network,
-                    scriptHashToCredential(config.contracts.hubOraclePolicyId),
-                  ),
-                  unit: toUnit(
-                    config.contracts.hubOraclePolicyId,
-                    SDK.HUB_ORACLE_ASSET_NAME,
-                  ),
-                  label: "withdrawalMistag hub",
-                }),
-                fetchUtxoByOutRef({
-                  lucid: config.lucid,
-                  outRef: parseOutRef(
-                    cursorStringField(input, "stateQueueBlockOutRef"),
-                    "withdrawalMistag block",
-                  ),
-                  label: "withdrawalMistag block",
-                }),
-              ]);
-              await submitWithdrawalMistagStep01({
-                ...common,
-                hubOracleUtxo,
-                stateQueueBlockUtxo,
-                referenceScriptUtxo: config.references.steps[0],
-              });
-              break;
-            }
-            case "step_02":
-              await submitWithdrawalMistagStep02({
-                ...common,
-                referenceScriptUtxo: config.references.steps[1],
-              });
-              break;
-            case "step_03":
-              await submitWithdrawalMistagStep03({
-                ...common,
-                referenceScriptUtxo: config.references.steps[2],
-              });
-              break;
-            case "step_04":
-              await submitWithdrawalMistagStep04({
-                ...common,
-                referenceScriptUtxo: config.references.steps[3],
-              });
-              break;
-            case "step_05":
-              await submitWithdrawalMistagStep05({
-                ...common,
-                referenceScriptUtxo: config.references.steps[4],
+      transaction: (
+        await journaledStepTransaction(
+          await (async () => {
+            if (input.stage === "init") {
+              if (
+                config.binding.resolvedContracts.category.categoryId !==
+                "00000014"
+              )
+                throw new Error("withdrawalMistag catalogue identity changed");
+              return await buildWithdrawalMistagInit({
+                lucid: config.lucid,
+                contracts: config.contracts,
+                blueprint: config.binding.blueprint,
+                network: config.binding.network,
+                signer: config.signer,
+                category: {
+                  ...config.binding.resolvedContracts.category,
+                  categoryId: "00000014",
+                },
+                catalogue: config.binding.catalogue,
+                fraudulentBlockOutRef: cursorStringField(
+                  input,
+                  "stateQueueBlockOutRef",
+                ),
+                fraudulentHeaderHash: prepared.challengedHeaderHash,
                 witnessReferenceScripts: config.references.witnesses,
               });
-              break;
-            default:
-              throw new Error(
-                `withdrawalMistag unsupported stage ${input.stage}`,
-              );
-          }
-        },
-      ),
+            }
+            const common = {
+              lucid: config.lucid,
+              contracts: config.contracts,
+              signer: config.signer,
+              prepared,
+              evidenceReferences,
+              threadOutRef: cursorStringField(input, "threadOutRef"),
+            };
+            switch (input.stage) {
+              case "step_01": {
+                const [hubOracleUtxo, stateQueueBlockUtxo] = await Promise.all([
+                  requireSingletonUtxo({
+                    lucid: config.lucid,
+                    address: credentialToAddress(
+                      config.binding.network,
+                      scriptHashToCredential(
+                        config.contracts.hubOraclePolicyId,
+                      ),
+                    ),
+                    unit: toUnit(
+                      config.contracts.hubOraclePolicyId,
+                      SDK.HUB_ORACLE_ASSET_NAME,
+                    ),
+                    label: "withdrawalMistag hub",
+                  }),
+                  fetchUtxoByOutRef({
+                    lucid: config.lucid,
+                    outRef: parseOutRef(
+                      cursorStringField(input, "stateQueueBlockOutRef"),
+                      "withdrawalMistag block",
+                    ),
+                    label: "withdrawalMistag block",
+                  }),
+                ]);
+                return await buildWithdrawalMistagStep01({
+                  ...common,
+                  hubOracleUtxo,
+                  stateQueueBlockUtxo,
+                  referenceScriptUtxo: config.references.steps[0],
+                });
+              }
+              case "step_02":
+                return await buildWithdrawalMistagStep02({
+                  ...common,
+                  referenceScriptUtxo: config.references.steps[1],
+                });
+              case "step_03":
+                return await buildWithdrawalMistagStep03({
+                  ...common,
+                  referenceScriptUtxo: config.references.steps[2],
+                });
+              case "step_04":
+                return await buildWithdrawalMistagStep04({
+                  ...common,
+                  referenceScriptUtxo: config.references.steps[3],
+                });
+              case "step_05":
+                return await buildWithdrawalMistagStep05({
+                  ...common,
+                  referenceScriptUtxo: config.references.steps[4],
+                  witnessReferenceScripts: config.references.witnesses,
+                });
+              default:
+                throw new Error(
+                  `withdrawalMistag unsupported stage ${input.stage}`,
+                );
+            }
+          })(),
+          `withdrawal-mistag ${input.stage}`,
+        )
+      ).transaction,
     };
   },
 });

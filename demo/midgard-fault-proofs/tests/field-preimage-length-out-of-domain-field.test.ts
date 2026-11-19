@@ -11,10 +11,10 @@ import { MIDGARD_FIELD_COUNT } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
 import {
-  submitFieldPreimageLengthForcedDispatch,
-  submitFieldPreimageLengthForcedOutOfDomain,
-  submitFieldPreimageLengthInit,
-  submitFieldPreimageLengthTerminal,
+  buildFieldPreimageLengthForcedDispatch,
+  buildFieldPreimageLengthForcedOutOfDomain,
+  buildFieldPreimageLengthInit,
+  buildFieldPreimageLengthTerminal,
 } from "../src/field-preimage-length-mismatch/submit-lucid.js";
 import {
   VAN_ROSSEM_MAX_CPU_UNITS,
@@ -25,6 +25,7 @@ import { removeFraudulentBlock } from "./field-preimage-length-mismatch-lifecycl
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { submitRawFieldPreimageLengthOutOfDomainStep02 } from "./support/field-preimage-length-raw.submit-out-of-domain-step02-raw.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 import { MAXIMUM_PROOF_STEP_COUNT } from "./support/synthetic-deep-proof.js";
 
 /** A thread on a block committing one forced leaf, dispatched to step 02. */
@@ -34,7 +35,7 @@ const pendingThread = async (
 ) => {
   const fixture = await forcedSetup(verdict, false, leaf);
   const init = await captureEmulatorSubmission(fixture.harness.emulator, () =>
-    submitFieldPreimageLengthInit({
+    buildAndSubmitUnjournaled(buildFieldPreimageLengthInit, {
       config: fixture.config,
       fraudulentBlockOutRef: fixture.fraudulent.fraudulentBlockOutRef,
     }),
@@ -42,7 +43,7 @@ const pendingThread = async (
   const dispatch = await captureEmulatorSubmission(
     fixture.harness.emulator,
     () =>
-      submitFieldPreimageLengthForcedDispatch({
+      buildAndSubmitUnjournaled(buildFieldPreimageLengthForcedDispatch, {
         config: fixture.config,
         threadOutRef: init.result.nextThreadOutRef,
       }),
@@ -58,7 +59,7 @@ const convict = async ({
   const authenticated = await captureEmulatorSubmission(
     fixture.harness.emulator,
     () =>
-      submitFieldPreimageLengthForcedOutOfDomain({
+      buildAndSubmitUnjournaled(buildFieldPreimageLengthForcedOutOfDomain, {
         config: fixture.config,
         threadOutRef: dispatch.result.nextThreadOutRef,
         header: fixture.forced.header,
@@ -66,7 +67,7 @@ const convict = async ({
       }),
   );
   const minted = await captureEmulatorSubmission(fixture.harness.emulator, () =>
-    submitFieldPreimageLengthTerminal({
+    buildAndSubmitUnjournaled(buildFieldPreimageLengthTerminal, {
       config: fixture.config,
       threadOutRef: authenticated.result.nextThreadOutRef,
     }),

@@ -17,4 +17,4 @@ import "./field-walk.js";
 import "./scan.js";
 import "./submit-step-02.require-step02.js";
 import "./submit-step-02.submit-min-ada-tx-step02.js";
-export { submitMinAdaTxStep02 } from "./submit-step-02.submit-min-ada-tx-step02.js";
+export { buildMinAdaTxStep02 } from "./submit-step-02.submit-min-ada-tx-step02.js";

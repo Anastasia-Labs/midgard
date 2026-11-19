@@ -12,17 +12,18 @@ import type { ResolvedProverSigner } from "../runtime.js";
 import type { SubmitStep01TxInclusion } from "../step-support.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
+import { journaledStepTransaction } from "../workflow/step-transaction.js";
+import { type LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import {
+  buildFieldPreimageLengthAcceptedAuthentication,
+  buildFieldPreimageLengthAcceptedDispatch,
+  buildFieldPreimageLengthCancel,
+  buildFieldPreimageLengthForcedAuthentication,
+  buildFieldPreimageLengthForcedDispatch,
+  buildFieldPreimageLengthForcedOutOfDomain,
+  buildFieldPreimageLengthInit,
+  buildFieldPreimageLengthTerminal,
   type FieldPreimageLengthClaimResolver,
-  submitFieldPreimageLengthAcceptedAuthentication,
-  submitFieldPreimageLengthAcceptedDispatch,
-  submitFieldPreimageLengthCancel,
-  submitFieldPreimageLengthForcedAuthentication,
-  submitFieldPreimageLengthForcedDispatch,
-  submitFieldPreimageLengthForcedOutOfDomain,
-  submitFieldPreimageLengthInit,
-  submitFieldPreimageLengthTerminal,
 } from "./submit-lucid.js";
 import {
   type FieldPreimageLengthAction,
@@ -80,12 +81,12 @@ export type LoadManifestBoundFieldPreimageLengthConfig = Readonly<{
 export type FieldPreimageLengthLucidSubmissionContext = Readonly<{
   config: ManifestBoundFieldPreimageLengthConfig;
   prepared: PreparedFieldPreimageLengthEvidence;
-  preSubmitBoundary?: FraudProofPreSubmitBoundary;
 }>;
 
+/** Builds and signs one stage's transaction for the journaled workflow. */
 export type FieldPreimageLengthLucidSubmitter = (
   context: FieldPreimageLengthLucidSubmissionContext,
-) => Promise<string>;
+) => Promise<LocallyEvaluatedTransaction>;
 
 /** Concrete builder slots required by production wiring; no stage may no-op. */
 export type FieldPreimageLengthLucidBuilders = Readonly<{
@@ -140,7 +141,6 @@ const required = <T>(value: T | undefined, label: string): T => {
 export const createConcreteFieldPreimageLengthLucidBuilders = ({
   resolveStage,
   remove,
-  boundary,
 }: {
   readonly resolveStage: (
     context: FieldPreimageLengthLucidSubmissionContext & {
@@ -148,10 +148,6 @@ export const createConcreteFieldPreimageLengthLucidBuilders = ({
     },
   ) => Promise<FieldPreimageLengthStage>;
   readonly remove: FieldPreimageLengthLucidSubmitter;
-  readonly boundary?: (
-    action: Exclude<FieldPreimageLengthAction, "complete">,
-    prepared: PreparedFieldPreimageLengthEvidence,
-  ) => FraudProofPreSubmitBoundary;
 }): FieldPreimageLengthLucidBuilders => {
   const stage = async (
     context: FieldPreimageLengthLucidSubmissionContext,
@@ -161,92 +157,120 @@ export const createConcreteFieldPreimageLengthLucidBuilders = ({
     (fallback: 0 | 1 | 2 | 3): FieldPreimageLengthLucidSubmitter =>
     async (context) => {
       const resolved = await stage(context, "dispatch");
-      const result = await submitFieldPreimageLengthCancel({
+      const result = await buildFieldPreimageLengthCancel({
         config: context.config,
         threadOutRef: required(resolved.threadOutRef, "cancel thread out-ref"),
         stepIndex: resolved.cancelStepIndex ?? fallback,
-        preSubmitBoundary: boundary?.("dispatch", context.prepared),
       });
-      return result.txHash;
+      return result.transaction;
     };
   return Object.freeze({
     init: async (context) => {
       const resolved = await stage(context, "init");
       return (
-        await submitFieldPreimageLengthInit({
-          config: context.config,
-          fraudulentBlockOutRef: resolved.fraudulentBlockOutRef,
-          preSubmitBoundary: boundary?.("init", context.prepared),
-        })
-      ).txHash;
+        await journaledStepTransaction(
+          await buildFieldPreimageLengthInit({
+            config: context.config,
+            fraudulentBlockOutRef: resolved.fraudulentBlockOutRef,
+          }),
+          "field-preimage-length init",
+        )
+      ).transaction;
     },
     dispatchAccepted: async (context) => {
       const resolved = await stage(context, "dispatch");
       return (
-        await submitFieldPreimageLengthAcceptedDispatch({
-          config: context.config,
-          threadOutRef: required(
-            resolved.threadOutRef,
-            "dispatch thread out-ref",
-          ),
-          stateQueueBlockOutRef: required(
-            resolved.stateQueueBlockOutRef,
-            "state-queue block out-ref",
-          ),
-          inclusion: required(resolved.acceptedInclusion, "accepted inclusion"),
-          ...(resolved.acceptedClaim === undefined
-            ? {}
-            : { claim: resolved.acceptedClaim }),
-          ...(resolved.acceptedClaimResolver === undefined
-            ? {}
-            : { claimResolver: resolved.acceptedClaimResolver }),
-          carriageReferenceInputs:
-            resolved.acceptedCarriageReferenceInputs ?? [],
-          preSubmitBoundary: boundary?.("dispatch", context.prepared),
-        })
-      ).txHash;
+        await journaledStepTransaction(
+          await buildFieldPreimageLengthAcceptedDispatch({
+            config: context.config,
+            threadOutRef: required(
+              resolved.threadOutRef,
+              "dispatch thread out-ref",
+            ),
+            stateQueueBlockOutRef: required(
+              resolved.stateQueueBlockOutRef,
+              "state-queue block out-ref",
+            ),
+            inclusion: required(
+              resolved.acceptedInclusion,
+              "accepted inclusion",
+            ),
+            ...(resolved.acceptedClaim === undefined
+              ? {}
+              : { claim: resolved.acceptedClaim }),
+            ...(resolved.acceptedClaimResolver === undefined
+              ? {}
+              : { claimResolver: resolved.acceptedClaimResolver }),
+            carriageReferenceInputs:
+              resolved.acceptedCarriageReferenceInputs ?? [],
+          }),
+          "field-preimage-length dispatch",
+        )
+      ).transaction;
     },
     dispatchForced: async (context) => {
       const resolved = await stage(context, "dispatch");
       return (
-        await submitFieldPreimageLengthForcedDispatch({
-          config: context.config,
-          threadOutRef: required(
-            resolved.threadOutRef,
-            "dispatch thread out-ref",
-          ),
-          preSubmitBoundary: boundary?.("dispatch", context.prepared),
-        })
-      ).txHash;
+        await journaledStepTransaction(
+          await buildFieldPreimageLengthForcedDispatch({
+            config: context.config,
+            threadOutRef: required(
+              resolved.threadOutRef,
+              "dispatch thread out-ref",
+            ),
+          }),
+          "field-preimage-length dispatch",
+        )
+      ).transaction;
     },
     authenticateAccepted: async (context) => {
       const prepared = inDomain(context.prepared);
       const resolved = await stage(context, "authenticate");
       return (
-        await submitFieldPreimageLengthAcceptedAuthentication({
-          config: context.config,
-          threadOutRef: required(
-            resolved.threadOutRef,
-            "authentication thread out-ref",
-          ),
-          ...(resolved.acceptedClaim === undefined
-            ? {}
-            : { claim: resolved.acceptedClaim }),
-          ...(resolved.acceptedClaimResolver === undefined
-            ? {}
-            : { claimResolver: resolved.acceptedClaimResolver }),
-          prepared,
-          carriageReferenceInputs:
-            resolved.acceptedCarriageReferenceInputs ?? [],
-          preSubmitBoundary: boundary?.("authenticate", context.prepared),
-        })
-      ).txHash;
+        await journaledStepTransaction(
+          await buildFieldPreimageLengthAcceptedAuthentication({
+            config: context.config,
+            threadOutRef: required(
+              resolved.threadOutRef,
+              "authentication thread out-ref",
+            ),
+            ...(resolved.acceptedClaim === undefined
+              ? {}
+              : { claim: resolved.acceptedClaim }),
+            ...(resolved.acceptedClaimResolver === undefined
+              ? {}
+              : { claimResolver: resolved.acceptedClaimResolver }),
+            prepared,
+            carriageReferenceInputs:
+              resolved.acceptedCarriageReferenceInputs ?? [],
+          }),
+          "field-preimage-length authenticate",
+        )
+      ).transaction;
     },
     authenticateForced: async (context) => {
       const resolved = await stage(context, "authenticate");
       if (fieldPreimageLengthOutOfDomain(context.prepared))
         return (
-          await submitFieldPreimageLengthForcedOutOfDomain({
+          await journaledStepTransaction(
+            await buildFieldPreimageLengthForcedOutOfDomain({
+              config: context.config,
+              threadOutRef: required(
+                resolved.threadOutRef,
+                "authentication thread out-ref",
+              ),
+              header: required(resolved.forcedHeader, "forced header"),
+              membership: required(
+                resolved.forcedMembership,
+                "forced membership",
+              ),
+            }),
+            "field-preimage-length authenticate",
+          )
+        ).transaction;
+      return (
+        await journaledStepTransaction(
+          await buildFieldPreimageLengthForcedAuthentication({
             config: context.config,
             threadOutRef: required(
               resolved.threadOutRef,
@@ -257,48 +281,36 @@ export const createConcreteFieldPreimageLengthLucidBuilders = ({
               resolved.forcedMembership,
               "forced membership",
             ),
-            preSubmitBoundary: boundary?.("authenticate", context.prepared),
-          })
-        ).txHash;
-      return (
-        await submitFieldPreimageLengthForcedAuthentication({
-          config: context.config,
-          threadOutRef: required(
-            resolved.threadOutRef,
-            "authentication thread out-ref",
-          ),
-          header: required(resolved.forcedHeader, "forced header"),
-          membership: required(resolved.forcedMembership, "forced membership"),
-          ...(resolved.forcedClaim === undefined
-            ? {}
-            : { claim: resolved.forcedClaim }),
-          ...(resolved.forcedClaimResolver === undefined
-            ? {}
-            : { claimResolver: resolved.forcedClaimResolver }),
-          prepared: context.prepared,
-          carriageReferenceInputs: resolved.forcedCarriageReferenceInputs ?? [],
-          preSubmitBoundary: boundary?.("authenticate", context.prepared),
-        })
-      ).txHash;
+            ...(resolved.forcedClaim === undefined
+              ? {}
+              : { claim: resolved.forcedClaim }),
+            ...(resolved.forcedClaimResolver === undefined
+              ? {}
+              : { claimResolver: resolved.forcedClaimResolver }),
+            prepared: context.prepared,
+            carriageReferenceInputs:
+              resolved.forcedCarriageReferenceInputs ?? [],
+          }),
+          "field-preimage-length authenticate",
+        )
+      ).transaction;
     },
     finalize: async (context) => {
       const resolved = await stage(context, "finalize");
       return (
-        await submitFieldPreimageLengthTerminal({
-          config: context.config,
-          threadOutRef: required(
-            resolved.threadOutRef,
-            "terminal thread out-ref",
-          ),
-          preSubmitBoundary: boundary?.("finalize", context.prepared),
-        })
-      ).txHash;
+        await journaledStepTransaction(
+          await buildFieldPreimageLengthTerminal({
+            config: context.config,
+            threadOutRef: required(
+              resolved.threadOutRef,
+              "terminal thread out-ref",
+            ),
+          }),
+          "field-preimage-length finalize",
+        )
+      ).transaction;
     },
-    remove: async (context) =>
-      await remove({
-        ...context,
-        preSubmitBoundary: boundary?.("remove", context.prepared),
-      }),
+    remove: async (context) => await remove(context),
     cancelDispatch: cancel(0),
     cancelAuthentication: cancel(1),
     cancelTerminal: cancel(3),

@@ -21,14 +21,10 @@ import {
   FIELD_GRAMMAR_WALKED_COUNT_LIMIT,
   fieldGrammarCertificateAddress,
 } from "../src/field-grammar-certificate.js";
+import { planFaultProofFieldOpening } from "../src/field-opening.js";
 import {
-  certifyFaultProofFieldCarriage,
-  planFaultProofFieldOpening,
-  publishFaultProofFieldCarriage,
-} from "../src/field-opening.js";
-import {
+  buildInputNoIdxStep04,
   midgardTxOutputFromCanonicalCbor,
-  submitInputNoIdxStep04,
 } from "../src/index.js";
 import {
   VAN_ROSSEM_MAX_CPU_UNITS,
@@ -50,6 +46,11 @@ import {
   network,
   publishPlainReferenceScriptUtxo,
 } from "./support/submit-init-emulator-shared.js";
+import {
+  certifyCarriageUnjournaled,
+  publishCarriageUnjournaled,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 
 /** 761 producing outputs of 43 preimage bytes fill field 2 to the maximum. */
 const TIER3_PRODUCING_OUTPUT_COUNT = 761;
@@ -90,7 +91,7 @@ const buildTier3Scenario = async () => {
     label: LABEL,
   });
   expect(planned.plan.tier).toBe("Certified");
-  const chunkUtxos = await publishFaultProofFieldCarriage({
+  const chunkUtxos = await publishCarriageUnjournaled({
     ownOutputs,
     lucid: harness.proverLucid,
     signer: harness.proverSigner,
@@ -105,7 +106,7 @@ const buildTier3Scenario = async () => {
       script: preimageCertificate.mintingScript,
       label: "field preimage certificate",
     });
-  const { certificateUtxo } = await certifyFaultProofFieldCarriage({
+  const { certificateUtxo } = await certifyCarriageUnjournaled({
     ownOutputs,
     lucid: harness.proverLucid,
     network,
@@ -126,7 +127,7 @@ const buildTier3Scenario = async () => {
   );
 
   const step04 = (fieldGrammar: typeof grammar.fieldGrammar | undefined) =>
-    submitInputNoIdxStep04({
+    submitTurnsUnjournaled(buildInputNoIdxStep04, {
       ownOutputs,
       lucid: harness.proverLucid,
       referenceScriptUtxo:
@@ -190,7 +191,7 @@ describe("input-no-idx step 04 through the field grammar certificate", () => {
 
     const { deploymentInfo, fourthStepOutRef } =
       await advanceInputNoIdxToStep04(harness, fixture);
-    const step04Result = await submitInputNoIdxStep04({
+    const step04Result = await submitTurnsUnjournaled(buildInputNoIdxStep04, {
       lucid: harness.proverLucid,
       referenceScriptUtxo:
         harness.faultProofReferenceScripts

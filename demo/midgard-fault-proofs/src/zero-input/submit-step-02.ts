@@ -11,14 +11,13 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultFinalize } from "../linear-fault-finalize.js";
+import { buildLinearFaultFinalize } from "../linear-fault-finalize.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { ZeroInputContracts } from "./contracts.js";
 import { type ZeroInputEvidence, zeroInputEvidenceCloses } from "./family.js";
 import {
@@ -26,7 +25,7 @@ import {
   ZeroInputStep02RedeemerSchema,
 } from "./schemas.js";
 
-export const submitZeroInputStep02V1 = async ({
+export const buildZeroInputStep02V1 = async ({
   lucid,
   contracts,
   categoryId,
@@ -36,8 +35,6 @@ export const submitZeroInputStep02V1 = async ({
   nativeTxCompactCbor,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
@@ -49,8 +46,6 @@ export const submitZeroInputStep02V1 = async ({
   readonly nativeTxCompactCbor: string;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
 }) => {
@@ -112,7 +107,7 @@ export const submitZeroInputStep02V1 = async ({
       : undefined;
   if (planned.plan.tier === "Certified" && certificateUtxo === undefined)
     throw new Error("zeroInput: field certificate disappeared");
-  return await submitLinearFaultFinalize({
+  return await buildLinearFaultFinalize({
     lucid,
     family: "zero-input",
     stepIndex,
@@ -142,7 +137,5 @@ export const submitZeroInputStep02V1 = async ({
     extraReferenceInputs:
       certificateUtxo === undefined ? [] : [certificateUtxo],
     witnessReferenceScripts,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
 };

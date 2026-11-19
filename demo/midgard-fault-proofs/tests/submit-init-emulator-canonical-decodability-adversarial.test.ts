@@ -7,9 +7,9 @@ import type {
 import { describe, expect, it } from "vitest";
 
 import {
-  submitCanonicalDecodabilityInit,
-  submitCanonicalDecodabilityStep01,
-  submitCanonicalDecodabilityStep02,
+  buildCanonicalDecodabilityInit,
+  buildCanonicalDecodabilityStep01,
+  buildCanonicalDecodabilityStep02,
 } from "../src/index.js";
 import {
   buildCanonicalDecodabilityBodyFixture,
@@ -22,6 +22,7 @@ import {
 } from "./support/canonical-decodability-emulator.js";
 import { expectOnchainRefusal } from "./support/native-script-decoding-emulator.js";
 import { expectSingleUtxoWithUnit } from "./support/submit-init-emulator-shared.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 describe("canonical-decodability honest-commitment adversary", () => {
   it("binds verdict 0 but cannot fabricate or finalize a conviction", async () => {
@@ -49,22 +50,25 @@ describe("canonical-decodability honest-commitment adversary", () => {
       harness,
       fixture,
     });
-    const init = await submitCanonicalDecodabilityInit({
-      lucid: proverLucid,
-      blueprint: realBlueprint,
-      network,
-      contracts: canonicalDecodability,
-      category,
-      catalogue: {
-        policyId: contracts.fraudProofCatalogue.policyId,
-        spendingScriptAddress:
-          contracts.fraudProofCatalogue.spendingScriptAddress,
-        root: catalogue.root,
+    const init = await buildAndSubmitUnjournaled(
+      buildCanonicalDecodabilityInit,
+      {
+        lucid: proverLucid,
+        blueprint: realBlueprint,
+        network,
+        contracts: canonicalDecodability,
+        category,
+        catalogue: {
+          policyId: contracts.fraudProofCatalogue.policyId,
+          spendingScriptAddress:
+            contracts.fraudProofCatalogue.spendingScriptAddress,
+          root: catalogue.root,
+        },
+        signer: proverSigner,
+        fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+        witnessReferenceScripts,
       },
-      signer: proverSigner,
-      fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
-      witnessReferenceScripts,
-    });
+    );
     const firstStep = await expectSingleUtxoWithUnit(
       proverLucid,
       init.firstStepAddress,
@@ -72,7 +76,7 @@ describe("canonical-decodability honest-commitment adversary", () => {
     );
 
     await expect(
-      submitCanonicalDecodabilityStep01({
+      buildAndSubmitUnjournaled(buildCanonicalDecodabilityStep01, {
         lucid: proverLucid,
         blueprint: realBlueprint,
         contracts: canonicalDecodability,
@@ -187,7 +191,7 @@ describe("canonical-decodability honest-commitment adversary", () => {
     );
     expect(outRefLabel(secondStep)).toBe(bind.nextThreadOutRef);
     await expect(
-      submitCanonicalDecodabilityStep02({
+      buildAndSubmitUnjournaled(buildCanonicalDecodabilityStep02, {
         lucid: proverLucid,
         contracts: canonicalDecodability,
         categoryId: category.categoryId,

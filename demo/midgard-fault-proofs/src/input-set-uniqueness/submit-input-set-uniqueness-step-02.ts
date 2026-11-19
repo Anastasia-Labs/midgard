@@ -36,4 +36,4 @@ export {
   assertInputSetUniquenessClaimConvicts,
   type SubmitInputSetUniquenessStep02Result,
 } from "./submit-input-set-uniqueness-step-02.assert-input-set-uniqueness-claim-convicts.js";
-export { submitInputSetUniquenessStep02 } from "./submit-input-set-uniqueness-step-02.submit-input-set-uniqueness-step02.js";
+export { buildInputSetUniquenessStep02 } from "./submit-input-set-uniqueness-step-02.submit-input-set-uniqueness-step02.js";

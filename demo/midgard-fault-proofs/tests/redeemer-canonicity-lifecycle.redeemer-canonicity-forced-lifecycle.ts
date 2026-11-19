@@ -9,10 +9,10 @@ import { getAddressDetails } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
+  buildRedeemerCanonicityStep01Forced,
+  buildRedeemerCanonicityStep02,
+  buildRedeemerCanonicityStep03,
   prepareRedeemerCanonicityEvidence,
-  submitRedeemerCanonicityStep01Forced,
-  submitRedeemerCanonicityStep02,
-  submitRedeemerCanonicityStep03,
 } from "../src/redeemer-canonicity/index.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
 import {
@@ -27,6 +27,10 @@ import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
+import {
+  buildAndSubmitUnjournaled,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 
 describe("redeemer-canonicity forced lifecycle", () => {
   it("authenticates a canonical redeemer against the exact malformed reason", async () => {
@@ -90,7 +94,7 @@ describe("redeemer-canonicity forced lifecycle", () => {
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
     });
     const step01 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitRedeemerCanonicityStep01Forced({
+      buildAndSubmitUnjournaled(buildRedeemerCanonicityStep01Forced, {
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -114,7 +118,7 @@ describe("redeemer-canonicity forced lifecycle", () => {
     );
     emitFit("forced-step01", step01.measurement);
     const step02 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitRedeemerCanonicityStep02({
+      submitTurnsUnjournaled(buildRedeemerCanonicityStep02, {
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -140,7 +144,7 @@ describe("redeemer-canonicity forced lifecycle", () => {
       onStep: (measurement) => emitFit("forced-step02-data", measurement),
     });
     const step03 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitRedeemerCanonicityStep03({
+      buildAndSubmitUnjournaled(buildRedeemerCanonicityStep03, {
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,

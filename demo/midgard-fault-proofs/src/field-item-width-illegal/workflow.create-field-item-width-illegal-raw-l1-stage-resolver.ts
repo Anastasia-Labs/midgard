@@ -23,7 +23,6 @@ import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-ob
 import type { FieldItemWidthIllegalContracts } from "./contracts.js";
 import {
   type FieldItemWidthEvidence,
-  type FieldItemWidthJournal,
   type FieldItemWidthStage,
 } from "./field-item-width-illegal.js";
 
@@ -233,7 +232,6 @@ export type FieldItemWidthIllegalAuthenticatedSource = Readonly<{
 
 export type FieldItemWidthIllegalRuntimeLoader = Readonly<{
   config: LoadManifestBoundFieldItemWidthIllegalConfig;
-  journal: FieldItemWidthJournal;
   observe: (identity: string) => Promise<FieldItemWidthStage>;
   resolveStage: (input: {
     readonly action:

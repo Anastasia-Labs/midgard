@@ -20,7 +20,7 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import {
   fetchUtxoByOutRef,
   outRefLabel,
@@ -29,7 +29,6 @@ import {
 } from "../runtime.js";
 import { requireComputationThreadToken } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { PreparedNetworkIdAcceptedForced } from "./accepted-forced.js";
 import {
   NETWORK_ID_CATEGORY_LABEL,
@@ -46,7 +45,7 @@ const STEP_LABEL = "network-id accepted forced step";
  * membership, the `ForcedTxValid` verdict and the committed body network, and
  * hands step 02 the claim under the forced root key.
  */
-export const submitNetworkIdAcceptedForcedBind = async ({
+export const buildNetworkIdAcceptedForcedBind = async ({
   lucid,
   contracts,
   categoryId,
@@ -55,8 +54,6 @@ export const submitNetworkIdAcceptedForcedBind = async ({
   prepared,
   referenceScriptUtxo,
   unsafeSkipLocalViolationCheckForTest = false,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: NetworkIdContracts;
@@ -68,8 +65,6 @@ export const submitNetworkIdAcceptedForcedBind = async ({
   readonly referenceScriptUtxo: UTxO;
   /** Test-only: submit an honest claim so the on-chain refusal is observed. */
   readonly unsafeSkipLocalViolationCheckForTest?: boolean;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const forcedStep = contracts.forcedStep;
   if (forcedStep === undefined)
@@ -187,7 +182,7 @@ export const submitNetworkIdAcceptedForcedBind = async ({
       NetworkIdForcedStepSpendRedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -198,14 +193,12 @@ export const submitNetworkIdAcceptedForcedBind = async ({
     nextAddress: step02.spendingScriptAddress,
     nextDatum: datum,
     redeemer,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined)
     throw networkIdSubmitError("accepted forced binding layout unresolved");
   return {
-    txHash,
-    nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
     state,
   };
 };

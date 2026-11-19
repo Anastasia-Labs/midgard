@@ -13,7 +13,7 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../../src/linear-fault-family.js";
-import { submitLinearFaultFinalize } from "../../src/linear-fault-finalize.js";
+import { buildLinearFaultFinalize } from "../../src/linear-fault-finalize.js";
 import type { ObserversForbiddenContracts } from "../../src/observers-forbidden-on-untagged-network/contracts.js";
 import { type ObserversForbiddenEvidence } from "../../src/observers-forbidden-on-untagged-network/family.js";
 import {
@@ -24,6 +24,7 @@ import type { ResolvedProverSigner } from "../../src/runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../../src/witness-reference-scripts.js";
 import type { OwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { FAMILY } from "./observers-forbidden-on-untagged-network-raw.submit-observers-forbidden-step01-forced-raw.js";
+import { buildAndSubmitUnjournaled } from "./submit-unjournaled.js";
 
 /**
  * Step 02 without the off-chain `observersForbiddenEvidenceCloses` and bound
@@ -136,7 +137,7 @@ export const submitObserversForbiddenStep02Raw = async ({
     }),
     referenceInputs,
   );
-  return await submitLinearFaultFinalize({
+  return await buildAndSubmitUnjournaled(buildLinearFaultFinalize, {
     lucid,
     family: FAMILY,
     stepIndex,

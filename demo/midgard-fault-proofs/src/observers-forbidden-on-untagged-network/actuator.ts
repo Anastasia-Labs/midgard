@@ -5,12 +5,13 @@ import {
 import { Proof } from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
+import { type FaultProofTurn } from "../fault-proof-turn.js";
 import { planFaultProofFieldOpening } from "../field-opening.js";
 import { requireLinearFaultThreadUtxo } from "../linear-fault-family.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { nativeTxFromCoreCompact } from "../step-support.js";
-import { submitInit } from "../submit-init.js";
+import { buildInit } from "../submit-init.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import {
   captureCursorRemoval,
@@ -19,10 +20,8 @@ import {
 import type { FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import type { FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
 import type { OwnOutputJournal } from "../workflow/own-outputs.js";
-import {
-  captureLocallyEvaluatedTransaction,
-  type LocallyEvaluatedTransaction,
-} from "../workflow/transaction-boundary.js";
+import { journaledStepTransaction } from "../workflow/step-transaction.js";
+import { type LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import {
   admitObserversForbiddenArtifact,
   ObserversForbiddenForcedSourcePayloadSchema,
@@ -30,10 +29,10 @@ import {
 import type { ObserversForbiddenContracts } from "./contracts.js";
 import { OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY } from "./family.js";
 import {
-  submitObserversForbiddenStep01Accepted,
-  submitObserversForbiddenStep01Forced,
+  buildObserversForbiddenStep01Accepted,
+  buildObserversForbiddenStep01Forced,
 } from "./submit-step-01.js";
-import { submitObserversForbiddenStep02 } from "./submit-step-02.js";
+import { buildObserversForbiddenStep02 } from "./submit-step-02.js";
 
 export type ObserversForbiddenWorkflowReferenceScripts = Readonly<{
   steps: readonly [UTxO, UTxO];
@@ -129,10 +128,11 @@ const inclusionFromArtifact = (
 };
 
 const capture = async (
-  submit: Parameters<typeof captureLocallyEvaluatedTransaction>[0],
+  built: FaultProofTurn<{ readonly transaction: LocallyEvaluatedTransaction }>,
+  label: string,
 ): Promise<ObserversForbiddenCapturedAction> =>
   Object.freeze({
-    transaction: await captureLocallyEvaluatedTransaction(submit),
+    transaction: (await journaledStepTransaction(built, label)).transaction,
   });
 
 /** Package-owned transaction actuator; callers receive no submission callback. */
@@ -155,8 +155,8 @@ export const createObserversForbiddenActuator = (
         throw new Error("observersForbidden artifact changed bound header");
       const categoryId = config.binding.resolvedContracts.category.categoryId;
       if (action.stage === "init")
-        return await capture(async (preSubmitBoundary) => {
-          await submitInit({
+        return await capture(
+          await buildInit({
             lucid: config.lucid,
             blueprint: config.binding.blueprint,
             deploymentInfo: config.binding.deploymentInfo,
@@ -167,10 +167,9 @@ export const createObserversForbiddenActuator = (
             fraudulentBlockOutRef: action.stateQueueBlockOutRef,
             fraudulentHeaderHash: admitted.artifact.headerHash,
             witnessReferenceScripts: config.references.witnesses,
-            preSubmitBoundary,
-            awaitConfirmation: false,
-          });
-        });
+          }),
+          "observers-forbidden-on-untagged-network init",
+        );
       if (action.stage === "step_01") {
         const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
           lucid: config.lucid,
@@ -180,42 +179,40 @@ export const createObserversForbiddenActuator = (
           stepIndex: 0,
           threadOutRef: action.threadOutRef,
         });
-        return await capture(async (preSubmitBoundary) => {
-          const common = {
-            lucid: config.lucid,
-            contracts: config.contracts,
-            signer: config.signer,
-            finding: admitted.evidence,
-            referenceScriptUtxo: config.references.steps[0],
-            preSubmitBoundary,
-            awaitConfirmation: false,
-          } as const;
-          if (admitted.artifact.sourceKind === "accepted")
-            await submitObserversForbiddenStep01Accepted({
-              ...common,
-              blueprint: config.binding.blueprint,
-              network: config.binding.network,
-              threadUtxo,
-              threadToken,
-              stateQueueBlockOutRef: action.stateQueueBlockOutRef,
-              txInclusion: inclusionFromArtifact(admitted),
-              witnessReferenceScripts: config.references.witnesses,
-            });
-          else
-            await submitObserversForbiddenStep01Forced({
-              ...common,
-              categoryId,
-              threadOutRef: action.threadOutRef,
-              forcedSource: Data.from(
-                admitted.artifact.forcedSourceCbor,
-                ObserversForbiddenForcedSourcePayloadSchema as never,
-              ) as Readonly<Record<string, unknown>>,
-            });
-        });
+        const common = {
+          lucid: config.lucid,
+          contracts: config.contracts,
+          signer: config.signer,
+          finding: admitted.evidence,
+          referenceScriptUtxo: config.references.steps[0],
+        } as const;
+        return await capture(
+          admitted.artifact.sourceKind === "accepted"
+            ? await buildObserversForbiddenStep01Accepted({
+                ...common,
+                blueprint: config.binding.blueprint,
+                network: config.binding.network,
+                threadUtxo,
+                threadToken,
+                stateQueueBlockOutRef: action.stateQueueBlockOutRef,
+                txInclusion: inclusionFromArtifact(admitted),
+                witnessReferenceScripts: config.references.witnesses,
+              })
+            : await buildObserversForbiddenStep01Forced({
+                ...common,
+                categoryId,
+                threadOutRef: action.threadOutRef,
+                forcedSource: Data.from(
+                  admitted.artifact.forcedSourceCbor,
+                  ObserversForbiddenForcedSourcePayloadSchema as never,
+                ) as Readonly<Record<string, unknown>>,
+              }),
+          "observers-forbidden-on-untagged-network step_01",
+        );
       }
       if (action.stage === "step_02")
-        return await capture(async (preSubmitBoundary) => {
-          await submitObserversForbiddenStep02({
+        return await capture(
+          await buildObserversForbiddenStep02({
             ownOutputs,
             lucid: config.lucid,
             contracts: config.contracts,
@@ -226,10 +223,9 @@ export const createObserversForbiddenActuator = (
             nativeTxCompactCbor: admitted.artifact.nativeTxCompactCbor,
             referenceScriptUtxo: config.references.steps[1],
             witnessReferenceScripts: config.references.witnesses,
-            preSubmitBoundary,
-            awaitConfirmation: false,
-          });
-        });
+          }),
+          "observers-forbidden-on-untagged-network step_02",
+        );
       // A registered family resolves removal through the canonical catalogue:
       // the deployment manifest's
       // `fraudProofObserversForbiddenOnUntaggedNetwork` entry pins the step-01

@@ -16,9 +16,10 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { outRefLabel } from "../../src/runtime.js";
-import { submitResolvedInit } from "../../src/submit-init.submit-resolved-init.js";
+import { buildResolvedInit } from "../../src/submit-init.submit-resolved-init.js";
 import { type ProvedDoubleSpendFixture } from "./submit-init-emulator-fixtures.js";
 import { network } from "./submit-init-emulator-shared.js";
+import { buildAndSubmitUnjournaled } from "./submit-unjournaled.js";
 
 export const VALIDATION_TRACE_CATEGORY_ID =
   SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.validationTraceDispute;
@@ -51,7 +52,7 @@ export const mintValidationTraceProof = async (
   const category = catalogue.categories.validationTraceDispute;
   if (category === undefined)
     throw new Error("catalogue has no validation-trace category");
-  const init = await submitResolvedInit({
+  const init = await buildAndSubmitUnjournaled(buildResolvedInit, {
     lucid: proverLucid,
     blueprint: fixture.realBlueprint,
     network,

@@ -36,16 +36,19 @@ import {
   resolveProverSigner,
   type SubmitProviderConfig,
 } from "./runtime.js";
-import { completeStep, fundStep, submitStep } from "./step-completion.js";
+import { completeStep, fundStep } from "./step-completion.js";
+import { finishStep } from "./step-completion.js";
 import { requireComputationThreadToken } from "./step-support.js";
 import {
   FABRICATED_WITHDRAWAL_CATEGORY_LABEL,
   type FabricatedWithdrawalContracts,
 } from "./submit-fabricated-withdrawal-step-01.js";
+import { submitFaultProofTurns } from "./submit-fault-proof-turns.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
+import { workflowReferenceScript } from "./workflow/transaction-boundary.js";
 import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScript,
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
 } from "./workflow/transaction-boundary.js";
 
 /** Expected semantic arm. An old pointer hint is never used as L1 authority. */
@@ -89,8 +92,8 @@ export type SubmitFabricatedWithdrawalStep02CliConfig = SubmitProviderConfig & {
   readonly awaitConfirmation?: boolean;
 };
 
-export type SubmitFabricatedWithdrawalStep02Result = {
-  readonly txHash: string;
+export type FabricatedWithdrawalStep02Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -106,8 +109,10 @@ export type SubmitFabricatedWithdrawalStep02Result = {
   readonly verdict: FabricatedWithdrawalEvidenceVerdict;
   readonly inputIndex: number;
   readonly outputIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
+
+export type SubmitFabricatedWithdrawalStep02Result =
+  UnjournaledSubmission<FabricatedWithdrawalStep02Build>;
 
 type FabricatedWithdrawalStep02Layout = {
   readonly inputIndex: bigint;
@@ -115,7 +120,7 @@ type FabricatedWithdrawalStep02Layout = {
   readonly evidence: FabricatedWithdrawalEvidence;
 };
 
-export const submitFabricatedWithdrawalStep02 = async ({
+export const buildFabricatedWithdrawalStep02 = async ({
   lucid,
   contracts,
   network,
@@ -123,8 +128,6 @@ export const submitFabricatedWithdrawalStep02 = async ({
   threadOutRef,
   evidence,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
   now = Date.now,
   expectedOpeningCbor,
 }: {
@@ -138,9 +141,7 @@ export const submitFabricatedWithdrawalStep02 = async ({
   readonly threadOutRef: string;
   readonly evidence: FabricatedWithdrawalEvidenceArm;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitFabricatedWithdrawalStep02Result> => {
+}): Promise<FabricatedWithdrawalStep02Build> => {
   const threadUtxo = await fetchUtxoByOutRef({
     lucid,
     outRef: parseOutRef(threadOutRef, "--thread-out-ref"),
@@ -299,8 +300,7 @@ export const submitFabricatedWithdrawalStep02 = async ({
       "BuildTxWithRedeemer did not resolve fabricated-withdrawal step 02 layout.",
     );
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: "fabricated-withdrawal step-02",
+  const transaction = finishStep(signed, {
     referenceScripts: [
       workflowReferenceScript({
         role: "V1 fraud-proof fabricated-withdrawal step-02",
@@ -308,17 +308,15 @@ export const submitFabricatedWithdrawalStep02 = async ({
         expectedScript: contracts.steps[1].spendingScript,
       }),
     ],
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
   });
 
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
     threadOutRef,
-    nextThreadOutRef: `${txHash}#${resolvedLayout.outputIndex.toString()}`,
+    nextThreadOutRef: `${transaction.txHash}#${resolvedLayout.outputIndex.toString()}`,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadUnit: threadToken.unit,
     secondStepAddress: contracts.steps[1].spendingScriptAddress,
@@ -329,7 +327,6 @@ export const submitFabricatedWithdrawalStep02 = async ({
     verdict,
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
-    awaitedConfirmation: awaitConfirmation,
   };
 };
 
@@ -341,17 +338,23 @@ export const submitFabricatedWithdrawalStep02FromFiles = async (
 ): Promise<SubmitFabricatedWithdrawalStep02Result> => {
   const lucid = await makeLucidForSubmit(config);
   const signer = resolveProverSigner(config);
-  return await submitFabricatedWithdrawalStep02({
-    lucid,
-    contracts: config.contracts,
-    network: config.network,
-    signer,
-    threadOutRef: config.threadOutRef,
-    evidence:
-      config.eventOutRef === undefined
-        ? { kind: "absent_identity" }
-        : { kind: "present_event", eventOutRef: config.eventOutRef },
-    referenceScriptUtxo: config.referenceScriptUtxo,
-    awaitConfirmation: config.awaitConfirmation,
-  });
+  return await submitFaultProofTurns(
+    buildFabricatedWithdrawalStep02,
+    {
+      lucid,
+      contracts: config.contracts,
+      network: config.network,
+      signer,
+      threadOutRef: config.threadOutRef,
+      evidence:
+        config.eventOutRef === undefined
+          ? { kind: "absent_identity" }
+          : { kind: "present_event", eventOutRef: config.eventOutRef },
+      referenceScriptUtxo: config.referenceScriptUtxo,
+    },
+    {
+      label: "fabricated-withdrawal-step02",
+      awaitConfirmation: config.awaitConfirmation ?? true,
+    },
+  );
 };

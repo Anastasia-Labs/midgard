@@ -25,10 +25,10 @@ import {
   requireLinearFaultReferenceScript,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import {
+  buildNativeTxBinding,
   type NativeTxBindingContracts,
-  submitNativeTxBinding,
 } from "../native-tx-binding.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import {
@@ -38,7 +38,6 @@ import {
 import type { SubmitStep01TxInclusion } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   WITNESS_SCRIPT_DECODING_CATEGORY_LABEL as FAMILY,
   type WitnessScriptDecodingContracts,
@@ -61,7 +60,7 @@ const boundState = ({
   accused_class: accusedClass,
 });
 
-export const submitWitnessScriptDecodingStep01Accepted = async ({
+export const buildWitnessScriptDecodingStep01Accepted = async ({
   lucid,
   blueprint,
   network,
@@ -74,12 +73,10 @@ export const submitWitnessScriptDecodingStep01Accepted = async ({
   scriptIndex,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
-  readonly network: Parameters<typeof submitNativeTxBinding>[0]["network"];
+  readonly network: Parameters<typeof buildNativeTxBinding>[0]["network"];
   readonly contracts: WitnessScriptDecodingContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
@@ -89,8 +86,6 @@ export const submitWitnessScriptDecodingStep01Accepted = async ({
   readonly scriptIndex: bigint;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   if (scriptIndex < 0n) throw new Error(`${FAMILY}: negative script index`);
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
@@ -114,7 +109,7 @@ export const submitWitnessScriptDecodingStep01Accepted = async ({
     } as never,
     WitnessScriptDecodingStep02DatumSchema as never,
   );
-  return await submitNativeTxBinding({
+  return await buildNativeTxBinding({
     lucid,
     blueprint,
     network,
@@ -137,8 +132,6 @@ export const submitWitnessScriptDecodingStep01Accepted = async ({
     }),
     referenceScriptUtxo,
     witnessReferenceScripts,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
 };
 
@@ -179,7 +172,7 @@ const accusedClassOf = (
   throw new Error(`${FAMILY}: forced reason is outside family`);
 };
 
-export const submitWitnessScriptDecodingStep01Forced = async ({
+export const buildWitnessScriptDecodingStep01Forced = async ({
   lucid,
   contracts,
   categoryId,
@@ -190,8 +183,6 @@ export const submitWitnessScriptDecodingStep01Forced = async ({
   witnessSetHash,
   scriptIndex,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: WitnessScriptDecodingContracts;
@@ -206,8 +197,6 @@ export const submitWitnessScriptDecodingStep01Forced = async ({
   readonly witnessSetHash: string;
   readonly scriptIndex: bigint;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 0;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
@@ -282,7 +271,7 @@ export const submitWitnessScriptDecodingStep01Forced = async ({
       WitnessScriptDecodingStep01RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -293,10 +282,11 @@ export const submitWitnessScriptDecodingStep01Forced = async ({
     nextAddress: contracts.steps[1].spendingScriptAddress,
     nextDatum,
     redeemer,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined)
     throw new Error(`${FAMILY}: unresolved layout`);
-  return { txHash, nextThreadOutRef: `${txHash}#${outputIndex.toString()}` };
+  return {
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
+  };
 };

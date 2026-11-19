@@ -16,11 +16,10 @@ import {
   requireLinearFaultReferenceScript,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { requireInitialStepDatum } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { TransactionOutputNonCanonicalContracts } from "./contracts.js";
 import {
   TransactionOutputStep01RedeemerSchema,
@@ -31,7 +30,7 @@ import {
   type TransactionOutputFinding,
 } from "./transaction-output-non-canonical.js";
 
-export const submitTransactionOutputNonCanonicalStep01Forced = async ({
+export const buildTransactionOutputNonCanonicalStep01Forced = async ({
   lucid,
   contracts,
   categoryId,
@@ -40,8 +39,6 @@ export const submitTransactionOutputNonCanonicalStep01Forced = async ({
   finding,
   forcedSource,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: TransactionOutputNonCanonicalContracts;
@@ -51,8 +48,6 @@ export const submitTransactionOutputNonCanonicalStep01Forced = async ({
   readonly finding: TransactionOutputFinding;
   readonly forcedSource: Readonly<Record<string, unknown>>;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const exact = classifyTransactionOutputFinding(finding);
   const stepIndex = 0;
@@ -125,7 +120,7 @@ export const submitTransactionOutputNonCanonicalStep01Forced = async ({
       TransactionOutputStep01RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -136,12 +131,13 @@ export const submitTransactionOutputNonCanonicalStep01Forced = async ({
     nextAddress: contracts.steps[1].spendingScriptAddress,
     nextDatum,
     redeemer,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined)
     throw new Error(
       "transaction-output-non-canonical: forced layout unresolved",
     );
-  return { txHash, nextThreadOutRef: `${txHash}#${outputIndex.toString()}` };
+  return {
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
+  };
 };

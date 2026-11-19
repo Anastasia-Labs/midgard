@@ -3,12 +3,12 @@
  *
  * Two arms, two entry points:
  *
- * - `submitMintAuthorizationStep03WitnessAbsence` — direction A's inline
+ * - `buildMintAuthorizationStep03WitnessAbsence` — direction A's inline
  *   half. Opens the whole committed field 6 through the §8.8 door and lets
  *   the validator's fold prove no inline script witness (of any language)
  *   hashes to the claimed policy id, then routes into step-04's
  *   reference-input scan at cursor 0.
- * - `submitMintAuthorizationStep03EvaluateUnsatisfied` — direction B. Pins
+ * - `buildMintAuthorizationStep03EvaluateUnsatisfied` — direction B. Pins
  *   the policy's native payload by hash, opens the committed field 7 for
  *   the signer set, and lets the machine-twin evaluator refute the script
  *   against the committed signers and validity interval. Closes straight to
@@ -38,6 +38,6 @@ import "./submit-common.js";
 import "./submit-mint-authorization-step-03.submit-prepared-step03.js";
 import "./submit-mint-authorization-step-03.submit-mint-authorization-step03-witness-absence.js";
 import "./submit-mint-authorization-step-03.submit-mint-authorization-step03-evaluate-unsatisfied.js";
-export { submitMintAuthorizationStep03EvaluateUnsatisfied } from "./submit-mint-authorization-step-03.submit-mint-authorization-step03-evaluate-unsatisfied.js";
-export { submitMintAuthorizationStep03WitnessAbsence } from "./submit-mint-authorization-step-03.submit-mint-authorization-step03-witness-absence.js";
+export { buildMintAuthorizationStep03EvaluateUnsatisfied } from "./submit-mint-authorization-step-03.submit-mint-authorization-step03-evaluate-unsatisfied.js";
+export { buildMintAuthorizationStep03WitnessAbsence } from "./submit-mint-authorization-step-03.submit-mint-authorization-step03-witness-absence.js";
 export { type SubmitMintAuthorizationStep03Result } from "./submit-mint-authorization-step-03.submit-prepared-step03.js";

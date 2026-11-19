@@ -11,9 +11,9 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
-  submitTransactionOutputNonCanonicalStep01Accepted,
-  submitTransactionOutputNonCanonicalStep02,
-  submitTransactionOutputNonCanonicalStep04,
+  buildTransactionOutputNonCanonicalStep01Accepted,
+  buildTransactionOutputNonCanonicalStep02,
+  buildTransactionOutputNonCanonicalStep04,
 } from "../src/transaction-output-non-canonical/index.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
@@ -21,6 +21,10 @@ import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { longAssetNameOutput } from "./support/long-asset-name-value.js";
 import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
+import {
+  buildAndSubmitUnjournaled,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 import {
   publishOutputFieldCarriage,
   readOutputScanState,
@@ -133,27 +137,30 @@ describe("transactionOutputNonCanonical at the 5,000-byte Cardano value cap", ()
         init.result.firstStepOutputIndex,
       );
       const bound = await captureEmulatorSubmission(harness.emulator, () =>
-        submitTransactionOutputNonCanonicalStep01Accepted({
-          lucid: harness.proverLucid,
-          blueprint: harness.realBlueprint,
-          network,
-          contracts,
-          signer: harness.proverSigner,
-          finding: evidence,
-          threadUtxo,
-          threadToken: {
-            unit: init.result.computationThreadUnit,
-            fraudulentHeaderHash: init.result.fraudulentHeaderHash,
+        buildAndSubmitUnjournaled(
+          buildTransactionOutputNonCanonicalStep01Accepted,
+          {
+            lucid: harness.proverLucid,
+            blueprint: harness.realBlueprint,
+            network,
+            contracts,
+            signer: harness.proverSigner,
+            finding: evidence,
+            threadUtxo,
+            threadToken: {
+              unit: init.result.computationThreadUnit,
+              fraudulentHeaderHash: init.result.fraudulentHeaderHash,
+            },
+            stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+            txInclusion: inclusion,
+            referenceScriptUtxo: references[0]!,
+            witnessReferenceScripts: harness.witnessReferenceScripts,
           },
-          stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-          txInclusion: inclusion,
-          referenceScriptUtxo: references[0]!,
-          witnessReferenceScripts: harness.witnessReferenceScripts,
-        }),
+        ),
       );
       record(`${label}-step01`, bound.measurement);
       const opened = await captureEmulatorSubmission(harness.emulator, () =>
-        submitTransactionOutputNonCanonicalStep02({
+        submitTurnsUnjournaled(buildTransactionOutputNonCanonicalStep02, {
           lucid: harness.proverLucid,
           contracts,
           categoryId: category.categoryId,
@@ -173,7 +180,7 @@ describe("transactionOutputNonCanonical at the 5,000-byte Cardano value cap", ()
     };
     const mint = async (threadOutRef: string, evidence: Evidence) =>
       await captureEmulatorSubmission(harness.emulator, () =>
-        submitTransactionOutputNonCanonicalStep04({
+        buildAndSubmitUnjournaled(buildTransactionOutputNonCanonicalStep04, {
           lucid: harness.proverLucid,
           contracts,
           categoryId: category.categoryId,

@@ -25,18 +25,18 @@ import {
 } from "../src/prepare-fabricated-deposit.js";
 import { selectFeeInput } from "../src/step-support.js";
 import {
+  buildFabricatedDepositStep01,
   deriveFabricatedDepositStep01Handoff,
   parseSubmitFabricatedDepositInclusion,
-  submitFabricatedDepositStep01,
 } from "../src/submit-fabricated-deposit-step-01.js";
-import { submitFabricatedDepositStep02 } from "../src/submit-fabricated-deposit-step-02.js";
+import { buildFabricatedDepositStep02 } from "../src/submit-fabricated-deposit-step-02.js";
 import {
+  buildFabricatedDepositStep03,
   deriveFabricatedDepositStep03Handoff,
-  submitFabricatedDepositStep03,
 } from "../src/submit-fabricated-deposit-step-03.js";
 import {
   assertFabricatedDepositStep04Finalizable,
-  submitFabricatedDepositStep04,
+  buildFabricatedDepositStep04,
 } from "../src/submit-fabricated-deposit-step-04.js";
 import {
   buildCountedRoot,
@@ -75,6 +75,7 @@ import {
   submitSetupTx,
   withCommitSlot,
 } from "./support/submit-init-emulator-shared.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 const historyRecords = fabricatedFamilyHistoryEvidence(
   "full-deposit-history.json",
@@ -662,24 +663,27 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
         headerHash,
         inclusion,
       });
-      const step01Result = await submitFabricatedDepositStep01({
-        preSubmitBoundary: async ({ signed }) =>
-          recordFamilyTransaction(
-            historyRecords,
-            `deposit-step-01-${mode}-${scenario}`,
-            signed,
-          ),
-        now: () => harness.emulator.now(),
-        lucid: proverLucid,
-        contracts: fabricatedDeposit,
-        network,
-        signer: proverSigner,
-        threadOutRef: initResult.threadOutRef,
-        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-        depositInclusion: inclusion,
-        referenceScriptUtxo: referenceScriptUtxos[0],
-        awaitConfirmation: true,
-      });
+      const step01Result = await buildAndSubmitUnjournaled(
+        buildFabricatedDepositStep01,
+        {
+          beforeSubmit: async ({ signed }) =>
+            recordFamilyTransaction(
+              historyRecords,
+              `deposit-step-01-${mode}-${scenario}`,
+              signed,
+            ),
+          now: () => harness.emulator.now(),
+          lucid: proverLucid,
+          contracts: fabricatedDeposit,
+          network,
+          signer: proverSigner,
+          threadOutRef: initResult.threadOutRef,
+          stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+          depositInclusion: inclusion,
+          referenceScriptUtxo: referenceScriptUtxos[0],
+          awaitConfirmation: true,
+        },
+      );
       expect(step01Result.txHash).toHaveLength(64);
       expect(step01Result.fraudulentHeaderHash).toBe(headerHash);
       expect(step01Result.committedDepositInfoHash).toBe(committedInfoHash);
@@ -705,25 +709,28 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
       });
 
       // ## step-02: authenticate the L1 deposit-event witness
-      const step02Result = await submitFabricatedDepositStep02({
-        preSubmitBoundary: async ({ signed }) =>
-          recordFamilyTransaction(
-            historyRecords,
-            `deposit-step-02-${mode}-${scenario}`,
-            signed,
-          ),
-        now: () => harness.emulator.now(),
-        lucid: proverLucid,
-        contracts: fabricatedDeposit,
-        network,
-        signer: proverSigner,
-        threadOutRef: step01Result.nextThreadOutRef,
-        evidence: absent
-          ? { kind: "absent_identity" }
-          : { kind: "present_event", eventOutRef: outRefLabel(eventUtxo) },
-        referenceScriptUtxo: referenceScriptUtxos[1],
-        awaitConfirmation: true,
-      });
+      const step02Result = await buildAndSubmitUnjournaled(
+        buildFabricatedDepositStep02,
+        {
+          beforeSubmit: async ({ signed }) =>
+            recordFamilyTransaction(
+              historyRecords,
+              `deposit-step-02-${mode}-${scenario}`,
+              signed,
+            ),
+          now: () => harness.emulator.now(),
+          lucid: proverLucid,
+          contracts: fabricatedDeposit,
+          network,
+          signer: proverSigner,
+          threadOutRef: step01Result.nextThreadOutRef,
+          evidence: absent
+            ? { kind: "absent_identity" }
+            : { kind: "present_event", eventOutRef: outRefLabel(eventUtxo) },
+          referenceScriptUtxo: referenceScriptUtxos[1],
+          awaitConfirmation: true,
+        },
+      );
       expect(step02Result.verdict).toEqual(
         absent
           ? "DepositIdentityAbsent"
@@ -757,22 +764,25 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
       });
 
       // ## step-03: re-open the authenticated event datum and pin the fault
-      const step03Result = await submitFabricatedDepositStep03({
-        preSubmitBoundary: async ({ signed }) =>
-          recordFamilyTransaction(
-            historyRecords,
-            `deposit-step-03-${mode}-${scenario}`,
-            signed,
-          ),
-        now: () => harness.emulator.now(),
-        lucid: proverLucid,
-        contracts: fabricatedDeposit,
-        signer: proverSigner,
-        threadOutRef: step02Result.nextThreadOutRef,
-        openingCbor: absent ? undefined : admitted.openingCbor,
-        referenceScriptUtxo: referenceScriptUtxos[2],
-        awaitConfirmation: true,
-      });
+      const step03Result = await buildAndSubmitUnjournaled(
+        buildFabricatedDepositStep03,
+        {
+          beforeSubmit: async ({ signed }) =>
+            recordFamilyTransaction(
+              historyRecords,
+              `deposit-step-03-${mode}-${scenario}`,
+              signed,
+            ),
+          now: () => harness.emulator.now(),
+          lucid: proverLucid,
+          contracts: fabricatedDeposit,
+          signer: proverSigner,
+          threadOutRef: step02Result.nextThreadOutRef,
+          openingCbor: absent ? undefined : admitted.openingCbor,
+          referenceScriptUtxo: referenceScriptUtxos[2],
+          awaitConfirmation: true,
+        },
+      );
       expect(step03Result.fault).toEqual(plan.classification.fault);
       await expect(
         proverLucid.utxosAtWithUnit(
@@ -798,25 +808,28 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
       });
 
       // ## step-04: adjudicate and mint the permanent fraud-proof token
-      const step04Result = await submitFabricatedDepositStep04({
-        preSubmitBoundary: async ({ signed }) =>
-          recordFamilyTransaction(
-            historyRecords,
-            `deposit-step-04-${mode}-${scenario}`,
-            signed,
-          ),
-        now: () => harness.emulator.now(),
-        lucid: proverLucid,
-        contracts: fabricatedDeposit,
-        signer: proverSigner,
-        threadOutRef: step03Result.nextThreadOutRef,
-        referenceScriptUtxo: referenceScriptUtxos[3],
-        witnessReferenceScripts: {
-          ...harness.witnessReferenceScripts,
-          stateQueueSpend: removalReferences.published.stateQueueSpend,
+      const step04Result = await buildAndSubmitUnjournaled(
+        buildFabricatedDepositStep04,
+        {
+          beforeSubmit: async ({ signed }) =>
+            recordFamilyTransaction(
+              historyRecords,
+              `deposit-step-04-${mode}-${scenario}`,
+              signed,
+            ),
+          now: () => harness.emulator.now(),
+          lucid: proverLucid,
+          contracts: fabricatedDeposit,
+          signer: proverSigner,
+          threadOutRef: step03Result.nextThreadOutRef,
+          referenceScriptUtxo: referenceScriptUtxos[3],
+          witnessReferenceScripts: {
+            ...harness.witnessReferenceScripts,
+            stateQueueSpend: removalReferences.published.stateQueueSpend,
+          },
+          awaitConfirmation: true,
         },
-        awaitConfirmation: true,
-      });
+      );
       expect(step04Result.fault).toEqual(plan.classification.fault);
       expect(step04Result.fraudProofAssetName).toBe(plan.threadTokenAssetName);
       const markedQueue = await proverLucid.utxoByUnit(
@@ -858,7 +871,7 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
       });
       const removeNow = BigInt(harness.emulator.now());
       const removal = await submitRemoveFraudulentBlock({
-        preSubmitBoundary: async ({ signed }) =>
+        beforeSubmit: async ({ signed }) =>
           recordFamilyTransaction(
             historyRecords,
             `deposit-removal-${mode}-${scenario}`,
@@ -1025,8 +1038,8 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
         depositMembershipProofCbor: Data.to(honestProof, SDK.Proof),
       });
       await expect(
-        submitFabricatedDepositStep01({
-          preSubmitBoundary: async ({ signed }) =>
+        buildAndSubmitUnjournaled(buildFabricatedDepositStep01, {
+          beforeSubmit: async ({ signed }) =>
             recordFamilyTransaction(
               historyRecords,
               `deposit-refused-step-01-${mode}`,
@@ -1068,49 +1081,55 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
       // Advance the unchanged honest source through genuine stages01/02. The
       // next refusal must come from stage03's applied script, not its off-chain
       // content-matches preflight and not a fabricated thread or commitment.
-      const first = await submitFabricatedDepositStep01({
-        preSubmitBoundary: async ({ signed }) =>
-          recordFamilyTransaction(
-            historyRecords,
-            `deposit-honest-step-01-${mode}`,
-            signed,
-          ),
-        now: () => harness.emulator.now(),
-        lucid: proverLucid,
-        contracts: fabricatedDeposit,
-        network,
-        signer: proverSigner,
-        threadOutRef: outRefLabel(stillFirstStep),
-        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-        depositInclusion: parseSubmitFabricatedDepositInclusion({
-          committedDepositIdCbor: keyCbor,
-          committedDepositInfoCbor: authenticInfoCbor,
-          depositsPhasRoot: counted.phasRoot,
-          depositMembershipProofCbor: Data.to(honestProof, SDK.Proof),
-        }),
-        referenceScriptUtxo: referenceScriptUtxos[0],
-        awaitConfirmation: true,
-      });
-      const second = await submitFabricatedDepositStep02({
-        preSubmitBoundary: async ({ signed }) =>
-          recordFamilyTransaction(
-            historyRecords,
-            `deposit-honest-step-02-${mode}`,
-            signed,
-          ),
-        now: () => harness.emulator.now(),
-        lucid: proverLucid,
-        contracts: fabricatedDeposit,
-        network,
-        signer: proverSigner,
-        threadOutRef: first.nextThreadOutRef,
-        evidence: {
-          kind: "present_event",
-          eventOutRef: outRefLabel(admitted.witness.anchor.utxo),
+      const first = await buildAndSubmitUnjournaled(
+        buildFabricatedDepositStep01,
+        {
+          beforeSubmit: async ({ signed }) =>
+            recordFamilyTransaction(
+              historyRecords,
+              `deposit-honest-step-01-${mode}`,
+              signed,
+            ),
+          now: () => harness.emulator.now(),
+          lucid: proverLucid,
+          contracts: fabricatedDeposit,
+          network,
+          signer: proverSigner,
+          threadOutRef: outRefLabel(stillFirstStep),
+          stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+          depositInclusion: parseSubmitFabricatedDepositInclusion({
+            committedDepositIdCbor: keyCbor,
+            committedDepositInfoCbor: authenticInfoCbor,
+            depositsPhasRoot: counted.phasRoot,
+            depositMembershipProofCbor: Data.to(honestProof, SDK.Proof),
+          }),
+          referenceScriptUtxo: referenceScriptUtxos[0],
+          awaitConfirmation: true,
         },
-        referenceScriptUtxo: referenceScriptUtxos[1],
-        awaitConfirmation: true,
-      });
+      );
+      const second = await buildAndSubmitUnjournaled(
+        buildFabricatedDepositStep02,
+        {
+          beforeSubmit: async ({ signed }) =>
+            recordFamilyTransaction(
+              historyRecords,
+              `deposit-honest-step-02-${mode}`,
+              signed,
+            ),
+          now: () => harness.emulator.now(),
+          lucid: proverLucid,
+          contracts: fabricatedDeposit,
+          network,
+          signer: proverSigner,
+          threadOutRef: first.nextThreadOutRef,
+          evidence: {
+            kind: "present_event",
+            eventOutRef: outRefLabel(admitted.witness.anchor.utxo),
+          },
+          referenceScriptUtxo: referenceScriptUtxos[1],
+          awaitConfirmation: true,
+        },
+      );
       expect(second.verdict).toEqual({
         DepositEventObserved: { commitment: admitted.captured.commitment },
       });

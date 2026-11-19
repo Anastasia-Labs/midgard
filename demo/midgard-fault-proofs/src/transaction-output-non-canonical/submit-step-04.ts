@@ -4,10 +4,9 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultFinalize } from "../linear-fault-finalize.js";
+import { buildLinearFaultFinalize } from "../linear-fault-finalize.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { TransactionOutputNonCanonicalContracts } from "./contracts.js";
 import {
   TransactionOutputStep04DatumSchema,
@@ -19,7 +18,7 @@ import {
   transactionOutputEvidenceCloses,
 } from "./transaction-output-non-canonical.js";
 
-export const submitTransactionOutputNonCanonicalStep04 = async ({
+export const buildTransactionOutputNonCanonicalStep04 = async ({
   lucid,
   contracts,
   categoryId,
@@ -28,8 +27,6 @@ export const submitTransactionOutputNonCanonicalStep04 = async ({
   evidence,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: TransactionOutputNonCanonicalContracts;
@@ -39,8 +36,6 @@ export const submitTransactionOutputNonCanonicalStep04 = async ({
   readonly evidence: TransactionOutputEvidence;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   if (!transactionOutputEvidenceCloses(evidence)) {
     throw new Error(
@@ -86,7 +81,7 @@ export const submitTransactionOutputNonCanonicalStep04 = async ({
       "transaction-output-non-canonical: terminal state differs from prepared evidence",
     );
   }
-  return await submitLinearFaultFinalize({
+  return await buildLinearFaultFinalize({
     lucid,
     family: "transaction-output-non-canonical",
     stepIndex,
@@ -108,7 +103,5 @@ export const submitTransactionOutputNonCanonicalStep04 = async ({
     }),
     referenceScriptUtxo,
     witnessReferenceScripts,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
 };

@@ -16,8 +16,8 @@ import { CML, Data, getAddressDetails } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
 import { NATIVE_SCRIPT_INVALID_FORCED_ARTIFACT } from "../src/native-script-invalid/forced-artifact.js";
-import { submitNativeScriptInvalidInit } from "../src/native-script-invalid/submit-init.js";
-import { submitNativeScriptInvalidStep01Forced } from "../src/native-script-invalid/submit-step-01-forced.js";
+import { buildNativeScriptInvalidInit } from "../src/native-script-invalid/submit-init.js";
+import { buildNativeScriptInvalidStep01Forced } from "../src/native-script-invalid/submit-step-01-forced.js";
 import { prepareNativeScriptInvalidWorkflowArtifact } from "../src/native-script-invalid/workflow-artifact.js";
 import {
   buildCountedRoot,
@@ -37,6 +37,7 @@ import {
   network,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 import { syntheticDeepMembershipProof } from "./support/synthetic-deep-proof.js";
 
 type TransactionOptions = {
@@ -323,7 +324,7 @@ export const setup = async ({
       encodeMidgardForcedTxCanonical(submitted).toString("hex"),
   };
   const init = () =>
-    submitNativeScriptInvalidInit({
+    buildAndSubmitUnjournaled(buildNativeScriptInvalidInit, {
       lucid: h.proverLucid,
       blueprint: h.realBlueprint,
       deploymentInfo: buildRemovalDeploymentInfo(h.contracts, h.catalogue),
@@ -333,7 +334,7 @@ export const setup = async ({
       witnessReferenceScripts: h.witnessReferenceScripts,
     });
   const bind = (threadOutRef: string, overrides = {}) =>
-    submitNativeScriptInvalidStep01Forced({
+    buildAndSubmitUnjournaled(buildNativeScriptInvalidStep01Forced, {
       ...common,
       threadOutRef,
       state,

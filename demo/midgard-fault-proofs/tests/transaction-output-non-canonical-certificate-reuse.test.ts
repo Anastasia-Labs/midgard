@@ -1,7 +1,7 @@
 /**
- * Step 02 at a Certified-tier opening, driven turn by turn through the
- * workflow capture boundary: once the field certificate is on chain, the
- * next captured transaction is the step itself, and only one certificate is
+ * Step 02 at a Certified-tier opening, driven turn by turn, one
+ * transaction per build: once the field certificate is on chain, the
+ * next built transaction is the step itself, and only one certificate is
  * ever minted.
  */
 import { decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
@@ -14,8 +14,8 @@ import { describe, expect, it } from "vitest";
 
 import { planFaultProofFieldOpening } from "../src/field-opening.js";
 import {
-  submitTransactionOutputNonCanonicalStep01Forced,
-  submitTransactionOutputNonCanonicalStep02,
+  buildTransactionOutputNonCanonicalStep01Forced,
+  buildTransactionOutputNonCanonicalStep02,
 } from "../src/transaction-output-non-canonical/index.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
 import { createAuthenticatedFieldCarriagePrerequisitePort } from "../src/workflow/field-carriage-prerequisite.js";
@@ -28,10 +28,7 @@ import {
   FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
   type FraudProofAuthenticatedPublicationObserver,
 } from "../src/workflow/raw-l1-publication-observation.js";
-import {
-  type FraudProofPreSubmitBoundary,
-  submitCapturedTransaction,
-} from "../src/workflow/transaction-boundary.js";
+import { submitCapturedTransaction } from "../src/workflow/transaction-boundary.js";
 import {
   capturedOutputHolding,
   driveCapturedStep,
@@ -43,6 +40,7 @@ import {
   alignUnixTimeToEmulatorSlotBoundary,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 import {
   buildForcedOutputFixture,
   canonicalOutputOfLength,
@@ -100,16 +98,19 @@ const stepTwoReady = async () => {
   );
   expect(evidence.carriage).toBe("Certified");
   const init = await registered.init(setup.fraudulentBlockOutRef);
-  const bound = await submitTransactionOutputNonCanonicalStep01Forced({
-    lucid: harness.proverLucid,
-    contracts,
-    categoryId: category.categoryId,
-    signer: harness.proverSigner,
-    threadOutRef: `${init.result.txHash}#${init.result.firstStepOutputIndex.toString()}`,
-    finding: evidence,
-    forcedSource: { header: forced.header, membership },
-    referenceScriptUtxo: references[0]!,
-  });
+  const bound = await buildAndSubmitUnjournaled(
+    buildTransactionOutputNonCanonicalStep01Forced,
+    {
+      lucid: harness.proverLucid,
+      contracts,
+      categoryId: category.categoryId,
+      signer: harness.proverSigner,
+      threadOutRef: `${init.result.txHash}#${init.result.firstStepOutputIndex.toString()}`,
+      finding: evidence,
+      forcedSource: { header: forced.header, membership },
+      referenceScriptUtxo: references[0]!,
+    },
+  );
   return {
     harness,
     contracts,
@@ -124,10 +125,9 @@ const stepTwoReady = async () => {
 
 const submitStepTwo = (
   ready: Awaited<ReturnType<typeof stepTwoReady>>,
-  boundary: FraudProofPreSubmitBoundary,
   ownOutputs: OwnOutputJournal,
 ) =>
-  submitTransactionOutputNonCanonicalStep02({
+  buildTransactionOutputNonCanonicalStep02({
     ownOutputs,
     lucid: ready.harness.proverLucid,
     contracts: ready.contracts,
@@ -141,13 +141,10 @@ const submitStepTwo = (
     publishCarriage: ready.evidence.carriage === "RawUtxo",
     referenceScriptUtxo: ready.references[1]!,
     certificateReferenceScriptUtxo: ready.certificateReference,
-    publicationPreSubmitBoundary: boundary,
-    certificatePreSubmitBoundary: boundary,
-    preSubmitBoundary: boundary,
   });
 
-describe("transactionOutputNonCanonical step 02 under the workflow capture boundary", () => {
-  it("reuses the field certificate already on chain, so the next captured transaction is the step", async () => {
+describe("transactionOutputNonCanonical step 02 built turn by turn", () => {
+  it("reuses the field certificate already on chain, so the next built transaction is the step", async () => {
     const ready = await stepTwoReady();
     // One run of the step: the carriage it publishes on one turn is what it
     // reads back on the next.
@@ -156,8 +153,7 @@ describe("transactionOutputNonCanonical step 02 under the workflow capture bound
       emulator: ready.harness.emulator,
       threadOutRef: ready.threadOutRef,
       maxTurns: 6,
-      invoke: async (boundary) =>
-        await submitStepTwo(ready, boundary, ownOutputs),
+      invoke: async () => await submitStepTwo(ready, ownOutputs),
     });
     expect(drive.prerequisites.length).toBeGreaterThan(1);
     expect(
@@ -272,10 +268,9 @@ describe("transactionOutputNonCanonical step 02 under the workflow capture bound
       emulator: ready.harness.emulator,
       threadOutRef: ready.threadOutRef,
       maxTurns: 1,
-      invoke: async (boundary) =>
+      invoke: async () =>
         await submitStepTwo(
           ready,
-          boundary,
           workflowFieldCarriageOwnOutputs({
             category: "transactionOutputNonCanonical",
             entries: journal.entries(),

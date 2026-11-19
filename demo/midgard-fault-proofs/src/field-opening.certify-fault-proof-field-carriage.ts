@@ -9,22 +9,21 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { type PrerequisiteTurn } from "./fault-proof-turn.js";
 import {
   fieldCertificateSlotOf,
   lucidOwnOutputReader,
 } from "./field-opening.own-field-carriage.js";
 import { type FaultProofFieldOpeningPlan } from "./field-opening.plan-fault-proof-field-opening.js";
-import { fetchUtxoByOutRef, type ResolvedProverSigner } from "./runtime.js";
-import { submitStep } from "./step-completion.js";
+import { fieldCarriagePlanTransactions } from "./field-opening.publish-fault-proof-field-carriage.js";
+import { type ResolvedProverSigner } from "./runtime.js";
+import { finishStep } from "./step-completion.js";
 import {
   claimOwnOutputs,
   type OwnOutputJournal,
   resolveOwnOutputs,
 } from "./workflow/own-outputs.js";
-import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScript,
-} from "./workflow/transaction-boundary.js";
+import { workflowReferenceScript } from "./workflow/transaction-boundary.js";
 
 export const fieldPreimageCertificateAddress = ({
   network,
@@ -71,15 +70,12 @@ export const resolveFaultProofFieldPreimageCertificate = async ({
   return resolution.kind === "ready" ? resolution.utxos[0] : undefined;
 };
 
-export type CertifiedFaultProofFieldCarriage = {
-  readonly txHash: string;
-  readonly certificateUtxo: UTxO;
-};
-
 /**
- * Strict tier-3 certification transaction. The certificate policy is carried
- * only by its hash-checked published reference script; inline attachment is
- * unavailable on this production path.
+ * Strict tier-3 certification transaction, built and signed but not
+ * submitted; its certificate output is claimed in `ownOutputs` before it is
+ * returned. The certificate policy is carried only by its hash-checked
+ * published reference script; inline attachment is unavailable on this
+ * production path.
  */
 export const certifyFaultProofFieldCarriage = async ({
   lucid,
@@ -92,8 +88,6 @@ export const certifyFaultProofFieldCarriage = async ({
   chunkUtxos,
   compactCbor,
   witnessSetCompactCbor = "",
-  preSubmitBoundary,
-  awaitConfirmation = true,
   ownOutputs,
 }: {
   readonly lucid: LucidEvolution;
@@ -109,11 +103,9 @@ export const certifyFaultProofFieldCarriage = async ({
   readonly chunkUtxos: readonly UTxO[];
   readonly compactCbor: string;
   readonly witnessSetCompactCbor?: string;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-  /** Where the certificate's out-ref is claimed before submission. */
+  /** Where the certificate's out-ref is claimed. */
   readonly ownOutputs?: OwnOutputJournal;
-}): Promise<CertifiedFaultProofFieldCarriage> => {
+}): Promise<PrerequisiteTurn> => {
   if (planned.plan.tier !== "Certified") {
     throw new Error("field-preimage certification requires a tier-3 plan");
   }
@@ -147,30 +139,27 @@ export const certifyFaultProofFieldCarriage = async ({
     );
   }
   ownOutputs?.claim(key, claim!.outRef);
-  const txHash = await submitStep(lucid, signed, {
+  return {
+    kind: "certificate",
+    transaction: finishStep(signed, {
+      referenceScripts: [
+        workflowReferenceScript({
+          role: "field-preimage-certificate-mint",
+          utxo: certificateReferenceScriptUtxo,
+          expectedScript: certificateMintingScript,
+        }),
+      ],
+    }),
     label: "field-preimage certification",
-    referenceScripts: [
-      workflowReferenceScript({
-        role: "field-preimage-certificate-mint",
-        utxo: certificateReferenceScriptUtxo,
-        expectedScript: certificateMintingScript,
-      }),
-    ],
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
-  });
-  const certificateUtxo = await fetchUtxoByOutRef({
-    lucid,
-    outRef: { txHash, outputIndex: 0 },
-    label: "field-preimage certificate",
-  });
-  return { txHash, certificateUtxo };
+    output: { outRef: claim!.outRef, label: "field-preimage certificate" },
+    plan: fieldCarriagePlanTransactions(planned.plan),
+  };
 };
 
 /**
  * The certificate a step's opening references: ours, already live for this
- * exact opening (claimed in `ownOutputs` by an earlier certify), and a newly
- * minted one, claimed there, only when none is.
+ * exact opening (claimed in `ownOutputs` by an earlier certify), and
+ * otherwise the transaction that mints one, claimed there.
  */
 export const reuseOrCertifyFaultProofFieldCarriage = async ({
   certificateReferenceScriptUtxo,
@@ -186,15 +175,13 @@ export const reuseOrCertifyFaultProofFieldCarriage = async ({
   readonly missingReferenceScript: string;
   /** Our certificate claims; a newly minted certificate is claimed here. */
   readonly ownOutputs: OwnOutputJournal;
-}): Promise<UTxO> => {
+}): Promise<UTxO | PrerequisiteTurn> => {
   const onChain = await resolveFaultProofFieldPreimageCertificate(input);
   if (onChain !== undefined) return onChain;
   if (certificateReferenceScriptUtxo === undefined)
     throw new Error(missingReferenceScript);
-  return (
-    await certifyFaultProofFieldCarriage({
-      ...input,
-      certificateReferenceScriptUtxo,
-    })
-  ).certificateUtxo;
+  return await certifyFaultProofFieldCarriage({
+    ...input,
+    certificateReferenceScriptUtxo,
+  });
 };

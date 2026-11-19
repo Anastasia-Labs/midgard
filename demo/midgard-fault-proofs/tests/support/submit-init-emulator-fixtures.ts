@@ -24,6 +24,7 @@ export { buildNonExistentInputFixture } from "./submit-init/non-existent-input.j
 export { retireFixtureOperatorAfterInactivity } from "./submit-init/operator-retirement.js";
 export { expectStateQueueHeaderOrder } from "./submit-init/queue-assertions.js";
 export {
+  buildRemovalForFixture,
   createRecordingLeaseCoordinator,
   eventIndexes,
   expectRemovedFraudProofState,

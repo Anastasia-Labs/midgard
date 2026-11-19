@@ -12,6 +12,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { type FaultProofTurn, isPrerequisiteTurn } from "./fault-proof-turn.js";
 import {
   type FaultProofFieldGrammarDeployment,
   routeFaultProofFieldGrammar,
@@ -28,8 +29,10 @@ import {
   type ResolvedProverSigner,
   resolveInputNoIdxDeploymentContracts,
 } from "./runtime.js";
-import { completeStep, fundStep, submitStep } from "./step-completion.js";
+import { completeStep, fundStep } from "./step-completion.js";
+import { finishStep } from "./step-completion.js";
 import { requireComputationThreadToken } from "./step-support.js";
+import type { InputNoIdxStep04Build } from "./submit-input-no-idx-step-04.make-input-no-idx-step04-spend-redeemer.js";
 import {
   type InputNoIdxStep04ResolvedLayout,
   type InputNoIdxStep04SpendLayout,
@@ -38,7 +41,6 @@ import {
   makeInputNoIdxStep04SpendRedeemer,
   requireStep04Datum,
   type SubmitInputNoIdxOutputsPreimage,
-  type SubmitInputNoIdxStep04Result,
 } from "./submit-input-no-idx-step-04.make-input-no-idx-step04-spend-redeemer.js";
 import {
   type FaultProofWitnessReferenceScripts,
@@ -49,12 +51,8 @@ import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "./workflow/own-outputs.js";
-import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
-} from "./workflow/transaction-boundary.js";
 
-export const submitInputNoIdxStep04 = async ({
+export const buildInputNoIdxStep04 = async ({
   lucid,
   blueprint,
   deploymentInfo,
@@ -68,10 +66,7 @@ export const submitInputNoIdxStep04 = async ({
   certificateUtxo,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  publicationPreSubmitBoundary,
   fieldGrammar,
-  preSubmitBoundary,
-  awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
@@ -95,18 +90,15 @@ export const submitInputNoIdxStep04 = async ({
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
   /**
    * The field grammar certificate. The step counts field 2 through it past the
    * walked count limit or under tier 3, since the certified count also serves a
    * chunked field.
    */
   readonly fieldGrammar?: FaultProofFieldGrammarDeployment;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
-}): Promise<SubmitInputNoIdxStep04Result> => {
+}): Promise<FaultProofTurn<InputNoIdxStep04Build>> => {
   const { nonExistentInputNoIndexCategory, contracts } =
     await resolveInputNoIdxDeploymentContracts({
       blueprint,
@@ -161,8 +153,8 @@ export const submitInputNoIdxStep04 = async ({
       planned,
       publisherAddress: signer.proofMaterialsAddress,
       label: "Input-no-idx step 04 outputs",
-      preSubmitBoundary: publicationPreSubmitBoundary,
     }));
+  if (isPrerequisiteTurn(carriageUtxos)) return carriageUtxos;
   const grammar = await routeFaultProofFieldGrammar({
     lucid,
     signer,
@@ -305,40 +297,34 @@ export const submitInputNoIdxStep04 = async ({
     ...spendLayout,
     computationThreadMintRedeemerIndex,
   };
-  const txHash = await submitStep(lucid, signed, {
-    label: "input-no-idx step-04",
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: "V1 fraud-proof non-existent-input-no-index step-04",
-          utxo: referenceScriptUtxo,
-          expectedScript:
-            contracts.nonExistentInputNoIndex.steps[3].spendingScript,
-        },
-        {
-          role: "V1 fraud-proof computation-thread minting",
-          utxo: witnessReferenceScripts?.computationThreadMint,
-          expectedScript: contracts.computationThread.mintingScript,
-        },
-        {
-          role: "V1 fraud-proof token minting",
-          utxo: witnessReferenceScripts?.fraudProofMint,
-          expectedScript: contracts.fraudProof.mintingScript,
-        },
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: "V1 fraud-proof non-existent-input-no-index step-04",
+        utxo: referenceScriptUtxo,
+        expectedScript:
+          contracts.nonExistentInputNoIndex.steps[3].spendingScript,
+      },
+      {
+        role: "V1 fraud-proof computation-thread minting",
+        utxo: witnessReferenceScripts?.computationThreadMint,
+        expectedScript: contracts.computationThread.mintingScript,
+      },
+      {
+        role: "V1 fraud-proof token minting",
+        utxo: witnessReferenceScripts?.fraudProofMint,
+        expectedScript: contracts.fraudProof.mintingScript,
+      },
+    ],
   });
 
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
     threadOutRef,
-    fraudProofOutRef: `${txHash}#${resolvedLayout.outputIndex.toString()}`,
+    fraudProofOutRef: `${transaction.txHash}#${resolvedLayout.outputIndex.toString()}`,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadPolicyId: contracts.computationThread.policyId,
     computationThreadAssetName: threadToken.assetName,
@@ -361,6 +347,5 @@ export const submitInputNoIdxStep04 = async ({
     fraudProofMintRedeemerIndex: Number(
       resolvedLayout.fraudProofMintRedeemerIndex,
     ),
-    awaitedConfirmation: awaitConfirmation,
   };
 };

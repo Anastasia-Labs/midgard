@@ -58,32 +58,30 @@ import {
 import { Data, type RedeemerContext, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
+import { buildCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
 import {
-  certifyFaultProofFieldCarriage,
   faultProofFieldOpening,
   type FaultProofFieldOpeningPlan,
   planFaultProofFieldOpening,
-  publishFaultProofFieldCarriage,
 } from "../src/field-opening.js";
 import {
+  buildProtectedOutputSignerMissingCancel,
+  buildProtectedOutputSignerMissingStep01Accepted,
+  buildProtectedOutputSignerMissingStep02,
   planProtectedOutputSignerOutputOpening,
   prepareProtectedOutputSignerMissingEvidence,
   PROTECTED_OUTPUT_SIGNER_MAX_WITNESSES,
   type ProtectedOutputSignerMissingEvidence,
   ProtectedOutputSignerStep02RedeemerSchema,
-  submitProtectedOutputSignerMissingCancel,
-  submitProtectedOutputSignerMissingStep01Accepted,
-  submitProtectedOutputSignerMissingStep02,
 } from "../src/protected-output-signer-missing/index.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import {
+  buildSignerWitnessScan,
+  buildSignerWitnessTerminal,
   planSignerWitnessOpening,
   SIGNER_WITNESS_SCAN_BATCH,
   SignerWitnessScanDatumSchema,
   SignerWitnessTerminalDatumSchema,
-  submitSignerWitnessScan,
-  submitSignerWitnessTerminal,
 } from "../src/signer-witness-scan/index.js";
 import { nativeTxFromCoreCompact } from "../src/step-support.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
@@ -132,6 +130,12 @@ import {
   network,
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  certifyCarriageUnjournaled,
+  publishCarriageUnjournaled,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 
 describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
   it.each([
@@ -273,7 +277,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
         console.info("protected-output-signer-missing:max:references-ready");
       const initThread = async () => {
         const init = await captureEmulatorSubmission(harness.emulator, () =>
-          submitCommittedFieldShapeInit({
+          buildAndSubmitUnjournaled(buildCommittedFieldShapeInit, {
             lucid: harness.proverLucid,
             blueprint: harness.realBlueprint,
             network,
@@ -296,7 +300,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       const cancellation = await captureEmulatorSubmission(
         harness.emulator,
         () =>
-          submitProtectedOutputSignerMissingCancel({
+          buildAndSubmitUnjournaled(buildProtectedOutputSignerMissingCancel, {
             lucid: harness.proverLucid,
             contracts,
             categoryId: category.categoryId,
@@ -320,30 +324,33 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       const step01Result = await captureEmulatorSubmission(
         harness.emulator,
         () =>
-          submitProtectedOutputSignerMissingStep01Accepted({
-            lucid: harness.proverLucid,
-            blueprint: harness.realBlueprint,
-            network,
-            contracts,
-            signer: harness.proverSigner,
-            evidence,
-            threadUtxo,
-            threadToken: {
-              unit: init.result.computationThreadUnit,
-              fraudulentHeaderHash: init.result.fraudulentHeaderHash,
+          buildAndSubmitUnjournaled(
+            buildProtectedOutputSignerMissingStep01Accepted,
+            {
+              lucid: harness.proverLucid,
+              blueprint: harness.realBlueprint,
+              network,
+              contracts,
+              signer: harness.proverSigner,
+              evidence,
+              threadUtxo,
+              threadToken: {
+                unit: init.result.computationThreadUnit,
+                fraudulentHeaderHash: init.result.fraudulentHeaderHash,
+              },
+              stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+              txInclusion,
+              referenceScriptUtxo: references[0]!,
+              witnessReferenceScripts: harness.witnessReferenceScripts,
             },
-            stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-            txInclusion,
-            referenceScriptUtxo: references[0]!,
-            witnessReferenceScripts: harness.witnessReferenceScripts,
-          }),
+          ),
       );
       if (process.env.MIDGARD_PRINT_FIT === "1")
         console.info("protected-output-signer-missing:max:step01-ready");
       const step02Result = await captureEmulatorSubmission(
         harness.emulator,
         () =>
-          submitProtectedOutputSignerMissingStep02({
+          submitTurnsUnjournaled(buildProtectedOutputSignerMissingStep02, {
             lucid: harness.proverLucid,
             contracts,
             categoryId: category.categoryId,
@@ -375,7 +382,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       const openingScan = await captureEmulatorSubmission(
         harness.emulator,
         () =>
-          submitSignerWitnessScan({
+          submitTurnsUnjournaled(buildSignerWitnessScan, {
             ...scanCommon,
             threadOutRef: step02Result.result.nextThreadOutRef,
           }),
@@ -473,7 +480,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       let scanThreadOutRef = openingScan.result.nextThreadOutRef;
       while (!scanResults.at(-1)!.result.terminal) {
         const result = await captureEmulatorSubmission(harness.emulator, () =>
-          submitSignerWitnessScan({
+          submitTurnsUnjournaled(buildSignerWitnessScan, {
             ...scanCommon,
             threadOutRef: scanThreadOutRef,
             publishedCarriageUtxos: openingScan.result.carriageUtxos,
@@ -497,7 +504,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       const terminalResult = await captureEmulatorSubmission(
         harness.emulator,
         () =>
-          submitSignerWitnessTerminal({
+          buildAndSubmitUnjournaled(buildSignerWitnessTerminal, {
             lucid: harness.proverLucid,
             family: "protected-output-signer-missing",
             contracts,
@@ -1055,7 +1062,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
       witnessSet: witnessSetOf(overBoundTx),
       witnessSetHash: overBoundEvidence.witnessSetHashHex,
     };
-    const overBoundChunks = await publishFaultProofFieldCarriage({
+    const overBoundChunks = await publishCarriageUnjournaled({
       ownOutputs,
       lucid: s.harness.proverLucid,
       signer: s.harness.proverSigner,
@@ -1065,7 +1072,7 @@ describe("protectedOutputSignerMissing registered-chain lifecycle", () => {
     });
     expect(overBoundChunks).toHaveLength(3);
     await expectOnchainRefusal(() =>
-      certifyFaultProofFieldCarriage({
+      certifyCarriageUnjournaled({
         ownOutputs,
         lucid: s.harness.proverLucid,
         network,

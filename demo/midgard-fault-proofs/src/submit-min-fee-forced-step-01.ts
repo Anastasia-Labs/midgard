@@ -16,7 +16,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { submitLinearFaultContinue } from "./linear-fault-submit.js";
+import { buildLinearFaultContinue } from "./linear-fault-submit.js";
 import type { MinFeeContracts } from "./min-fee-contracts.js";
 import {
   requireMinFeeReferenceScript,
@@ -25,7 +25,6 @@ import {
 import type { ResolvedProverSigner } from "./runtime.js";
 import { requireInitialStepDatum } from "./step-support.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
-import type { FraudProofPreSubmitBoundary } from "./workflow/transaction-boundary.js";
 
 type ForcedSource = Extract<
   MinFeeStep01SpendRedeemer,
@@ -38,7 +37,7 @@ type ForcedPayload = Omit<
   readonly membership: ForcedTransactionSourceMembershipProof;
 };
 
-export const submitMinFeeStep01Forced = async ({
+export const buildMinFeeStep01Forced = async ({
   lucid,
   contracts,
   categoryId,
@@ -47,8 +46,6 @@ export const submitMinFeeStep01Forced = async ({
   state,
   forcedSource,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: MinFeeContracts;
@@ -58,8 +55,6 @@ export const submitMinFeeStep01Forced = async ({
   readonly state: MinFeeStep02State;
   readonly forcedSource: ForcedPayload;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   if (
     state.subject.direction !== 1n ||
@@ -115,7 +110,7 @@ export const submitMinFeeStep01Forced = async ({
       MinFeeStep01SpendRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -126,9 +121,10 @@ export const submitMinFeeStep01Forced = async ({
     nextAddress: contracts.steps[1].spendingScriptAddress,
     nextDatum: datum,
     redeemer,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined) throw new Error("minFee: layout unresolved");
-  return { txHash, nextThreadOutRef: `${txHash}#${outputIndex.toString()}` };
+  return {
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
+  };
 };

@@ -13,30 +13,6 @@ export const SPEND_INPUT_SIGNER_STAGES = [
   "cancelled",
 ] as const;
 export type SpendInputSignerStage = (typeof SPEND_INPUT_SIGNER_STAGES)[number];
-export type SpendInputSignerAction =
-  | "submitInit"
-  | "submitStep01"
-  | "submitStep02"
-  | "submitScan"
-  | "submitTerminal"
-  | "cancel"
-  | "removeDescendants"
-  | "done";
-type SubmitAction = Exclude<SpendInputSignerAction, "done">;
-
-export type SpendInputSignerJournalEntry = Readonly<{
-  sequence: number;
-  identity: string;
-  sourceStage: SpendInputSignerStage;
-  targetStage: SpendInputSignerStage;
-  action: SubmitAction;
-  phase: "intent" | "submitted" | "confirmed";
-  txHash: string;
-}>;
-export interface SpendInputSignerJournal {
-  load(identity: string): Promise<readonly SpendInputSignerJournalEntry[]>;
-  append(entry: SpendInputSignerJournalEntry): Promise<void>;
-}
 
 export const spendInputSignerWorkflowEvidenceIdentity = (
   evidence: SpendInputSignerMissingEvidence,
@@ -67,25 +43,3 @@ export const spendInputSignerWorkflowEvidenceIdentity = (
       ),
     )
     .digest("hex");
-
-export const nextSpendInputSignerAction = (
-  stage: SpendInputSignerStage,
-): SpendInputSignerAction => {
-  switch (stage) {
-    case "none":
-      return "submitInit";
-    case "step01":
-      return "submitStep01";
-    case "step02":
-      return "submitStep02";
-    case "scanning":
-      return "submitScan";
-    case "terminal":
-      return "submitTerminal";
-    case "proven":
-      return "removeDescendants";
-    case "removed":
-    case "cancelled":
-      return "done";
-  }
-};

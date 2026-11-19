@@ -38,15 +38,12 @@ import {
   requireSingletonUtxo,
   type ResolvedProverSigner,
 } from "../../src/runtime.js";
+import { finishStep } from "../../src/step-completion.js";
 import { requireInitialStepDatum } from "../../src/step-support.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
 import { type FaultProofWitnessReferenceScripts } from "../../src/witness-reference-scripts.js";
 import { admitNativeInclusionArtifact } from "../../src/workflow/native-index-artifact.js";
-import {
-  type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
-} from "../../src/workflow/transaction-boundary.js";
+import type { LocallyEvaluatedTransaction } from "../../src/workflow/transaction-boundary.js";
 import { withClaimedPreUtxosRoot } from "./claimed-pre-root.js";
 
 export const submitRawInputExistenceStep = async ({
@@ -65,7 +62,7 @@ export const submitRawInputExistenceStep = async ({
   fieldCarriageUtxos = [],
   certificatePolicyId,
   publishedProofChunks = [],
-  preSubmitBoundary,
+  beforeSubmit,
   awaitConfirmation = true,
   mutateArgs,
   claimedPreUtxosRoot,
@@ -89,7 +86,9 @@ export const submitRawInputExistenceStep = async ({
   readonly fieldCarriageUtxos?: readonly UTxO[];
   readonly certificatePolicyId?: string;
   readonly publishedProofChunks?: readonly PublishedProofChunk[];
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
+  readonly beforeSubmit?: (
+    transaction: LocallyEvaluatedTransaction,
+  ) => Promise<void>;
   readonly awaitConfirmation?: boolean;
   readonly mutateArgs?: (args: unknown) => unknown;
   readonly claimedPreUtxosRoot?: string;
@@ -457,16 +456,12 @@ export const submitRawInputExistenceStep = async ({
     .addSignerKey(signer.paymentKeyHash);
   const unsigned = await tx.complete({ localUPLCEval: true, ...walletInputs });
   const signed = await unsigned.sign.withWallet().complete();
-  const expected = await reachFraudProofPreSubmitBoundary({
-    signed,
-    boundary: preSubmitBoundary,
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates,
-    }),
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: candidates,
   });
+  await beforeSubmit?.(transaction);
   const txHash = await signed.submit();
-  if (txHash !== expected)
+  if (txHash !== transaction.txHash)
     throw new Error(
       `${family}: provider returned a different transaction hash`,
     );

@@ -1,6 +1,10 @@
 import { type NetworkIdStep02State } from "@al-ft/midgard-sdk";
 import { type UTxO } from "@lucid-evolution/lucid";
 
+import {
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
+} from "../workflow/transaction-boundary.js";
 import type { PreparedNetworkIdAcceptedForced } from "./accepted-forced.js";
 import type { PreparedNetworkIdProof } from "./prepare.js";
 import { networkIdStepLabel } from "./submit-common.js";
@@ -43,8 +47,8 @@ export const sameFault = (
   return left.OutputNetwork.output_index === right.OutputNetwork.output_index;
 };
 
-export type SubmitNetworkIdStep02Result = {
-  readonly txHash: string;
+export type NetworkIdStep02Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -60,5 +64,7 @@ export type SubmitNetworkIdStep02Result = {
   readonly outputIndex: number;
   readonly computationThreadMintRedeemerIndex: number;
   readonly fraudProofMintRedeemerIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
+
+export type SubmitNetworkIdStep02Result =
+  UnjournaledSubmission<NetworkIdStep02Build>;

@@ -28,7 +28,6 @@ import { afterAll, describe, expect, it } from "vitest";
 import {
   buildDirectPurposeTransition,
   type DirectPurposeRole,
-  submitDirectPurposeTransition,
 } from "../src/direct-purpose-family/index.js";
 import type { ExecutionNativeScriptInvalidRole } from "../src/execution-native-script-invalid/index.js";
 import {
@@ -36,7 +35,7 @@ import {
   prepareExecutionNativeScriptInvalidProof,
 } from "../src/execution-native-script-invalid/index.js";
 import type { LedgerEntry } from "../src/ledger-at.js";
-import { submitNativeTxBinding } from "../src/native-tx-binding.js";
+import { buildNativeTxBinding } from "../src/native-tx-binding.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
 import { computationThreadOutputPredicate } from "../src/tx-layout.js";
 import { witnessMintingPolicyCarriage } from "../src/witness-reference-scripts.js";
@@ -63,6 +62,8 @@ import {
 import { scriptAddress } from "./support/missing-redeemer-emulator.purposes.js";
 import { rejectedFor } from "./support/script-integrity-hash-mismatch-emulator.subject.js";
 import { network } from "./support/submit-init-emulator-shared.js";
+import { submitDirectPurposeTransition } from "./support/submit-unjournaled.direct-purpose.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 /** Step-01 from the Init `thread`, paying `bindEvent` the `forged` datum. */
 const forgedStep01 = async (
@@ -76,7 +77,7 @@ const forgedStep01 = async (
   const contracts = harness.direct;
   const signer = harness.proverSigner;
   if (scenario.block.txInclusion !== null)
-    return await submitNativeTxBinding({
+    return await buildAndSubmitUnjournaled(buildNativeTxBinding, {
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,

@@ -24,9 +24,8 @@ import {
   directPurposeRoleIndex,
   type DirectWalkFamily,
   type DirectWalkProof,
-  submitDirectPurposeTransition,
 } from "../../src/direct-purpose-family/index.js";
-import { submitNativeTxBinding } from "../../src/native-tx-binding.js";
+import { buildNativeTxBinding } from "../../src/native-tx-binding.js";
 import { buildForcedTransactionLeafMembershipProof } from "../../src/transition-trace/witnesses.build-source-membership-proof.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
 import { witnessMintingPolicyCarriage } from "../../src/witness-reference-scripts.js";
@@ -40,6 +39,8 @@ import {
 import { expectOnchainRefusal } from "./emulator/expect-onchain-refusal.js";
 import type { MissingRedeemerScenario } from "./missing-redeemer-emulator.subject.js";
 import { network } from "./submit-init-emulator-shared.js";
+import { submitDirectPurposeTransition } from "./submit-unjournaled.direct-purpose.js";
+import { buildAndSubmitUnjournaled } from "./submit-unjournaled.js";
 
 /** Step-01 from the Init `thread`, paying `bindEvent` the `forged` datum. */
 const forgedStep01 = async (
@@ -53,7 +54,7 @@ const forgedStep01 = async (
   const contracts: DirectPurposeContracts = harness.direct;
   const signer = harness.proverSigner;
   if (scenario.block.txInclusion !== null)
-    return await submitNativeTxBinding({
+    return await buildAndSubmitUnjournaled(buildNativeTxBinding, {
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,

@@ -22,7 +22,10 @@ import {
   type SupportedFaultProofCategoryName,
 } from "./runtime.js";
 import { type FaultProofWitnessReferenceScripts } from "./witness-reference-scripts.js";
-import { type FraudProofPreSubmitBoundary } from "./workflow/transaction-boundary.js";
+import {
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
+} from "./workflow/transaction-boundary.js";
 
 export const PHAS_MEMBERSHIP_WITHDRAW_TITLE = "phas.membership.withdraw";
 
@@ -38,8 +41,8 @@ export type SubmitInitCliConfig = SubmitProviderConfig &
 
 export type SubmitInitFraudCategory = SupportedFaultProofCategoryName;
 
-export type SubmitInitResult = {
-  readonly txHash: string;
+export type InitBuild = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -54,8 +57,9 @@ export type SubmitInitResult = {
   readonly fraudCategoryName: SubmitInitFraudCategory;
   readonly fraudCategory: string;
   readonly fraudProofCatalogueRoot: string;
-  readonly awaitedConfirmation: boolean;
 };
+
+export type SubmitInitResult = UnjournaledSubmission<InitBuild>;
 
 export const requireFraudProofCatalogue = (
   deploymentInfo: ContractDeploymentInfo,
@@ -218,13 +222,10 @@ export type SubmitResolvedInitParams = {
   readonly fraudulentHeaderHash?: string;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  /** Production workflow seam: invoked after local evaluation, before I/O. */
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 };
 
-export type SubmitResolvedInitResult = {
-  readonly txHash: string;
+export type ResolvedInitBuild = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -240,8 +241,9 @@ export type SubmitResolvedInitResult = {
   readonly fraudCategoryId: string;
   readonly fraudCategory: string;
   readonly fraudProofCatalogueRoot: string;
-  readonly awaitedConfirmation: boolean;
 };
+
+export type SubmitResolvedInitResult = UnjournaledSubmission<ResolvedInitBuild>;
 
 export const STANDARD_INIT_REFERENCE_SCRIPT_ROLES = {
   computationThreadMint: "V1 fraud-proof computation-thread minting",

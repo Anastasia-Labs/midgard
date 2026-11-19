@@ -12,16 +12,12 @@ import {
 } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import {
-  certifyFaultProofFieldCarriage,
-  faultProofFieldOpening,
-  publishFaultProofFieldCarriage,
-} from "../src/field-opening.js";
+import { faultProofFieldOpening } from "../src/field-opening.js";
 import {
   requireLinearFaultReferenceScript,
   requireLinearFaultThreadUtxo,
 } from "../src/linear-fault-family.js";
-import { submitLinearFaultContinue } from "../src/linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../src/linear-fault-submit.js";
 import { planSignerWitnessOpening } from "../src/signer-witness-scan/field-plans.js";
 import {
   SignerWitnessScanDatumSchema,
@@ -37,6 +33,11 @@ import {
   type Harness,
   network,
 } from "./spend-input-signer-missing-lifecycle.registered-contracts.js";
+import {
+  buildAndSubmitTransactionUnjournaled,
+  certifyCarriageUnjournaled,
+  publishCarriageUnjournaled,
+} from "./support/submit-unjournaled.js";
 
 /**
  * The opening scan turn over `threadOutRef` with a certificate and chunks
@@ -98,7 +99,7 @@ export const submitScanWithForeignCertificate = async ({
   });
   expect(planned.plan.tier).toBe("Certified");
   signer.selectWallet(lucid);
-  const carriageUtxos = await publishFaultProofFieldCarriage({
+  const carriageUtxos = await publishCarriageUnjournaled({
     ownOutputs,
     lucid,
     signer,
@@ -106,7 +107,7 @@ export const submitScanWithForeignCertificate = async ({
     publisherAddress: signer.proofMaterialsAddress,
     label: "foreign address witnesses",
   });
-  const { certificateUtxo } = await certifyFaultProofFieldCarriage({
+  const { certificateUtxo } = await certifyCarriageUnjournaled({
     ownOutputs,
     lucid,
     network,
@@ -193,7 +194,7 @@ export const submitScanWithForeignCertificate = async ({
       SignerWitnessScanRedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  return submitLinearFaultContinue({
+  return buildAndSubmitTransactionUnjournaled(buildLinearFaultContinue, {
     lucid,
     signer,
     threadUtxo,

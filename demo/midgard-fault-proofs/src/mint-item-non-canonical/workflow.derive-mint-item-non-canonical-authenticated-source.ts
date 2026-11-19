@@ -23,7 +23,6 @@ import { type createCanonicalFamilyArtifactPort } from "../workflow/manifest-bou
 import {
   mintItemClaimIsUnreachable,
   type MintItemEvidence,
-  type MintItemJournal,
   type MintItemStage,
 } from "./mint-item-non-canonical.js";
 import {
@@ -194,7 +193,6 @@ export type MintItemNonCanonicalAssemblyRuntime = Readonly<{
 
 export type MintItemNonCanonicalRuntimeLoader = Readonly<{
   config: LoadManifestBoundMintItemNonCanonicalConfig;
-  journal: MintItemJournal;
   observe: (identity: string) => Promise<MintItemStage>;
   resolveStage: (input: {
     readonly action:

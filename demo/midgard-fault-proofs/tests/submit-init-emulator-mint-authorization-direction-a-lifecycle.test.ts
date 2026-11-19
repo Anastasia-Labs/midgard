@@ -32,15 +32,6 @@ import { describe, expect, it } from "vitest";
 import { submitRemoveFraudulentBlock } from "../src/index.js";
 import { MINT_AUTHORIZATION_CATEGORY_LABEL } from "../src/mint-authorization/contracts.js";
 import {
-  submitMintAuthorizationStep01,
-  submitMintAuthorizationStep02,
-  submitMintAuthorizationStep03WitnessAbsence,
-  submitMintAuthorizationStep04AdvanceComplete,
-  submitMintAuthorizationStep04ResolveNext,
-  submitMintAuthorizationStep05,
-} from "../src/mint-authorization/index.js";
-import { submitResolvedInit } from "../src/submit-init.js";
-import {
   buildMintAuthorizationLedgerFixture,
   buildMintAuthorizationSubject,
   makeMintAuthorizationEmulatorHarness,
@@ -55,6 +46,15 @@ import {
   network,
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
+import { submitResolvedInit } from "./support/submit-unjournaled.init.js";
+import {
+  submitMintAuthorizationStep01,
+  submitMintAuthorizationStep02,
+  submitMintAuthorizationStep03WitnessAbsence,
+  submitMintAuthorizationStep04AdvanceComplete,
+  submitMintAuthorizationStep04ResolveNext,
+  submitMintAuthorizationStep05,
+} from "./support/submit-unjournaled.mint-authorization.js";
 
 const ACCUSED_POLICY_INDEX = 0n;
 const DIRECTION_SCRIPT_ABSENT = SDK.MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT;

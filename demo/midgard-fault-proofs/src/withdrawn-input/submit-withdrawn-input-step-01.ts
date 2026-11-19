@@ -32,7 +32,8 @@ import {
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
 } from "../runtime.js";
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import {
   requireInitialStepDatum,
   requireNativeTxMatchesCompactCbor,
@@ -41,8 +42,8 @@ import {
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
 } from "../workflow/transaction-boundary.js";
 import {
   WITHDRAWN_INPUT_CATEGORY_LABEL,
@@ -54,8 +55,8 @@ import {
   withdrawnInputSubmitError,
 } from "./submit-common.js";
 
-export type SubmitWithdrawnInputStep01Result = {
-  readonly txHash: string;
+export type WithdrawnInputStep01Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly nextThreadOutRef: string;
   readonly secondStepAddress: string;
   readonly fraudulentHeaderHash: string;
@@ -65,7 +66,10 @@ export type SubmitWithdrawnInputStep01Result = {
   readonly computationThreadUnit: string;
 };
 
-export const submitWithdrawnInputStep01 = async ({
+export type SubmitWithdrawnInputStep01Result =
+  UnjournaledSubmission<WithdrawnInputStep01Build>;
+
+export const buildWithdrawnInputStep01 = async ({
   lucid,
   blueprint,
   contracts,
@@ -78,8 +82,6 @@ export const submitWithdrawnInputStep01 = async ({
   publishedProofChunks,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -93,9 +95,7 @@ export const submitWithdrawnInputStep01 = async ({
   readonly publishedProofChunks?: readonly PublishedProofChunk[];
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitWithdrawnInputStep01Result> => {
+}): Promise<WithdrawnInputStep01Build> => {
   const { threadUtxo, threadToken } = await requireWithdrawnInputThreadUtxo({
     lucid,
     contracts,
@@ -244,25 +244,19 @@ export const submitWithdrawnInputStep01 = async ({
   if (layout === undefined) {
     throw withdrawnInputSubmitError("step-01 layout was not resolved.");
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: "withdrawn-input step-01",
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: "V1 fraud-proof withdrawn-input step-01",
-          utxo: referenceScriptUtxo,
-          expectedScript: contracts.steps[0].spendingScript,
-        },
-        ...inclusionCarriage.referenceScriptCandidates,
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: "V1 fraud-proof withdrawn-input step-01",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.steps[0].spendingScript,
+      },
+      ...inclusionCarriage.referenceScriptCandidates,
+    ],
   });
   return {
-    txHash,
-    nextThreadOutRef: `${txHash}#${layout.outputIndex.toString()}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${layout.outputIndex.toString()}`,
     secondStepAddress: contracts.steps[1].spendingScriptAddress,
     fraudulentHeaderHash: headerHash,
     badTxId: txInclusion.nativeTxId,

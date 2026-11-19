@@ -16,9 +16,9 @@ import {
   type NetworkIdContracts,
 } from "./contracts.js";
 import {
+  buildNetworkIdCancel,
   type NetworkIdPhysicalStep,
   networkIdPhysicalSteps,
-  submitNetworkIdCancel,
 } from "./submit-network-id-cancel.js";
 import type { NetworkIdWorkflowAdapterConfig } from "./workflow-adapter.create-network-id-raw-l1-observation-port.js";
 
@@ -90,12 +90,8 @@ export const withNetworkIdOwnThreadReclaim = ({
       }),
       stepReferences: physical.map(([name]) => referenceAt[name]),
       witnessReferenceScripts: config.witnessReferenceScripts,
-      cancel: async ({
-        threadOutRef,
-        referenceScriptUtxo,
-        preSubmitBoundary,
-      }) =>
-        await submitNetworkIdCancel({
+      cancel: async ({ threadOutRef, referenceScriptUtxo }) =>
+        await buildNetworkIdCancel({
           lucid: config.lucid,
           contracts,
           categoryId: config.category.categoryId,
@@ -103,8 +99,6 @@ export const withNetworkIdOwnThreadReclaim = ({
           threadOutRef,
           referenceScriptUtxo,
           witnessReferenceScripts: config.witnessReferenceScripts,
-          preSubmitBoundary,
-          awaitConfirmation: false,
         }),
       l1: {
         observeOwnThreads: async (input) => await observeOwnThreads(input),

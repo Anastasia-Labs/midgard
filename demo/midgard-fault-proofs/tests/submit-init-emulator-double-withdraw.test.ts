@@ -30,12 +30,12 @@ import { describe, expect, it } from "vitest";
 
 import { DOUBLE_WITHDRAW_CATEGORY_LABEL } from "../src/double-withdraw/contracts.js";
 import {
-  submitDoubleWithdrawInit,
-  submitDoubleWithdrawStep01,
-  submitDoubleWithdrawStep02,
+  buildDoubleWithdrawInit,
+  buildDoubleWithdrawStep01,
+  buildDoubleWithdrawStep02,
 } from "../src/double-withdraw/index.js";
 import { parseSubmitDoubleWithdrawInclusion } from "../src/double-withdraw/submit-double-withdraw-step-01.js";
-import { submitLinearFaultCancel } from "../src/linear-fault-cancel.js";
+import { buildLinearFaultCancel } from "../src/linear-fault-cancel.js";
 import { prepareDoubleWithdrawFromCommittedLeaves } from "../src/prepare-double-withdraw.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { fetchUtxoByOutRef, parseOutRef } from "../src/runtime.js";
@@ -61,6 +61,7 @@ import {
   network,
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 describe("double-withdraw emulator lifecycle", () => {
   it("proves the payable duplicate, resumes from step-02, and removes the fraudulent block", async () => {
@@ -80,7 +81,7 @@ describe("double-withdraw emulator lifecycle", () => {
     expect(plan.firstLeaf.withdrawalId).toEqual(FIRST_ID);
     expect(plan.secondLeaf.withdrawalId).toEqual(SECOND_ID);
 
-    const init = await submitDoubleWithdrawInit({
+    const init = await buildAndSubmitUnjournaled(buildDoubleWithdrawInit, {
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,
@@ -96,7 +97,7 @@ describe("double-withdraw emulator lifecycle", () => {
       fraudulentBlockOutRef: block.setup.fraudulentBlockOutRef,
       witnessReferenceScripts: harness.witnessReferenceScripts,
     });
-    const step01 = await submitDoubleWithdrawStep01({
+    const step01 = await buildAndSubmitUnjournaled(buildDoubleWithdrawStep01, {
       lucid: harness.proverLucid,
       contracts: harness.doubleWithdraw,
       categoryId: harness.category.categoryId,
@@ -115,18 +116,21 @@ describe("double-withdraw emulator lifecycle", () => {
       init.computationThreadUnit,
     );
     expect(outRefLabel(resumedThread)).toBe(step01.nextThreadOutRef);
-    const terminal = await submitDoubleWithdrawStep02({
-      lucid: harness.proverLucid,
-      contracts: harness.doubleWithdraw,
-      categoryId: harness.category.categoryId,
-      network,
-      signer: harness.proverSigner,
-      threadOutRef: outRefLabel(resumedThread),
-      stateQueueBlockOutRef: block.setup.fraudulentBlockOutRef,
-      inclusion: parseSubmitDoubleWithdrawInclusion(plan.secondInclusion),
-      referenceScriptUtxo: refs[1],
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-    });
+    const terminal = await buildAndSubmitUnjournaled(
+      buildDoubleWithdrawStep02,
+      {
+        lucid: harness.proverLucid,
+        contracts: harness.doubleWithdraw,
+        categoryId: harness.category.categoryId,
+        network,
+        signer: harness.proverSigner,
+        threadOutRef: outRefLabel(resumedThread),
+        stateQueueBlockOutRef: block.setup.fraudulentBlockOutRef,
+        inclusion: parseSubmitDoubleWithdrawInclusion(plan.secondInclusion),
+        referenceScriptUtxo: refs[1],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+      },
+    );
     await expect(
       harness.proverLucid.utxosAtWithUnit(
         step01.secondStepAddress,
@@ -216,7 +220,7 @@ describe("double-withdraw emulator lifecycle", () => {
       inclusionFor({ counted: block.counted, leaf: block.entries[0]! }),
       inclusionFor({ counted: block.counted, leaf: block.entries[1]! }),
     ]);
-    const init = await submitDoubleWithdrawInit({
+    const init = await buildAndSubmitUnjournaled(buildDoubleWithdrawInit, {
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,
@@ -232,7 +236,7 @@ describe("double-withdraw emulator lifecycle", () => {
       fraudulentBlockOutRef: block.setup.fraudulentBlockOutRef,
       witnessReferenceScripts: harness.witnessReferenceScripts,
     });
-    const step01 = await submitDoubleWithdrawStep01({
+    const step01 = await buildAndSubmitUnjournaled(buildDoubleWithdrawStep01, {
       lucid: harness.proverLucid,
       contracts: harness.doubleWithdraw,
       categoryId: harness.category.categoryId,
@@ -244,7 +248,7 @@ describe("double-withdraw emulator lifecycle", () => {
       referenceScriptUtxo: refs[0],
     });
     await expect(
-      submitDoubleWithdrawStep01({
+      buildAndSubmitUnjournaled(buildDoubleWithdrawStep01, {
         lucid: harness.proverLucid,
         contracts: harness.doubleWithdraw,
         categoryId: harness.category.categoryId,
@@ -257,7 +261,7 @@ describe("double-withdraw emulator lifecycle", () => {
       }),
     ).rejects.toThrow(/not locked at double-withdraw step 01/u);
     await expect(
-      submitDoubleWithdrawStep02({
+      buildAndSubmitUnjournaled(buildDoubleWithdrawStep02, {
         lucid: harness.proverLucid,
         contracts: harness.doubleWithdraw,
         categoryId: harness.category.categoryId,
@@ -283,7 +287,7 @@ describe("double-withdraw emulator lifecycle", () => {
       ),
     ).not.toBe("");
     await expect(
-      submitDoubleWithdrawStep02({
+      buildAndSubmitUnjournaled(buildDoubleWithdrawStep02, {
         lucid: harness.proverLucid,
         contracts: harness.doubleWithdraw,
         categoryId: harness.category.categoryId,
@@ -334,7 +338,7 @@ describe("double-withdraw emulator lifecycle", () => {
       await (await funding.sign.withWallet().complete()).submit(),
     );
     await expect(
-      submitLinearFaultCancel({
+      buildAndSubmitUnjournaled(buildLinearFaultCancel, {
         lucid: outsiderLucid,
         family: DOUBLE_WITHDRAW_CATEGORY_LABEL,
         steps: harness.doubleWithdraw.steps,
@@ -347,7 +351,7 @@ describe("double-withdraw emulator lifecycle", () => {
       }),
     ).rejects.toThrow(/double-withdraw: signer does not own thread/u);
     await expect(
-      submitDoubleWithdrawStep02({
+      buildAndSubmitUnjournaled(buildDoubleWithdrawStep02, {
         lucid: outsiderLucid,
         contracts: harness.doubleWithdraw,
         categoryId: harness.category.categoryId,
@@ -379,7 +383,7 @@ describe("double-withdraw emulator lifecycle", () => {
         }),
       ),
     ).not.toBe("");
-    const cancelled = await submitLinearFaultCancel({
+    const cancelled = await buildAndSubmitUnjournaled(buildLinearFaultCancel, {
       lucid: harness.proverLucid,
       family: DOUBLE_WITHDRAW_CATEGORY_LABEL,
       steps: harness.doubleWithdraw.steps,
@@ -399,7 +403,7 @@ describe("double-withdraw emulator lifecycle", () => {
     ).resolves.toHaveLength(0);
 
     // Re-init after the cancelled NFT burn and exercise the step-01 cancel arm.
-    const retry = await submitDoubleWithdrawInit({
+    const retry = await buildAndSubmitUnjournaled(buildDoubleWithdrawInit, {
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,
@@ -415,17 +419,20 @@ describe("double-withdraw emulator lifecycle", () => {
       fraudulentBlockOutRef: block.setup.fraudulentBlockOutRef,
       witnessReferenceScripts: harness.witnessReferenceScripts,
     });
-    const cancelledAtEntry = await submitLinearFaultCancel({
-      lucid: harness.proverLucid,
-      family: DOUBLE_WITHDRAW_CATEGORY_LABEL,
-      steps: harness.doubleWithdraw.steps,
-      computationThread: harness.doubleWithdraw.computationThread,
-      categoryId: harness.category.categoryId,
-      signer: harness.proverSigner,
-      threadOutRef: retry.nextThreadOutRef,
-      referenceScriptUtxo: refs[0],
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-    });
+    const cancelledAtEntry = await buildAndSubmitUnjournaled(
+      buildLinearFaultCancel,
+      {
+        lucid: harness.proverLucid,
+        family: DOUBLE_WITHDRAW_CATEGORY_LABEL,
+        steps: harness.doubleWithdraw.steps,
+        computationThread: harness.doubleWithdraw.computationThread,
+        categoryId: harness.category.categoryId,
+        signer: harness.proverSigner,
+        threadOutRef: retry.nextThreadOutRef,
+        referenceScriptUtxo: refs[0],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+      },
+    );
     expect(cancelledAtEntry.cancelledStepIndex).toBe(0);
   }, 600_000);
 });

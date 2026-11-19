@@ -22,11 +22,7 @@ import { Data, getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
-import {
-  planFaultProofFieldOpening,
-  publishFaultProofFieldCarriage,
-} from "../src/field-opening.js";
+import { planFaultProofFieldOpening } from "../src/field-opening.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { nativeTxFromCoreCompact } from "../src/step-support.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
@@ -39,11 +35,6 @@ import {
   prepareZeroInputEvidence,
   ZERO_INPUT_CATEGORY_ID,
 } from "../src/zero-input/family.js";
-import {
-  submitZeroInputStep01Accepted,
-  submitZeroInputStep01Forced,
-} from "../src/zero-input/submit-step-01.js";
-import { submitZeroInputStep02V1 } from "../src/zero-input/submit-step-02.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
@@ -59,6 +50,13 @@ import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
 import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
+import { submitCommittedFieldShapeInit } from "./support/submit-unjournaled.committed-field-shape.js";
+import { publishCarriageUnjournaled } from "./support/submit-unjournaled.js";
+import {
+  submitZeroInputStep01Accepted,
+  submitZeroInputStep01Forced,
+  submitZeroInputStep02V1,
+} from "./support/submit-unjournaled.zero-input.js";
 
 const network = "Custom" as const;
 
@@ -357,7 +355,7 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
       publish: true,
       label: "zero input forced field",
     });
-    await publishFaultProofFieldCarriage({
+    await publishCarriageUnjournaled({
       ownOutputs,
       lucid: harness.proverLucid,
       signer: harness.proverSigner,

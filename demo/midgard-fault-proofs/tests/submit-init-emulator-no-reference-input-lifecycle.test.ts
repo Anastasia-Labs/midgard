@@ -72,6 +72,7 @@ import {
   expectSingleUtxoWithUnit,
   network,
 } from "./support/submit-init-emulator-shared.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 describe("no-reference-input emulator lifecycle", () => {
   it("convicts a reference input that never existed, mints the permanent fraud-proof token, and removes the fraudulent commitment", async () => {
@@ -115,7 +116,7 @@ describe("no-reference-input emulator lifecycle", () => {
     const { setup, deploymentInfo, init, step03 } = journey;
 
     const step04 = requireInputExistenceTerminalResult(
-      await submitNoReferenceInputStep04({
+      await buildAndSubmitUnjournaled(submitNoReferenceInputStep04, {
         ...journey.stageArguments,
         threadOutRef: step03.nextThreadOutRef,
       }),
@@ -303,7 +304,7 @@ describe("no-reference-input emulator lifecycle", () => {
     expect(publications).toHaveLength(1);
 
     const step04 = requireInputExistenceTerminalResult(
-      await submitNoReferenceInputStep04({
+      await buildAndSubmitUnjournaled(submitNoReferenceInputStep04, {
         ...journey.stageArguments,
         threadOutRef: step03.nextThreadOutRef,
       }),

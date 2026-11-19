@@ -30,6 +30,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { type FaultProofTurn, isPrerequisiteTurn } from "./fault-proof-turn.js";
 import {
   faultProofFieldCarriage,
   type FaultProofFieldOpeningPlan,
@@ -45,7 +46,8 @@ import {
   requireMinFeeThreadUtxo,
 } from "./min-fee-submit-common.js";
 import { type ResolvedProverSigner } from "./runtime.js";
-import { completeStep, fundStep, submitStep } from "./step-completion.js";
+import { completeStep, fundStep } from "./step-completion.js";
+import { finishStep } from "./step-completion.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
@@ -56,8 +58,8 @@ import {
   type OwnOutputJournal,
 } from "./workflow/own-outputs.js";
 import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
 } from "./workflow/transaction-boundary.js";
 
 const STEP_LABEL = minFeeStepLabel(1);
@@ -125,8 +127,8 @@ const planFields = ({
     }),
   );
 
-export type SubmitMinFeeStep02Result = {
-  readonly txHash: string;
+export type MinFeeStep02Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly fraudProofOutRef: string;
   readonly fraudProofUnit: string;
   readonly computationThreadUnit: string;
@@ -138,10 +140,11 @@ export type SubmitMinFeeStep02Result = {
   readonly fieldCarriageTiers: readonly string[];
   readonly inputIndex: number;
   readonly outputIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
 
-export const submitMinFeeStep02 = async ({
+export type SubmitMinFeeStep02Result = UnjournaledSubmission<MinFeeStep02Build>;
+
+export const buildMinFeeStep02 = async ({
   lucid,
   contracts,
   categoryId,
@@ -157,8 +160,6 @@ export const submitMinFeeStep02 = async ({
   publishMissingCarriages = true,
   publishCarriages = false,
   unsafeSkipLocalViolationCheckForTest = false,
-  preSubmitBoundary,
-  awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
@@ -186,11 +187,9 @@ export const submitMinFeeStep02 = async ({
   readonly publishCarriages?: boolean;
   /** Emulator negative only: submit an honest boundary to the real validator. */
   readonly unsafeSkipLocalViolationCheckForTest?: boolean;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
-}): Promise<SubmitMinFeeStep02Result> => {
+}): Promise<FaultProofTurn<MinFeeStep02Build>> => {
   if (fieldItemCbors.length !== FIELD_COUNT) {
     throw minFeeSubmitError("step-02 requires exactly nine field preimages.");
   }
@@ -251,20 +250,20 @@ export const submitMinFeeStep02 = async ({
 
   const published: UTxO[] = [...existingPublicationUtxos];
   if (publishMissingCarriages) {
-    // Direct/manual callers retain the legacy convenience behavior. The
+    // Direct callers publish missing carriage as prerequisite turns. The
     // production workflow disables it so every publication is a distinct,
-    // durable, authenticated action before this proof step is captured.
+    // durable, authenticated action before this proof step is built.
     for (const [fieldIndex, planned] of plans.entries()) {
-      published.push(
-        ...(await publishFaultProofFieldCarriage({
-          ownOutputs,
-          lucid,
-          signer,
-          planned,
-          publisherAddress: signer.proofMaterialsAddress,
-          label: `${STEP_LABEL} field ${fieldIndex.toString()}`,
-        })),
-      );
+      const carriage = await publishFaultProofFieldCarriage({
+        ownOutputs,
+        lucid,
+        signer,
+        planned,
+        publisherAddress: signer.proofMaterialsAddress,
+        label: `${STEP_LABEL} field ${fieldIndex.toString()}`,
+      });
+      if (isPrerequisiteTurn(carriage)) return carriage;
+      published.push(...carriage);
     }
   }
   const stepReference = requireMinFeeReferenceScript({
@@ -412,34 +411,28 @@ export const submitMinFeeStep02 = async ({
   ) {
     throw minFeeSubmitError("step-02 layout was not resolved.");
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: "min-fee step-02",
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: "V1 fraud-proof min-fee step-02",
-          utxo: referenceScriptUtxo,
-          expectedScript: contracts.steps[1].spendingScript,
-        },
-        {
-          role: "V1 fraud-proof computation-thread minting",
-          utxo: witnessReferenceScripts?.computationThreadMint,
-          expectedScript: contracts.computationThread.mintingScript,
-        },
-        {
-          role: "V1 fraud-proof token minting",
-          utxo: witnessReferenceScripts?.fraudProofMint,
-          expectedScript: contracts.fraudProof.mintingScript,
-        },
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: "V1 fraud-proof min-fee step-02",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.steps[1].spendingScript,
+      },
+      {
+        role: "V1 fraud-proof computation-thread minting",
+        utxo: witnessReferenceScripts?.computationThreadMint,
+        expectedScript: contracts.computationThread.mintingScript,
+      },
+      {
+        role: "V1 fraud-proof token minting",
+        utxo: witnessReferenceScripts?.fraudProofMint,
+        expectedScript: contracts.fraudProof.mintingScript,
+      },
+    ],
   });
   return {
-    txHash,
-    fraudProofOutRef: `${txHash}#${spendLayout.outputIndex.toString()}`,
+    transaction,
+    fraudProofOutRef: `${transaction.txHash}#${spendLayout.outputIndex.toString()}`,
     fraudProofUnit,
     computationThreadUnit: threadToken.unit,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
@@ -450,6 +443,5 @@ export const submitMinFeeStep02 = async ({
     fieldCarriageTiers: plans.map((plan) => plan.plan.tier),
     inputIndex: Number(spendLayout.inputIndex),
     outputIndex: Number(spendLayout.outputIndex),
-    awaitedConfirmation: awaitConfirmation,
   };
 };

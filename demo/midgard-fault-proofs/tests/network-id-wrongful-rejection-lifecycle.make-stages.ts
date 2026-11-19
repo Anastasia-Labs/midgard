@@ -3,19 +3,19 @@ import { expect } from "vitest";
 
 import { type FaultProofFieldOpeningPlan } from "../src/field-opening.js";
 import {
+  buildNetworkIdAcceptedForcedBind,
+  buildNetworkIdCancel,
+  buildNetworkIdForcedBind,
+  buildNetworkIdForcedScanAction,
+  buildNetworkIdForcedStep01,
+  buildNetworkIdInit,
+  buildNetworkIdStep02,
   type NetworkIdForcedScanPlan,
   type NetworkIdForcedScanStep,
   planNetworkIdForcedScan,
   planNetworkIdOutputsOpening,
   type PreparedNetworkIdAcceptedForced,
   type PreparedNetworkIdWrongfulRejection,
-  submitNetworkIdAcceptedForcedBind,
-  submitNetworkIdCancel,
-  submitNetworkIdForcedBind,
-  submitNetworkIdForcedScanAction,
-  submitNetworkIdForcedStep01,
-  submitNetworkIdInit,
-  submitNetworkIdStep02,
 } from "../src/network-id/index.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import type { OwnOutputJournal } from "../src/workflow/own-outputs.js";
@@ -35,6 +35,10 @@ import {
   publishNetworkIdReferenceScriptsMeasured,
 } from "./support/network-id-emulator.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 
 /** Stage builders over one harness; every submission is measured. */
 export const makeStages = (
@@ -59,7 +63,7 @@ export const makeStages = (
     const result = record(
       "init",
       await captureEmulatorSubmission(harness.emulator, () =>
-        submitNetworkIdInit({
+        buildAndSubmitUnjournaled(buildNetworkIdInit, {
           lucid: harness.proverLucid,
           blueprint: harness.realBlueprint,
           network,
@@ -90,7 +94,7 @@ export const makeStages = (
     return record(
       "dispatch",
       await captureEmulatorSubmission(harness.emulator, () =>
-        submitNetworkIdForcedStep01({
+        buildAndSubmitUnjournaled(buildNetworkIdForcedStep01, {
           lucid: harness.proverLucid,
           contracts: harness.networkId,
           categoryId: harness.category.categoryId,
@@ -111,7 +115,7 @@ export const makeStages = (
     return record(
       "bind",
       await captureEmulatorSubmission(harness.emulator, () =>
-        submitNetworkIdForcedBind({
+        buildAndSubmitUnjournaled(buildNetworkIdForcedBind, {
           lucid: harness.proverLucid,
           contracts: harness.networkId,
           categoryId: harness.category.categoryId,
@@ -133,7 +137,7 @@ export const makeStages = (
     return record(
       "accepted-bind",
       await captureEmulatorSubmission(harness.emulator, () =>
-        submitNetworkIdAcceptedForcedBind({
+        buildAndSubmitUnjournaled(buildNetworkIdAcceptedForcedBind, {
           lucid: harness.proverLucid,
           contracts: harness.networkId,
           categoryId: harness.category.categoryId,
@@ -171,7 +175,7 @@ export const makeStages = (
     return record(
       label,
       await captureEmulatorSubmission(harness.emulator, () =>
-        submitNetworkIdForcedScanAction({
+        buildAndSubmitUnjournaled(buildNetworkIdForcedScanAction, {
           lucid: harness.proverLucid,
           contracts: harness.networkId,
           categoryId: harness.category.categoryId,
@@ -245,7 +249,7 @@ export const makeStages = (
     return record(
       "finalize",
       await captureEmulatorSubmission(harness.emulator, () =>
-        submitNetworkIdStep02({
+        submitTurnsUnjournaled(buildNetworkIdStep02, {
           lucid: harness.proverLucid,
           contracts: harness.networkId,
           categoryId: harness.category.categoryId,
@@ -268,7 +272,7 @@ export const makeStages = (
     const result = record(
       `cancel-${expected}`,
       await captureEmulatorSubmission(harness.emulator, () =>
-        submitNetworkIdCancel({
+        buildAndSubmitUnjournaled(buildNetworkIdCancel, {
           lucid: harness.proverLucid,
           contracts: harness.networkId,
           categoryId: harness.category.categoryId,

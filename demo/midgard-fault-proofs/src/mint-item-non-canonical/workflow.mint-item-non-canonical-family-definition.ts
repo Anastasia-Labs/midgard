@@ -15,10 +15,8 @@ import {
   defineFamily,
 } from "../workflow/family-definition.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
-import {
-  captureLocallyEvaluatedTransaction,
-  workflowTransactionInputOutRefs,
-} from "../workflow/transaction-boundary.js";
+import { journaledStepTransaction } from "../workflow/step-transaction.js";
+import { workflowTransactionInputOutRefs } from "../workflow/transaction-boundary.js";
 import {
   MintItemStep02DatumSchema,
   MintItemStep03DatumSchema,
@@ -98,32 +96,29 @@ export const MINT_ITEM_NON_CANONICAL_FAMILY_DEFINITION = defineFamily<
             throw new Error(
               `${category} cursor action is outside its exact topology`,
             );
-          const transaction = await captureLocallyEvaluatedTransaction(
-            async (preSubmitBoundary) => {
-              const submission =
-                createManifestBoundMintItemNonCanonicalSubmission({
-                  ownOutputs: workflowFieldCarriageOwnOutputs({
-                    category,
-                    entries,
-                  }),
-                  config,
-                  preSubmitBoundary,
-                  observe: async () =>
-                    mintItemStageFromL1(
-                      (
-                        await l1.observe({
-                          headerHash: binding.definition.headerHash,
-                        })
-                      ).stage,
-                    ),
-                  resolveStage: createMintItemNonCanonicalRawL1StageResolver({
-                    config,
-                    l1,
-                    source: admitted.source,
-                  }),
-                });
-              await submission.submit(familyAction, admitted.evidence);
-            },
+          const submission = createManifestBoundMintItemNonCanonicalSubmission({
+            ownOutputs: workflowFieldCarriageOwnOutputs({
+              category,
+              entries,
+            }),
+            config,
+            observe: async () =>
+              mintItemStageFromL1(
+                (
+                  await l1.observe({
+                    headerHash: binding.definition.headerHash,
+                  })
+                ).stage,
+              ),
+            resolveStage: createMintItemNonCanonicalRawL1StageResolver({
+              config,
+              l1,
+              source: admitted.source,
+            }),
+          });
+          const { transaction } = await journaledStepTransaction(
+            await submission.submit(familyAction, admitted.evidence),
+            `${category} ${familyAction}`,
           );
           if (
             input.stage !== "init" &&

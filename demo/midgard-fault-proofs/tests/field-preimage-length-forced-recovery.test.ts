@@ -46,15 +46,11 @@ it.each(["dispatch", "authenticate"] as const)(
     const transaction = captured();
     const target =
       selected === "dispatch"
-        ? "submitFieldPreimageLengthForcedDispatch"
-        : "submitFieldPreimageLengthForcedAuthentication";
-    type Input = Parameters<(typeof submitters)[typeof target]>[0];
+        ? "buildFieldPreimageLengthForcedDispatch"
+        : "buildFieldPreimageLengthForcedAuthentication";
     const submit = vi
       .spyOn(submitters, target)
-      .mockImplementation(async (input: Input) => {
-        await input.preSubmitBoundary?.(transaction);
-        throw new Error("capture did not interrupt before submission");
-      });
+      .mockImplementation(async () => ({ transaction }) as never);
     const result = await recovery.transactions.capture({
       action: required(fixture.headerHash, stage),
       artifact,

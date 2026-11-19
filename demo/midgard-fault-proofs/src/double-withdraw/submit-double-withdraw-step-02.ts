@@ -35,14 +35,17 @@ import {
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
 } from "../runtime.js";
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
 } from "../witness-reference-scripts.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
-import { workflowReferenceScriptsUsedByTransaction } from "../workflow/transaction-boundary.js";
+import {
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
+} from "../workflow/transaction-boundary.js";
 import type { DoubleWithdrawContracts } from "./contracts.js";
 import {
   doubleWithdrawSubmitError,
@@ -76,8 +79,8 @@ export const assertDoubleWithdrawFinalizable = ({
   }
 };
 
-export type SubmitDoubleWithdrawStep02Result = {
-  readonly txHash: string;
+export type DoubleWithdrawStep02Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly fraudProofOutRef: string;
   readonly fraudulentHeaderHash: string;
   readonly computationThreadUnit: string;
@@ -88,10 +91,12 @@ export type SubmitDoubleWithdrawStep02Result = {
   readonly outputIndex: number;
   readonly computationThreadMintRedeemerIndex: number;
   readonly fraudProofMintRedeemerIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
 
-export const submitDoubleWithdrawStep02 = async ({
+export type SubmitDoubleWithdrawStep02Result =
+  UnjournaledSubmission<DoubleWithdrawStep02Build>;
+
+export const buildDoubleWithdrawStep02 = async ({
   lucid,
   contracts,
   categoryId,
@@ -102,8 +107,6 @@ export const submitDoubleWithdrawStep02 = async ({
   inclusion,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: DoubleWithdrawContracts;
@@ -116,9 +119,7 @@ export const submitDoubleWithdrawStep02 = async ({
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitDoubleWithdrawStep02Result> => {
+}): Promise<DoubleWithdrawStep02Build> => {
   const [{ threadUtxo, threadToken }, hubOracleUtxo, stateQueueBlockUtxo] =
     await Promise.all([
       requireDoubleWithdrawThreadUtxo({
@@ -317,34 +318,28 @@ export const submitDoubleWithdrawStep02 = async ({
   ) {
     throw doubleWithdrawSubmitError("step-02 layout was not resolved.");
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: "double-withdraw step-02",
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: "V1 fraud-proof double-withdraw step-02",
-          utxo: referenceScriptUtxo,
-          expectedScript: contracts.steps[1].spendingScript,
-        },
-        {
-          role: "V1 fraud-proof computation-thread minting",
-          utxo: witnessReferenceScripts?.computationThreadMint,
-          expectedScript: contracts.computationThread.mintingScript,
-        },
-        {
-          role: "V1 fraud-proof token minting",
-          utxo: witnessReferenceScripts?.fraudProofMint,
-          expectedScript: contracts.fraudProof.mintingScript,
-        },
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: "V1 fraud-proof double-withdraw step-02",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.steps[1].spendingScript,
+      },
+      {
+        role: "V1 fraud-proof computation-thread minting",
+        utxo: witnessReferenceScripts?.computationThreadMint,
+        expectedScript: contracts.computationThread.mintingScript,
+      },
+      {
+        role: "V1 fraud-proof token minting",
+        utxo: witnessReferenceScripts?.fraudProofMint,
+        expectedScript: contracts.fraudProof.mintingScript,
+      },
+    ],
   });
   return {
-    txHash,
-    fraudProofOutRef: `${txHash}#${layout.outputIndex.toString()}`,
+    transaction,
+    fraudProofOutRef: `${transaction.txHash}#${layout.outputIndex.toString()}`,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadUnit: threadToken.unit,
     fraudProofUnit,
@@ -356,6 +351,5 @@ export const submitDoubleWithdrawStep02 = async ({
       computationThreadMintRedeemerIndex,
     ),
     fraudProofMintRedeemerIndex: Number(layout.fraudProofMintRedeemerIndex),
-    awaitedConfirmation: awaitConfirmation,
   };
 };

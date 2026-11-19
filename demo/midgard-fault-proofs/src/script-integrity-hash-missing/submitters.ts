@@ -11,19 +11,18 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { submitLinearFaultCancel } from "../linear-fault-cancel.js";
+import { buildLinearFaultCancel } from "../linear-fault-cancel.js";
 import {
   requireLinearFaultInitialDatum,
   requireLinearFaultReferenceScript,
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultFinalize } from "../linear-fault-finalize.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultFinalize } from "../linear-fault-finalize.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { ScriptIntegrityHashMissingContracts } from "./contracts.js";
 import {
   ScriptIntegritySpendRedeemers,
@@ -50,8 +49,6 @@ export type ScriptIntegrityHashMissingContinueArgs = {
   readonly referenceScriptUtxo: UTxO;
   /** Raw chunks and field certificates are reference inputs, never wallet inputs. */
   readonly authenticatedCarriageUtxos?: readonly UTxO[];
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 };
 
 /**
@@ -79,7 +76,7 @@ const requireAuthenticatedCarriage = (
   }
 };
 
-const submitContinue = async (
+const buildContinue = async (
   physicalStep: 0 | 1 | 2 | 3 | 4 | 5,
   nextPhysicalStep: 0 | 1 | 2 | 3 | 4 | 5 | 6,
   args: ScriptIntegrityHashMissingContinueArgs,
@@ -94,8 +91,6 @@ const submitContinue = async (
     buildArgs,
     referenceScriptUtxo,
     authenticatedCarriageUtxos = [],
-    preSubmitBoundary,
-    awaitConfirmation = true,
   } = args;
   if (physicalStep >= 3)
     requireAuthenticatedCarriage(contracts, authenticatedCarriageUtxos);
@@ -149,7 +144,7 @@ const submitContinue = async (
       ScriptIntegritySpendRedeemers[physicalStep] as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -161,43 +156,41 @@ const submitContinue = async (
     nextDatum,
     redeemer,
     carriageUtxos: authenticatedCarriageUtxos,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (layout === undefined)
     throw new Error(`${FAMILY}: unresolved transaction layout`);
   return {
-    txHash,
+    transaction,
     outputIndex: layout.output_index,
-    nextThreadOutRef: `${txHash}#${layout.output_index.toString()}`,
+    nextThreadOutRef: `${transaction.txHash}#${layout.output_index.toString()}`,
   };
 };
 
-export const submitScriptIntegrityHashMissingStep01 = (
+export const buildScriptIntegrityHashMissingStep01 = (
   args: ScriptIntegrityHashMissingContinueArgs,
-) => submitContinue(0, 1, args);
-export const submitScriptIntegrityHashMissingStep02 = (
+) => buildContinue(0, 1, args);
+export const buildScriptIntegrityHashMissingStep02 = (
   args: ScriptIntegrityHashMissingContinueArgs,
-) => submitContinue(1, 2, args);
-export const submitScriptIntegrityHashMissingStep03 = (
+) => buildContinue(1, 2, args);
+export const buildScriptIntegrityHashMissingStep03 = (
   args: ScriptIntegrityHashMissingContinueArgs & {
     readonly staged?: boolean;
   },
-) => submitContinue(2, args.staged === true ? 3 : 6, args);
+) => buildContinue(2, args.staged === true ? 3 : 6, args);
 /** Self-loops while grammar remains pending; set `closes` to enter semantic scan. */
-export const submitScriptIntegrityHashMissingScriptGrammar = (
+export const buildScriptIntegrityHashMissingScriptGrammar = (
   args: ScriptIntegrityHashMissingContinueArgs & { readonly closes: boolean },
-) => submitContinue(3, args.closes ? 4 : 3, args);
+) => buildContinue(3, args.closes ? 4 : 3, args);
 /** Self-loops until all authenticated script items have been folded. */
-export const submitScriptIntegrityHashMissingScriptScan = (
+export const buildScriptIntegrityHashMissingScriptScan = (
   args: ScriptIntegrityHashMissingContinueArgs & { readonly closes: boolean },
-) => submitContinue(4, args.closes ? 5 : 4, args);
+) => buildContinue(4, args.closes ? 5 : 4, args);
 /** Self-loops while field 8 grammar certification remains pending. */
-export const submitScriptIntegrityHashMissingRedeemerGrammar = (
+export const buildScriptIntegrityHashMissingRedeemerGrammar = (
   args: ScriptIntegrityHashMissingContinueArgs & { readonly closes: boolean },
-) => submitContinue(5, args.closes ? 6 : 5, args);
+) => buildContinue(5, args.closes ? 6 : 5, args);
 
-export const submitScriptIntegrityHashMissingStep04 = async ({
+export const buildScriptIntegrityHashMissingStep04 = async ({
   lucid,
   contracts,
   categoryId,
@@ -205,8 +198,6 @@ export const submitScriptIntegrityHashMissingStep04 = async ({
   threadOutRef,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: Omit<
   ScriptIntegrityHashMissingContinueArgs,
   "nextDatum" | "buildArgs" | "authenticatedCarriageUtxos"
@@ -229,7 +220,7 @@ export const submitScriptIntegrityHashMissingStep04 = async ({
     family: FAMILY,
     stepIndex: physicalStep,
   });
-  return await submitLinearFaultFinalize({
+  return await buildLinearFaultFinalize({
     lucid,
     family: FAMILY,
     stepIndex: physicalStep,
@@ -251,13 +242,11 @@ export const submitScriptIntegrityHashMissingStep04 = async ({
     }),
     referenceScriptUtxo,
     witnessReferenceScripts,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
 };
 
 /** The generic cancel resolves the current one of all seven reachable addresses. */
-export const submitScriptIntegrityHashMissingCancel = async ({
+export const buildScriptIntegrityHashMissingCancel = async ({
   lucid,
   contracts,
   categoryId,
@@ -265,15 +254,13 @@ export const submitScriptIntegrityHashMissingCancel = async ({
   threadOutRef,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: Omit<
   ScriptIntegrityHashMissingContinueArgs,
   "nextDatum" | "buildArgs" | "authenticatedCarriageUtxos"
 > & {
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
 }) =>
-  await submitLinearFaultCancel({
+  await buildLinearFaultCancel({
     lucid,
     family: FAMILY,
     steps: contracts.steps,
@@ -283,6 +270,4 @@ export const submitScriptIntegrityHashMissingCancel = async ({
     threadOutRef,
     referenceScriptUtxo,
     witnessReferenceScripts,
-    preSubmitBoundary,
-    awaitConfirmation,
   });

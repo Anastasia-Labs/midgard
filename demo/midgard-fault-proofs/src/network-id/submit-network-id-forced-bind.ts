@@ -19,7 +19,7 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import {
   fetchUtxoByOutRef,
   outRefLabel,
@@ -28,7 +28,6 @@ import {
 } from "../runtime.js";
 import { requireComputationThreadToken } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   NETWORK_ID_CATEGORY_LABEL,
   type NetworkIdContracts,
@@ -53,7 +52,7 @@ const STEP_LABEL = "network-id forced step";
  * id alone does not close a wrongful rejection — every output still has to be
  * walked before the mint may be claimed.
  */
-export const submitNetworkIdForcedBind = async ({
+export const buildNetworkIdForcedBind = async ({
   lucid,
   contracts,
   categoryId,
@@ -61,8 +60,6 @@ export const submitNetworkIdForcedBind = async ({
   threadOutRef,
   prepared,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: NetworkIdContracts;
@@ -72,8 +69,6 @@ export const submitNetworkIdForcedBind = async ({
   readonly prepared: PreparedNetworkIdWrongfulRejection;
   /** Published forced-step reference script; mandatory. */
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const forcedStep = contracts.forcedStep;
   if (forcedStep === undefined)
@@ -178,7 +173,7 @@ export const submitNetworkIdForcedBind = async ({
       NetworkIdForcedStepSpendRedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -189,14 +184,12 @@ export const submitNetworkIdForcedBind = async ({
     nextAddress: forcedScan.spendingScriptAddress,
     nextDatum: datum,
     redeemer,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined)
     throw networkIdSubmitError("forced binding layout unresolved");
   return {
-    txHash,
-    nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
     state,
   };
 };

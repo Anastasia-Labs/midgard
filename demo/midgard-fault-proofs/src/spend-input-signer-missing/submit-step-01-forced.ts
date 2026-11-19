@@ -16,11 +16,10 @@ import {
   requireLinearFaultReferenceScript,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { requireInitialStepDatum } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { SpendInputSignerMissingContracts } from "./contracts.js";
 import {
   SpendInputSignerStep01RedeemerSchema,
@@ -31,7 +30,7 @@ import {
   type SpendInputSignerMissingEvidence,
 } from "./spend-input-signer-missing.js";
 
-export const submitSpendInputSignerMissingStep01Forced = async ({
+export const buildSpendInputSignerMissingStep01Forced = async ({
   lucid,
   contracts,
   categoryId,
@@ -40,8 +39,6 @@ export const submitSpendInputSignerMissingStep01Forced = async ({
   evidence,
   forcedSource,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: SpendInputSignerMissingContracts;
@@ -51,8 +48,6 @@ export const submitSpendInputSignerMissingStep01Forced = async ({
   readonly evidence: SpendInputSignerMissingEvidence;
   readonly forcedSource: Readonly<Record<string, unknown>>;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   classifySpendInputSignerMissingFinding(evidence);
   const stepIndex = 0;
@@ -127,7 +122,7 @@ export const submitSpendInputSignerMissingStep01Forced = async ({
       SpendInputSignerStep01RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -138,10 +133,11 @@ export const submitSpendInputSignerMissingStep01Forced = async ({
     nextAddress: contracts.steps[1].spendingScriptAddress,
     nextDatum,
     redeemer,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined)
     throw new Error("spend-input-signer-missing: forced layout unresolved");
-  return { txHash, nextThreadOutRef: `${txHash}#${outputIndex.toString()}` };
+  return {
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
+  };
 };

@@ -22,11 +22,11 @@ import { Data, toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  submitMinFeeStep01,
-  submitMinFeeStep02,
+  buildMinFeeStep01,
+  buildMinFeeStep02,
   submitRemoveFraudulentBlock,
 } from "../src/index.js";
-import { submitLinearFaultCancel } from "../src/linear-fault-cancel.js";
+import { buildLinearFaultCancel } from "../src/linear-fault-cancel.js";
 import { MIN_FEE_CATEGORY_LABEL } from "../src/min-fee-contracts.js";
 import type { MinFeeFieldItemCbors } from "../src/submit-min-fee-step-02.js";
 import { outRefCbor } from "./helpers/canonical-block-evidence-fixture.js";
@@ -44,6 +44,10 @@ import {
   network,
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 
 describe("min-fee emulator lifecycle", () => {
   it("cancels both steps, resumes the same thread, rejects malformed evidence, mints, and removes", async () => {
@@ -65,7 +69,7 @@ describe("min-fee emulator lifecycle", () => {
     };
 
     const atStep01 = await initThread(harness, scenario);
-    const cancel01 = await submitLinearFaultCancel({
+    const cancel01 = await buildAndSubmitUnjournaled(buildLinearFaultCancel, {
       ...sharedCancel,
       threadOutRef: atStep01.nextThreadOutRef,
       referenceScriptUtxo: scenario.refs[0],
@@ -78,7 +82,7 @@ describe("min-fee emulator lifecycle", () => {
       scenario,
       again.nextThreadOutRef,
     );
-    const cancel02 = await submitLinearFaultCancel({
+    const cancel02 = await buildAndSubmitUnjournaled(buildLinearFaultCancel, {
       ...sharedCancel,
       threadOutRef: atStep02ForCancel.nextThreadOutRef,
       referenceScriptUtxo: scenario.refs[1],
@@ -87,7 +91,7 @@ describe("min-fee emulator lifecycle", () => {
 
     const wrongReference = await initThread(harness, scenario);
     await expect(
-      submitMinFeeStep01({
+      buildAndSubmitUnjournaled(buildMinFeeStep01, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         contracts: harness.minFee,
@@ -101,7 +105,7 @@ describe("min-fee emulator lifecycle", () => {
         witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/reference script .* hashes to/u);
-    await submitLinearFaultCancel({
+    await buildAndSubmitUnjournaled(buildLinearFaultCancel, {
       ...sharedCancel,
       threadOutRef: wrongReference.nextThreadOutRef,
       referenceScriptUtxo: scenario.refs[0],
@@ -117,7 +121,7 @@ describe("min-fee emulator lifecycle", () => {
 
     const missing = scenario.fieldItemCbors.slice(0, 8);
     await expect(
-      submitMinFeeStep02({
+      submitTurnsUnjournaled(buildMinFeeStep02, {
         lucid: harness.proverLucid,
         contracts: harness.minFee,
         categoryId: harness.category.categoryId,
@@ -134,7 +138,7 @@ describe("min-fee emulator lifecycle", () => {
     const permuted = [...scenario.fieldItemCbors];
     [permuted[0], permuted[1]] = [permuted[1]!, permuted[0]!];
     await expect(
-      submitMinFeeStep02({
+      submitTurnsUnjournaled(buildMinFeeStep02, {
         lucid: harness.proverLucid,
         contracts: harness.minFee,
         categoryId: harness.category.categoryId,
@@ -149,7 +153,7 @@ describe("min-fee emulator lifecycle", () => {
     ).rejects.toThrow(/field 0|field 1/u);
 
     await expect(
-      submitMinFeeStep02({
+      submitTurnsUnjournaled(buildMinFeeStep02, {
         lucid: harness.proverLucid,
         contracts: harness.minFee,
         categoryId: harness.category.categoryId,
@@ -171,7 +175,7 @@ describe("min-fee emulator lifecycle", () => {
       paymentKeyHash: "99".repeat(28),
     };
     await expect(
-      submitLinearFaultCancel({
+      buildAndSubmitUnjournaled(buildLinearFaultCancel, {
         ...sharedCancel,
         signer: wrongSigner,
         threadOutRef: bound.nextThreadOutRef,
@@ -179,7 +183,7 @@ describe("min-fee emulator lifecycle", () => {
       }),
     ).rejects.toThrow(/min-fee: signer does not own thread/u);
 
-    const finalized = await submitMinFeeStep02({
+    const finalized = await submitTurnsUnjournaled(buildMinFeeStep02, {
       lucid: harness.proverLucid,
       contracts: harness.minFee,
       categoryId: harness.category.categoryId,
@@ -278,7 +282,7 @@ describe("min-fee emulator lifecycle", () => {
 
     const init = await initThread(harness, scenario);
     const bound = await advanceStep01(harness, scenario, init.nextThreadOutRef);
-    const finalized = await submitMinFeeStep02({
+    const finalized = await submitTurnsUnjournaled(buildMinFeeStep02, {
       lucid: harness.proverLucid,
       contracts: harness.minFee,
       categoryId: harness.category.categoryId,
@@ -329,7 +333,7 @@ describe("min-fee emulator lifecycle", () => {
     const init = await initThread(harness, scenario);
     const bound = await advanceStep01(harness, scenario, init.nextThreadOutRef);
     await expect(
-      submitMinFeeStep02({
+      submitTurnsUnjournaled(buildMinFeeStep02, {
         lucid: harness.proverLucid,
         contracts: harness.minFee,
         categoryId: harness.category.categoryId,
@@ -359,7 +363,7 @@ describe("min-fee emulator lifecycle", () => {
         scenario.setup.stateQueueBlockUnit,
       ),
     ).resolves.toHaveLength(1);
-    const cancelled = await submitLinearFaultCancel({
+    const cancelled = await buildAndSubmitUnjournaled(buildLinearFaultCancel, {
       lucid: harness.proverLucid,
       family: MIN_FEE_CATEGORY_LABEL,
       steps: harness.minFee.steps,

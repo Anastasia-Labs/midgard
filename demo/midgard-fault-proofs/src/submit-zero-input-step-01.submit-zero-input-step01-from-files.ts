@@ -5,7 +5,8 @@ import {
   resolveProverSigner,
 } from "./runtime.js";
 import { parseSubmitStep01TxInclusion } from "./step-support.js";
-import { submitZeroInputStep01 } from "./submit-zero-input-step-01.submit-zero-input-step01.js";
+import { submitFaultProofTurns } from "./submit-fault-proof-turns.js";
+import { buildZeroInputStep01 } from "./submit-zero-input-step-01.submit-zero-input-step01.js";
 import {
   type SubmitZeroInputStep01CliConfig,
   type SubmitZeroInputStep01Result,
@@ -26,15 +27,21 @@ export const submitZeroInputStep01FromFiles = async (
     ],
   );
   const signer = resolveProverSigner(config);
-  return await submitZeroInputStep01({
-    lucid,
-    blueprint,
-    deploymentInfo,
-    network: config.network,
-    signer,
-    threadOutRef: config.threadOutRef,
-    stateQueueBlockOutRef: config.stateQueueBlockOutRef,
-    txInclusion: parseSubmitStep01TxInclusion(txInclusionJson),
-    awaitConfirmation: config.awaitConfirmation,
-  });
+  return await submitFaultProofTurns(
+    buildZeroInputStep01,
+    {
+      lucid,
+      blueprint,
+      deploymentInfo,
+      network: config.network,
+      signer,
+      threadOutRef: config.threadOutRef,
+      stateQueueBlockOutRef: config.stateQueueBlockOutRef,
+      txInclusion: parseSubmitStep01TxInclusion(txInclusionJson),
+    },
+    {
+      label: "zero-input-step01",
+      awaitConfirmation: config.awaitConfirmation ?? true,
+    },
+  );
 };

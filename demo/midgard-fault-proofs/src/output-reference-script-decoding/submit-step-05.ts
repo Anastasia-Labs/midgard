@@ -16,7 +16,7 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import {
   nativeScriptDecodingScanArgsEvidence,
   nativeScriptDecodingWindowProofs,
@@ -27,7 +27,6 @@ import {
 } from "../native-script-decoding/scan-plan.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY_LABEL as FAMILY,
   type OutputReferenceScriptDecodingContracts,
@@ -106,7 +105,7 @@ export const readOutputReferenceScriptScanState = async ({
  * chunk, checkpoint, or successor in front of the validator. Production
  * callers use the planned entry point below.
  */
-export const submitOutputReferenceScriptDecodingStep05Raw = async ({
+export const buildOutputReferenceScriptDecodingStep05Raw = async ({
   lucid,
   contracts,
   categoryId,
@@ -116,8 +115,6 @@ export const submitOutputReferenceScriptDecodingStep05Raw = async ({
   nextState,
   nextStepIndex,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: OutputReferenceScriptDecodingContracts;
@@ -128,8 +125,6 @@ export const submitOutputReferenceScriptDecodingStep05Raw = async ({
   readonly nextState: OutputReferenceScriptScanState;
   readonly nextStepIndex: 4 | 5;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 4;
   const { threadUtxo, threadToken } = await readOutputReferenceScriptScanState({
@@ -175,7 +170,7 @@ export const submitOutputReferenceScriptDecodingStep05Raw = async ({
       OutputReferenceStep05RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -186,14 +181,12 @@ export const submitOutputReferenceScriptDecodingStep05Raw = async ({
     nextAddress: contracts.steps[nextStepIndex].spendingScriptAddress,
     nextDatum,
     redeemer,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined)
     throw new Error(`${FAMILY}: step05 layout unresolved`);
   return {
-    txHash,
-    nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
     closed: closes,
   };
 };
@@ -301,7 +294,7 @@ export const planOutputReferenceScriptDecodingStep05 = ({
   };
 };
 
-export const submitOutputReferenceScriptDecodingStep05 = async ({
+export const buildOutputReferenceScriptDecodingStep05 = async ({
   lucid,
   contracts,
   categoryId,
@@ -309,8 +302,6 @@ export const submitOutputReferenceScriptDecodingStep05 = async ({
   threadOutRef,
   evidence,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: OutputReferenceScriptDecodingContracts;
@@ -319,8 +310,6 @@ export const submitOutputReferenceScriptDecodingStep05 = async ({
   readonly threadOutRef: string;
   readonly evidence: OutputReferenceScriptDecodingEvidence;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const { state } = await readOutputReferenceScriptScanState({
     lucid,
@@ -334,7 +323,7 @@ export const submitOutputReferenceScriptDecodingStep05 = async ({
     state,
     evidence,
   });
-  return await submitOutputReferenceScriptDecodingStep05Raw({
+  return await buildOutputReferenceScriptDecodingStep05Raw({
     lucid,
     contracts,
     categoryId,
@@ -342,7 +331,5 @@ export const submitOutputReferenceScriptDecodingStep05 = async ({
     threadOutRef,
     ...planned,
     referenceScriptUtxo,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
 };

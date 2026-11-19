@@ -15,10 +15,9 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { MintItemNonCanonicalContracts } from "./contracts.js";
 import {
   type MintItemEvidence,
@@ -30,7 +29,7 @@ import {
   MintItemStep03RedeemerSchema,
 } from "./schemas.js";
 
-export const submitMintItemNonCanonicalStep03 = async ({
+export const buildMintItemNonCanonicalStep03 = async ({
   lucid,
   contracts,
   categoryId,
@@ -38,8 +37,6 @@ export const submitMintItemNonCanonicalStep03 = async ({
   threadOutRef,
   evidence,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: MintItemNonCanonicalContracts;
@@ -48,8 +45,6 @@ export const submitMintItemNonCanonicalStep03 = async ({
   readonly threadOutRef: string;
   readonly evidence: MintItemEvidence;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 2;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
@@ -170,7 +165,7 @@ export const submitMintItemNonCanonicalStep03 = async ({
       MintItemStep03RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -182,14 +177,12 @@ export const submitMintItemNonCanonicalStep03 = async ({
     nextDatum,
     redeemer,
     carriageUtxos: [],
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined)
     throw new Error("mint-item-non-canonical: step-03 layout unresolved");
   return {
-    txHash,
-    nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
     terminal: outcome !== 0n,
   };
 };

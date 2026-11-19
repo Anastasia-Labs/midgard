@@ -17,11 +17,10 @@ import {
   requireLinearFaultReferenceScript,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { requireInitialStepDatum } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { MintItemNonCanonicalContracts } from "./contracts.js";
 import {
   classifyMintItemFinding,
@@ -35,7 +34,7 @@ import {
   MintItemStep04DatumSchema,
 } from "./schemas.js";
 
-export const submitMintItemNonCanonicalStep01Forced = async ({
+export const buildMintItemNonCanonicalStep01Forced = async ({
   lucid,
   contracts,
   categoryId,
@@ -44,8 +43,6 @@ export const submitMintItemNonCanonicalStep01Forced = async ({
   finding,
   forcedSource,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: MintItemNonCanonicalContracts;
@@ -55,8 +52,6 @@ export const submitMintItemNonCanonicalStep01Forced = async ({
   readonly finding: MintItemFinding;
   readonly forcedSource: Readonly<Record<string, unknown>>;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   // No machine step emits `MintItemMalformed`, so a forced rejection with it
   // goes straight to the terminal; every other forced subject scans an item.
@@ -146,7 +141,7 @@ export const submitMintItemNonCanonicalStep01Forced = async ({
       MintItemStep01RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -157,10 +152,11 @@ export const submitMintItemNonCanonicalStep01Forced = async ({
     nextAddress: contracts.steps[nextStepIndex].spendingScriptAddress,
     nextDatum,
     redeemer,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined)
     throw new Error("mint-item-non-canonical: forced layout unresolved");
-  return { txHash, nextThreadOutRef: `${txHash}#${outputIndex.toString()}` };
+  return {
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
+  };
 };

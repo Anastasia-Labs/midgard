@@ -5,10 +5,9 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultFinalize } from "../linear-fault-finalize.js";
+import { buildLinearFaultFinalize } from "../linear-fault-finalize.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { MintItemNonCanonicalContracts } from "./contracts.js";
 import {
   MINT_ITEM_OUTCOME_UNREACHABLE,
@@ -22,7 +21,7 @@ import {
 } from "./schemas.js";
 
 type FinalizeInput = Omit<
-  Parameters<typeof submitLinearFaultFinalize>[0],
+  Parameters<typeof buildLinearFaultFinalize>[0],
   | "family"
   | "stepIndex"
   | "step"
@@ -33,7 +32,7 @@ type FinalizeInput = Omit<
 > & { readonly contracts: MintItemNonCanonicalContracts };
 
 const finalize = async ({ contracts, ...input }: FinalizeInput) =>
-  await submitLinearFaultFinalize({
+  await buildLinearFaultFinalize({
     ...input,
     family: "mint-item-non-canonical",
     stepIndex: 3,
@@ -52,7 +51,7 @@ const finalize = async ({ contracts, ...input }: FinalizeInput) =>
     }),
   });
 
-export const submitMintItemNonCanonicalStep04 = async ({
+export const buildMintItemNonCanonicalStep04 = async ({
   lucid,
   contracts,
   categoryId,
@@ -61,8 +60,6 @@ export const submitMintItemNonCanonicalStep04 = async ({
   evidence,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: MintItemNonCanonicalContracts;
@@ -72,8 +69,6 @@ export const submitMintItemNonCanonicalStep04 = async ({
   readonly evidence: MintItemEvidence;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   if (!mintItemEvidenceCloses(evidence)) {
     throw new Error(
@@ -123,8 +118,6 @@ export const submitMintItemNonCanonicalStep04 = async ({
     threadToken,
     referenceScriptUtxo,
     witnessReferenceScripts,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
 };
 
@@ -132,7 +125,7 @@ export const submitMintItemNonCanonicalStep04 = async ({
  * Finalizes the terminal state step 01 wrote for a forced `MintItemMalformed`
  * rejection: no machine step emits that reason, so the rejection is wrongful.
  */
-export const submitMintItemNonCanonicalStep04UnreachableClaim = async ({
+export const buildMintItemNonCanonicalStep04UnreachableClaim = async ({
   lucid,
   contracts,
   categoryId,
@@ -140,8 +133,6 @@ export const submitMintItemNonCanonicalStep04UnreachableClaim = async ({
   threadOutRef,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: MintItemNonCanonicalContracts;
@@ -150,8 +141,6 @@ export const submitMintItemNonCanonicalStep04UnreachableClaim = async ({
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 3;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
@@ -187,7 +176,5 @@ export const submitMintItemNonCanonicalStep04UnreachableClaim = async ({
     threadToken,
     referenceScriptUtxo,
     witnessReferenceScripts,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
 };

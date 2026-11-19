@@ -1,5 +1,5 @@
 /** The registered four-step input-existence route on the emulator: publish
- * the family's step scripts, open the thread with `submitInit`, run the steps
+ * the family's step scripts, open the thread with `buildInit`, run the steps
  * before the decisive one, then either convict at step 04 or hand the refused
  * step (step 04 unless `atStep` names step 03) to the caller's refusal check
  * and confirm the thread is kept and no proof minted. The caller runs
@@ -12,13 +12,17 @@ import type { UTxO } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
 import type { PreparedInputExistence } from "../../../src/input-existence/prepare.js";
-import { submitInputExistenceStep } from "../../../src/input-existence/submit.js";
-import { submitInit } from "../../../src/submit-init.js";
+import { buildInputExistenceStep } from "../../../src/input-existence/submit.js";
+import { buildInit } from "../../../src/submit-init.js";
 import {
   buildRemovalDeploymentInfo,
   network,
   publishPlainReferenceScriptUtxo,
 } from "../submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  type SubmittedStep,
+} from "../submit-unjournaled.js";
 import type { makeFaultProofEmulatorHarness } from "./harness.js";
 import {
   captureEmulatorSubmission,
@@ -46,7 +50,8 @@ export const runInputExistenceRoute = async ({
   field,
   prepared,
   fraudulentBlockOutRef,
-  submitStep = submitInputExistenceStep,
+  submitStep = (args) =>
+    buildAndSubmitUnjournaled(buildInputExistenceStep, args),
   carriage,
   outcome,
 }: {
@@ -54,7 +59,14 @@ export const runInputExistenceRoute = async ({
   readonly field: 0 | 1;
   readonly prepared: PreparedInputExistence;
   readonly fraudulentBlockOutRef: string;
-  readonly submitStep?: typeof submitInputExistenceStep;
+  readonly submitStep?: (
+    args: Parameters<typeof buildInputExistenceStep>[0],
+  ) => Promise<
+    Pick<
+      SubmittedStep<typeof buildInputExistenceStep>,
+      "nextThreadOutRef" | "fraudProofOutRef"
+    >
+  >;
   readonly carriage?: Readonly<{
     fieldCarriageUtxos: readonly UTxO[];
     certificatePolicyId: string;
@@ -98,7 +110,7 @@ export const runInputExistenceRoute = async ({
     })
   ).utxo;
   const init = await captureEmulatorSubmission(h.emulator, () =>
-    submitInit({
+    buildAndSubmitUnjournaled(buildInit, {
       lucid: h.proverLucid,
       blueprint: h.realBlueprint,
       deploymentInfo: buildRemovalDeploymentInfo(h.contracts, h.catalogue),

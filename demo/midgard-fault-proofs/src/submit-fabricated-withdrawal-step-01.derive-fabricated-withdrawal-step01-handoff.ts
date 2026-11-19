@@ -17,6 +17,10 @@ import { Effect } from "effect";
 import { type FabricatedHistoryEnvironment } from "./fabricated-history-witness.js";
 import { parseHex, requireRecord } from "./json-file.js";
 import { type SubmitProviderConfig } from "./runtime.js";
+import {
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
+} from "./workflow/transaction-boundary.js";
 
 /** Human-readable family label used in every local failure message. */
 export const FABRICATED_WITHDRAWAL_CATEGORY_LABEL = "fabricated-withdrawal";
@@ -206,8 +210,8 @@ export type SubmitFabricatedWithdrawalStep01CliConfig = SubmitProviderConfig & {
   readonly awaitConfirmation?: boolean;
 };
 
-export type SubmitFabricatedWithdrawalStep01Result = {
-  readonly txHash: string;
+export type FabricatedWithdrawalStep01Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -228,8 +232,10 @@ export type SubmitFabricatedWithdrawalStep01Result = {
   readonly outputIndex: number;
   readonly hubOracleRefInputIndex: number;
   readonly stateQueueNodeRefInputIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
+
+export type SubmitFabricatedWithdrawalStep01Result =
+  UnjournaledSubmission<FabricatedWithdrawalStep01Build>;
 
 export type FabricatedWithdrawalStep01Layout = {
   readonly inputIndex: bigint;

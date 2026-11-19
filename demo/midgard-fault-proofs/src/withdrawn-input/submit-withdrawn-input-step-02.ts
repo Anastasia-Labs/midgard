@@ -19,20 +19,26 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  type FaultProofTurn,
+  isPrerequisiteTurn,
+} from "../fault-proof-turn.js";
+import {
   faultProofFieldOpening,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
 } from "../field-opening.js";
 import { type ResolvedProverSigner } from "../runtime.js";
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
+import { workflowReferenceScript } from "../workflow/transaction-boundary.js";
 import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScript,
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
 } from "../workflow/transaction-boundary.js";
 import {
   WITHDRAWN_INPUT_CATEGORY_LABEL,
@@ -51,8 +57,8 @@ export type WithdrawnInputSpendInputsEvidence = {
   readonly nativeTxCompactCbor: string;
 };
 
-export type SubmitWithdrawnInputStep02Result = {
-  readonly txHash: string;
+export type WithdrawnInputStep02Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly nextThreadOutRef: string;
   readonly thirdStepAddress: string;
   readonly withdrawnInput: MidgardTxInput;
@@ -60,7 +66,10 @@ export type SubmitWithdrawnInputStep02Result = {
   readonly carriageTier: string;
 };
 
-export const submitWithdrawnInputStep02 = async ({
+export type SubmitWithdrawnInputStep02Result =
+  UnjournaledSubmission<WithdrawnInputStep02Build>;
+
+export const buildWithdrawnInputStep02 = async ({
   lucid,
   contracts,
   categoryId,
@@ -72,8 +81,6 @@ export const submitWithdrawnInputStep02 = async ({
   publishedCarriageUtxos,
   certificateUtxo,
   publishMissingCarriage = true,
-  preSubmitBoundary,
-  awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
@@ -90,11 +97,9 @@ export const submitWithdrawnInputStep02 = async ({
   readonly certificateUtxo?: UTxO;
   /** Diagnostic/emulator fallback only. Production workflows set false. */
   readonly publishMissingCarriage?: boolean;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
-}): Promise<SubmitWithdrawnInputStep02Result> => {
+}): Promise<FaultProofTurn<WithdrawnInputStep02Build>> => {
   const { threadUtxo, threadToken } = await requireWithdrawnInputThreadUtxo({
     lucid,
     contracts,
@@ -147,6 +152,7 @@ export const submitWithdrawnInputStep02 = async ({
               "step-02 requires authenticated pre-published field carriage",
             );
           })());
+  if (isPrerequisiteTurn(carriageUtxos)) return carriageUtxos;
   if (planned.plan.tier === "Certified" && certificateUtxo === undefined) {
     throw withdrawnInputSubmitError(
       "step-02 requires its authenticated field-preimage certificate",
@@ -234,8 +240,7 @@ export const submitWithdrawnInputStep02 = async ({
   if (layout === undefined) {
     throw withdrawnInputSubmitError("step-02 layout was not resolved.");
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: "withdrawn-input step-02",
+  const transaction = finishStep(signed, {
     referenceScripts: [
       workflowReferenceScript({
         role: "V1 fraud-proof withdrawn-input step-02",
@@ -243,12 +248,10 @@ export const submitWithdrawnInputStep02 = async ({
         expectedScript: contracts.steps[1].spendingScript,
       }),
     ],
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
   });
   return {
-    txHash,
-    nextThreadOutRef: `${txHash}#${layout.outputIndex.toString()}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${layout.outputIndex.toString()}`,
     thirdStepAddress: contracts.steps[2].spendingScriptAddress,
     withdrawnInput,
     computationThreadUnit: threadToken.unit,

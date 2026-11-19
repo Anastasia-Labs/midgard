@@ -27,7 +27,8 @@ import { encodeMidgardTxInputCanonical } from "@al-ft/midgard-sdk";
 import { fieldPreimagePublicationDatumCbor } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { submitWithdrawnInputStep03 } from "../src/index.js";
+import { buildWithdrawnInputStep03 } from "../src/index.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 import {
   advanceWithdrawnInputToStep03,
   makeWithdrawnInputEmulatorScenario,
@@ -70,7 +71,7 @@ describe("withdrawn-input emulator tier-2 carriage", () => {
     ).filter((utxo) => utxo.datum === expectedDatum);
     expect(publications).toHaveLength(1);
 
-    const final = await submitWithdrawnInputStep03({
+    const final = await buildAndSubmitUnjournaled(buildWithdrawnInputStep03, {
       lucid: scenario.harness.proverLucid,
       contracts: scenario.contracts,
       categoryId: scenario.category.categoryId,

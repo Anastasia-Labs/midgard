@@ -23,7 +23,7 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import {
   nativeScriptDecodingFrameData,
   nativeScriptDecodingScanArgsEvidence,
@@ -36,7 +36,6 @@ import {
 } from "../native-script-decoding/scan-plan.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   WITNESS_SCRIPT_DECODING_CATEGORY_LABEL as FAMILY,
   type WitnessScriptDecodingContracts,
@@ -195,7 +194,7 @@ export const planWitnessScriptDecodingStep03Transition = ({
   return { args, nextState, closes, route, nextStepIndex };
 };
 
-export const submitWitnessScriptDecodingStep03 = async ({
+export const buildWitnessScriptDecodingStep03 = async ({
   lucid,
   contracts,
   categoryId,
@@ -203,8 +202,6 @@ export const submitWitnessScriptDecodingStep03 = async ({
   threadOutRef,
   evidence,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: WitnessScriptDecodingContracts;
@@ -213,8 +210,6 @@ export const submitWitnessScriptDecodingStep03 = async ({
   readonly threadOutRef: string;
   readonly evidence: WitnessScriptDecodingEvidence;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 2;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
@@ -285,7 +280,7 @@ export const submitWitnessScriptDecodingStep03 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
   signer.selectWallet(lucid);
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -296,16 +291,14 @@ export const submitWitnessScriptDecodingStep03 = async ({
     nextAddress: contracts.steps[nextStepIndex].spendingScriptAddress,
     nextDatum,
     redeemer,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined)
     throw new Error(`${FAMILY}: unresolved layout`);
   return {
-    txHash,
+    transaction,
     route,
     closed: closes,
-    nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
     scanState: nextState,
   };
 };

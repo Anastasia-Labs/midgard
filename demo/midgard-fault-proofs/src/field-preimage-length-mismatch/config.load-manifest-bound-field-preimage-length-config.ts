@@ -12,6 +12,7 @@ import {
   type FraudProofWorkflowDeploymentBinding,
   requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding.js";
+import { type LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import {
   FIELD_PREIMAGE_LENGTH_CONFIG,
   FIELD_PREIMAGE_LENGTH_MANIFEST_CONTRACTS,
@@ -41,7 +42,7 @@ export const createFieldPreimageLengthLucidSubmission = ({
   submit: (
     action: FieldPreimageLengthSubmissionKind,
     prepared: PreparedFieldPreimageLengthEvidence,
-  ) => Promise<string>;
+  ) => Promise<LocallyEvaluatedTransaction>;
 }> =>
   Object.freeze({
     submit: async (action, prepared) => {
@@ -72,13 +73,13 @@ export const createFieldPreimageLengthLucidSubmission = ({
                     : action === "cancelAuthentication"
                       ? builders.cancelAuthentication
                       : builders.cancelTerminal;
-      const transactionId = await builder(context);
-      if (!TX_ID.test(transactionId)) {
+      const transaction = await builder(context);
+      if (!TX_ID.test(transaction.txHash)) {
         throw new Error(
           `field-preimage-length ${action} submitter returned a non-canonical transaction id`,
         );
       }
-      return transactionId;
+      return transaction;
     },
   });
 

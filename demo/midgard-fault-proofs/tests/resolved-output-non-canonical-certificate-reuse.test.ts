@@ -1,12 +1,12 @@
 /**
- * Step 02 at a Certified-tier input-field opening, driven turn by turn
- * through the workflow capture boundary: once the field certificate is on
- * chain, the next captured transaction is the step itself, and only one
+ * Step 02 at a Certified-tier input-field opening, driven turn by turn,
+ * one transaction per build: once the field certificate is on
+ * chain, the next built transaction is the step itself, and only one
  * certificate is ever minted.
  */
 import { describe, expect, it } from "vitest";
 
-import { submitResolvedOutputNonCanonicalStep02 } from "../src/resolved-output-non-canonical/index.js";
+import { buildResolvedOutputNonCanonicalStep02 } from "../src/resolved-output-non-canonical/index.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
   driveCapturedStep,
@@ -23,8 +23,8 @@ import {
   subjectTransactionFor,
 } from "./support/resolved-output-non-canonical-emulator.js";
 
-describe("resolvedOutputNonCanonical step 02 under the workflow capture boundary", () => {
-  it("reuses the field certificate already on chain, so the next captured transaction is the step", async () => {
+describe("resolvedOutputNonCanonical step 02 built turn by turn", () => {
+  it("reuses the field certificate already on chain, so the next built transaction is the step", async () => {
     const context = await makeResolvedOutputContext();
     const prior = await buildPriorLedger({
       output: smallMalformedOutput(),
@@ -54,8 +54,8 @@ describe("resolvedOutputNonCanonical step 02 under the workflow capture boundary
       emulator: harness.emulator,
       threadOutRef,
       maxTurns: 6,
-      invoke: async (boundary) =>
-        await submitResolvedOutputNonCanonicalStep02({
+      invoke: async () =>
+        await buildResolvedOutputNonCanonicalStep02({
           ownOutputs,
           lucid: harness.proverLucid,
           contracts,
@@ -68,9 +68,6 @@ describe("resolvedOutputNonCanonical step 02 under the workflow capture boundary
           witnessSetCompactCbor: block.witnessSetCompactCborHex,
           publishCarriage: evidence.carriage === "RawUtxo",
           certificateReferenceScriptUtxo: stages.certificateReference,
-          publicationPreSubmitBoundary: boundary,
-          certificatePreSubmitBoundary: boundary,
-          preSubmitBoundary: boundary,
         }),
     });
     expect(drive.prerequisites.length).toBeGreaterThan(1);

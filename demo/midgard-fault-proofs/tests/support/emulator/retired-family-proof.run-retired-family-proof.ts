@@ -5,8 +5,9 @@ import { expect } from "vitest";
 
 import { submitRemoveFraudulentBlock } from "../../../src/remove-fraudulent-block.js";
 import { outRefLabel } from "../../../src/runtime.js";
-import { submitFabricatedDepositStep04 } from "../../../src/submit-fabricated-deposit-step-04.js";
-import { submitFabricatedWithdrawalStep04 } from "../../../src/submit-fabricated-withdrawal-step-04.js";
+import { buildFabricatedDepositStep04 } from "../../../src/submit-fabricated-deposit-step-04.js";
+import { buildFabricatedWithdrawalStep04 } from "../../../src/submit-fabricated-withdrawal-step-04.js";
+import { buildAndSubmitUnjournaled } from "../submit-unjournaled.js";
 import { prepare } from "./retired-family-proof.prepare.js";
 import {
   type EligibleFamilyRefusalResult,
@@ -51,11 +52,14 @@ export const runRetiredFamilyProof = async (
     threadOutRef: thirdResult.nextThreadOutRef,
     referenceScriptUtxo: p.references[3],
     witnessReferenceScripts: p.witnesses,
-    preSubmitBoundary: p.boundary("step04"),
+    beforeSubmit: p.boundary("step04"),
   };
   const last = p.deposit
-    ? await submitFabricatedDepositStep04(lastInput)
-    : await submitFabricatedWithdrawalStep04(lastInput);
+    ? await buildAndSubmitUnjournaled(buildFabricatedDepositStep04, lastInput)
+    : await buildAndSubmitUnjournaled(
+        buildFabricatedWithdrawalStep04,
+        lastInput,
+      );
   expect(last.fault).toBe(fault);
   expect(last.fraudProofAssetName).toBe(p.init.computationThreadAssetName);
   const finalization = p.transactions.find(({ stage }) => stage === "step04");
@@ -106,7 +110,7 @@ export const runRetiredFamilyProof = async (
     awaitConfirmation: true,
     validFrom: now > 120_000n ? now - 120_000n : 0n,
     validTo: now + 300_000n,
-    preSubmitBoundary: p.boundary("remove"),
+    beforeSubmit: p.boundary("remove"),
   });
   expect(removed.transactions).toHaveLength(1);
   expect(removed.transactions[0]!.removedHeaderHash).toBe(input.headerHash);

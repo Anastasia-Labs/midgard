@@ -26,12 +26,17 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  type FaultProofTurn,
+  isPrerequisiteTurn,
+} from "../fault-proof-turn.js";
+import {
   faultProofFieldOpening,
   publishFaultProofFieldCarriage,
   resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening.js";
 import { type ResolvedProverSigner } from "../runtime.js";
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import {
   computationThreadOutputPredicate,
   outputWithDatumAndUnitPredicate,
@@ -44,10 +49,6 @@ import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
-import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary.js";
 import type { MissingSignatureContracts } from "./contracts.js";
 import { planMissingSignatureAddressWitnessesOpening } from "./evidence.js";
 import {
@@ -57,12 +58,12 @@ import {
   requireMissingSignatureThreadUtxo,
 } from "./submit-common.js";
 import {
+  type MissingSignatureStep04Build,
   STEP_LABEL,
   type Step04SpendLayout,
-  type SubmitMissingSignatureStep04Result,
 } from "./submit-missing-signature-step-04.submit-missing-signature-step04-result.js";
 
-export const submitMissingSignatureStep04 = async ({
+export const buildMissingSignatureStep04 = async ({
   lucid,
   contracts,
   categoryId,
@@ -75,8 +76,6 @@ export const submitMissingSignatureStep04 = async ({
   certificateUtxo,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
@@ -101,11 +100,9 @@ export const submitMissingSignatureStep04 = async ({
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
-}): Promise<SubmitMissingSignatureStep04Result> => {
+}): Promise<FaultProofTurn<MissingSignatureStep04Build>> => {
   const { threadUtxo, threadToken } = await requireMissingSignatureThreadUtxo({
     lucid,
     contracts,
@@ -171,6 +168,7 @@ export const submitMissingSignatureStep04 = async ({
     publisherAddress: signer.proofMaterialsAddress,
     label: `${STEP_LABEL} address-witnesses`,
   });
+  if (isPrerequisiteTurn(carriageUtxos)) return carriageUtxos;
   // A configured certificate, or the one this workflow's own journal claims.
   const certificate =
     certificateUtxo ??
@@ -388,34 +386,28 @@ export const submitMissingSignatureStep04 = async ({
       "BuildTxWithRedeemer did not resolve the step-04 layout.",
     );
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: "missing-signature step-04",
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: "V1 fraud-proof missing-signature step-04",
-          utxo: referenceScriptUtxo,
-          expectedScript: contracts.steps[3].spendingScript,
-        },
-        {
-          role: "V1 fraud-proof computation-thread minting",
-          utxo: witnessReferenceScripts?.computationThreadMint,
-          expectedScript: contracts.computationThread.mintingScript,
-        },
-        {
-          role: "V1 fraud-proof token minting",
-          utxo: witnessReferenceScripts?.fraudProofMint,
-          expectedScript: contracts.fraudProof.mintingScript,
-        },
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: "V1 fraud-proof missing-signature step-04",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.steps[3].spendingScript,
+      },
+      {
+        role: "V1 fraud-proof computation-thread minting",
+        utxo: witnessReferenceScripts?.computationThreadMint,
+        expectedScript: contracts.computationThread.mintingScript,
+      },
+      {
+        role: "V1 fraud-proof token minting",
+        utxo: witnessReferenceScripts?.fraudProofMint,
+        expectedScript: contracts.fraudProof.mintingScript,
+      },
+    ],
   });
 
   const common = {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
@@ -424,13 +416,12 @@ export const submitMissingSignatureStep04 = async ({
     computationThreadUnit: threadToken.unit,
     inputIndex: Number(spendLayout.inputIndex),
     outputIndex: Number(spendLayout.outputIndex),
-    awaitedConfirmation: awaitConfirmation,
   };
   if (!willFinalize) {
     return {
       ...common,
       kind: "advanced",
-      nextThreadOutRef: `${txHash}#${spendLayout.outputIndex.toString()}`,
+      nextThreadOutRef: `${transaction.txHash}#${spendLayout.outputIndex.toString()}`,
       nextItemIndex: nextCheckpoint!.nextItemIndex,
       checkpointCbor: nextCheckpoint!.checkpointCbor,
       checkpointHash: nextCheckpoint!.checkpointHash,
@@ -441,7 +432,7 @@ export const submitMissingSignatureStep04 = async ({
     kind: "proven",
     fraudProofPolicyId: contracts.fraudProof.policyId,
     fraudProofUnit,
-    fraudProofOutRef: `${txHash}#${spendLayout.outputIndex.toString()}`,
+    fraudProofOutRef: `${transaction.txHash}#${spendLayout.outputIndex.toString()}`,
     fraudProofMintRedeemerIndex: Number(
       spendLayout.fraudProofMintRedeemerIndex!,
     ),

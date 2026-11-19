@@ -1,15 +1,15 @@
 /**
  * `input-set-uniqueness` thread init.
  *
- * Delegates to the shared `submitResolvedInit` in `src/submit-init.ts` with
+ * Delegates to the shared `buildResolvedInit` in `src/submit-init.ts` with
  * the family's explicit contracts record and catalogue category: the
- * `inputSetUniqueness` entry in the production `submitInit` category union is
+ * `inputSetUniqueness` entry in the production `buildInit` category union is
  * parent-owned and lands at registration.
  */
 import {
-  submitResolvedInit,
+  buildResolvedInit,
+  type ResolvedInitBuild,
   type SubmitResolvedInitParams,
-  type SubmitResolvedInitResult,
 } from "../submit-init.js";
 import {
   INPUT_SET_UNIQUENESS_CATEGORY_LABEL,
@@ -20,21 +20,21 @@ import {
   inputSetUniquenessSubmitError,
 } from "./submit-common.js";
 
-export type SubmitInputSetUniquenessInitResult = SubmitResolvedInitResult;
+export type InputSetUniquenessInitBuild = ResolvedInitBuild;
 
-export const submitInputSetUniquenessInit = async (
+export const buildInputSetUniquenessInit = async (
   params: Omit<SubmitResolvedInitParams, "contracts" | "category"> & {
     readonly contracts: InputSetUniquenessContracts;
     readonly category: InputSetUniquenessCatalogueCategory;
   },
-): Promise<SubmitInputSetUniquenessInitResult> => {
+): Promise<InputSetUniquenessInitBuild> => {
   const { contracts, category } = params;
   if (category.scriptHash !== contracts.steps[0].spendingScriptHash) {
     throw inputSetUniquenessSubmitError(
       `catalogue category registers ${category.scriptHash}, but the deployed step-01 hashes to ${contracts.steps[0].spendingScriptHash}.`,
     );
   }
-  return await submitResolvedInit({
+  return await buildResolvedInit({
     ...params,
     label: INPUT_SET_UNIQUENESS_CATEGORY_LABEL,
   });

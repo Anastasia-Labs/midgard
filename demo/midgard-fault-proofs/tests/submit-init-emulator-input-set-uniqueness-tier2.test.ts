@@ -37,11 +37,11 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
+  buildInputSetUniquenessInit,
+  buildInputSetUniquenessStep01,
+  buildInputSetUniquenessStep02,
   requireInputSetUniquenessClaim,
   scanInputSetUniqueness,
-  submitInputSetUniquenessInit,
-  submitInputSetUniquenessStep01,
-  submitInputSetUniquenessStep02,
 } from "../src/input-set-uniqueness/index.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
@@ -52,6 +52,10 @@ import {
   setupInputSetUniquenessScenario,
 } from "./support/input-set-uniqueness-emulator.js";
 import { network } from "./support/submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 
 /**
  * 365 out-refs (constant §5.3 stride of 40 bytes each) with the item at
@@ -115,35 +119,41 @@ const driveToStep01 = async () => {
       contracts: harness.family,
     });
 
-  const initResult = await submitInputSetUniquenessInit({
-    lucid: harness.proverLucid,
-    blueprint: harness.realBlueprint,
-    network,
-    contracts: harness.family,
-    category: harness.category,
-    catalogue: {
-      policyId: harness.contracts.fraudProofCatalogue.policyId,
-      spendingScriptAddress:
-        harness.contracts.fraudProofCatalogue.spendingScriptAddress,
-      root: harness.catalogue.root,
+  const initResult = await buildAndSubmitUnjournaled(
+    buildInputSetUniquenessInit,
+    {
+      lucid: harness.proverLucid,
+      blueprint: harness.realBlueprint,
+      network,
+      contracts: harness.family,
+      category: harness.category,
+      catalogue: {
+        policyId: harness.contracts.fraudProofCatalogue.policyId,
+        spendingScriptAddress:
+          harness.contracts.fraudProofCatalogue.spendingScriptAddress,
+        root: harness.catalogue.root,
+      },
+      signer: harness.proverSigner,
+      fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      witnessReferenceScripts: setup.witnessReferenceScripts,
     },
-    signer: harness.proverSigner,
-    fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
-    witnessReferenceScripts: setup.witnessReferenceScripts,
-  });
-  const step01 = await submitInputSetUniquenessStep01({
-    lucid: harness.proverLucid,
-    blueprint: harness.realBlueprint,
-    contracts: harness.family,
-    categoryId: harness.category.categoryId,
-    network,
-    signer: harness.proverSigner,
-    threadOutRef: initResult.nextThreadOutRef,
-    stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-    txInclusion: fixture.txInclusion,
-    referenceScriptUtxo: step01Ref,
-    witnessReferenceScripts: setup.witnessReferenceScripts,
-  });
+  );
+  const step01 = await buildAndSubmitUnjournaled(
+    buildInputSetUniquenessStep01,
+    {
+      lucid: harness.proverLucid,
+      blueprint: harness.realBlueprint,
+      contracts: harness.family,
+      categoryId: harness.category.categoryId,
+      network,
+      signer: harness.proverSigner,
+      threadOutRef: initResult.nextThreadOutRef,
+      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+      txInclusion: fixture.txInclusion,
+      referenceScriptUtxo: step01Ref,
+      witnessReferenceScripts: setup.witnessReferenceScripts,
+    },
+  );
   expect(step01.stepState).toStrictEqual({ bad_tx_id: fixture.nativeTxId });
 
   return {
@@ -167,7 +177,7 @@ describe("input-set-uniqueness emulator tier-2 carriage", () => {
       witnessReferenceScripts,
     } = await driveToStep01();
 
-    const step02 = await submitInputSetUniquenessStep02({
+    const step02 = await submitTurnsUnjournaled(buildInputSetUniquenessStep02, {
       lucid: harness.proverLucid,
       contracts: harness.family,
       categoryId: harness.category.categoryId,
@@ -251,7 +261,7 @@ describe("input-set-uniqueness emulator tier-2 carriage", () => {
     // door re-hashes the referenced bytes against the committed field hash
     // and the validator refuses.
     const refusal = await expectOnchainRefusal(() =>
-      submitInputSetUniquenessStep02({
+      submitTurnsUnjournaled(buildInputSetUniquenessStep02, {
         lucid: harness.proverLucid,
         contracts: harness.family,
         categoryId: harness.category.categoryId,
@@ -270,7 +280,7 @@ describe("input-set-uniqueness emulator tier-2 carriage", () => {
 
     // Same thread, honest publication: the conviction goes through, proving
     // the refusal above was the tamper and nothing else.
-    const step02 = await submitInputSetUniquenessStep02({
+    const step02 = await submitTurnsUnjournaled(buildInputSetUniquenessStep02, {
       lucid: harness.proverLucid,
       contracts: harness.family,
       categoryId: harness.category.categoryId,

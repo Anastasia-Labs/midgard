@@ -19,11 +19,7 @@ import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";
 
-import {
-  certifyFaultProofFieldCarriage,
-  planFaultProofFieldOpening,
-  publishFaultProofFieldCarriage,
-} from "../src/field-opening.js";
+import { planFaultProofFieldOpening } from "../src/field-opening.js";
 import {
   applyMintDeclaredAssetLimitScripts,
   MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES,
@@ -44,6 +40,10 @@ import {
   familyStepsFromRegisteredChain,
 } from "./support/emulator/registered-chain.js";
 import { createLifecycleCoverageRecorder } from "./support/lifecycle-coverage.js";
+import {
+  certifyCarriageUnjournaled,
+  publishCarriageUnjournaled,
+} from "./support/submit-unjournaled.js";
 
 export const network = "Custom" as const;
 
@@ -284,7 +284,7 @@ export const publishCarriage = async (
     label,
   });
   const carriage = await captureEmulatorSubmission(harness.emulator, () =>
-    publishFaultProofFieldCarriage({
+    publishCarriageUnjournaled({
       ownOutputs,
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
@@ -296,7 +296,7 @@ export const publishCarriage = async (
   const certificate =
     planned.plan.tier === "Certified"
       ? await captureEmulatorSubmission(harness.emulator, () =>
-          certifyFaultProofFieldCarriage({
+          certifyCarriageUnjournaled({
             ownOutputs,
             lucid: harness.proverLucid,
             network,

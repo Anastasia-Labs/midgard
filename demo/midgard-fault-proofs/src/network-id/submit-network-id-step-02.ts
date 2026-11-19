@@ -15,4 +15,4 @@ import "./wrongful-rejection.js";
 import "./submit-network-id-step-02.same-fault.js";
 import "./submit-network-id-step-02.submit-network-id-step02.js";
 export { type SubmitNetworkIdStep02Result } from "./submit-network-id-step-02.same-fault.js";
-export { submitNetworkIdStep02 } from "./submit-network-id-step-02.submit-network-id-step02.js";
+export { buildNetworkIdStep02 } from "./submit-network-id-step-02.submit-network-id-step02.js";

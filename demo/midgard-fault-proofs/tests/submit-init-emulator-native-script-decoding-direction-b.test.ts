@@ -33,7 +33,6 @@ import {
   type NativeScriptDecodingFinding,
   NativeScriptDecodingPlanRoutes,
   NativeScriptDecodingProvability,
-  proveNativeScriptDecodingFault,
 } from "../src/native-script-decoding/index.js";
 import {
   decodingCanonicalItem,
@@ -45,6 +44,7 @@ import {
   publishDecodingReferenceScripts,
   setupDecodingScenario,
 } from "./support/native-script-decoding-emulator.js";
+import { proveNativeScriptDecodingFault } from "./support/native-script-decoding-prover.js";
 import { expectSingleUtxoWithUnit } from "./support/submit-init-emulator-shared.js";
 
 const FORCED_ORDER_KEY: SDK.OutputReference = {

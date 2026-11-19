@@ -4,10 +4,9 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultFinalize } from "../linear-fault-finalize.js";
+import { buildLinearFaultFinalize } from "../linear-fault-finalize.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY_LABEL as FAMILY,
   type OutputReferenceScriptDecodingContracts,
@@ -67,7 +66,7 @@ const readTerminalState = async ({
  * validator itself refuses to mint under an honest verdict. Production
  * callers use the guarded entry point below.
  */
-export const submitOutputReferenceScriptDecodingStep06Raw = async ({
+export const buildOutputReferenceScriptDecodingStep06Raw = async ({
   lucid,
   contracts,
   categoryId,
@@ -75,8 +74,6 @@ export const submitOutputReferenceScriptDecodingStep06Raw = async ({
   threadOutRef,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: OutputReferenceScriptDecodingContracts;
@@ -85,8 +82,6 @@ export const submitOutputReferenceScriptDecodingStep06Raw = async ({
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const { stepIndex, threadUtxo, threadToken } = await readTerminalState({
     lucid,
@@ -95,7 +90,7 @@ export const submitOutputReferenceScriptDecodingStep06Raw = async ({
     signer,
     threadOutRef,
   });
-  return await submitLinearFaultFinalize({
+  return await buildLinearFaultFinalize({
     lucid,
     family: FAMILY,
     stepIndex,
@@ -113,15 +108,13 @@ export const submitOutputReferenceScriptDecodingStep06Raw = async ({
     }),
     referenceScriptUtxo,
     witnessReferenceScripts,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
 };
 
-export const submitOutputReferenceScriptDecodingStep06 = async ({
+export const buildOutputReferenceScriptDecodingStep06 = async ({
   evidence,
   ...rest
-}: Parameters<typeof submitOutputReferenceScriptDecodingStep06Raw>[0] & {
+}: Parameters<typeof buildOutputReferenceScriptDecodingStep06Raw>[0] & {
   readonly evidence: OutputReferenceScriptDecodingEvidence;
 }) => {
   const { state } = await readTerminalState(rest);
@@ -134,5 +127,5 @@ export const submitOutputReferenceScriptDecodingStep06 = async ({
     throw new Error(
       `${FAMILY}: terminal state differs from retained contradiction`,
     );
-  return await submitOutputReferenceScriptDecodingStep06Raw(rest);
+  return await buildOutputReferenceScriptDecodingStep06Raw(rest);
 };

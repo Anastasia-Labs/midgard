@@ -1,7 +1,7 @@
 import {
-  submitResolvedInit,
+  buildResolvedInit,
+  type ResolvedInitBuild,
   type SubmitResolvedInitParams,
-  type SubmitResolvedInitResult,
 } from "../submit-init.js";
 import {
   L2_TX_MISTAG_CATEGORY_LABEL,
@@ -12,14 +12,14 @@ import {
   l2TxMistagSubmitError,
 } from "./submit-common.js";
 
-export type SubmitL2TxMistagInitResult = SubmitResolvedInitResult;
+export type L2TxMistagInitBuild = ResolvedInitBuild;
 
-export const submitL2TxMistagInit = async (
+export const buildL2TxMistagInit = async (
   params: Omit<SubmitResolvedInitParams, "contracts" | "category"> & {
     readonly contracts: L2TxMistagContracts;
     readonly category: L2TxMistagCatalogueCategory;
   },
-): Promise<SubmitL2TxMistagInitResult> => {
+): Promise<L2TxMistagInitBuild> => {
   const { contracts, category } = params;
   if (category.scriptHash !== contracts.steps[0].spendingScriptHash) {
     throw l2TxMistagSubmitError(
@@ -31,7 +31,7 @@ export const submitL2TxMistagInit = async (
       "category id must be four bytes of lowercase hex.",
     );
   }
-  return await submitResolvedInit({
+  return await buildResolvedInit({
     ...params,
     label: L2_TX_MISTAG_CATEGORY_LABEL,
   });

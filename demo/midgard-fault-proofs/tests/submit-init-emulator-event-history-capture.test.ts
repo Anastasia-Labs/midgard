@@ -31,8 +31,6 @@ import { Effect } from "effect";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
 import { fabricatedHistoryOpeningCbor } from "../src/fabricated-history-witness.js";
-import { submitFabricatedDepositStep02 } from "../src/submit-fabricated-deposit-step-02.js";
-import { submitFabricatedWithdrawalStep02 } from "../src/submit-fabricated-withdrawal-step-02.js";
 import { workflowTransactionReferenceInputOutRefs } from "../src/workflow/transaction-boundary.js";
 import {
   buildCapture,
@@ -61,6 +59,7 @@ import {
 } from "./support/emulator/history-pair.js";
 import { measureCompleteSignedTransaction } from "./support/emulator/measurement.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
+import * as fabricated from "./support/submit-unjournaled.fabricated-event.js";
 
 afterAll(() => {
   const dir = join(process.cwd(), "../../artifacts/event-history");
@@ -138,8 +137,8 @@ for (const kind of ["Deposit", "Withdrawal"] as const)
           : null;
         const submit =
           kind === "Deposit"
-            ? submitFabricatedDepositStep02
-            : submitFabricatedWithdrawalStep02;
+            ? fabricated.submitFabricatedDepositStep02
+            : fabricated.submitFabricatedWithdrawalStep02;
         const args = {
           lucid: h.lucid,
           contracts: productionContracts(h, p),
@@ -202,7 +201,7 @@ for (const kind of ["Deposit", "Withdrawal"] as const)
         }
         const result = await submit({
           ...args,
-          preSubmitBoundary: ({ signed, txHash }) => {
+          beforeSubmit: ({ signed, txHash }) => {
             if (mode === "external") {
               expect(current.kind).toBe("Present");
               if (current.kind !== "Present" || !current.retainedDataUtxo)

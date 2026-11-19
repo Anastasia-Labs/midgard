@@ -7,6 +7,10 @@ import {
   type ResolvedProverSigner,
   type SubmitProviderConfig,
 } from "./runtime.js";
+import {
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
+} from "./workflow/transaction-boundary.js";
 
 /** Prepared spend-inputs preimage produced by `prepare-input-no-idx`. */
 export type SubmitInputNoIdxInputsPreimage = {
@@ -81,7 +85,7 @@ export type SubmitInputNoIdxStep02CliConfig = SubmitProviderConfig & {
    * config assembled from argv never sets it and the shipped CLI always lets
    * the ladder decide. It is settable only by a caller that builds this config
    * in process, and it is forwarded from here to the same-named option on
-   * {@link submitInputNoIdxStep02}, which is what the emulator leg exercises
+   * {@link buildInputNoIdxStep02}, which is what the emulator leg exercises
    * directly. That the CLI does not expose it is deliberate: it is the **only**
    * tier choice §8 leaves open, and it changes which transaction pays rather
    * than what the door authenticates, so there is nothing an operator gains by
@@ -92,8 +96,8 @@ export type SubmitInputNoIdxStep02CliConfig = SubmitProviderConfig & {
   readonly awaitConfirmation?: boolean;
 };
 
-export type SubmitInputNoIdxStep02Result = {
-  readonly txHash: string;
+export type InputNoIdxStep02Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -119,8 +123,10 @@ export type SubmitInputNoIdxStep02Result = {
   readonly carriageOutRefs: readonly string[];
   readonly inputIndex: number;
   readonly outputIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
+
+export type SubmitInputNoIdxStep02Result =
+  UnjournaledSubmission<InputNoIdxStep02Build>;
 
 export type InputNoIdxStep02Layout = {
   readonly inputIndex: bigint;

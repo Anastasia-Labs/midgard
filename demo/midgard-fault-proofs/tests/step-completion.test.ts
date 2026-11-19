@@ -13,19 +13,24 @@ import {
   type LucidEvolution,
   type SpendingValidator,
   type TxBuilder,
+  type TxSigned,
   type UTxO,
   validatorToAddress,
+  validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { describe, expect, expectTypeOf, it } from "vitest";
 
 import { resolveProverSigner } from "../src/runtime.js";
 import {
   completeStep,
+  finishStep,
   fundStep,
   type StepFunding,
-  submitStep,
 } from "../src/step-completion.js";
-import { workflowTransactionInputOutRefs } from "../src/workflow/transaction-boundary.js";
+import {
+  submitUnjournaled,
+  workflowTransactionInputOutRefs,
+} from "../src/workflow/transaction-boundary.js";
 import {
   fundReservedCoin,
   restrictedProverFunding,
@@ -127,11 +132,14 @@ describe("fundStep and completeStep", () => {
     const requiredSigners = signed.toTransaction().body().required_signers();
     expect(requiredSigners?.len()).toBe(1);
     expect(requiredSigners?.get(0).to_hex()).toBe(signer.paymentKeyHash);
-    await submitStep(lucid, signed, {
-      label: "test step-01",
-      referenceScripts: [],
-      awaitConfirmation: true,
-    });
+    await submitUnjournaled(
+      lucid,
+      finishStep(signed, { referenceScripts: [] }),
+      {
+        label: "test step-01",
+        awaitConfirmation: true,
+      },
+    );
     expect(await unspent(lucid, proverUtxos)).toEqual(
       [chunkUtxo!, referenced!].map(label),
     );
@@ -224,10 +232,10 @@ describe("fundStep and completeStep", () => {
         .attach.SpendingValidator(validator),
       funding,
     );
-    await submitStep(lucid, signed, {
+    const transaction = finishStep(signed, { referenceScripts: [] });
+    await restricted.beforeSubmit(transaction);
+    await submitUnjournaled(lucid, transaction, {
       label: "test step-01",
-      referenceScripts: [],
-      boundary: restricted.preSubmitBoundary,
       awaitConfirmation: true,
     });
 
@@ -235,56 +243,128 @@ describe("fundStep and completeStep", () => {
   });
 });
 
-describe("submitStep", () => {
-  const signedStep = async () => {
+describe("finishStep", () => {
+  it("returns the signed step with its hash and the reference scripts it was given, and submits nothing", async () => {
     const setup = await prover([{ lovelace: ada(20n) }]);
     const funding = await fundStep(setup.lucid, { signer: setup.signer });
     const signed = await completeStep(
       funding.tx.pay.ToAddress(setup.funder, { lovelace: ada(5n) }),
       funding,
     );
-    return { ...setup, signed };
-  };
-
-  it("hands the boundary the transaction and its reference scripts, and submits nothing when the boundary refuses", async () => {
-    const { emulator, lucid, signed, proverUtxos } = await signedStep();
     const referenceScripts = [
       { role: "step", outRef: `${"cd".repeat(32)}#0`, scriptHash: "ef" },
     ];
-    let seen: unknown;
-    await expect(
-      submitStep(lucid, signed, {
-        label: "test step-01",
-        referenceScripts,
-        boundary: (transaction) => {
-          seen = transaction;
-          throw new Error("refused at the boundary");
-        },
-        awaitConfirmation: true,
-      }),
-    ).rejects.toThrow("refused at the boundary");
 
-    expect(seen).toEqual({
+    expect(finishStep(signed, { referenceScripts })).toEqual({
       txHash: signed.toHash(),
       signed,
       referenceScripts,
     });
-    emulator.awaitBlock();
-    expect(await unspent(lucid, proverUtxos)).toEqual(proverUtxos.map(label));
+    setup.emulator.awaitBlock();
+    expect(await unspent(setup.lucid, setup.proverUtxos)).toEqual(
+      setup.proverUtxos.map(label),
+    );
   });
 
-  it("returns the hash once the transaction confirms, and refuses a provider that reports another, naming the step", async () => {
-    const accepted = await signedStep();
+  it("refuses a signed body whose hash is not 32 bytes of hex", () => {
+    const signed = { toHash: () => "ab".repeat(31) } as unknown as TxSigned;
+    expect(() => finishStep(signed, { referenceScripts: [] })).toThrow(
+      "locally evaluated transaction returned an invalid body hash",
+    );
+  });
+
+  it("keeps exactly the reference-script candidates the signed body reads", async () => {
+    const { emulator, lucid, funderLucid, signer, funder, scriptUtxo } =
+      await prover([{ lovelace: ada(40n) }, { lovelace: ada(30n) }]);
+    const publishHash = await (
+      await (
+        await funderLucid
+          .newTx()
+          .pay.ToAddressWithData(
+            funder,
+            { kind: "inline", value: Data.void() },
+            { lovelace: ada(20n) },
+            validator,
+          )
+          .complete()
+      ).sign
+        .withWallet()
+        .complete()
+    ).submit();
+    emulator.awaitBlock();
+    const [published] = await lucid.utxosByOutRef([
+      { txHash: publishHash, outputIndex: 0 },
+    ]);
+    expect(published?.scriptRef).toBeDefined();
+    const [unread] = await lucid.utxosByOutRef([
+      { txHash: publishHash, outputIndex: 1 },
+    ]);
+
+    const funding = await fundStep(lucid, { signer });
+    const signed = await completeStep(
+      funding.tx.collectFrom([scriptUtxo], Data.void()).readFrom([published!]),
+      funding,
+    );
+
     expect(
-      await submitStep(accepted.lucid, accepted.signed, {
+      finishStep(signed, {
+        referenceScriptCandidates: [
+          { role: "absent", utxo: undefined },
+          { role: "unread", utxo: unread },
+          { role: "step", utxo: published, expectedScript: validator },
+        ],
+      }).referenceScripts,
+    ).toEqual([
+      {
+        role: "step",
+        outRef: label(published!),
+        scriptHash: validatorToScriptHash(validator),
+      },
+    ]);
+  });
+});
+
+describe("submitUnjournaled", () => {
+  const finishedStep = async () => {
+    const setup = await prover([{ lovelace: ada(20n) }]);
+    const funding = await fundStep(setup.lucid, { signer: setup.signer });
+    const signed = await completeStep(
+      funding.tx.pay.ToAddress(setup.funder, { lovelace: ada(5n) }),
+      funding,
+    );
+    return {
+      ...setup,
+      signed,
+      transaction: finishStep(signed, { referenceScripts: [] }),
+    };
+  };
+
+  it("returns the hash and waits for confirmation only when asked", async () => {
+    const pending = await finishedStep();
+    expect(
+      await submitUnjournaled(pending.lucid, pending.transaction, {
         label: "test step-01",
-        referenceScripts: [],
+        awaitConfirmation: false,
+      }),
+    ).toBe(pending.signed.toHash());
+    expect(
+      await pending.emulator.getTransactionStatus(pending.signed.toHash()),
+    ).toMatchObject({ status: "pending" });
+
+    const confirmed = await finishedStep();
+    expect(
+      await submitUnjournaled(confirmed.lucid, confirmed.transaction, {
+        label: "test step-01",
         awaitConfirmation: true,
       }),
-    ).toBe(accepted.signed.toHash());
-    expect(await unspent(accepted.lucid, accepted.proverUtxos)).toEqual([]);
+    ).toBe(confirmed.signed.toHash());
+    expect(
+      await confirmed.emulator.getTransactionStatus(confirmed.signed.toHash()),
+    ).toMatchObject({ status: "confirmed" });
+  });
 
-    const { emulator, lucid, signed } = await signedStep();
+  it("refuses a provider that reports another hash, naming the transaction", async () => {
+    const { emulator, lucid, signed, transaction } = await finishedStep();
     const otherHash = "00".repeat(32);
     const provider = layerMethod(
       emulator,
@@ -293,9 +373,8 @@ describe("submitStep", () => {
     );
     try {
       await expect(
-        submitStep(lucid, signed, {
+        submitUnjournaled(lucid, transaction, {
           label: "test step-01",
-          referenceScripts: [],
           awaitConfirmation: false,
         }),
       ).rejects.toThrow(

@@ -5,11 +5,10 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { submitNativeTxBinding } from "../native-tx-binding.js";
+import { buildNativeTxBinding } from "../native-tx-binding.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { SubmitStep01TxInclusion } from "../step-support.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { MintItemNonCanonicalContracts } from "./contracts.js";
 import {
   classifyMintItemFinding,
@@ -20,7 +19,7 @@ import {
   MintItemStep02DatumSchema,
 } from "./schemas.js";
 
-export const submitMintItemNonCanonicalStep01Accepted = async ({
+export const buildMintItemNonCanonicalStep01Accepted = async ({
   lucid,
   blueprint,
   network,
@@ -33,8 +32,6 @@ export const submitMintItemNonCanonicalStep01Accepted = async ({
   txInclusion,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -51,8 +48,6 @@ export const submitMintItemNonCanonicalStep01Accepted = async ({
   readonly txInclusion: SubmitStep01TxInclusion;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const exact = classifyMintItemFinding(finding);
   const nextDatum = Data.to(
@@ -66,7 +61,7 @@ export const submitMintItemNonCanonicalStep01Accepted = async ({
     } as never,
     MintItemStep02DatumSchema as never,
   );
-  return await submitNativeTxBinding({
+  return await buildNativeTxBinding({
     lucid,
     blueprint,
     network,
@@ -89,7 +84,5 @@ export const submitMintItemNonCanonicalStep01Accepted = async ({
     }),
     referenceScriptUtxo,
     witnessReferenceScripts,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
 };

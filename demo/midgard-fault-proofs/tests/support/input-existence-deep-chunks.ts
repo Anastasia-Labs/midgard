@@ -13,9 +13,9 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { PublishedProofChunk } from "../../src/proof-chunk-carriage.js";
-import { publishProofChunks } from "../../src/publish-proof-chunks.js";
 import { registerChunkedVerifyRewardAccount } from "./emulator/emulator-context.js";
 import type { FaultProofEmulatorHarness } from "./emulator/harness.js";
+import { publishProofChunks } from "./submit-unjournaled.js";
 
 export const deepProofChunks = async (
   harness: FaultProofEmulatorHarness,

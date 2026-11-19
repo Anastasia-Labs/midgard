@@ -22,11 +22,10 @@ import {
   requireLinearFaultReferenceScript,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { requireInitialStepDatum } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { MinAdaContracts } from "./contracts.js";
 
 type MinAdaStep01SpendRedeemer = Data.Static<
@@ -52,7 +51,7 @@ type ForcedPayload = Omit<
   readonly membership: ForcedTransactionSourceMembershipProof;
 };
 
-export const submitMinAdaStep01Forced = async ({
+export const buildMinAdaStep01Forced = async ({
   lucid,
   contracts,
   categoryId,
@@ -61,8 +60,6 @@ export const submitMinAdaStep01Forced = async ({
   state,
   forcedSource,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: MinAdaContracts;
@@ -72,8 +69,6 @@ export const submitMinAdaStep01Forced = async ({
   readonly state: MinAdaStep02State;
   readonly forcedSource: ForcedPayload;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   if (
     state.source_kind !== 1n ||
@@ -133,7 +128,7 @@ export const submitMinAdaStep01Forced = async ({
       MinAdaStep01SpendRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -144,9 +139,10 @@ export const submitMinAdaStep01Forced = async ({
     nextAddress: contracts.steps[1].spendingScriptAddress,
     nextDatum: datum,
     redeemer,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined) throw new Error("minAda: layout unresolved");
-  return { txHash, nextThreadOutRef: `${txHash}#${outputIndex.toString()}` };
+  return {
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
+  };
 };

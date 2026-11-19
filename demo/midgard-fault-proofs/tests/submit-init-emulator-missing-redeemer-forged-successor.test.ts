@@ -12,7 +12,6 @@ import { describe, expect, it } from "vitest";
 import {
   buildDirectPurposeTransition,
   type DirectPurposeRole,
-  submitDirectPurposeTransition,
 } from "../src/direct-purpose-family/index.js";
 import { MISSING_REDEEMER_DIRECT_WALK } from "../src/missing-redeemer/index.js";
 import {
@@ -27,6 +26,7 @@ import {
   redeemerMissingVerdict,
   setupMissingRedeemerScenario,
 } from "./support/missing-redeemer-emulator.subject.js";
+import { submitDirectPurposeTransition } from "./support/submit-unjournaled.direct-purpose.js";
 
 type Scenario = Parameters<typeof setupMissingRedeemerScenario>[0];
 

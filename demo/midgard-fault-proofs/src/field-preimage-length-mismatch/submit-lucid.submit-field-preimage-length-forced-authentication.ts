@@ -20,17 +20,16 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
-import { workflowReferenceScriptsUsedByTransaction } from "../workflow/transaction-boundary.js";
 import type { ManifestBoundFieldPreimageLengthConfig } from "./config.js";
+import type { FieldPreimageLengthForcedDispatchBuild } from "./submit-lucid.submit-field-preimage-length-cancel.js";
 import {
   type FieldPreimageLengthClaimResolver,
   LABEL,
   requireReference,
   requireThread,
-  type SubmitFieldPreimageLengthForcedDispatchResult,
 } from "./submit-lucid.submit-field-preimage-length-cancel.js";
 import type { PreparedFieldPreimageLengthWorkflow } from "./workflow.js";
 
@@ -62,14 +61,12 @@ const forcedSubject = (membership: ForcedMembership) => {
  * Forced step 02 to the terminal: spends the pending thread with the redeemer
  * `args` builds from the transaction's layout and writes `step_03.State`.
  */
-const submitForcedStep02 = async ({
+const buildForcedStep02 = async ({
   config,
   threadOutRef,
   state,
   args,
   carriageReferenceInputs,
-  preSubmitBoundary,
-  awaitConfirmation,
 }: {
   readonly config: ManifestBoundFieldPreimageLengthConfig;
   readonly threadOutRef: string;
@@ -84,9 +81,7 @@ const submitForcedStep02 = async ({
     referenceInputs: Parameters<BuildTxWithRedeemer>[0]["referenceInputs"],
   ) => unknown;
   readonly carriageReferenceInputs: readonly UTxO[];
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation: boolean;
-}): Promise<SubmitFieldPreimageLengthForcedDispatchResult> => {
+}): Promise<FieldPreimageLengthForcedDispatchBuild> => {
   const { threadUtxo, threadToken, step } = await requireThread({
     config,
     threadOutRef,
@@ -145,31 +140,25 @@ const submitForcedStep02 = async ({
   );
   if (layout === undefined) throw new Error(`${LABEL}: layout did not resolve`);
   const resolved: ForcedLayout = layout;
-  const txHash = await submitStep(config.lucid, signed, {
-    label: `${LABEL} step-03`,
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: "V1 field-preimage-length forced step-02",
-          utxo: reference,
-          expectedScript: step.spendingScript,
-        },
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: "V1 field-preimage-length forced step-02",
+        utxo: reference,
+        expectedScript: step.spendingScript,
+      },
+    ],
   });
   return {
-    txHash,
-    nextThreadOutRef: `${txHash}#${resolved.outputIndex.toString()}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${resolved.outputIndex.toString()}`,
     computationThreadUnit: threadToken.unit,
     inputIndex: Number(resolved.inputIndex),
     outputIndex: Number(resolved.outputIndex),
   };
 };
 
-export const submitFieldPreimageLengthForcedAuthentication = async ({
+export const buildFieldPreimageLengthForcedAuthentication = async ({
   config,
   threadOutRef,
   header,
@@ -178,8 +167,6 @@ export const submitFieldPreimageLengthForcedAuthentication = async ({
   claimResolver,
   prepared,
   carriageReferenceInputs = [],
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly config: ManifestBoundFieldPreimageLengthConfig;
   readonly threadOutRef: string;
@@ -189,9 +176,7 @@ export const submitFieldPreimageLengthForcedAuthentication = async ({
   readonly claimResolver?: FieldPreimageLengthClaimResolver;
   readonly prepared: PreparedFieldPreimageLengthWorkflow;
   readonly carriageReferenceInputs?: readonly UTxO[];
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitFieldPreimageLengthForcedDispatchResult> => {
+}): Promise<FieldPreimageLengthForcedDispatchBuild> => {
   const { subject, rejectionReason } = forcedSubject(membership);
   if (
     prepared.transactionId !== membership.value.tx_id ||
@@ -202,7 +187,7 @@ export const submitFieldPreimageLengthForcedAuthentication = async ({
   }
   if (claimResolver === undefined && claim === undefined)
     throw new Error(`${LABEL}: forced authentication omitted field claim`);
-  return await submitForcedStep02({
+  return await buildForcedStep02({
     config,
     threadOutRef,
     state: {
@@ -223,8 +208,6 @@ export const submitFieldPreimageLengthForcedAuthentication = async ({
       },
     }),
     carriageReferenceInputs,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
 };
 
@@ -234,21 +217,17 @@ export const submitFieldPreimageLengthForcedAuthentication = async ({
  * terminal state records that field with zero lengths, and the terminal holds
  * no fault there, so the rejection is contradicted.
  */
-export const submitFieldPreimageLengthForcedOutOfDomain = async ({
+export const buildFieldPreimageLengthForcedOutOfDomain = async ({
   config,
   threadOutRef,
   header,
   membership,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly config: ManifestBoundFieldPreimageLengthConfig;
   readonly threadOutRef: string;
   readonly header: Header;
   readonly membership: ForcedMembership;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitFieldPreimageLengthForcedDispatchResult> => {
+}): Promise<FieldPreimageLengthForcedDispatchBuild> => {
   const { subject, rejectionReason } = forcedSubject(membership);
   if (
     rejectionReason === null ||
@@ -263,7 +242,7 @@ export const submitFieldPreimageLengthForcedOutOfDomain = async ({
     throw new Error(
       `${LABEL}: field ${fieldIndex.toString()} is inside the native layout`,
     );
-  return await submitForcedStep02({
+  return await buildForcedStep02({
     config,
     threadOutRef,
     state: { subject, fieldIndex, declaredLength: 0n, actualLength: 0n },
@@ -276,7 +255,5 @@ export const submitFieldPreimageLengthForcedOutOfDomain = async ({
       },
     }),
     carriageReferenceInputs: [],
-    preSubmitBoundary,
-    awaitConfirmation,
   });
 };

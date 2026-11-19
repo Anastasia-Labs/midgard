@@ -59,6 +59,6 @@ export {
   type SubmitInputNoIdxStep02Result,
 } from "./submit-input-no-idx-step-02.parse-submit-input-no-idx-inputs-preimage.js";
 export {
-  submitInputNoIdxStep02,
+  buildInputNoIdxStep02,
   submitInputNoIdxStep02FromFiles,
 } from "./submit-input-no-idx-step-02.submit-input-no-idx-step02.js";

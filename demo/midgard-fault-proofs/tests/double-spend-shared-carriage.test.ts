@@ -8,7 +8,6 @@ import { Proof } from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { publishFaultProofFieldCarriage } from "../src/field-opening.js";
 import { splitProofIntoChunkDatums } from "../src/publish-proof-chunks.js";
 import { WorkflowActionChangedError } from "../src/workflow/action-changed.js";
 import { addressFieldCarriageOwnOutputs } from "../src/workflow/bespoke-adapter-field-carriage.js";
@@ -24,6 +23,7 @@ import {
   withOtherAsset,
 } from "./support/double-spend-shared-carriage-harness.js";
 import { repeatedFirstChunkItems } from "./support/repeated-first-chunk-items.js";
+import { publishCarriageUnjournaled } from "./support/submit-unjournaled.js";
 
 /** 800 spend inputs whose field repeats its first chunk as its second. */
 const repeatedFirstChunkSpendInputs = () =>
@@ -222,7 +222,7 @@ describe("double-spend carriage shared with other on-chain objects", () => {
     const wallet = [withOtherAsset(first!, LOWEST_TX_HASH), ...rest];
     class PublicationStarted extends Error {}
     await expect(
-      publishFaultProofFieldCarriage({
+      publishCarriageUnjournaled({
         ...(await adapterCarriage(plan, wallet)),
         signer: SIGNER,
         planned: plan,
@@ -356,7 +356,7 @@ describe("double-spend carriage shared with other on-chain objects", () => {
     const wallet = [{ ...first!, txHash: LOWEST_TX_HASH }, ...rest];
     class PublicationStarted extends Error {}
     await expect(
-      publishFaultProofFieldCarriage({
+      publishCarriageUnjournaled({
         ...(await adapterCarriage(plan, wallet, rest)),
         signer: SIGNER,
         planned: plan,
@@ -399,7 +399,7 @@ describe("double-spend carriage shared with other on-chain objects", () => {
     const wallet = [publications[0]!, publications[2]!];
     class PublicationStarted extends Error {}
     await expect(
-      publishFaultProofFieldCarriage({
+      publishCarriageUnjournaled({
         ...(await adapterCarriage(plan, wallet)),
         signer: SIGNER,
         planned: plan,
@@ -419,7 +419,7 @@ describe("double-spend carriage shared with other on-chain objects", () => {
     );
     const wallet = [...publications];
     await expect(
-      publishFaultProofFieldCarriage({
+      publishCarriageUnjournaled({
         ...(await adapterCarriage(plan, wallet)),
         signer: SIGNER,
         planned: plan,

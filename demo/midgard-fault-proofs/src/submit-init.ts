@@ -11,6 +11,8 @@ import "./submit-init.resolve-non-existent-input-no-index-init.js";
 import "./submit-init.submit-resolved-init.js";
 import "./submit-init.submit-init.js";
 export {
+  type InitBuild,
+  type ResolvedInitBuild,
   type ResolvedInitCatalogueCategory,
   type ResolvedInitContracts,
   type ResolvedNonExistentInputNoIndexInit,
@@ -21,5 +23,5 @@ export {
   type SubmitResolvedInitParams,
   type SubmitResolvedInitResult,
 } from "./submit-init.resolve-non-existent-input-no-index-init.js";
-export { submitInit, submitInitFromFiles } from "./submit-init.submit-init.js";
-export { submitResolvedInit } from "./submit-init.submit-resolved-init.js";
+export { buildInit, submitInitFromFiles } from "./submit-init.submit-init.js";
+export { buildResolvedInit } from "./submit-init.submit-resolved-init.js";

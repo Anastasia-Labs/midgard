@@ -6,21 +6,21 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
-  captureLocallyEvaluatedTransaction,
+  buildMinFeeInit,
+  buildMinFeeStep01,
+  buildMinFeeStep02,
+  buildRemoveFraudulentBlock,
   prepareMinFeeFromTransactions,
   submitCapturedTransaction,
-  submitMinFeeInit,
-  submitMinFeeStep01,
-  submitMinFeeStep02,
-  submitRemoveFraudulentBlock,
   workflowTransactionInputOutRefs,
 } from "../src/index.js";
 import { parseSubmitStep01TxInclusion } from "../src/step-support.js";
 import type { MinFeeFieldItemCbors } from "../src/submit-min-fee-step-02.js";
+import type { LocallyEvaluatedTransaction } from "../src/workflow/transaction-boundary.js";
 import {
   buildProvedDoubleSpendFixture,
+  buildRemovalForFixture,
   expectRemovedFraudProofState,
-  submitRemovalForFixture,
 } from "./support/submit-init-emulator-fixtures.js";
 import {
   buildRemovalDeploymentInfo,
@@ -29,12 +29,14 @@ import {
   publishFraudProofChainReferenceScripts,
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 
 describe("Q53 fraud-proof reward idempotency", () => {
   const expectExactNonZeroFullSlashEconomics = (
-    signed: Awaited<
-      ReturnType<typeof captureLocallyEvaluatedTransaction>
-    >["signed"],
+    signed: LocallyEvaluatedTransaction["signed"],
   ) => {
     const economics = SDK.getProtocolParameters(network);
     expect(economics.slashing_penalty).toBeGreaterThan(0n);
@@ -52,10 +54,7 @@ describe("Q53 fraud-proof reward idempotency", () => {
 
     const capture = async (label: string) => {
       try {
-        return await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) =>
-            await submitRemovalForFixture(fixture, { preSubmitBoundary }),
-        );
+        return await buildRemovalForFixture(fixture);
       } catch (cause) {
         throw new Error(`${label}: ${String(cause)}`);
       }
@@ -161,7 +160,7 @@ describe("Q53 fraud-proof reward idempotency", () => {
       root: fixture.catalogue.root,
     };
     const init = await atStage("min-fee init", async () =>
-      submitMinFeeInit({
+      buildAndSubmitUnjournaled(buildMinFeeInit, {
         lucid: fixture.proverLucid,
         blueprint: fixture.realBlueprint,
         network,
@@ -174,7 +173,7 @@ describe("Q53 fraud-proof reward idempotency", () => {
       }),
     );
     const step01 = await atStage("min-fee step-01", async () =>
-      submitMinFeeStep01({
+      buildAndSubmitUnjournaled(buildMinFeeStep01, {
         lucid: fixture.proverLucid,
         blueprint: fixture.realBlueprint,
         contracts: minFee,
@@ -192,7 +191,7 @@ describe("Q53 fraud-proof reward idempotency", () => {
       field.map((item) => Buffer.from(item, "hex")),
     ) as unknown as MinFeeFieldItemCbors;
     const minFeeProof = await atStage("min-fee step-02", async () =>
-      submitMinFeeStep02({
+      submitTurnsUnjournaled(buildMinFeeStep02, {
         lucid: fixture.proverLucid,
         contracts: minFee,
         categoryId: category.categoryId,
@@ -228,28 +227,20 @@ describe("Q53 fraud-proof reward idempotency", () => {
       },
     );
 
-    const doubleSpendRemoval = await captureLocallyEvaluatedTransaction(
-      async (preSubmitBoundary) =>
-        await submitRemovalForFixture(fixture, { preSubmitBoundary }),
-    );
+    const doubleSpendRemoval = await buildRemovalForFixture(fixture);
     const removeNow = BigInt(fixture.emulator.now());
-    const minFeeRemoval = await captureLocallyEvaluatedTransaction(
-      async (preSubmitBoundary) =>
-        await submitRemoveFraudulentBlock({
-          lucid: fixture.proverLucid,
-          blueprint: fixture.realBlueprint,
-          deploymentInfo: removalDeploymentInfo,
-          network,
-          signer: fixture.proverSigner,
-          fraudCategory: "minFee",
-          fraudulentHeaderHash: fixture.headerHash,
-          awaitConfirmation: true,
-          requireReferenceScripts: true,
-          validFrom: removeNow > 120_000n ? removeNow - 120_000n : 0n,
-          validTo: removeNow + 300_000n,
-          preSubmitBoundary,
-        }),
-    );
+    const { transaction: minFeeRemoval } = await buildRemoveFraudulentBlock({
+      lucid: fixture.proverLucid,
+      blueprint: fixture.realBlueprint,
+      deploymentInfo: removalDeploymentInfo,
+      network,
+      signer: fixture.proverSigner,
+      fraudCategory: "minFee",
+      fraudulentHeaderHash: fixture.headerHash,
+      requireReferenceScripts: true,
+      validFrom: removeNow > 120_000n ? removeNow - 120_000n : 0n,
+      validTo: removeNow + 300_000n,
+    });
     expectExactNonZeroFullSlashEconomics(doubleSpendRemoval.signed);
     expectExactNonZeroFullSlashEconomics(minFeeRemoval.signed);
     const doubleSpendInputs = workflowTransactionInputOutRefs(

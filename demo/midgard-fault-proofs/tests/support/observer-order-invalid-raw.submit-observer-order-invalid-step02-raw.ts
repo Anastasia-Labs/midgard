@@ -17,7 +17,7 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../../src/linear-fault-family.js";
-import { submitLinearFaultContinue } from "../../src/linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../../src/linear-fault-submit.js";
 import type { ObserverOrderInvalidContracts } from "../../src/observer-order-invalid/contracts.js";
 import {
   classifyObserverOrderInvalidFinding,
@@ -43,6 +43,7 @@ import {
   type OpeningMutation,
   resolveObserverOpening,
 } from "./observer-order-invalid-raw.resolve-observer-opening.js";
+import { buildAndSubmitTransactionUnjournaled } from "./submit-unjournaled.js";
 
 // ---------------------------------------------------------------------------
 // Raw submitters
@@ -139,7 +140,7 @@ export const submitObserverOrderInvalidStep01ForcedRaw = async ({
       ObserverOrderInvalidStep01RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  return await submitLinearFaultContinue({
+  return await buildAndSubmitTransactionUnjournaled(buildLinearFaultContinue, {
     lucid,
     signer,
     threadUtxo,
@@ -262,7 +263,7 @@ export const submitObserverOrderInvalidStep02Raw = async ({
       ObserverOrderInvalidStep02RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  return await submitLinearFaultContinue({
+  return await buildAndSubmitTransactionUnjournaled(buildLinearFaultContinue, {
     lucid,
     signer,
     threadUtxo,

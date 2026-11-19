@@ -6,21 +6,18 @@ import {
 } from "@al-ft/midgard-sdk";
 import { type LucidEvolution } from "@lucid-evolution/lucid";
 
-import {
-  type StateQueueMutationLease,
-  type StateQueueMutationLeaseCoordinator,
-  submitRemoveFraudulentBlock,
-} from "../remove-fraudulent-block.js";
+import { type StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import { type ResolvedProverSigner } from "../runtime.js";
 import {
+  buildFabricatedDepositStep01,
   type FabricatedDepositContracts,
   parseSubmitFabricatedDepositInclusion,
-  submitFabricatedDepositStep01,
 } from "../submit-fabricated-deposit-step-01.js";
-import { submitFabricatedDepositStep02 } from "../submit-fabricated-deposit-step-02.js";
-import { submitFabricatedDepositStep03 } from "../submit-fabricated-deposit-step-03.js";
-import { submitFabricatedDepositStep04 } from "../submit-fabricated-deposit-step-04.js";
-import { submitInit } from "../submit-init.js";
+import { buildFabricatedDepositStep02 } from "../submit-fabricated-deposit-step-02.js";
+import { buildFabricatedDepositStep03 } from "../submit-fabricated-deposit-step-03.js";
+import { buildFabricatedDepositStep04 } from "../submit-fabricated-deposit-step-04.js";
+import { buildInit } from "../submit-init.js";
 import { createFabricatedDepositCompleteCanonicalReplay } from "./complete-replay.js";
 import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
 import {
@@ -39,8 +36,9 @@ import {
   type LinearFamilyTransactionPort,
 } from "./linear-family-adapter.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
+import { admitRemovalTransaction } from "./removal-admission.js";
+import { journaledStepTransaction } from "./step-transaction.js";
 import {
-  captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
   workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary.js";
@@ -114,55 +112,40 @@ const captureRemoval = async (
   config: BoundConfig,
   input: Readonly<Record<string, unknown>>,
 ) => {
-  let mutationLease: StateQueueMutationLease | undefined;
-  const retainingCoordinator: StateQueueMutationLeaseCoordinator = {
-    acquire: async () => {
-      const acquired =
-        await config.stateQueueMutationLeaseCoordinator.acquire();
-      mutationLease = acquired;
-      return acquired;
-    },
-  };
   const nextRemovalOutRef = stringField(input, "nextRemovalOutRef");
   const fraudProofOutRef = stringField(input, "fraudProofOutRef");
-  const transaction = await captureLocallyEvaluatedTransaction(
-    async (boundary) => {
-      await submitRemoveFraudulentBlock({
-        fraudProofOutRef,
-        lucid: config.lucid,
-        blueprint: config.binding.blueprint,
-        deploymentInfo: config.binding.deploymentInfo,
-        network: config.binding.network,
-        signer: config.signer,
-        fraudCategory: "fabricatedDeposit",
-        fraudulentHeaderHash: config.binding.definition.headerHash,
-        requireReferenceScripts: true,
-        stateQueueMutationLeaseCoordinator: retainingCoordinator,
-        fraudProverRewardLovelace: BigInt(
-          config.binding.releaseEconomics.policy.fraudProverRewardLovelace,
-        ),
-        preSubmitBoundary: async (built) => {
-          if (
-            !workflowTransactionInputOutRefs(built.signed).includes(
-              nextRemovalOutRef,
-            ) ||
-            !workflowTransactionReferenceInputOutRefs(built.signed).includes(
-              fraudProofOutRef,
-            )
-          ) {
-            throw new Error(
-              "fabricated-deposit removal changed authenticated inputs",
-            );
-          }
-          await boundary(built);
-        },
-      });
+  return await admitRemovalTransaction(
+    await buildRemoveFraudulentBlock({
+      fraudProofOutRef,
+      lucid: config.lucid,
+      blueprint: config.binding.blueprint,
+      deploymentInfo: config.binding.deploymentInfo,
+      network: config.binding.network,
+      signer: config.signer,
+      fraudCategory: "fabricatedDeposit",
+      fraudulentHeaderHash: config.binding.definition.headerHash,
+      requireReferenceScripts: true,
+      stateQueueMutationLeaseCoordinator:
+        config.stateQueueMutationLeaseCoordinator,
+      fraudProverRewardLovelace: BigInt(
+        config.binding.releaseEconomics.policy.fraudProverRewardLovelace,
+      ),
+    }),
+    async (built) => {
+      if (
+        !workflowTransactionInputOutRefs(built.signed).includes(
+          nextRemovalOutRef,
+        ) ||
+        !workflowTransactionReferenceInputOutRefs(built.signed).includes(
+          fraudProofOutRef,
+        )
+      ) {
+        throw new Error(
+          "fabricated-deposit removal changed authenticated inputs",
+        );
+      }
     },
   );
-  return Object.freeze({
-    transaction,
-    ...(mutationLease === undefined ? {} : { mutationLease }),
-  });
 };
 
 const transactionPort = (
@@ -200,9 +183,9 @@ const transactionPort = (
     );
     if (input.stage === "init") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitInit({
+        transaction: (
+          await journaledStepTransaction(
+            await buildInit({
               lucid: config.lucid,
               blueprint: config.binding.blueprint,
               deploymentInfo: config.binding.deploymentInfo,
@@ -215,11 +198,10 @@ const transactionPort = (
               ),
               fraudulentHeaderHash: admitted.headerHash,
               witnessReferenceScripts: config.references.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "fabricated-deposit buildInit",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "step_01") {
@@ -227,9 +209,9 @@ const transactionPort = (
         admitted.depositInclusion,
       );
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitFabricatedDepositStep01({
+        transaction: (
+          await journaledStepTransaction(
+            await buildFabricatedDepositStep01({
               lucid: config.lucid,
               contracts: config.contracts,
               network: config.binding.network,
@@ -241,11 +223,10 @@ const transactionPort = (
               ),
               depositInclusion: inclusion,
               referenceScriptUtxo: config.references.steps[0],
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "fabricated-deposit buildFabricatedDepositStep01",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "step_02") {
@@ -257,9 +238,9 @@ const transactionPort = (
               eventOutRef: admitted.l1Evidence.historyOutRef,
             } as const);
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitFabricatedDepositStep02({
+        transaction: (
+          await journaledStepTransaction(
+            await buildFabricatedDepositStep02({
               lucid: config.lucid,
               contracts: config.contracts,
               network: config.binding.network,
@@ -268,18 +249,17 @@ const transactionPort = (
               evidence,
               expectedOpeningCbor: admitted.authenticContent.openingCbor,
               referenceScriptUtxo: config.references.steps[1],
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "fabricated-deposit buildFabricatedDepositStep02",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "step_03") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitFabricatedDepositStep03({
+        transaction: (
+          await journaledStepTransaction(
+            await buildFabricatedDepositStep03({
               lucid: config.lucid,
               contracts: config.contracts,
               signer: config.signer,
@@ -290,11 +270,10 @@ const transactionPort = (
                     openingCbor: admitted.authenticContent.openingCbor,
                   }),
               referenceScriptUtxo: config.references.steps[2],
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "fabricated-deposit buildFabricatedDepositStep03",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "step_04") {
@@ -302,23 +281,22 @@ const transactionPort = (
         await config.stateQueueMutationLeaseCoordinator.acquire();
       try {
         await mutationLease.renew();
-        const transaction = await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitFabricatedDepositStep04({
+        const transaction = (
+          await journaledStepTransaction(
+            await buildFabricatedDepositStep04({
               lucid: config.lucid,
               contracts: config.contracts,
               signer: config.signer,
               threadOutRef: stringField(input, "threadOutRef"),
               referenceScriptUtxo: config.references.steps[3],
               witnessReferenceScripts: config.references.witnesses,
-              preSubmitBoundary: async (built) => {
-                await mutationLease.renew();
-                await preSubmitBoundary(built);
-              },
-              awaitConfirmation: false,
-            });
-          },
-        );
+            }),
+            "fabricated-deposit buildFabricatedDepositStep04",
+            async () => {
+              await mutationLease.renew();
+            },
+          )
+        ).transaction;
         return Object.freeze({ transaction, mutationLease });
       } catch (error) {
         await mutationLease.fail(

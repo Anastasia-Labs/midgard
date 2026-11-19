@@ -9,12 +9,13 @@ import {
   resolveProverSigner,
   resolveReferenceInputNoIdxDeploymentContracts,
 } from "./runtime.js";
+import { submitFaultProofTurns } from "./submit-fault-proof-turns.js";
 import {
   parseSubmitReferenceInputNoIdxOutputsPreimage,
   type SubmitReferenceInputNoIdxStep04CliConfig,
   type SubmitReferenceInputNoIdxStep04Result,
 } from "./submit-reference-input-no-idx-step-04.make-reference-input-no-idx-step04-spend-redeemer.js";
-import { submitReferenceInputNoIdxStep04 } from "./submit-reference-input-no-idx-step-04.submit-reference-input-no-idx-step04.js";
+import { buildReferenceInputNoIdxStep04 } from "./submit-reference-input-no-idx-step-04.submit-reference-input-no-idx-step04.js";
 
 export const submitReferenceInputNoIdxStep04FromFiles = async (
   config: SubmitReferenceInputNoIdxStep04CliConfig,
@@ -54,28 +55,34 @@ export const submitReferenceInputNoIdxStep04FromFiles = async (
       contracts.fieldPreimageCertificate.policyId,
     label: "submit-reference-input-no-idx-step-04",
   });
-  return await submitReferenceInputNoIdxStep04({
-    lucid,
-    blueprint,
-    deploymentInfo,
-    network: config.network,
-    signer,
-    threadOutRef: config.threadOutRef,
-    outputsPreimage:
-      parseSubmitReferenceInputNoIdxOutputsPreimage(outputsPreimageJson),
-    nativeTxCompactCbor: parseNativeTxCompactCbor(
-      nativeTxCompactJson,
-      "--native-tx-compact",
-    ),
-    ...(witnessSetCompactJson === undefined
-      ? {}
-      : {
-          witnessSetCompactCbor: parseNativeTxWitnessSetCompactCbor(
-            witnessSetCompactJson,
-            "--witness-set-compact",
-          ),
-        }),
-    fieldGrammar,
-    awaitConfirmation: config.awaitConfirmation,
-  });
+  return await submitFaultProofTurns(
+    buildReferenceInputNoIdxStep04,
+    {
+      lucid,
+      blueprint,
+      deploymentInfo,
+      network: config.network,
+      signer,
+      threadOutRef: config.threadOutRef,
+      outputsPreimage:
+        parseSubmitReferenceInputNoIdxOutputsPreimage(outputsPreimageJson),
+      nativeTxCompactCbor: parseNativeTxCompactCbor(
+        nativeTxCompactJson,
+        "--native-tx-compact",
+      ),
+      ...(witnessSetCompactJson === undefined
+        ? {}
+        : {
+            witnessSetCompactCbor: parseNativeTxWitnessSetCompactCbor(
+              witnessSetCompactJson,
+              "--witness-set-compact",
+            ),
+          }),
+      fieldGrammar,
+    },
+    {
+      label: "reference-input-no-idx-step04",
+      awaitConfirmation: config.awaitConfirmation ?? true,
+    },
+  );
 };

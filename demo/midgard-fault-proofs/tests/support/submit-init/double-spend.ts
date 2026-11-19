@@ -18,10 +18,10 @@ import { expect } from "vitest";
 
 import { resolveProverSigner } from "../../../src/index.js";
 import {
+  buildInit,
+  buildStep04,
   parseSpendInputCbors,
   parseSubmitStep01TxInclusion,
-  submitInit,
-  submitStep04,
 } from "../legacy-submit-emulator.js";
 import {
   type Blueprint,
@@ -35,6 +35,10 @@ import {
   publishRemovalReferenceScripts,
   submitSetupTx,
 } from "../submit-init-emulator-shared.js";
+import {
+  type SubmittedStep,
+  submitTurnsUnjournaled,
+} from "../submit-unjournaled.js";
 import { bindCanonicalFixtureHeader } from "./deployment.js";
 import {
   type DoubleSpendFixtureOptions,
@@ -91,7 +95,7 @@ export const buildProvedDoubleSpendFixture = async ({
     fourthStepUtxo,
   } = await stageDoubleSpendStep04(options);
   const step04Capture = await captureEmulatorSubmission(emulator, () =>
-    submitStep04({
+    submitTurnsUnjournaled(buildStep04, {
       lucid: proverLucid,
       blueprint: realBlueprint,
       deploymentInfo,
@@ -221,9 +225,9 @@ export type ProvedDoubleSpendFixture = {
     ReturnType<typeof publishRemovalReferenceScripts>
   >;
   readonly fraudulentBlockOutRef: string;
-  readonly submitInitResult: Awaited<ReturnType<typeof submitInit>>;
+  readonly submitInitResult: SubmittedStep<typeof buildInit>;
   readonly submitInitMeasurement: CompleteSignedTransactionMeasurement;
-  readonly step04Result: Awaited<ReturnType<typeof submitStep04>>;
+  readonly step04Result: SubmittedStep<typeof buildStep04>;
   readonly step04Measurement: CompleteSignedTransactionMeasurement;
   readonly doubleSpendStepReferenceScripts: Awaited<
     ReturnType<typeof publishFraudProofChainReferenceScripts>

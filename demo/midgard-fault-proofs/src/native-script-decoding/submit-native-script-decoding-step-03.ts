@@ -25,8 +25,8 @@ import "./submit-native-script-decoding-step-03.submit-native-script-decoding-st
 import "./submit-native-script-decoding-step-03.submit-native-script-decoding-step03-advance-or-close-close.js";
 export { type SubmitNativeScriptDecodingStep03Result } from "./submit-native-script-decoding-step-03.advance-step03-thread.js";
 export {
-  submitNativeScriptDecodingStep03AdvanceOrCloseClose,
-  submitNativeScriptDecodingStep03AdvanceOrCloseSegment,
+  buildNativeScriptDecodingStep03AdvanceOrCloseClose,
+  buildNativeScriptDecodingStep03AdvanceOrCloseSegment,
 } from "./submit-native-script-decoding-step-03.submit-native-script-decoding-step03-advance-or-close-close.js";
-export { submitNativeScriptDecodingStep03BindDescriptor } from "./submit-native-script-decoding-step-03.submit-native-script-decoding-step03-bind-descriptor.js";
-export { submitNativeScriptDecodingStep03OpenSubject } from "./submit-native-script-decoding-step-03.submit-native-script-decoding-step03-open-subject.js";
+export { buildNativeScriptDecodingStep03BindDescriptor } from "./submit-native-script-decoding-step-03.submit-native-script-decoding-step03-bind-descriptor.js";
+export { buildNativeScriptDecodingStep03OpenSubject } from "./submit-native-script-decoding-step-03.submit-native-script-decoding-step03-open-subject.js";

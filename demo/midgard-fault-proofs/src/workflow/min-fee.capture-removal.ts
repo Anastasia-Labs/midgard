@@ -18,11 +18,8 @@ import {
   admitMinFeeForcedArtifact,
   MIN_FEE_FORCED_ARTIFACT,
 } from "../min-fee-forced-artifact.js";
-import {
-  type StateQueueMutationLease,
-  type StateQueueMutationLeaseCoordinator,
-  submitRemoveFraudulentBlock,
-} from "../remove-fraudulent-block.js";
+import { type StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
@@ -45,8 +42,8 @@ import {
   witnessSetCore,
 } from "./min-fee.parse-artifact.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
+import { admitRemovalTransaction } from "./removal-admission.js";
 import {
-  captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
   workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary.js";
@@ -284,57 +281,42 @@ export const captureRemoval = async ({
   readonly config: BoundConfig;
   readonly input: Readonly<Record<string, unknown>>;
 }) => {
-  let mutationLease: StateQueueMutationLease | undefined;
-  const retainingCoordinator: StateQueueMutationLeaseCoordinator = {
-    acquire: async () => {
-      const acquired =
-        await config.stateQueueMutationLeaseCoordinator.acquire();
-      mutationLease = acquired;
-      return acquired;
-    },
-  };
   const nextRemovalOutRef = stringField(input, "nextRemovalOutRef");
   const fraudProofOutRef = stringField(input, "fraudProofOutRef");
-  const transaction = await captureLocallyEvaluatedTransaction(
-    async (boundary) => {
-      await submitRemoveFraudulentBlock({
-        fraudProofOutRef,
-        lucid: config.lucid,
-        blueprint: config.blueprint,
-        deploymentInfo: config.deploymentInfo,
-        network: config.network,
-        signer: config.signer,
-        fraudCategory: "minFee",
-        fraudulentHeaderHash: config.headerHash,
-        requireReferenceScripts: true,
-        stateQueueMutationLeaseCoordinator: retainingCoordinator,
-        fraudProverRewardLovelace: config.fraudProverRewardLovelace,
-        preSubmitBoundary: async (built) => {
-          if (
-            !workflowTransactionInputOutRefs(built.signed).includes(
-              nextRemovalOutRef,
-            )
-          ) {
-            throw new Error(
-              "min-fee removal changed its authenticated queue input",
-            );
-          }
-          if (
-            !workflowTransactionReferenceInputOutRefs(built.signed).includes(
-              fraudProofOutRef,
-            )
-          ) {
-            throw new Error(
-              "min-fee removal omitted its authenticated proof token",
-            );
-          }
-          await boundary(built);
-        },
-      });
+  return await admitRemovalTransaction(
+    await buildRemoveFraudulentBlock({
+      fraudProofOutRef,
+      lucid: config.lucid,
+      blueprint: config.blueprint,
+      deploymentInfo: config.deploymentInfo,
+      network: config.network,
+      signer: config.signer,
+      fraudCategory: "minFee",
+      fraudulentHeaderHash: config.headerHash,
+      requireReferenceScripts: true,
+      stateQueueMutationLeaseCoordinator:
+        config.stateQueueMutationLeaseCoordinator,
+      fraudProverRewardLovelace: config.fraudProverRewardLovelace,
+    }),
+    async (built) => {
+      if (
+        !workflowTransactionInputOutRefs(built.signed).includes(
+          nextRemovalOutRef,
+        )
+      ) {
+        throw new Error(
+          "min-fee removal changed its authenticated queue input",
+        );
+      }
+      if (
+        !workflowTransactionReferenceInputOutRefs(built.signed).includes(
+          fraudProofOutRef,
+        )
+      ) {
+        throw new Error(
+          "min-fee removal omitted its authenticated proof token",
+        );
+      }
     },
   );
-  return Object.freeze({
-    transaction,
-    ...(mutationLease === undefined ? {} : { mutationLease }),
-  });
 };

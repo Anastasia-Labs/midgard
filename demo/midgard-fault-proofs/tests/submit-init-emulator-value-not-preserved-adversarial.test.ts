@@ -30,9 +30,13 @@
 import { MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
-import { submitValueNotPreservedStep03 } from "../src/value-not-preserved/submit-value-not-preserved-step-03.js";
-import { submitValueNotPreservedStep04 } from "../src/value-not-preserved/submit-value-not-preserved-step-04.js";
+import { buildValueNotPreservedStep03 } from "../src/value-not-preserved/submit-value-not-preserved-step-03.js";
+import { buildValueNotPreservedStep04 } from "../src/value-not-preserved/submit-value-not-preserved-step-04.js";
 import { expectSingleUtxoWithUnit } from "./support/submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 import {
   buildValueNotPreservedFixture,
   expectOnchainRefusal,
@@ -109,7 +113,7 @@ describe("value-not-preserved adversarial scenarios", () => {
     // The honest submitter's conviction twin refuses before spending
     // anything.
     await expect(
-      submitValueNotPreservedStep04({
+      buildAndSubmitUnjournaled(buildValueNotPreservedStep04, {
         lucid: proverLucid,
         contracts: family,
         categoryId: harness.category.categoryId,
@@ -204,7 +208,7 @@ describe("value-not-preserved adversarial scenarios", () => {
     // refuses: `field_commitment(preimage) == expected_hash` fails in
     // `native_tx_field_access_v1`'s whole-field view.
     await expectOnchainRefusal(async () =>
-      submitValueNotPreservedStep03({
+      submitTurnsUnjournaled(buildValueNotPreservedStep03, {
         lucid: proverLucid,
         contracts: family,
         categoryId: harness.category.categoryId,
@@ -228,28 +232,34 @@ describe("value-not-preserved adversarial scenarios", () => {
     // The SAME thread convicts honestly — the earlier refusal was the
     // tamper, nothing else. The honest path publishes the genuine preimage
     // and resolves it content-addressed.
-    const honestStep03 = await submitValueNotPreservedStep03({
-      lucid: proverLucid,
-      contracts: family,
-      categoryId: harness.category.categoryId,
-      signer: proverSigner,
-      threadOutRef: run.finish.nextThreadOutRef,
-      nativeTxCompactCbor: fixture.nativeTxCompactCbor,
-      outputs: fixture.outputs,
-      mintItems: null,
-      referenceScriptUtxo: refs[2],
-    });
+    const honestStep03 = await submitTurnsUnjournaled(
+      buildValueNotPreservedStep03,
+      {
+        lucid: proverLucid,
+        contracts: family,
+        categoryId: harness.category.categoryId,
+        signer: proverSigner,
+        threadOutRef: run.finish.nextThreadOutRef,
+        nativeTxCompactCbor: fixture.nativeTxCompactCbor,
+        outputs: fixture.outputs,
+        mintItems: null,
+        referenceScriptUtxo: refs[2],
+      },
+    );
     expect(honestStep03.outputsCarriageTier).toBe("RawUtxo");
     expect(honestStep03.completedState.final_delta).toBe(-10_500_000n);
-    const step04 = await submitValueNotPreservedStep04({
-      lucid: proverLucid,
-      contracts: family,
-      categoryId: harness.category.categoryId,
-      signer: proverSigner,
-      threadOutRef: honestStep03.nextThreadOutRef,
-      referenceScriptUtxo: refs[3],
-      witnessReferenceScripts: setup.witnessReferenceScripts,
-    });
+    const step04 = await buildAndSubmitUnjournaled(
+      buildValueNotPreservedStep04,
+      {
+        lucid: proverLucid,
+        contracts: family,
+        categoryId: harness.category.categoryId,
+        signer: proverSigner,
+        threadOutRef: honestStep03.nextThreadOutRef,
+        referenceScriptUtxo: refs[3],
+        witnessReferenceScripts: setup.witnessReferenceScripts,
+      },
+    );
     const fraudProofUtxo = await expectSingleUtxoWithUnit(
       proverLucid,
       step04.fraudProofAddress,

@@ -25,6 +25,11 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  type FaultProofTurn,
+  isPrerequisiteTurn,
+  type PrerequisiteTurn,
+} from "../fault-proof-turn.js";
+import {
   faultProofFieldCarriage,
   faultProofFieldOpening,
   type FaultProofFieldOpeningPlan,
@@ -32,7 +37,8 @@ import {
   publishFaultProofFieldCarriage,
 } from "../field-opening.js";
 import { type ResolvedProverSigner } from "../runtime.js";
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
@@ -43,8 +49,6 @@ import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
-import { workflowReferenceScriptsUsedByTransaction } from "../workflow/transaction-boundary.js";
 import type { InputSetUniquenessContracts } from "./contracts.js";
 import type { InputSetUniquenessClaim } from "./scan.js";
 import {
@@ -53,15 +57,15 @@ import {
   requireInputSetUniquenessStepState,
   requireInputSetUniquenessThreadUtxo,
 } from "./submit-common.js";
+import type { InputSetUniquenessStep02Build } from "./submit-input-set-uniqueness-step-02.assert-input-set-uniqueness-claim-convicts.js";
 import {
   assertInputSetUniquenessClaimConvicts,
   STEP_LABEL,
   type Step02SpendLayout,
-  type SubmitInputSetUniquenessStep02Result,
   uniqueUtxos,
 } from "./submit-input-set-uniqueness-step-02.assert-input-set-uniqueness-claim-convicts.js";
 
-export const submitInputSetUniquenessStep02 = async ({
+export const buildInputSetUniquenessStep02 = async ({
   lucid,
   contracts,
   categoryId,
@@ -78,8 +82,6 @@ export const submitInputSetUniquenessStep02 = async ({
   publishMissingCarriage = true,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
   unsafeSpendFieldRawUtxoForTest,
   ownOutputs = createOwnOutputJournal(),
 }: {
@@ -109,8 +111,6 @@ export const submitInputSetUniquenessStep02 = async ({
   readonly referenceScriptUtxo?: UTxO;
   /** Published witness reference scripts required by this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
   /**
    * Test-only adversarial injection for the tier-2 refusal suite: the
    * `DuplicateSpendInputs` redeemer names this UTxO as the field's `RawUtxo`
@@ -121,7 +121,7 @@ export const submitInputSetUniquenessStep02 = async ({
   readonly unsafeSpendFieldRawUtxoForTest?: UTxO;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
-}): Promise<SubmitInputSetUniquenessStep02Result> => {
+}): Promise<FaultProofTurn<InputSetUniquenessStep02Build>> => {
   const { threadUtxo, threadToken } = await requireInputSetUniquenessThreadUtxo(
     {
       lucid,
@@ -194,7 +194,7 @@ export const submitInputSetUniquenessStep02 = async ({
     readonly planned: FaultProofFieldOpeningPlan | undefined;
     readonly supplied: readonly UTxO[] | undefined;
     readonly certificate: UTxO | undefined;
-  }): Promise<readonly UTxO[]> => {
+  }): Promise<readonly UTxO[] | PrerequisiteTurn> => {
     if (planned === undefined) return [];
     const publications =
       supplied ??
@@ -214,6 +214,7 @@ export const submitInputSetUniquenessStep02 = async ({
                 `${STEP_LABEL} ${fieldLabel} requires authenticated pre-published carriage.`,
               );
             })());
+    if (isPrerequisiteTurn(publications)) return publications;
     if (planned.plan.tier === "Certified" && certificate === undefined) {
       throw inputSetUniquenessSubmitError(
         `${STEP_LABEL} ${fieldLabel} requires its authenticated field-preimage certificate.`,
@@ -230,12 +231,14 @@ export const submitInputSetUniquenessStep02 = async ({
     supplied: publishedSpendCarriageUtxos,
     certificate: spendCertificateUtxo,
   });
+  if (isPrerequisiteTurn(spendCarriage)) return spendCarriage;
   const referenceCarriage = await resolveCarriage({
     fieldLabel: "reference-inputs",
     planned: plannedReference,
     supplied: publishedReferenceCarriageUtxos,
     certificate: referenceCertificateUtxo,
   });
+  if (isPrerequisiteTurn(referenceCarriage)) return referenceCarriage;
   const published = [...spendCarriage, ...referenceCarriage];
   const stepReference =
     referenceScriptUtxo === undefined
@@ -464,39 +467,33 @@ export const submitInputSetUniquenessStep02 = async ({
       "BuildTxWithRedeemer did not resolve the step-02 layout.",
     );
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: "input-set-uniqueness step-02",
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: "V1 fraud-proof input-set-uniqueness step-02",
-          utxo: referenceScriptUtxo,
-          expectedScript: contracts.steps[1].spendingScript,
-        },
-        {
-          role: "V1 fraud-proof computation-thread minting",
-          utxo: witnessReferenceScripts?.computationThreadMint,
-          expectedScript: contracts.computationThread.mintingScript,
-        },
-        {
-          role: "V1 fraud-proof token minting",
-          utxo: witnessReferenceScripts?.fraudProofMint,
-          expectedScript: contracts.fraudProof.mintingScript,
-        },
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: "V1 fraud-proof input-set-uniqueness step-02",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.steps[1].spendingScript,
+      },
+      {
+        role: "V1 fraud-proof computation-thread minting",
+        utxo: witnessReferenceScripts?.computationThreadMint,
+        expectedScript: contracts.computationThread.mintingScript,
+      },
+      {
+        role: "V1 fraud-proof token minting",
+        utxo: witnessReferenceScripts?.fraudProofMint,
+        expectedScript: contracts.fraudProof.mintingScript,
+      },
+    ],
   });
 
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
     threadOutRef,
-    fraudProofOutRef: `${txHash}#${spendLayout.outputIndex.toString()}`,
+    fraudProofOutRef: `${transaction.txHash}#${spendLayout.outputIndex.toString()}`,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadUnit: threadToken.unit,
     fraudProofPolicyId: contracts.fraudProof.policyId,
@@ -513,6 +510,5 @@ export const submitInputSetUniquenessStep02 = async ({
     fraudProofMintRedeemerIndex: Number(
       spendLayout.fraudProofMintRedeemerIndex,
     ),
-    awaitedConfirmation: awaitConfirmation,
   };
 };

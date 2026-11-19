@@ -23,7 +23,7 @@ import {
   type NetworkIdWorkflowAdapterConfig,
 } from "../src/network-id/workflow-adapter.js";
 import { deriveL2TransactionSourceCbor } from "../src/prepare-double-spend.js";
-import { submitInit } from "../src/submit-init.js";
+import { buildInit } from "../src/submit-init.js";
 import {
   createDoubleSpendConstrainedWorkflowAdapter,
   type DoubleSpendConstrainedWorkflowAdapterConfig,
@@ -63,11 +63,11 @@ import {
   workflowIdentity,
 } from "./support/tier3-workflow-fixtures.js";
 
-// The double-spend preflight must reach a real builder's pre-submit boundary:
+// The double-spend preflight must reach a real builder's signed transaction:
 // only the init builder is replaced, so all the adapter does stays under test.
 vi.mock("../src/submit-init.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/submit-init.js")>()),
-  submitInit: vi.fn(),
+  buildInit: vi.fn(),
 }));
 
 describe("Q38 tier-3 workflow action chains", () => {
@@ -753,29 +753,21 @@ describe("Q38 tier-3 workflow action chains", () => {
         }),
       }),
     } as unknown as LocallyEvaluatedTransaction["signed"];
-    vi.mocked(submitInit).mockImplementation(
-      async ({
-        preSubmitBoundary,
-      }: {
-        readonly preSubmitBoundary?: unknown;
-      }) => {
-        await (
-          preSubmitBoundary as (
-            transaction: LocallyEvaluatedTransaction,
-          ) => Promise<void>
-        )({
-          txHash: capturedTxHash,
-          signed: capturedSigned,
-          referenceScripts: [
-            {
-              role: "V1 fraud-proof double-spend init",
-              outRef: `${h32(0x19)}#0`,
-              scriptHash: h28(0x11),
-            },
-          ],
-        });
-        throw new Error("init builder must not run past its boundary");
-      },
+    vi.mocked(buildInit).mockImplementation(
+      async () =>
+        ({
+          transaction: {
+            txHash: capturedTxHash,
+            signed: capturedSigned,
+            referenceScripts: [
+              {
+                role: "V1 fraud-proof double-spend init",
+                outRef: `${h32(0x19)}#0`,
+                scriptHash: h28(0x11),
+              },
+            ],
+          },
+        }) as never,
     );
 
     const adapter = createDoubleSpendConstrainedWorkflowAdapter({

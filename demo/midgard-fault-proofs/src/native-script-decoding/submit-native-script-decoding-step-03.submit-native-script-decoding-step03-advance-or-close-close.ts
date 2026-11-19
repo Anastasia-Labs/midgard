@@ -15,7 +15,6 @@ import {
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import { type ResolvedProverSigner } from "../runtime.js";
-import { type FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { NativeScriptDecodingContracts } from "./contracts.js";
 import {
   nativeScriptDecodingScanArgsEvidence,
@@ -29,6 +28,7 @@ import {
   nativeScriptDecodingSubmitError,
   requireNativeScriptDecodingThreadUtxo,
 } from "./submit-common.js";
+import type { NativeScriptDecodingStep03Build } from "./submit-native-script-decoding-step-03.advance-step03-thread.js";
 import {
   ADVANCE_OR_CLOSE_INDEX,
   advanceStep03Thread,
@@ -37,12 +37,11 @@ import {
   requireStep03State,
   STEP_04_INDEX,
   step03Result,
-  type SubmitNativeScriptDecodingStep03Result,
 } from "./submit-native-script-decoding-step-03.advance-step03-thread.js";
 
 // ## AdvanceOrClose
 
-export const submitNativeScriptDecodingStep03AdvanceOrCloseSegment = async ({
+export const buildNativeScriptDecodingStep03AdvanceOrCloseSegment = async ({
   lucid,
   contracts,
   categoryId,
@@ -51,8 +50,6 @@ export const submitNativeScriptDecodingStep03AdvanceOrCloseSegment = async ({
   segment,
   referenceScriptItemBytes,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: NativeScriptDecodingContracts;
@@ -62,9 +59,7 @@ export const submitNativeScriptDecodingStep03AdvanceOrCloseSegment = async ({
   readonly segment: NativeScriptDecodingScanSegmentPlan;
   readonly referenceScriptItemBytes: Uint8Array;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitNativeScriptDecodingStep03Result> => {
+}): Promise<NativeScriptDecodingStep03Build> => {
   const { threadUtxo, threadToken } =
     await requireNativeScriptDecodingThreadUtxo({
       lucid,
@@ -110,7 +105,7 @@ export const submitNativeScriptDecodingStep03AdvanceOrCloseSegment = async ({
     ? contracts.steps[STEP_04_INDEX].spendingScriptAddress
     : contracts.steps[ADVANCE_OR_CLOSE_INDEX].spendingScriptAddress;
 
-  const { txHash, layout } = await advanceStep03Thread({
+  const { transaction, layout } = await advanceStep03Thread({
     lucid,
     contracts,
     signer,
@@ -138,22 +133,19 @@ export const submitNativeScriptDecodingStep03AdvanceOrCloseSegment = async ({
       ),
     carriageUtxos: [],
     referenceScriptUtxo,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   return step03Result({
-    txHash,
+    transaction,
     layout,
     signer,
     threadOutRef,
     threadToken,
     destinationAddress,
     scanState: nextState,
-    awaitConfirmation,
   });
 };
 
-export const submitNativeScriptDecodingStep03AdvanceOrCloseClose = async ({
+export const buildNativeScriptDecodingStep03AdvanceOrCloseClose = async ({
   lucid,
   contracts,
   categoryId,
@@ -162,8 +154,6 @@ export const submitNativeScriptDecodingStep03AdvanceOrCloseClose = async ({
   verdict,
   referenceScriptItemBytes,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: NativeScriptDecodingContracts;
@@ -173,9 +163,7 @@ export const submitNativeScriptDecodingStep03AdvanceOrCloseClose = async ({
   readonly verdict: NativeScriptDecodingVerdictPlan;
   readonly referenceScriptItemBytes?: Uint8Array;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitNativeScriptDecodingStep03Result> => {
+}): Promise<NativeScriptDecodingStep03Build> => {
   const { threadUtxo, threadToken } =
     await requireNativeScriptDecodingThreadUtxo({
       lucid,
@@ -257,7 +245,7 @@ export const submitNativeScriptDecodingStep03AdvanceOrCloseClose = async ({
   };
   const destinationAddress =
     contracts.steps[STEP_04_INDEX].spendingScriptAddress;
-  const { txHash, layout } = await advanceStep03Thread({
+  const { transaction, layout } = await advanceStep03Thread({
     lucid,
     contracts,
     signer,
@@ -285,17 +273,14 @@ export const submitNativeScriptDecodingStep03AdvanceOrCloseClose = async ({
       ),
     carriageUtxos: [],
     referenceScriptUtxo,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   return step03Result({
-    txHash,
+    transaction,
     layout,
     signer,
     threadOutRef,
     threadToken,
     destinationAddress,
     scanState: nextState,
-    awaitConfirmation,
   });
 };

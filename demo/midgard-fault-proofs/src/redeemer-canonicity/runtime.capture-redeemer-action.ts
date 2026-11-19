@@ -17,7 +17,7 @@ import {
 } from "../field-opening.js";
 import { requireLinearFaultThreadUtxo } from "../linear-fault-family.js";
 import { buildTrieView, requireProof } from "../prepare-double-spend.js";
-import { submitInit } from "../submit-init.js";
+import { buildInit } from "../submit-init.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 import { REDEEMER_CANONICITY_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import {
@@ -41,7 +41,7 @@ import {
   type JournalJsonObject,
 } from "../workflow/journal.js";
 import { type FraudProofWorkflowAction } from "../workflow/orchestrator.js";
-import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
+import { journaledStepTransaction } from "../workflow/step-transaction.js";
 import { detectRedeemerCanonicityFromCanonicalBlock } from "./authenticated-workflow.js";
 import {
   admitRedeemerWorkflowArtifact,
@@ -59,12 +59,12 @@ import {
   RedeemerCanonicityVerdictSubjectSchema,
 } from "./schemas.js";
 import {
-  submitRedeemerCanonicityStep01Accepted,
-  submitRedeemerCanonicityStep01Forced,
+  buildRedeemerCanonicityStep01Accepted,
+  buildRedeemerCanonicityStep01Forced,
 } from "./submit-step-01.js";
-import { submitRedeemerCanonicityStep02 } from "./submit-step-02.js";
-import { submitRedeemerCanonicityStep02Data } from "./submit-step-02-data.js";
-import { submitRedeemerCanonicityStep03 } from "./submit-step-03.js";
+import { buildRedeemerCanonicityStep02 } from "./submit-step-02.js";
+import { buildRedeemerCanonicityStep02Data } from "./submit-step-02-data.js";
+import { buildRedeemerCanonicityStep03 } from "./submit-step-03.js";
 
 const CURSOR_SPEC = {
   category: "redeemerCanonicity",
@@ -239,18 +239,16 @@ const captureRedeemerAction = async (
         workflow.binding.releaseEconomics.policy.fraudProverRewardLovelace,
       ),
     });
-  const transaction = await captureLocallyEvaluatedTransaction(
-    async (preSubmitBoundary) => {
+  const { transaction } = await journaledStepTransaction(
+    await (async () => {
       const common = {
         lucid: workflow.lucid,
         contracts: workflow.contracts,
         signer: workflow.signer,
         categoryId,
-        preSubmitBoundary,
-        awaitConfirmation: false,
       };
       if (input.stage === "init")
-        await submitInit({
+        return await buildInit({
           ...common,
           blueprint: workflow.binding.blueprint,
           deploymentInfo: workflow.binding.deploymentInfo,
@@ -274,7 +272,7 @@ const captureRedeemerAction = async (
               stepIndex: 0,
               threadOutRef: cursorStringField(input, "threadOutRef"),
             });
-          await submitRedeemerCanonicityStep01Accepted({
+          return await buildRedeemerCanonicityStep01Accepted({
             ...common,
             blueprint: workflow.binding.blueprint,
             network: workflow.binding.network,
@@ -290,7 +288,7 @@ const captureRedeemerAction = async (
             witnessReferenceScripts: workflow.referenceScripts.witnesses,
           });
         } else
-          await submitRedeemerCanonicityStep01Forced({
+          return await buildRedeemerCanonicityStep01Forced({
             ...common,
             threadOutRef: cursorStringField(input, "threadOutRef"),
             finding: admitted.evidence,
@@ -325,7 +323,7 @@ const captureRedeemerAction = async (
         );
         if (planned.plan.tier === "Certified" && certificateUtxo === undefined)
           throw new Error("redeemerCanonicity certificate disappeared");
-        await submitRedeemerCanonicityStep02({
+        return await buildRedeemerCanonicityStep02({
           ...common,
           ownOutputs,
           threadOutRef: cursorStringField(input, "threadOutRef"),
@@ -337,19 +335,19 @@ const captureRedeemerAction = async (
           referenceScriptUtxo: workflow.referenceScripts.steps[1],
           certificateReferenceScriptUtxo:
             workflow.referenceScripts.fieldPreimageCertificateMint,
-          // Submitted inline ahead of the captured step; it never takes the
-          // step's capture boundary.
+          // A missing grammar certificate is certified and submitted inline
+          // before the step is built (certifyFaultProofFieldGrammar).
           fieldGrammar: workflow.fieldGrammar,
         });
       } else if (input.stage === "step_03")
-        await submitRedeemerCanonicityStep02Data({
+        return await buildRedeemerCanonicityStep02Data({
           ...common,
           threadOutRef: cursorStringField(input, "threadOutRef"),
           evidence: admitted.evidence,
           referenceScriptUtxo: workflow.referenceScripts.steps[2],
         });
       else if (input.stage === "step_04")
-        await submitRedeemerCanonicityStep03({
+        return await buildRedeemerCanonicityStep03({
           ...common,
           threadOutRef: cursorStringField(input, "threadOutRef"),
           evidence: admitted.evidence,
@@ -357,7 +355,8 @@ const captureRedeemerAction = async (
           witnessReferenceScripts: workflow.referenceScripts.witnesses,
         });
       else throw new Error("redeemerCanonicity action changed");
-    },
+    })(),
+    `redeemer-canonicity ${action.actionId}`,
   );
   return { transaction };
 };

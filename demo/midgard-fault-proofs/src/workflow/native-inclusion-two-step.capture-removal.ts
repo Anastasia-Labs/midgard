@@ -1,16 +1,12 @@
-import {
-  type StateQueueMutationLease,
-  type StateQueueMutationLeaseCoordinator,
-  submitRemoveFraudulentBlock,
-} from "../remove-fraudulent-block.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import {
   type NativeInclusionTwoStepCategory,
   record,
 } from "./native-inclusion-two-step.parse-artifact.js";
 import { type BoundConfig } from "./native-inclusion-two-step.prepare-native-inclusion-two-step-artifact.js";
 import { type FraudProofWorkflowAction } from "./orchestrator.js";
+import { admitRemovalTransaction } from "./removal-admission.js";
 import {
-  captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
   workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary.js";
@@ -52,57 +48,42 @@ export const captureRemoval = async <
   readonly config: BoundConfig<Category>;
   readonly input: Readonly<Record<string, unknown>>;
 }) => {
-  let mutationLease: StateQueueMutationLease | undefined;
-  const retainingCoordinator: StateQueueMutationLeaseCoordinator = {
-    acquire: async () => {
-      const acquired =
-        await config.stateQueueMutationLeaseCoordinator.acquire();
-      mutationLease = acquired;
-      return acquired;
-    },
-  };
   const nextRemovalOutRef = stringField(input, "nextRemovalOutRef");
   const fraudProofOutRef = stringField(input, "fraudProofOutRef");
-  const transaction = await captureLocallyEvaluatedTransaction(
-    async (boundary) => {
-      await submitRemoveFraudulentBlock({
-        fraudProofOutRef,
-        lucid: config.lucid,
-        blueprint: config.blueprint,
-        deploymentInfo: config.deploymentInfo,
-        network: config.network,
-        signer: config.signer,
-        fraudCategory: config.category,
-        fraudulentHeaderHash: config.headerHash,
-        requireReferenceScripts: true,
-        stateQueueMutationLeaseCoordinator: retainingCoordinator,
-        fraudProverRewardLovelace: config.fraudProverRewardLovelace,
-        preSubmitBoundary: async (built) => {
-          if (
-            !workflowTransactionInputOutRefs(built.signed).includes(
-              nextRemovalOutRef,
-            )
-          ) {
-            throw new Error(
-              `${config.category} removal changed its authenticated queue input`,
-            );
-          }
-          if (
-            !workflowTransactionReferenceInputOutRefs(built.signed).includes(
-              fraudProofOutRef,
-            )
-          ) {
-            throw new Error(
-              `${config.category} removal did not reference the retained proof token`,
-            );
-          }
-          await boundary(built);
-        },
-      });
+  return await admitRemovalTransaction(
+    await buildRemoveFraudulentBlock({
+      fraudProofOutRef,
+      lucid: config.lucid,
+      blueprint: config.blueprint,
+      deploymentInfo: config.deploymentInfo,
+      network: config.network,
+      signer: config.signer,
+      fraudCategory: config.category,
+      fraudulentHeaderHash: config.headerHash,
+      requireReferenceScripts: true,
+      stateQueueMutationLeaseCoordinator:
+        config.stateQueueMutationLeaseCoordinator,
+      fraudProverRewardLovelace: config.fraudProverRewardLovelace,
+    }),
+    async (built) => {
+      if (
+        !workflowTransactionInputOutRefs(built.signed).includes(
+          nextRemovalOutRef,
+        )
+      ) {
+        throw new Error(
+          `${config.category} removal changed its authenticated queue input`,
+        );
+      }
+      if (
+        !workflowTransactionReferenceInputOutRefs(built.signed).includes(
+          fraudProofOutRef,
+        )
+      ) {
+        throw new Error(
+          `${config.category} removal did not reference the retained proof token`,
+        );
+      }
     },
   );
-  return Object.freeze({
-    transaction,
-    ...(mutationLease === undefined ? {} : { mutationLease }),
-  });
 };

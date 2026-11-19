@@ -26,13 +26,14 @@ import {
   requireSingletonUtxo,
   resolveFraudulentHeaderHash,
 } from "./runtime.js";
-import { completeStep, fundStep, submitStep } from "./step-completion.js";
+import { completeStep, fundStep } from "./step-completion.js";
+import { finishStep } from "./step-completion.js";
+import type { ResolvedInitBuild } from "./submit-init.resolve-non-existent-input-no-index-init.js";
 import {
   encodePhasMembershipRedeemer,
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
   STANDARD_INIT_REFERENCE_SCRIPT_ROLES,
   type SubmitResolvedInitParams,
-  type SubmitResolvedInitResult,
 } from "./submit-init.resolve-non-existent-input-no-index-init.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 import {
@@ -46,10 +47,10 @@ import { workflowReferenceScript } from "./workflow/transaction-boundary.js";
  * fraudulent-block reference inputs, the PHAS membership withdrawal carrying
  * the category proof, and the `Init` mint paying the thread token to the
  * family's first step. Every family init resolves its contracts and calls
- * this; `submitInit` is the deployment-info resolver in front of it.
+ * this; `buildInit` is the deployment-info resolver in front of it.
  * Callers own the category/first-step agreement check and its message.
  */
-export const submitResolvedInit = async ({
+export const buildResolvedInit = async ({
   lucid,
   blueprint,
   network,
@@ -61,8 +62,6 @@ export const submitResolvedInit = async ({
   fraudulentBlockOutRef,
   fraudulentHeaderHash,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
   referenceScriptRoles = STANDARD_INIT_REFERENCE_SCRIPT_ROLES,
 }: SubmitResolvedInitParams & {
   /** Family label used in error messages. */
@@ -72,7 +71,7 @@ export const submitResolvedInit = async ({
     readonly computationThreadMint: string;
     readonly phasMembershipWithdraw: string;
   };
-}): Promise<SubmitResolvedInitResult> => {
+}): Promise<ResolvedInitBuild> => {
   const firstStep = contracts.steps[0];
   const fraudulentBlockOutRefParsed = parseOutRef(
     fraudulentBlockOutRef,
@@ -223,8 +222,7 @@ export const submitResolvedInit = async ({
   if (firstStepOutputIndex === undefined) {
     throw new Error(`${label}: init output index was not resolved.`);
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: `${label} init`,
+  const transaction = finishStep(signed, {
     referenceScripts: [
       workflowReferenceScript({
         role: referenceScriptRoles.computationThreadMint,
@@ -237,11 +235,9 @@ export const submitResolvedInit = async ({
         expectedScript: phasMembershipScript,
       }),
     ],
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
   });
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
@@ -252,10 +248,9 @@ export const submitResolvedInit = async ({
     computationThreadUnit,
     firstStepAddress: firstStep.spendingScriptAddress,
     firstStepOutputIndex: Number(firstStepOutputIndex),
-    nextThreadOutRef: `${txHash}#${firstStepOutputIndex.toString()}`,
+    nextThreadOutRef: `${transaction.txHash}#${firstStepOutputIndex.toString()}`,
     fraudCategoryId: category.categoryId,
     fraudCategory: category.scriptHash,
     fraudProofCatalogueRoot: catalogue.root,
-    awaitedConfirmation: awaitConfirmation,
   };
 };

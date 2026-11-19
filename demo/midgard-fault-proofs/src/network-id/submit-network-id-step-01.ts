@@ -38,7 +38,8 @@ import {
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
 } from "../runtime.js";
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import {
   parseSubmitStep01TxInclusion,
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
@@ -50,9 +51,10 @@ import {
   type FaultProofWitnessReferenceScripts,
   witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts.js";
+import { workflowReferenceScript } from "../workflow/transaction-boundary.js";
 import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScript,
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
 } from "../workflow/transaction-boundary.js";
 import type { NetworkIdContracts } from "./contracts.js";
 import {
@@ -69,8 +71,8 @@ import {
 
 const STEP_LABEL = networkIdStepLabel(0);
 
-export type SubmitNetworkIdStep01Result = {
-  readonly txHash: string;
+export type NetworkIdStep01Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -82,10 +84,12 @@ export type SubmitNetworkIdStep01Result = {
   readonly state: NetworkIdStep02State;
   readonly inputIndex: number;
   readonly outputIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
 
-export const submitNetworkIdStep01 = async ({
+export type SubmitNetworkIdStep01Result =
+  UnjournaledSubmission<NetworkIdStep01Build>;
+
+export const buildNetworkIdStep01 = async ({
   lucid,
   blueprint,
   contracts,
@@ -97,8 +101,6 @@ export const submitNetworkIdStep01 = async ({
   prepared,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -112,9 +114,7 @@ export const submitNetworkIdStep01 = async ({
   /** Mandatory published step-01 reference script. */
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitNetworkIdStep01Result> => {
+}): Promise<NetworkIdStep01Build> => {
   if (prepared.expectedNetworkId !== contracts.expectedNetworkId) {
     throw networkIdSubmitError(
       "prepared evidence targets a different deployed network id",
@@ -331,8 +331,7 @@ export const submitNetworkIdStep01 = async ({
   if (layout === undefined) {
     throw networkIdSubmitError("step-01 layout was not resolved");
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: "network-id step-01",
+  const transaction = finishStep(signed, {
     referenceScripts: [
       workflowReferenceScript({
         role: "V1 fraud-proof network-id step-01",
@@ -345,22 +344,19 @@ export const submitNetworkIdStep01 = async ({
         expectedScript: phasScript,
       }),
     ],
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
   });
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
     threadOutRef,
-    nextThreadOutRef: `${txHash}#${layout.outputIndex.toString()}`,
+    nextThreadOutRef: `${transaction.txHash}#${layout.outputIndex.toString()}`,
     fraudulentHeaderHash: headerHash,
     computationThreadUnit: threadToken.unit,
     secondStepAddress: contracts.steps[1].spendingScriptAddress,
     state,
     inputIndex: Number(layout.inputIndex),
     outputIndex: Number(layout.outputIndex),
-    awaitedConfirmation: awaitConfirmation,
   };
 };

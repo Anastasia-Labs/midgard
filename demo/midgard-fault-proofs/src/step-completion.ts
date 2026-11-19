@@ -1,30 +1,29 @@
 /**
- * How every fault-proof step transaction is funded, completed and submitted.
+ * How every fault-proof step transaction is funded, completed and finished.
  *
  * A step builder states only what is specific to its step: the inputs it
  * spends, the outputs it pays, its redeemers, reference scripts and carriage.
  * It starts from {@link fundStep}, which funds the transaction from the
  * prover's wallet under one rule, hands the finished chain to
  * {@link completeStep}, and passes the signed transaction to
- * {@link submitStep}, which crosses the Q51 pre-submit boundary before any
- * provider I/O.
+ * {@link finishStep}, which returns it with the reference scripts it uses.
+ * A builder submits nothing: its caller does.
  */
 import type {
   LucidEvolution,
   OutRef,
+  Script,
   TxBuilder,
   TxSigned,
   UTxO,
 } from "@lucid-evolution/lucid";
 
 import { stepWalletFunding } from "./funding/plain-funding-output.js";
-import { DEFAULT_CONFIRMATION_POLL_MS } from "./runtime.js";
 import type { ResolvedProverSigner } from "./runtime.resolve-prover-signer.js";
 import type { FraudProofWorkflowReferenceScript } from "./workflow/orchestrator.js";
 import {
-  type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
-  submitCapturedTransaction,
+  type LocallyEvaluatedTransaction,
+  workflowReferenceScriptsUsedByTransaction,
 } from "./workflow/transaction-boundary.js";
 
 /** The prover that funds and signs a step: its key and its wallet. */
@@ -86,35 +85,51 @@ export const completeStep = async (
   return await unsigned.sign.withWallet().complete();
 };
 
+/** A published reference script a step may read, and the script it must
+ * carry. */
+export type StepReferenceScriptCandidate = Readonly<{
+  role: string;
+  utxo: UTxO | undefined;
+  expectedScript?: Script;
+}>;
+
 /**
- * Submits a signed step: it reaches `boundary` with the transaction and the
- * reference scripts it uses, submits only after the boundary returns,
- * refuses a provider that reports another hash, naming the step by `label`
- * (its family and step), and waits for confirmation when asked. Returns the
- * transaction hash.
+ * The reference scripts a step transaction uses: either already resolved, or
+ * the candidates it may read, of which exactly those the signed body
+ * references are kept (`workflowReferenceScriptsUsedByTransaction`).
  */
-export const submitStep = async (
-  lucid: LucidEvolution,
+export type StepReferenceScripts =
+  | Readonly<{
+      referenceScripts: readonly FraudProofWorkflowReferenceScript[];
+    }>
+  | Readonly<{
+      referenceScriptCandidates: readonly StepReferenceScriptCandidate[];
+    }>;
+
+/**
+ * Finishes a signed step as the transaction its caller submits: it refuses a
+ * signed body whose hash is not 32 bytes of hex and pairs the transaction with
+ * the reference scripts it uses. It performs no I/O.
+ */
+export const finishStep = (
   signed: TxSigned,
-  {
-    label,
-    referenceScripts,
-    boundary,
-    awaitConfirmation,
-  }: {
-    readonly label: string;
-    readonly referenceScripts: readonly FraudProofWorkflowReferenceScript[];
-    readonly boundary?: FraudProofPreSubmitBoundary;
-    readonly awaitConfirmation: boolean;
-  },
-): Promise<string> => {
-  const txHash = await reachFraudProofPreSubmitBoundary({
+  scripts: StepReferenceScripts,
+): LocallyEvaluatedTransaction => {
+  const txHash = signed.toHash().toLowerCase();
+  if (!/^[0-9a-f]{64}$/u.test(txHash)) {
+    throw new Error(
+      "locally evaluated transaction returned an invalid body hash",
+    );
+  }
+  return {
+    txHash,
     signed,
-    referenceScripts,
-    boundary,
-  });
-  await submitCapturedTransaction({ txHash, signed, referenceScripts }, label);
-  if (awaitConfirmation)
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  return txHash;
+    referenceScripts:
+      "referenceScripts" in scripts
+        ? scripts.referenceScripts
+        : workflowReferenceScriptsUsedByTransaction({
+            signed,
+            candidates: scripts.referenceScriptCandidates,
+          }),
+  };
 };

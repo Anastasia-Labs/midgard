@@ -41,7 +41,7 @@ import { submitRemoveFraudulentBlock } from "./remove-fraudulent-block.submit-re
 import type { ResolvedProverSigner } from "./runtime.js";
 import { balanceCbor } from "./workflow/funding-reservation-permit.apply-transition.js";
 import {
-  type FraudProofPreSubmitBoundary,
+  type LocallyEvaluatedTransaction,
   workflowTransactionCollateralInputOutRefs,
   workflowTransactionInputOutRefs,
 } from "./workflow/transaction-boundary.js";
@@ -248,7 +248,9 @@ export const driveProvenCorrectionRemoval = async ({
     ttl === undefined
       ? Date.now() + Number(STATE_QUEUE_REMOVAL_VALIDITY_WINDOW_MS)
       : lucid.slotToUnixTime(Number(ttl));
-  const holdOwnCoins: FraudProofPreSubmitBoundary = async ({ signed }) => {
+  const holdOwnCoins = async ({
+    signed,
+  }: LocallyEvaluatedTransaction): Promise<void> => {
     // Collateral may be a spent input too.
     const spent = await lucid.utxosByOutRef(
       [
@@ -286,7 +288,7 @@ export const driveProvenCorrectionRemoval = async ({
         : { stateQueueMutationLeaseCoordinator }),
       ...(validFrom === undefined ? {} : { validFrom }),
       ...(validTo === undefined ? {} : { validTo }),
-      preSubmitBoundary: holdOwnCoins,
+      beforeSubmit: holdOwnCoins,
     }).then((result) => {
       for (const release of releases) release();
       return result;

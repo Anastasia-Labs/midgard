@@ -21,7 +21,6 @@ import {
   type DirectPurposeRole,
   directPurposeRoleValidator,
   type DirectPurposeTransition,
-  submitDirectPurposeTransition,
 } from "../src/direct-purpose-family/index.js";
 import { faultProofFieldOpening } from "../src/field-opening.js";
 import {
@@ -50,6 +49,7 @@ import {
   setupIntegrityScenario,
 } from "./support/script-integrity-hash-mismatch-emulator.subject.js";
 import { network } from "./support/submit-init-emulator-shared.js";
+import { submitDirectPurposeTransition } from "./support/submit-unjournaled.direct-purpose.js";
 
 const STRANGER_FUNDING_LOVELACE = 1_000_000_000n;
 

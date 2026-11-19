@@ -19,13 +19,13 @@ import { describe, expect, it } from "vitest";
 
 import { COMMITTED_FIELD_SHAPE_CATEGORY_LABEL } from "../src/committed-field-shape/contracts.js";
 import {
+  buildCommittedFieldShapeInit,
+  buildCommittedFieldShapeStep01,
+  buildCommittedFieldShapeStep02,
   classifyCommittedFieldShapeFields,
   prepareCommittedFieldShapeFromCanonicalTx,
-  submitCommittedFieldShapeInit,
-  submitCommittedFieldShapeStep01,
-  submitCommittedFieldShapeStep02,
 } from "../src/committed-field-shape/index.js";
-import { submitLinearFaultCancel } from "../src/linear-fault-cancel.js";
+import { buildLinearFaultCancel } from "../src/linear-fault-cancel.js";
 import {
   type CommittedFieldShapeEmulatorHarness,
   committedFieldShapeInlineClaim,
@@ -44,12 +44,13 @@ import {
   makeNativeTx,
   network,
 } from "./support/submit-init-emulator-shared.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 const initThread = async (
   harness: CommittedFieldShapeEmulatorHarness,
   scenario: CommittedFieldShapeScenario,
 ) =>
-  await submitCommittedFieldShapeInit({
+  await buildAndSubmitUnjournaled(buildCommittedFieldShapeInit, {
     lucid: harness.proverLucid,
     blueprint: harness.realBlueprint,
     network,
@@ -209,7 +210,7 @@ describe("committed-field-shape adversarial prover and recovery", () => {
       step02State: committedFieldShapeStep02StateFromEvidence(honestEvidence),
     };
     await expect(
-      submitCommittedFieldShapeStep01({
+      buildAndSubmitUnjournaled(buildCommittedFieldShapeStep01, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         contracts: harness.committedFieldShape,
@@ -304,7 +305,7 @@ describe("committed-field-shape adversarial prover and recovery", () => {
     );
 
     await expect(
-      submitCommittedFieldShapeStep02({
+      buildAndSubmitUnjournaled(buildCommittedFieldShapeStep02, {
         lucid: harness.proverLucid,
         contracts: harness.committedFieldShape,
         categoryId: harness.category.categoryId,
@@ -349,20 +350,23 @@ describe("committed-field-shape adversarial prover and recovery", () => {
     });
 
     const first = await initThread(harness, scenario);
-    const cancelledAt01 = await submitLinearFaultCancel({
-      lucid: harness.proverLucid,
-      family: COMMITTED_FIELD_SHAPE_CATEGORY_LABEL,
-      steps: harness.committedFieldShape.steps,
-      computationThread: harness.committedFieldShape.computationThread,
-      categoryId: harness.category.categoryId,
-      signer: harness.proverSigner,
-      threadOutRef: first.nextThreadOutRef,
-      referenceScriptUtxo: refs[0],
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-    });
+    const cancelledAt01 = await buildAndSubmitUnjournaled(
+      buildLinearFaultCancel,
+      {
+        lucid: harness.proverLucid,
+        family: COMMITTED_FIELD_SHAPE_CATEGORY_LABEL,
+        steps: harness.committedFieldShape.steps,
+        computationThread: harness.committedFieldShape.computationThread,
+        categoryId: harness.category.categoryId,
+        signer: harness.proverSigner,
+        threadOutRef: first.nextThreadOutRef,
+        referenceScriptUtxo: refs[0],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+      },
+    );
     expect(cancelledAt01.cancelledStepIndex).toBe(0);
     await expect(
-      submitCommittedFieldShapeStep01({
+      buildAndSubmitUnjournaled(buildCommittedFieldShapeStep01, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         contracts: harness.committedFieldShape,
@@ -379,37 +383,43 @@ describe("committed-field-shape adversarial prover and recovery", () => {
     ).rejects.toThrow();
 
     const second = await initThread(harness, scenario);
-    const step01 = await submitCommittedFieldShapeStep01({
-      lucid: harness.proverLucid,
-      blueprint: harness.realBlueprint,
-      contracts: harness.committedFieldShape,
-      categoryId: harness.category.categoryId,
-      network,
-      signer: harness.proverSigner,
-      threadOutRef: second.nextThreadOutRef,
-      stateQueueBlockOutRef: scenario.setup.fraudulentBlockOutRef,
-      txInclusion: scenario.inclusion,
-      prepared,
-      referenceScriptUtxo: refs[0],
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-    });
-    const cancelledAt02 = await submitLinearFaultCancel({
-      lucid: harness.proverLucid,
-      family: COMMITTED_FIELD_SHAPE_CATEGORY_LABEL,
-      steps: harness.committedFieldShape.steps,
-      computationThread: harness.committedFieldShape.computationThread,
-      categoryId: harness.category.categoryId,
-      signer: harness.proverSigner,
-      threadOutRef: step01.nextThreadOutRef,
-      referenceScriptUtxo: refs[1],
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-    });
+    const step01 = await buildAndSubmitUnjournaled(
+      buildCommittedFieldShapeStep01,
+      {
+        lucid: harness.proverLucid,
+        blueprint: harness.realBlueprint,
+        contracts: harness.committedFieldShape,
+        categoryId: harness.category.categoryId,
+        network,
+        signer: harness.proverSigner,
+        threadOutRef: second.nextThreadOutRef,
+        stateQueueBlockOutRef: scenario.setup.fraudulentBlockOutRef,
+        txInclusion: scenario.inclusion,
+        prepared,
+        referenceScriptUtxo: refs[0],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+      },
+    );
+    const cancelledAt02 = await buildAndSubmitUnjournaled(
+      buildLinearFaultCancel,
+      {
+        lucid: harness.proverLucid,
+        family: COMMITTED_FIELD_SHAPE_CATEGORY_LABEL,
+        steps: harness.committedFieldShape.steps,
+        computationThread: harness.committedFieldShape.computationThread,
+        categoryId: harness.category.categoryId,
+        signer: harness.proverSigner,
+        threadOutRef: step01.nextThreadOutRef,
+        referenceScriptUtxo: refs[1],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+      },
+    );
     expect(cancelledAt02.cancelledStepIndex).toBe(1);
 
     const outsiderTarget = await initThread(harness, scenario);
     await fundCommittedFieldShapeOutsider(harness);
     await expect(
-      submitLinearFaultCancel({
+      buildAndSubmitUnjournaled(buildLinearFaultCancel, {
         lucid: harness.outsiderLucid,
         family: COMMITTED_FIELD_SHAPE_CATEGORY_LABEL,
         steps: harness.committedFieldShape.steps,
@@ -446,7 +456,7 @@ describe("committed-field-shape adversarial prover and recovery", () => {
       }),
     );
     expect(outsiderRefusal.length).toBeGreaterThan(0);
-    await submitLinearFaultCancel({
+    await buildAndSubmitUnjournaled(buildLinearFaultCancel, {
       lucid: harness.proverLucid,
       family: COMMITTED_FIELD_SHAPE_CATEGORY_LABEL,
       steps: harness.committedFieldShape.steps,

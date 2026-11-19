@@ -3,8 +3,9 @@ import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-prof
 import { describe, expect, it } from "vitest";
 
 import { zeroInputEvidenceCloses } from "../src/zero-input/family.js";
-import { submitZeroInputStep02V1 } from "../src/zero-input/submit-step-02.js";
+import { buildZeroInputStep02V1 } from "../src/zero-input/submit-step-02.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 import {
   stageZeroInputAcceptance,
   stageZeroInputHonestRejection,
@@ -23,7 +24,7 @@ const expectUnlistedProver = (staged: ZeroInputStagedThread) =>
 const expectBuilderRefusal = async (staged: ZeroInputStagedThread) => {
   expect(zeroInputEvidenceCloses(staged.evidence)).toBe(false);
   await expect(
-    submitZeroInputStep02V1({
+    buildAndSubmitUnjournaled(buildZeroInputStep02V1, {
       lucid: staged.harness.proverLucid,
       contracts: staged.contracts,
       categoryId: staged.categoryId,

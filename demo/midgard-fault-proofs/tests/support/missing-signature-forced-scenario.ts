@@ -10,18 +10,14 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Data, getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
 
-import {
-  certifyFaultProofFieldCarriage,
-  faultProofFieldOpening,
-  publishFaultProofFieldCarriage,
-} from "../../src/field-opening.js";
-import { submitLinearFaultFinalize } from "../../src/linear-fault-finalize.js";
+import { faultProofFieldOpening } from "../../src/field-opening.js";
+import { buildLinearFaultFinalize } from "../../src/linear-fault-finalize.js";
 import {
   planMissingSignatureAddressWitnessesOpening,
   planMissingSignatureRequiredSignersOpening,
 } from "../../src/missing-signature/evidence.js";
-import { submitMissingSignatureForcedAction } from "../../src/missing-signature/submit-forced.js";
-import { submitMissingSignatureInit } from "../../src/missing-signature/submit-missing-signature-init.js";
+import { buildMissingSignatureForcedAction } from "../../src/missing-signature/submit-forced.js";
+import { buildMissingSignatureInit } from "../../src/missing-signature/submit-missing-signature-init.js";
 import type { PreparedMissingSignatureWrongfulRejection } from "../../src/missing-signature/wrongful-rejection.js";
 import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.js";
 import { requireComputationThreadToken } from "../../src/step-support.js";
@@ -41,6 +37,12 @@ import { makeMissingSignatureEmulatorHarness } from "./missing-signature-emulato
 import { buildMissingSignatureForcedTransaction as transactionFor } from "./missing-signature-forced-shapes.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./submit-init-emulator-fixtures.js";
 import { publishRemovalReferenceScripts } from "./submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  certifyCarriageUnjournaled,
+  publishCarriageUnjournaled,
+  submitTurnsUnjournaled,
+} from "./submit-unjournaled.js";
 
 export const network = "Custom" as const;
 type Harness = Awaited<ReturnType<typeof makeMissingSignatureEmulatorHarness>>;
@@ -214,7 +216,7 @@ export const setupMissingSignatureForcedScenario = async (
   const init = async () =>
     (
       await record("init", () =>
-        submitMissingSignatureInit({
+        buildAndSubmitUnjournaled(buildMissingSignatureInit, {
           lucid: harness.proverLucid,
           blueprint: harness.realBlueprint,
           network,
@@ -240,7 +242,7 @@ export const setupMissingSignatureForcedScenario = async (
     carriage: OwnOutputJournal = ownOutputs,
   ) =>
     record(`step-${index}`, () =>
-      submitMissingSignatureForcedAction({
+      submitTurnsUnjournaled(buildMissingSignatureForcedAction, {
         ownOutputs: carriage,
         lucid: harness.proverLucid,
         contracts: harness.missingSignature,
@@ -309,7 +311,7 @@ export const setupMissingSignatureForcedScenario = async (
             owner: harness.proverSigner.paymentKeyHash,
           });
     const chunks = await record("field-publication", () =>
-      publishFaultProofFieldCarriage({
+      publishCarriageUnjournaled({
         ownOutputs,
         lucid: harness.proverLucid,
         signer: harness.proverSigner,
@@ -327,7 +329,7 @@ export const setupMissingSignatureForcedScenario = async (
       }),
     );
     const certificate = await record("certify", () =>
-      certifyFaultProofFieldCarriage({
+      certifyCarriageUnjournaled({
         ownOutputs,
         lucid: harness.proverLucid,
         network,
@@ -365,7 +367,7 @@ export const setupMissingSignatureForcedScenario = async (
       anchorWitnessSetHash: prepared.verifiedWitnessSetHash,
       owner: harness.proverSigner.paymentKeyHash,
     });
-    return submitLinearFaultFinalize({
+    return buildAndSubmitUnjournaled(buildLinearFaultFinalize, {
       lucid: harness.proverLucid,
       family: "missing-signature forced",
       stepIndex: 3,

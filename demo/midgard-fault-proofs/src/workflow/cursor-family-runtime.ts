@@ -6,14 +6,15 @@ import {
   type RemoveFraudulentBlockReferenceScriptName,
   type StateQueueMutationLease,
   type StateQueueMutationLeaseCoordinator,
-  submitRemoveFraudulentBlock,
 } from "../remove-fraudulent-block.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { CURSOR_FAMILY_ACTION } from "./cursor-family-state.js";
 import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
+import { admitRemovalTransaction } from "./removal-admission.js";
 import {
-  captureLocallyEvaluatedTransaction,
+  type LocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
   workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary.js";
@@ -93,60 +94,41 @@ export const captureCursorRemoval = async <
   readonly fraudProverRewardLovelace: bigint;
 }): Promise<
   Readonly<{
-    transaction: Awaited<ReturnType<typeof captureLocallyEvaluatedTransaction>>;
+    transaction: LocallyEvaluatedTransaction;
     mutationLease?: StateQueueMutationLease;
   }>
 > => {
-  let mutationLease: StateQueueMutationLease | undefined;
-  const retainingCoordinator: StateQueueMutationLeaseCoordinator = {
-    acquire: async () => {
-      const acquired = await stateQueueMutationLeaseCoordinator.acquire();
-      mutationLease = acquired;
-      return acquired;
-    },
-  };
   const targetOutRef = cursorStringField(input, "stateQueueBlockOutRef");
   const nextRemovalOutRef = cursorStringField(input, "nextRemovalOutRef");
   const fraudProofOutRef = cursorStringField(input, "fraudProofOutRef");
-  const transaction = await captureLocallyEvaluatedTransaction(
-    async (boundary) => {
-      await submitRemoveFraudulentBlock({
-        fraudProofOutRef,
-        lucid,
-        blueprint,
-        deploymentInfo,
-        network,
-        signer,
-        fraudCategory: category,
-        fraudulentHeaderHash: headerHash,
-        requireReferenceScripts: true,
-        stateQueueMutationLeaseCoordinator: retainingCoordinator,
-        fraudProverRewardLovelace,
-        preSubmitBoundary: async (built) => {
-          if (
-            !workflowTransactionInputOutRefs(built.signed).includes(
-              targetOutRef,
-            ) ||
-            !workflowTransactionInputOutRefs(built.signed).includes(
-              nextRemovalOutRef,
-            ) ||
-            !workflowTransactionReferenceInputOutRefs(built.signed).includes(
-              fraudProofOutRef,
-            )
-          ) {
-            throw new Error(
-              `${category} removal changed its authenticated inputs`,
-            );
-          }
-          await boundary(built);
-        },
-      });
+  return await admitRemovalTransaction(
+    await buildRemoveFraudulentBlock({
+      fraudProofOutRef,
+      lucid,
+      blueprint,
+      deploymentInfo,
+      network,
+      signer,
+      fraudCategory: category,
+      fraudulentHeaderHash: headerHash,
+      requireReferenceScripts: true,
+      stateQueueMutationLeaseCoordinator: stateQueueMutationLeaseCoordinator,
+      fraudProverRewardLovelace,
+    }),
+    async (built) => {
+      if (
+        !workflowTransactionInputOutRefs(built.signed).includes(targetOutRef) ||
+        !workflowTransactionInputOutRefs(built.signed).includes(
+          nextRemovalOutRef,
+        ) ||
+        !workflowTransactionReferenceInputOutRefs(built.signed).includes(
+          fraudProofOutRef,
+        )
+      ) {
+        throw new Error(`${category} removal changed its authenticated inputs`);
+      }
     },
   );
-  return Object.freeze({
-    transaction,
-    ...(mutationLease === undefined ? {} : { mutationLease }),
-  });
 };
 
 export type CursorFamilyBoundBase<

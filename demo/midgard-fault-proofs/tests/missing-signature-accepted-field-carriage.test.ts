@@ -6,13 +6,16 @@
  * The step-04 witness field is too wide to ride inline, so it is published
  * before the step by its journaled prerequisite, and a step captured again
  * by a new process reads that publication instead of publishing it again.
+ * Every carriage plan a step builder asks `publishFaultProofFieldCarriage`
+ * for needs exactly the slots (keys and count) of the plan the prerequisite
+ * required, and each finds them journaled instead of building a turn.
  */
 import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import { type UTxO } from "@lucid-evolution/lucid";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as family from "../src/missing-signature/index.js";
-import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
+import { buildRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { normalizeJournalJson } from "../src/workflow/journal.js";
 import {
   createMissingSignatureFieldPrerequisite,
@@ -22,6 +25,12 @@ import {
 import { missingSignatureObservation } from "../src/workflow/missing-signature-state.js";
 import type { FraudProofWorkflowAction } from "../src/workflow/orchestrator.js";
 import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../src/workflow/raw-l1-publication-observation.js";
+import {
+  carriageNeedsByField,
+  carriagePlanRecord,
+  publishedCoverage,
+  resetCarriagePlanRecord,
+} from "./support/carriage-plan-parity.js";
 import { createConfirmedActionJournal } from "./support/confirmed-action-journal.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import {
@@ -35,7 +44,21 @@ import {
 } from "./support/missing-signature-emulator.js";
 import { network } from "./support/missing-signature-forced-scenario.js";
 
+vi.mock("../src/field-opening.js", async (importOriginal) =>
+  (await import("./support/carriage-plan-parity.js")).recordingFieldOpening(
+    await importOriginal(),
+  ),
+);
+vi.mock(
+  "../src/workflow/field-carriage-prerequisite.js",
+  async (importOriginal) =>
+    (
+      await import("./support/carriage-plan-parity.js")
+    ).recordingFieldCarriagePrerequisite(await importOriginal()),
+);
+
 beforeAll(() => ledgerEd25519SignatureReady());
+beforeEach(resetCarriagePlanRecord);
 
 /**
  * 142 address witnesses put field 7's preimage past the inline bound and
@@ -135,12 +158,12 @@ describe("missing-signature accepted-path field carriage", () => {
           deploymentInfo: {},
         },
         builders: {
-          init: family.submitMissingSignatureInit,
-          step01: family.submitMissingSignatureStep01,
-          step02: family.submitMissingSignatureStep02,
-          step03: family.submitMissingSignatureStep03,
-          step04: family.submitMissingSignatureStep04,
-          remove: submitRemoveFraudulentBlock,
+          init: family.buildMissingSignatureInit,
+          step01: family.buildMissingSignatureStep01,
+          step02: family.buildMissingSignatureStep02,
+          step03: family.buildMissingSignatureStep03,
+          step04: family.buildMissingSignatureStep04,
+          remove: buildRemoveFraudulentBlock,
         },
       }),
       prerequisite: createMissingSignatureFieldPrerequisite({
@@ -281,5 +304,31 @@ describe("missing-signature accepted-path field carriage", () => {
     expect((await datumOutputsAtProver()).map(outRefOf)).toEqual(
       published.map(outRefOf),
     );
+
+    // Step 02's required signers ride inline; step 04's witnesses need the
+    // publication the prerequisite journaled, and both builders asked for
+    // exactly what it required, from the prover's proof-materials address.
+    expect(publishedCoverage()).toEqual(["4:Inline", "7:RawUtxo"]);
+    expect(carriageNeedsByField(carriagePlanRecord.published)).toEqual(
+      carriageNeedsByField(carriagePlanRecord.required),
+    );
+    expect(
+      carriagePlanRecord.published.map(({ publisherAddress, turn }) => ({
+        publisherAddress,
+        turn,
+      })),
+    ).toEqual(
+      carriagePlanRecord.published.map(() => ({
+        publisherAddress: harness.proverSigner.proofMaterialsAddress,
+        turn: false,
+      })),
+    );
+    expect(
+      new Set(
+        carriagePlanRecord.required.map(
+          ({ publisherAddress }) => publisherAddress,
+        ),
+      ),
+    ).toEqual(new Set([harness.proverSigner.proofMaterialsAddress]));
   }, 600_000);
 });

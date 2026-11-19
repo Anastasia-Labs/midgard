@@ -51,7 +51,8 @@ import {
   resolveReferenceInputNoIdxDeploymentContracts,
   type SubmitProviderConfig,
 } from "./runtime.js";
-import { completeStep, fundStep, submitStep } from "./step-completion.js";
+import { completeStep, fundStep } from "./step-completion.js";
+import { finishStep } from "./step-completion.js";
 import {
   parseSubmitStep01TxInclusion,
   requireComputationThreadToken,
@@ -59,14 +60,15 @@ import {
   requireNativeTxMatchesCompactCbor,
   type SubmitStep01TxInclusion,
 } from "./step-support.js";
+import { submitFaultProofTurns } from "./submit-fault-proof-turns.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessSpendingValidatorCarriage,
 } from "./witness-reference-scripts.js";
 import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
 } from "./workflow/transaction-boundary.js";
 
 export type SubmitReferenceInputNoIdxStep01CliConfig = SubmitProviderConfig & {
@@ -82,8 +84,8 @@ export type SubmitReferenceInputNoIdxStep01CliConfig = SubmitProviderConfig & {
   readonly awaitConfirmation?: boolean;
 };
 
-export type SubmitReferenceInputNoIdxStep01Result = {
-  readonly txHash: string;
+export type ReferenceInputNoIdxStep01Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -108,8 +110,10 @@ export type SubmitReferenceInputNoIdxStep01Result = {
   readonly outputIndex: number;
   readonly hubOracleRefInputIndex: number;
   readonly stateQueueNodeRefInputIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
+
+export type SubmitReferenceInputNoIdxStep01Result =
+  UnjournaledSubmission<ReferenceInputNoIdxStep01Build>;
 
 type ReferenceInputNoIdxStep01Layout = {
   readonly inputIndex: bigint;
@@ -118,7 +122,7 @@ type ReferenceInputNoIdxStep01Layout = {
   readonly stateQueueNodeRefInputIndex: bigint;
 };
 
-export const submitReferenceInputNoIdxStep01 = async ({
+export const buildReferenceInputNoIdxStep01 = async ({
   lucid,
   blueprint,
   deploymentInfo,
@@ -130,8 +134,6 @@ export const submitReferenceInputNoIdxStep01 = async ({
   publishedProofChunks,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -146,9 +148,7 @@ export const submitReferenceInputNoIdxStep01 = async ({
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitReferenceInputNoIdxStep01Result> => {
+}): Promise<ReferenceInputNoIdxStep01Build> => {
   const resolvedDeployment =
     await resolveReferenceInputNoIdxDeploymentContracts({
       blueprint,
@@ -332,30 +332,24 @@ export const submitReferenceInputNoIdxStep01 = async ({
       "BuildTxWithRedeemer did not resolve reference-input-no-idx step 01 layout.",
     );
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: "reference-input-no-idx step-01",
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: "V1 fraud-proof reference-input-no-idx step-01",
-          utxo: referenceScriptUtxo,
-          expectedScript: contracts.referenceInputNoIdx.steps[0].spendingScript,
-        },
-        ...inclusionCarriage.referenceScriptCandidates,
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: "V1 fraud-proof reference-input-no-idx step-01",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.referenceInputNoIdx.steps[0].spendingScript,
+      },
+      ...inclusionCarriage.referenceScriptCandidates,
+    ],
   });
 
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
     threadOutRef,
-    nextThreadOutRef: `${txHash}#${resolvedLayout.outputIndex.toString()}`,
+    nextThreadOutRef: `${transaction.txHash}#${resolvedLayout.outputIndex.toString()}`,
     stateQueueBlockOutRef,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadPolicyId: contracts.computationThread.policyId,
@@ -371,7 +365,6 @@ export const submitReferenceInputNoIdxStep01 = async ({
     stateQueueNodeRefInputIndex: Number(
       resolvedLayout.stateQueueNodeRefInputIndex,
     ),
-    awaitedConfirmation: awaitConfirmation,
   };
 };
 
@@ -387,15 +380,21 @@ export const submitReferenceInputNoIdxStep01FromFiles = async (
     ],
   );
   const signer = resolveProverSigner(config);
-  return await submitReferenceInputNoIdxStep01({
-    lucid,
-    blueprint,
-    deploymentInfo,
-    network: config.network,
-    signer,
-    threadOutRef: config.threadOutRef,
-    stateQueueBlockOutRef: config.stateQueueBlockOutRef,
-    txInclusion: parseSubmitStep01TxInclusion(txInclusionJson),
-    awaitConfirmation: config.awaitConfirmation,
-  });
+  return await submitFaultProofTurns(
+    buildReferenceInputNoIdxStep01,
+    {
+      lucid,
+      blueprint,
+      deploymentInfo,
+      network: config.network,
+      signer,
+      threadOutRef: config.threadOutRef,
+      stateQueueBlockOutRef: config.stateQueueBlockOutRef,
+      txInclusion: parseSubmitStep01TxInclusion(txInclusionJson),
+    },
+    {
+      label: "reference-input-no-idx-step01",
+      awaitConfirmation: config.awaitConfirmation ?? true,
+    },
+  );
 };

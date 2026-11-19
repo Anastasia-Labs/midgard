@@ -1,7 +1,7 @@
 import { outRefLabel } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
-import { submitL2TxMistagInit, submitL2TxMistagStep01 } from "../src/index.js";
+import { buildL2TxMistagInit, buildL2TxMistagStep01 } from "../src/index.js";
 import { network } from "./support/emulator/blueprints.js";
 import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
@@ -15,6 +15,7 @@ import {
   expectStateQueueHeaderOrder,
   setupFraudulentBlock,
 } from "./support/submit-init-emulator-fixtures.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 describe("l2-tx-mistag adversarial refusal", () => {
   it("refuses an honest code-0 leaf at the exact on-chain check and a scalar flip at membership", async () => {
@@ -39,7 +40,7 @@ describe("l2-tx-mistag adversarial refusal", () => {
       catalogue: harness.catalogue,
       fixture: honest,
     });
-    const init = await submitL2TxMistagInit({
+    const init = await buildAndSubmitUnjournaled(buildL2TxMistagInit, {
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,
@@ -63,7 +64,7 @@ describe("l2-tx-mistag adversarial refusal", () => {
 
     // Offchain plane: the production submitter refuses before building.
     await expect(
-      submitL2TxMistagStep01({
+      buildAndSubmitUnjournaled(buildL2TxMistagStep01, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         contracts,
@@ -101,7 +102,7 @@ describe("l2-tx-mistag adversarial refusal", () => {
     // Anti-framing plane: the forged compact re-derives the same id and passes
     // the submitter's codec gate, but it is not the value in the honest root.
     await expect(
-      submitL2TxMistagStep01({
+      buildAndSubmitUnjournaled(buildL2TxMistagStep01, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         contracts,

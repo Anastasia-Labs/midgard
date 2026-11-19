@@ -16,14 +16,9 @@ import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-valida
 import { Constr, Data, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import {
-  certifyFaultProofFieldCarriage,
-  planFaultProofFieldOpening,
-  publishFaultProofFieldCarriage,
-} from "../../src/field-opening.js";
+import { planFaultProofFieldOpening } from "../../src/field-opening.js";
 import { submitRemoveFraudulentBlock } from "../../src/index.js";
-import { publishProofChunks } from "../../src/publish-proof-chunks.js";
-import { submitResolvedInit } from "../../src/submit-init.js";
+import { buildResolvedInit } from "../../src/submit-init.js";
 import { commitCountedRoot } from "../../src/transition-trace/phas.js";
 import {
   buildEventToStepMembershipProof,
@@ -43,10 +38,10 @@ import {
   conservationForcedSource,
 } from "../../src/value-not-preserved/source-plan.js";
 import {
+  buildConservationAcceptedSource,
+  buildConservationAction,
+  buildConservationCancel,
   conservationStep,
-  submitConservationAcceptedSource,
-  submitConservationAction,
-  submitConservationCancel,
 } from "../../src/value-not-preserved/submit-union.js";
 import { planConservationFold } from "../../src/value-not-preserved/union-plan.js";
 import {
@@ -70,6 +65,12 @@ import {
   publishRemovalReferenceScripts,
   submitSetupTx,
 } from "./submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  certifyCarriageUnjournaled,
+  publishCarriageUnjournaled,
+  publishProofChunks,
+} from "./submit-unjournaled.js";
 import { syntheticDeepMembershipProof } from "./synthetic-deep-proof.js";
 import {
   buildValueNotPreservedFixture,
@@ -809,7 +810,7 @@ export const registerValueConservationCases = (
       references.set(action.position, publication.utxo);
     }
     const init = await record("initialize", async () =>
-      submitResolvedInit({
+      buildAndSubmitUnjournaled(buildResolvedInit, {
         label: VALUE_NOT_PRESERVED_CATEGORY_LABEL,
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
@@ -977,7 +978,7 @@ export const registerValueConservationCases = (
         planned.plan.tier === "Inline"
           ? []
           : await record(`field:${fieldIndex}:publish`, async () =>
-              publishFaultProofFieldCarriage({
+              publishCarriageUnjournaled({
                 ownOutputs,
                 lucid: harness.proverLucid,
                 signer: harness.proverSigner,
@@ -990,7 +991,7 @@ export const registerValueConservationCases = (
         planned.plan.tier === "Certified"
           ? (
               await record(`field:${fieldIndex}:certify`, async () =>
-                certifyFaultProofFieldCarriage({
+                certifyCarriageUnjournaled({
                   ownOutputs,
                   lucid: harness.proverLucid,
                   network,
@@ -1056,7 +1057,7 @@ export const registerValueConservationCases = (
       if (!maximum && !checkedMutation && action.position === "unionUpdate") {
         const args = Data.from(action.args, ConservationUpdateArgs);
         await expect(
-          submitConservationAction({
+          buildAndSubmitUnjournaled(buildConservationAction, {
             lucid: harness.proverLucid,
             contracts: harness.family,
             categoryId: harness.category.categoryId,
@@ -1075,7 +1076,7 @@ export const registerValueConservationCases = (
           }),
         ).rejects.toThrow();
         await expect(
-          submitConservationAction({
+          buildAndSubmitUnjournaled(buildConservationAction, {
             lucid: harness.proverLucid,
             contracts: harness.family,
             categoryId: harness.category.categoryId,
@@ -1092,7 +1093,7 @@ export const registerValueConservationCases = (
 
       if (cancellation && !cancelled.has(action.position)) {
         await record(`cancel:${action.position}`, async () =>
-          submitConservationCancel({
+          buildAndSubmitUnjournaled(buildConservationCancel, {
             lucid: harness.proverLucid,
             contracts: harness.family,
             categoryId: harness.category.categoryId,
@@ -1112,7 +1113,7 @@ export const registerValueConservationCases = (
           ).some((u) => u.assets[init.computationThreadUnit] === 1n),
         ).toBe(false);
         const restarted = await record(`restart:${action.position}`, async () =>
-          submitResolvedInit({
+          buildAndSubmitUnjournaled(buildResolvedInit, {
             label: VALUE_NOT_PRESERVED_CATEGORY_LABEL,
             lucid: harness.proverLucid,
             blueprint: harness.realBlueprint,
@@ -1136,7 +1137,7 @@ export const registerValueConservationCases = (
       }
       if (honest && action.position === "unionTerminal") {
         await expect(
-          submitConservationAction({
+          buildAndSubmitUnjournaled(buildConservationAction, {
             lucid: harness.proverLucid,
             contracts: harness.family,
             categoryId: harness.category.categoryId,
@@ -1149,7 +1150,7 @@ export const registerValueConservationCases = (
           }),
         ).rejects.toThrow();
         await record("honest:cancel-terminal", () =>
-          submitConservationCancel({
+          buildAndSubmitUnjournaled(buildConservationCancel, {
             lucid: harness.proverLucid,
             contracts: harness.family,
             categoryId: harness.category.categoryId,
@@ -1186,28 +1187,31 @@ export const registerValueConservationCases = (
           if (threadUtxo === undefined) throw new Error("thread absent");
           return {
             kind: "advanced" as const,
-            ...(await submitConservationAcceptedSource({
-              lucid: harness.proverLucid,
-              blueprint: harness.realBlueprint,
-              network,
-              contracts: harness.family,
-              source: source.source,
-              signer: harness.proverSigner,
-              threadUtxo,
-              threadToken: {
-                unit: init.computationThreadUnit,
-                fraudulentHeaderHash: setup.headerHash,
+            ...(await buildAndSubmitUnjournaled(
+              buildConservationAcceptedSource,
+              {
+                lucid: harness.proverLucid,
+                blueprint: harness.realBlueprint,
+                network,
+                contracts: harness.family,
+                source: source.source,
+                signer: harness.proverSigner,
+                threadUtxo,
+                threadToken: {
+                  unit: init.computationThreadUnit,
+                  fraudulentHeaderHash: setup.headerHash,
+                },
+                stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+                txInclusion: block.txInclusion,
+                publishedProofChunks: publishedSourceProof,
+                referenceScriptUtxo: references.get(action.position)!,
+                witnessReferenceScripts: harness.witnessReferenceScripts,
+                awaitConfirmation: true,
               },
-              stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-              txInclusion: block.txInclusion,
-              publishedProofChunks: publishedSourceProof,
-              referenceScriptUtxo: references.get(action.position)!,
-              witnessReferenceScripts: harness.witnessReferenceScripts,
-              awaitConfirmation: true,
-            })),
+            )),
           };
         }
-        return await submitConservationAction({
+        return await buildAndSubmitUnjournaled(buildConservationAction, {
           lucid: harness.proverLucid,
           contracts: harness.family,
           categoryId: harness.category.categoryId,

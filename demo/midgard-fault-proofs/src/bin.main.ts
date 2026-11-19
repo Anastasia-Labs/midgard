@@ -21,12 +21,12 @@ import {
   inspectContractsFromFiles,
   parseNetwork,
 } from "./inspect-contracts.js";
-import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary.js";
+import { rejectUnadmittedSubmissionRoute } from "./legacy-submission-boundary.js";
 import { prepareTransitionTraceFromDaEnvelope } from "./prepare-transition-trace.js";
 import { submitRemoveFraudulentBlockFromFiles } from "./remove-fraudulent-block.js";
 import { submitUnattestedTimeoutCorrectionFromFiles } from "./remove-unattested-block.js";
 import { submitDaHashPreimageStep01FromFiles } from "./submit-da-hash-preimage-step-01.js";
-import { submitDaHashPreimageStep02FromFiles } from "./submit-da-hash-preimage-step-02.js";
+import { submitDaHashPreimageStep02FromFiles } from "./submit-da-hash-preimage-step-02.submit-da-hash-preimage-step02-from-files.js";
 import { submitFabricatedDepositStep01FromFiles } from "./submit-fabricated-deposit-step-01.js";
 import { submitFabricatedDepositStep02FromFiles } from "./submit-fabricated-deposit-step-02.js";
 import { submitFabricatedDepositStep03FromFiles } from "./submit-fabricated-deposit-step-03.js";
@@ -129,6 +129,14 @@ export const main = async (): Promise<void> => {
     return;
   }
 
+  // RF-043: admit only the allow-listed submission routes, and reject every
+  // retired or unadmitted one, before any blueprint/deployment read or
+  // provider/wallet construction.
+  rejectUnadmittedSubmissionRoute({
+    command: args.command,
+    fraudCategory: args.fraudCategory,
+  });
+
   if (
     args.command !== "prepare-double-spend" &&
     args.command !== "prepare-invalid-range" &&
@@ -182,14 +190,6 @@ export const main = async (): Promise<void> => {
       `Expected a supported prepare, inspect, submit, or removal command.\n${usage}`,
     );
   }
-
-  // RF-043: reject every legacy diagnostic submission route before any
-  // blueprint/deployment read or provider/wallet construction.  Only
-  // canonical evidence submitters may cross this boundary in the future.
-  rejectRetiredUnauthenticatedSubmissionRoute({
-    command: args.command,
-    fraudCategory: args.fraudCategory,
-  });
 
   // Q03: the executable CLI has no operator-private compatibility route. The
   // current REST/file/sample flags are retained solely as clearly labelled

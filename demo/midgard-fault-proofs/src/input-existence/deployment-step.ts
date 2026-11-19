@@ -9,7 +9,7 @@ import {
   inputExistenceArtifact,
 } from "./artifact.js";
 import type { InputExistenceContracts } from "./prepare-step-carriage.js";
-import { submitInputExistenceStep } from "./submit.js";
+import { buildInputExistenceStep } from "./submit.js";
 
 /** The deployed category and contracts of the family whose inputs `field`
  * lists. */
@@ -43,7 +43,7 @@ export const resolveInputExistenceDeployment = async (
 };
 
 export type InputExistenceDeploymentStepArguments = Omit<
-  Parameters<typeof submitInputExistenceStep>[0],
+  Parameters<typeof buildInputExistenceStep>[0],
   "contracts" | "categoryId" | "stepIndex"
 > &
   Readonly<{ deploymentInfo: unknown }>;
@@ -66,7 +66,7 @@ export const createInputExistenceDeploymentStep =
       field,
       { blueprint: args.blueprint, deploymentInfo, network: args.network },
     );
-    return submitInputExistenceStep({
+    return buildInputExistenceStep({
       ...args,
       prepared,
       contracts,

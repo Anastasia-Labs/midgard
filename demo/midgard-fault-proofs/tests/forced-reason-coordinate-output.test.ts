@@ -19,10 +19,10 @@ import {
   VAN_ROSSEM_MAX_MEMORY_UNITS,
 } from "../src/proof-fit/van-rossem.js";
 import {
-  submitTransactionOutputNonCanonicalStep01Forced,
-  submitTransactionOutputNonCanonicalStep02,
-  submitTransactionOutputNonCanonicalStep03,
-  submitTransactionOutputNonCanonicalStep04,
+  buildTransactionOutputNonCanonicalStep01Forced,
+  buildTransactionOutputNonCanonicalStep02,
+  buildTransactionOutputNonCanonicalStep03,
+  buildTransactionOutputNonCanonicalStep04,
   TRANSACTION_OUTPUT_OUTCOME_ABSENT,
 } from "../src/transaction-output-non-canonical/index.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
@@ -36,6 +36,10 @@ import {
   alignUnixTimeToEmulatorSlotBoundary,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 import {
   buildForcedOutputFixture,
   MALFORMED_OUTPUT,
@@ -169,7 +173,7 @@ const setupForcedThread = async ({
   };
   const init = await registered.init(setup.fraudulentBlockOutRef);
   const bound = await captureEmulatorSubmission(harness.emulator, () =>
-    submitTransactionOutputNonCanonicalStep01Forced({
+    buildAndSubmitUnjournaled(buildTransactionOutputNonCanonicalStep01Forced, {
       ...step,
       threadOutRef: `${init.result.txHash}#${init.result.firstStepOutputIndex.toString()}`,
       finding: evidence,
@@ -182,7 +186,7 @@ const setupForcedThread = async ({
   );
   const authenticate = async () =>
     await captureEmulatorSubmission(harness.emulator, () =>
-      submitTransactionOutputNonCanonicalStep02({
+      submitTurnsUnjournaled(buildTransactionOutputNonCanonicalStep02, {
         ...step,
         ...source,
         threadOutRef: bound.result.nextThreadOutRef,
@@ -196,7 +200,7 @@ const setupForcedThread = async ({
     );
   const mint = async (threadOutRef: string) =>
     await captureEmulatorSubmission(harness.emulator, () =>
-      submitTransactionOutputNonCanonicalStep04({
+      buildAndSubmitUnjournaled(buildTransactionOutputNonCanonicalStep04, {
         ...step,
         threadOutRef,
         evidence,
@@ -245,13 +249,16 @@ const setupScenario = async (offset: bigint) => {
   const scanToTerminal = async (): Promise<string> => {
     let threadOutRef = authenticated.nextThreadOutRef;
     for (;;) {
-      const scanned = await submitTransactionOutputNonCanonicalStep03({
-        ...s.step,
-        ...s.source,
-        threadOutRef,
-        evidence: s.evidence,
-        referenceScriptUtxo: s.references[2]!,
-      });
+      const scanned = await buildAndSubmitUnjournaled(
+        buildTransactionOutputNonCanonicalStep03,
+        {
+          ...s.step,
+          ...s.source,
+          threadOutRef,
+          evidence: s.evidence,
+          referenceScriptUtxo: s.references[2]!,
+        },
+      );
       threadOutRef = scanned.nextThreadOutRef;
       if (scanned.terminal) return threadOutRef;
     }
@@ -288,7 +295,7 @@ describe("forced OutputNonCanonical coordinate the node writes", () => {
     expect(s.evidence.decisiveFaultHolds).toBe(true);
     const terminal = await s.scanToTerminal();
     await expect(
-      submitTransactionOutputNonCanonicalStep04({
+      buildAndSubmitUnjournaled(buildTransactionOutputNonCanonicalStep04, {
         ...s.step,
         threadOutRef: terminal,
         evidence: s.evidence,

@@ -4,8 +4,8 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
+  buildWithdrawnInputStep03,
   submitRemoveFraudulentBlock,
-  submitWithdrawnInputStep03,
 } from "../src/index.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
 import { expectStateQueueHeaderOrder } from "./support/submit-init-emulator-fixtures.js";
@@ -14,6 +14,7 @@ import {
   network,
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 import {
   advanceWithdrawnInputToStep03,
   makeWithdrawnInputEmulatorScenario,
@@ -24,7 +25,7 @@ describe("withdrawn-input emulator lifecycle", () => {
     pinStepTranscript();
     const scenario = await makeWithdrawnInputEmulatorScenario("fault");
     const { step02 } = await advanceWithdrawnInputToStep03(scenario);
-    const final = await submitWithdrawnInputStep03({
+    const final = await buildAndSubmitUnjournaled(buildWithdrawnInputStep03, {
       lucid: scenario.harness.proverLucid,
       contracts: scenario.contracts,
       categoryId: scenario.category.categoryId,

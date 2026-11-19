@@ -22,15 +22,8 @@ import {
   FieldItemWidthAuthenticatedItemSchema,
   FieldItemWidthBoundCoordinateSchema,
   fieldItemWidthEvidenceCloses,
-  fieldItemWidthEvidenceIdentity,
   fieldItemWidthIsIllegal,
-  type FieldItemWidthJournalEntry,
-  type FieldItemWidthStage,
-  type FieldItemWidthSubmissionAdapter,
-  nextFieldItemWidthAction,
   prepareFieldItemWidthEvidence,
-  reconcileFieldItemWidthJournal,
-  runFieldItemWidthProof,
 } from "../src/field-item-width-illegal/field-item-width-illegal.js";
 import { FieldItemWidthStep02ArgsSchema } from "../src/field-item-width-illegal/schemas.js";
 import { buildRegisteredChainFixture } from "./support/emulator/registered-chain.js";
@@ -286,140 +279,6 @@ describe("fieldItemWidthIllegal V1 semantics and evidence", () => {
         FieldItemWidthAuthenticatedItemSchema as never,
       ),
     ).toThrow();
-  });
-});
-
-describe("fieldItemWidthIllegal V1 durable runner", () => {
-  it("selects every physical step and removal deterministically", () => {
-    expect(
-      (
-        ["none", "step01", "step02", "step03", "proven", "removed"] as const
-      ).map(nextFieldItemWidthAction),
-    ).toEqual([
-      "submitInit",
-      "submitStep01",
-      "submitStep02",
-      "submitStep03",
-      "removeDescendants",
-      "done",
-    ]);
-  });
-
-  it("reconstructs after each interruption and reaches permanent removal", async () => {
-    const prepared = evidence();
-    const identity = fieldItemWidthEvidenceIdentity(prepared);
-    const entries: FieldItemWidthJournalEntry[] = [];
-    let chainStage: FieldItemWidthStage = "none";
-    const transition: Record<string, FieldItemWidthStage> = {
-      submitInit: "step01",
-      submitStep01: "step02",
-      submitStep02: "step03",
-      submitStep03: "proven",
-      removeDescendants: "removed",
-    };
-    const submission: FieldItemWidthSubmissionAdapter = {
-      observe: async (seenIdentity) => {
-        expect(seenIdentity).toBe(identity);
-        return chainStage;
-      },
-      submit: async (action) => {
-        chainStage = transition[action] ?? "removed";
-        return {
-          stage: chainStage,
-          txHash: entries.length.toString(16).padStart(64, "0"),
-          outputReference:
-            chainStage === "removed" ? null : `${entries.length}#0`,
-        };
-      },
-      cancel: async (stage) => ({
-        stage: "cancelled",
-        txHash: stage.padEnd(64, "0"),
-        outputReference: null,
-      }),
-    };
-    const journal = {
-      load: async () => entries,
-      append: async (entry: FieldItemWidthJournalEntry) => {
-        entries.push(entry);
-      },
-    };
-
-    // Each call may be a fresh process. The durable journal and observed chain
-    // state are the only authority; the runner remains idempotent.
-    expect(
-      await runFieldItemWidthProof({
-        evidence: prepared,
-        journal,
-        submission,
-      }),
-    ).toBe("removed");
-    expect(entries.map((entry) => entry.stage)).toEqual([
-      "step01",
-      "step02",
-      "step03",
-      "proven",
-      "removed",
-    ]);
-    expect(
-      await runFieldItemWidthProof({
-        evidence: prepared,
-        journal,
-        submission,
-      }),
-    ).toBe("removed");
-  });
-
-  it("supports cancel from every nonterminal family step", async () => {
-    const prepared = evidence();
-    const adapter: FieldItemWidthSubmissionAdapter = {
-      observe: async () => "none",
-      submit: async () => {
-        throw new Error("unused");
-      },
-      cancel: async () => ({
-        stage: "cancelled",
-        txHash: "00".repeat(32),
-        outputReference: null,
-      }),
-    };
-    for (const stage of ["step01", "step02", "step03"] as const) {
-      await expect(adapter.cancel(stage, prepared)).resolves.toMatchObject({
-        stage: "cancelled",
-      });
-    }
-  });
-
-  it("refuses journal identity, order, and chain-regression mutations", () => {
-    expect(() =>
-      reconcileFieldItemWidthJournal(
-        "expected",
-        [
-          {
-            sequence: 0,
-            identity: "substituted",
-            stage: "step01",
-            txHash: "00".repeat(32),
-            outputReference: "0#0",
-          },
-        ],
-        "step01",
-      ),
-    ).toThrow(/identity/u);
-    expect(() =>
-      reconcileFieldItemWidthJournal(
-        "expected",
-        [
-          {
-            sequence: 0,
-            identity: "expected",
-            stage: "step02",
-            txHash: "00".repeat(32),
-            outputReference: "0#0",
-          },
-        ],
-        "step01",
-      ),
-    ).toThrow(/behind/u);
   });
 });
 

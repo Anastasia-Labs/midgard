@@ -7,13 +7,13 @@ import {
   type PreparedDaHashPreimageOutput,
 } from "../prepare-da-hash-preimage.js";
 import {
+  buildRemoveFraudulentBlock,
   type StateQueueMutationLeaseCoordinator,
-  submitRemoveFraudulentBlock,
 } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import { submitDaHashPreimageStep01 } from "../submit-da-hash-preimage-step-01.js";
-import { submitDaHashPreimageStep02 } from "../submit-da-hash-preimage-step-02.js";
-import { submitInit } from "../submit-init.js";
+import { buildDaHashPreimageStep01 } from "../submit-da-hash-preimage-step-01.js";
+import { buildDaHashPreimageStep02 } from "../submit-da-hash-preimage-step-02.js";
+import { buildInit } from "../submit-init.js";
 import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
 import {
   CORE_WITNESS_ROLES,
@@ -230,17 +230,17 @@ export type BoundDaHashPreimageTransactionsConfig = Readonly<{
 }>;
 
 export type DaHashPreimageBuilderSet = Readonly<{
-  init: typeof submitInit;
-  step01: typeof submitDaHashPreimageStep01;
-  step02: typeof submitDaHashPreimageStep02;
-  remove: typeof submitRemoveFraudulentBlock;
+  init: typeof buildInit;
+  step01: typeof buildDaHashPreimageStep01;
+  step02: typeof buildDaHashPreimageStep02;
+  remove: typeof buildRemoveFraudulentBlock;
 }>;
 
 export const productionBuilders: DaHashPreimageBuilderSet = Object.freeze({
-  init: submitInit,
-  step01: submitDaHashPreimageStep01,
-  step02: submitDaHashPreimageStep02,
-  remove: submitRemoveFraudulentBlock,
+  init: buildInit,
+  step01: buildDaHashPreimageStep01,
+  step02: buildDaHashPreimageStep02,
+  remove: buildRemoveFraudulentBlock,
 });
 
 export const requiredAction = (

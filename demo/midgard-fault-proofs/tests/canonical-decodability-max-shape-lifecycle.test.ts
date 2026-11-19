@@ -23,9 +23,9 @@ import { describe, expect, it } from "vitest";
 
 import { faultProofRawFieldCarriage } from "../src/field-opening.js";
 import {
-  submitCanonicalDecodabilityInit,
-  submitCanonicalDecodabilityStep01,
-  submitCanonicalDecodabilityStep02,
+  buildCanonicalDecodabilityInit,
+  buildCanonicalDecodabilityStep01,
+  buildCanonicalDecodabilityStep02,
   submitRemoveFraudulentBlock,
 } from "../src/index.js";
 import {
@@ -55,6 +55,7 @@ import {
   expectSingleUtxoWithUnit,
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 const LABEL = "canonical-decodability-max";
 const B = MIDGARD_ENVELOPE_BATCH_ITEMS;
@@ -79,7 +80,7 @@ const openThread = async (
       contracts: harness.canonicalDecodability,
     });
   const init = await captureEmulatorSubmission(harness.emulator, () =>
-    submitCanonicalDecodabilityInit({
+    buildAndSubmitUnjournaled(buildCanonicalDecodabilityInit, {
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,
@@ -154,7 +155,7 @@ describe("canonical-decodability at the consensus field bound", () => {
     const verdicts: (number | null)[] = [];
     for (;;) {
       const step = await captureEmulatorSubmission(harness.emulator, () =>
-        submitCanonicalDecodabilityStep01({
+        buildAndSubmitUnjournaled(buildCanonicalDecodabilityStep01, {
           lucid: harness.proverLucid,
           blueprint: harness.realBlueprint,
           contracts: harness.canonicalDecodability,
@@ -205,7 +206,7 @@ describe("canonical-decodability at the consensus field bound", () => {
     });
 
     const step02 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitCanonicalDecodabilityStep02({
+      buildAndSubmitUnjournaled(buildCanonicalDecodabilityStep02, {
         lucid: harness.proverLucid,
         contracts: harness.canonicalDecodability,
         categoryId: harness.category.categoryId,
@@ -277,7 +278,7 @@ describe("canonical-decodability at the consensus field bound", () => {
 
     // The prover's submitter will not walk a field that convicts nothing.
     await expect(
-      submitCanonicalDecodabilityStep01({
+      buildAndSubmitUnjournaled(buildCanonicalDecodabilityStep01, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         contracts: harness.canonicalDecodability,
@@ -451,7 +452,7 @@ describe("canonical-decodability at the consensus field bound", () => {
       false,
     );
     const step = await captureEmulatorSubmission(harness.emulator, () =>
-      submitCanonicalDecodabilityStep01({
+      buildAndSubmitUnjournaled(buildCanonicalDecodabilityStep01, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         contracts: harness.canonicalDecodability,

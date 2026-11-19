@@ -14,33 +14,28 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { type ResolvedProverSigner } from "../runtime.js";
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import { requireInitialStepDatum } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary.js";
 import type { NativeScriptDecodingContracts } from "./contracts.js";
 import {
   nativeScriptDecodingSubmitError,
   requireNativeScriptDecodingThreadUtxo,
 } from "./submit-common.js";
+import type { NativeScriptDecodingStep01Build } from "./submit-native-script-decoding-step-01.source-step-script.js";
 import {
   sourceStepScript,
   STEP_LABEL,
-  type SubmitNativeScriptDecodingStep01Result,
 } from "./submit-native-script-decoding-step-01.source-step-script.js";
 
-export const submitNativeScriptDecodingStep01RecordForced = async ({
+export const buildNativeScriptDecodingStep01RecordForced = async ({
   lucid,
   contracts,
   categoryId,
   signer,
   threadOutRef,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: NativeScriptDecodingContracts;
@@ -49,9 +44,7 @@ export const submitNativeScriptDecodingStep01RecordForced = async ({
   readonly threadOutRef: string;
   /** 0 (wrongful acceptance) or 1 (wrongful rejection); fixed for the thread's life. */
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitNativeScriptDecodingStep01Result> => {
+}): Promise<NativeScriptDecodingStep01Build> => {
   const { threadUtxo, threadToken } =
     await requireNativeScriptDecodingThreadUtxo({
       lucid,
@@ -124,35 +117,28 @@ export const submitNativeScriptDecodingStep01RecordForced = async ({
       "BuildTxWithRedeemer did not resolve the step-01 layout.",
     );
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: `${STEP_LABEL} record-forced`,
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: "V1 fraud-proof native-script-decoding step-01",
-          utxo: referenceScriptUtxo,
-          expectedScript: contracts.steps[0].spendingScript,
-        },
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: "V1 fraud-proof native-script-decoding step-01",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.steps[0].spendingScript,
+      },
+    ],
   });
 
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
     threadOutRef,
-    nextThreadOutRef: `${txHash}#${resolvedLayout.outputIndex.toString()}`,
+    nextThreadOutRef: `${transaction.txHash}#${resolvedLayout.outputIndex.toString()}`,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadUnit: threadToken.unit,
     secondStepAddress: contracts.steps[1].spendingScriptAddress,
     bindState,
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
-    awaitedConfirmation: awaitConfirmation,
   };
 };

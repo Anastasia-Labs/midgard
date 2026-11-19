@@ -184,7 +184,7 @@ by package with what enforces it. Read it before step 2, and again whenever a
    entry at the category's catalogue position, a `missingRows` adapter row,
    the reason disposition, complete-replay wiring, and the family record in
    `FAMILY_APPLICATION_REGISTRY` (derived for linear and cursor families).
-   Cancel goes through `submitLinearFaultCancel`; add no per-family copy.
+   Cancel goes through `buildLinearFaultCancel`; add no per-family copy.
    Done when `classification-rule`, `adapter-registration` and
    `application-record` are `OK`.
 7. **Prove both polarities in the emulator.** A lifecycle test that proves the

@@ -17,25 +17,29 @@ import {
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 
 import {
+  type FaultProofTurn,
+  isPrerequisiteTurn,
+} from "../fault-proof-turn.js";
+import {
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
 } from "../field-opening.js";
 import { createOwnOutputJournal } from "../workflow/own-outputs.js";
 import { createRawDatumPreimageRequirement } from "../workflow/raw-datum-preimage-prerequisite.js";
 import { mintAuthorizationSubmitError } from "./submit-common.js";
+import type { MintAuthorizationStep03Build } from "./submit-mint-authorization-step-03.submit-prepared-step03.js";
 import {
+  buildPreparedStep03,
   prepareThread,
   STEP_LABEL,
   type Step03Shared,
-  type SubmitMintAuthorizationStep03Result,
-  submitPreparedStep03,
 } from "./submit-mint-authorization-step-03.submit-prepared-step03.js";
 
 /**
  * Direction A's inline half: the committed field 6 holds no script — of any
  * language — hashing to the claimed policy id.
  */
-export const submitMintAuthorizationStep03WitnessAbsence = async ({
+export const buildMintAuthorizationStep03WitnessAbsence = async ({
   scriptTxWitsItemCbors,
   rawPreimageUtxos,
   ...shared
@@ -47,7 +51,7 @@ export const submitMintAuthorizationStep03WitnessAbsence = async ({
    */
   readonly scriptTxWitsItemCbors: readonly string[];
   readonly rawPreimageUtxos?: readonly UTxO[];
-}): Promise<SubmitMintAuthorizationStep03Result> => {
+}): Promise<FaultProofTurn<MintAuthorizationStep03Build>> => {
   const { threadUtxo, threadToken, state } = await prepareThread(shared);
   if (state.direction !== MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT) {
     throw mintAuthorizationSubmitError(
@@ -90,6 +94,7 @@ export const submitMintAuthorizationStep03WitnessAbsence = async ({
       publisherAddress: shared.signer.proofMaterialsAddress,
       label: `${STEP_LABEL} script-witnesses`,
     }));
+  if (isPrerequisiteTurn(carriageUtxos)) return carriageUtxos;
   const fieldReferenceInputs = [
     ...(shared.certificateUtxo === undefined ? [] : [shared.certificateUtxo]),
     ...carriageUtxos,
@@ -118,7 +123,7 @@ export const submitMintAuthorizationStep03WitnessAbsence = async ({
       item_index: 0n,
       item_count: BigInt(header.count),
     };
-    return submitPreparedStep03({
+    return buildPreparedStep03({
       shared,
       threadUtxo,
       threadToken,
@@ -154,7 +159,7 @@ export const submitMintAuthorizationStep03WitnessAbsence = async ({
     { fraud_prover: shared.signer.paymentKeyHash, data: step04State },
     MintAuthorizationStep04Datum,
   );
-  return submitPreparedStep03({
+  return buildPreparedStep03({
     shared,
     threadUtxo,
     threadToken,

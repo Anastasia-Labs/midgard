@@ -16,6 +16,10 @@ import { Effect } from "effect";
 import { type FabricatedHistoryEnvironment } from "./fabricated-history-witness.js";
 import { parseHex, requireRecord } from "./json-file.js";
 import { type SubmitProviderConfig } from "./runtime.js";
+import {
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
+} from "./workflow/transaction-boundary.js";
 
 /** Human-readable family label used in every local failure message. */
 export const FABRICATED_DEPOSIT_CATEGORY_LABEL = "fabricated-deposit";
@@ -183,8 +187,8 @@ export type SubmitFabricatedDepositStep01CliConfig = SubmitProviderConfig & {
   readonly awaitConfirmation?: boolean;
 };
 
-export type SubmitFabricatedDepositStep01Result = {
-  readonly txHash: string;
+export type FabricatedDepositStep01Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -205,8 +209,10 @@ export type SubmitFabricatedDepositStep01Result = {
   readonly outputIndex: number;
   readonly hubOracleRefInputIndex: number;
   readonly stateQueueNodeRefInputIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
+
+export type SubmitFabricatedDepositStep01Result =
+  UnjournaledSubmission<FabricatedDepositStep01Build>;
 
 export type FabricatedDepositStep01Layout = {
   readonly inputIndex: bigint;

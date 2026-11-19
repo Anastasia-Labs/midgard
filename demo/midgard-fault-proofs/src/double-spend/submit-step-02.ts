@@ -50,7 +50,8 @@ import {
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
 } from "../runtime.js";
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import {
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
   requireComputationThreadToken,
@@ -63,13 +64,14 @@ import {
   witnessSpendingValidatorCarriage,
   witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts.js";
+import { workflowReferenceScript } from "../workflow/transaction-boundary.js";
 import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScript,
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
 } from "../workflow/transaction-boundary.js";
 
-export type SubmitStep02Result = {
-  readonly txHash: string;
+export type Step02Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -97,8 +99,9 @@ export type SubmitStep02Result = {
   /** Which route the membership opening took to L1 (issue #545). */
   readonly proofCarriage: "redeemer" | "published-chunks";
   readonly publishedChunkOutRefs: readonly string[];
-  readonly awaitedConfirmation: boolean;
 };
+
+export type SubmitStep02Result = UnjournaledSubmission<Step02Build>;
 
 type Step02Layout = {
   readonly inputIndex: bigint;
@@ -133,7 +136,7 @@ const requireStep02Datum = ({
   return datum as Step02DatumWithState;
 };
 
-export const submitStep02 = async ({
+export const buildStep02 = async ({
   lucid,
   blueprint,
   deploymentInfo,
@@ -145,8 +148,6 @@ export const submitStep02 = async ({
   publishedProofChunks,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -166,10 +167,7 @@ export const submitStep02 = async ({
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  /** Production workflow seam: invoked after local evaluation, before I/O. */
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitStep02Result> => {
+}): Promise<Step02Build> => {
   const resolvedDeployment = await resolveDoubleSpendDeploymentContracts({
     blueprint,
     deploymentInfo,
@@ -405,8 +403,7 @@ export const submitStep02 = async ({
   if (resolvedLayout === undefined) {
     throw new Error("BuildTxWithRedeemer did not resolve step 02 layout.");
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: "double-spend step-02",
+  const transaction = finishStep(signed, {
     referenceScripts: [
       workflowReferenceScript({
         role: "V1 fraud-proof double-spend step-02",
@@ -425,17 +422,15 @@ export const submitStep02 = async ({
             expectedScript: phasMembershipScript,
           }),
     ],
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
   });
 
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
     threadOutRef,
-    nextThreadOutRef: `${txHash}#${resolvedLayout.outputIndex.toString()}`,
+    nextThreadOutRef: `${transaction.txHash}#${resolvedLayout.outputIndex.toString()}`,
     stateQueueBlockOutRef,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadPolicyId: contracts.computationThread.policyId,
@@ -454,6 +449,5 @@ export const submitStep02 = async ({
     ),
     proofCarriage: carriedByChunks ? "published-chunks" : "redeemer",
     publishedChunkOutRefs: chunks.map((chunk) => chunk.outRef),
-    awaitedConfirmation: awaitConfirmation,
   };
 };

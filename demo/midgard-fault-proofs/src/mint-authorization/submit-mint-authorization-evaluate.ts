@@ -18,14 +18,11 @@ import {
 } from "@lucid-evolution/lucid";
 
 import type { ResolvedProverSigner } from "../runtime.js";
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts.js";
 import { createRawDatumPreimageRequirement } from "../workflow/raw-datum-preimage-prerequisite.js";
-import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary.js";
 import type { MintAuthorizationContracts } from "./contracts.js";
 import {
   createMintAuthorizationEvaluationBatchIndex,
@@ -80,7 +77,7 @@ const evaluationBatchIndex = ({
   return created;
 };
 
-export const submitMintAuthorizationEvaluate = async ({
+export const buildMintAuthorizationEvaluate = async ({
   lucid,
   contracts,
   categoryId,
@@ -90,8 +87,6 @@ export const submitMintAuthorizationEvaluate = async ({
   addrWitnessItemCbors,
   rawPreimageUtxos,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: MintAuthorizationContracts;
@@ -102,8 +97,6 @@ export const submitMintAuthorizationEvaluate = async ({
   readonly addrWitnessItemCbors: readonly string[];
   readonly rawPreimageUtxos: readonly UTxO[];
   readonly referenceScriptUtxo?: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const { threadUtxo, threadToken } = await requireMintAuthorizationThreadUtxo({
     lucid,
@@ -255,24 +248,18 @@ export const submitMintAuthorizationEvaluate = async ({
   const signed = await completeStep(carriage.attach(builder), funding);
   if (outputIndex === undefined)
     throw new Error("mint evaluator did not resolve output index");
-  const txHash = await submitStep(lucid, signed, {
-    label: "mint-authorization step-06",
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: "V1 fraud-proof mint-authorization step-06",
-          utxo: referenceScriptUtxo,
-          expectedScript: contracts.steps[5].spendingScript,
-        },
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: "V1 fraud-proof mint-authorization step-06",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.steps[5].spendingScript,
+      },
+    ],
   });
   return {
-    txHash,
-    nextThreadOutRef: `${txHash}#${outputIndex}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex}`,
     terminal,
     nextStepAddress: nextStep.spendingScriptAddress,
   };

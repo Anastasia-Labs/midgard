@@ -23,6 +23,6 @@ export {
   type SubmitFabricatedWithdrawalStep01Result,
 } from "./submit-fabricated-withdrawal-step-01.derive-fabricated-withdrawal-step01-handoff.js";
 export {
-  submitFabricatedWithdrawalStep01,
+  buildFabricatedWithdrawalStep01,
   submitFabricatedWithdrawalStep01FromFiles,
 } from "./submit-fabricated-withdrawal-step-01.submit-fabricated-withdrawal-step01.js";

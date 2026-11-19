@@ -1,18 +1,18 @@
 /**
- * Step 02 and the shared signer-witness scan driven turn by turn through the
- * workflow capture boundary over a Certified-tier address-witness opening.
+ * Step 02 and the shared signer-witness scan driven turn by turn, one
+ * transaction per build, over a Certified-tier address-witness opening.
  * The opening scan turn certifies the field and every resumed turn reuses
- * that certificate, so each turn after certification captures the scan
+ * that certificate, so each turn after certification builds the scan
  * itself and the opening keeps a single certificate.
  */
 import { acceptedVerdictSubject } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
+  buildProtectedOutputSignerMissingStep02,
   PROTECTED_OUTPUT_SIGNER_MAX_WITNESSES,
-  submitProtectedOutputSignerMissingStep02,
 } from "../src/protected-output-signer-missing/index.js";
-import { submitSignerWitnessScan } from "../src/signer-witness-scan/index.js";
+import { buildSignerWitnessScan } from "../src/signer-witness-scan/index.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { makeScenario } from "./protected-output-signer-missing-lifecycle.make-scenario.js";
 import {
@@ -28,7 +28,7 @@ import {
   fieldPreimageCertificateCount,
 } from "./support/captured-step-turns.js";
 
-describe("protectedOutputSignerMissing step 02 and the scan under the workflow capture boundary", () => {
+describe("protectedOutputSignerMissing step 02 and the scan built turn by turn", () => {
   it("reuses the field certificate already on chain, so every turn after certification is the step", async () => {
     const nativeTx = nativeTxWith({
       fee: 7n,
@@ -78,14 +78,11 @@ describe("protectedOutputSignerMissing step 02 and the scan under the workflow c
       emulator: s.harness.emulator,
       threadOutRef: bound,
       maxTurns: 6,
-      invoke: async (boundary) =>
-        await submitProtectedOutputSignerMissingStep02({
+      invoke: async () =>
+        await buildProtectedOutputSignerMissingStep02({
           ...common,
           threadOutRef: bound,
           referenceScriptUtxo: s.refs[1]!,
-          publicationBoundary: boundary,
-          certificateBoundary: boundary,
-          preSubmitBoundary: boundary,
         }),
     });
 
@@ -96,15 +93,12 @@ describe("protectedOutputSignerMissing step 02 and the scan under the workflow c
         emulator: s.harness.emulator,
         threadOutRef,
         maxTurns: scanTurn === "opening" ? 6 : 3,
-        invoke: async (boundary) =>
-          await submitSignerWitnessScan({
+        invoke: async () =>
+          await buildSignerWitnessScan({
             ...common,
             family: "protected-output-signer-missing",
             threadOutRef,
             referenceScriptUtxo: s.refs[2]!,
-            publicationBoundary: boundary,
-            certificateBoundary: boundary,
-            preSubmitBoundary: boundary,
           }),
       });
       if (scanTurn === "opening") {

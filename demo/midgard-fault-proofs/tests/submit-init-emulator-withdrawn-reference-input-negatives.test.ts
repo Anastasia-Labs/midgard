@@ -8,17 +8,21 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { submitLinearFaultCancel } from "../src/linear-fault-cancel.js";
+import { buildLinearFaultCancel } from "../src/linear-fault-cancel.js";
 import { resolveProverSigner } from "../src/runtime.js";
 import { WITHDRAWN_REFERENCE_INPUT_CATEGORY_LABEL } from "../src/withdrawn-reference-input/contracts.js";
 import {
-  submitWithdrawnReferenceInputInit,
-  submitWithdrawnReferenceInputStep01,
-  submitWithdrawnReferenceInputStep02,
-  submitWithdrawnReferenceInputStep03,
+  buildWithdrawnReferenceInputInit,
+  buildWithdrawnReferenceInputStep01,
+  buildWithdrawnReferenceInputStep02,
+  buildWithdrawnReferenceInputStep03,
 } from "../src/withdrawn-reference-input/index.js";
 import { expectOnchainRefusal } from "./support/native-script-decoding-emulator.js";
 import { network } from "./support/submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 import {
   makeWithdrawnReferenceInputEmulatorHarness,
   publishWithdrawnReferenceInputReferenceScripts,
@@ -40,7 +44,7 @@ describe("withdrawn-reference-input cancel, restart, resume and outsider negativ
       `${harness.category.categoryId}${scenario.setup.headerHash}`,
     );
     const initThread = async () =>
-      await submitWithdrawnReferenceInputInit({
+      await buildAndSubmitUnjournaled(buildWithdrawnReferenceInputInit, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -57,7 +61,7 @@ describe("withdrawn-reference-input cancel, restart, resume and outsider negativ
         witnessReferenceScripts: harness.witnessReferenceScripts,
       });
     const step01 = async (threadOutRef: string) =>
-      await submitWithdrawnReferenceInputStep01({
+      await buildAndSubmitUnjournaled(buildWithdrawnReferenceInputStep01, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         contracts: harness.family,
@@ -71,7 +75,7 @@ describe("withdrawn-reference-input cancel, restart, resume and outsider negativ
         witnessReferenceScripts: harness.witnessReferenceScripts,
       });
     const step02 = async (threadOutRef: string) =>
-      await submitWithdrawnReferenceInputStep02({
+      await submitTurnsUnjournaled(buildWithdrawnReferenceInputStep02, {
         lucid: harness.proverLucid,
         contracts: harness.family,
         categoryId: harness.category.categoryId,
@@ -93,17 +97,20 @@ describe("withdrawn-reference-input cancel, restart, resume and outsider negativ
       if (cancelAt >= 2) {
         threadOutRef = (await step02(threadOutRef)).nextThreadOutRef;
       }
-      const cancelled = await submitLinearFaultCancel({
-        lucid: harness.proverLucid,
-        family: WITHDRAWN_REFERENCE_INPUT_CATEGORY_LABEL,
-        steps: harness.family.steps,
-        computationThread: harness.family.computationThread,
-        categoryId: harness.category.categoryId,
-        signer: harness.proverSigner,
-        threadOutRef,
-        referenceScriptUtxo: refs[cancelAt],
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-      });
+      const cancelled = await buildAndSubmitUnjournaled(
+        buildLinearFaultCancel,
+        {
+          lucid: harness.proverLucid,
+          family: WITHDRAWN_REFERENCE_INPUT_CATEGORY_LABEL,
+          steps: harness.family.steps,
+          computationThread: harness.family.computationThread,
+          categoryId: harness.category.categoryId,
+          signer: harness.proverSigner,
+          threadOutRef,
+          referenceScriptUtxo: refs[cancelAt],
+          witnessReferenceScripts: harness.witnessReferenceScripts,
+        },
+      );
       expect(cancelled.cancelledStepIndex).toBe(cancelAt);
       for (const step of harness.family.steps) {
         await expect(
@@ -121,16 +128,19 @@ describe("withdrawn-reference-input cancel, restart, resume and outsider negativ
     const bound = await step01(restarted.nextThreadOutRef);
     await Promise.resolve();
     const opened = await step02(bound.nextThreadOutRef);
-    const finalized = await submitWithdrawnReferenceInputStep03({
-      lucid: harness.proverLucid,
-      contracts: harness.family,
-      categoryId: harness.category.categoryId,
-      signer: harness.proverSigner,
-      threadOutRef: opened.nextThreadOutRef,
-      withdrawalMembership: scenario.prepared.withdrawalMembership,
-      referenceScriptUtxo: refs[2],
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-    });
+    const finalized = await buildAndSubmitUnjournaled(
+      buildWithdrawnReferenceInputStep03,
+      {
+        lucid: harness.proverLucid,
+        contracts: harness.family,
+        categoryId: harness.category.categoryId,
+        signer: harness.proverSigner,
+        threadOutRef: opened.nextThreadOutRef,
+        withdrawalMembership: scenario.prepared.withdrawalMembership,
+        referenceScriptUtxo: refs[2],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+      },
+    );
     expect(finalized.fraudProofUnit).toContain(
       `${harness.category.categoryId}${scenario.setup.headerHash}`,
     );
@@ -143,35 +153,41 @@ describe("withdrawn-reference-input cancel, restart, resume and outsider negativ
       lucid: harness.funderLucid,
       contracts: harness.family,
     });
-    const init = await submitWithdrawnReferenceInputInit({
-      lucid: harness.proverLucid,
-      blueprint: harness.realBlueprint,
-      network,
-      contracts: harness.family,
-      category: harness.category,
-      catalogue: {
-        policyId: harness.contracts.fraudProofCatalogue.policyId,
-        spendingScriptAddress:
-          harness.contracts.fraudProofCatalogue.spendingScriptAddress,
-        root: harness.catalogue.root,
+    const init = await buildAndSubmitUnjournaled(
+      buildWithdrawnReferenceInputInit,
+      {
+        lucid: harness.proverLucid,
+        blueprint: harness.realBlueprint,
+        network,
+        contracts: harness.family,
+        category: harness.category,
+        catalogue: {
+          policyId: harness.contracts.fraudProofCatalogue.policyId,
+          spendingScriptAddress:
+            harness.contracts.fraudProofCatalogue.spendingScriptAddress,
+          root: harness.catalogue.root,
+        },
+        signer: harness.proverSigner,
+        fraudulentBlockOutRef: scenario.setup.fraudulentBlockOutRef,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       },
-      signer: harness.proverSigner,
-      fraudulentBlockOutRef: scenario.setup.fraudulentBlockOutRef,
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-    });
-    const bound = await submitWithdrawnReferenceInputStep01({
-      lucid: harness.proverLucid,
-      blueprint: harness.realBlueprint,
-      contracts: harness.family,
-      categoryId: harness.category.categoryId,
-      network,
-      signer: harness.proverSigner,
-      threadOutRef: init.nextThreadOutRef,
-      stateQueueBlockOutRef: scenario.setup.fraudulentBlockOutRef,
-      txInclusion: scenario.prepared.txInclusion,
-      referenceScriptUtxo: refs[0],
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-    });
+    );
+    const bound = await buildAndSubmitUnjournaled(
+      buildWithdrawnReferenceInputStep01,
+      {
+        lucid: harness.proverLucid,
+        blueprint: harness.realBlueprint,
+        contracts: harness.family,
+        categoryId: harness.category.categoryId,
+        network,
+        signer: harness.proverSigner,
+        threadOutRef: init.nextThreadOutRef,
+        stateQueueBlockOutRef: scenario.setup.fraudulentBlockOutRef,
+        txInclusion: scenario.prepared.txInclusion,
+        referenceScriptUtxo: refs[0],
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+      },
+    );
 
     const outsiderAccount = generateEmulatorAccount({ lovelace: 0n });
     const outsiderLucid = await Lucid(harness.emulator, "Custom");
@@ -196,7 +212,7 @@ describe("withdrawn-reference-input cancel, restart, resume and outsider negativ
     await harness.funderLucid.awaitTx(await signedFunding.submit());
 
     await expect(
-      submitWithdrawnReferenceInputStep02({
+      submitTurnsUnjournaled(buildWithdrawnReferenceInputStep02, {
         lucid: outsiderLucid,
         contracts: harness.family,
         categoryId: harness.category.categoryId,
@@ -209,7 +225,7 @@ describe("withdrawn-reference-input cancel, restart, resume and outsider negativ
       }),
     ).rejects.toThrow(/not the signing wallet/);
     await expect(
-      submitLinearFaultCancel({
+      buildAndSubmitUnjournaled(buildLinearFaultCancel, {
         lucid: outsiderLucid,
         family: WITHDRAWN_REFERENCE_INPUT_CATEGORY_LABEL,
         steps: harness.family.steps,
@@ -286,17 +302,20 @@ describe("withdrawn-reference-input cancel, restart, resume and outsider negativ
       }),
     );
 
-    const resumed = await submitWithdrawnReferenceInputStep02({
-      lucid: harness.proverLucid,
-      contracts: harness.family,
-      categoryId: harness.category.categoryId,
-      signer: harness.proverSigner,
-      threadOutRef: bound.nextThreadOutRef,
-      referenceInputs: scenario.prepared.referenceInputs,
-      nativeTxCompactCbor: scenario.prepared.txInclusion.nativeTxCompactCbor,
-      badReferenceInputIndex: 0n,
-      referenceScriptUtxo: refs[1],
-    });
+    const resumed = await submitTurnsUnjournaled(
+      buildWithdrawnReferenceInputStep02,
+      {
+        lucid: harness.proverLucid,
+        contracts: harness.family,
+        categoryId: harness.category.categoryId,
+        signer: harness.proverSigner,
+        threadOutRef: bound.nextThreadOutRef,
+        referenceInputs: scenario.prepared.referenceInputs,
+        nativeTxCompactCbor: scenario.prepared.txInclusion.nativeTxCompactCbor,
+        badReferenceInputIndex: 0n,
+        referenceScriptUtxo: refs[1],
+      },
+    );
     expect(resumed.nextThreadOutRef).toBeTruthy();
   }, 600_000);
 });

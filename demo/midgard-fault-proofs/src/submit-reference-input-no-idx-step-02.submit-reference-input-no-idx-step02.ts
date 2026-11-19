@@ -17,6 +17,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { type FaultProofTurn, isPrerequisiteTurn } from "./fault-proof-turn.js";
 import {
   faultProofFieldOpening,
   parseNativeTxCompactCbor,
@@ -33,8 +34,11 @@ import {
   resolveProverSigner,
   resolveReferenceInputNoIdxDeploymentContracts,
 } from "./runtime.js";
-import { completeStep, fundStep, submitStep } from "./step-completion.js";
+import { completeStep, fundStep } from "./step-completion.js";
+import { finishStep } from "./step-completion.js";
 import { requireComputationThreadToken } from "./step-support.js";
+import { submitFaultProofTurns } from "./submit-fault-proof-turns.js";
+import type { ReferenceInputNoIdxStep02Build } from "./submit-reference-input-no-idx-step-02.parse-submit-reference-input-no-idx-reference-inputs-preimage.js";
 import {
   parseSubmitReferenceInputNoIdxReferenceInputsPreimage,
   type ReferenceInputNoIdxStep02Layout,
@@ -49,12 +53,8 @@ import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "./workflow/own-outputs.js";
-import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
-} from "./workflow/transaction-boundary.js";
 
-export const submitReferenceInputNoIdxStep02 = async ({
+export const buildReferenceInputNoIdxStep02 = async ({
   lucid,
   blueprint,
   deploymentInfo,
@@ -66,9 +66,6 @@ export const submitReferenceInputNoIdxStep02 = async ({
   publishedCarriageUtxos,
   certificateUtxo,
   referenceScriptUtxo,
-  publicationPreSubmitBoundary,
-  preSubmitBoundary,
-  awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
@@ -84,12 +81,9 @@ export const submitReferenceInputNoIdxStep02 = async ({
   readonly certificateUtxo?: UTxO;
   /** The mandatory published step-02 reference script. */
   readonly referenceScriptUtxo?: UTxO;
-  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
-}): Promise<SubmitReferenceInputNoIdxStep02Result> => {
+}): Promise<FaultProofTurn<ReferenceInputNoIdxStep02Build>> => {
   const { referenceInputNoIdxCategory, contracts } =
     await resolveReferenceInputNoIdxDeploymentContracts({
       blueprint,
@@ -144,8 +138,8 @@ export const submitReferenceInputNoIdxStep02 = async ({
       planned,
       publisherAddress: signer.proofMaterialsAddress,
       label: "Reference-input-no-idx step 02 reference-inputs field",
-      preSubmitBoundary: publicationPreSubmitBoundary,
     }));
+  if (isPrerequisiteTurn(published)) return published;
   const stepScriptCarriage = witnessSpendingValidatorCarriage({
     script: chain.steps[1].spendingScript,
     referenceUtxo: referenceScriptUtxo,
@@ -245,29 +239,23 @@ export const submitReferenceInputNoIdxStep02 = async ({
       "BuildTxWithRedeemer did not resolve reference-input-no-idx step 02 layout.",
     );
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: "reference-input-no-idx step-02",
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: "V1 fraud-proof reference-input-no-idx step-02",
-          utxo: referenceScriptUtxo,
-          expectedScript: contracts.referenceInputNoIdx.steps[1].spendingScript,
-        },
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: "V1 fraud-proof reference-input-no-idx step-02",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.referenceInputNoIdx.steps[1].spendingScript,
+      },
+    ],
   });
 
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
     threadOutRef,
-    nextThreadOutRef: `${txHash}#${resolvedLayout.outputIndex.toString()}`,
+    nextThreadOutRef: `${transaction.txHash}#${resolvedLayout.outputIndex.toString()}`,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadPolicyId: contracts.computationThread.policyId,
     computationThreadAssetName: threadToken.assetName,
@@ -283,7 +271,6 @@ export const submitReferenceInputNoIdxStep02 = async ({
     badReferenceInputOutputIndex: Number(badReferenceInput.output_index),
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
-    awaitedConfirmation: awaitConfirmation,
   };
 };
 
@@ -304,24 +291,30 @@ export const submitReferenceInputNoIdxStep02FromFiles = async (
     makeLucidForSubmit(config),
   ]);
   const signer = resolveProverSigner(config);
-  return await submitReferenceInputNoIdxStep02({
-    lucid,
-    blueprint,
-    deploymentInfo,
-    network: config.network,
-    signer,
-    threadOutRef: config.threadOutRef,
-    referenceInputsPreimage:
-      parseSubmitReferenceInputNoIdxReferenceInputsPreimage({
-        value: referenceInputsPreimageJson,
-        ...(config.badReferenceInputIndex === undefined
-          ? {}
-          : { badReferenceInputIndex: config.badReferenceInputIndex }),
-      }),
-    nativeTxCompactCbor: parseNativeTxCompactCbor(
-      nativeTxCompactJson,
-      "--native-tx-compact",
-    ),
-    awaitConfirmation: config.awaitConfirmation,
-  });
+  return await submitFaultProofTurns(
+    buildReferenceInputNoIdxStep02,
+    {
+      lucid,
+      blueprint,
+      deploymentInfo,
+      network: config.network,
+      signer,
+      threadOutRef: config.threadOutRef,
+      referenceInputsPreimage:
+        parseSubmitReferenceInputNoIdxReferenceInputsPreimage({
+          value: referenceInputsPreimageJson,
+          ...(config.badReferenceInputIndex === undefined
+            ? {}
+            : { badReferenceInputIndex: config.badReferenceInputIndex }),
+        }),
+      nativeTxCompactCbor: parseNativeTxCompactCbor(
+        nativeTxCompactJson,
+        "--native-tx-compact",
+      ),
+    },
+    {
+      label: "reference-input-no-idx-step02",
+      awaitConfirmation: config.awaitConfirmation ?? true,
+    },
+  );
 };

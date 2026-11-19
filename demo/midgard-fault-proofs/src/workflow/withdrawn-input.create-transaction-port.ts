@@ -5,10 +5,10 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import type { WithdrawnInputContracts } from "../withdrawn-input/contracts.js";
-import { submitWithdrawnInputInit } from "../withdrawn-input/submit-withdrawn-input-init.js";
-import { submitWithdrawnInputStep01 } from "../withdrawn-input/submit-withdrawn-input-step-01.js";
-import { submitWithdrawnInputStep02 } from "../withdrawn-input/submit-withdrawn-input-step-02.js";
-import { submitWithdrawnInputStep03 } from "../withdrawn-input/submit-withdrawn-input-step-03.js";
+import { buildWithdrawnInputInit } from "../withdrawn-input/submit-withdrawn-input-init.js";
+import { buildWithdrawnInputStep01 } from "../withdrawn-input/submit-withdrawn-input-step-01.js";
+import { buildWithdrawnInputStep02 } from "../withdrawn-input/submit-withdrawn-input-step-02.js";
+import { buildWithdrawnInputStep03 } from "../withdrawn-input/submit-withdrawn-input-step-03.js";
 import { WITHDRAWN_INPUT_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
 import {
   defineLinearFamily,
@@ -30,7 +30,7 @@ import {
   exactJournalRecord,
 } from "./native-index-artifact.js";
 import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.js";
-import { captureLocallyEvaluatedTransaction } from "./transaction-boundary.js";
+import { journaledStepTransaction } from "./step-transaction.js";
 import { admitWithdrawnInputArtifact } from "./withdrawn-input.admit-withdrawn-input-artifact.js";
 import {
   actionInput,
@@ -68,9 +68,9 @@ const createTransactionPort = (
     const input = actionInput(action);
     if (input.stage === "init") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitWithdrawnInputInit({
+        transaction: (
+          await journaledStepTransaction(
+            await buildWithdrawnInputInit({
               lucid: config.lucid,
               blueprint: config.blueprint,
               network: config.network,
@@ -84,11 +84,10 @@ const createTransactionPort = (
               ),
               fraudulentHeaderHash: config.headerHash,
               witnessReferenceScripts: config.referenceScripts.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "withdrawn-input buildWithdrawnInputInit",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "step_01") {
@@ -99,9 +98,9 @@ const createTransactionPort = (
         proofCbor: admitted.artifact.tx.txMembershipProofCbor,
       });
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitWithdrawnInputStep01({
+        transaction: (
+          await journaledStepTransaction(
+            await buildWithdrawnInputStep01({
               lucid: config.lucid,
               blueprint: config.blueprint,
               contracts: config.contracts,
@@ -117,19 +116,18 @@ const createTransactionPort = (
               publishedProofChunks: chunks,
               referenceScriptUtxo: config.referenceScripts.steps[0],
               witnessReferenceScripts: config.referenceScripts.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "withdrawn-input buildWithdrawnInputStep01",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "step_02") {
       const field = await resolveField(config, admitted.spendPlan, ownOutputs);
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitWithdrawnInputStep02({
+        transaction: (
+          await journaledStepTransaction(
+            await buildWithdrawnInputStep02({
               ownOutputs,
               lucid: config.lucid,
               contracts: config.contracts,
@@ -148,18 +146,17 @@ const createTransactionPort = (
                 : { certificateUtxo: field.certificate }),
               publishMissingCarriage: false,
               publishCarriage: false,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "withdrawn-input buildWithdrawnInputStep02",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "step_03") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitWithdrawnInputStep03({
+        transaction: (
+          await journaledStepTransaction(
+            await buildWithdrawnInputStep03({
               lucid: config.lucid,
               contracts: config.contracts,
               categoryId: config.category.categoryId,
@@ -168,11 +165,10 @@ const createTransactionPort = (
               withdrawalMembership: admitted.withdrawalMembership,
               referenceScriptUtxo: config.referenceScripts.steps[2],
               witnessReferenceScripts: config.referenceScripts.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "withdrawn-input buildWithdrawnInputStep03",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "remove") return await captureRemoval(config, input);

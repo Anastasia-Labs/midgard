@@ -1,6 +1,6 @@
 import type { LucidEvolution, Script, UTxO } from "@lucid-evolution/lucid";
 
-import { submitLinearFaultCancel } from "../linear-fault-cancel.js";
+import { buildLinearFaultCancel } from "../linear-fault-cancel.js";
 import {
   type LinearFaultStepContract,
   linearFaultStepLabel,
@@ -12,8 +12,6 @@ import type { FraudProofWorkflowPreflight } from "./orchestrator.fraud-proof-fam
 import type { OwnThreadReclaimPort } from "./own-thread-reclaim.with-own-thread-reclaim.js";
 import {
   bindWorkflowPreflightTransaction,
-  captureLocallyEvaluatedTransaction,
-  type FraudProofPreSubmitBoundary,
   LOCAL_UPLC_EVALUATOR,
   type LocallyEvaluatedTransaction,
   requireReferenceOnlyScriptWitnesses,
@@ -30,20 +28,18 @@ export type LinearCancelContracts = Readonly<{
   }>;
 }>;
 
-/** A family's own cancel of one thread, built and signed up to the
- * pre-submit boundary it is handed. */
+/** A family's own cancel of one thread, built and signed, unsubmitted. */
 export type LinearCancelBuilder = (input: {
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary: FraudProofPreSubmitBoundary;
-}) => Promise<unknown>;
+}) => Promise<{ readonly transaction: LocallyEvaluatedTransaction }>;
 
 /**
  * The family's cancel as the reclaim of our own thread: the linear cancel,
  * which spends only a thread whose datum names our key, burns its token and
  * pays the rest to our wallet. A family whose thread positions sit off its
- * linear chain hands in its own cancel as `cancel`. It is captured at the
- * pre-submit boundary and only those exact bytes are submitted.
+ * linear chain hands in its own cancel as `cancel`. The built transaction is
+ * kept and only those exact bytes are submitted.
  */
 export const createLinearCancelReclaimPort = ({
   family,
@@ -98,34 +94,23 @@ export const createLinearCancelReclaimPort = ({
         throw new Error(
           `${linearFaultStepLabel(family, step - 1)} has no reference script`,
         );
-      const transaction = await captureLocallyEvaluatedTransaction(
-        async (boundary) => {
-          if (cancel !== undefined) {
-            await cancel({
+      const { transaction } =
+        cancel !== undefined
+          ? await cancel({ threadOutRef, referenceScriptUtxo })
+          : await buildLinearFaultCancel({
+              lucid,
+              family,
+              steps,
+              computationThread: {
+                policyId: computationThread.policyId,
+                mintingScript: computationThread.mintingScript!,
+              },
+              categoryId,
+              signer,
               threadOutRef,
               referenceScriptUtxo,
-              preSubmitBoundary: boundary,
+              witnessReferenceScripts,
             });
-            return;
-          }
-          await submitLinearFaultCancel({
-            lucid,
-            family,
-            steps,
-            computationThread: {
-              policyId: computationThread.policyId,
-              mintingScript: computationThread.mintingScript!,
-            },
-            categoryId,
-            signer,
-            threadOutRef,
-            referenceScriptUtxo,
-            witnessReferenceScripts,
-            preSubmitBoundary: boundary,
-            awaitConfirmation: false,
-          });
-        },
-      );
       requireReferenceOnlyScriptWitnesses({
         transaction,
         label: `${family} thread reclaim`,

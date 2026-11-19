@@ -2,12 +2,11 @@
 import type { LucidEvolution, Network } from "@lucid-evolution/lucid";
 
 import {
+  buildNativeScriptDecodingInit,
   type NativeScriptDecodingInitContracts,
-  submitNativeScriptDecodingInit,
 } from "../native-script-decoding/submit-native-script-decoding-init.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   type WithdrawalMistagCatalogueCategory,
   type WithdrawalMistagContracts,
@@ -30,7 +29,7 @@ const genericInitContracts = (
   fieldPreimageCertificatePolicyId: "00".repeat(28),
 });
 
-export const submitWithdrawalMistagInit = async ({
+export const buildWithdrawalMistagInit = async ({
   contracts,
   category,
   ...args
@@ -53,10 +52,8 @@ export const submitWithdrawalMistagInit = async ({
    * every role used by this transaction must be published.
    */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) =>
-  await submitNativeScriptDecodingInit({
+  await buildNativeScriptDecodingInit({
     ...args,
     contracts: genericInitContracts(contracts),
     category,

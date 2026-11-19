@@ -9,10 +9,10 @@ import {
   resolveFieldPreimageLengthCarriage,
 } from "../src/field-preimage-length-mismatch/carriage.js";
 import {
-  submitFieldPreimageLengthForcedAuthentication,
-  submitFieldPreimageLengthForcedDispatch,
-  submitFieldPreimageLengthInit,
-  submitFieldPreimageLengthTerminal,
+  buildFieldPreimageLengthForcedAuthentication,
+  buildFieldPreimageLengthForcedDispatch,
+  buildFieldPreimageLengthInit,
+  buildFieldPreimageLengthTerminal,
 } from "../src/field-preimage-length-mismatch/submit-lucid.js";
 import { parseOutRef } from "../src/runtime.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
@@ -24,6 +24,7 @@ import {
 } from "./field-preimage-length-mismatch-lifecycle.setup.js";
 import { opaqueForcedLifecycleDaFixture } from "./field-preimage-length-opaque-forced-lifecycle.fixture.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 import {
   authenticatedObservation,
   retainedSource,
@@ -106,17 +107,20 @@ it("adjudicates authenticated opaque forced bytes with the installed field-lengt
   const claim = carriage.claimResolver(carriage.carriageReferences);
   expect(claim).toEqual(inlineBodyClaim(0, preimage));
 
-  const init = await submitFieldPreimageLengthInit({
+  const init = await buildAndSubmitUnjournaled(buildFieldPreimageLengthInit, {
     config: fixture.config,
     fraudulentBlockOutRef: fixture.fraudulent.fraudulentBlockOutRef,
   });
-  const dispatch = await submitFieldPreimageLengthForcedDispatch({
-    config: fixture.config,
-    threadOutRef: init.nextThreadOutRef,
-  });
+  const dispatch = await buildAndSubmitUnjournaled(
+    buildFieldPreimageLengthForcedDispatch,
+    {
+      config: fixture.config,
+      threadOutRef: init.nextThreadOutRef,
+    },
+  );
   await expectOnChainRefusal(
     () =>
-      submitFieldPreimageLengthForcedAuthentication({
+      buildAndSubmitUnjournaled(buildFieldPreimageLengthForcedAuthentication, {
         config: fixture.config,
         threadOutRef: dispatch.nextThreadOutRef,
         header,
@@ -126,23 +130,29 @@ it("adjudicates authenticated opaque forced bytes with the installed field-lengt
       }),
     "opaque forced field commitment substitution",
   );
-  const authentication = await submitFieldPreimageLengthForcedAuthentication({
-    config: fixture.config,
-    threadOutRef: dispatch.nextThreadOutRef,
-    header,
-    membership,
-    prepared: evidence.prepared,
-    claim,
-    claimResolver: carriage.claimResolver,
-    carriageReferenceInputs: carriage.carriageReferences,
-  });
+  const authentication = await buildAndSubmitUnjournaled(
+    buildFieldPreimageLengthForcedAuthentication,
+    {
+      config: fixture.config,
+      threadOutRef: dispatch.nextThreadOutRef,
+      header,
+      membership,
+      prepared: evidence.prepared,
+      claim,
+      claimResolver: carriage.claimResolver,
+      carriageReferenceInputs: carriage.carriageReferences,
+    },
+  );
   const thread = await at(authentication.nextThreadOutRef);
   if (thread === undefined)
     throw new Error("authenticated computation thread is missing");
-  const terminal = await submitFieldPreimageLengthTerminal({
-    config: fixture.config,
-    threadOutRef: authentication.nextThreadOutRef,
-  });
+  const terminal = await buildAndSubmitUnjournaled(
+    buildFieldPreimageLengthTerminal,
+    {
+      config: fixture.config,
+      threadOutRef: authentication.nextThreadOutRef,
+    },
+  );
   const proof = await at(terminal.fraudProofOutRef);
   if (proof === undefined)
     throw new Error("installed terminal did not mint the fraud proof");

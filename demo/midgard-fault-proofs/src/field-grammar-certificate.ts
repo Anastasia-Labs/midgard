@@ -25,8 +25,12 @@ import "./field-grammar-certificate.resolve-fault-proof-field-grammar-deployment
 import "./inspect-contracts.js";
 import "./field-grammar-certificate.resolve-fault-proof-field-grammar-from-deployment-info.js";
 export {
+  buildFaultProofFieldGrammarBatch,
   type CertifiedFaultProofFieldGrammar,
   certifyFaultProofFieldGrammar,
+  type FaultProofFieldGrammarBatch,
+  type FaultProofFieldGrammarCertification,
+  type FaultProofFieldGrammarProgress,
   FIELD_GRAMMAR_NARROW_BATCH,
   FIELD_GRAMMAR_WIDE_BATCH,
   fieldGrammarBatchSize,
@@ -34,6 +38,7 @@ export {
   fieldGrammarOfCarriagePlan,
   findCompleteFaultProofFieldGrammarCertificate,
   planFieldGrammarBatches,
+  resumeFaultProofFieldGrammar,
   reuseOrCertifyFaultProofFieldGrammar,
 } from "./field-grammar-certificate.certify-fault-proof-field-grammar.js";
 export {

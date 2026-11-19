@@ -26,27 +26,16 @@ import {
   FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY,
   resolveProverSigner,
   submitRemoveFraudulentBlock,
-  submitTransitionTraceProof,
 } from "../../src/index.js";
 import {
   type TransitionDepositOpening,
   transitionDepositOpening,
 } from "../../src/transition-trace/history-opening.js";
-import {
-  submitTransitionTraceFinal,
-  submitTransitionTraceRoute,
-} from "../../src/transition-trace/index.js";
-import {
-  resolveTransitionTraceByteCarriage,
-  transitionTraceByteChunks,
-} from "../../src/transition-trace/proof-carriage.js";
+import { buildTransitionTraceFinal } from "../../src/transition-trace/index.js";
+import { transitionTraceByteChunks } from "../../src/transition-trace/proof-carriage.js";
 import { type TransitionProofInput } from "../../src/transition-trace/proof-material.js";
 import * as yieldDataModule from "../../src/transition-trace/yield-data.js";
 import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
-import {
-  captureLocallyEvaluatedTransaction,
-  type FraudProofPreSubmitBoundary,
-} from "../../src/workflow/transaction-boundary.js";
 import { alignEmulatorToWholeSecond } from "./emulator/emulator-context.js";
 import { measureCompleteSignedTransaction } from "./emulator/measurement.js";
 import { createReferenceScriptPublisher } from "./emulator/reference-script-publisher.js";
@@ -75,6 +64,13 @@ import {
   registerPhasMembershipRewardAccount,
   submitSetupTx,
 } from "./submit-init-emulator-shared.js";
+import { buildPastPrerequisitesUnjournaled } from "./submit-unjournaled.js";
+import {
+  publishTransitionTraceBytes,
+  submitTransitionTraceFinal,
+  submitTransitionTraceProof,
+  submitTransitionTraceRoute,
+} from "./submit-unjournaled.transition-trace.js";
 import {
   publishTransitionFieldCarriages,
   publishTransitionFieldCertificateReference,
@@ -598,25 +594,31 @@ export const transitionTraceFinalCaseRunner = (
       initResult.firstStepAddress,
       initResult.computationThreadUnit,
     );
-    const finalFrom = (
-      threadOutRef: string,
-      preSubmitBoundary?: FraudProofPreSubmitBoundary,
-    ) =>
-      submitTransitionTraceFinal({
-        lucid: proverLucid,
-        blueprint: realBlueprint,
-        deploymentInfo,
-        network,
-        signer: proverSigner,
-        threadOutRef,
-        proof: traceFixture.proof,
-        additionalReferenceInputs,
-        depositOpening,
-        witnessReferenceScripts,
-        fieldCertificateReferenceScript,
-        preSubmitBoundary,
-        ownOutputs,
-      });
+    const finalArgs = (threadOutRef: string) => ({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      threadOutRef,
+      proof: traceFixture.proof,
+      additionalReferenceInputs,
+      depositOpening,
+      witnessReferenceScripts,
+      fieldCertificateReferenceScript,
+      ownOutputs,
+    });
+    const finalFrom = (threadOutRef: string) =>
+      submitTransitionTraceFinal(finalArgs(threadOutRef));
+    // The next checkpoint or proof transaction, built after any carriage it
+    // needs is confirmed, and left for the test to submit.
+    const captureFinal = async (threadOutRef: string) =>
+      (
+        await buildPastPrerequisitesUnjournaled(
+          buildTransitionTraceFinal,
+          finalArgs(threadOutRef),
+        )
+      ).transaction;
     if (cancelAt >= 0) {
       const route = await submitTransitionTraceRoute({
         lucid: proverLucid,
@@ -629,12 +631,11 @@ export const transitionTraceFinalCaseRunner = (
         ownOutputs,
       });
       for (const bytes of outputCbors)
-        await resolveTransitionTraceByteCarriage({
+        await publishTransitionTraceBytes({
           lucid: proverLucid,
           address: proverSigner.proofMaterialsAddress,
           chunks: transitionTraceByteChunks(bytes.toString("hex")),
           ownOutputs,
-          publish: true,
         });
       await publishTransitionFieldCarriages({
         lucid: proverLucid,
@@ -657,9 +658,7 @@ export const transitionTraceFinalCaseRunner = (
           SDK.TransitionTraceProofCommitmentDatum,
         ).data!;
         if (state.phase === BigInt(cancelAt)) break;
-        const captured = await captureLocallyEvaluatedTransaction((boundary) =>
-          finalFrom(outRefLabel(checkpoint), boundary),
-        );
+        const captured = await captureFinal(outRefLabel(checkpoint));
         expect((await proverLucid.utxosByOutRef([checkpoint])).length).toBe(1);
         await proverLucid.awaitTx(await captured.signed.submit());
         checkpoint = await expectSingleUtxoWithUnit(
@@ -764,10 +763,7 @@ export const transitionTraceFinalCaseRunner = (
         proof: traceFixture.proof,
         refusal: forgedStepRefusal,
         yields: contracts.fraudProofContracts.transitionTrace.yields,
-        capture: (threadOutRef) =>
-          captureLocallyEvaluatedTransaction((boundary) =>
-            finalFrom(threadOutRef, boundary),
-          ),
+        capture: captureFinal,
       });
       return;
     }

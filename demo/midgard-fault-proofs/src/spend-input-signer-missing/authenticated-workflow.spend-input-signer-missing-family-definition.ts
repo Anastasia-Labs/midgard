@@ -32,10 +32,8 @@ import {
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
-import {
-  captureLocallyEvaluatedTransaction,
-  workflowTransactionInputOutRefs,
-} from "../workflow/transaction-boundary.js";
+import { journaledStepTransaction } from "../workflow/step-transaction.js";
+import { workflowTransactionInputOutRefs } from "../workflow/transaction-boundary.js";
 import { createManifestBoundSpendInputSignerMissingSubmission } from "./authenticated-workflow.create-manifest-bound-spend-input-signer-missing-submission.js";
 import {
   createSpendInputSignerMissingBoundConfig,
@@ -43,7 +41,6 @@ import {
   type ManifestBoundSpendInputSignerMissingConfig,
   SPEND_INPUT_SIGNER_MISSING_WORKFLOW,
   type SpendInputSignerMissingDeploymentBinding,
-  type SpendInputSignerMissingRuntimeLoader,
 } from "./authenticated-workflow.create-spend-input-signer-missing-bound-config.js";
 import { createSpendInputSignerMissingRawL1StageResolver } from "./authenticated-workflow.create-spend-input-signer-missing-raw-l1-stage-resolver.js";
 import {
@@ -52,12 +49,6 @@ import {
 } from "./authenticated-workflow.derive-spend-input-signer-missing-authenticated-source.js";
 import { planSpendInputSignerInputOpening } from "./field-plans.js";
 import { SpendInputSignerStep02DatumSchema } from "./schemas.js";
-import { type SpendInputSignerMissingEvidence } from "./spend-input-signer-missing.js";
-import {
-  nextSpendInputSignerAction,
-  type SpendInputSignerJournal,
-  spendInputSignerWorkflowEvidenceIdentity,
-} from "./workflow.js";
 import { SPEND_INPUT_SIGNER_MISSING_CURSOR_SPEC } from "./workflow-spec.js";
 
 export const loadManifestBoundSpendInputSignerMissingConfig = async (
@@ -81,53 +72,6 @@ export const loadManifestBoundSpendInputSignerMissingConfig = async (
   });
 
   return createSpendInputSignerMissingBoundConfig(input, binding);
-};
-
-export const createManifestBoundSpendInputSignerMissingRuntime = ({
-  config,
-  journal,
-  observe,
-  resolveStage,
-  stateQueueMutationLeaseCoordinator,
-}: {
-  readonly config: ManifestBoundSpendInputSignerMissingConfig;
-  readonly journal: SpendInputSignerJournal;
-  readonly observe: SpendInputSignerMissingRuntimeLoader["observe"];
-  readonly resolveStage: SpendInputSignerMissingRuntimeLoader["resolveStage"];
-  readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
-}) => {
-  const submission = createManifestBoundSpendInputSignerMissingSubmission({
-    config,
-    observe,
-    resolveStage,
-    stateQueueMutationLeaseCoordinator,
-  });
-  return Object.freeze({
-    runtimeVersion: SPEND_INPUT_SIGNER_MISSING_WORKFLOW,
-    config,
-    runOrResume: async (evidence: SpendInputSignerMissingEvidence) => {
-      const identity = spendInputSignerWorkflowEvidenceIdentity(evidence);
-      for (;;) {
-        const stage = await submission.observe(identity);
-        const action = nextSpendInputSignerAction(stage);
-        if (action === "done") return stage;
-        if (action === "cancel")
-          throw new Error(
-            "spendInputSignerMissing automatic runner cannot synthesize cancellation",
-          );
-        const result = await submission.submit(action, evidence);
-        await journal.append({
-          sequence: (await journal.load(identity)).length,
-          identity,
-          sourceStage: stage,
-          targetStage: result.stage,
-          action,
-          phase: "submitted",
-          txHash: result.txHash,
-        });
-      }
-    },
-  });
 };
 
 export type ManifestBoundSpendInputSignerMissingWorkflowConfig =
@@ -219,34 +163,30 @@ export const SPEND_INPUT_SIGNER_MISSING_FAMILY_DEFINITION = defineFamily<
             throw new Error(
               `${category} cursor action is outside its exact topology`,
             );
-          const transaction = await captureLocallyEvaluatedTransaction(
-            async (preSubmitBoundary) => {
-              const submission =
-                createManifestBoundSpendInputSignerMissingSubmission({
-                  ownOutputs: workflowFieldCarriageOwnOutputs({
-                    category,
-                    entries,
-                  }),
-                  config,
-                  preSubmitBoundary,
-                  observe: async () =>
-                    spendInputSignerStageFromL1(
-                      (
-                        await l1.observe({
-                          headerHash: binding.definition.headerHash,
-                        })
-                      ).stage,
-                    ),
-                  resolveStage: createSpendInputSignerMissingRawL1StageResolver(
-                    {
-                      config,
-                      l1,
-                      source: admitted.source,
-                    },
-                  ),
-                });
-              await submission.submit(familyAction, admitted.evidence);
-            },
+          const submission =
+            createManifestBoundSpendInputSignerMissingSubmission({
+              ownOutputs: workflowFieldCarriageOwnOutputs({
+                category,
+                entries,
+              }),
+              config,
+              observe: async () =>
+                spendInputSignerStageFromL1(
+                  (
+                    await l1.observe({
+                      headerHash: binding.definition.headerHash,
+                    })
+                  ).stage,
+                ),
+              resolveStage: createSpendInputSignerMissingRawL1StageResolver({
+                config,
+                l1,
+                source: admitted.source,
+              }),
+            });
+          const { transaction } = await journaledStepTransaction(
+            await submission.submit(familyAction, admitted.evidence),
+            `${category} ${familyAction}`,
           );
           if (
             input.stage !== "init" &&

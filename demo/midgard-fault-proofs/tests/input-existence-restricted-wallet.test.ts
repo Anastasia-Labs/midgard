@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import { prepareInputExistence } from "../src/input-existence/prepare.js";
-import { submitInputExistenceStep } from "../src/input-existence/submit.js";
+import { buildInputExistenceStep } from "../src/input-existence/submit.js";
 import { checkLedgerAgainstRoot } from "../src/ledger-at.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
@@ -25,6 +25,7 @@ import {
   funderPaymentKeyHash,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 describe("non-existent-input steps under the watcher's restricted wallet", () => {
   it("funds every step and posts its collateral from the reserved pool and convicts", async () => {
@@ -100,11 +101,14 @@ describe("non-existent-input steps under the watcher's restricted wallet", () =>
           emulator: h.emulator,
           signer: args.signer,
         });
-        const result = await submitInputExistenceStep({
-          ...args,
-          signer: funding.signer,
-          preSubmitBoundary: funding.preSubmitBoundary,
-        });
+        const result = await buildAndSubmitUnjournaled(
+          buildInputExistenceStep,
+          {
+            ...args,
+            signer: funding.signer,
+            beforeSubmit: funding.beforeSubmit,
+          },
+        );
         checked += funding.checked();
         return result;
       },

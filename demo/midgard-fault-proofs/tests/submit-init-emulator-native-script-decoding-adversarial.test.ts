@@ -51,7 +51,6 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data, toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { submitLinearFaultCancel } from "../src/linear-fault-cancel.js";
 import { NATIVE_SCRIPT_DECODING_CATEGORY_LABEL } from "../src/native-script-decoding/contracts.js";
 import {
   buildNativeScriptDecodingChunkProof,
@@ -61,10 +60,6 @@ import {
   NativeScriptDecodingPlanRoutes,
   nativeScriptDecodingScanArgsEvidence,
   requireNativeScriptDecodingThreadUtxo,
-  submitNativeScriptDecodingStep02,
-  submitNativeScriptDecodingStep03AdvanceOrCloseSegment,
-  submitNativeScriptDecodingStep03BindDescriptor,
-  submitNativeScriptDecodingStep03OpenSubject,
 } from "../src/native-script-decoding/index.js";
 import {
   bindAndScanHonestly,
@@ -89,6 +84,13 @@ import {
   submitRawDecodingCancel,
   submitRawDecodingStep,
 } from "./support/native-script-decoding-emulator.js";
+import { submitLinearFaultCancel } from "./support/submit-unjournaled.linear-fault.js";
+import {
+  submitNativeScriptDecodingStep02,
+  submitNativeScriptDecodingStep03AdvanceOrCloseSegment,
+  submitNativeScriptDecodingStep03BindDescriptor,
+  submitNativeScriptDecodingStep03OpenSubject,
+} from "./support/submit-unjournaled.native-script-decoding.js";
 
 describe("native-script-decoding adversarial-prover emulator suite", () => {
   it("refuses a direction-A conviction over a well-formed payload", async () => {

@@ -13,11 +13,10 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { requireInitialStepDatum } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { PreparedNetworkIdAcceptedForced } from "./accepted-forced.js";
 import type { NetworkIdContracts } from "./contracts.js";
 import {
@@ -26,7 +25,7 @@ import {
 } from "./submit-common.js";
 import type { PreparedNetworkIdWrongfulRejection } from "./wrongful-rejection.js";
 
-export const submitNetworkIdForcedStep01 = async ({
+export const buildNetworkIdForcedStep01 = async ({
   lucid,
   contracts,
   categoryId,
@@ -34,8 +33,6 @@ export const submitNetworkIdForcedStep01 = async ({
   threadOutRef,
   prepared,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: NetworkIdContracts;
@@ -46,8 +43,6 @@ export const submitNetworkIdForcedStep01 = async ({
     | PreparedNetworkIdWrongfulRejection
     | PreparedNetworkIdAcceptedForced;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   if (prepared.expectedNetworkId !== contracts.expectedNetworkId)
     throw new Error("networkId: forced evidence targets another deployment");
@@ -120,7 +115,7 @@ export const submitNetworkIdForcedStep01 = async ({
       NetworkIdStep01SpendRedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -131,13 +126,11 @@ export const submitNetworkIdForcedStep01 = async ({
     nextAddress: forcedStep.spendingScriptAddress,
     nextDatum: datum,
     redeemer,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined)
     throw new Error("networkId: forced step-01 layout unresolved");
   return {
-    txHash,
-    nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
   };
 };

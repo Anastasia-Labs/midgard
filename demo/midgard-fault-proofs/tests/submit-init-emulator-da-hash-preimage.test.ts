@@ -28,13 +28,13 @@ import { Data, getAddressDetails, toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  submitDaHashPreimageStep01,
-  submitDaHashPreimageStep02,
+  buildDaHashPreimageStep01,
+  buildDaHashPreimageStep02,
   type SubmitDaHashPreimageTxInclusion,
   submitRemoveFraudulentBlock,
 } from "../src/index.js";
 import { runEmulatorLifecycleStage } from "./support/emulator/emulator-context.js";
-import { submitInit } from "./support/legacy-submit-emulator.js";
+import { buildInit } from "./support/legacy-submit-emulator.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
 import {
   expectStateQueueHeaderOrder,
@@ -50,6 +50,7 @@ import {
   publishRemovalReferenceScripts,
   trieRootHex,
 } from "./support/submit-init-emulator-shared.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 /**
  * A key that is not the canonical transaction id of any leaf value in this
@@ -170,7 +171,7 @@ describe("da-hash-preimage fault-proof emulator lifecycle", () => {
 
     // ## init
     const initResult = await runEmulatorLifecycleStage("q44.init", () =>
-      submitInit({
+      buildAndSubmitUnjournaled(buildInit, {
         lucid: proverLucid,
         blueprint: realBlueprint,
         deploymentInfo,
@@ -206,7 +207,7 @@ describe("da-hash-preimage fault-proof emulator lifecycle", () => {
 
     // ## step-01: bind the committed leaf to the header
     const step01Result = await runEmulatorLifecycleStage("q44.step-01", () =>
-      submitDaHashPreimageStep01({
+      buildAndSubmitUnjournaled(buildDaHashPreimageStep01, {
         lucid: proverLucid,
         blueprint: realBlueprint,
         deploymentInfo,
@@ -254,7 +255,7 @@ describe("da-hash-preimage fault-proof emulator lifecycle", () => {
 
     // ## step-02: adjudicate and mint the permanent fraud-proof token
     const step02Result = await runEmulatorLifecycleStage("q44.step-02", () =>
-      submitDaHashPreimageStep02({
+      buildAndSubmitUnjournaled(buildDaHashPreimageStep02, {
         lucid: proverLucid,
         blueprint: realBlueprint,
         deploymentInfo,
@@ -374,7 +375,7 @@ describe("da-hash-preimage fault-proof emulator lifecycle", () => {
     });
     const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue);
 
-    const initResult = await submitInit({
+    const initResult = await buildAndSubmitUnjournaled(buildInit, {
       lucid: proverLucid,
       blueprint: realBlueprint,
       deploymentInfo,
@@ -394,7 +395,7 @@ describe("da-hash-preimage fault-proof emulator lifecycle", () => {
     // Plane 1 — off-chain fail-closed: the honest committed leaf derives its
     // own key, so the submitter refuses before building any transaction.
     await expect(
-      submitDaHashPreimageStep01({
+      buildAndSubmitUnjournaled(buildDaHashPreimageStep01, {
         lucid: proverLucid,
         blueprint: realBlueprint,
         deploymentInfo,
@@ -416,7 +417,7 @@ describe("da-hash-preimage fault-proof emulator lifecycle", () => {
     // passes the local violation predicate, but the L1 membership proof cannot
     // open the committed root under a key the block never committed.
     await expect(
-      submitDaHashPreimageStep01({
+      buildAndSubmitUnjournaled(buildDaHashPreimageStep01, {
         lucid: proverLucid,
         blueprint: realBlueprint,
         deploymentInfo,

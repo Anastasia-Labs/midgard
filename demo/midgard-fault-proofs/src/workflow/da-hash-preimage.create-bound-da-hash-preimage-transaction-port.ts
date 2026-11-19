@@ -3,10 +3,6 @@ import {
   FraudProofComputationThreadStepDatum,
 } from "@al-ft/midgard-sdk";
 
-import {
-  type StateQueueMutationLease,
-  type StateQueueMutationLeaseCoordinator,
-} from "../remove-fraudulent-block.js";
 import { parseSubmitDaHashPreimageTxInclusion } from "../submit-da-hash-preimage-step-01.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import { DA_HASH_PREIMAGE_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
@@ -41,8 +37,9 @@ import {
   type FraudProofWorkflowRunResult,
   runDaHashPreimageWorkflowFromRetainedDa,
 } from "./orchestrator.js";
+import { admitRemovalTransaction } from "./removal-admission.js";
+import { journaledStepTransaction } from "./step-transaction.js";
 import {
-  captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
   workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary.js";
@@ -69,8 +66,8 @@ const createBoundDaHashPreimageTransactionPort = ({
     }
     const input = requiredAction(action);
     if (input.stage === "init") {
-      const transaction = await captureLocallyEvaluatedTransaction(
-        async (preSubmitBoundary) => {
+      const transaction = (
+        await journaledStepTransaction(
           await builders.init({
             lucid: config.lucid,
             blueprint: config.blueprint,
@@ -81,107 +78,79 @@ const createBoundDaHashPreimageTransactionPort = ({
             fraudulentBlockOutRef: stringField(input, "stateQueueBlockOutRef"),
             fraudulentHeaderHash: config.headerHash,
             witnessReferenceScripts: config.referenceScripts.witnesses,
-            preSubmitBoundary,
-            awaitConfirmation: false,
-          });
-        },
-      );
+          }),
+          "da-hash-preimage init",
+        )
+      ).transaction;
       return Object.freeze({ transaction });
     }
     if (input.stage === "step_01") {
-      const transaction = await captureLocallyEvaluatedTransaction(
-        async (preSubmitBoundary) => {
-          await builders.step01({
-            lucid: config.lucid,
-            blueprint: config.blueprint,
-            deploymentInfo: config.deploymentInfo,
-            network: config.network,
-            signer: config.signer,
-            threadOutRef: stringField(input, "threadOutRef"),
-            stateQueueBlockOutRef: stringField(input, "stateQueueBlockOutRef"),
-            txInclusion: parseSubmitDaHashPreimageTxInclusion(plan.txInclusion),
-            referenceScriptUtxo: config.referenceScripts.steps[0],
-            witnessReferenceScripts: config.referenceScripts.witnesses,
-            preSubmitBoundary,
-            awaitConfirmation: false,
-          });
-        },
-      );
+      const { transaction } = await builders.step01({
+        lucid: config.lucid,
+        blueprint: config.blueprint,
+        deploymentInfo: config.deploymentInfo,
+        network: config.network,
+        signer: config.signer,
+        threadOutRef: stringField(input, "threadOutRef"),
+        stateQueueBlockOutRef: stringField(input, "stateQueueBlockOutRef"),
+        txInclusion: parseSubmitDaHashPreimageTxInclusion(plan.txInclusion),
+        referenceScriptUtxo: config.referenceScripts.steps[0],
+        witnessReferenceScripts: config.referenceScripts.witnesses,
+      });
       return Object.freeze({ transaction });
     }
     if (input.stage === "step_02") {
-      const transaction = await captureLocallyEvaluatedTransaction(
-        async (preSubmitBoundary) => {
-          await builders.step02({
-            lucid: config.lucid,
-            blueprint: config.blueprint,
-            deploymentInfo: config.deploymentInfo,
-            network: config.network,
-            signer: config.signer,
-            threadOutRef: stringField(input, "threadOutRef"),
-            referenceScriptUtxo: config.referenceScripts.steps[1],
-            witnessReferenceScripts: config.referenceScripts.witnesses,
-            preSubmitBoundary,
-            awaitConfirmation: false,
-          });
-        },
-      );
+      const { transaction } = await builders.step02({
+        lucid: config.lucid,
+        blueprint: config.blueprint,
+        deploymentInfo: config.deploymentInfo,
+        network: config.network,
+        signer: config.signer,
+        threadOutRef: stringField(input, "threadOutRef"),
+        referenceScriptUtxo: config.referenceScripts.steps[1],
+        witnessReferenceScripts: config.referenceScripts.witnesses,
+      });
       return Object.freeze({ transaction });
     }
     if (input.stage === "remove") {
-      let mutationLease: StateQueueMutationLease | undefined;
-      const retainingCoordinator: StateQueueMutationLeaseCoordinator = {
-        acquire: async () => {
-          const acquired =
-            await config.stateQueueMutationLeaseCoordinator.acquire();
-          mutationLease = acquired;
-          return acquired;
-        },
-      };
       const nextRemovalOutRef = stringField(input, "nextRemovalOutRef");
       const fraudProofOutRef = stringField(input, "fraudProofOutRef");
-      const transaction = await captureLocallyEvaluatedTransaction(
-        async (boundary) => {
-          await builders.remove({
-            fraudProofOutRef,
-            lucid: config.lucid,
-            blueprint: config.blueprint,
-            deploymentInfo: config.deploymentInfo,
-            network: config.network,
-            signer: config.signer,
-            fraudCategory: "daHashPreimage",
-            fraudulentHeaderHash: config.headerHash,
-            requireReferenceScripts: true,
-            stateQueueMutationLeaseCoordinator: retainingCoordinator,
-            fraudProverRewardLovelace: config.fraudProverRewardLovelace,
-            preSubmitBoundary: async (transaction) => {
-              if (
-                !workflowTransactionInputOutRefs(transaction.signed).includes(
-                  nextRemovalOutRef,
-                )
-              ) {
-                throw new Error(
-                  "da-hash-preimage removal does not consume the authenticated next queue input",
-                );
-              }
-              if (
-                !workflowTransactionReferenceInputOutRefs(
-                  transaction.signed,
-                ).includes(fraudProofOutRef)
-              ) {
-                throw new Error(
-                  "da-hash-preimage removal does not reference the authenticated retained proof token",
-                );
-              }
-              await boundary(transaction);
-            },
-          });
+      return await admitRemovalTransaction(
+        await builders.remove({
+          fraudProofOutRef,
+          lucid: config.lucid,
+          blueprint: config.blueprint,
+          deploymentInfo: config.deploymentInfo,
+          network: config.network,
+          signer: config.signer,
+          fraudCategory: "daHashPreimage",
+          fraudulentHeaderHash: config.headerHash,
+          requireReferenceScripts: true,
+          stateQueueMutationLeaseCoordinator:
+            config.stateQueueMutationLeaseCoordinator,
+          fraudProverRewardLovelace: config.fraudProverRewardLovelace,
+        }),
+        async (transaction) => {
+          if (
+            !workflowTransactionInputOutRefs(transaction.signed).includes(
+              nextRemovalOutRef,
+            )
+          ) {
+            throw new Error(
+              "da-hash-preimage removal does not consume the authenticated next queue input",
+            );
+          }
+          if (
+            !workflowTransactionReferenceInputOutRefs(
+              transaction.signed,
+            ).includes(fraudProofOutRef)
+          ) {
+            throw new Error(
+              "da-hash-preimage removal does not reference the authenticated retained proof token",
+            );
+          }
         },
       );
-      return Object.freeze({
-        transaction,
-        ...(mutationLease === undefined ? {} : { mutationLease }),
-      });
     }
     throw new Error(
       `da-hash-preimage workflow action has unsupported stage ${String(input.stage)}`,

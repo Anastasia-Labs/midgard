@@ -27,10 +27,7 @@ import {
   type ResolvedOutputNonCanonicalStage,
 } from "./authenticated-workflow.resolved-output-non-canonical-config-from-binding.js";
 import { type ResolvedOutputWorkflowEvidence } from "./resolved-output-non-canonical.js";
-import {
-  type ResolvedOutputJournal,
-  type ResolvedOutputStage,
-} from "./workflow.js";
+import { type ResolvedOutputStage } from "./workflow.js";
 
 /** Rebuilds all accepted/forced submitter material from the authenticated block. */
 export const deriveResolvedOutputNonCanonicalAuthenticatedSource = async ({
@@ -140,7 +137,6 @@ export const deriveResolvedOutputNonCanonicalAuthenticatedSource = async ({
 /** Complete replay member: scans every accepted field-2 output and exact forced reason. */
 export type ResolvedOutputNonCanonicalRuntimeLoader = Readonly<{
   config: LoadManifestBoundResolvedOutputNonCanonicalConfig;
-  journal: ResolvedOutputJournal;
   observe: (identity: string) => Promise<ResolvedOutputStage>;
   resolveStage: (input: {
     readonly action:

@@ -31,6 +31,6 @@ export {
   type SubmitZeroInputStep02Result,
 } from "./submit-zero-input-step-02.make-zero-input-step02-spend-redeemer.js";
 export {
+  buildZeroInputStep02V1,
   submitZeroInputStep02FromFiles,
-  submitZeroInputStep02V1,
 } from "./submit-zero-input-step-02.submit-zero-input-step02-v1.js";

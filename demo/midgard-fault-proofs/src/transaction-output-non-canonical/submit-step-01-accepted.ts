@@ -5,11 +5,10 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { submitNativeTxBinding } from "../native-tx-binding.js";
+import { buildNativeTxBinding } from "../native-tx-binding.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { SubmitStep01TxInclusion } from "../step-support.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { TransactionOutputNonCanonicalContracts } from "./contracts.js";
 import {
   TransactionOutputStep01RedeemerSchema,
@@ -20,7 +19,7 @@ import {
   type TransactionOutputFinding,
 } from "./transaction-output-non-canonical.js";
 
-export const submitTransactionOutputNonCanonicalStep01Accepted = async ({
+export const buildTransactionOutputNonCanonicalStep01Accepted = async ({
   lucid,
   blueprint,
   network,
@@ -33,8 +32,6 @@ export const submitTransactionOutputNonCanonicalStep01Accepted = async ({
   txInclusion,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -51,8 +48,6 @@ export const submitTransactionOutputNonCanonicalStep01Accepted = async ({
   readonly txInclusion: SubmitStep01TxInclusion;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const exact = classifyTransactionOutputFinding(finding);
   const nextDatum = Data.to(
@@ -65,7 +60,7 @@ export const submitTransactionOutputNonCanonicalStep01Accepted = async ({
     } as never,
     TransactionOutputStep02DatumSchema as never,
   );
-  return await submitNativeTxBinding({
+  return await buildNativeTxBinding({
     lucid,
     blueprint,
     network,
@@ -88,7 +83,5 @@ export const submitTransactionOutputNonCanonicalStep01Accepted = async ({
     }),
     referenceScriptUtxo,
     witnessReferenceScripts,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
 };

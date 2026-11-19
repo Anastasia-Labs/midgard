@@ -37,15 +37,16 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { type ResolvedProverSigner } from "../runtime.js";
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
 } from "../witness-reference-scripts.js";
 import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
 } from "../workflow/transaction-boundary.js";
 import type { NativeScriptDecodingContracts } from "./contracts.js";
 import {
@@ -102,8 +103,8 @@ export const assertNativeScriptDecodingStep04Finalizable = (
   }
 };
 
-export type SubmitNativeScriptDecodingStep04Result = {
-  readonly txHash: string;
+export type NativeScriptDecodingStep04Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -121,8 +122,10 @@ export type SubmitNativeScriptDecodingStep04Result = {
   readonly outputIndex: number;
   readonly computationThreadMintRedeemerIndex: number;
   readonly fraudProofMintRedeemerIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
+
+export type SubmitNativeScriptDecodingStep04Result =
+  UnjournaledSubmission<NativeScriptDecodingStep04Build>;
 
 type Step04SpendLayout = {
   readonly inputIndex: bigint;
@@ -130,7 +133,7 @@ type Step04SpendLayout = {
   readonly fraudProofMintRedeemerIndex: bigint;
 };
 
-export const submitNativeScriptDecodingStep04 = async ({
+export const buildNativeScriptDecodingStep04 = async ({
   lucid,
   contracts,
   categoryId,
@@ -138,8 +141,6 @@ export const submitNativeScriptDecodingStep04 = async ({
   threadOutRef,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: NativeScriptDecodingContracts;
@@ -150,9 +151,7 @@ export const submitNativeScriptDecodingStep04 = async ({
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitNativeScriptDecodingStep04Result> => {
+}): Promise<NativeScriptDecodingStep04Build> => {
   const { threadUtxo, threadToken } =
     await requireNativeScriptDecodingThreadUtxo({
       lucid,
@@ -295,39 +294,33 @@ export const submitNativeScriptDecodingStep04 = async ({
       "BuildTxWithRedeemer did not resolve the step-04 layout.",
     );
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: STEP_LABEL,
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: "V1 fraud-proof native-script-decoding step-04",
-          utxo: referenceScriptUtxo,
-          expectedScript: contracts.steps[5].spendingScript,
-        },
-        {
-          role: "V1 fraud-proof computation-thread minting",
-          utxo: witnessReferenceScripts?.computationThreadMint,
-          expectedScript: contracts.computationThread.mintingScript,
-        },
-        {
-          role: "V1 fraud-proof token minting",
-          utxo: witnessReferenceScripts?.fraudProofMint,
-          expectedScript: contracts.fraudProof.mintingScript,
-        },
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: "V1 fraud-proof native-script-decoding step-04",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.steps[5].spendingScript,
+      },
+      {
+        role: "V1 fraud-proof computation-thread minting",
+        utxo: witnessReferenceScripts?.computationThreadMint,
+        expectedScript: contracts.computationThread.mintingScript,
+      },
+      {
+        role: "V1 fraud-proof token minting",
+        utxo: witnessReferenceScripts?.fraudProofMint,
+        expectedScript: contracts.fraudProof.mintingScript,
+      },
+    ],
   });
 
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
     threadOutRef,
-    fraudProofOutRef: `${txHash}#${spendLayout.outputIndex.toString()}`,
+    fraudProofOutRef: `${transaction.txHash}#${spendLayout.outputIndex.toString()}`,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadUnit: threadToken.unit,
     fraudProofPolicyId: contracts.fraudProof.policyId,
@@ -343,6 +336,5 @@ export const submitNativeScriptDecodingStep04 = async ({
     fraudProofMintRedeemerIndex: Number(
       spendLayout.fraudProofMintRedeemerIndex,
     ),
-    awaitedConfirmation: awaitConfirmation,
   };
 };

@@ -23,6 +23,6 @@ export {
   type SubmitFabricatedDepositStep01Result,
 } from "./submit-fabricated-deposit-step-01.derive-fabricated-deposit-step01-handoff.js";
 export {
-  submitFabricatedDepositStep01,
+  buildFabricatedDepositStep01,
   submitFabricatedDepositStep01FromFiles,
 } from "./submit-fabricated-deposit-step-01.submit-fabricated-deposit-step01.js";

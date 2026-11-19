@@ -24,6 +24,10 @@ import {
   type SubmitProviderConfig,
 } from "./runtime.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
+import {
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
+} from "./workflow/transaction-boundary.js";
 
 export type SubmitZeroInputStep02CliConfig = SubmitProviderConfig & {
   readonly blueprintPath: string;
@@ -43,8 +47,8 @@ export type SubmitZeroInputStep02CliConfig = SubmitProviderConfig & {
   readonly awaitConfirmation?: boolean;
 };
 
-export type SubmitZeroInputStep02Result = {
-  readonly txHash: string;
+export type ZeroInputStep02Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -67,8 +71,10 @@ export type SubmitZeroInputStep02Result = {
   readonly outputIndex: number;
   readonly computationThreadMintRedeemerIndex: number;
   readonly fraudProofMintRedeemerIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
+
+export type SubmitZeroInputStep02Result =
+  UnjournaledSubmission<ZeroInputStep02Build>;
 
 type ZeroInputStep02DatumWithState = ZeroInputStep02Datum & {
   readonly data: NonNullable<ZeroInputStep02Datum["data"]>;

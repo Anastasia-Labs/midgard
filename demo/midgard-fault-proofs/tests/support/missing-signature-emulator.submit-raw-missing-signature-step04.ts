@@ -8,10 +8,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import {
-  faultProofFieldOpening,
-  publishFaultProofFieldCarriage,
-} from "../../src/field-opening.js";
+import { faultProofFieldOpening } from "../../src/field-opening.js";
 import { stepWalletFunding } from "../../src/funding/plain-funding-output.js";
 import {
   planMissingSignatureAddressWitnessesOpening,
@@ -26,6 +23,7 @@ import {
   makeMissingSignatureEmulatorHarness,
   type MissingSignatureScenario,
 } from "./missing-signature-emulator.build-missing-signature-subject.js";
+import { publishCarriageUnjournaled } from "./submit-unjournaled.js";
 
 /** Publish and mint the §8.6 material for a genuinely tier-3 field-7 proof. */
 export const publishMissingSignatureField07Certificate = async ({
@@ -56,7 +54,7 @@ export const publishMissingSignatureField07Certificate = async ({
     );
   }
   harness.proverSigner.selectWallet(harness.proverLucid);
-  const chunkUtxos = await publishFaultProofFieldCarriage({
+  const chunkUtxos = await publishCarriageUnjournaled({
     ownOutputs,
     lucid: harness.proverLucid,
     signer: harness.proverSigner,
@@ -150,7 +148,7 @@ export const submitRawMissingSignatureStep04 = async ({
     anchorWitnessSetHash: state.verified_witness_set_hash,
     owner: harness.proverSigner.paymentKeyHash,
   });
-  const carriageUtxos = await publishFaultProofFieldCarriage({
+  const carriageUtxos = await publishCarriageUnjournaled({
     ownOutputs,
     lucid: harness.proverLucid,
     signer: harness.proverSigner,

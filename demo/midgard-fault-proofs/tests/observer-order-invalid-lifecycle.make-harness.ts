@@ -7,12 +7,8 @@ import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";
 
-import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
-import {
-  certifyFaultProofFieldCarriage,
-  planFaultProofFieldOpening,
-  publishFaultProofFieldCarriage,
-} from "../src/field-opening.js";
+import { buildCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
+import { planFaultProofFieldOpening } from "../src/field-opening.js";
 import {
   applyObserverOrderInvalidScripts,
   OBSERVER_ORDER_INVALID_BLUEPRINT_TITLES,
@@ -24,12 +20,12 @@ import {
 } from "../src/observer-order-invalid/family.js";
 import { type ObserverOrderInvalidStagedPlan } from "../src/observer-order-invalid/staged-plan.js";
 import {
-  submitObserverOrderInvalidStep01Accepted,
-  submitObserverOrderInvalidStep01Forced,
+  buildObserverOrderInvalidStep01Accepted,
+  buildObserverOrderInvalidStep01Forced,
 } from "../src/observer-order-invalid/submit-step-01.js";
-import { submitObserverOrderInvalidStep02 } from "../src/observer-order-invalid/submit-step-02.js";
-import { submitObserverOrderInvalidStep03 } from "../src/observer-order-invalid/submit-step-03.js";
-import { submitObserverOrderInvalidStep04 } from "../src/observer-order-invalid/submit-step-04.js";
+import { buildObserverOrderInvalidStep02 } from "../src/observer-order-invalid/submit-step-02.js";
+import { buildObserverOrderInvalidStep03 } from "../src/observer-order-invalid/submit-step-03.js";
+import { buildObserverOrderInvalidStep04 } from "../src/observer-order-invalid/submit-step-04.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import type { SubmitStep01TxInclusion } from "../src/step-support.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
@@ -63,6 +59,11 @@ import {
   witnessSetCompactCborHex,
 } from "./support/observer-order-invalid-raw.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  certifyCarriageUnjournaled,
+  publishCarriageUnjournaled,
+} from "./support/submit-unjournaled.js";
 
 export let publicationsRecorded = false;
 
@@ -180,7 +181,7 @@ export const makeHarness = async () => {
       label: `observer order field ${shape.label}`,
     });
     if (planned.plan.tier !== "Certified") {
-      await publishFaultProofFieldCarriage({
+      await publishCarriageUnjournaled({
         ownOutputs,
         lucid: harness.proverLucid,
         signer: harness.proverSigner,
@@ -191,7 +192,7 @@ export const makeHarness = async () => {
       return { tier: planned.plan.tier, chunks: [], certificate: undefined };
     }
     const carriage = await captureEmulatorSubmission(harness.emulator, () =>
-      publishFaultProofFieldCarriage({
+      publishCarriageUnjournaled({
         ownOutputs,
         lucid: harness.proverLucid,
         signer: harness.proverSigner,
@@ -201,7 +202,7 @@ export const makeHarness = async () => {
       }),
     );
     const certificate = await captureEmulatorSubmission(harness.emulator, () =>
-      certifyFaultProofFieldCarriage({
+      certifyCarriageUnjournaled({
         ownOutputs,
         lucid: harness.proverLucid,
         network,
@@ -237,7 +238,7 @@ export const makeHarness = async () => {
 
   const init = (fraudulentBlockOutRef: string, fraudulentHeaderHash: string) =>
     captureEmulatorSubmission(harness.emulator, () =>
-      submitCommittedFieldShapeInit({
+      buildAndSubmitUnjournaled(buildCommittedFieldShapeInit, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -283,7 +284,7 @@ export const makeHarness = async () => {
     stateQueueBlockOutRef: string,
   ) =>
     captureEmulatorSubmission(harness.emulator, async () =>
-      submitObserverOrderInvalidStep01Accepted({
+      buildAndSubmitUnjournaled(buildObserverOrderInvalidStep01Accepted, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -307,7 +308,7 @@ export const makeHarness = async () => {
     forcedSource: Readonly<Record<string, unknown>>,
   ) =>
     captureEmulatorSubmission(harness.emulator, () =>
-      submitObserverOrderInvalidStep01Forced({
+      buildAndSubmitUnjournaled(buildObserverOrderInvalidStep01Forced, {
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -342,7 +343,7 @@ export const makeHarness = async () => {
     staged: ObserverOrderInvalidStagedPlan,
   ) =>
     captureEmulatorSubmission(harness.emulator, () =>
-      submitObserverOrderInvalidStep02({
+      buildAndSubmitUnjournaled(buildObserverOrderInvalidStep02, {
         ownOutputs,
         lucid: harness.proverLucid,
         contracts,
@@ -392,7 +393,7 @@ export const makeHarness = async () => {
     walkOrdinal: number,
   ) =>
     captureEmulatorSubmission(harness.emulator, () =>
-      submitObserverOrderInvalidStep03({
+      buildAndSubmitUnjournaled(buildObserverOrderInvalidStep03, {
         ownOutputs,
         lucid: harness.proverLucid,
         contracts,
@@ -470,7 +471,7 @@ export const makeHarness = async () => {
     evidence: ObserverOrderInvalidEvidence,
   ) =>
     captureEmulatorSubmission(harness.emulator, () =>
-      submitObserverOrderInvalidStep04({
+      buildAndSubmitUnjournaled(buildObserverOrderInvalidStep04, {
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,

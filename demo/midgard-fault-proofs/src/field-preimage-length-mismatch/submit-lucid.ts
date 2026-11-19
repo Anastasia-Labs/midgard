@@ -13,21 +13,21 @@ import "./submit-lucid.submit-field-preimage-length-accepted-authentication.js";
 import "./submit-lucid.submit-field-preimage-length-forced-authentication.js";
 import "./submit-lucid.submit-field-preimage-length-terminal.js";
 export {
-  submitFieldPreimageLengthAcceptedAuthentication,
-  submitFieldPreimageLengthForcedDispatch,
+  buildFieldPreimageLengthAcceptedAuthentication,
+  buildFieldPreimageLengthForcedDispatch,
 } from "./submit-lucid.submit-field-preimage-length-accepted-authentication.js";
-export { submitFieldPreimageLengthAcceptedDispatch } from "./submit-lucid.submit-field-preimage-length-accepted-dispatch.js";
+export { buildFieldPreimageLengthAcceptedDispatch } from "./submit-lucid.submit-field-preimage-length-accepted-dispatch.js";
 export {
+  buildFieldPreimageLengthCancel,
+  buildFieldPreimageLengthInit,
   type FieldPreimageLengthClaimResolver,
-  submitFieldPreimageLengthCancel,
   type SubmitFieldPreimageLengthForcedDispatchResult,
-  submitFieldPreimageLengthInit,
 } from "./submit-lucid.submit-field-preimage-length-cancel.js";
 export {
-  submitFieldPreimageLengthForcedAuthentication,
-  submitFieldPreimageLengthForcedOutOfDomain,
+  buildFieldPreimageLengthForcedAuthentication,
+  buildFieldPreimageLengthForcedOutOfDomain,
 } from "./submit-lucid.submit-field-preimage-length-forced-authentication.js";
 export {
+  buildFieldPreimageLengthTerminal,
   FIELD_PREIMAGE_LENGTH_INIT_DATUM_SCHEMA,
-  submitFieldPreimageLengthTerminal,
 } from "./submit-lucid.submit-field-preimage-length-terminal.js";

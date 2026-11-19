@@ -28,13 +28,13 @@ import {
 } from "../src/field-grammar-certificate.js";
 import { planFaultProofFieldOpening } from "../src/field-opening.js";
 import {
-  submitReferenceInputNoIdxStep01,
-  submitReferenceInputNoIdxStep02,
-  submitReferenceInputNoIdxStep03,
-  submitReferenceInputNoIdxStep04,
+  buildReferenceInputNoIdxStep01,
+  buildReferenceInputNoIdxStep02,
+  buildReferenceInputNoIdxStep03,
+  buildReferenceInputNoIdxStep04,
 } from "../src/index.js";
 import { deployFieldGrammarCertificate } from "./support/field-grammar-certificate-deployment-fixture.js";
-import { submitInit } from "./support/legacy-submit-emulator.js";
+import { buildInit } from "./support/legacy-submit-emulator.js";
 import {
   buildReferenceInputNoIdxBlockFixture,
   makeReferenceInputNoIdxEmulatorHarness,
@@ -48,6 +48,10 @@ import {
   expectSingleUtxoWithUnit,
   network,
 } from "./support/submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 
 describe("reference-input-no-idx step 04 through the field grammar certificate", () => {
   it("routes an oversized field-2 outputs preimage through tier-2 published carriage to the conviction", async () => {
@@ -111,7 +115,7 @@ describe("reference-input-no-idx step 04 through the field grammar certificate",
       fixture,
     });
     const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {});
-    const initResult = await submitInit({
+    const initResult = await buildAndSubmitUnjournaled(buildInit, {
       lucid: proverLucid,
       witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
@@ -127,57 +131,66 @@ describe("reference-input-no-idx step 04 through the field grammar certificate",
       initResult.firstStepAddress,
       initResult.computationThreadUnit,
     );
-    const step01Result = await submitReferenceInputNoIdxStep01({
-      lucid: proverLucid,
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: proverSigner,
-      threadOutRef: outRefLabel(firstStepUtxo),
-      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-      txInclusion: fixture.badTxInclusion,
-      referenceScriptUtxo: step01Ref,
-      awaitConfirmation: true,
-    });
+    const step01Result = await buildAndSubmitUnjournaled(
+      buildReferenceInputNoIdxStep01,
+      {
+        lucid: proverLucid,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        threadOutRef: outRefLabel(firstStepUtxo),
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+        txInclusion: fixture.badTxInclusion,
+        referenceScriptUtxo: step01Ref,
+        awaitConfirmation: true,
+      },
+    );
     const secondStepUtxo = await expectSingleUtxoWithUnit(
       proverLucid,
       step01Result.secondStepAddress,
       initResult.computationThreadUnit,
     );
-    const step02Result = await submitReferenceInputNoIdxStep02({
-      lucid: proverLucid,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: proverSigner,
-      threadOutRef: outRefLabel(secondStepUtxo),
-      referenceInputsPreimage: {
-        referenceInputsPreimage: fixture.referenceInputs,
-        badReferenceInputIndex: fixture.challengedReferenceInputIndex,
+    const step02Result = await submitTurnsUnjournaled(
+      buildReferenceInputNoIdxStep02,
+      {
+        lucid: proverLucid,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        threadOutRef: outRefLabel(secondStepUtxo),
+        referenceInputsPreimage: {
+          referenceInputsPreimage: fixture.referenceInputs,
+          badReferenceInputIndex: fixture.challengedReferenceInputIndex,
+        },
+        nativeTxCompactCbor: fixture.badTxInclusion.nativeTxCompactCbor,
+        referenceScriptUtxo: step02Ref,
+        awaitConfirmation: true,
       },
-      nativeTxCompactCbor: fixture.badTxInclusion.nativeTxCompactCbor,
-      referenceScriptUtxo: step02Ref,
-      awaitConfirmation: true,
-    });
+    );
     const thirdStepUtxo = await expectSingleUtxoWithUnit(
       proverLucid,
       step02Result.thirdStepAddress,
       initResult.computationThreadUnit,
     );
-    const step03Result = await submitReferenceInputNoIdxStep03({
-      lucid: proverLucid,
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: proverSigner,
-      threadOutRef: outRefLabel(thirdStepUtxo),
-      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-      txInclusion: fixture.producingTxInclusion,
-      referenceScriptUtxo: step03Ref,
-      awaitConfirmation: true,
-    });
+    const step03Result = await buildAndSubmitUnjournaled(
+      buildReferenceInputNoIdxStep03,
+      {
+        lucid: proverLucid,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        threadOutRef: outRefLabel(thirdStepUtxo),
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+        txInclusion: fixture.producingTxInclusion,
+        referenceScriptUtxo: step03Ref,
+        awaitConfirmation: true,
+      },
+    );
     const fourthStepUtxo = await expectSingleUtxoWithUnit(
       proverLucid,
       step03Result.fourthStepAddress,
@@ -203,7 +216,7 @@ describe("reference-input-no-idx step 04 through the field grammar certificate",
     const step04Capture = await captureEmulatorSubmission(
       emulator,
       async () =>
-        await submitReferenceInputNoIdxStep04({
+        await submitTurnsUnjournaled(buildReferenceInputNoIdxStep04, {
           lucid: proverLucid,
           witnessReferenceScripts: harness.witnessReferenceScripts,
           blueprint: realBlueprint,

@@ -21,4 +21,4 @@ import "../workflow/transaction-boundary.js";
 import "./submit-step-04.make-step04-spend-redeemer.js";
 import "./submit-step-04.submit-step04.js";
 export { type SubmitStep04Result } from "./submit-step-04.make-step04-spend-redeemer.js";
-export { submitStep04 } from "./submit-step-04.submit-step04.js";
+export { buildStep04 } from "./submit-step-04.submit-step04.js";

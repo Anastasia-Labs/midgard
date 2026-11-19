@@ -43,7 +43,7 @@ import {
   RedeemerCanonicityStep01SourceArtifactSchema,
   RedeemerCanonicityVerdictSubjectSchema,
 } from "./schemas.js";
-import { submitRedeemerCanonicityStep01Forced } from "./submit-step-01.js";
+import { buildRedeemerCanonicityStep01Forced } from "./submit-step-01.js";
 
 export const REDEEMER_CANONICITY_CONFIG_KEYS = Object.freeze([
   "manifest",
@@ -256,7 +256,7 @@ export const admitRedeemerWorkflowArtifact = (artifact: JournalJsonObject) => {
             RedeemerCanonicityStep01SourceArtifactSchema as never,
           ) as {
             ForcedSource: Parameters<
-              typeof submitRedeemerCanonicityStep01Forced
+              typeof buildRedeemerCanonicityStep01Forced
             >[0]["forcedSource"];
           }
         ).ForcedSource;

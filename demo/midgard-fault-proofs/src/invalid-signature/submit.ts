@@ -18,15 +18,14 @@ import {
   requireLinearFaultReferenceScript,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { requireInitialStepDatum } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { InvalidSignatureContracts } from "./contracts.js";
 import type { InvalidSignatureWrongfulRejectionEvidence } from "./wrongful-rejection.js";
 
-export const submitInvalidSignatureStep01Forced = async ({
+export const buildInvalidSignatureStep01Forced = async ({
   lucid,
   contracts,
   categoryId,
@@ -35,8 +34,6 @@ export const submitInvalidSignatureStep01Forced = async ({
   evidence,
   forcedSource,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   lucid: LucidEvolution;
   contracts: InvalidSignatureContracts;
@@ -46,8 +43,6 @@ export const submitInvalidSignatureStep01Forced = async ({
   evidence: InvalidSignatureWrongfulRejectionEvidence;
   forcedSource: Readonly<Record<string, unknown>>;
   referenceScriptUtxo: UTxO;
-  preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  awaitConfirmation?: boolean;
 }) => {
   if (evidence.subject.direction !== 1n)
     throw new Error("invalidSignature: forced direction changed");
@@ -114,7 +109,7 @@ export const submitInvalidSignatureStep01Forced = async ({
       InvalidSignatureStep01SpendRedeemer as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -125,10 +120,11 @@ export const submitInvalidSignatureStep01Forced = async ({
     nextAddress: contracts.steps[1].spendingScriptAddress,
     nextDatum: datum,
     redeemer,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined)
     throw new Error("invalidSignature: layout unresolved");
-  return { txHash, nextThreadOutRef: `${txHash}#${outputIndex.toString()}` };
+  return {
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
+  };
 };

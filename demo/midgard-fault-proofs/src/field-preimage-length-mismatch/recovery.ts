@@ -20,7 +20,6 @@ import {
   type JournalJsonObject,
 } from "../workflow/journal.js";
 import {
-  captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
   workflowTransactionReferenceInputOutRefs,
 } from "../workflow/transaction-boundary.js";
@@ -173,75 +172,69 @@ export const createFieldPreimageLengthRecoveryPorts = (
         (selected === "authenticate" ||
           (selected === "dispatch" &&
             evidence.prepared.sourceKind === "normal"));
-      const transaction = await captureLocallyEvaluatedTransaction(
-        async (boundary) => {
-          const builders = createConcreteFieldPreimageLengthLucidBuilders({
-            resolveStage: async () => {
-              const observed = (
-                await l1.observe({ headerHash: binding.definition.headerHash })
-              ).stage;
-              if (
-                observed.kind === "removed" ||
-                observed.kind === "proof_token" ||
-                (selected === "init"
-                  ? observed.kind !== "not_started"
-                  : observed.kind !== "step" ||
-                    observed.threadOutRef !==
-                      cursorStringField(input, "threadOutRef")) ||
-                observed.stateQueueBlockOutRef !==
-                  cursorStringField(input, "stateQueueBlockOutRef")
-              ) {
-                throw new WorkflowActionChangedError(
-                  `${CATEGORY} authenticated action changed before capture`,
-                );
-              }
-              const carriage = needsCarriage
-                ? await resolveFieldPreimageLengthCarriage({
-                    workflow,
-                    evidence: carried,
-                    ownOutputs: workflowFieldCarriageOwnOutputs({
-                      category: CATEGORY,
-                      entries,
-                    }),
-                  })
-                : undefined;
-              return {
-                fraudulentBlockOutRef: observed.stateQueueBlockOutRef,
-                ...(observed.kind === "step"
-                  ? {
-                      threadOutRef: observed.threadOutRef,
-                      stateQueueBlockOutRef: observed.stateQueueBlockOutRef,
-                    }
-                  : {}),
-                ...evidence.stageEvidence,
-                ...(carriage === undefined
-                  ? {}
-                  : evidence.prepared.sourceKind === "normal"
-                    ? {
-                        acceptedClaimResolver: carriage.claimResolver,
-                        acceptedCarriageReferenceInputs:
-                          carriage.carriageReferences,
-                      }
-                    : {
-                        forcedClaimResolver: carriage.claimResolver,
-                        forcedCarriageReferenceInputs:
-                          carriage.carriageReferences,
-                      }),
-              };
-            },
-            remove: async () => {
-              throw new Error(
-                `${CATEGORY} removal must use its exact cursor capture`,
-              );
-            },
-            boundary: () => boundary,
-          });
-          await createFieldPreimageLengthLucidSubmission({
-            config,
-            builders,
-          }).submit(selected, evidence.prepared);
+      const builders = createConcreteFieldPreimageLengthLucidBuilders({
+        resolveStage: async () => {
+          const observed = (
+            await l1.observe({ headerHash: binding.definition.headerHash })
+          ).stage;
+          if (
+            observed.kind === "removed" ||
+            observed.kind === "proof_token" ||
+            (selected === "init"
+              ? observed.kind !== "not_started"
+              : observed.kind !== "step" ||
+                observed.threadOutRef !==
+                  cursorStringField(input, "threadOutRef")) ||
+            observed.stateQueueBlockOutRef !==
+              cursorStringField(input, "stateQueueBlockOutRef")
+          ) {
+            throw new WorkflowActionChangedError(
+              `${CATEGORY} authenticated action changed before capture`,
+            );
+          }
+          const carriage = needsCarriage
+            ? await resolveFieldPreimageLengthCarriage({
+                workflow,
+                evidence: carried,
+                ownOutputs: workflowFieldCarriageOwnOutputs({
+                  category: CATEGORY,
+                  entries,
+                }),
+              })
+            : undefined;
+          return {
+            fraudulentBlockOutRef: observed.stateQueueBlockOutRef,
+            ...(observed.kind === "step"
+              ? {
+                  threadOutRef: observed.threadOutRef,
+                  stateQueueBlockOutRef: observed.stateQueueBlockOutRef,
+                }
+              : {}),
+            ...evidence.stageEvidence,
+            ...(carriage === undefined
+              ? {}
+              : evidence.prepared.sourceKind === "normal"
+                ? {
+                    acceptedClaimResolver: carriage.claimResolver,
+                    acceptedCarriageReferenceInputs:
+                      carriage.carriageReferences,
+                  }
+                : {
+                    forcedClaimResolver: carriage.claimResolver,
+                    forcedCarriageReferenceInputs: carriage.carriageReferences,
+                  }),
+          };
         },
-      );
+        remove: async () => {
+          throw new Error(
+            `${CATEGORY} removal must use its exact cursor capture`,
+          );
+        },
+      });
+      const transaction = await createFieldPreimageLengthLucidSubmission({
+        config,
+        builders,
+      }).submit(selected, evidence.prepared);
       if (
         selected !== "init" &&
         !workflowTransactionInputOutRefs(transaction.signed).includes(

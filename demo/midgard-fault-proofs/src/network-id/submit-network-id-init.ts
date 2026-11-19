@@ -1,13 +1,13 @@
 /** Reference-script-only Q35 computation-thread initialization. */
 import {
-  submitCanonicalDecodabilityInit,
-  type SubmitCanonicalDecodabilityInitResult,
+  buildCanonicalDecodabilityInit,
+  type CanonicalDecodabilityInitBuild,
 } from "../canonical-decodability/submit-canonical-decodability-init.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import type { NetworkIdContracts } from "./contracts.js";
 import type { NetworkIdCatalogueCategory } from "./submit-common.js";
 
-type BaseParams = Parameters<typeof submitCanonicalDecodabilityInit>[0];
+type BaseParams = Parameters<typeof buildCanonicalDecodabilityInit>[0];
 
 export type SubmitNetworkIdInitParams = Omit<
   BaseParams,
@@ -18,19 +18,19 @@ export type SubmitNetworkIdInitParams = Omit<
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
 };
 
-export type SubmitNetworkIdInitResult = SubmitCanonicalDecodabilityInitResult;
+export type NetworkIdInitBuild = CanonicalDecodabilityInitBuild;
 
 /**
  * Init is family-invariant: catalogue membership authenticates Q35's exact
  * first-step hash before the computation-thread token is created.
  */
-export const submitNetworkIdInit = async (
+export const buildNetworkIdInit = async (
   params: SubmitNetworkIdInitParams,
-): Promise<SubmitNetworkIdInitResult> => {
+): Promise<NetworkIdInitBuild> => {
   if (params.witnessReferenceScripts == null) {
     throw new Error(
       "network-id init requires published computation-thread and PHAS reference scripts",
     );
   }
-  return await submitCanonicalDecodabilityInit(params);
+  return await buildCanonicalDecodabilityInit(params);
 };

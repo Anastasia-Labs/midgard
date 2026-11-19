@@ -21,6 +21,10 @@ import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
+  type FaultProofTurn,
+  isPrerequisiteTurn,
+} from "../fault-proof-turn.js";
+import {
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
 } from "../field-opening.js";
@@ -28,19 +32,19 @@ import { createOwnOutputJournal } from "../workflow/own-outputs.js";
 import { createRawDatumPreimageRequirement } from "../workflow/raw-datum-preimage-prerequisite.js";
 import { mintAuthorizationEvaluationPreimage } from "./evaluate.js";
 import { mintAuthorizationSubmitError } from "./submit-common.js";
+import type { MintAuthorizationStep03Build } from "./submit-mint-authorization-step-03.submit-prepared-step03.js";
 import {
+  buildPreparedStep03,
   prepareThread,
   STEP_LABEL,
   type Step03Shared,
-  type SubmitMintAuthorizationStep03Result,
-  submitPreparedStep03,
 } from "./submit-mint-authorization-step-03.submit-prepared-step03.js";
 
 /**
  * Direction B: the policy's native payload, pinned by hash, evaluates
  * unsatisfied against the committed signer set and validity interval.
  */
-export const submitMintAuthorizationStep03EvaluateUnsatisfied = async ({
+export const buildMintAuthorizationStep03EvaluateUnsatisfied = async ({
   scriptBytesHex,
   rawPreimageUtxos,
   addrTxWitsItemCbors,
@@ -56,7 +60,7 @@ export const submitMintAuthorizationStep03EvaluateUnsatisfied = async ({
    * preimage's own byte length.
    */
   readonly addrTxWitsItemCbors: readonly string[];
-}): Promise<SubmitMintAuthorizationStep03Result> => {
+}): Promise<FaultProofTurn<MintAuthorizationStep03Build>> => {
   const { threadUtxo, threadToken, state } = await prepareThread(shared);
   if (state.direction !== MINT_AUTHORIZATION_DIRECTION_SCRIPT_UNSATISFIED) {
     throw mintAuthorizationSubmitError(
@@ -123,6 +127,7 @@ export const submitMintAuthorizationStep03EvaluateUnsatisfied = async ({
       publisherAddress: shared.signer.proofMaterialsAddress,
       label: `${STEP_LABEL} address-witnesses`,
     }));
+  if (isPrerequisiteTurn(carriageUtxos)) return carriageUtxos;
   const fieldReferenceInputs = [
     ...(shared.certificateUtxo === undefined ? [] : [shared.certificateUtxo]),
     ...carriageUtxos,
@@ -164,7 +169,7 @@ export const submitMintAuthorizationStep03EvaluateUnsatisfied = async ({
       stack_depth: 0n,
       result: -1n,
     };
-    return submitPreparedStep03({
+    return buildPreparedStep03({
       shared,
       threadUtxo,
       threadToken,
@@ -202,7 +207,7 @@ export const submitMintAuthorizationStep03EvaluateUnsatisfied = async ({
     { fraud_prover: shared.signer.paymentKeyHash, data: step05State },
     MintAuthorizationStep05Datum,
   );
-  return submitPreparedStep03({
+  return buildPreparedStep03({
     shared,
     threadUtxo,
     threadToken,

@@ -4,14 +4,14 @@ import {
   PROOF_THREAD_SOURCE_KIND_FORCED,
 } from "@al-ft/midgard-sdk";
 
-import { submitCommittedFieldShapeInit } from "../committed-field-shape/submit-committed-field-shape-init.js";
+import { buildCommittedFieldShapeInit } from "../committed-field-shape/submit-committed-field-shape-init.js";
+import { isPrerequisiteTurn } from "../fault-proof-turn.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
-import { submitRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   required,
   type ResolvedOutputNonCanonicalRuntimeLoader,
@@ -23,28 +23,26 @@ import {
   resolvedOutputOpenedField,
   type ResolvedOutputWorkflowEvidence,
 } from "./resolved-output-non-canonical.js";
-import { submitResolvedOutputNonCanonicalCancel } from "./submit-cancel.js";
-import { submitResolvedOutputNonCanonicalStep01Accepted } from "./submit-step-01-accepted.js";
-import { submitResolvedOutputNonCanonicalStep01Forced } from "./submit-step-01-forced.js";
-import { submitResolvedOutputNonCanonicalStep02 } from "./submit-step-02.js";
-import { submitResolvedOutputNonCanonicalStep03 } from "./submit-step-03.js";
-import { submitResolvedOutputNonCanonicalStep04 } from "./submit-step-04.js";
-import { submitResolvedOutputNonCanonicalStep04Datum } from "./submit-step-04-datum.js";
-import { submitResolvedOutputNonCanonicalStep05 } from "./submit-step-05.js";
+import { buildResolvedOutputNonCanonicalCancel } from "./submit-cancel.js";
+import { buildResolvedOutputNonCanonicalStep01Accepted } from "./submit-step-01-accepted.js";
+import { buildResolvedOutputNonCanonicalStep01Forced } from "./submit-step-01-forced.js";
+import { buildResolvedOutputNonCanonicalStep02 } from "./submit-step-02.js";
+import { buildResolvedOutputNonCanonicalStep03 } from "./submit-step-03.js";
+import { buildResolvedOutputNonCanonicalStep04 } from "./submit-step-04.js";
+import { buildResolvedOutputNonCanonicalStep04Datum } from "./submit-step-04-datum.js";
+import { buildResolvedOutputNonCanonicalStep05 } from "./submit-step-05.js";
 import { type ResolvedOutputStage } from "./workflow.js";
 
 export const createManifestBoundResolvedOutputNonCanonicalSubmission = ({
   config,
   observe,
   resolveStage,
-  preSubmitBoundary,
   stateQueueMutationLeaseCoordinator,
   ownOutputs = createOwnOutputJournal(),
 }: {
   readonly config: ManifestBoundResolvedOutputNonCanonicalConfig;
   readonly observe: (identity: string) => Promise<ResolvedOutputStage>;
   readonly resolveStage: ResolvedOutputNonCanonicalRuntimeLoader["resolveStage"];
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
@@ -68,7 +66,7 @@ export const createManifestBoundResolvedOutputNonCanonicalSubmission = ({
       );
     const stage = await resolveStage({ action, evidence });
     if (action === "submitInit") {
-      const result = await submitCommittedFieldShapeInit({
+      const result = await buildCommittedFieldShapeInit({
         lucid: config.lucid,
         blueprint: config.binding.blueprint,
         network: config.binding.network,
@@ -79,17 +77,17 @@ export const createManifestBoundResolvedOutputNonCanonicalSubmission = ({
         fraudulentBlockOutRef: stage.fraudulentBlockOutRef,
         fraudulentHeaderHash: config.binding.definition.headerHash,
         witnessReferenceScripts: config.referenceScripts.witnesses,
-        preSubmitBoundary,
       });
       return {
+        transaction: result.transaction,
         stage: "step01" as const,
-        txHash: result.txHash,
-        outputReference: `${result.txHash}#${result.firstStepOutputIndex.toString()}`,
+        txHash: result.transaction.txHash,
+        outputReference: `${result.transaction.txHash}#${result.firstStepOutputIndex.toString()}`,
       };
     }
     if (action === "submitStep01") {
       if (evidence.subject.source_kind === PROOF_THREAD_SOURCE_KIND_ACCEPTED) {
-        const result = await submitResolvedOutputNonCanonicalStep01Accepted({
+        const result = await buildResolvedOutputNonCanonicalStep01Accepted({
           lucid: config.lucid,
           blueprint: config.binding.blueprint,
           network: config.binding.network,
@@ -105,11 +103,11 @@ export const createManifestBoundResolvedOutputNonCanonicalSubmission = ({
           txInclusion: required(stage.acceptedInclusion, "accepted inclusion"),
           referenceScriptUtxo: config.referenceScripts.step01,
           witnessReferenceScripts: config.referenceScripts.witnesses,
-          preSubmitBoundary,
         });
         return {
+          transaction: result.transaction,
           stage: "step02" as const,
-          txHash: result.txHash,
+          txHash: result.transaction.txHash,
           outputReference: result.nextThreadOutRef,
         };
       }
@@ -117,7 +115,7 @@ export const createManifestBoundResolvedOutputNonCanonicalSubmission = ({
         throw new Error(
           "resolvedOutputNonCanonical evidence source kind is invalid",
         );
-      const result = await submitResolvedOutputNonCanonicalStep01Forced({
+      const result = await buildResolvedOutputNonCanonicalStep01Forced({
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -129,16 +127,16 @@ export const createManifestBoundResolvedOutputNonCanonicalSubmission = ({
           membership: required(stage.forcedMembership, "forced membership"),
         },
         referenceScriptUtxo: config.referenceScripts.step01,
-        preSubmitBoundary,
       });
       return {
+        transaction: result.transaction,
         stage: "step02" as const,
-        txHash: result.txHash,
+        txHash: result.transaction.txHash,
         outputReference: result.nextThreadOutRef,
       };
     }
     if (action === "submitStep02") {
-      const result = await submitResolvedOutputNonCanonicalStep02({
+      const result = await buildResolvedOutputNonCanonicalStep02({
         ownOutputs,
         lucid: config.lucid,
         contracts: config.contracts,
@@ -160,21 +158,20 @@ export const createManifestBoundResolvedOutputNonCanonicalSubmission = ({
         certificateUtxo: stage.certificateUtxo,
         certificateReferenceScriptUtxo:
           config.referenceScripts.fieldPreimageCertificateMint,
-        publicationPreSubmitBoundary: preSubmitBoundary,
-        certificatePreSubmitBoundary: preSubmitBoundary,
         referenceScriptUtxo: config.referenceScripts.step02,
-        preSubmitBoundary,
       });
+      if (isPrerequisiteTurn(result)) return result;
       return {
+        transaction: result.transaction,
         stage: resolvedOutputEvidenceIsAbsent(evidence)
           ? ("step05" as const)
           : ("step03" as const),
-        txHash: result.txHash,
+        txHash: result.transaction.txHash,
         outputReference: result.nextThreadOutRef,
       };
     }
     if (action === "submitStep03") {
-      const result = await submitResolvedOutputNonCanonicalStep03({
+      const result = await buildResolvedOutputNonCanonicalStep03({
         lucid: config.lucid,
         network: config.binding.network,
         contracts: config.contracts,
@@ -184,16 +181,16 @@ export const createManifestBoundResolvedOutputNonCanonicalSubmission = ({
         evidence: present(evidence),
         referenceScriptUtxo: config.referenceScripts.step03,
         witnessReferenceScripts: config.referenceScripts.witnesses,
-        preSubmitBoundary,
       });
       return {
+        transaction: result.transaction,
         stage: "reconstructing" as const,
-        txHash: result.txHash,
+        txHash: result.transaction.txHash,
         outputReference: result.nextThreadOutRef,
       };
     }
     if (action === "submitReconstruction") {
-      const result = await submitResolvedOutputNonCanonicalStep04({
+      const result = await buildResolvedOutputNonCanonicalStep04({
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -204,16 +201,16 @@ export const createManifestBoundResolvedOutputNonCanonicalSubmission = ({
         ),
         evidence: present(evidence),
         referenceScriptUtxo: config.referenceScripts.step04,
-        preSubmitBoundary,
       });
       return {
+        transaction: result.transaction,
         stage: result.nextStage,
-        txHash: result.txHash,
+        txHash: result.transaction.txHash,
         outputReference: result.nextThreadOutRef,
       };
     }
     if (action === "submitStep04Datum") {
-      const result = await submitResolvedOutputNonCanonicalStep04Datum({
+      const result = await buildResolvedOutputNonCanonicalStep04Datum({
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -221,16 +218,16 @@ export const createManifestBoundResolvedOutputNonCanonicalSubmission = ({
         threadOutRef: required(stage.threadOutRef, "datum thread out-ref"),
         evidence: present(evidence),
         referenceScriptUtxo: config.referenceScripts.step04Datum,
-        preSubmitBoundary,
       });
       return {
+        transaction: result.transaction,
         stage: result.nextStage,
-        txHash: result.txHash,
+        txHash: result.transaction.txHash,
         outputReference: result.nextThreadOutRef,
       };
     }
     if (action === "submitStep05") {
-      const result = await submitResolvedOutputNonCanonicalStep05({
+      const result = await buildResolvedOutputNonCanonicalStep05({
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -239,15 +236,15 @@ export const createManifestBoundResolvedOutputNonCanonicalSubmission = ({
         evidence,
         referenceScriptUtxo: config.referenceScripts.step05,
         witnessReferenceScripts: config.referenceScripts.witnesses,
-        preSubmitBoundary,
       });
       return {
+        transaction: result.transaction,
         stage: "proven" as const,
-        txHash: result.txHash,
+        txHash: result.transaction.txHash,
         outputReference: null,
       };
     }
-    const result = await submitRemoveFraudulentBlock({
+    const result = await buildRemoveFraudulentBlock({
       lucid: config.lucid,
       blueprint: config.binding.blueprint,
       deploymentInfo: config.binding.deploymentInfo,
@@ -264,14 +261,18 @@ export const createManifestBoundResolvedOutputNonCanonicalSubmission = ({
             "resolvedOutputNonCanonical production removal requires a state-queue mutation lease coordinator",
           );
         })(),
-      awaitConfirmation: true,
       validFrom: stage.validFrom,
       validTo: stage.validTo,
-      preSubmitBoundary,
     });
     return {
-      stage: "removed" as const,
-      txHash: result.txHash,
+      transaction: result.transaction,
+      stateQueueMutationLease: result.stateQueueMutationLease,
+      // A removal of a successor leaves the fraud proof in place.
+      stage:
+        result.kind === "remove-target"
+          ? ("removed" as const)
+          : ("proven" as const),
+      txHash: result.transaction.txHash,
       outputReference: null,
     };
   },
@@ -290,7 +291,7 @@ export const createManifestBoundResolvedOutputNonCanonicalSubmission = ({
             : current === "reconstructing"
               ? 3
               : 4;
-    const result = await submitResolvedOutputNonCanonicalCancel({
+    const result = await buildResolvedOutputNonCanonicalCancel({
       lucid: config.lucid,
       contracts: config.contracts,
       categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -306,8 +307,9 @@ export const createManifestBoundResolvedOutputNonCanonicalSubmission = ({
       witnessReferenceScripts: config.referenceScripts.witnesses,
     });
     return {
+      transaction: result.transaction,
       stage: "cancelled" as const,
-      txHash: result.txHash,
+      txHash: result.transaction.txHash,
       outputReference: null,
     };
   },

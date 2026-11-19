@@ -18,14 +18,13 @@ import {
   requireLinearFaultReferenceScript,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
-import { submitNativeTxBinding } from "../native-tx-binding.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildNativeTxBinding } from "../native-tx-binding.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { SubmitStep01TxInclusion } from "../step-support.js";
 import { requireInitialStepDatum } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { MintDeclaredAssetLimitContracts } from "./contracts.js";
 import {
   classifyMintDeclaredAssetLimitFinding,
@@ -53,7 +52,7 @@ const boundDatum = (
     MintDeclaredAssetLimitStep02DatumSchema as never,
   );
 
-export const submitMintDeclaredAssetLimitStep01Accepted = async ({
+export const buildMintDeclaredAssetLimitStep01Accepted = async ({
   lucid,
   blueprint,
   network,
@@ -66,8 +65,6 @@ export const submitMintDeclaredAssetLimitStep01Accepted = async ({
   txInclusion,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -84,11 +81,9 @@ export const submitMintDeclaredAssetLimitStep01Accepted = async ({
   readonly txInclusion: SubmitStep01TxInclusion;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const exact = classifyMintDeclaredAssetLimitFinding(finding);
-  return await submitNativeTxBinding({
+  return await buildNativeTxBinding({
     lucid,
     blueprint,
     network,
@@ -111,8 +106,6 @@ export const submitMintDeclaredAssetLimitStep01Accepted = async ({
     }),
     referenceScriptUtxo,
     witnessReferenceScripts,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
 };
 
@@ -122,7 +115,7 @@ export const submitMintDeclaredAssetLimitStep01Accepted = async ({
  * asserts. The classified builder below keeps them consistent; this form
  * lets a lifecycle present a mutated coordinate, subject or leaf on chain.
  */
-export const submitMintDeclaredAssetLimitStep01ForcedRaw = async ({
+export const buildMintDeclaredAssetLimitStep01ForcedRaw = async ({
   lucid,
   contracts,
   categoryId,
@@ -133,8 +126,6 @@ export const submitMintDeclaredAssetLimitStep01ForcedRaw = async ({
   redeemerPolicyIndex,
   forcedSource,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: MintDeclaredAssetLimitContracts;
@@ -146,8 +137,6 @@ export const submitMintDeclaredAssetLimitStep01ForcedRaw = async ({
   readonly redeemerPolicyIndex: bigint;
   readonly forcedSource: Readonly<Record<string, unknown>>;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
@@ -209,7 +198,7 @@ export const submitMintDeclaredAssetLimitStep01ForcedRaw = async ({
       MintDeclaredAssetLimitStep01RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -220,18 +209,16 @@ export const submitMintDeclaredAssetLimitStep01ForcedRaw = async ({
     nextAddress: contracts.steps[1].spendingScriptAddress,
     nextDatum: datum,
     redeemer,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (resolvedOutputIndex === undefined)
     throw new Error("mintDeclaredAssetLimit: forced layout unresolved");
   return {
-    txHash,
-    nextThreadOutRef: `${txHash}#${resolvedOutputIndex.toString()}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${resolvedOutputIndex.toString()}`,
   };
 };
 
-export const submitMintDeclaredAssetLimitStep01Forced = async ({
+export const buildMintDeclaredAssetLimitStep01Forced = async ({
   finding,
   ...rest
 }: {
@@ -243,11 +230,9 @@ export const submitMintDeclaredAssetLimitStep01Forced = async ({
   readonly finding: MintDeclaredAssetLimitFinding;
   readonly forcedSource: Readonly<Record<string, unknown>>;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const exact = classifyMintDeclaredAssetLimitFinding(finding);
-  return await submitMintDeclaredAssetLimitStep01ForcedRaw({
+  return await buildMintDeclaredAssetLimitStep01ForcedRaw({
     ...rest,
     subject: exact.subject,
     datumPolicyIndex: exact.policyIndex,

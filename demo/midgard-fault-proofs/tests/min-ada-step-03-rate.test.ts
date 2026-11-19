@@ -15,9 +15,10 @@ import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
+  buildMinAdaStep03,
   minAdaDescriptorIsFault,
-  submitMinAdaStep03,
 } from "../src/min-ada/submit-step-03.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 /** An L1 rate unlike Midgard's 4,310, as a binding's protocol parameters may carry. */
 const L1_COINS_PER_UTXO_BYTE = 1n;
@@ -82,7 +83,7 @@ describe("min-ada step 03 rate", () => {
       ),
     });
     const submit = (thread: UTxO) =>
-      submitMinAdaStep03({
+      buildAndSubmitUnjournaled(buildMinAdaStep03, {
         lucid: {
           utxosByOutRef: () => Promise.resolve([thread]),
         } as never,

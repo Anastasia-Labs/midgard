@@ -7,23 +7,22 @@ import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";
 
-import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
+import { buildCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
 import {
   applyFieldItemWidthIllegalScripts,
+  buildFieldItemWidthIllegalCancel,
+  buildFieldItemWidthIllegalStep01Accepted,
+  buildFieldItemWidthIllegalStep01Forced,
+  buildFieldItemWidthIllegalStep02,
+  buildFieldItemWidthIllegalStep03,
   FIELD_ITEM_WIDTH_ILLEGAL_BLUEPRINT_TITLES,
   type FieldItemWidthEvidence,
   type FieldItemWidthFinding,
   type FieldItemWidthIllegalContracts,
-  submitFieldItemWidthIllegalCancel,
-  submitFieldItemWidthIllegalStep01Accepted,
-  submitFieldItemWidthIllegalStep01Forced,
-  submitFieldItemWidthIllegalStep02,
-  submitFieldItemWidthIllegalStep03,
 } from "../src/field-item-width-illegal/index.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import type { SubmitStep01TxInclusion } from "../src/step-support.js";
 import type { OwnOutputJournal } from "../src/workflow/own-outputs.js";
-import type { FraudProofPreSubmitBoundary } from "../src/workflow/transaction-boundary.js";
 import {
   CANCELLABLE_STEPS,
   CATEGORY_ID,
@@ -48,6 +47,10 @@ import {
   witnessSetCompactCborHex,
 } from "./support/field-item-width-illegal-shapes.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 
 export let publicationsRecorded = false;
 
@@ -145,7 +148,7 @@ export const makeHarness = async () => {
 
   const init = (fraudulentBlockOutRef: string) =>
     captureEmulatorSubmission(harness.emulator, () =>
-      submitCommittedFieldShapeInit({
+      buildAndSubmitUnjournaled(buildCommittedFieldShapeInit, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -179,7 +182,7 @@ export const makeHarness = async () => {
     ]);
     if (threadUtxo === undefined) throw new Error("init thread absent");
     return captureEmulatorSubmission(harness.emulator, () =>
-      submitFieldItemWidthIllegalStep01Accepted({
+      buildAndSubmitUnjournaled(buildFieldItemWidthIllegalStep01Accepted, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -202,11 +205,11 @@ export const makeHarness = async () => {
     threadOutRef: string,
     finding: FieldItemWidthFinding,
     forcedSource: Parameters<
-      typeof submitFieldItemWidthIllegalStep01Forced
+      typeof buildFieldItemWidthIllegalStep01Forced
     >[0]["forcedSource"],
   ) =>
     captureEmulatorSubmission(harness.emulator, () =>
-      submitFieldItemWidthIllegalStep01Forced({
+      buildAndSubmitUnjournaled(buildFieldItemWidthIllegalStep01Forced, {
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -228,7 +231,7 @@ export const makeHarness = async () => {
         },
   ) =>
     captureEmulatorSubmission(harness.emulator, () =>
-      submitFieldItemWidthIllegalStep02({
+      submitTurnsUnjournaled(buildFieldItemWidthIllegalStep02, {
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -247,15 +250,14 @@ export const makeHarness = async () => {
         certificateReferenceScriptUtxo: requireCertificateReference(),
       }),
     );
-  /** One step-02 turn with every pre-submit boundary set to `boundary`. */
+  /** One step-02 build: the next carriage transaction, or the step. */
   const step02Turn = (
     threadOutRef: string,
     evidence: FieldItemWidthEvidence,
     shape: WidthShape,
-    boundary: FraudProofPreSubmitBoundary,
     ownOutputs: OwnOutputJournal,
   ) =>
-    submitFieldItemWidthIllegalStep02({
+    buildFieldItemWidthIllegalStep02({
       ownOutputs,
       lucid: harness.proverLucid,
       contracts,
@@ -271,9 +273,6 @@ export const makeHarness = async () => {
       publishCarriage: evidence.carriage === "RawUtxo",
       referenceScriptUtxo: references[1]!,
       certificateReferenceScriptUtxo: requireCertificateReference(),
-      publicationPreSubmitBoundary: boundary,
-      certificatePreSubmitBoundary: boundary,
-      preSubmitBoundary: boundary,
     });
   const step02Raw = (
     threadOutRef: string,
@@ -313,7 +312,7 @@ export const makeHarness = async () => {
     });
   const step03 = (threadOutRef: string, evidence: FieldItemWidthEvidence) =>
     captureEmulatorSubmission(harness.emulator, () =>
-      submitFieldItemWidthIllegalStep03({
+      buildAndSubmitUnjournaled(buildFieldItemWidthIllegalStep03, {
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -336,7 +335,7 @@ export const makeHarness = async () => {
     });
   const cancel = async (threadOutRef: string, stepIndex: 0 | 1 | 2) => {
     const cancelled = await captureEmulatorSubmission(harness.emulator, () =>
-      submitFieldItemWidthIllegalCancel({
+      buildAndSubmitUnjournaled(buildFieldItemWidthIllegalCancel, {
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,

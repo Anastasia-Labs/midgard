@@ -10,10 +10,11 @@ import { Effect } from "effect";
 import { expect } from "vitest";
 
 import {
-  type FraudProofPreSubmitBoundary,
+  buildRemoveFraudulentBlock,
   type StateQueueMutationLeaseCoordinator,
   submitRemoveFraudulentBlock,
 } from "../../../src/index.js";
+import type { LocallyEvaluatedTransaction } from "../../../src/workflow/transaction-boundary.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   buildCatalogueDeploymentInfo,
@@ -137,37 +138,54 @@ export const instrumentLucidForRemoval = ({
   });
 };
 
-export const submitRemovalForFixture = async (
+const removalArgsForFixture = (
   fixture: ProvedDoubleSpendFixture,
-  options: {
-    readonly lucid?: Awaited<ReturnType<typeof Lucid>>;
-    readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
-    readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  } = {},
+  lucid: Awaited<ReturnType<typeof Lucid>> | undefined,
 ) => {
   const removeNow = BigInt(fixture.emulator.now());
-  return await submitRemoveFraudulentBlock({
-    lucid: options.lucid ?? fixture.proverLucid,
+  return {
+    lucid: lucid ?? fixture.proverLucid,
     blueprint: fixture.realBlueprint,
     deploymentInfo: fixture.deploymentInfo,
     network,
     signer: fixture.proverSigner,
     fraudulentHeaderHash: fixture.headerHash,
-    awaitConfirmation: true,
     requireReferenceScripts: true,
     validFrom: removeNow > 120_000n ? removeNow - 120_000n : 0n,
     validTo: removeNow + 300_000n,
+  };
+};
+
+export const submitRemovalForFixture = async (
+  fixture: ProvedDoubleSpendFixture,
+  options: {
+    readonly lucid?: Awaited<ReturnType<typeof Lucid>>;
+    readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
+    readonly beforeSubmit?: (
+      transaction: LocallyEvaluatedTransaction,
+    ) => Promise<void> | void;
+  } = {},
+) =>
+  await submitRemoveFraudulentBlock({
+    ...removalArgsForFixture(fixture, options.lucid),
+    awaitConfirmation: true,
     ...(options.stateQueueMutationLeaseCoordinator === undefined
       ? {}
       : {
           stateQueueMutationLeaseCoordinator:
             options.stateQueueMutationLeaseCoordinator,
         }),
-    ...(options.preSubmitBoundary === undefined
+    ...(options.beforeSubmit === undefined
       ? {}
-      : { preSubmitBoundary: options.preSubmitBoundary }),
+      : { beforeSubmit: options.beforeSubmit }),
   });
-};
+
+/** The fixture's next removal transaction, built and signed but not submitted. */
+export const buildRemovalForFixture = async (
+  fixture: ProvedDoubleSpendFixture,
+): Promise<LocallyEvaluatedTransaction> =>
+  (await buildRemoveFraudulentBlock(removalArgsForFixture(fixture, undefined)))
+    .transaction;
 
 export const expectRemovedFraudProofState = async (
   fixture: ProvedDoubleSpendFixture,

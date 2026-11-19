@@ -12,7 +12,6 @@ import {
 
 import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary.js";
 import {
-  DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
   makeLucidForSubmit,
   outRefLabel,
@@ -22,10 +21,13 @@ import {
   resolveInvalidRangeDeploymentContracts,
   resolveProverSigner,
 } from "./runtime.js";
+import { finishStep } from "./step-completion.js";
 import {
   requireComputationThreadToken,
   selectFeeInput,
 } from "./step-support.js";
+import { submitFaultProofTurns } from "./submit-fault-proof-turns.js";
+import type { InvalidRangeStep02Build } from "./submit-invalid-range-step-02.make-invalid-range-step02-spend-redeemer.js";
 import {
   type InvalidRangeStep02ResolvedLayout,
   type InvalidRangeStep02SpendLayout,
@@ -41,13 +43,9 @@ import {
   witnessMintingPolicyCarriage,
   witnessSpendingValidatorCarriage,
 } from "./witness-reference-scripts.js";
-import {
-  type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
-} from "./workflow/transaction-boundary.js";
+import { workflowReferenceScriptsUsedByTransaction } from "./workflow/transaction-boundary.js";
 
-export const submitInvalidRangeStep02V1 = async ({
+export const buildInvalidRangeStep02V1 = async ({
   lucid,
   blueprint,
   deploymentInfo,
@@ -56,8 +54,6 @@ export const submitInvalidRangeStep02V1 = async ({
   threadOutRef,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -69,9 +65,7 @@ export const submitInvalidRangeStep02V1 = async ({
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitInvalidRangeStep02Result> => {
+}): Promise<InvalidRangeStep02Build> => {
   const { invalidRangeCategory, contracts } =
     await resolveInvalidRangeDeploymentContracts({
       blueprint,
@@ -211,8 +205,7 @@ export const submitInvalidRangeStep02V1 = async ({
     computationThreadMintRedeemerIndex,
   };
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const transaction = finishStep(signed, {
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
@@ -233,20 +226,11 @@ export const submitInvalidRangeStep02V1 = async ({
         },
       ],
     }),
-    boundary: preSubmitBoundary,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw new Error(
-      `invalid-range step 02 provider returned ${txHash}, expected ${expectedTxHash}`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
+  const { txHash } = transaction;
 
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
@@ -272,7 +256,6 @@ export const submitInvalidRangeStep02V1 = async ({
     fraudProofMintRedeemerIndex: Number(
       resolvedLayout.fraudProofMintRedeemerIndex,
     ),
-    awaitedConfirmation: awaitConfirmation,
   };
 };
 
@@ -288,13 +271,19 @@ export const submitInvalidRangeStep02FromFiles = async (
     makeLucidForSubmit(config),
   ]);
   const signer = resolveProverSigner(config);
-  return await submitInvalidRangeStep02V1({
-    lucid,
-    blueprint,
-    deploymentInfo,
-    network: config.network,
-    signer,
-    threadOutRef: config.threadOutRef,
-    awaitConfirmation: config.awaitConfirmation,
-  });
+  return await submitFaultProofTurns(
+    buildInvalidRangeStep02V1,
+    {
+      lucid,
+      blueprint,
+      deploymentInfo,
+      network: config.network,
+      signer,
+      threadOutRef: config.threadOutRef,
+    },
+    {
+      label: "invalid-range-step02-v1",
+      awaitConfirmation: config.awaitConfirmation ?? true,
+    },
+  );
 };

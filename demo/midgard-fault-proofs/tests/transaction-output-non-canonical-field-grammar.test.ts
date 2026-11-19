@@ -21,7 +21,7 @@ import {
   VAN_ROSSEM_MAX_CPU_UNITS,
   VAN_ROSSEM_MAX_MEMORY_UNITS,
 } from "../src/proof-fit/van-rossem.js";
-import { submitTransactionOutputNonCanonicalStep02 } from "../src/transaction-output-non-canonical/index.js";
+import { buildTransactionOutputNonCanonicalStep02 } from "../src/transaction-output-non-canonical/index.js";
 import { createManifestBoundTransactionOutputNonCanonicalSubmission } from "../src/transaction-output-non-canonical/workflow.create-manifest-bound-transaction-output-non-canonical-submission.js";
 import {
   transactionOutputNonCanonicalConfigFromBinding,
@@ -35,6 +35,10 @@ import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { deployFieldGrammarCertificate } from "./support/field-grammar-certificate-deployment-fixture.js";
 import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
+import {
+  submitBoundUnjournaled,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 import { MALFORMED_OUTPUT } from "./support/transaction-output-non-canonical-emulator.js";
 import {
   committedInclusions,
@@ -182,7 +186,11 @@ const buildScenario = async () => {
     stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
     acceptedInclusion: inclusion,
   };
-  const bound = await submission.submit("submitStep01", evidence);
+  const bound = await submitBoundUnjournaled(
+    harness.proverLucid,
+    "submitStep01",
+    () => submission.submit("submitStep01", evidence),
+  );
   expect(bound.stage).toBe("step02");
   stage = {
     fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
@@ -217,7 +225,7 @@ describe("transactionOutputNonCanonical step 02 through the field grammar certif
     // no certificate deployment: at this size the walk runs the step over its
     // execution budget.
     await expect(
-      submitTransactionOutputNonCanonicalStep02({
+      submitTurnsUnjournaled(buildTransactionOutputNonCanonicalStep02, {
         ownOutputs,
         lucid: config.lucid,
         contracts: config.contracts,
@@ -239,7 +247,10 @@ describe("transactionOutputNonCanonical step 02 through the field grammar certif
       await scenarioOf();
     const authenticated = await captureEmulatorSubmission(
       harness.emulator,
-      () => submission.submit("submitStep02", evidence),
+      () =>
+        submitBoundUnjournaled(harness.proverLucid, "submitStep02", () =>
+          submission.submit("submitStep02", evidence),
+        ),
     );
     expect(authenticated.result.stage).toBe("step03");
     expect(authenticated.measurement.executionMemory).toBeLessThanOrEqual(
@@ -267,12 +278,20 @@ describe("transactionOutputNonCanonical step 02 through the field grammar certif
       nativeTxCompactCbor: "",
       witnessSetCompactCbor: "",
     });
-    const scanned = await submission.submit("submitStep03", evidence);
+    const scanned = await submitBoundUnjournaled(
+      harness.proverLucid,
+      "submitStep03",
+      () => submission.submit("submitStep03", evidence),
+    );
     expect(scanned.stage).toBe("step04");
     advanceStage({
       threadOutRef: scanned.outputReference!,
     });
-    const minted = await submission.submit("submitStep04", evidence);
+    const minted = await submitBoundUnjournaled(
+      harness.proverLucid,
+      "submitStep04",
+      () => submission.submit("submitStep04", evidence),
+    );
     expect(minted.stage).toBe("proven");
     const fraudProofs = await harness.proverLucid.utxosAt(
       config.contracts.fraudProof.spendingScriptAddress,

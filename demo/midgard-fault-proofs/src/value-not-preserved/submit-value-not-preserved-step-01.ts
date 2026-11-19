@@ -41,7 +41,6 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  DEFAULT_CONFIRMATION_POLL_MS,
   encodeRawPhasMembershipProofRedeemer,
   fetchUtxoByOutRef,
   getCompiledScript,
@@ -51,6 +50,7 @@ import {
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
 } from "../runtime.js";
+import { finishStep } from "../step-completion.js";
 import {
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
   requireInitialStepDatum,
@@ -64,10 +64,10 @@ import {
   witnessSpendingValidatorCarriage,
   witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts.js";
+import { workflowReferenceScriptsUsedByTransaction } from "../workflow/transaction-boundary.js";
 import {
-  type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
 } from "../workflow/transaction-boundary.js";
 import type { ValueNotPreservedContracts } from "./contracts.js";
 import {
@@ -87,8 +87,8 @@ import {
 
 const STEP_LABEL = valueNotPreservedStepLabel(0);
 
-export type SubmitValueNotPreservedStep01Result = {
-  readonly txHash: string;
+export type ValueNotPreservedStep01Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -101,10 +101,12 @@ export type SubmitValueNotPreservedStep01Result = {
   readonly foldState: ValueNotPreservedStep02State;
   readonly inputIndex: number;
   readonly outputIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
 
-export const submitValueNotPreservedStep01 = async ({
+export type SubmitValueNotPreservedStep01Result =
+  UnjournaledSubmission<ValueNotPreservedStep01Build>;
+
+export const buildValueNotPreservedStep01 = async ({
   lucid,
   blueprint,
   contracts,
@@ -119,8 +121,6 @@ export const submitValueNotPreservedStep01 = async ({
   prevUtxosRoot,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -145,9 +145,7 @@ export const submitValueNotPreservedStep01 = async ({
   readonly referenceScriptUtxo?: UTxO;
   /** Published witness reference scripts required by this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitValueNotPreservedStep01Result> => {
+}): Promise<ValueNotPreservedStep01Build> => {
   const { threadUtxo, threadToken } = await requireValueNotPreservedThreadUtxo({
     lucid,
     contracts,
@@ -333,8 +331,7 @@ export const submitValueNotPreservedStep01 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const transaction = finishStep(signed, {
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
@@ -350,20 +347,11 @@ export const submitValueNotPreservedStep01 = async ({
         },
       ],
     }),
-    boundary: preSubmitBoundary,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw valueNotPreservedSubmitError(
-      `step-01 provider returned ${txHash}, expected ${expectedTxHash}.`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
+  const { txHash } = transaction;
 
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
@@ -375,6 +363,5 @@ export const submitValueNotPreservedStep01 = async ({
     foldState,
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
-    awaitedConfirmation: awaitConfirmation,
   };
 };

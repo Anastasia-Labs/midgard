@@ -111,7 +111,7 @@ it("a distinct caller prunes active and retired rotated descendants and pays the
     try {
       const capture = await captureEmulatorSubmission(emulator, () =>
         submitRemovalForFixture(callerFixture, {
-          preSubmitBoundary: async (boundary) => {
+          beforeSubmit: async (boundary) => {
             const transaction = boundary.signed;
             const removalIndex = signed.length;
             if (removalIndex === 1) {

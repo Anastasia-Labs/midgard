@@ -22,13 +22,14 @@ import {
   planFaultProofFieldOpening,
 } from "../field-opening.js";
 import { type ResolvedProverSigner } from "../runtime.js";
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts.js";
 import type { OwnOutputJournal } from "../workflow/own-outputs.js";
 import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
 } from "../workflow/transaction-boundary.js";
 import type { MintAuthorizationContracts } from "./contracts.js";
 import {
@@ -41,8 +42,8 @@ import {
 
 export const STEP_LABEL = mintAuthorizationStepLabel(2);
 
-export type SubmitMintAuthorizationStep03Result = {
-  readonly txHash: string;
+export type MintAuthorizationStep03Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -53,8 +54,10 @@ export type SubmitMintAuthorizationStep03Result = {
   readonly nextStepAddress: string;
   readonly inputIndex: number;
   readonly outputIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
+
+export type SubmitMintAuthorizationStep03Result =
+  UnjournaledSubmission<MintAuthorizationStep03Build>;
 
 export type Step03Shared = {
   readonly lucid: LucidEvolution;
@@ -72,8 +75,6 @@ export type Step03Shared = {
   readonly publishedCarriageUtxos?: readonly UTxO[];
   /** The mandatory published step-03 reference script. */
   readonly referenceScriptUtxo?: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
 };
@@ -103,7 +104,7 @@ export const prepareThread = async ({
   return { threadUtxo, threadToken, state };
 };
 
-export const submitPreparedStep03 = async ({
+export const buildPreparedStep03 = async ({
   shared,
   threadUtxo,
   threadToken,
@@ -135,9 +136,8 @@ export const submitPreparedStep03 = async ({
     fieldOpening: ReturnType<typeof faultProofFieldOpening>,
     ctx: Parameters<BuildTxWithRedeemer>[0],
   ) => MintAuthorizationStep03Args;
-}): Promise<SubmitMintAuthorizationStep03Result> => {
+}): Promise<MintAuthorizationStep03Build> => {
   const { lucid, contracts, signer, referenceScriptUtxo } = shared;
-  const awaitConfirmation = shared.awaitConfirmation ?? true;
   const stepReference =
     referenceScriptUtxo === undefined
       ? undefined
@@ -214,34 +214,27 @@ export const submitPreparedStep03 = async ({
       "BuildTxWithRedeemer did not resolve the step-03 layout.",
     );
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: "mint-authorization step-03",
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: "V1 fraud-proof mint-authorization step-03",
-          utxo: referenceScriptUtxo,
-          expectedScript: contracts.steps[2].spendingScript,
-        },
-      ],
-    }),
-    boundary: shared.preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: "V1 fraud-proof mint-authorization step-03",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.steps[2].spendingScript,
+      },
+    ],
   });
 
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
     threadOutRef: shared.threadOutRef,
-    nextThreadOutRef: `${txHash}#${resolvedLayout.outputIndex.toString()}`,
+    nextThreadOutRef: `${transaction.txHash}#${resolvedLayout.outputIndex.toString()}`,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadUnit: threadToken.unit,
     nextStepAddress: contracts.steps[nextStepIndex].spendingScriptAddress,
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
-    awaitedConfirmation: awaitConfirmation,
   };
 };

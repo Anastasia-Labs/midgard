@@ -1,6 +1,6 @@
 import { type Script, type UTxO } from "@lucid-evolution/lucid";
 
-import { submitResolvedInit } from "../../src/submit-init.js";
+import { buildResolvedInit } from "../../src/submit-init.js";
 import {
   VALUE_NOT_PRESERVED_CATEGORY_LABEL,
   type ValueNotPreservedContracts,
@@ -13,13 +13,13 @@ import {
   type ClaimedAsset,
   type ClaimedImbalanceDirection,
 } from "../../src/value-not-preserved/schemas.js";
-import { submitValueNotPreservedStep01 } from "../../src/value-not-preserved/submit-value-not-preserved-step-01.js";
+import { buildValueNotPreservedStep01 } from "../../src/value-not-preserved/submit-value-not-preserved-step-01.js";
 import {
-  submitValueNotPreservedStep02Finish,
-  submitValueNotPreservedStep02Fold,
+  buildValueNotPreservedStep02Finish,
+  buildValueNotPreservedStep02Fold,
 } from "../../src/value-not-preserved/submit-value-not-preserved-step-02.js";
-import { submitValueNotPreservedStep03 } from "../../src/value-not-preserved/submit-value-not-preserved-step-03.js";
-import { submitValueNotPreservedStep04 } from "../../src/value-not-preserved/submit-value-not-preserved-step-04.js";
+import { buildValueNotPreservedStep03 } from "../../src/value-not-preserved/submit-value-not-preserved-step-03.js";
+import { buildValueNotPreservedStep04 } from "../../src/value-not-preserved/submit-value-not-preserved-step-04.js";
 import { type FaultProofWitnessReferenceScripts } from "../../src/witness-reference-scripts.js";
 import { publishFaultProofWitnessReferenceScripts } from "./emulator/reference-scripts.js";
 import {
@@ -38,6 +38,10 @@ import {
   submitSetupTx,
   withPlaceholderDeposit,
 } from "./submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  submitTurnsUnjournaled,
+} from "./submit-unjournaled.js";
 import { type ValueNotPreservedFixture } from "./value-not-preserved-emulator.build-value-not-preserved-fixture.js";
 import {
   commitHeaderAfterAnchorBlock,
@@ -207,7 +211,7 @@ export const runValueNotPreservedThread = async ({
   };
 
   const initCapture = await captureEmulatorSubmission(emulator, async () =>
-    submitResolvedInit({
+    buildAndSubmitUnjournaled(buildResolvedInit, {
       label: VALUE_NOT_PRESERVED_CATEGORY_LABEL,
       lucid: proverLucid,
       blueprint: harness.realBlueprint,
@@ -224,7 +228,7 @@ export const runValueNotPreservedThread = async ({
   const init = initCapture.result;
 
   const step01Capture = await captureEmulatorSubmission(emulator, async () =>
-    submitValueNotPreservedStep01({
+    buildAndSubmitUnjournaled(buildValueNotPreservedStep01, {
       lucid: proverLucid,
       blueprint: harness.realBlueprint,
       contracts: family,
@@ -259,7 +263,7 @@ export const runValueNotPreservedThread = async ({
       prevUtxosRootHex: fixture.ledger.rootHex,
     });
     const foldCapture = await captureEmulatorSubmission(emulator, async () =>
-      submitValueNotPreservedStep02Fold({
+      buildAndSubmitUnjournaled(buildValueNotPreservedStep02Fold, {
         lucid: proverLucid,
         contracts: family,
         categoryId: category.categoryId,
@@ -275,7 +279,7 @@ export const runValueNotPreservedThread = async ({
   }
 
   const finishCapture = await captureEmulatorSubmission(emulator, async () =>
-    submitValueNotPreservedStep02Finish({
+    buildAndSubmitUnjournaled(buildValueNotPreservedStep02Finish, {
       lucid: proverLucid,
       contracts: family,
       categoryId: category.categoryId,
@@ -293,7 +297,7 @@ export const runValueNotPreservedThread = async ({
   }
 
   const step03Capture = await captureEmulatorSubmission(emulator, async () =>
-    submitValueNotPreservedStep03({
+    submitTurnsUnjournaled(buildValueNotPreservedStep03, {
       lucid: proverLucid,
       contracts: family,
       categoryId: category.categoryId,
@@ -312,7 +316,7 @@ export const runValueNotPreservedThread = async ({
   }
 
   const step04Capture = await captureEmulatorSubmission(emulator, async () =>
-    submitValueNotPreservedStep04({
+    buildAndSubmitUnjournaled(buildValueNotPreservedStep04, {
       lucid: proverLucid,
       contracts: family,
       categoryId: category.categoryId,

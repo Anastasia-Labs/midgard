@@ -61,5 +61,4 @@ export {
   createProtectedOutputSignerMissingRecoveryAdapter,
   executeManifestBoundProtectedOutputSignerMissingWorkflow,
   type ManifestBoundProtectedOutputSignerMissingWorkflow,
-  runOrResumeManifestBoundProtectedOutputSignerMissingWorkflow,
 } from "./authenticated-workflow.run-or-resume-manifest-bound-protected-output-signer-missing-workflow.js";

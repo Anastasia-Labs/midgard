@@ -2,7 +2,7 @@ import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import { type LucidEvolution } from "@lucid-evolution/lucid";
 
 import {
-  publishProofChunks,
+  buildProofChunkPublication,
   resolvePublishedProofChunks,
 } from "../publish-proof-chunks.js";
 import type { ResolvedProverSigner } from "../runtime.js";
@@ -32,7 +32,6 @@ import {
   type FraudProofAuthenticatedPublicationObserver,
 } from "./raw-l1-publication-observation.js";
 import { reconcileSignedWorkflowTransaction } from "./signed-transaction-reconciliation.js";
-import { captureLocallyEvaluatedTransaction } from "./transaction-boundary.js";
 
 /**
  * Concrete authenticated publication port. Lucid is used only to build/query
@@ -301,17 +300,13 @@ export const createAuthenticatedProofChunkPrerequisitePort = <
     capture: async ({ headerHash, action, artifact }) => {
       const required = (await exactAction({ headerHash, action, artifact }))
         .requirement;
-      const transaction = await captureLocallyEvaluatedTransaction(
-        async (boundary) => {
-          await publishProofChunks({
-            lucid,
-            signer,
-            proofCbor: required.proofCbor,
-            preSubmitBoundary: boundary,
-            awaitConfirmation: false,
-          });
-        },
-      );
+      const transaction = (
+        await buildProofChunkPublication({
+          lucid,
+          signer,
+          proofCbor: required.proofCbor,
+        })
+      ).transaction;
       return {
         transaction,
         durableRecovery: recoveryForTransaction({

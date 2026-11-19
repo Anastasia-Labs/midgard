@@ -13,9 +13,9 @@ import { CML, getAddressDetails } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
 import {
-  submitTransactionOutputNonCanonicalStep01Forced,
-  submitTransactionOutputNonCanonicalStep02,
-  submitTransactionOutputNonCanonicalStep03,
+  buildTransactionOutputNonCanonicalStep01Forced,
+  buildTransactionOutputNonCanonicalStep02,
+  buildTransactionOutputNonCanonicalStep03,
 } from "../src/transaction-output-non-canonical/index.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
@@ -25,6 +25,10 @@ import {
   alignUnixTimeToEmulatorSlotBoundary,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 import {
   buildForcedOutputFixture,
   TRANSACTION_OUTPUT_SCAN_CHUNK_BYTES,
@@ -210,24 +214,30 @@ export const forcedDatumScenario = async (transaction: NativeTx) => {
   };
   const bindToDatum = async (measured?: MeasuredScan) => {
     const init = await registered.init(setup.fraudulentBlockOutRef);
-    const bound = await submitTransactionOutputNonCanonicalStep01Forced({
-      ...stepCommon(registered),
-      threadOutRef: `${init.result.txHash}#${init.result.firstStepOutputIndex.toString()}`,
-      finding: evidence,
-      forcedSource: {
-        header: forced.header,
-        membership,
+    const bound = await buildAndSubmitUnjournaled(
+      buildTransactionOutputNonCanonicalStep01Forced,
+      {
+        ...stepCommon(registered),
+        threadOutRef: `${init.result.txHash}#${init.result.firstStepOutputIndex.toString()}`,
+        finding: evidence,
+        forcedSource: {
+          header: forced.header,
+          membership,
+        },
+        referenceScriptUtxo: registered.references[0]!,
       },
-      referenceScriptUtxo: registered.references[0]!,
-    });
-    const authenticated = await submitTransactionOutputNonCanonicalStep02({
-      ...stepCommon(registered),
-      ...source,
-      threadOutRef: bound.nextThreadOutRef,
-      evidence,
-      referenceScriptUtxo: registered.references[1]!,
-      certificateReferenceScriptUtxo: certificateReference,
-    });
+    );
+    const authenticated = await submitTurnsUnjournaled(
+      buildTransactionOutputNonCanonicalStep02,
+      {
+        ...stepCommon(registered),
+        ...source,
+        threadOutRef: bound.nextThreadOutRef,
+        evidence,
+        referenceScriptUtxo: registered.references[1]!,
+        certificateReferenceScriptUtxo: certificateReference,
+      },
+    );
     return await scanToDatum(
       registered,
       authenticated.nextThreadOutRef,
@@ -262,7 +272,7 @@ export const scanToDatum = async (
     const scanned = await captureEmulatorSubmission(
       registered.harness.emulator,
       () =>
-        submitTransactionOutputNonCanonicalStep03({
+        buildAndSubmitUnjournaled(buildTransactionOutputNonCanonicalStep03, {
           ...stepCommon(registered),
           threadOutRef: current,
           evidence,

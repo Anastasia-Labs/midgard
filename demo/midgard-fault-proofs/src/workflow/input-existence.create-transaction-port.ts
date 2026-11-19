@@ -4,8 +4,8 @@ import type {
   InputExistenceCategory,
   InputExistenceKind,
 } from "../input-existence/kind.js";
-import { submitInputExistenceStep } from "../input-existence/submit.js";
-import { submitInit } from "../submit-init.js";
+import { buildInputExistenceStep } from "../input-existence/submit.js";
+import { buildInit } from "../submit-init.js";
 import {
   type ManifestBoundLinearFamilyWorkflow,
   type ManifestBoundLinearFamilyWorkflowConfig,
@@ -26,7 +26,7 @@ import {
   LINEAR_FAMILY_TRANSACTION_PORT,
   type LinearFamilyTransactionPort,
 } from "./linear-family-adapter.js";
-import { captureLocallyEvaluatedTransaction } from "./transaction-boundary.js";
+import { journaledStepTransaction } from "./step-transaction.js";
 
 /** A family's linear workflow transaction port. */
 export const inputExistenceTransactionPort = <
@@ -70,9 +70,9 @@ export const inputExistenceTransactionPort = <
       if (input.stage === "remove") return await captureRemoval(config, input);
       if (input.stage === "init")
         return {
-          transaction: await captureLocallyEvaluatedTransaction(
-            async (preSubmitBoundary) => {
-              await submitInit({
+          transaction: (
+            await journaledStepTransaction(
+              await buildInit({
                 lucid: config.lucid,
                 blueprint: config.binding.blueprint,
                 deploymentInfo: config.binding.deploymentInfo,
@@ -85,11 +85,10 @@ export const inputExistenceTransactionPort = <
                 ),
                 fraudulentHeaderHash: prepared.source.headerHash,
                 witnessReferenceScripts: config.references.witnesses,
-                preSubmitBoundary,
-                awaitConfirmation: false,
-              });
-            },
-          ),
+              }),
+              "input-existence buildInit",
+            )
+          ).transaction,
         };
       const stepIndex = (
         ["step_01", "step_02", "step_03", "step_04"] as const
@@ -122,9 +121,9 @@ export const inputExistenceTransactionPort = <
           ? []
           : await resolveChunks({ action, config, proofCbor: proof });
       return {
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitInputExistenceStep({
+        transaction: (
+          await journaledStepTransaction(
+            await buildInputExistenceStep({
               lucid: config.lucid,
               blueprint: config.binding.blueprint,
               network: config.binding.network,
@@ -152,11 +151,10 @@ export const inputExistenceTransactionPort = <
               fieldCarriageUtxos,
               certificatePolicyId: config.certificate.policyId,
               publishedProofChunks: chunks,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "input-existence buildInputExistenceStep",
+          )
+        ).transaction,
       };
     },
   });

@@ -6,14 +6,12 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  certifyFaultProofFieldCarriage,
   faultProofFieldCarriage,
   type FaultProofFieldOpeningPlan,
   planFaultProofFieldOpening,
-  publishFaultProofFieldCarriage,
 } from "../../src/field-opening.js";
 import { requireLinearFaultThreadUtxo } from "../../src/linear-fault-family.js";
-import { submitLinearFaultFinalize } from "../../src/linear-fault-finalize.js";
+import { buildLinearFaultFinalize } from "../../src/linear-fault-finalize.js";
 import type { ResolvedProverSigner } from "../../src/runtime.js";
 import type { TransactionOutputNonCanonicalContracts } from "../../src/transaction-output-non-canonical/contracts.js";
 import {
@@ -27,6 +25,11 @@ import {
 } from "../../src/transaction-output-non-canonical/schemas.js";
 import type { FaultProofWitnessReferenceScripts } from "../../src/witness-reference-scripts.js";
 import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
+import {
+  buildAndSubmitUnjournaled,
+  certifyCarriageUnjournaled,
+  publishCarriageUnjournaled,
+} from "./submit-unjournaled.js";
 import {
   type Common,
   continueRaw,
@@ -161,7 +164,7 @@ export const submitOutputStep04Raw = async ({
     stepIndex: 4,
     threadOutRef: common.threadOutRef,
   });
-  return await submitLinearFaultFinalize({
+  return await buildAndSubmitUnjournaled(buildLinearFaultFinalize, {
     lucid: common.lucid,
     family: FAMILY,
     stepIndex: 4,
@@ -234,7 +237,7 @@ export const publishOutputFieldCarriage = async ({
     label: "transaction-output-non-canonical test carriage",
   });
   signer.selectWallet(lucid);
-  const carriageUtxos = await publishFaultProofFieldCarriage({
+  const carriageUtxos = await publishCarriageUnjournaled({
     ownOutputs,
     lucid,
     signer,
@@ -245,7 +248,7 @@ export const publishOutputFieldCarriage = async ({
   const certificateUtxo =
     planned.plan.tier === "Certified"
       ? (
-          await certifyFaultProofFieldCarriage({
+          await certifyCarriageUnjournaled({
             ownOutputs,
             lucid,
             network,

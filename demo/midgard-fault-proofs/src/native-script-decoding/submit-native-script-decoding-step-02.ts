@@ -54,12 +54,13 @@ import {
 import { Effect } from "effect";
 
 import { type ResolvedProverSigner } from "../runtime.js";
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
 } from "../workflow/transaction-boundary.js";
 import type { NativeScriptDecodingContracts } from "./contracts.js";
 import {
@@ -82,8 +83,8 @@ export type NativeScriptDecodingChosenOutpoint = {
   readonly cursor: bigint;
 };
 
-export type SubmitNativeScriptDecodingStep02Result = {
-  readonly txHash: string;
+export type NativeScriptDecodingStep02Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -96,10 +97,12 @@ export type SubmitNativeScriptDecodingStep02Result = {
   readonly scanState: NativeScriptDecodingScanThreadState;
   readonly inputIndex: number;
   readonly outputIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
 
-export const submitNativeScriptDecodingStep02 = async ({
+export type SubmitNativeScriptDecodingStep02Result =
+  UnjournaledSubmission<NativeScriptDecodingStep02Build>;
+
+export const buildNativeScriptDecodingStep02 = async ({
   lucid,
   contracts,
   categoryId,
@@ -109,8 +112,6 @@ export const submitNativeScriptDecodingStep02 = async ({
   forcedOrderKey,
   chosenOutpoint,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: NativeScriptDecodingContracts;
@@ -128,9 +129,7 @@ export const submitNativeScriptDecodingStep02 = async ({
   readonly chosenOutpoint?: NativeScriptDecodingChosenOutpoint;
   /** Q3: the mandatory published step-02 reference script. */
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitNativeScriptDecodingStep02Result> => {
+}): Promise<NativeScriptDecodingStep02Build> => {
   const { threadUtxo, threadToken } =
     await requireNativeScriptDecodingThreadUtxo({
       lucid,
@@ -367,35 +366,28 @@ export const submitNativeScriptDecodingStep02 = async ({
       "BuildTxWithRedeemer did not resolve the step-02 layout.",
     );
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: STEP_LABEL,
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: "V1 fraud-proof native-script-decoding step-02",
-          utxo: referenceScriptUtxo,
-          expectedScript: contracts.steps[1].spendingScript,
-        },
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: "V1 fraud-proof native-script-decoding step-02",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.steps[1].spendingScript,
+      },
+    ],
   });
 
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
     threadOutRef,
-    nextThreadOutRef: `${txHash}#${resolvedLayout.outputIndex.toString()}`,
+    nextThreadOutRef: `${transaction.txHash}#${resolvedLayout.outputIndex.toString()}`,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadUnit: threadToken.unit,
     thirdStepAddress: contracts.steps[2].spendingScriptAddress,
     scanState,
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
-    awaitedConfirmation: awaitConfirmation,
   };
 };

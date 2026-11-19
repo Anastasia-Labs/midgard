@@ -59,8 +59,8 @@ export interface MissingSignatureTransactionPort {
     > & { readonly category: "missingSignature" };
   }): Promise<JournalJsonObject>;
   /**
-   * Builds exactly one authenticated cursor action to the common pre-submit
-   * boundary. A step-04 scan batch and step-04 finalization use the same port;
+   * Builds exactly one authenticated cursor action and returns its signed,
+   * unsubmitted transaction. A step-04 scan batch and step-04 finalization use the same port;
    * the current on-chain thread datum decides which transaction is valid.
    */
   capture(input: {

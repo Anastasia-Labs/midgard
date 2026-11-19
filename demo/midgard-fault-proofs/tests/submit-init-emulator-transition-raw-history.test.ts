@@ -11,10 +11,8 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data, type UTxO } from "@lucid-evolution/lucid";
 import { afterAll, expect, it } from "vitest";
 
-import { submitInit } from "../src/submit-init.js";
 import { transitionDepositOpening } from "../src/transition-trace/history-opening.js";
 import {
-  resolveTransitionTraceByteCarriage,
   transitionTraceByteChunks,
   transitionTraceProofChunks,
 } from "../src/transition-trace/proof-carriage.js";
@@ -25,16 +23,11 @@ import {
 import { reconstructDaPayload } from "../src/transition-trace/reconstruct.js";
 import { deriveTransitionTraceReplayEvidence } from "../src/transition-trace/replay.js";
 import {
-  submitTransitionTraceFinal,
-  submitTransitionTraceRoute,
-} from "../src/transition-trace/submit.js";
-import {
   buildTransitionFaultProof,
   buildValidDepositTransitionWitness,
 } from "../src/transition-trace/witnesses.js";
 import { transitionTraceYieldData } from "../src/transition-trace/yield-data.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
-import { captureLocallyEvaluatedTransaction } from "../src/workflow/transaction-boundary.js";
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
 import {
   awaitHeaderCommitWindow,
@@ -55,6 +48,13 @@ import {
   publishRemovalReferenceScripts,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
+import { submitInit } from "./support/submit-unjournaled.init.js";
+import {
+  buildTransitionTraceFinalHop,
+  publishTransitionTraceBytes,
+  submitTransitionTraceFinal,
+  submitTransitionTraceRoute,
+} from "./support/submit-unjournaled.transition-trace.js";
 import {
   RAW_HISTORY_ROWS,
   rawDatum,
@@ -365,11 +365,10 @@ it.each(RAW_HISTORY_ROWS)(
       cbor: Buffer.from(datum, "hex"),
     });
     for (const outputCbor of outputCbors)
-      await resolveTransitionTraceByteCarriage({
+      await publishTransitionTraceBytes({
         ...h.proverCarriage,
         chunks: transitionTraceByteChunks(outputCbor),
         ownOutputs,
-        publish: true,
       });
     const [routeHash, routeIndex] = route.routeOutRef.split("#");
     let checkpoint = (
@@ -390,16 +389,13 @@ it.each(RAW_HISTORY_ROWS)(
         terminal = true;
         break;
       }
-      const tx = await captureLocallyEvaluatedTransaction((boundary) =>
-        submitTransitionTraceFinal({
-          ...common,
-          threadOutRef: outRefLabel(checkpoint),
-          proof,
-          depositOpening: opening,
-          preSubmitBoundary: boundary,
-          ownOutputs,
-        }),
-      );
+      const { transaction: tx } = await buildTransitionTraceFinalHop({
+        ...common,
+        threadOutRef: outRefLabel(checkpoint),
+        proof,
+        depositOpening: opening,
+        ownOutputs,
+      });
       await h.proverLucid.awaitTx(await tx.signed.submit());
       checkpoint = await expectSingleUtxoWithUnit(
         h.proverLucid,

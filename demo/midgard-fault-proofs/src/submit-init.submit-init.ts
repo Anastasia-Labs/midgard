@@ -6,7 +6,7 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { parseContractDeploymentInfo } from "./inspect-contracts.js";
-import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary.js";
+import { rejectUnadmittedSubmissionRoute } from "./legacy-submission-boundary.js";
 import {
   makeLucidForSubmit,
   readJsonFile,
@@ -15,6 +15,8 @@ import {
   resolveFaultProofDeploymentContracts,
   resolveProverSigner,
 } from "./runtime.js";
+import { submitFaultProofTurns } from "./submit-fault-proof-turns.js";
+import type { InitBuild } from "./submit-init.resolve-non-existent-input-no-index-init.js";
 import {
   fraudCategoryLabel,
   requireFraudProofCatalogue,
@@ -23,11 +25,10 @@ import {
   type SubmitInitFraudCategory,
   type SubmitInitResult,
 } from "./submit-init.resolve-non-existent-input-no-index-init.js";
-import { submitResolvedInit } from "./submit-init.submit-resolved-init.js";
+import { buildResolvedInit } from "./submit-init.submit-resolved-init.js";
 import { type FaultProofWitnessReferenceScripts } from "./witness-reference-scripts.js";
-import { type FraudProofPreSubmitBoundary } from "./workflow/transaction-boundary.js";
 
-export const submitInit = async ({
+export const buildInit = async ({
   lucid,
   blueprint,
   deploymentInfo,
@@ -37,8 +38,6 @@ export const submitInit = async ({
   fraudulentBlockOutRef,
   fraudulentHeaderHash,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -50,10 +49,7 @@ export const submitInit = async ({
   readonly fraudulentHeaderHash?: string;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  /** Production workflow seam: invoked after local evaluation, before I/O. */
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitInitResult> => {
+}): Promise<InitBuild> => {
   const parsedDeploymentInfo = parseContractDeploymentInfo(deploymentInfo);
   const catalogue = requireFraudProofCatalogue(parsedDeploymentInfo);
   if (fraudCategory === "nonExistentInputNoIndex") {
@@ -100,7 +96,7 @@ export const submitInit = async ({
       `${fraudCategoryLabel(fraudCategory)} first-step script hash mismatch: catalogue=${category.scriptHash}, derived=${firstStep.spendingScriptHash}.`,
     );
   }
-  const result = await submitResolvedInit({
+  const result = await buildResolvedInit({
     lucid,
     blueprint,
     network,
@@ -124,11 +120,9 @@ export const submitInit = async ({
     fraudulentBlockOutRef,
     fraudulentHeaderHash,
     witnessReferenceScripts,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   return {
-    txHash: result.txHash,
+    transaction: result.transaction,
     walletSource: result.walletSource,
     proverAddress: result.proverAddress,
     fraudProver: result.fraudProver,
@@ -143,14 +137,13 @@ export const submitInit = async ({
     fraudCategoryName: fraudCategory,
     fraudCategory: result.fraudCategory,
     fraudProofCatalogueRoot: result.fraudProofCatalogueRoot,
-    awaitedConfirmation: result.awaitedConfirmation,
   };
 };
 
 export const submitInitFromFiles = async (
   config: SubmitInitCliConfig,
 ): Promise<SubmitInitResult> => {
-  rejectRetiredUnauthenticatedSubmissionRoute({
+  rejectUnadmittedSubmissionRoute({
     command: "submit-init",
     fraudCategory: config.fraudCategory,
   });
@@ -160,15 +153,18 @@ export const submitInitFromFiles = async (
     makeLucidForSubmit(config),
   ]);
   const signer = resolveProverSigner(config);
-  return await submitInit({
-    lucid,
-    blueprint,
-    deploymentInfo,
-    network: config.network,
-    signer,
-    fraudCategory: config.fraudCategory,
-    fraudulentBlockOutRef: config.fraudulentBlockOutRef,
-    fraudulentHeaderHash: config.fraudulentHeaderHash,
-    awaitConfirmation: config.awaitConfirmation,
-  });
+  return await submitFaultProofTurns(
+    buildInit,
+    {
+      lucid,
+      blueprint,
+      deploymentInfo,
+      network: config.network,
+      signer,
+      fraudCategory: config.fraudCategory,
+      fraudulentBlockOutRef: config.fraudulentBlockOutRef,
+      fraudulentHeaderHash: config.fraudulentHeaderHash,
+    },
+    { label: "init", awaitConfirmation: config.awaitConfirmation ?? true },
+  );
 };

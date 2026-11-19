@@ -8,10 +8,10 @@ import { getAddressDetails } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
+  buildRedeemerCanonicityStep01Accepted,
+  buildRedeemerCanonicityStep02,
+  buildRedeemerCanonicityStep03,
   prepareRedeemerCanonicityEvidence,
-  submitRedeemerCanonicityStep01Accepted,
-  submitRedeemerCanonicityStep02,
-  submitRedeemerCanonicityStep03,
 } from "../src/redeemer-canonicity/index.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import {
@@ -41,6 +41,10 @@ import {
   submitSuccessorBlockTx,
 } from "./support/submit-init-emulator-fixtures.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 
 describe("redeemer-canonicity accepted lifecycle", () => {
   it("runs maximum retained field 8 through permanent mint and leased queue removal", async () => {
@@ -120,7 +124,7 @@ describe("redeemer-canonicity accepted lifecycle", () => {
     ]);
     if (threadUtxo === undefined) throw new Error("init thread absent");
     const step01 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitRedeemerCanonicityStep01Accepted({
+      buildAndSubmitUnjournaled(buildRedeemerCanonicityStep01Accepted, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -140,7 +144,7 @@ describe("redeemer-canonicity accepted lifecycle", () => {
     );
     emitFit("accepted-step01", step01.measurement);
     const step02 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitRedeemerCanonicityStep02({
+      submitTurnsUnjournaled(buildRedeemerCanonicityStep02, {
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -169,7 +173,7 @@ describe("redeemer-canonicity accepted lifecycle", () => {
     });
     expect(read.steps).toBe(1);
     const step03 = await captureEmulatorSubmission(harness.emulator, () =>
-      submitRedeemerCanonicityStep03({
+      buildAndSubmitUnjournaled(buildRedeemerCanonicityStep03, {
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -272,40 +276,48 @@ describe("redeemer-canonicity accepted lifecycle", () => {
           { txHash: init.txHash, outputIndex: init.firstStepOutputIndex },
         ]);
         if (threadUtxo === undefined) throw new Error("init thread absent");
-        const step01 = await submitRedeemerCanonicityStep01Accepted({
-          lucid: harness.proverLucid,
-          blueprint: harness.realBlueprint,
-          network,
-          contracts,
-          signer: harness.proverSigner,
-          finding: evidence,
-          threadUtxo,
-          threadToken: {
-            unit: init.computationThreadUnit,
-            fraudulentHeaderHash: init.fraudulentHeaderHash,
+        const step01 = await buildAndSubmitUnjournaled(
+          buildRedeemerCanonicityStep01Accepted,
+          {
+            lucid: harness.proverLucid,
+            blueprint: harness.realBlueprint,
+            network,
+            contracts,
+            signer: harness.proverSigner,
+            finding: evidence,
+            threadUtxo,
+            threadToken: {
+              unit: init.computationThreadUnit,
+              fraudulentHeaderHash: init.fraudulentHeaderHash,
+            },
+            stateQueueBlockOutRef: scenario.setup.fraudulentBlockOutRef,
+            txInclusion: scenario.inclusion,
+            referenceScriptUtxo: references[0],
+            witnessReferenceScripts: harness.witnessReferenceScripts,
           },
-          stateQueueBlockOutRef: scenario.setup.fraudulentBlockOutRef,
-          txInclusion: scenario.inclusion,
-          referenceScriptUtxo: references[0],
-          witnessReferenceScripts: harness.witnessReferenceScripts,
-        });
+        );
         threadOutRef = step01.nextThreadOutRef;
       }
       if (targetStep > 1) {
-        const step02 = await submitRedeemerCanonicityStep02({
-          lucid: harness.proverLucid,
-          contracts,
-          categoryId: category.categoryId,
-          signer: harness.proverSigner,
-          threadOutRef,
-          evidence,
-          nativeTxCompactCbor: scenario.compactCbor,
-          witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompact(
-            deriveMidgardNativeTxWitnessSetCompact(scenario.fullTx!.witnessSet),
-          ).toString("hex"),
-          referenceScriptUtxo: references[1],
-          certificateReferenceScriptUtxo: certificateReference,
-        });
+        const step02 = await submitTurnsUnjournaled(
+          buildRedeemerCanonicityStep02,
+          {
+            lucid: harness.proverLucid,
+            contracts,
+            categoryId: category.categoryId,
+            signer: harness.proverSigner,
+            threadOutRef,
+            evidence,
+            nativeTxCompactCbor: scenario.compactCbor,
+            witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompact(
+              deriveMidgardNativeTxWitnessSetCompact(
+                scenario.fullTx!.witnessSet,
+              ),
+            ).toString("hex"),
+            referenceScriptUtxo: references[1],
+            certificateReferenceScriptUtxo: certificateReference,
+          },
+        );
         threadOutRef = step02.nextThreadOutRef;
       }
       if (targetStep > 2) {

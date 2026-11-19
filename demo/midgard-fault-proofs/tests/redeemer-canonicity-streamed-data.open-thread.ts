@@ -16,8 +16,12 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../src/linear-fault-family.js";
-import { submitLinearFaultContinue } from "../src/linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../src/linear-fault-submit.js";
 import {
+  buildRedeemerCanonicityStep01Accepted,
+  buildRedeemerCanonicityStep02,
+  buildRedeemerCanonicityStep02Data,
+  buildRedeemerCanonicityStep03,
   prepareRedeemerCanonicityEvidence,
   REDEEMER_DATA_CHUNK_BYTES,
   RedeemerCanonicityStep02DataDatumSchema,
@@ -25,10 +29,6 @@ import {
   RedeemerCanonicityStep03DatumSchema,
   redeemerDataScanState,
   redeemerDataStepArgs,
-  submitRedeemerCanonicityStep01Accepted,
-  submitRedeemerCanonicityStep02,
-  submitRedeemerCanonicityStep02Data,
-  submitRedeemerCanonicityStep03,
 } from "../src/redeemer-canonicity/index.js";
 import { computationThreadOutputPredicate } from "../src/tx-layout.js";
 import {
@@ -49,6 +49,11 @@ import {
   type CompleteSignedTransactionMeasurement,
 } from "./support/emulator/measurement.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
+import {
+  buildAndSubmitTransactionUnjournaled,
+  buildAndSubmitUnjournaled,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 
 /**
  * Commits one transaction whose redeemer field holds a single Spend item
@@ -105,7 +110,7 @@ export const openAcceptedThread = async (redeemerData: Buffer) => {
   ]);
   if (threadUtxo === undefined) throw new Error("init thread absent");
   const step01 = await captureEmulatorSubmission(harness.emulator, () =>
-    submitRedeemerCanonicityStep01Accepted({
+    buildAndSubmitUnjournaled(buildRedeemerCanonicityStep01Accepted, {
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,
@@ -124,7 +129,7 @@ export const openAcceptedThread = async (redeemerData: Buffer) => {
     }),
   );
   const step02 = await captureEmulatorSubmission(harness.emulator, () =>
-    submitRedeemerCanonicityStep02({
+    submitTurnsUnjournaled(buildRedeemerCanonicityStep02, {
       lucid: harness.proverLucid,
       contracts,
       categoryId: category.categoryId,
@@ -162,7 +167,7 @@ type Thread = Omit<
 /** One honest data step from `threadOutRef`. */
 export const dataStep = async (thread: Thread, threadOutRef: string) =>
   await captureEmulatorSubmission(thread.harness.emulator, () =>
-    submitRedeemerCanonicityStep02Data({
+    buildAndSubmitUnjournaled(buildRedeemerCanonicityStep02Data, {
       lucid: thread.harness.proverLucid,
       contracts: thread.contracts,
       categoryId: thread.categoryId,
@@ -212,7 +217,7 @@ export const recordedCanonical = async (
 
 export const mint = async (thread: Thread, threadOutRef: string) =>
   await captureEmulatorSubmission(thread.harness.emulator, () =>
-    submitRedeemerCanonicityStep03({
+    buildAndSubmitUnjournaled(buildRedeemerCanonicityStep03, {
       lucid: thread.harness.proverLucid,
       contracts: thread.contracts,
       categoryId: thread.categoryId,
@@ -306,7 +311,7 @@ const dataStepRaw = async ({
       } as never,
       RedeemerCanonicityStep02DataRedeemerSchema as never,
     )) satisfies BuildTxWithRedeemer;
-  return await submitLinearFaultContinue({
+  return await buildAndSubmitTransactionUnjournaled(buildLinearFaultContinue, {
     lucid: harness.proverLucid,
     signer: harness.proverSigner,
     threadUtxo,

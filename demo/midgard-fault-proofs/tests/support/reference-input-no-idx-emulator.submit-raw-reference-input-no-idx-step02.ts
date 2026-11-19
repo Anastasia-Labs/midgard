@@ -21,7 +21,6 @@ import {
 import {
   faultProofFieldOpening,
   planFaultProofFieldOpening,
-  publishFaultProofFieldCarriage,
 } from "../../src/field-opening.js";
 import {
   fetchUtxoByOutRef,
@@ -42,6 +41,7 @@ import {
   network,
   publishPlainReferenceScriptUtxo,
 } from "./submit-init-emulator-shared.js";
+import { publishCarriageUnjournaled } from "./submit-unjournaled.js";
 
 /**
  * Publishes all four step validators as reference scripts, the deployment
@@ -170,7 +170,7 @@ export const submitRawReferenceInputNoIdxStep02 = async ({
     label: "Raw reference-input-no-idx step 02 reference-inputs",
   });
   signer.selectWallet(lucid);
-  const published = await publishFaultProofFieldCarriage({
+  const published = await publishCarriageUnjournaled({
     ownOutputs,
     lucid,
     signer,

@@ -16,13 +16,12 @@ import {
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
 import {
+  buildNativeTxBinding,
   type NativeTxBindingContracts,
-  submitNativeTxBinding,
 } from "../native-tx-binding.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { SubmitStep01TxInclusion } from "../step-support.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   NATIVE_SCRIPT_INVALID_CATEGORY_LABEL,
   type NativeScriptInvalidContracts,
@@ -33,7 +32,7 @@ const Step02Datum = asDataType<Step02Datum>(
   NativeScriptInvalidStep02DatumSchema,
 );
 
-export const submitNativeScriptInvalidStep01 = async ({
+export const buildNativeScriptInvalidStep01 = async ({
   lucid,
   blueprint,
   network,
@@ -45,8 +44,6 @@ export const submitNativeScriptInvalidStep01 = async ({
   txInclusion,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -59,8 +56,6 @@ export const submitNativeScriptInvalidStep01 = async ({
   readonly txInclusion: SubmitStep01TxInclusion;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
@@ -92,7 +87,7 @@ export const submitNativeScriptInvalidStep01 = async ({
     },
     Step02Datum,
   );
-  return await submitNativeTxBinding({
+  return await buildNativeTxBinding({
     lucid,
     blueprint,
     network,
@@ -112,7 +107,5 @@ export const submitNativeScriptInvalidStep01 = async ({
     }),
     referenceScriptUtxo,
     witnessReferenceScripts,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
 };

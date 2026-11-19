@@ -21,6 +21,11 @@ import {
 
 import { claimedItem } from "../evidence/claimed-coordinate.js";
 import {
+  type ContinuationTurn,
+  type FaultProofTurn,
+  isPrerequisiteTurn,
+} from "../fault-proof-turn.js";
+import {
   faultProofFieldOpening,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
@@ -30,16 +35,14 @@ import {
   requireLinearFaultReferenceScript,
 } from "../linear-fault-family.js";
 import { type ResolvedProverSigner } from "../runtime.js";
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
-import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary.js";
+import { type LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import {
   MIN_ADA_CATEGORY_LABEL as FAMILY,
   type MinAdaContracts,
@@ -72,7 +75,13 @@ import {
   Step03Datum,
 } from "./submit-step-02.require-step02.js";
 
-export const submitMinAdaTxStep02 = async ({
+/** What the next scan checkpoint of step 02 is built from. */
+type MinAdaStep02ScanContinuation = {
+  readonly threadOutRef: string;
+  readonly publishedCarriageUtxos: readonly UTxO[];
+};
+
+export const buildMinAdaTxStep02 = async ({
   lucid,
   contracts,
   categoryId,
@@ -84,9 +93,6 @@ export const submitMinAdaTxStep02 = async ({
   certificateUtxo,
   referenceScriptUtxo,
   yieldReferenceScriptUtxo,
-  publicationPreSubmitBoundary,
-  preSubmitBoundary,
-  awaitConfirmation = true,
   unsafeSkipLocalViolationCheckForTest = false,
   ownOutputs = createOwnOutputJournal(),
 }: {
@@ -103,18 +109,20 @@ export const submitMinAdaTxStep02 = async ({
   readonly certificateUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
   readonly yieldReferenceScriptUtxo: UTxO;
-  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
   readonly unsafeSkipLocalViolationCheckForTest?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
-}): Promise<{
-  txHash: string;
-  nextThreadOutRef: string;
-  carriageTier: string;
-  nextStepIndex: number;
-}> => {
+}): Promise<
+  FaultProofTurn<
+    | ContinuationTurn<MinAdaStep02ScanContinuation>
+    | {
+        transaction: LocallyEvaluatedTransaction;
+        nextThreadOutRef: string;
+        carriageTier: string;
+        nextStepIndex: number;
+      }
+  >
+> => {
   const { stepIndex, threadUtxo, threadToken, state } = await requireStep02({
     lucid,
     contracts,
@@ -179,8 +187,8 @@ export const submitMinAdaTxStep02 = async ({
       planned,
       publisherAddress: signer.proofMaterialsAddress,
       label: `${label} field 2`,
-      preSubmitBoundary: publicationPreSubmitBoundary,
     }));
+  if (isPrerequisiteTurn(carriageUtxos)) return carriageUtxos;
   const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
@@ -352,49 +360,37 @@ export const submitMinAdaTxStep02 = async ({
       },
     );
   const signed = await completeStep(tx, funding);
-  const txHash = await submitStep(lucid, signed, {
-    label: "min-ada step-02",
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: label,
-          utxo: stepReference,
-          expectedScript: contracts.steps[stepIndex].spendingScript,
-        },
-        {
-          role: `${label}-yield`,
-          utxo: yieldReference,
-          expectedScript: contracts.yields.tx.withdrawalScript,
-        },
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: label,
+        utxo: stepReference,
+        expectedScript: contracts.steps[stepIndex].spendingScript,
+      },
+      {
+        role: `${label}-yield`,
+        utxo: yieldReference,
+        expectedScript: contracts.yields.tx.withdrawalScript,
+      },
+    ],
   });
   if (outputIndex === undefined) throw new Error(`${label}: unresolved layout`);
-  if (nextStepIndex === 1 && awaitConfirmation)
-    return submitMinAdaTxStep02({
-      ownOutputs,
-      lucid,
-      contracts,
-      categoryId,
-      signer,
-      threadOutRef: `${txHash}#${outputIndex}`,
-      prepared,
-      publishCarriage,
-      publishedCarriageUtxos: carriageUtxos,
-      certificateUtxo,
-      referenceScriptUtxo,
-      yieldReferenceScriptUtxo,
-      publicationPreSubmitBoundary,
-      preSubmitBoundary,
-      awaitConfirmation,
-      unsafeSkipLocalViolationCheckForTest,
-    });
+  const nextThreadOutRef = `${transaction.txHash}#${outputIndex.toString()}`;
+  // The next checkpoint spends this transaction's thread output, so it is
+  // built only once this one is confirmed.
+  if (nextStepIndex === 1)
+    return {
+      kind: "continuation",
+      transaction,
+      label: `${label} scan`,
+      next: {
+        threadOutRef: nextThreadOutRef,
+        publishedCarriageUtxos: carriageUtxos,
+      },
+    };
   return {
-    txHash,
-    nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
+    transaction,
+    nextThreadOutRef,
     carriageTier: planned.plan.tier,
     nextStepIndex,
   };

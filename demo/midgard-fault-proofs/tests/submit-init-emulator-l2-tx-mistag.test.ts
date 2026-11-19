@@ -4,10 +4,10 @@ import { Data, getAddressDetails } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
+  buildL2TxMistagInit,
+  buildL2TxMistagStep01,
+  buildL2TxMistagStep02,
   L2TxMistagStep02Datum,
-  submitL2TxMistagInit,
-  submitL2TxMistagStep01,
-  submitL2TxMistagStep02,
   submitRemoveFraudulentBlock,
 } from "../src/index.js";
 import { network } from "./support/emulator/blueprints.js";
@@ -25,6 +25,7 @@ import {
   expectStateQueueHeaderOrder,
   setupFraudulentBlock,
 } from "./support/submit-init-emulator-fixtures.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 describe("l2-tx-mistag emulator lifecycle", () => {
   it("mints permanent evidence for a committed code-1 normal leaf and removes the fraudulent block", async () => {
@@ -57,7 +58,7 @@ describe("l2-tx-mistag emulator lifecycle", () => {
       fixture,
     });
 
-    const init = await submitL2TxMistagInit({
+    const init = await buildAndSubmitUnjournaled(buildL2TxMistagInit, {
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,
@@ -73,7 +74,7 @@ describe("l2-tx-mistag emulator lifecycle", () => {
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
       witnessReferenceScripts: harness.witnessReferenceScripts,
     });
-    const step01 = await submitL2TxMistagStep01({
+    const step01 = await buildAndSubmitUnjournaled(buildL2TxMistagStep01, {
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       contracts,
@@ -103,7 +104,7 @@ describe("l2-tx-mistag emulator lifecycle", () => {
       data: { bad_tx_id: fixture.nativeTxId, committed_validity_code: 1n },
     });
 
-    const step02 = await submitL2TxMistagStep02({
+    const step02 = await buildAndSubmitUnjournaled(buildL2TxMistagStep02, {
       lucid: harness.proverLucid,
       contracts,
       categoryId: category.categoryId,

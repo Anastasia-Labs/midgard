@@ -8,13 +8,19 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Data, toUnit } from "@lucid-evolution/lucid";
 
-import { outRefLabel } from "../runtime.js";
-import { createOwnOutputJournal } from "../workflow/own-outputs.js";
 import {
   assertNativeScriptDecodingFindingProvable,
   type NativeScriptDecodingFinding,
   NativeScriptDecodingProvability,
-} from "./finding.js";
+} from "../../src/native-script-decoding/finding.js";
+import {
+  buildNativeScriptDecodingScanPlan,
+  NativeScriptDecodingPlanRoutes,
+  type NativeScriptDecodingScanPlan,
+} from "../../src/native-script-decoding/scan-plan.js";
+import { nativeScriptDecodingSubmitError } from "../../src/native-script-decoding/submit-common.js";
+import { outRefLabel } from "../../src/runtime.js";
+import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import {
   type DriveState,
   locateNativeScriptDecodingThread,
@@ -22,31 +28,23 @@ import {
   type NativeScriptDecodingProverDeps,
   type NativeScriptDecodingProverEvent,
   requireDatum,
-} from "./prover.locate-native-script-decoding-thread.js";
+} from "./native-script-decoding-prover.locate-native-script-decoding-thread.js";
 import {
   coreDirectionOf,
   remainingTxCount,
   toError,
-} from "./prover.remaining-tx-count.js";
+} from "./native-script-decoding-prover.remaining-tx-count.js";
 import {
-  buildNativeScriptDecodingScanPlan,
-  NativeScriptDecodingPlanRoutes,
-  type NativeScriptDecodingScanPlan,
-} from "./scan-plan.js";
-import { nativeScriptDecodingSubmitError } from "./submit-common.js";
-import { submitNativeScriptDecodingInit } from "./submit-native-script-decoding-init.js";
-import {
+  submitNativeScriptDecodingInit,
   submitNativeScriptDecodingStep01BindNormal,
   submitNativeScriptDecodingStep01RecordForced,
-} from "./submit-native-script-decoding-step-01.js";
-import { submitNativeScriptDecodingStep02 } from "./submit-native-script-decoding-step-02.js";
-import {
+  submitNativeScriptDecodingStep02,
   submitNativeScriptDecodingStep03AdvanceOrCloseClose,
   submitNativeScriptDecodingStep03AdvanceOrCloseSegment,
   submitNativeScriptDecodingStep03BindDescriptor,
   submitNativeScriptDecodingStep03OpenSubject,
-} from "./submit-native-script-decoding-step-03.js";
-import { submitNativeScriptDecodingStep04 } from "./submit-native-script-decoding-step-04.js";
+  submitNativeScriptDecodingStep04,
+} from "./submit-unjournaled.native-script-decoding.js";
 
 // ## The core
 

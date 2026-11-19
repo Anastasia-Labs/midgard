@@ -128,8 +128,10 @@ it.skipIf(runDirectory === undefined || !selected)(
         fraudulentHeaderHash: staged.current.headerHash,
         requireReferenceScripts: true,
         awaitConfirmation: false,
-        preSubmitBoundary: async () => {
-          throw new Error("Retained removal capture must never reach signing");
+        beforeSubmit: async () => {
+          throw new Error(
+            "Retained removal capture must never reach submission",
+          );
         },
       }),
     ).rejects.toThrow("Retained removal captured before signing");

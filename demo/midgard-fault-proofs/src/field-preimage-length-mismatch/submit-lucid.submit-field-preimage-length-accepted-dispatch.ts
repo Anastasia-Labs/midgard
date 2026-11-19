@@ -29,7 +29,8 @@ import {
   requireSingletonUtxo,
   resolveFraudulentHeaderHash,
 } from "../runtime.js";
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import {
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
   requireInitialStepDatum,
@@ -38,19 +39,17 @@ import {
 } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessWithdrawalValidatorCarriage } from "../witness-reference-scripts.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
-import { workflowReferenceScriptsUsedByTransaction } from "../workflow/transaction-boundary.js";
 import type { ManifestBoundFieldPreimageLengthConfig } from "./config.js";
+import type { FieldPreimageLengthForcedDispatchBuild } from "./submit-lucid.submit-field-preimage-length-cancel.js";
 import {
   type FieldPreimageLengthClaimResolver,
   LABEL,
   requireReference,
   requireThread,
-  type SubmitFieldPreimageLengthForcedDispatchResult,
 } from "./submit-lucid.submit-field-preimage-length-cancel.js";
 
 /** Real accepted-source dispatch with an authenticated PHAS inclusion. */
-export const submitFieldPreimageLengthAcceptedDispatch = async ({
+export const buildFieldPreimageLengthAcceptedDispatch = async ({
   config,
   threadOutRef,
   stateQueueBlockOutRef,
@@ -58,8 +57,6 @@ export const submitFieldPreimageLengthAcceptedDispatch = async ({
   claim,
   claimResolver,
   carriageReferenceInputs = [],
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly config: ManifestBoundFieldPreimageLengthConfig;
   readonly threadOutRef: string;
@@ -68,9 +65,7 @@ export const submitFieldPreimageLengthAcceptedDispatch = async ({
   readonly claim?: CommittedFieldClaim;
   readonly claimResolver?: FieldPreimageLengthClaimResolver;
   readonly carriageReferenceInputs?: readonly UTxO[];
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitFieldPreimageLengthForcedDispatchResult> => {
+}): Promise<FieldPreimageLengthForcedDispatchBuild> => {
   const { threadUtxo, threadToken, step } = await requireThread({
     config,
     threadOutRef,
@@ -230,29 +225,23 @@ export const submitFieldPreimageLengthAcceptedDispatch = async ({
   const signed = await completeStep(carriage.attach(base), funding);
   if (layout === undefined) throw new Error(`${LABEL}: layout did not resolve`);
   const resolved = layout;
-  const txHash = await submitStep(config.lucid, signed, {
-    label: `${LABEL} step-01 accepted`,
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: "V1 field-preimage-length step-01",
-          utxo: reference,
-          expectedScript: step.spendingScript,
-        },
-        {
-          role: "membership proof withdrawal",
-          utxo: config.referenceScripts.witnesses.phasMembershipWithdraw,
-          expectedScript: phasScript,
-        },
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: "V1 field-preimage-length step-01",
+        utxo: reference,
+        expectedScript: step.spendingScript,
+      },
+      {
+        role: "membership proof withdrawal",
+        utxo: config.referenceScripts.witnesses.phasMembershipWithdraw,
+        expectedScript: phasScript,
+      },
+    ],
   });
   return {
-    txHash,
-    nextThreadOutRef: `${txHash}#${resolved.outputIndex.toString()}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${resolved.outputIndex.toString()}`,
     computationThreadUnit: threadToken.unit,
     inputIndex: Number(resolved.inputIndex),
     outputIndex: Number(resolved.outputIndex),

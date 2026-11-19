@@ -66,10 +66,7 @@ import {
   FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER,
   type FraudProofAuthenticatedPublicationObserver,
 } from "./raw-l1-publication-observation.js";
-import {
-  captureLocallyEvaluatedTransaction,
-  type LocallyEvaluatedTransaction,
-} from "./transaction-boundary.js";
+import { type LocallyEvaluatedTransaction } from "./transaction-boundary.js";
 
 /** Journaled carriage actions require distinct raw-L1-authenticated chunk out-refs. */
 export const createAuthenticatedFieldCarriagePrerequisitePort = <
@@ -474,35 +471,30 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
         ownOutputs,
         `${category} field certificate cannot bypass authenticated chunk publication`,
       );
-      const transaction = await captureLocallyEvaluatedTransaction(
-        async (preSubmitBoundary) => {
-          await certifyFaultProofFieldCarriage({
-            lucid,
-            network,
-            signer,
-            planned: certifiedRequirement(parsed.requirement).planned,
-            certificatePolicyId: certifiedRequirement(parsed.requirement)
-              .certificate.policyId,
-            certificateMintingScript: certifiedRequirement(parsed.requirement)
-              .certificate.mintingScript,
-            certificateReferenceScriptUtxo: certifiedRequirement(
-              parsed.requirement,
-            ).certificate.referenceScriptUtxo,
-            chunkUtxos,
-            compactCbor: certifiedRequirement(parsed.requirement).compactCbor,
-            ...(certifiedRequirement(parsed.requirement)
-              .witnessSetCompactCbor === undefined
-              ? {}
-              : {
-                  witnessSetCompactCbor: certifiedRequirement(
-                    parsed.requirement,
-                  ).witnessSetCompactCbor,
-                }),
-            preSubmitBoundary,
-            awaitConfirmation: false,
-          });
-        },
-      );
+      const transaction = (
+        await certifyFaultProofFieldCarriage({
+          lucid,
+          network,
+          signer,
+          planned: certifiedRequirement(parsed.requirement).planned,
+          certificatePolicyId: certifiedRequirement(parsed.requirement)
+            .certificate.policyId,
+          certificateMintingScript: certifiedRequirement(parsed.requirement)
+            .certificate.mintingScript,
+          certificateReferenceScriptUtxo: certifiedRequirement(
+            parsed.requirement,
+          ).certificate.referenceScriptUtxo,
+          chunkUtxos,
+          compactCbor: certifiedRequirement(parsed.requirement).compactCbor,
+          ...(certifiedRequirement(parsed.requirement).witnessSetCompactCbor ===
+          undefined
+            ? {}
+            : {
+                witnessSetCompactCbor: certifiedRequirement(parsed.requirement)
+                  .witnessSetCompactCbor,
+              }),
+        })
+      ).transaction;
       const address = certificateAddress(parsed.requirement);
       return {
         transaction,

@@ -28,10 +28,8 @@ import type { FieldCarriageRequirement } from "../workflow/field-carriage-prereq
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { createCanonicalFamilyArtifactPort } from "../workflow/manifest-bound-family-recovery.js";
-import {
-  captureLocallyEvaluatedTransaction,
-  workflowTransactionInputOutRefs,
-} from "../workflow/transaction-boundary.js";
+import { journaledStepTransaction } from "../workflow/step-transaction.js";
+import { workflowTransactionInputOutRefs } from "../workflow/transaction-boundary.js";
 import { type WitnessScriptDecodingJournalEntry } from "./witness-script-decoding.js";
 import { createManifestBoundWitnessScriptDecodingSubmission } from "./workflow.create-manifest-bound-witness-script-decoding-submission.js";
 import {
@@ -192,33 +190,29 @@ export const createWitnessScriptDecodingRecoveryPorts = (
         throw new Error(
           `${category} cursor action is outside its exact topology`,
         );
-      const transaction = await captureLocallyEvaluatedTransaction(
-        async (preSubmitBoundary) => {
-          const submission = createManifestBoundWitnessScriptDecodingSubmission(
-            {
-              ownOutputs: workflowFieldCarriageOwnOutputs({
-                category,
-                entries,
-              }),
-              config,
-              preSubmitBoundary,
-              observe: async () =>
-                witnessScriptDecodingObservationFromL1(
-                  (
-                    await l1.observe({
-                      headerHash: binding.definition.headerHash,
-                    })
-                  ).stage,
-                ),
-              resolveStage: createWitnessScriptDecodingRawL1StageResolver({
-                config,
-                l1,
-                source: admitted.source,
-              }),
-            },
-          );
-          await submission.submit(familyAction, admitted.evidence);
-        },
+      const submission = createManifestBoundWitnessScriptDecodingSubmission({
+        ownOutputs: workflowFieldCarriageOwnOutputs({
+          category,
+          entries,
+        }),
+        config,
+        observe: async () =>
+          witnessScriptDecodingObservationFromL1(
+            (
+              await l1.observe({
+                headerHash: binding.definition.headerHash,
+              })
+            ).stage,
+          ),
+        resolveStage: createWitnessScriptDecodingRawL1StageResolver({
+          config,
+          l1,
+          source: admitted.source,
+        }),
+      });
+      const { transaction } = await journaledStepTransaction(
+        await submission.submit(familyAction, admitted.evidence),
+        `${category} ${familyAction}`,
       );
       if (
         input.stage !== "init" &&

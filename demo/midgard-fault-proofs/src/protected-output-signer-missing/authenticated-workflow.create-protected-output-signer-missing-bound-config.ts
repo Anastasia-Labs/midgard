@@ -23,10 +23,7 @@ import {
   type ProtectedOutputSignerMissingContracts,
 } from "./contracts.js";
 import { type ProtectedOutputSignerMissingEvidence } from "./protected-output-signer-missing.js";
-import {
-  type ProtectedOutputSignerJournal,
-  type ProtectedOutputSignerStage,
-} from "./workflow.js";
+import { type ProtectedOutputSignerStage } from "./workflow.js";
 
 export const PROTECTED_OUTPUT_SIGNER_MISSING_WORKFLOW =
   "midgard-protected-output-signer-missing-production-workflow-v1" as const;
@@ -259,7 +256,6 @@ export type ProtectedOutputSignerMissingAuthenticatedSource = Readonly<{
 /** Complete replay member: scans every accepted field-2 output and exact forced reason. */
 export type ProtectedOutputSignerMissingRuntimeLoader = Readonly<{
   config: LoadManifestBoundProtectedOutputSignerMissingConfig;
-  journal: ProtectedOutputSignerJournal;
   observe: (identity: string) => Promise<ProtectedOutputSignerStage>;
   resolveStage: (input: {
     readonly action:

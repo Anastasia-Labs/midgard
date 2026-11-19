@@ -16,24 +16,17 @@ import {
   type UTxO,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import {
-  fieldItemWidthEvidenceIdentity,
-  prepareFieldItemWidthEvidence,
-} from "../src/field-item-width-illegal/field-item-width-illegal.js";
+import { prepareFieldItemWidthEvidence } from "../src/field-item-width-illegal/field-item-width-illegal.js";
 import {
   bindFieldItemWidthIllegalReferenceScripts,
   createFieldItemWidthIllegalRawL1StageResolver,
-  createManifestBoundFieldItemWidthIllegalRuntime,
   deriveFieldItemWidthIllegalAuthenticatedSource,
   deriveFieldItemWidthIllegalEvidenceFromCanonicalBlock,
   detectFieldItemWidthIllegalCompleteReplay,
   FIELD_ITEM_WIDTH_ILLEGAL_MANIFEST_CONTRACTS,
-  FIELD_ITEM_WIDTH_ILLEGAL_WORKFLOW,
   type FieldItemWidthIllegalReferenceScripts,
-  type ManifestBoundFieldItemWidthIllegalConfig,
-  runOrResumeManifestBoundFieldItemWidthIllegalWorkflow,
 } from "../src/field-item-width-illegal/workflow.js";
 import {
   buildTrieView,
@@ -356,43 +349,5 @@ describe("fieldItemWidthIllegal manifest-bound production workflow", () => {
         },
       } as never),
     ).toThrow(/differs from its authenticated leaf/u);
-  });
-
-  it("rejects a caller-authored evidence substitution before reading sources", async () => {
-    await expect(
-      runOrResumeManifestBoundFieldItemWidthIllegalWorkflow({
-        workflow: {} as never,
-        sources: [],
-        journal: {} as never,
-        evidence,
-      } as never),
-    ).rejects.toThrow(/rejects caller-authored evidence/u);
-  });
-
-  it("resumes from authenticated terminal removal without replaying a builder", async () => {
-    const identity = fieldItemWidthEvidenceIdentity(evidence);
-    const resolveStage = vi.fn();
-    const append = vi.fn();
-    const runtime = createManifestBoundFieldItemWidthIllegalRuntime({
-      config: {} as ManifestBoundFieldItemWidthIllegalConfig,
-      journal: {
-        load: async () => [
-          {
-            sequence: 0,
-            identity,
-            stage: "step01",
-            txHash: "9".repeat(64),
-            outputReference: `${"9".repeat(64)}#0`,
-          },
-        ],
-        append,
-      },
-      observe: async () => "removed",
-      resolveStage,
-    });
-    await expect(runtime.runOrResume(evidence)).resolves.toBe("removed");
-    expect(runtime.runtimeVersion).toBe(FIELD_ITEM_WIDTH_ILLEGAL_WORKFLOW);
-    expect(resolveStage).not.toHaveBeenCalled();
-    expect(append).not.toHaveBeenCalled();
   });
 });

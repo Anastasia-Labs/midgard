@@ -15,18 +15,9 @@ import { Effect } from "effect";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
 import { submitRemoveFraudulentBlock } from "../src/index.js";
-import { submitInit } from "../src/submit-init.js";
 import { transitionDepositOpening } from "../src/transition-trace/history-opening.js";
-import {
-  resolveTransitionTraceByteCarriage,
-  transitionTraceByteChunks,
-} from "../src/transition-trace/proof-carriage.js";
-import {
-  submitTransitionTraceFinal,
-  submitTransitionTraceRoute,
-} from "../src/transition-trace/submit.js";
+import { transitionTraceByteChunks } from "../src/transition-trace/proof-carriage.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
-import { captureLocallyEvaluatedTransaction } from "../src/workflow/transaction-boundary.js";
 import {
   awaitHeaderCommitWindow,
   FAMILY_HISTORY_HEADER_LEAD_MS,
@@ -46,6 +37,13 @@ import {
   publishRemovalReferenceScripts,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
+import { submitInit } from "./support/submit-unjournaled.init.js";
+import {
+  buildTransitionTraceFinalHop,
+  publishTransitionTraceBytes,
+  submitTransitionTraceFinal,
+  submitTransitionTraceRoute,
+} from "./support/submit-unjournaled.transition-trace.js";
 import { buildDepositTransitionFixture } from "./support/transition-trace-final-fixtures.js";
 import { publishTransitionTraceYields } from "./support/transition-trace-yields.js";
 
@@ -258,11 +256,10 @@ describe("applied transition history", () => {
         proof: fixture.proof,
         ownOutputs,
       });
-      await resolveTransitionTraceByteCarriage({
+      await publishTransitionTraceBytes({
         ...h.proverCarriage,
         chunks: transitionTraceByteChunks(outputCbor.toString("hex")),
         ownOutputs,
-        publish: true,
       });
       let checkpoint = (
         await h.proverLucid.utxosByOutRef([
@@ -282,17 +279,13 @@ describe("applied transition history", () => {
           captured = true;
           break;
         }
-        const transaction = await captureLocallyEvaluatedTransaction(
-          (boundary) =>
-            submitTransitionTraceFinal({
-              ...common,
-              threadOutRef: outRefLabel(checkpoint),
-              proof: fixture.proof,
-              depositOpening: persisted,
-              preSubmitBoundary: boundary,
-              ownOutputs,
-            }),
-        );
+        const { transaction } = await buildTransitionTraceFinalHop({
+          ...common,
+          threadOutRef: outRefLabel(checkpoint),
+          proof: fixture.proof,
+          depositOpening: persisted,
+          ownOutputs,
+        });
         await h.proverLucid.awaitTx(await transaction.signed.submit());
         checkpoint = await expectSingleUtxoWithUnit(
           h.proverLucid,

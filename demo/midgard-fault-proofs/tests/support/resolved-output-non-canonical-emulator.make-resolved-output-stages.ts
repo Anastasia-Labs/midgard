@@ -19,19 +19,14 @@ import {
 } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import { submitCommittedFieldShapeInit } from "../../src/committed-field-shape/submit-committed-field-shape-init.js";
 import {
-  certifyFaultProofFieldCarriage,
   faultProofFieldOpening,
   planFaultProofFieldOpening,
-  publishFaultProofFieldCarriage,
 } from "../../src/field-opening.js";
 import {
   requireLinearFaultReferenceScript,
   requireLinearFaultThreadUtxo,
 } from "../../src/linear-fault-family.js";
-import { submitLinearFaultFinalize } from "../../src/linear-fault-finalize.js";
-import { submitLinearFaultContinue } from "../../src/linear-fault-submit.js";
 import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.js";
 import {
   type ResolvedOutputAbsentInputEvidence,
@@ -48,14 +43,6 @@ import {
   ResolvedOutputStep04RedeemerSchema,
   ResolvedOutputStep05DatumSchema,
   ResolvedOutputStep05RedeemerSchema,
-  submitResolvedOutputNonCanonicalCancel,
-  submitResolvedOutputNonCanonicalStep01Accepted,
-  submitResolvedOutputNonCanonicalStep01Forced,
-  submitResolvedOutputNonCanonicalStep02,
-  submitResolvedOutputNonCanonicalStep03,
-  submitResolvedOutputNonCanonicalStep04,
-  submitResolvedOutputNonCanonicalStep04Datum,
-  submitResolvedOutputNonCanonicalStep05,
 } from "../../src/resolved-output-non-canonical/index.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
 import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
@@ -76,6 +63,23 @@ import {
   forcedSourceOf,
 } from "./resolved-output-non-canonical-emulator.resolved-output-evidence.js";
 import { publishRemovalReferenceScripts } from "./submit-init-emulator-shared.js";
+import { submitCommittedFieldShapeInit } from "./submit-unjournaled.committed-field-shape.js";
+import {
+  submitLinearFaultContinue,
+  submitLinearFaultFinalize,
+} from "./submit-unjournaled.linear-fault.js";
+import {
+  certifyCarriageUnjournaled,
+  publishCarriageUnjournaled,
+  submitResolvedOutputNonCanonicalCancel,
+  submitResolvedOutputNonCanonicalStep01Accepted,
+  submitResolvedOutputNonCanonicalStep01Forced,
+  submitResolvedOutputNonCanonicalStep02,
+  submitResolvedOutputNonCanonicalStep03,
+  submitResolvedOutputNonCanonicalStep04,
+  submitResolvedOutputNonCanonicalStep04Datum,
+  submitResolvedOutputNonCanonicalStep05,
+} from "./submit-unjournaled.resolved-output-non-canonical.js";
 
 export const makeResolvedOutputStages = async (
   context: ResolvedOutputContext,
@@ -307,7 +311,7 @@ export const makeResolvedOutputStages = async (
     });
     expect(planned.plan.tier).toBe("Certified");
     harness.proverSigner.selectWallet(harness.proverLucid);
-    const chunkUtxos = await publishFaultProofFieldCarriage({
+    const chunkUtxos = await publishCarriageUnjournaled({
       ownOutputs,
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
@@ -315,7 +319,7 @@ export const makeResolvedOutputStages = async (
       publisherAddress: harness.proverSigner.proofMaterialsAddress,
       label: `${FAMILY} raw field opening`,
     });
-    const { certificateUtxo } = await certifyFaultProofFieldCarriage({
+    const { certificateUtxo } = await certifyCarriageUnjournaled({
       ownOutputs,
       lucid: harness.proverLucid,
       network,
@@ -727,7 +731,7 @@ export const makeResolvedOutputStages = async (
     });
     expect(planned.plan.tier).toBe("Certified");
     harness.proverSigner.selectWallet(harness.proverLucid);
-    const chunkUtxos = await publishFaultProofFieldCarriage({
+    const chunkUtxos = await publishCarriageUnjournaled({
       ownOutputs,
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
@@ -736,7 +740,7 @@ export const makeResolvedOutputStages = async (
       label: `${FAMILY} other-field opening`,
     });
     return (
-      await certifyFaultProofFieldCarriage({
+      await certifyCarriageUnjournaled({
         ownOutputs,
         lucid: harness.proverLucid,
         network,

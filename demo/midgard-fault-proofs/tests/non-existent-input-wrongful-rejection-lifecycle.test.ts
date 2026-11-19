@@ -14,10 +14,6 @@ import { Data, getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  certifyFaultProofFieldCarriage,
-  publishFaultProofFieldCarriage,
-} from "../src/field-opening.js";
-import {
   admitNonExistentInputForcedArtifact,
   nonExistentInputForcedArtifact,
 } from "../src/non-existent-input/artifact.js";
@@ -30,7 +26,7 @@ import {
   type PreparedNonExistentInputWrongfulRejection,
 } from "../src/non-existent-input/wrongful-rejection.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
-import { submitInit } from "../src/submit-init.js";
+import { buildInit } from "../src/submit-init.js";
 import {
   buildCountedRoot,
   commitCountedRoot,
@@ -54,6 +50,11 @@ import {
   publishPlainReferenceScriptUtxo,
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  certifyCarriageUnjournaled,
+  publishCarriageUnjournaled,
+} from "./support/submit-unjournaled.js";
 import { syntheticDeepMembershipProof } from "./support/synthetic-deep-proof.js";
 
 describe("nonExistentInput wrongful rejection registered lifecycle", () => {
@@ -370,7 +371,7 @@ describe("nonExistentInput wrongful rejection registered lifecycle", () => {
         plan.plan.tier === "Inline"
           ? []
           : await captures("field-publications", () =>
-              publishFaultProofFieldCarriage({
+              publishCarriageUnjournaled({
                 ownOutputs,
                 lucid: harness.proverLucid,
                 signer: harness.proverSigner,
@@ -387,7 +388,7 @@ describe("nonExistentInput wrongful rejection registered lifecycle", () => {
           label: "no-input certificate",
         });
         const certified = await captures("field-certification", () =>
-          certifyFaultProofFieldCarriage({
+          certifyCarriageUnjournaled({
             ownOutputs,
             lucid: harness.proverLucid,
             network: "Custom",
@@ -417,7 +418,7 @@ describe("nonExistentInput wrongful rejection registered lifecycle", () => {
       };
       const init = async (label: string) => {
         const result = await captures(label, () =>
-          submitInit({
+          buildAndSubmitUnjournaled(buildInit, {
             lucid: harness.proverLucid,
             witnessReferenceScripts: harness.witnessReferenceScripts,
             blueprint: harness.realBlueprint,
@@ -477,7 +478,7 @@ describe("nonExistentInput wrongful rejection registered lifecycle", () => {
         label: string,
       ) =>
         captures(label, async () =>
-          submitNonExistentInputForcedStep({
+          buildAndSubmitUnjournaled(submitNonExistentInputForcedStep, {
             ...common,
             threadOutRef,
             stepIndex,

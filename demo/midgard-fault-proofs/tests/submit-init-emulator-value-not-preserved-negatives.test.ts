@@ -28,16 +28,17 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { submitResolvedInit } from "../src/submit-init.js";
+import { buildResolvedInit } from "../src/submit-init.js";
 import { VALUE_NOT_PRESERVED_CATEGORY_LABEL } from "../src/value-not-preserved/contracts.js";
 import {
   buildSpentInputValueWitness,
   spendInputsOpening as spendInputsOpeningV1,
 } from "../src/value-not-preserved/evidence.js";
-import { submitValueNotPreservedStep01 } from "../src/value-not-preserved/submit-value-not-preserved-step-01.js";
-import { submitValueNotPreservedStep02Fold } from "../src/value-not-preserved/submit-value-not-preserved-step-02.js";
+import { buildValueNotPreservedStep01 } from "../src/value-not-preserved/submit-value-not-preserved-step-01.js";
+import { buildValueNotPreservedStep02Fold } from "../src/value-not-preserved/submit-value-not-preserved-step-02.js";
 import type { FaultProofWitnessReferenceScripts } from "../src/witness-reference-scripts.js";
 import { network } from "./support/submit-init-emulator-shared.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 import {
   buildValueNotPreservedFixture,
   expectOnchainRefusal,
@@ -60,7 +61,7 @@ const initThread = async (
   fraudulentBlockOutRef: string,
   witnessReferenceScripts: FaultProofWitnessReferenceScripts,
 ) =>
-  submitResolvedInit({
+  buildAndSubmitUnjournaled(buildResolvedInit, {
     label: VALUE_NOT_PRESERVED_CATEGORY_LABEL,
     lucid: harness.proverLucid,
     blueprint: harness.realBlueprint,
@@ -122,7 +123,7 @@ describe("value-not-preserved negative scenarios", () => {
     } as const;
     // The honest submitter's §1.4 acceptance-gate twin refuses locally.
     await expect(
-      submitValueNotPreservedStep01({
+      buildAndSubmitUnjournaled(buildValueNotPreservedStep01, {
         lucid: proverLucid,
         blueprint: harness.realBlueprint,
         contracts: family,
@@ -212,22 +213,25 @@ describe("value-not-preserved negative scenarios", () => {
     const claimedAsset = {
       TokenAsset: { policy_id: POLICY_ID_HEX, asset_name: ASSET_NAME_HEX },
     } as const;
-    const step01 = await submitValueNotPreservedStep01({
-      lucid: proverLucid,
-      blueprint: harness.realBlueprint,
-      contracts: family,
-      categoryId: harness.category.categoryId,
-      network,
-      signer: proverSigner,
-      threadOutRef: init.nextThreadOutRef,
-      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-      txInclusion: fixture.txInclusion,
-      claimedAsset,
-      claimedDirection: "ClaimedAssetInflated",
-      prevUtxosRoot: fixture.ledger.rootHex,
-      referenceScriptUtxo: refs[0],
-      witnessReferenceScripts: setup.witnessReferenceScripts,
-    });
+    const step01 = await buildAndSubmitUnjournaled(
+      buildValueNotPreservedStep01,
+      {
+        lucid: proverLucid,
+        blueprint: harness.realBlueprint,
+        contracts: family,
+        categoryId: harness.category.categoryId,
+        network,
+        signer: proverSigner,
+        threadOutRef: init.nextThreadOutRef,
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+        txInclusion: fixture.txInclusion,
+        claimedAsset,
+        claimedDirection: "ClaimedAssetInflated",
+        prevUtxosRoot: fixture.ledger.rootHex,
+        referenceScriptUtxo: refs[0],
+        witnessReferenceScripts: setup.witnessReferenceScripts,
+      },
+    );
     const spendInputsOpening = spendInputsOpeningV1({
       nativeTxCompactCbor: fixture.nativeTxCompactCbor,
       spendInputsPreimageCbor: fixture.spendInputsPreimageCbor,
@@ -251,7 +255,7 @@ describe("value-not-preserved negative scenarios", () => {
       prevUtxosRootHex: fixture.ledger.rootHex,
     });
     await expectOnchainRefusal(async () =>
-      submitValueNotPreservedStep02Fold({
+      buildAndSubmitUnjournaled(buildValueNotPreservedStep02Fold, {
         lucid: proverLucid,
         contracts: family,
         categoryId: harness.category.categoryId,
@@ -283,7 +287,7 @@ describe("value-not-preserved negative scenarios", () => {
       })),
     };
     await expectOnchainRefusal(async () =>
-      submitValueNotPreservedStep02Fold({
+      buildAndSubmitUnjournaled(buildValueNotPreservedStep02Fold, {
         lucid: proverLucid,
         contracts: family,
         categoryId: harness.category.categoryId,
@@ -297,16 +301,19 @@ describe("value-not-preserved negative scenarios", () => {
 
     // The SAME thread accepts the honest witness: it was the forgery that
     // was refused, not the thread.
-    const honestFold = await submitValueNotPreservedStep02Fold({
-      lucid: proverLucid,
-      contracts: family,
-      categoryId: harness.category.categoryId,
-      signer: proverSigner,
-      threadOutRef: step01.nextThreadOutRef,
-      spendInputsOpening,
-      valueWitness: genuineWitness,
-      referenceScriptUtxo: refs[1],
-    });
+    const honestFold = await buildAndSubmitUnjournaled(
+      buildValueNotPreservedStep02Fold,
+      {
+        lucid: proverLucid,
+        contracts: family,
+        categoryId: harness.category.categoryId,
+        signer: proverSigner,
+        threadOutRef: step01.nextThreadOutRef,
+        spendInputsOpening,
+        valueWitness: genuineWitness,
+        referenceScriptUtxo: refs[1],
+      },
+    );
     expect(honestFold.foldState.input_cursor).toBe(1n);
     expect(honestFold.foldState.claimed_delta).toBe(25n);
   }, 600_000);

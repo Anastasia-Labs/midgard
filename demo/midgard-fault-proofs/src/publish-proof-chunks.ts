@@ -42,8 +42,8 @@ import {
   minimumLovelaceForInlineDatumOutput,
   resolveProtocolParameters,
 } from "./spend-input-witness.js";
-import { completeStep, fundStep, submitStep } from "./step-completion.js";
-import { type FraudProofPreSubmitBoundary } from "./workflow/transaction-boundary.js";
+import { completeStep, finishStep, fundStep } from "./step-completion.js";
+import type { LocallyEvaluatedTransaction } from "./workflow/transaction-boundary.js";
 
 export * from "./proof-chunk-carriage.js";
 export { MAXIMUM_CHUNK_PROOF_STEP_COUNT, MAXIMUM_PROOF_CHUNK_COUNT };
@@ -103,26 +103,22 @@ export const resolvePublishedProofChunks = async ({
 };
 
 /**
- * Publishes a proof as chunk UTxOs at the prover's proof-materials address.
+ * Builds and signs the transaction that publishes a proof as chunk UTxOs at
+ * the prover's proof-materials address.
  *
  * The UTxOs hold Ada only, carry no reference script, and are never spent by
  * the step that references them — a step builder must keep them out of both its
  * inputs and its collateral.
  */
-export const publishProofChunks = async ({
+export const buildProofChunkPublication = async ({
   lucid,
   signer,
   proofCbor,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly signer: ResolvedProverSigner;
   readonly proofCbor: string;
-  /** Production workflow seam for the chunk publication transaction. */
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<PublishedProof> => {
+}): Promise<{ readonly transaction: LocallyEvaluatedTransaction }> => {
   const datums = splitProofIntoChunkDatums(proofCbor);
   if (datums.length === 0) {
     throw new Error(
@@ -148,13 +144,27 @@ export const publishProofChunks = async ({
     );
   }
   const signed = await completeStep(tx, funding);
-  const txHash = await submitStep(lucid, signed, {
-    label: "publish-proof-chunks",
-    referenceScripts: [],
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
-  });
+  return { transaction: finishStep(signed, { referenceScripts: [] }) };
+};
 
+/**
+ * Reads back the chunks of `proofCbor` that the publication `txHash` paid to
+ * the prover's proof-materials address, each once and in proof order, refusing a
+ * chunk without an inline datum or with a reference script.
+ */
+export const readPublishedProofChunks = async ({
+  lucid,
+  signer,
+  proofCbor,
+  txHash,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly signer: ResolvedProverSigner;
+  readonly proofCbor: string;
+  readonly txHash: string;
+}): Promise<PublishedProof> => {
+  const datums = splitProofIntoChunkDatums(proofCbor);
+  const address = signer.proofMaterialsAddress;
   const claimed = new Set<number>();
   const chunks: PublishedProofChunk[] = [];
   const candidates = await lucid.utxosAt(address);

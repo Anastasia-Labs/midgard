@@ -14,16 +14,14 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { type Script, type UTxO } from "@lucid-evolution/lucid";
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 
-import type {
-  MissingSignatureFinding,
-  MissingSignatureProverDeps,
-  MissingSignatureProverEvent,
-  MissingSignatureProverPolicy,
-} from "../../src/missing-signature/index.js";
+import type { MissingSignatureFinding } from "../../src/missing-signature/index.js";
+import { MissingSignatureProvability } from "../../src/missing-signature/index.js";
 import {
   MISSING_SIGNATURE_PROVER_POLICY_DEFAULTS,
-  MissingSignatureProvability,
-} from "../../src/missing-signature/index.js";
+  type MissingSignatureProverDeps,
+  type MissingSignatureProverEvent,
+  type MissingSignatureProverPolicy,
+} from "./missing-signature-prover.js";
 import {
   buildDecodingBlockFixture,
   type DecodingBlockFixture,

@@ -35,6 +35,10 @@ import {
   structuredDataTreeData,
 } from "../workflow/structured-data-preimage.js";
 import {
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
+} from "../workflow/transaction-boundary.js";
+import {
   withdrawalMistagError,
   withdrawalMistagStepLabel,
 } from "./submit-common.js";
@@ -367,13 +371,15 @@ export const withdrawalMistagStepRedeemerCbor = (
   return replacePlutusConstrFieldCbor(redeemerCbor, path, payloadCbor);
 };
 
-export type SubmitWithdrawalMistagStepResult = {
-  readonly txHash: string;
+export type WithdrawalMistagStepBuild = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly threadOutRef: string;
   readonly nextThreadOutRef: string;
   readonly stepIndex: IntermediateStepIndex;
   readonly nextStepIndex: 1 | 2 | 3 | 4;
   readonly inputIndex: number;
   readonly outputIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
+
+export type SubmitWithdrawalMistagStepResult =
+  UnjournaledSubmission<WithdrawalMistagStepBuild>;

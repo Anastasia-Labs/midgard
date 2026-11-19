@@ -33,13 +33,6 @@ import { getAddressDetails } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
-import {
-  submitTransactionOutputNonCanonicalStep01Accepted,
-  submitTransactionOutputNonCanonicalStep01Forced,
-  submitTransactionOutputNonCanonicalStep02,
-  submitTransactionOutputNonCanonicalStep03,
-  submitTransactionOutputNonCanonicalStep04,
-} from "../src/transaction-output-non-canonical/index.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
@@ -51,6 +44,13 @@ import {
   submitSetupTx,
   transitionTraceOutRef,
 } from "./support/submit-init-emulator-shared.js";
+import {
+  submitTransactionOutputNonCanonicalStep01Accepted,
+  submitTransactionOutputNonCanonicalStep01Forced,
+  submitTransactionOutputNonCanonicalStep02,
+  submitTransactionOutputNonCanonicalStep03,
+  submitTransactionOutputNonCanonicalStep04,
+} from "./support/submit-unjournaled.transaction-output-non-canonical.js";
 import {
   buildForcedOutputFixture,
   canonicalOutputOfLength,

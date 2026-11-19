@@ -26,6 +26,10 @@ import {
   type SubmitProviderConfig,
 } from "./runtime.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
+import {
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
+} from "./workflow/transaction-boundary.js";
 
 /**
  * Complete positional address-witness list, as `prepare-invalid-signature`
@@ -77,8 +81,8 @@ export type SubmitInvalidSignatureStep02CliConfig = SubmitProviderConfig & {
   readonly awaitConfirmation?: boolean;
 };
 
-export type SubmitInvalidSignatureStep02Result = {
-  readonly txHash: string;
+export type InvalidSignatureStep02Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -105,8 +109,10 @@ export type SubmitInvalidSignatureStep02Result = {
   readonly outputIndex: number;
   readonly computationThreadMintRedeemerIndex: number;
   readonly fraudProofMintRedeemerIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
+
+export type SubmitInvalidSignatureStep02Result =
+  UnjournaledSubmission<InvalidSignatureStep02Build>;
 
 type InvalidSignatureStep02DatumWithState = InvalidSignatureStep02Datum & {
   readonly data: NonNullable<InvalidSignatureStep02Datum["data"]>;

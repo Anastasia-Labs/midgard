@@ -23,7 +23,7 @@ import {
 import { Data, getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { submitCommittedFieldShapeInit } from "../../src/committed-field-shape/submit-committed-field-shape-init.js";
+import { buildCommittedFieldShapeInit } from "../../src/committed-field-shape/submit-committed-field-shape-init.js";
 import { nativeTxFromCoreCompact } from "../../src/step-support.js";
 import { buildCountedRoot } from "../../src/transition-trace/phas.js";
 import {
@@ -35,8 +35,8 @@ import {
   type ZeroInputEvidence,
 } from "../../src/zero-input/family.js";
 import {
-  submitZeroInputStep01Accepted,
-  submitZeroInputStep01Forced,
+  buildZeroInputStep01Accepted,
+  buildZeroInputStep01Forced,
 } from "../../src/zero-input/submit-step-01.js";
 import { buildCatalogueDeploymentInfo } from "./emulator/catalogue.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./emulator/emulator-context.js";
@@ -51,6 +51,7 @@ import {
   buildInvalidForcedTransitionTraceFixture,
   setupFraudulentBlock,
 } from "./submit-init-emulator-fixtures.js";
+import { buildAndSubmitUnjournaled } from "./submit-unjournaled.js";
 
 const network = "Custom" as const;
 
@@ -142,7 +143,7 @@ const initializeThread = async ({
   readonly fraudulentBlockOutRef: string;
   readonly fraudulentHeaderHash: string;
 }) =>
-  await submitCommittedFieldShapeInit({
+  await buildAndSubmitUnjournaled(buildCommittedFieldShapeInit, {
     lucid: harness.proverLucid,
     blueprint: harness.realBlueprint,
     network,
@@ -219,7 +220,7 @@ export const stageZeroInputAcceptance = async ({
     },
   ]);
   if (threadUtxo === undefined) throw new Error("zero-input thread absent");
-  const bound = await submitZeroInputStep01Accepted({
+  const bound = await buildAndSubmitUnjournaled(buildZeroInputStep01Accepted, {
     lucid: harness.proverLucid,
     blueprint: harness.realBlueprint,
     network,
@@ -342,7 +343,7 @@ export const stageZeroInputHonestRejection =
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
       fraudulentHeaderHash: setup.headerHash,
     });
-    const bound = await submitZeroInputStep01Forced({
+    const bound = await buildAndSubmitUnjournaled(buildZeroInputStep01Forced, {
       lucid: harness.proverLucid,
       contracts,
       categoryId: category.categoryId,

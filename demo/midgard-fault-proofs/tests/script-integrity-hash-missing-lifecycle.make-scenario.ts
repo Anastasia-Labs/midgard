@@ -7,15 +7,15 @@ import { Data, type UTxO } from "@lucid-evolution/lucid";
 
 import { ScriptIntegrityStepDatums } from "../src/script-integrity-hash-missing/schemas.js";
 import {
-  submitScriptIntegrityHashMissingStep01Accepted,
-  submitScriptIntegrityHashMissingStep01Forced,
+  buildScriptIntegrityHashMissingStep01Accepted,
+  buildScriptIntegrityHashMissingStep01Forced,
 } from "../src/script-integrity-hash-missing/submit-direct.js";
-import { submitScriptIntegrityHashMissingInit } from "../src/script-integrity-hash-missing/submit-init.js";
+import { buildScriptIntegrityHashMissingInit } from "../src/script-integrity-hash-missing/submit-init.js";
 import {
-  submitScriptIntegrityHashMissingCancel,
-  submitScriptIntegrityHashMissingStep02,
-  submitScriptIntegrityHashMissingStep03,
-  submitScriptIntegrityHashMissingStep04,
+  buildScriptIntegrityHashMissingCancel,
+  buildScriptIntegrityHashMissingStep02,
+  buildScriptIntegrityHashMissingStep03,
+  buildScriptIntegrityHashMissingStep04,
 } from "../src/script-integrity-hash-missing/submitters.js";
 import {
   FORCED_ORDER_KEY,
@@ -31,6 +31,7 @@ import {
   publishPlainReferenceScriptUtxo,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 /**
  * One committed block on the registered chain with the family's seven
@@ -117,7 +118,7 @@ export const makeScenario = async ({
     );
   const init = async () =>
     (
-      await submitScriptIntegrityHashMissingInit({
+      await buildAndSubmitUnjournaled(buildScriptIntegrityHashMissingInit, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -139,23 +140,29 @@ export const makeScenario = async ({
     txInclusion = block.txInclusion!,
   ) =>
     (
-      await submitScriptIntegrityHashMissingStep01Accepted({
-        ...common(0),
-        blueprint: harness.realBlueprint,
-        network,
-        threadOutRef,
-        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-        txInclusion,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-      })
+      await buildAndSubmitUnjournaled(
+        buildScriptIntegrityHashMissingStep01Accepted,
+        {
+          ...common(0),
+          blueprint: harness.realBlueprint,
+          network,
+          threadOutRef,
+          stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+          txInclusion,
+          witnessReferenceScripts: harness.witnessReferenceScripts,
+        },
+      )
     ).nextThreadOutRef;
   const forced01 = async (threadOutRef: string) =>
     (
-      await submitScriptIntegrityHashMissingStep01Forced({
-        ...common(0),
-        threadOutRef,
-        direction: 1n,
-      })
+      await buildAndSubmitUnjournaled(
+        buildScriptIntegrityHashMissingStep01Forced,
+        {
+          ...common(0),
+          threadOutRef,
+          direction: 1n,
+        },
+      )
     ).nextThreadOutRef;
   const step02 = async (
     threadOutRef: string,
@@ -173,7 +180,7 @@ export const makeScenario = async ({
     },
   ) =>
     (
-      await submitScriptIntegrityHashMissingStep02({
+      await buildAndSubmitUnjournaled(buildScriptIntegrityHashMissingStep02, {
         ...common(1),
         threadOutRef,
         nextDatum: datum(2, {
@@ -213,7 +220,7 @@ export const makeScenario = async ({
     },
   ) =>
     (
-      await submitScriptIntegrityHashMissingStep03({
+      await buildAndSubmitUnjournaled(buildScriptIntegrityHashMissingStep03, {
         ...common(2),
         threadOutRef,
         staged,
@@ -235,13 +242,13 @@ export const makeScenario = async ({
       })
     ).nextThreadOutRef;
   const step04 = (threadOutRef: string) =>
-    submitScriptIntegrityHashMissingStep04({
+    buildAndSubmitUnjournaled(buildScriptIntegrityHashMissingStep04, {
       ...common(6),
       threadOutRef,
       witnessReferenceScripts: harness.witnessReferenceScripts,
     });
   const cancel = (threadOutRef: string, index: number) =>
-    submitScriptIntegrityHashMissingCancel({
+    buildAndSubmitUnjournaled(buildScriptIntegrityHashMissingCancel, {
       ...common(index),
       threadOutRef,
       witnessReferenceScripts: harness.witnessReferenceScripts,

@@ -43,7 +43,8 @@ import {
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
 } from "../runtime.js";
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import {
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
   requireNativeTxMatchesCompactCbor,
@@ -54,15 +55,13 @@ import {
   type FaultProofWitnessReferenceScripts,
   witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
-import { workflowReferenceScriptsUsedByTransaction } from "../workflow/transaction-boundary.js";
 import type { CommittedFieldShapeContracts } from "./contracts.js";
 import { deriveCommittedFieldShapeNextOutput } from "./derive-committed-field-shape-next-output.js";
 import type { PreparedCommittedFieldShape } from "./prepare-committed-field-shape.js";
+import type { CommittedFieldShapeStep01Build } from "./submit-committed-field-shape-step-01.committed-field-shape-claim-details.js";
 import {
   committedFieldShapeClaimDetails,
   STEP_LABEL,
-  type SubmitCommittedFieldShapeStep01Result,
 } from "./submit-committed-field-shape-step-01.committed-field-shape-claim-details.js";
 import {
   committedFieldShapeSubmitError,
@@ -77,7 +76,7 @@ import {
  * edited plan cannot be converted into a transaction contradicting the
  * validator.
  */
-export const submitCommittedFieldShapeStep01 = async ({
+export const buildCommittedFieldShapeStep01 = async ({
   lucid,
   blueprint,
   contracts,
@@ -93,8 +92,6 @@ export const submitCommittedFieldShapeStep01 = async ({
   fieldCertificateUtxo,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -116,9 +113,7 @@ export const submitCommittedFieldShapeStep01 = async ({
   readonly fieldCertificateUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitCommittedFieldShapeStep01Result> => {
+}): Promise<CommittedFieldShapeStep01Build> => {
   const { threadUtxo, threadToken } =
     await requireCommittedFieldShapeThreadUtxo({
       lucid,
@@ -420,38 +415,32 @@ export const submitCommittedFieldShapeStep01 = async ({
       "BuildTxWithRedeemer did not resolve the step-01 layout.",
     );
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: "committed-field-shape step-01",
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: "V1 fraud-proof committed-field-shape step-01",
-          utxo: referenceScriptUtxo,
-          expectedScript: contracts.steps[0].spendingScript,
-        },
-        {
-          role: "membership proof withdrawal",
-          utxo: witnessReferenceScripts?.phasMembershipWithdraw,
-          expectedScript: phasMembershipScript,
-        },
-        {
-          role: "V1 MPF chunked-verify withdrawal",
-          utxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
-          expectedScript: chunkedVerifyScript,
-        },
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: "V1 fraud-proof committed-field-shape step-01",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.steps[0].spendingScript,
+      },
+      {
+        role: "membership proof withdrawal",
+        utxo: witnessReferenceScripts?.phasMembershipWithdraw,
+        expectedScript: phasMembershipScript,
+      },
+      {
+        role: "V1 MPF chunked-verify withdrawal",
+        utxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
+        expectedScript: chunkedVerifyScript,
+      },
+    ],
   });
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
     threadOutRef,
-    nextThreadOutRef: `${txHash}#${resolvedLayout.outputIndex.toString()}`,
+    nextThreadOutRef: `${transaction.txHash}#${resolvedLayout.outputIndex.toString()}`,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadUnit: threadToken.unit,
     nextStepAddress: nextOutput.address,
@@ -461,6 +450,5 @@ export const submitCommittedFieldShapeStep01 = async ({
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
     proofCarriage: carriedByChunks ? "published-chunks" : "redeemer",
-    awaitedConfirmation: awaitConfirmation,
   };
 };

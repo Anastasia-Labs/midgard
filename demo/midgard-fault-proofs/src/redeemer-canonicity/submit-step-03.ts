@@ -4,10 +4,9 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultFinalize } from "../linear-fault-finalize.js";
+import { buildLinearFaultFinalize } from "../linear-fault-finalize.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { RedeemerCanonicityContracts } from "./contracts.js";
 import {
   type RedeemerCanonicityEvidence,
@@ -18,7 +17,7 @@ import {
   RedeemerCanonicityStep03RedeemerSchema,
 } from "./schemas.js";
 
-export const submitRedeemerCanonicityStep03 = async (input: {
+export const buildRedeemerCanonicityStep03 = async (input: {
   readonly lucid: LucidEvolution;
   readonly contracts: RedeemerCanonicityContracts;
   readonly categoryId: string;
@@ -27,8 +26,6 @@ export const submitRedeemerCanonicityStep03 = async (input: {
   readonly evidence: RedeemerCanonicityEvidence;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   if (!redeemerCanonicityEvidenceCloses(input.evidence))
     throw new Error(
@@ -60,7 +57,7 @@ export const submitRedeemerCanonicityStep03 = async (input: {
     throw new Error(
       "redeemer-canonicity: terminal state differs from evidence",
     );
-  return await submitLinearFaultFinalize({
+  return await buildLinearFaultFinalize({
     lucid: input.lucid,
     family: "redeemer-canonicity",
     stepIndex,
@@ -82,7 +79,5 @@ export const submitRedeemerCanonicityStep03 = async (input: {
     }),
     referenceScriptUtxo: input.referenceScriptUtxo,
     witnessReferenceScripts: input.witnessReferenceScripts,
-    preSubmitBoundary: input.preSubmitBoundary,
-    awaitConfirmation: input.awaitConfirmation ?? true,
   });
 };

@@ -11,11 +11,8 @@ import {
   resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening.js";
 import { prepareWithdrawnInputFromCanonicalEvidence } from "../prepare-withdrawn-input.js";
-import {
-  type StateQueueMutationLease,
-  type StateQueueMutationLeaseCoordinator,
-  submitRemoveFraudulentBlock,
-} from "../remove-fraudulent-block.js";
+import { type StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { WithdrawnInputContracts } from "../withdrawn-input/contracts.js";
 import type { CanonicalBlockClassification } from "./classification.js";
@@ -30,8 +27,8 @@ import { normalizeJournalJson } from "./journal.js";
 import { exactJournalRecord } from "./native-index-artifact.js";
 import { type FraudProofWorkflowAction } from "./orchestrator.js";
 import type { OwnOutputJournal } from "./own-outputs.js";
+import { admitRemovalTransaction } from "./removal-admission.js";
 import {
-  captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
   workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary.js";
@@ -162,53 +159,36 @@ export const captureRemoval = async (
   config: BoundConfig,
   input: Readonly<Record<string, unknown>>,
 ) => {
-  let mutationLease: StateQueueMutationLease | undefined;
-  const retainingCoordinator: StateQueueMutationLeaseCoordinator = {
-    acquire: async () => {
-      const acquired =
-        await config.stateQueueMutationLeaseCoordinator.acquire();
-      mutationLease = acquired;
-      return acquired;
-    },
-  };
   const nextRemovalOutRef = stringField(input, "nextRemovalOutRef");
   const fraudProofOutRef = stringField(input, "fraudProofOutRef");
-  const transaction = await captureLocallyEvaluatedTransaction(
-    async (boundary) => {
-      await submitRemoveFraudulentBlock({
-        fraudProofOutRef,
-        lucid: config.lucid,
-        blueprint: config.blueprint,
-        deploymentInfo: config.deploymentInfo,
-        network: config.network,
-        signer: config.signer,
-        fraudCategory: "withdrawnInput",
-        fraudulentHeaderHash: config.headerHash,
-        requireReferenceScripts: true,
-        stateQueueMutationLeaseCoordinator: retainingCoordinator,
-        fraudProverRewardLovelace: config.fraudProverRewardLovelace,
-        preSubmitBoundary: async (built) => {
-          if (
-            !workflowTransactionInputOutRefs(built.signed).includes(
-              nextRemovalOutRef,
-            ) ||
-            !workflowTransactionReferenceInputOutRefs(built.signed).includes(
-              fraudProofOutRef,
-            )
-          ) {
-            throw new Error(
-              "withdrawn-input removal changed authenticated inputs",
-            );
-          }
-          await boundary(built);
-        },
-      });
+  return await admitRemovalTransaction(
+    await buildRemoveFraudulentBlock({
+      fraudProofOutRef,
+      lucid: config.lucid,
+      blueprint: config.blueprint,
+      deploymentInfo: config.deploymentInfo,
+      network: config.network,
+      signer: config.signer,
+      fraudCategory: "withdrawnInput",
+      fraudulentHeaderHash: config.headerHash,
+      requireReferenceScripts: true,
+      stateQueueMutationLeaseCoordinator:
+        config.stateQueueMutationLeaseCoordinator,
+      fraudProverRewardLovelace: config.fraudProverRewardLovelace,
+    }),
+    async (built) => {
+      if (
+        !workflowTransactionInputOutRefs(built.signed).includes(
+          nextRemovalOutRef,
+        ) ||
+        !workflowTransactionReferenceInputOutRefs(built.signed).includes(
+          fraudProofOutRef,
+        )
+      ) {
+        throw new Error("withdrawn-input removal changed authenticated inputs");
+      }
     },
   );
-  return Object.freeze({
-    transaction,
-    ...(mutationLease === undefined ? {} : { mutationLease }),
-  });
 };
 
 export const resolveField = async (

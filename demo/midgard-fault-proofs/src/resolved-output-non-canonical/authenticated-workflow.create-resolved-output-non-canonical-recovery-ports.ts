@@ -29,15 +29,12 @@ import type { FieldCarriageRequirement } from "../workflow/field-carriage-prereq
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { createCanonicalFamilyArtifactPort } from "../workflow/manifest-bound-family-recovery.js";
-import {
-  captureLocallyEvaluatedTransaction,
-  workflowTransactionInputOutRefs,
-} from "../workflow/transaction-boundary.js";
+import { journaledStepTransaction } from "../workflow/step-transaction.js";
+import { workflowTransactionInputOutRefs } from "../workflow/transaction-boundary.js";
 import { createManifestBoundResolvedOutputNonCanonicalSubmission } from "./authenticated-workflow.create-manifest-bound-resolved-output-non-canonical-submission.js";
 import {
   createResolvedOutputNonCanonicalRawL1StageResolver,
   deriveResolvedOutputNonCanonicalAuthenticatedSource,
-  type ResolvedOutputNonCanonicalRuntimeLoader,
 } from "./authenticated-workflow.derive-resolved-output-non-canonical-authenticated-source.js";
 import {
   type LoadManifestBoundResolvedOutputNonCanonicalConfig,
@@ -47,58 +44,9 @@ import {
 import {
   deriveResolvedOutputPriorLedgerReplay,
   detectResolvedOutputNonCanonicalCompleteReplay,
-  resolvedOutputEvidenceIdentity,
   resolvedOutputOpenedField,
-  type ResolvedOutputWorkflowEvidence,
 } from "./resolved-output-non-canonical.js";
-import {
-  nextResolvedOutputAction,
-  type ResolvedOutputJournal,
-  type ResolvedOutputStage,
-} from "./workflow.js";
-
-export const createManifestBoundResolvedOutputNonCanonicalRuntime = ({
-  config,
-  journal,
-  observe,
-  resolveStage,
-  stateQueueMutationLeaseCoordinator,
-}: {
-  readonly config: ManifestBoundResolvedOutputNonCanonicalConfig;
-  readonly journal: ResolvedOutputJournal;
-  readonly observe: ResolvedOutputNonCanonicalRuntimeLoader["observe"];
-  readonly resolveStage: ResolvedOutputNonCanonicalRuntimeLoader["resolveStage"];
-  readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
-}) => {
-  const submission = createManifestBoundResolvedOutputNonCanonicalSubmission({
-    config,
-    observe,
-    resolveStage,
-    stateQueueMutationLeaseCoordinator,
-  });
-  return Object.freeze({
-    runtimeVersion: RESOLVED_OUTPUT_NON_CANONICAL_WORKFLOW,
-    config,
-    runOrResume: async (evidence: ResolvedOutputWorkflowEvidence) => {
-      const identity = resolvedOutputEvidenceIdentity(evidence);
-      for (;;) {
-        const stage = await submission.observe(identity);
-        const action = nextResolvedOutputAction(stage);
-        if (action === "done") return stage;
-        const result = await submission.submit(action, evidence);
-        await journal.append({
-          sequence: (await journal.load(identity)).length,
-          identity,
-          stage: result.stage,
-          action,
-          phase: "submitted",
-          txHash: result.txHash,
-          outputReference: result.outputReference,
-        });
-      }
-    },
-  });
-};
+import { type ResolvedOutputStage } from "./workflow.js";
 
 export type ManifestBoundResolvedOutputNonCanonicalWorkflowConfig =
   LoadManifestBoundResolvedOutputNonCanonicalConfig &
@@ -234,32 +182,30 @@ export const createResolvedOutputNonCanonicalRecoveryPorts = (
         throw new Error(
           `${category} cursor action is outside its exact topology`,
         );
-      const transaction = await captureLocallyEvaluatedTransaction(
-        async (preSubmitBoundary) => {
-          const submission =
-            createManifestBoundResolvedOutputNonCanonicalSubmission({
-              ownOutputs: workflowFieldCarriageOwnOutputs({
-                category,
-                entries,
-              }),
-              config,
-              preSubmitBoundary,
-              observe: async () =>
-                resolvedOutputStageFromL1(
-                  (
-                    await l1.observe({
-                      headerHash: binding.definition.headerHash,
-                    })
-                  ).stage,
-                ),
-              resolveStage: createResolvedOutputNonCanonicalRawL1StageResolver({
-                config,
-                l1,
-                source: admitted.source,
-              }),
-            });
-          await submission.submit(familyAction, admitted.evidence);
-        },
+      const submission =
+        createManifestBoundResolvedOutputNonCanonicalSubmission({
+          ownOutputs: workflowFieldCarriageOwnOutputs({
+            category,
+            entries,
+          }),
+          config,
+          observe: async () =>
+            resolvedOutputStageFromL1(
+              (
+                await l1.observe({
+                  headerHash: binding.definition.headerHash,
+                })
+              ).stage,
+            ),
+          resolveStage: createResolvedOutputNonCanonicalRawL1StageResolver({
+            config,
+            l1,
+            source: admitted.source,
+          }),
+        });
+      const { transaction } = await journaledStepTransaction(
+        await submission.submit(familyAction, admitted.evidence),
+        `${category} ${familyAction}`,
       );
       if (
         input.stage !== "init" &&

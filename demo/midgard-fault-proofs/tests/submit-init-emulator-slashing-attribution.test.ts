@@ -137,7 +137,7 @@ it("refuses unrelated active retired and absent operators and prunes active and 
     const signed: TxSigned[] = [];
     const capture = await captureEmulatorSubmission(emulator, () =>
       submitRemovalForFixture(fixture, {
-        preSubmitBoundary: ({ signed: transaction }) => {
+        beforeSubmit: ({ signed: transaction }) => {
           signed.push(transaction);
         },
       }),

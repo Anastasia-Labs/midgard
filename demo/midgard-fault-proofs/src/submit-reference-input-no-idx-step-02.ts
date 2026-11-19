@@ -41,6 +41,6 @@ export {
   type SubmitReferenceInputNoIdxStep02Result,
 } from "./submit-reference-input-no-idx-step-02.parse-submit-reference-input-no-idx-reference-inputs-preimage.js";
 export {
-  submitReferenceInputNoIdxStep02,
+  buildReferenceInputNoIdxStep02,
   submitReferenceInputNoIdxStep02FromFiles,
 } from "./submit-reference-input-no-idx-step-02.submit-reference-input-no-idx-step02.js";

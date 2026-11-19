@@ -28,11 +28,13 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { type ResolvedProverSigner } from "../runtime.js";
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import { workflowReferenceScript } from "../workflow/transaction-boundary.js";
 import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScript,
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
 } from "../workflow/transaction-boundary.js";
 import type { MissingSignatureContracts } from "./contracts.js";
 import {
@@ -45,8 +47,8 @@ import {
 
 const STEP_LABEL = missingSignatureStepLabel(2);
 
-export type SubmitMissingSignatureStep03Result = {
-  readonly txHash: string;
+export type MissingSignatureStep03Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -58,10 +60,12 @@ export type SubmitMissingSignatureStep03Result = {
   readonly missingRequiredSignerVkey: string;
   readonly inputIndex: number;
   readonly outputIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
 
-export const submitMissingSignatureStep03 = async ({
+export type SubmitMissingSignatureStep03Result =
+  UnjournaledSubmission<MissingSignatureStep03Build>;
+
+export const buildMissingSignatureStep03 = async ({
   lucid,
   contracts,
   categoryId,
@@ -69,8 +73,6 @@ export const submitMissingSignatureStep03 = async ({
   threadOutRef,
   missingRequiredSignerVkey,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: MissingSignatureContracts;
@@ -81,9 +83,7 @@ export const submitMissingSignatureStep03 = async ({
   readonly missingRequiredSignerVkey: string;
   /** §2.3: the published step-03 reference script (required; never inline). */
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitMissingSignatureStep03Result> => {
+}): Promise<MissingSignatureStep03Build> => {
   const { threadUtxo, threadToken } = await requireMissingSignatureThreadUtxo({
     lucid,
     contracts,
@@ -175,8 +175,7 @@ export const submitMissingSignatureStep03 = async ({
       "BuildTxWithRedeemer did not resolve the step-03 layout.",
     );
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: "missing-signature step-03",
+  const transaction = finishStep(signed, {
     referenceScripts: [
       workflowReferenceScript({
         role: "V1 fraud-proof missing-signature step-03",
@@ -184,23 +183,20 @@ export const submitMissingSignatureStep03 = async ({
         expectedScript: contracts.steps[2].spendingScript,
       }),
     ],
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
   });
 
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
     threadOutRef,
-    nextThreadOutRef: `${txHash}#${resolvedLayout.outputIndex.toString()}`,
+    nextThreadOutRef: `${transaction.txHash}#${resolvedLayout.outputIndex.toString()}`,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadUnit: threadToken.unit,
     fourthStepAddress: contracts.steps[3].spendingScriptAddress,
     missingRequiredSignerVkey: vkey,
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
-    awaitedConfirmation: awaitConfirmation,
   };
 };

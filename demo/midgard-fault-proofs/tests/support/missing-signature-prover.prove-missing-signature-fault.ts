@@ -1,12 +1,12 @@
 import { Effect } from "effect";
 
-import { type MissingSignatureFinding } from "./finding.js";
+import { type MissingSignatureFinding } from "../../src/missing-signature/finding.js";
 import {
   type MissingSignatureProofOutcome,
   type MissingSignatureProverDeps,
   toError,
-} from "./prover.assert-evidence-coherent.js";
-import { runMissingSignatureProver } from "./prover.run-missing-signature-prover.js";
+} from "./missing-signature-prover.assert-evidence-coherent.js";
+import { runMissingSignatureProver } from "./missing-signature-prover.run-missing-signature-prover.js";
 
 /** The proving core as an Effect for watcher/runtime composition. */
 export const proveMissingSignatureFault = (

@@ -2,12 +2,13 @@ import { decodeMidgardNativeTxCompact } from "@al-ft/midgard-core";
 import { Proof } from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
+import { type FaultProofTurn } from "../fault-proof-turn.js";
 import { planFaultProofFieldOpening } from "../field-opening.js";
 import { requireLinearFaultThreadUtxo } from "../linear-fault-family.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { nativeTxFromCoreCompact } from "../step-support.js";
-import { submitInit } from "../submit-init.js";
+import { buildInit } from "../submit-init.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import {
   captureCursorRemoval,
@@ -16,10 +17,8 @@ import {
 import type { FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import type { FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
 import type { OwnOutputJournal } from "../workflow/own-outputs.js";
-import {
-  captureLocallyEvaluatedTransaction,
-  type LocallyEvaluatedTransaction,
-} from "../workflow/transaction-boundary.js";
+import { journaledStepTransaction } from "../workflow/step-transaction.js";
+import { type LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import {
   admitMintDeclaredAssetLimitArtifact,
   MintDeclaredAssetLimitForcedSourcePayloadSchema,
@@ -27,15 +26,15 @@ import {
 import type { MintDeclaredAssetLimitContracts } from "./contracts.js";
 import { MINT_DECLARED_ASSET_LIMIT_CATEGORY } from "./family.js";
 import {
-  submitMintDeclaredAssetLimitStep01Accepted,
-  submitMintDeclaredAssetLimitStep01Forced,
+  buildMintDeclaredAssetLimitStep01Accepted,
+  buildMintDeclaredAssetLimitStep01Forced,
 } from "./submit-step-01.js";
 import {
+  buildMintDeclaredAssetLimitStep02,
   type MintDeclaredAssetLimitStep02Action,
-  submitMintDeclaredAssetLimitStep02,
 } from "./submit-step-02.js";
-import { submitMintDeclaredAssetLimitStep03 } from "./submit-step-03.js";
-import { submitMintDeclaredAssetLimitStep04 } from "./submit-step-04.js";
+import { buildMintDeclaredAssetLimitStep03 } from "./submit-step-03.js";
+import { buildMintDeclaredAssetLimitStep04 } from "./submit-step-04.js";
 
 export type MintDeclaredAssetLimitWorkflowReferenceScripts = Readonly<{
   steps: readonly [UTxO, UTxO, UTxO, UTxO];
@@ -134,16 +133,16 @@ const inclusionFromArtifact = (
 };
 
 const capture = async (
-  submit: Parameters<typeof captureLocallyEvaluatedTransaction>[0],
+  built: FaultProofTurn<{ readonly transaction: LocallyEvaluatedTransaction }>,
+  label: string,
 ): Promise<MintDeclaredAssetLimitCapturedAction> =>
   Object.freeze({
-    transaction: await captureLocallyEvaluatedTransaction(submit),
+    transaction: (await journaledStepTransaction(built, label)).transaction,
   });
 
 /**
- * Concrete family actuator. Every proof builder reaches the local-evaluation
- * boundary with `awaitConfirmation:false`; the durable workflow owns the only
- * subsequent submit authority.
+ * Concrete family actuator. Every proof builder returns its signed transaction
+ * unsubmitted; the durable workflow owns the only submit authority.
  */
 export const createMintDeclaredAssetLimitActuator = (
   config: BoundMintDeclaredAssetLimitActuatorConfig,
@@ -164,8 +163,8 @@ export const createMintDeclaredAssetLimitActuator = (
         throw new Error("mintDeclaredAssetLimit artifact changed bound header");
       const categoryId = config.binding.resolvedContracts.category.categoryId;
       if (action.stage === "init")
-        return await capture(async (preSubmitBoundary) => {
-          await submitInit({
+        return await capture(
+          await buildInit({
             lucid: config.lucid,
             blueprint: config.binding.blueprint,
             deploymentInfo: config.binding.deploymentInfo,
@@ -175,10 +174,9 @@ export const createMintDeclaredAssetLimitActuator = (
             fraudulentBlockOutRef: action.stateQueueBlockOutRef,
             fraudulentHeaderHash: admitted.artifact.headerHash,
             witnessReferenceScripts: config.references.witnesses,
-            preSubmitBoundary,
-            awaitConfirmation: false,
-          });
-        });
+          }),
+          "mint-declared-asset-limit init",
+        );
       if (action.stage === "step_01") {
         const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
           lucid: config.lucid,
@@ -188,42 +186,40 @@ export const createMintDeclaredAssetLimitActuator = (
           stepIndex: 0,
           threadOutRef: action.threadOutRef,
         });
-        return await capture(async (preSubmitBoundary) => {
-          const common = {
-            lucid: config.lucid,
-            contracts: config.contracts,
-            signer: config.signer,
-            finding: admitted.evidence,
-            referenceScriptUtxo: config.references.steps[0],
-            preSubmitBoundary,
-            awaitConfirmation: false,
-          } as const;
-          if (admitted.artifact.sourceKind === "accepted")
-            await submitMintDeclaredAssetLimitStep01Accepted({
-              ...common,
-              blueprint: config.binding.blueprint,
-              network: config.binding.network,
-              threadUtxo,
-              threadToken,
-              stateQueueBlockOutRef: action.stateQueueBlockOutRef,
-              txInclusion: inclusionFromArtifact(admitted),
-              witnessReferenceScripts: config.references.witnesses,
-            });
-          else
-            await submitMintDeclaredAssetLimitStep01Forced({
-              ...common,
-              categoryId,
-              threadOutRef: action.threadOutRef,
-              forcedSource: Data.from(
-                admitted.artifact.forcedSourceCbor,
-                MintDeclaredAssetLimitForcedSourcePayloadSchema as never,
-              ) as Readonly<Record<string, unknown>>,
-            });
-        });
+        const common = {
+          lucid: config.lucid,
+          contracts: config.contracts,
+          signer: config.signer,
+          finding: admitted.evidence,
+          referenceScriptUtxo: config.references.steps[0],
+        } as const;
+        return await capture(
+          admitted.artifact.sourceKind === "accepted"
+            ? await buildMintDeclaredAssetLimitStep01Accepted({
+                ...common,
+                blueprint: config.binding.blueprint,
+                network: config.binding.network,
+                threadUtxo,
+                threadToken,
+                stateQueueBlockOutRef: action.stateQueueBlockOutRef,
+                txInclusion: inclusionFromArtifact(admitted),
+                witnessReferenceScripts: config.references.witnesses,
+              })
+            : await buildMintDeclaredAssetLimitStep01Forced({
+                ...common,
+                categoryId,
+                threadOutRef: action.threadOutRef,
+                forcedSource: Data.from(
+                  admitted.artifact.forcedSourceCbor,
+                  MintDeclaredAssetLimitForcedSourcePayloadSchema as never,
+                ) as Readonly<Record<string, unknown>>,
+              }),
+          "mint-declared-asset-limit step_01",
+        );
       }
       if (action.stage === "step_02")
-        return await capture(async (preSubmitBoundary) => {
-          await submitMintDeclaredAssetLimitStep02({
+        return await capture(
+          await buildMintDeclaredAssetLimitStep02({
             ownOutputs,
             lucid: config.lucid,
             contracts: config.contracts,
@@ -235,18 +231,17 @@ export const createMintDeclaredAssetLimitActuator = (
             staged: admitted.staged,
             action: action.action,
             referenceScriptUtxo: config.references.steps[1],
-            preSubmitBoundary,
-            awaitConfirmation: false,
-          });
-        });
+          }),
+          "mint-declared-asset-limit step_02",
+        );
       if (action.stage === "step_03") {
         const staged = admitted.staged;
         if (!("walk" in staged))
           throw new Error(
             "mintDeclaredAssetLimit absent policy closes before the fold",
           );
-        return await capture(async (preSubmitBoundary) => {
-          await submitMintDeclaredAssetLimitStep03({
+        return await capture(
+          await buildMintDeclaredAssetLimitStep03({
             ownOutputs,
             lucid: config.lucid,
             contracts: config.contracts,
@@ -258,14 +253,13 @@ export const createMintDeclaredAssetLimitActuator = (
             staged,
             walkOrdinal: action.walkOrdinal,
             referenceScriptUtxo: config.references.steps[2],
-            preSubmitBoundary,
-            awaitConfirmation: false,
-          });
-        });
+          }),
+          "mint-declared-asset-limit step_03",
+        );
       }
       if (action.stage === "step_04")
-        return await capture(async (preSubmitBoundary) => {
-          await submitMintDeclaredAssetLimitStep04({
+        return await capture(
+          await buildMintDeclaredAssetLimitStep04({
             lucid: config.lucid,
             contracts: config.contracts,
             categoryId,
@@ -274,10 +268,9 @@ export const createMintDeclaredAssetLimitActuator = (
             evidence: admitted.evidence,
             referenceScriptUtxo: config.references.steps[3],
             witnessReferenceScripts: config.references.witnesses,
-            preSubmitBoundary,
-            awaitConfirmation: false,
-          });
-        });
+          }),
+          "mint-declared-asset-limit step_04",
+        );
       // A registered family resolves removal through the canonical catalogue:
       // the deployment manifest's `fraudProofMintDeclaredAssetLimit` entry
       // pins the step-01 script, so no explicit category is described here.

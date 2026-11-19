@@ -2,6 +2,10 @@ import { hashBlockHeader } from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
 import {
+  type FaultProofTurn,
+  isPrerequisiteTurn,
+} from "../fault-proof-turn.js";
+import {
   fetchUtxoByOutRef,
   makeLucidForSubmit,
   parseOutRef,
@@ -10,16 +14,14 @@ import {
   resolveProverSigner,
   resolveTransitionTraceDeploymentContracts,
 } from "../runtime.js";
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import {
   requireComputationThreadToken,
   requireInitialStepDatum,
 } from "../step-support.js";
+import { submitFaultProofTurns } from "../submit-fault-proof-turns.js";
 import { createOwnOutputJournal } from "../workflow/own-outputs.js";
-import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary.js";
 import { transitionTraceError } from "./errors.js";
 import {
   resolveTransitionTraceProofCarriage,
@@ -27,22 +29,23 @@ import {
 } from "./proof-carriage.js";
 import { readTransitionProof } from "./proof-material.js";
 import { transitionTraceFinalIndex } from "./submit.make-transition-trace-final-spend-redeemer.js";
+import type { TransitionTraceRouteBuild } from "./submit.make-transition-trace-route-spend-redeemer.js";
 import {
   makeTransitionTraceRouteSpendRedeemer,
   type SubmitTransitionTraceProofConfig,
   type SubmitTransitionTraceProofFromFilesConfig,
   type SubmitTransitionTraceProofResult,
-  type SubmitTransitionTraceRouteResult,
   type TransitionTraceRouteSpendLayout,
 } from "./submit.make-transition-trace-route-spend-redeemer.js";
-import { submitTransitionTraceProof } from "./submit.submit-transition-trace-proof.js";
+import { buildTransitionTraceProof } from "./submit.submit-transition-trace-proof.js";
 import { transitionTraceRouteDatum } from "./submit.transition-trace-route-datum.js";
 
 /**
- * Journal-visible router transaction. It never submits before the signed body
- * has crossed the shared local-evaluation boundary.
+ * The router transaction a journaled workflow submits as its own step. The
+ * proof carriage it reads must already be live unless `publishCarriage` is
+ * set, when its missing publication is returned as the next turn instead.
  */
-export const submitTransitionTraceRoute = async ({
+export const buildTransitionTraceRoute = async ({
   lucid,
   blueprint,
   deploymentInfo,
@@ -50,15 +53,12 @@ export const submitTransitionTraceRoute = async ({
   signer,
   threadOutRef,
   proof: proofInput,
-  preSubmitBoundary,
-  awaitConfirmation = true,
+  publishCarriage = false,
   ownOutputs = createOwnOutputJournal(),
 }: Omit<
   SubmitTransitionTraceProofConfig,
   "additionalReferenceInputs" | "witnessReferenceScripts"
-> & {
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-}): Promise<SubmitTransitionTraceRouteResult> => {
+>): Promise<FaultProofTurn<TransitionTraceRouteBuild>> => {
   const proof = readTransitionProof(proofInput);
   const {
     deploymentInfo: parsedDeploymentInfo,
@@ -125,9 +125,10 @@ export const submitTransitionTraceRoute = async ({
           address: signer.proofMaterialsAddress,
           proof: proofInput,
           ownOutputs,
-          publish: preSubmitBoundary === undefined,
+          publish: publishCarriage,
         })
       : [];
+  if (isPrerequisiteTurn(proofReferences)) return proofReferences;
   const routeDatum = transitionTraceRouteDatum(
     proofInput,
     signer.paymentKeyHash,
@@ -165,27 +166,20 @@ export const submitTransitionTraceRoute = async ({
       "Transition-trace router layout was not resolved.",
     );
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: "transition-trace route",
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: "V1 fraud-proof transition-trace router",
-          utxo: routeReferenceScript,
-          expectedScript: contracts.transitionTrace.firstStep.spendingScript,
-        },
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: "V1 fraud-proof transition-trace router",
+        utxo: routeReferenceScript,
+        expectedScript: contracts.transitionTrace.firstStep.spendingScript,
+      },
+    ],
   });
   return Object.freeze({
-    txHash,
-    routeOutRef: `${txHash}#${layout.outputIndex.toString()}`,
+    transaction,
+    routeOutRef: `${transaction.txHash}#${layout.outputIndex.toString()}`,
     fraudulentHeaderHash: proof.challenged_header_hash,
     finalIndex,
-    awaitedConfirmation: awaitConfirmation,
   });
 };
 
@@ -197,14 +191,21 @@ export const submitTransitionTraceProofFromFiles = async (
     readJsonFile(config.deploymentInfoPath),
     makeLucidForSubmit(config),
   ]);
-  return await submitTransitionTraceProof({
-    lucid,
-    blueprint,
-    deploymentInfo,
-    network: config.network,
-    signer: resolveProverSigner(config),
-    threadOutRef: config.threadOutRef,
-    proof: config.proof,
-    awaitConfirmation: config.awaitConfirmation,
-  });
+  return await submitFaultProofTurns(
+    buildTransitionTraceProof,
+    {
+      lucid,
+      blueprint,
+      deploymentInfo,
+      network: config.network,
+      signer: resolveProverSigner(config),
+      threadOutRef: config.threadOutRef,
+      proof: config.proof,
+      publishCarriage: true,
+    },
+    {
+      label: "transition-trace proof",
+      awaitConfirmation: config.awaitConfirmation ?? true,
+    },
+  );
 };

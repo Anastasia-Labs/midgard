@@ -11,7 +11,10 @@ import {
 import { type FaultProofFieldOpeningPlan } from "../field-opening.js";
 import { type ResolvedProverSigner } from "../runtime.js";
 import type { OwnOutputJournal } from "../workflow/own-outputs.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
+import {
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
+} from "../workflow/transaction-boundary.js";
 import {
   type NetworkIdContracts,
   type NetworkIdStepContract,
@@ -45,14 +48,12 @@ export type SubmitNetworkIdForcedScanParams = {
   readonly certificateUtxos?: readonly UTxO[];
   /** Required only when the certificate has to be resolved from chain. */
   readonly network?: Network;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
 };
 
-export type SubmitNetworkIdForcedScanResult = {
-  readonly txHash: string;
+export type NetworkIdForcedScanBuild = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly nextThreadOutRef: string;
   readonly step: NetworkIdForcedScanStep;
   /** The successor scan state, absent on the batch that completes the walk. */
@@ -60,6 +61,9 @@ export type SubmitNetworkIdForcedScanResult = {
   /** Step 02's terminal state, present only on the completing batch. */
   readonly step02State: NetworkIdStep02State | null;
 };
+
+export type SubmitNetworkIdForcedScanResult =
+  UnjournaledSubmission<NetworkIdForcedScanBuild>;
 
 export const requireForcedScanContract = (
   contracts: NetworkIdContracts,

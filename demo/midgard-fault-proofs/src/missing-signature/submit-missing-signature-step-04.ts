@@ -32,5 +32,8 @@ import "./evidence.js";
 import "./submit-common.js";
 import "./submit-missing-signature-step-04.submit-missing-signature-step04-result.js";
 import "./submit-missing-signature-step-04.submit-missing-signature-step04.js";
-export { submitMissingSignatureStep04 } from "./submit-missing-signature-step-04.submit-missing-signature-step04.js";
-export { type SubmitMissingSignatureStep04Result } from "./submit-missing-signature-step-04.submit-missing-signature-step04-result.js";
+export { buildMissingSignatureStep04 } from "./submit-missing-signature-step-04.submit-missing-signature-step04.js";
+export {
+  type MissingSignatureStep04Build,
+  type SubmitMissingSignatureStep04Result,
+} from "./submit-missing-signature-step-04.submit-missing-signature-step04-result.js";

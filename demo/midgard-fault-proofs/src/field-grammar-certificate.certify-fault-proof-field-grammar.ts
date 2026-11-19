@@ -32,9 +32,10 @@ import { Effect } from "effect";
 
 import { faultProofRawFieldCarriage } from "./field-opening.publish-fault-proof-field-carriage.js";
 import { type ResolvedProverSigner } from "./runtime.js";
-import { submitStep } from "./step-completion.js";
+import { finishStep } from "./step-completion.js";
 import {
-  type FraudProofPreSubmitBoundary,
+  type LocallyEvaluatedTransaction,
+  submitUnjournaled,
   workflowReferenceScript,
 } from "./workflow/transaction-boundary.js";
 
@@ -217,16 +218,72 @@ export type CertifiedFaultProofFieldGrammar = {
   readonly batches: readonly number[];
 };
 
+/** What certifying one field's grammar reads and builds against. */
+export type FaultProofFieldGrammarCertification = Readonly<{
+  lucid: LucidEvolution;
+  network: Network;
+  signer: ResolvedProverSigner;
+  /** The field's carriage plan: its tier, preimage and commitment. */
+  plan: MidgardFieldCarriagePlan;
+  source: FieldGrammarCertificateSource;
+  certificateValidator: Pick<
+    SpendingValidator,
+    "spendingScript" | "spendingScriptHash"
+  >;
+  certificateReferenceScriptUtxo: UTxO;
+  /** The publications (and, under tier 3, the §8.6 certificate) carrying the field. */
+  carriageUtxos?: readonly UTxO[];
+  /** Required under tier 3, whose carriage names its certificate by policy. */
+  fieldPreimageCertificatePolicyId?: string;
+}>;
+
+/** Our live `InProgress` certificate for the field and the item it resumes from. */
+export type FaultProofFieldGrammarProgress = Readonly<{
+  certificateUtxo: UTxO;
+  next: number;
+}>;
+
+/** One signed certificate batch, the items it certifies and the item after it. */
+export type FaultProofFieldGrammarBatch = Readonly<{
+  transaction: LocallyEvaluatedTransaction;
+  batch: number;
+  next: number;
+}>;
+
 /**
- * Certifies a variable-width field's grammar: opens a certificate and
- * advances it batch by batch until it is `Complete`, resuming our own
- * `InProgress` certificate for the field when one is live. A field grammar
- * certificate lets a step read one item of a variable-width field without
- * walking the whole field, so the step's cost no longer grows with the
- * field's item count. The validator runs only from its hash-checked published
- * reference script.
+ * Selects the prover's wallet and reads our own live `InProgress`
+ * certificate for the field: null when there is none, so the next batch
+ * opens a certificate.
  */
-export const certifyFaultProofFieldGrammar = async ({
+export const resumeFaultProofFieldGrammar = async ({
+  lucid,
+  network,
+  signer,
+  plan,
+  certificateValidator,
+}: FaultProofFieldGrammarCertification): Promise<FaultProofFieldGrammarProgress | null> => {
+  const certificatePolicyId = certificateValidator.spendingScriptHash;
+  signer.selectWallet(lucid);
+  const resumed = resumableCertificate({
+    utxos: await lucid.utxosAt(
+      fieldGrammarCertificateAddress({ network, certificatePolicyId }),
+    ),
+    identity: fieldIdentity(certificatePolicyId, plan),
+    grammar: fieldGrammarOfCarriagePlan(plan),
+    ownerKeyHash: signer.paymentKeyHash,
+  });
+  return resumed === undefined
+    ? null
+    : { certificateUtxo: resumed.utxo, next: resumed.next };
+};
+
+/**
+ * Builds and signs one certificate batch for a variable-width field's
+ * grammar: the open when `from` is null, and otherwise the advance of the
+ * `InProgress` certificate `from` names. It submits nothing. The validator
+ * runs only from its hash-checked published reference script.
+ */
+export const buildFaultProofFieldGrammarBatch = async ({
   lucid,
   network,
   signer,
@@ -236,30 +293,12 @@ export const certifyFaultProofFieldGrammar = async ({
   certificateReferenceScriptUtxo,
   carriageUtxos = [],
   fieldPreimageCertificatePolicyId,
-  preSubmitBoundary,
-  awaitConfirmation = true,
-}: {
-  readonly lucid: LucidEvolution;
-  readonly network: Network;
-  readonly signer: ResolvedProverSigner;
-  /** The field's carriage plan: its tier, preimage and commitment. */
-  readonly plan: MidgardFieldCarriagePlan;
-  readonly source: FieldGrammarCertificateSource;
-  readonly certificateValidator: Pick<
-    SpendingValidator,
-    "spendingScript" | "spendingScriptHash"
-  >;
-  readonly certificateReferenceScriptUtxo: UTxO;
-  /** The publications (and, under tier 3, the §8.6 certificate) carrying the field. */
-  readonly carriageUtxos?: readonly UTxO[];
-  /** Required under tier 3, whose carriage names its certificate by policy. */
-  readonly fieldPreimageCertificatePolicyId?: string;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<CertifiedFaultProofFieldGrammar> => {
+  from,
+}: FaultProofFieldGrammarCertification & {
+  readonly from: FaultProofFieldGrammarProgress | null;
+}): Promise<FaultProofFieldGrammarBatch> => {
   const certificatePolicyId = certificateValidator.spendingScriptHash;
   const grammar = fieldGrammarOfCarriagePlan(plan);
-  const identity = fieldIdentity(certificatePolicyId, plan);
   const certificateAddress = fieldGrammarCertificateAddress({
     network,
     certificatePolicyId,
@@ -287,10 +326,34 @@ export const certifyFaultProofFieldGrammar = async ({
     ),
     lovelace: 0n,
   });
-  const submit = async (unsigned: TxSignBuilder): Promise<UTxO> => {
-    const signed = await unsigned.sign.withWallet().complete();
-    const txHash = await submitStep(lucid, signed, {
-      label: "field-grammar certificate",
+  const start = from === null ? 0 : from.next;
+  const batch = fieldGrammarBatchSize(grammar, start);
+  const unsigned: TxSignBuilder = await Effect.runPromise(
+    from === null
+      ? buildUnsignedFieldGrammarCertificateOpenProgram(lucid, {
+          source,
+          carriage,
+          batch,
+          referenceInputs,
+          ...output(batch),
+        })
+      : buildUnsignedFieldGrammarCertificateAdvanceProgram(lucid, {
+          certificateUtxo: from.certificateUtxo,
+          source,
+          checkpoint: encodeMidgardFieldGrammarCheckpoint(
+            plan.txId,
+            grammar,
+            from.next,
+          ).toString("hex"),
+          carriage,
+          batch,
+          referenceInputs,
+          ...output(from.next + batch),
+        }),
+  );
+  const signed = await unsigned.sign.withWallet().complete();
+  return {
+    transaction: finishStep(signed, {
       referenceScripts: [
         workflowReferenceScript({
           role: "field-grammar-certificate",
@@ -298,10 +361,52 @@ export const certifyFaultProofFieldGrammar = async ({
           expectedScript: certificateValidator.spendingScript,
         }),
       ],
-      boundary: preSubmitBoundary,
+    }),
+    batch,
+    next: start + batch,
+  };
+};
+
+/**
+ * Certifies a variable-width field's grammar: opens a certificate and
+ * advances it batch by batch until it is `Complete`, resuming our own
+ * `InProgress` certificate for the field when one is live. A field grammar
+ * certificate lets a step read one item of a variable-width field without
+ * walking the whole field, so the step's cost no longer grows with the
+ * field's item count.
+ *
+ * It sends each certificate batch directly, outside the workflow journal,
+ * and waits for it when `awaitConfirmation` holds (the default) before
+ * building the next. The step builders that route a certified read through
+ * it (`routeFaultProofFieldGrammar`) therefore submit before they return:
+ * the one exception to a builder returning its transaction and submitting
+ * nothing.
+ */
+export const certifyFaultProofFieldGrammar = async ({
+  awaitConfirmation = true,
+  ...input
+}: FaultProofFieldGrammarCertification & {
+  readonly awaitConfirmation?: boolean;
+}): Promise<CertifiedFaultProofFieldGrammar> => {
+  const { lucid, network, plan, certificateValidator } = input;
+  const certificatePolicyId = certificateValidator.spendingScriptHash;
+  const identity = fieldIdentity(certificatePolicyId, plan);
+  const certificateAddress = fieldGrammarCertificateAddress({
+    network,
+    certificatePolicyId,
+  });
+  const unit = fieldGrammarCertificateUnit(certificatePolicyId);
+  const itemCount = fieldGrammarOfCarriagePlan(plan).itemCount;
+  const txHashes: string[] = [];
+  const batches: number[] = [];
+  let from = await resumeFaultProofFieldGrammar(input);
+  let certificateUtxo = from?.certificateUtxo;
+  while (from === null || from.next < itemCount) {
+    const built = await buildFaultProofFieldGrammarBatch({ ...input, from });
+    const txHash = await submitUnjournaled(lucid, built.transaction, {
+      label: "field-grammar certificate",
       awaitConfirmation,
     });
-    const unit = fieldGrammarCertificateUnit(certificatePolicyId);
     const live = (await lucid.utxosAt(certificateAddress)).find(
       (utxo) => utxo.txHash === txHash && utxo.assets[unit] === 1n,
     );
@@ -310,64 +415,15 @@ export const certifyFaultProofFieldGrammar = async ({
         `field grammar certificate transaction ${txHash} left no certificate at ${certificateAddress}`,
       );
     }
-    return live;
-  };
-
-  signer.selectWallet(lucid);
-  const resumed = resumableCertificate({
-    utxos: await lucid.utxosAt(certificateAddress),
-    identity,
-    grammar,
-    ownerKeyHash: signer.paymentKeyHash,
-  });
-  const txHashes: string[] = [];
-  const batches: number[] = [];
-  let certificateUtxo: UTxO;
-  let next: number;
-  if (resumed === undefined) {
-    const batch = fieldGrammarBatchSize(grammar, 0);
-    certificateUtxo = await submit(
-      await Effect.runPromise(
-        buildUnsignedFieldGrammarCertificateOpenProgram(lucid, {
-          source,
-          carriage,
-          batch,
-          referenceInputs,
-          ...output(batch),
-        }),
-      ),
-    );
-    txHashes.push(certificateUtxo.txHash);
-    batches.push(batch);
-    next = batch;
-  } else {
-    certificateUtxo = resumed.utxo;
-    next = resumed.next;
+    certificateUtxo = live;
+    txHashes.push(live.txHash);
+    batches.push(built.batch);
+    from = { certificateUtxo: live, next: built.next };
   }
-  while (next < grammar.itemCount) {
-    const batch = fieldGrammarBatchSize(grammar, next);
-    certificateUtxo = await submit(
-      await Effect.runPromise(
-        buildUnsignedFieldGrammarCertificateAdvanceProgram(lucid, {
-          certificateUtxo,
-          source,
-          checkpoint: encodeMidgardFieldGrammarCheckpoint(
-            plan.txId,
-            grammar,
-            next,
-          ).toString("hex"),
-          carriage,
-          batch,
-          referenceInputs,
-          ...output(next + batch),
-        }),
-      ),
-    );
-    txHashes.push(certificateUtxo.txHash);
-    batches.push(batch);
-    next += batch;
-  }
-  if (!isCompleteFieldGrammarCertificate(certificateUtxo, identity)) {
+  if (
+    certificateUtxo === undefined ||
+    !isCompleteFieldGrammarCertificate(certificateUtxo, identity)
+  ) {
     throw new Error("field grammar certificate did not reach Complete");
   }
   return { certificateUtxo, txHashes, batches };

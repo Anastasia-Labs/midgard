@@ -1,5 +1,9 @@
 import { type UTxO } from "@lucid-evolution/lucid";
 
+import {
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
+} from "../workflow/transaction-boundary.js";
 import type { InputSetUniquenessClaim } from "./scan.js";
 import {
   inputSetUniquenessStepLabel,
@@ -8,8 +12,8 @@ import {
 
 export const STEP_LABEL = inputSetUniquenessStepLabel(1);
 
-export type SubmitInputSetUniquenessStep02Result = {
-  readonly txHash: string;
+export type InputSetUniquenessStep02Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -28,8 +32,10 @@ export type SubmitInputSetUniquenessStep02Result = {
   readonly outputIndex: number;
   readonly computationThreadMintRedeemerIndex: number;
   readonly fraudProofMintRedeemerIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
+
+export type SubmitInputSetUniquenessStep02Result =
+  UnjournaledSubmission<InputSetUniquenessStep02Build>;
 
 export type Step02SpendLayout = {
   readonly inputIndex: bigint;

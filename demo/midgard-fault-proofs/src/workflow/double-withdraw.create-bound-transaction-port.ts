@@ -2,18 +2,17 @@ import { DOUBLE_WITHDRAW_VIOLATION_ID } from "@al-ft/midgard-sdk";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 import type { DoubleWithdrawContracts } from "../double-withdraw/contracts.js";
-import { submitDoubleWithdrawInit } from "../double-withdraw/submit-double-withdraw-init.js";
-import { submitDoubleWithdrawStep01 } from "../double-withdraw/submit-double-withdraw-step-01.js";
-import { submitDoubleWithdrawStep02 } from "../double-withdraw/submit-double-withdraw-step-02.js";
+import { buildDoubleWithdrawInit } from "../double-withdraw/submit-double-withdraw-init.js";
+import { buildDoubleWithdrawStep01 } from "../double-withdraw/submit-double-withdraw-step-01.js";
+import { buildDoubleWithdrawStep02 } from "../double-withdraw/submit-double-withdraw-step-02.js";
 import {
   admitCanonicalEvidenceForProofBuild,
   type CanonicalEvidenceBuilderInput,
 } from "../evidence/prepare-from-evidence.js";
 import { prepareDoubleWithdrawFromCommittedLeaves } from "../prepare-double-withdraw.js";
 import {
-  type StateQueueMutationLease,
+  buildRemoveFraudulentBlock,
   type StateQueueMutationLeaseCoordinator,
-  submitRemoveFraudulentBlock,
 } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { CanonicalBlockClassification } from "./classification.js";
@@ -39,8 +38,9 @@ import {
   type LinearFamilyTransactionPort,
 } from "./linear-family-adapter.js";
 import { type FraudProofWorkflowAction } from "./orchestrator.js";
+import { admitRemovalTransaction } from "./removal-admission.js";
+import { journaledStepTransaction } from "./step-transaction.js";
 import {
-  captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
   workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary.js";
@@ -138,17 +138,17 @@ export type BoundDoubleWithdrawTransactionsConfig = Readonly<{
 }>;
 
 export type DoubleWithdrawBuilderSet = Readonly<{
-  init: typeof submitDoubleWithdrawInit;
-  step01: typeof submitDoubleWithdrawStep01;
-  step02: typeof submitDoubleWithdrawStep02;
-  remove: typeof submitRemoveFraudulentBlock;
+  init: typeof buildDoubleWithdrawInit;
+  step01: typeof buildDoubleWithdrawStep01;
+  step02: typeof buildDoubleWithdrawStep02;
+  remove: typeof buildRemoveFraudulentBlock;
 }>;
 
 export const productionBuilders: DoubleWithdrawBuilderSet = Object.freeze({
-  init: submitDoubleWithdrawInit,
-  step01: submitDoubleWithdrawStep01,
-  step02: submitDoubleWithdrawStep02,
-  remove: submitRemoveFraudulentBlock,
+  init: buildDoubleWithdrawInit,
+  step01: buildDoubleWithdrawStep01,
+  step02: buildDoubleWithdrawStep02,
+  remove: buildRemoveFraudulentBlock,
 });
 
 const requiredAction = (
@@ -196,8 +196,8 @@ export const createBoundTransactionPort = ({
     }
     const input = requiredAction(action);
     if (input.stage === "init") {
-      const transaction = await captureLocallyEvaluatedTransaction(
-        async (preSubmitBoundary) => {
+      const transaction = (
+        await journaledStepTransaction(
           await builders.init({
             lucid: config.lucid,
             blueprint: config.blueprint,
@@ -209,16 +209,15 @@ export const createBoundTransactionPort = ({
             fraudulentBlockOutRef: stringField(input, "stateQueueBlockOutRef"),
             fraudulentHeaderHash: config.headerHash,
             witnessReferenceScripts: config.referenceScripts.witnesses,
-            preSubmitBoundary,
-            awaitConfirmation: false,
-          });
-        },
-      );
+          }),
+          "double-withdraw init",
+        )
+      ).transaction;
       return Object.freeze({ transaction });
     }
     if (input.stage === "step_01") {
-      const transaction = await captureLocallyEvaluatedTransaction(
-        async (preSubmitBoundary) => {
+      const transaction = (
+        await journaledStepTransaction(
           await builders.step01({
             lucid: config.lucid,
             contracts: config.contracts,
@@ -229,16 +228,15 @@ export const createBoundTransactionPort = ({
             stateQueueBlockOutRef: stringField(input, "stateQueueBlockOutRef"),
             inclusion: admitted.firstInclusion,
             referenceScriptUtxo: config.referenceScripts.steps[0],
-            preSubmitBoundary,
-            awaitConfirmation: false,
-          });
-        },
-      );
+          }),
+          "double-withdraw step01",
+        )
+      ).transaction;
       return Object.freeze({ transaction });
     }
     if (input.stage === "step_02") {
-      const transaction = await captureLocallyEvaluatedTransaction(
-        async (preSubmitBoundary) => {
+      const transaction = (
+        await journaledStepTransaction(
           await builders.step02({
             lucid: config.lucid,
             contracts: config.contracts,
@@ -250,67 +248,51 @@ export const createBoundTransactionPort = ({
             inclusion: admitted.secondInclusion,
             referenceScriptUtxo: config.referenceScripts.steps[1],
             witnessReferenceScripts: config.referenceScripts.witnesses,
-            preSubmitBoundary,
-            awaitConfirmation: false,
-          });
-        },
-      );
+          }),
+          "double-withdraw step02",
+        )
+      ).transaction;
       return Object.freeze({ transaction });
     }
     if (input.stage === "remove") {
-      let mutationLease: StateQueueMutationLease | undefined;
-      const retainingCoordinator: StateQueueMutationLeaseCoordinator = {
-        acquire: async () => {
-          const acquired =
-            await config.stateQueueMutationLeaseCoordinator.acquire();
-          mutationLease = acquired;
-          return acquired;
-        },
-      };
       const nextRemovalOutRef = stringField(input, "nextRemovalOutRef");
       const fraudProofOutRef = stringField(input, "fraudProofOutRef");
-      const transaction = await captureLocallyEvaluatedTransaction(
-        async (boundary) => {
-          await builders.remove({
-            fraudProofOutRef,
-            lucid: config.lucid,
-            blueprint: config.blueprint,
-            deploymentInfo: config.deploymentInfo,
-            network: config.network,
-            signer: config.signer,
-            fraudCategory: "doubleWithdraw",
-            fraudulentHeaderHash: config.headerHash,
-            requireReferenceScripts: true,
-            stateQueueMutationLeaseCoordinator: retainingCoordinator,
-            fraudProverRewardLovelace: config.fraudProverRewardLovelace,
-            preSubmitBoundary: async (built) => {
-              if (
-                !workflowTransactionInputOutRefs(built.signed).includes(
-                  nextRemovalOutRef,
-                )
-              ) {
-                throw new Error(
-                  "double-withdraw removal does not consume the authenticated next queue input",
-                );
-              }
-              if (
-                !workflowTransactionReferenceInputOutRefs(
-                  built.signed,
-                ).includes(fraudProofOutRef)
-              ) {
-                throw new Error(
-                  "double-withdraw removal does not reference the authenticated retained proof token",
-                );
-              }
-              await boundary(built);
-            },
-          });
+      return await admitRemovalTransaction(
+        await builders.remove({
+          fraudProofOutRef,
+          lucid: config.lucid,
+          blueprint: config.blueprint,
+          deploymentInfo: config.deploymentInfo,
+          network: config.network,
+          signer: config.signer,
+          fraudCategory: "doubleWithdraw",
+          fraudulentHeaderHash: config.headerHash,
+          requireReferenceScripts: true,
+          stateQueueMutationLeaseCoordinator:
+            config.stateQueueMutationLeaseCoordinator,
+          fraudProverRewardLovelace: config.fraudProverRewardLovelace,
+        }),
+        async (built) => {
+          if (
+            !workflowTransactionInputOutRefs(built.signed).includes(
+              nextRemovalOutRef,
+            )
+          ) {
+            throw new Error(
+              "double-withdraw removal does not consume the authenticated next queue input",
+            );
+          }
+          if (
+            !workflowTransactionReferenceInputOutRefs(built.signed).includes(
+              fraudProofOutRef,
+            )
+          ) {
+            throw new Error(
+              "double-withdraw removal does not reference the authenticated retained proof token",
+            );
+          }
         },
       );
-      return Object.freeze({
-        transaction,
-        ...(mutationLease === undefined ? {} : { mutationLease }),
-      });
     }
     throw new Error(
       `double-withdraw workflow action has unsupported stage ${String(input.stage)}`,

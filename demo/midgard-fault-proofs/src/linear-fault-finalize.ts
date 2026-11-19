@@ -22,23 +22,16 @@ import {
   linearFaultStepLabel,
   requireLinearFaultReferenceScript,
 } from "./linear-fault-family.js";
-import {
-  completeStep,
-  fundStep,
-  type StepSigner,
-  submitStep,
-} from "./step-completion.js";
+import { completeStep, fundStep, type StepSigner } from "./step-completion.js";
+import { finishStep } from "./step-completion.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
 } from "./witness-reference-scripts.js";
-import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScript,
-} from "./workflow/transaction-boundary.js";
+import { workflowReferenceScript } from "./workflow/transaction-boundary.js";
 
-export const submitLinearFaultFinalize = async ({
+export const buildLinearFaultFinalize = async ({
   lucid,
   family,
   stepIndex,
@@ -54,8 +47,6 @@ export const submitLinearFaultFinalize = async ({
   carriageUtxos = [],
   extraReferenceInputs = [],
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation,
 }: {
   readonly lucid: LucidEvolution;
   readonly family: string;
@@ -94,8 +85,6 @@ export const submitLinearFaultFinalize = async ({
   readonly carriageUtxos?: readonly UTxO[];
   readonly extraReferenceInputs?: readonly UTxO[];
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation: boolean;
 }) => {
   const label = linearFaultStepLabel(family, stepIndex);
   const stepReference = requireLinearFaultReferenceScript({
@@ -201,8 +190,7 @@ export const submitLinearFaultFinalize = async ({
   if (spendLayout === undefined || threadMintRedeemerIndex === undefined) {
     throw new Error(`${label}: unresolved final layout`);
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: label,
+  const transaction = finishStep(signed, {
     referenceScripts: [
       workflowReferenceScript({
         role: label,
@@ -220,12 +208,10 @@ export const submitLinearFaultFinalize = async ({
         expectedScript: fraudProof.mintingScript,
       }),
     ],
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
   });
   return {
-    txHash,
-    fraudProofOutRef: `${txHash}#${spendLayout.outputIndex.toString()}`,
+    transaction,
+    fraudProofOutRef: `${transaction.txHash}#${spendLayout.outputIndex.toString()}`,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadUnit: threadToken.unit,
     fraudProofUnit,

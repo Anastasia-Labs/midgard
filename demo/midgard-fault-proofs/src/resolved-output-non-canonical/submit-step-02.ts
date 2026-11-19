@@ -16,6 +16,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { isPrerequisiteTurn } from "../fault-proof-turn.js";
 import {
   faultProofFieldOpening,
   planFaultProofFieldOpening,
@@ -27,14 +28,13 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { ResolvedOutputNonCanonicalContracts } from "./contracts.js";
 import {
   type ResolvedOutputAbsentInputEvidence,
@@ -48,7 +48,7 @@ import {
   ResolvedOutputStep05DatumSchema,
 } from "./schemas.js";
 
-export const submitResolvedOutputNonCanonicalStep02 = async ({
+export const buildResolvedOutputNonCanonicalStep02 = async ({
   lucid,
   contracts,
   categoryId,
@@ -62,10 +62,6 @@ export const submitResolvedOutputNonCanonicalStep02 = async ({
   certificateUtxo: suppliedCertificateUtxo,
   certificateReferenceScriptUtxo,
   referenceScriptUtxo,
-  publicationPreSubmitBoundary,
-  certificatePreSubmitBoundary,
-  preSubmitBoundary,
-  awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
@@ -85,10 +81,6 @@ export const submitResolvedOutputNonCanonicalStep02 = async ({
   readonly certificateUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
   readonly certificateReferenceScriptUtxo?: UTxO;
-  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly certificatePreSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
 }) => {
@@ -159,8 +151,8 @@ export const submitResolvedOutputNonCanonicalStep02 = async ({
           planned,
           publisherAddress: signer.proofMaterialsAddress,
           label: "resolved-output-non-canonical field opening",
-          preSubmitBoundary: publicationPreSubmitBoundary,
         })));
+  if (isPrerequisiteTurn(carriageUtxos)) return carriageUtxos;
   const certificateUtxo =
     suppliedCertificateUtxo ??
     (planned?.plan.tier === "Certified"
@@ -179,9 +171,9 @@ export const submitResolvedOutputNonCanonicalStep02 = async ({
           chunkUtxos: carriageUtxos,
           compactCbor: nativeTxCompactCbor,
           witnessSetCompactCbor,
-          preSubmitBoundary: certificatePreSubmitBoundary,
         })
       : undefined);
+  if (isPrerequisiteTurn(certificateUtxo)) return certificateUtxo;
   const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[1].spendingScriptHash,
@@ -253,7 +245,7 @@ export const submitResolvedOutputNonCanonicalStep02 = async ({
       ResolvedOutputStep02RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -267,14 +259,12 @@ export const submitResolvedOutputNonCanonicalStep02 = async ({
     carriageUtxos,
     extraReferenceInputs:
       certificateUtxo === undefined ? [] : [certificateUtxo],
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined)
     throw new Error("resolved-output-non-canonical: step-02 layout unresolved");
   return {
-    txHash,
-    nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
     carriageTier: planned?.plan.tier ?? null,
     nextStage: absent ? ("step05" as const) : ("step03" as const),
   };

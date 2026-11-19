@@ -25,78 +25,20 @@ import type { FieldCarriageRequirement } from "../workflow/field-carriage-prereq
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { createCanonicalFamilyArtifactPort } from "../workflow/manifest-bound-family-recovery.js";
-import {
-  captureLocallyEvaluatedTransaction,
-  workflowTransactionInputOutRefs,
-} from "../workflow/transaction-boundary.js";
-import {
-  runTransactionOutputProof,
-  type TransactionOutputEvidence,
-  type TransactionOutputJournal,
-  type TransactionOutputStage,
-} from "./transaction-output-non-canonical.js";
+import { journaledStepTransaction } from "../workflow/step-transaction.js";
+import { workflowTransactionInputOutRefs } from "../workflow/transaction-boundary.js";
+import { type TransactionOutputStage } from "./transaction-output-non-canonical.js";
 import { createManifestBoundTransactionOutputNonCanonicalSubmission } from "./workflow.create-manifest-bound-transaction-output-non-canonical-submission.js";
 import {
   deriveTransactionOutputNonCanonicalAuthenticatedSource,
   deriveTransactionOutputNonCanonicalEvidenceFromCanonicalBlock,
 } from "./workflow.derive-transaction-output-non-canonical-authenticated-source.js";
-import {
-  createTransactionOutputNonCanonicalRawL1StageResolver,
-  type TransactionOutputNonCanonicalRuntimeLoader,
-} from "./workflow.detect-transaction-output-non-canonical-complete-replay.js";
+import { createTransactionOutputNonCanonicalRawL1StageResolver } from "./workflow.detect-transaction-output-non-canonical-complete-replay.js";
 import {
   type LoadManifestBoundTransactionOutputNonCanonicalConfig,
-  loadManifestBoundTransactionOutputNonCanonicalConfig,
   type ManifestBoundTransactionOutputNonCanonicalConfig,
   TRANSACTION_OUTPUT_NON_CANONICAL_WORKFLOW,
 } from "./workflow.transaction-output-non-canonical-config-from-binding.js";
-
-export const loadTransactionOutputNonCanonicalRuntime = async (
-  input: TransactionOutputNonCanonicalRuntimeLoader,
-) => {
-  const config = await loadManifestBoundTransactionOutputNonCanonicalConfig(
-    input.config,
-  );
-  return createManifestBoundTransactionOutputNonCanonicalRuntime({
-    config,
-    journal: input.journal,
-    observe: input.observe,
-    resolveStage: input.resolveStage,
-  });
-};
-
-export const createManifestBoundTransactionOutputNonCanonicalRuntime = ({
-  config,
-  journal,
-  observe,
-  resolveStage,
-  stateQueueMutationLeaseCoordinator,
-}: {
-  readonly config: ManifestBoundTransactionOutputNonCanonicalConfig;
-  readonly journal: TransactionOutputJournal;
-  readonly observe: TransactionOutputNonCanonicalRuntimeLoader["observe"];
-  readonly resolveStage: TransactionOutputNonCanonicalRuntimeLoader["resolveStage"];
-  readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
-}) => {
-  const submission = createManifestBoundTransactionOutputNonCanonicalSubmission(
-    {
-      config,
-      observe,
-      resolveStage,
-      stateQueueMutationLeaseCoordinator,
-    },
-  );
-  return Object.freeze({
-    runtimeVersion: TRANSACTION_OUTPUT_NON_CANONICAL_WORKFLOW,
-    config,
-    runOrResume: async (evidence: TransactionOutputEvidence) =>
-      await runTransactionOutputProof({
-        evidence,
-        journal,
-        submission,
-      }),
-  });
-};
 
 export type ManifestBoundTransactionOutputNonCanonicalWorkflowConfig =
   LoadManifestBoundTransactionOutputNonCanonicalConfig &
@@ -211,33 +153,30 @@ const createTransactionOutputNonCanonicalRecoveryPorts = (
         throw new Error(
           `${category} cursor action is outside its exact topology`,
         );
-      const transaction = await captureLocallyEvaluatedTransaction(
-        async (preSubmitBoundary) => {
-          const submission =
-            createManifestBoundTransactionOutputNonCanonicalSubmission({
-              ownOutputs: workflowFieldCarriageOwnOutputs({
-                category,
-                entries,
-              }),
-              config,
-              preSubmitBoundary,
-              observe: async () =>
-                transactionOutputStageFromL1(
-                  (
-                    await l1.observe({
-                      headerHash: binding.definition.headerHash,
-                    })
-                  ).stage,
-                ),
-              resolveStage:
-                createTransactionOutputNonCanonicalRawL1StageResolver({
-                  config,
-                  l1,
-                  source: admitted.source,
-                }),
-            });
-          await submission.submit(familyAction, admitted.evidence);
-        },
+      const submission =
+        createManifestBoundTransactionOutputNonCanonicalSubmission({
+          ownOutputs: workflowFieldCarriageOwnOutputs({
+            category,
+            entries,
+          }),
+          config,
+          observe: async () =>
+            transactionOutputStageFromL1(
+              (
+                await l1.observe({
+                  headerHash: binding.definition.headerHash,
+                })
+              ).stage,
+            ),
+          resolveStage: createTransactionOutputNonCanonicalRawL1StageResolver({
+            config,
+            l1,
+            source: admitted.source,
+          }),
+        });
+      const { transaction } = await journaledStepTransaction(
+        await submission.submit(familyAction, admitted.evidence),
+        `${category} ${familyAction}`,
       );
       if (
         input.stage !== "init" &&

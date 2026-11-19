@@ -7,10 +7,10 @@ import { describe, expect, it } from "vitest";
 import {
   buildCountedRoot,
   buildTransitionFaultProof,
+  buildTransitionTraceProof,
   detectTransitionTraceFaults,
   resolveTransitionTraceDeploymentContracts,
   rootCountProof,
-  submitTransitionTraceProof,
   transitionTraceFinalIndex,
 } from "../src/index.js";
 import {
@@ -31,6 +31,7 @@ import {
   transitionTraceDaEntry,
   transitionTraceOutRef,
 } from "./support/submit-init-emulator-shared.js";
+import { submitTurnsUnjournaled } from "./support/submit-unjournaled.js";
 
 type ShortRoot = "withdrawals" | "transitionTrace" | "eventToStep";
 
@@ -169,7 +170,7 @@ const landCountBlock = async ({
 type Landed = Awaited<ReturnType<typeof landCountBlock>>;
 
 const submit = async (landed: Landed, proof: SDK.TransitionFaultProof) =>
-  await submitTransitionTraceProof({
+  await submitTurnsUnjournaled(buildTransitionTraceProof, {
     lucid: landed.harness.proverLucid,
     blueprint: landed.harness.realBlueprint,
     deploymentInfo: landed.lifecycle.deploymentInfo,

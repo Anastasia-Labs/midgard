@@ -4,10 +4,9 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultFinalize } from "../linear-fault-finalize.js";
+import { buildLinearFaultFinalize } from "../linear-fault-finalize.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { MintDeclaredAssetLimitContracts } from "./contracts.js";
 import {
   type MintDeclaredAssetLimitEvidence,
@@ -24,7 +23,7 @@ import {
  * lets a lifecycle hand an honest decision to the validator and observe the
  * on-chain refusal.
  */
-export const submitMintDeclaredAssetLimitStep04Raw = async ({
+export const buildMintDeclaredAssetLimitStep04Raw = async ({
   lucid,
   contracts,
   categoryId,
@@ -34,8 +33,6 @@ export const submitMintDeclaredAssetLimitStep04Raw = async ({
   crossing,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: MintDeclaredAssetLimitContracts;
@@ -46,8 +43,6 @@ export const submitMintDeclaredAssetLimitStep04Raw = async ({
   readonly crossing: boolean;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 3;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
@@ -73,7 +68,7 @@ export const submitMintDeclaredAssetLimitStep04Raw = async ({
     throw new Error(
       "mintDeclaredAssetLimit: terminal datum differs from evidence",
     );
-  return await submitLinearFaultFinalize({
+  return await buildLinearFaultFinalize({
     lucid,
     family: "mint-declared-asset-limit",
     stepIndex,
@@ -95,12 +90,10 @@ export const submitMintDeclaredAssetLimitStep04Raw = async ({
     }),
     referenceScriptUtxo,
     witnessReferenceScripts,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
 };
 
-export const submitMintDeclaredAssetLimitStep04 = async ({
+export const buildMintDeclaredAssetLimitStep04 = async ({
   evidence,
   ...rest
 }: {
@@ -112,12 +105,10 @@ export const submitMintDeclaredAssetLimitStep04 = async ({
   readonly evidence: MintDeclaredAssetLimitEvidence;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   if (!mintDeclaredAssetLimitEvidenceCloses(evidence))
     throw new Error("mintDeclaredAssetLimit: terminal evidence is honest");
-  return await submitMintDeclaredAssetLimitStep04Raw({
+  return await buildMintDeclaredAssetLimitStep04Raw({
     ...rest,
     policyIndex: evidence.policyIndex,
     crossing: evidence.crossing,

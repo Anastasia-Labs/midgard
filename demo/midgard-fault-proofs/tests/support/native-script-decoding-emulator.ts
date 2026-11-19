@@ -42,7 +42,7 @@ import "@al-ft/midgard-validation";
 import "@lucid-evolution/lucid";
 import "effect";
 import "../../src/native-script-decoding/evidence.js";
-import "../../src/native-script-decoding/prover.js";
+import "./native-script-decoding-prover.js";
 import "../../src/native-script-decoding/submit-common.js";
 import "../../src/runtime.js";
 import "../../src/spend-input-witness.js";
@@ -98,3 +98,4 @@ export {
  * as a passing security assertion.
  */
 export { expectOnchainRefusal } from "./emulator/expect-onchain-refusal.js";
+export * from "./submit-unjournaled.native-script-decoding.js";

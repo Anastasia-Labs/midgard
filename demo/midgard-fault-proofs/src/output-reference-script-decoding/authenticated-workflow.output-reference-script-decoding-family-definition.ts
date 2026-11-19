@@ -24,10 +24,8 @@ import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-ob
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { SCRIPT_DECODE_REFERENCE_SCRIPTS } from "../workflow/script-decode-prerequisite.js";
-import {
-  captureLocallyEvaluatedTransaction,
-  workflowTransactionInputOutRefs,
-} from "../workflow/transaction-boundary.js";
+import { journaledStepTransaction } from "../workflow/step-transaction.js";
+import { workflowTransactionInputOutRefs } from "../workflow/transaction-boundary.js";
 import { createManifestBoundOutputReferenceScriptDecodingSubmission } from "./authenticated-workflow.create-manifest-bound-output-reference-script-decoding-submission.js";
 import {
   type LoadManifestBoundOutputReferenceScriptDecodingConfig,
@@ -162,33 +160,31 @@ export const OUTPUT_REFERENCE_SCRIPT_DECODING_FAMILY_DEFINITION = defineFamily<
             throw new Error(
               `${category} cursor action is outside its exact topology`,
             );
-          const transaction = await captureLocallyEvaluatedTransaction(
-            async (preSubmitBoundary) => {
-              const submission =
-                createManifestBoundOutputReferenceScriptDecodingSubmission({
-                  ownOutputs: workflowFieldCarriageOwnOutputs({
-                    category,
-                    entries,
-                  }),
+          const submission =
+            createManifestBoundOutputReferenceScriptDecodingSubmission({
+              ownOutputs: workflowFieldCarriageOwnOutputs({
+                category,
+                entries,
+              }),
+              config,
+              observe: async () =>
+                outputReferenceScriptDecodingStageFromL1(
+                  (
+                    await l1.observe({
+                      headerHash: binding.definition.headerHash,
+                    })
+                  ).stage,
+                ),
+              resolveStage:
+                createOutputReferenceScriptDecodingRawL1StageResolver({
                   config,
-                  preSubmitBoundary,
-                  observe: async () =>
-                    outputReferenceScriptDecodingStageFromL1(
-                      (
-                        await l1.observe({
-                          headerHash: binding.definition.headerHash,
-                        })
-                      ).stage,
-                    ),
-                  resolveStage:
-                    createOutputReferenceScriptDecodingRawL1StageResolver({
-                      config,
-                      l1,
-                      source: admitted.source,
-                    }),
-                });
-              await submission.submit(familyAction, admitted.evidence);
-            },
+                  l1,
+                  source: admitted.source,
+                }),
+            });
+          const { transaction } = await journaledStepTransaction(
+            await submission.submit(familyAction, admitted.evidence),
+            `${category} ${familyAction}`,
           );
           if (
             input.stage !== "init" &&

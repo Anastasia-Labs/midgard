@@ -24,10 +24,9 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { ResolvedOutputNonCanonicalContracts } from "./contracts.js";
 import {
   RESOLVED_OUTPUT_DATUM_CHUNK_BYTES,
@@ -110,7 +109,7 @@ export const resolvedOutputDatumStepArgs = ({
  * the output's verdict. The planned step is the one whose checkpoint the
  * thread holds, so a restart resumes where the chain stands.
  */
-export const submitResolvedOutputNonCanonicalStep04Datum = async ({
+export const buildResolvedOutputNonCanonicalStep04Datum = async ({
   lucid,
   contracts,
   categoryId,
@@ -118,8 +117,6 @@ export const submitResolvedOutputNonCanonicalStep04Datum = async ({
   threadOutRef,
   evidence,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: ResolvedOutputNonCanonicalContracts;
@@ -128,8 +125,6 @@ export const submitResolvedOutputNonCanonicalStep04Datum = async ({
   readonly threadOutRef: string;
   readonly evidence: ResolvedOutputEvidence;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const plan = evidence.datumPlan;
   if (plan === null)
@@ -230,7 +225,7 @@ export const submitResolvedOutputNonCanonicalStep04Datum = async ({
       ResolvedOutputStep04DatumRedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -242,14 +237,12 @@ export const submitResolvedOutputNonCanonicalStep04Datum = async ({
     nextDatum,
     redeemer,
     carriageUtxos: [],
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined)
     throw new Error(`${FAMILY}: step-04 datum layout unresolved`);
   return {
-    txHash,
-    nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
     finished,
     nextStage: finished ? ("step05" as const) : ("step04Datum" as const),
   };

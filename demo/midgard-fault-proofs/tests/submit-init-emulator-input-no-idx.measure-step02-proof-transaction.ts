@@ -4,7 +4,7 @@ import { outRefLabel } from "@al-ft/midgard-core";
 import { CML, PROTOCOL_PARAMETERS_DEFAULT } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import { submitInputNoIdxStep01 } from "../src/index.js";
+import { buildInputNoIdxStep01 } from "../src/index.js";
 import {
   HALF_CANONICAL_MATURITY_MS,
   type InputNoIdxBlockFixture,
@@ -12,13 +12,14 @@ import {
   STEP02_RELEASE_CPU_LIMIT,
   STEP02_RELEASE_MEMORY_LIMIT,
 } from "./submit-init-emulator-input-no-idx.build-input-no-idx-block-fixture.js";
-import { submitInit } from "./support/legacy-submit-emulator.js";
+import { buildInit } from "./support/legacy-submit-emulator.js";
 import { setupFraudulentBlock as setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
 import {
   buildRemovalDeploymentInfo,
   expectSingleUtxoWithUnit,
   network,
 } from "./support/submit-init-emulator-shared.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 /*
  * The byte-exact `CompletePublished` proof-fit pin that stood here is **gone,
@@ -130,7 +131,7 @@ export const startInputNoIdxStep02Thread = async ({
     harness.contracts,
     harness.catalogue,
   );
-  const initResult = await submitInit({
+  const initResult = await buildAndSubmitUnjournaled(buildInit, {
     lucid: harness.proverLucid,
     witnessReferenceScripts: harness.witnessReferenceScripts,
     blueprint: harness.realBlueprint,
@@ -146,7 +147,7 @@ export const startInputNoIdxStep02Thread = async ({
     initResult.firstStepAddress,
     initResult.computationThreadUnit,
   );
-  const step01Result = await submitInputNoIdxStep01({
+  const step01Result = await buildAndSubmitUnjournaled(buildInputNoIdxStep01, {
     lucid: harness.proverLucid,
     referenceScriptUtxo:
       harness.faultProofReferenceScripts.fraudProofNonExistentInputNoIndex!

@@ -26,16 +26,14 @@ import {
   phasMembershipRewardAddress,
   type ResolvedProverSigner,
 } from "../runtime.js";
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts.js";
-import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScript,
-} from "../workflow/transaction-boundary.js";
+import { workflowReferenceScript } from "../workflow/transaction-boundary.js";
 import type { ResolvedOutputNonCanonicalContracts } from "./contracts.js";
 import {
   type ResolvedOutputEvidence,
@@ -47,7 +45,7 @@ import {
   ResolvedOutputStep04DatumSchema,
 } from "./schemas.js";
 
-export const submitResolvedOutputNonCanonicalStep03 = async ({
+export const buildResolvedOutputNonCanonicalStep03 = async ({
   lucid,
   network,
   contracts,
@@ -57,8 +55,6 @@ export const submitResolvedOutputNonCanonicalStep03 = async ({
   evidence,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly network: Network;
@@ -69,8 +65,6 @@ export const submitResolvedOutputNonCanonicalStep03 = async ({
   readonly evidence: ResolvedOutputEvidence;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 2;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
@@ -219,8 +213,7 @@ export const submitResolvedOutputNonCanonicalStep03 = async ({
   );
   if (outputIndex === undefined)
     throw new Error("resolved-output-non-canonical: step-03 layout unresolved");
-  const txHash = await submitStep(lucid, signed, {
-    label: "resolved-output-non-canonical step-03",
+  const transaction = finishStep(signed, {
     referenceScripts: [
       workflowReferenceScript({
         role: "resolved-output-non-canonical-step-03",
@@ -233,8 +226,9 @@ export const submitResolvedOutputNonCanonicalStep03 = async ({
         expectedScript: exactMembershipScript,
       }),
     ],
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
   });
-  return { txHash, nextThreadOutRef: `${txHash}#${outputIndex.toString()}` };
+  return {
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
+  };
 };

@@ -39,7 +39,8 @@ import {
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
 } from "./runtime.js";
-import { completeStep, fundStep, submitStep } from "./step-completion.js";
+import { completeStep, fundStep } from "./step-completion.js";
+import { finishStep } from "./step-completion.js";
 import {
   requireInitialStepDatum,
   requireNativeTxMatchesCompactCbor,
@@ -48,14 +49,14 @@ import {
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 import type { FaultProofWitnessReferenceScripts } from "./witness-reference-scripts.js";
 import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
 } from "./workflow/transaction-boundary.js";
 
 const STEP_LABEL = minFeeStepLabel(0);
 
-export type SubmitMinFeeStep01Result = {
-  readonly txHash: string;
+export type MinFeeStep01Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly nextThreadOutRef: string;
   readonly fraudulentHeaderHash: string;
   readonly computationThreadUnit: string;
@@ -65,10 +66,11 @@ export type SubmitMinFeeStep01Result = {
   readonly minFeeB: bigint;
   readonly inputIndex: number;
   readonly outputIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
 
-export const submitMinFeeStep01 = async ({
+export type SubmitMinFeeStep01Result = UnjournaledSubmission<MinFeeStep01Build>;
+
+export const buildMinFeeStep01 = async ({
   lucid,
   blueprint,
   contracts,
@@ -81,8 +83,6 @@ export const submitMinFeeStep01 = async ({
   publishedProofChunks,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -98,9 +98,7 @@ export const submitMinFeeStep01 = async ({
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitMinFeeStep01Result> => {
+}): Promise<MinFeeStep01Build> => {
   const { threadUtxo, threadToken } = await requireMinFeeThreadUtxo({
     lucid,
     contracts,
@@ -238,25 +236,19 @@ export const submitMinFeeStep01 = async ({
   if (resolved === undefined) {
     throw minFeeSubmitError("step-01 layout was not resolved.");
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: "min-fee step-01",
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: "V1 fraud-proof min-fee step-01",
-          utxo: referenceScriptUtxo,
-          expectedScript: contracts.steps[0].spendingScript,
-        },
-        ...inclusionCarriage.referenceScriptCandidates,
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: "V1 fraud-proof min-fee step-01",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.steps[0].spendingScript,
+      },
+      ...inclusionCarriage.referenceScriptCandidates,
+    ],
   });
   return {
-    txHash,
-    nextThreadOutRef: `${txHash}#${resolved.outputIndex.toString()}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${resolved.outputIndex.toString()}`,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadUnit: threadToken.unit,
     nativeTxId: txInclusion.nativeTxId,
@@ -265,6 +257,5 @@ export const submitMinFeeStep01 = async ({
     minFeeB: state.min_fee_b,
     inputIndex: Number(resolved.inputIndex),
     outputIndex: Number(resolved.outputIndex),
-    awaitedConfirmation: awaitConfirmation,
   };
 };

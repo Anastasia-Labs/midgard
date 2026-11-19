@@ -28,6 +28,10 @@ import {
   type SubmitProviderConfig,
 } from "./runtime.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
+import {
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
+} from "./workflow/transaction-boundary.js";
 
 /** Prepared outputs preimage produced by `prepare-input-no-idx`. */
 export type SubmitInputNoIdxOutputsPreimage = {
@@ -87,8 +91,8 @@ export type SubmitInputNoIdxStep04CliConfig = SubmitProviderConfig & {
   readonly awaitConfirmation?: boolean;
 };
 
-export type SubmitInputNoIdxStep04Result = {
-  readonly txHash: string;
+export type InputNoIdxStep04Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -116,8 +120,10 @@ export type SubmitInputNoIdxStep04Result = {
   readonly outputIndex: number;
   readonly computationThreadMintRedeemerIndex: number;
   readonly fraudProofMintRedeemerIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
+
+export type SubmitInputNoIdxStep04Result =
+  UnjournaledSubmission<InputNoIdxStep04Build>;
 
 type InputNoIdxStep04DatumWithState = InputNoIdxStep04Datum & {
   readonly data: NonNullable<InputNoIdxStep04Datum["data"]>;

@@ -9,6 +9,7 @@ import {
 import { prepareTransitionFieldCarriage } from "../../src/transition-trace/submit.transition-field-step.js";
 import type { OwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.js";
+import { settleTurnsUnjournaled } from "./submit-unjournaled.js";
 
 /** Publish the field-preimage certificate minting script as a reference. */
 export const publishTransitionFieldCertificateReference = async (
@@ -26,7 +27,8 @@ export const publishTransitionFieldCertificateReference = async (
 /**
  * Publish (and, at tier 3, certify) both field carriages of an accepted
  * transaction ahead of steps that are captured without submitting, which
- * only resolve existing publications. Deposits carry no field.
+ * only resolve existing publications: each publication and certification is
+ * submitted and confirmed in turn. Deposits carry no field.
  */
 export const publishTransitionFieldCarriages = async ({
   lucid,
@@ -48,7 +50,7 @@ export const publishTransitionFieldCarriages = async ({
 }): Promise<void> => {
   if (transitionL2Replay(proof) === undefined) return;
   for (const field of [0, 2] as const)
-    await prepareTransitionFieldCarriage({
+    await settleTurnsUnjournaled(prepareTransitionFieldCarriage, {
       lucid,
       network,
       signer,

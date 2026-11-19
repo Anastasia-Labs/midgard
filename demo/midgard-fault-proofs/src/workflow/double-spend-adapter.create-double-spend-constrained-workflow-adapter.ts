@@ -4,10 +4,10 @@ import {
 } from "@al-ft/midgard-sdk";
 import type { UTxO } from "@lucid-evolution/lucid";
 
-import { submitStep01 } from "../double-spend/submit-step-01.js";
-import { submitStep02 } from "../double-spend/submit-step-02.js";
-import { submitStep03 } from "../double-spend/submit-step-03.js";
-import { submitStep04 } from "../double-spend/submit-step-04.js";
+import { buildStep01 } from "../double-spend/submit-step-01.js";
+import { buildStep02 } from "../double-spend/submit-step-02.js";
+import { buildStep03 } from "../double-spend/submit-step-03.js";
+import { buildStep04 } from "../double-spend/submit-step-04.js";
 import { prepareDoubleSpendFromCanonicalEvidence } from "../evidence/prepare-from-evidence.js";
 import {
   certifyFaultProofFieldCarriage,
@@ -16,16 +16,13 @@ import {
   resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening.js";
 import {
-  publishProofChunks,
+  buildProofChunkPublication,
   resolvePublishedProofChunks,
 } from "../publish-proof-chunks.js";
-import {
-  type StateQueueMutationLease,
-  type StateQueueMutationLeaseCoordinator,
-  submitRemoveFraudulentBlock,
-} from "../remove-fraudulent-block.js";
+import { type StateQueueMutationLease } from "../remove-fraudulent-block.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import { parseSubmitStep01TxInclusion } from "../step-support.js";
-import { submitInit } from "../submit-init.js";
+import { buildInit } from "../submit-init.js";
 import { WorkflowActionChangedError } from "./action-changed.js";
 import { firstUnclaimedFieldPublication } from "./bespoke-adapter-field-carriage.js";
 import { admitSnapshot } from "./double-spend-adapter.create-double-spend-raw-l1-observation-port.js";
@@ -60,9 +57,10 @@ import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
 } from "./orchestrator.js";
+import { admitRemovalTransaction } from "./removal-admission.js";
 import { reconcileSignedWorkflowTransaction } from "./signed-transaction-reconciliation.js";
+import { journaledStepTransaction } from "./step-transaction.js";
 import {
-  captureLocallyEvaluatedTransaction,
   type LocallyEvaluatedTransaction,
   submitCapturedTransaction,
   workflowTransactionInputOutRefs,
@@ -308,36 +306,37 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
   }): Promise<LocallyEvaluatedTransaction> => {
     const stage = requireJournalString(requested.input.stage, "action.stage");
     if (stage === "publish-proof") {
-      return await captureLocallyEvaluatedTransaction(async (boundary) => {
-        await publishProofChunks({
+      return (
+        await buildProofChunkPublication({
           lucid: config.lucid,
           signer: config.signer,
           proofCbor: requireJournalString(
             requested.input.proofCbor,
             "action.proofCbor",
           ),
-          preSubmitBoundary: boundary,
-        });
-      });
+        })
+      ).transaction;
     }
     if (stage === "init") {
-      return await captureLocallyEvaluatedTransaction(async (boundary) => {
-        await submitInit({
-          lucid: config.lucid,
-          blueprint: config.blueprint,
-          deploymentInfo: config.deploymentInfo,
-          network: config.network,
-          signer: config.signer,
-          fraudCategory: "doubleSpend",
-          fraudulentBlockOutRef: requireJournalString(
-            requested.input.stateQueueBlockOutRef,
-            "action.stateQueueBlockOutRef",
-          ),
-          fraudulentHeaderHash: artifact.headerHash,
-          witnessReferenceScripts: config.referenceScripts.witnesses,
-          preSubmitBoundary: boundary,
-        });
-      });
+      return (
+        await journaledStepTransaction(
+          await buildInit({
+            lucid: config.lucid,
+            blueprint: config.blueprint,
+            deploymentInfo: config.deploymentInfo,
+            network: config.network,
+            signer: config.signer,
+            fraudCategory: "doubleSpend",
+            fraudulentBlockOutRef: requireJournalString(
+              requested.input.stateQueueBlockOutRef,
+              "action.stateQueueBlockOutRef",
+            ),
+            fraudulentHeaderHash: artifact.headerHash,
+            witnessReferenceScripts: config.referenceScripts.witnesses,
+          }),
+          "double-spend-adapter buildInit",
+        )
+      ).transaction;
     }
     if (stage === "step_01" || stage === "step_02") {
       const tx = stage === "step_01" ? artifact.tx1 : artifact.tx2;
@@ -373,21 +372,24 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
         publishedProofChunks: chunks,
         witnessReferenceScripts: config.referenceScripts.witnesses,
       } as const;
-      return await captureLocallyEvaluatedTransaction(async (boundary) => {
-        if (stage === "step_01") {
-          await submitStep01({
-            ...common,
-            referenceScriptUtxo: config.referenceScripts.steps[0],
-            preSubmitBoundary: boundary,
-          });
-        } else {
-          await submitStep02({
-            ...common,
-            referenceScriptUtxo: config.referenceScripts.steps[1],
-            preSubmitBoundary: boundary,
-          });
-        }
-      });
+      return (
+        await journaledStepTransaction(
+          await (async () => {
+            if (stage === "step_01") {
+              return await buildStep01({
+                ...common,
+                referenceScriptUtxo: config.referenceScripts.steps[0],
+              });
+            } else {
+              return await buildStep02({
+                ...common,
+                referenceScriptUtxo: config.referenceScripts.steps[1],
+              });
+            }
+          })(),
+          `double-spend ${stage}`,
+        )
+      ).transaction;
     }
     if (stage === "certify-field") {
       const proofStage = requireJournalString(
@@ -436,7 +438,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
           "field certification action does not match the observed chunk UTxOs",
         );
       }
-      return await captureLocallyEvaluatedTransaction(async (boundary) => {
+      return (
         await certifyFaultProofFieldCarriage({
           ownOutputs,
           lucid: config.lucid,
@@ -450,10 +452,8 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
             config.fieldPreimageCertificate.referenceScriptUtxo,
           chunkUtxos: publications,
           compactCbor: tx.nativeTxCompactCbor,
-          preSubmitBoundary: boundary,
-          awaitConfirmation: false,
-        });
-      });
+        })
+      ).transaction;
     }
     if (
       stage === "step_03" ||
@@ -525,130 +525,124 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
           ...(certificate === undefined ? {} : { certificate }),
         });
       }
-      return await captureLocallyEvaluatedTransaction(async (boundary) => {
-        if (proofStage === "step_03") {
-          await submitStep03({
-            ownOutputs,
-            lucid: config.lucid,
-            blueprint: config.blueprint,
-            deploymentInfo: config.deploymentInfo,
-            network: config.network,
-            signer: config.signer,
-            threadOutRef: requireJournalString(
-              requested.input.threadOutRef,
-              "action.threadOutRef",
-            ),
-            tx1SpendInputCbors: tx.spendInputCbors,
-            nativeTxCompactCbor: tx.nativeTxCompactCbor,
-            doubleSpentInputIndex: BigInt(tx.doubleSpentInputIndex),
-            ...(publications === undefined
-              ? {}
-              : { publishedCarriageUtxos: publications }),
-            ...(certificate === undefined
-              ? {}
-              : { certificateUtxo: certificate }),
-            ...(plan.plan.tier === "Certified"
-              ? {
-                  certificatePolicyId: config.fieldPreimageCertificate.policyId,
-                }
-              : {}),
-            referenceScriptUtxo: config.referenceScripts.steps[2],
-            preSubmitBoundary: boundary,
-          });
-        } else {
-          await submitStep04({
-            ownOutputs,
-            lucid: config.lucid,
-            blueprint: config.blueprint,
-            deploymentInfo: config.deploymentInfo,
-            network: config.network,
-            signer: config.signer,
-            threadOutRef: requireJournalString(
-              requested.input.threadOutRef,
-              "action.threadOutRef",
-            ),
-            tx2SpendInputCbors: tx.spendInputCbors,
-            nativeTxCompactCbor: tx.nativeTxCompactCbor,
-            doubleSpentInputIndex: BigInt(tx.doubleSpentInputIndex),
-            ...(publications === undefined
-              ? {}
-              : { publishedCarriageUtxos: publications }),
-            ...(certificate === undefined
-              ? {}
-              : { certificateUtxo: certificate }),
-            ...(plan.plan.tier === "Certified"
-              ? {
-                  certificatePolicyId: config.fieldPreimageCertificate.policyId,
-                }
-              : {}),
-            referenceScriptUtxo: config.referenceScripts.steps[3],
-            witnessReferenceScripts: config.referenceScripts.witnesses,
-            preSubmitBoundary: boundary,
-          });
-        }
-      });
+      return (
+        await journaledStepTransaction(
+          await (async () => {
+            if (proofStage === "step_03") {
+              return await buildStep03({
+                ownOutputs,
+                lucid: config.lucid,
+                blueprint: config.blueprint,
+                deploymentInfo: config.deploymentInfo,
+                network: config.network,
+                signer: config.signer,
+                threadOutRef: requireJournalString(
+                  requested.input.threadOutRef,
+                  "action.threadOutRef",
+                ),
+                tx1SpendInputCbors: tx.spendInputCbors,
+                nativeTxCompactCbor: tx.nativeTxCompactCbor,
+                doubleSpentInputIndex: BigInt(tx.doubleSpentInputIndex),
+                ...(publications === undefined
+                  ? {}
+                  : { publishedCarriageUtxos: publications }),
+                ...(certificate === undefined
+                  ? {}
+                  : { certificateUtxo: certificate }),
+                ...(plan.plan.tier === "Certified"
+                  ? {
+                      certificatePolicyId:
+                        config.fieldPreimageCertificate.policyId,
+                    }
+                  : {}),
+                referenceScriptUtxo: config.referenceScripts.steps[2],
+              });
+            } else {
+              return await buildStep04({
+                ownOutputs,
+                lucid: config.lucid,
+                blueprint: config.blueprint,
+                deploymentInfo: config.deploymentInfo,
+                network: config.network,
+                signer: config.signer,
+                threadOutRef: requireJournalString(
+                  requested.input.threadOutRef,
+                  "action.threadOutRef",
+                ),
+                tx2SpendInputCbors: tx.spendInputCbors,
+                nativeTxCompactCbor: tx.nativeTxCompactCbor,
+                doubleSpentInputIndex: BigInt(tx.doubleSpentInputIndex),
+                ...(publications === undefined
+                  ? {}
+                  : { publishedCarriageUtxos: publications }),
+                ...(certificate === undefined
+                  ? {}
+                  : { certificateUtxo: certificate }),
+                ...(plan.plan.tier === "Certified"
+                  ? {
+                      certificatePolicyId:
+                        config.fieldPreimageCertificate.policyId,
+                    }
+                  : {}),
+                referenceScriptUtxo: config.referenceScripts.steps[3],
+                witnessReferenceScripts: config.referenceScripts.witnesses,
+              });
+            }
+          })(),
+          `double-spend ${proofStage}`,
+        )
+      ).transaction;
     }
     if (stage === "remove") {
-      let mutationLease: StateQueueMutationLease | undefined;
-      const retainingCoordinator: StateQueueMutationLeaseCoordinator = {
-        acquire: async () => {
-          const acquired =
-            await config.stateQueueMutationLeaseCoordinator.acquire();
-          mutationLease = acquired;
-          return acquired;
-        },
-      };
-      const transaction = await captureLocallyEvaluatedTransaction(
-        async (boundary) => {
-          await submitRemoveFraudulentBlock({
-            lucid: config.lucid,
-            blueprint: config.blueprint,
-            deploymentInfo: config.deploymentInfo,
-            network: config.network,
-            signer: config.signer,
-            fraudCategory: "doubleSpend",
-            fraudulentHeaderHash: artifact.headerHash,
-            fraudProofOutRef: requireJournalString(
-              requested.input.fraudProofOutRef,
-              "action.fraudProofOutRef",
-            ),
-            requireReferenceScripts: true,
-            stateQueueMutationLeaseCoordinator: retainingCoordinator,
-            ...(config.fraudProverRewardLovelace === undefined
-              ? {}
-              : {
-                  fraudProverRewardLovelace: config.fraudProverRewardLovelace,
-                }),
-            preSubmitBoundary: async (transaction) => {
-              if (
-                !workflowTransactionInputOutRefs(transaction.signed).includes(
-                  requireJournalString(
-                    requested.input.nextRemovalOutRef,
-                    "action.nextRemovalOutRef",
-                  ),
-                )
-              ) {
-                throw new Error(
-                  "removal transaction does not consume the authenticated next state-queue outRef",
-                );
-              }
-              if (
-                !workflowTransactionReferenceInputOutRefs(
-                  transaction.signed,
-                ).includes(
-                  requireJournalString(
-                    requested.input.fraudProofOutRef,
-                    "action.fraudProofOutRef",
-                  ),
-                )
-              ) {
-                throw new Error(
-                  "removal transaction does not reference the authenticated permanent proof token",
-                );
-              }
-              await boundary(transaction);
-            },
-          });
+      const { transaction, mutationLease } = await admitRemovalTransaction(
+        await buildRemoveFraudulentBlock({
+          lucid: config.lucid,
+          blueprint: config.blueprint,
+          deploymentInfo: config.deploymentInfo,
+          network: config.network,
+          signer: config.signer,
+          fraudCategory: "doubleSpend",
+          fraudulentHeaderHash: artifact.headerHash,
+          fraudProofOutRef: requireJournalString(
+            requested.input.fraudProofOutRef,
+            "action.fraudProofOutRef",
+          ),
+          requireReferenceScripts: true,
+          stateQueueMutationLeaseCoordinator:
+            config.stateQueueMutationLeaseCoordinator,
+          ...(config.fraudProverRewardLovelace === undefined
+            ? {}
+            : {
+                fraudProverRewardLovelace: config.fraudProverRewardLovelace,
+              }),
+        }),
+        async (transaction) => {
+          if (
+            !workflowTransactionInputOutRefs(transaction.signed).includes(
+              requireJournalString(
+                requested.input.nextRemovalOutRef,
+                "action.nextRemovalOutRef",
+              ),
+            )
+          ) {
+            throw new Error(
+              "removal transaction does not consume the authenticated next state-queue outRef",
+            );
+          }
+          if (
+            !workflowTransactionReferenceInputOutRefs(
+              transaction.signed,
+            ).includes(
+              requireJournalString(
+                requested.input.fraudProofOutRef,
+                "action.fraudProofOutRef",
+              ),
+            )
+          ) {
+            throw new Error(
+              "removal transaction does not reference the authenticated permanent proof token",
+            );
+          }
         },
       );
       preparedByAction.set(requested.actionId, {

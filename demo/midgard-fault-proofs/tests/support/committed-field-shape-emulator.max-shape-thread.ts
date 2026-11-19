@@ -11,7 +11,7 @@ import { type UTxO } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
 import { faultProofRawFieldCarriage } from "../../src/field-opening.js";
-import { submitCommittedFieldShapeInit } from "../../src/index.js";
+import { buildCommittedFieldShapeInit } from "../../src/index.js";
 import {
   type CertifiedCommittedField,
   expectStageFit,
@@ -28,6 +28,7 @@ import {
   captureEmulatorSubmission,
   network,
 } from "./submit-init-emulator-shared.js";
+import { buildAndSubmitUnjournaled } from "./submit-unjournaled.js";
 
 export const LABEL = "committed-field-shape-max";
 
@@ -36,7 +37,7 @@ const initThread = async (
   scenario: CommittedFieldShapeScenario,
 ) =>
   await captureEmulatorSubmission(harness.emulator, () =>
-    submitCommittedFieldShapeInit({
+    buildAndSubmitUnjournaled(buildCommittedFieldShapeInit, {
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,

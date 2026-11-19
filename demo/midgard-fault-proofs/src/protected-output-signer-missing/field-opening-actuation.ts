@@ -6,6 +6,10 @@ import type {
 } from "@lucid-evolution/lucid";
 
 import {
+  type FaultProofTurn,
+  isPrerequisiteTurn,
+} from "../fault-proof-turn.js";
+import {
   faultProofFieldOpening,
   type FaultProofFieldOpeningPlan,
   publishFaultProofFieldCarriage,
@@ -16,10 +20,12 @@ import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { ProtectedOutputSignerMissingContracts } from "./contracts.js";
 
-/** Actuates every carriage prerequisite before constructing the consuming step. */
+/**
+ * Resolves a step's field carriage: the live chunks and certificate it reads,
+ * or the next prerequisite transaction that creates the first missing one.
+ */
 export const actuateProtectedOutputSignerFieldOpening = async ({
   lucid,
   contracts,
@@ -29,8 +35,6 @@ export const actuateProtectedOutputSignerFieldOpening = async ({
   witnessSetCompactCbor,
   stepReference,
   certificateReferenceScriptUtxo,
-  publicationBoundary,
-  certificateBoundary,
   label,
   publishedCarriageUtxos,
   suppliedCertificateUtxo,
@@ -44,19 +48,19 @@ export const actuateProtectedOutputSignerFieldOpening = async ({
   readonly witnessSetCompactCbor: string;
   readonly stepReference: UTxO;
   readonly certificateReferenceScriptUtxo: UTxO;
-  readonly publicationBoundary?: FraudProofPreSubmitBoundary;
-  readonly certificateBoundary?: FraudProofPreSubmitBoundary;
   readonly label: string;
   readonly publishedCarriageUtxos?: readonly UTxO[];
   readonly suppliedCertificateUtxo?: UTxO;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
-}): Promise<{
-  readonly openingFor: (ctx: RedeemerContext) => FieldOpening;
-  readonly referenceInputs: readonly UTxO[];
-  readonly carriageUtxos: readonly UTxO[];
-  readonly certificateUtxo?: UTxO;
-}> => {
+}): Promise<
+  FaultProofTurn<{
+    readonly openingFor: (ctx: RedeemerContext) => FieldOpening;
+    readonly referenceInputs: readonly UTxO[];
+    readonly carriageUtxos: readonly UTxO[];
+    readonly certificateUtxo?: UTxO;
+  }>
+> => {
   signer.selectWallet(lucid);
   const carriage =
     publishedCarriageUtxos ??
@@ -67,8 +71,8 @@ export const actuateProtectedOutputSignerFieldOpening = async ({
       planned,
       publisherAddress: signer.proofMaterialsAddress,
       label,
-      preSubmitBoundary: publicationBoundary,
     }));
+  if (isPrerequisiteTurn(carriage)) return carriage;
   const certificate =
     suppliedCertificateUtxo ??
     (planned.plan.tier === "Certified"
@@ -87,9 +91,9 @@ export const actuateProtectedOutputSignerFieldOpening = async ({
           chunkUtxos: carriage,
           compactCbor: nativeTxCompactCbor,
           witnessSetCompactCbor,
-          preSubmitBoundary: certificateBoundary,
         })
       : undefined);
+  if (isPrerequisiteTurn(certificate)) return certificate;
   const referenceInputs = [
     ...carriage,
     stepReference,

@@ -12,6 +12,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { isPrerequisiteTurn } from "../fault-proof-turn.js";
 import {
   faultProofFieldOpening,
   publishFaultProofFieldCarriage,
@@ -23,14 +24,13 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { SignerWitnessScanEvidence } from "./evidence.js";
 import { planSignerWitnessOpening } from "./field-plans.js";
 import {
@@ -62,7 +62,7 @@ type ScanState = {
  * scan, or writes the verdict to the terminal once the signer is found or the
  * field is exhausted.
  */
-export const submitSignerWitnessScan = async ({
+export const buildSignerWitnessScan = async ({
   lucid,
   family,
   contracts,
@@ -77,10 +77,6 @@ export const submitSignerWitnessScan = async ({
   publishCarriage = false,
   publishedCarriageUtxos,
   certificateUtxo: suppliedCertificateUtxo,
-  publicationBoundary,
-  certificateBoundary,
-  preSubmitBoundary,
-  awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
@@ -100,10 +96,6 @@ export const submitSignerWitnessScan = async ({
   readonly publishedCarriageUtxos?: readonly UTxO[];
   /** A certificate an earlier turn already minted, reused instead. */
   readonly certificateUtxo?: UTxO;
-  readonly publicationBoundary?: FraudProofPreSubmitBoundary;
-  readonly certificateBoundary?: FraudProofPreSubmitBoundary;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
 }) => {
@@ -155,8 +147,8 @@ export const submitSignerWitnessScan = async ({
       planned,
       publisherAddress: signer.proofMaterialsAddress,
       label,
-      preSubmitBoundary: publicationBoundary,
     }));
+  if (isPrerequisiteTurn(carriageUtxos)) return carriageUtxos;
   const certificateUtxo =
     suppliedCertificateUtxo ??
     (planned.plan.tier === "Certified"
@@ -174,9 +166,9 @@ export const submitSignerWitnessScan = async ({
           chunkUtxos: carriageUtxos,
           compactCbor: nativeTxCompactCbor,
           witnessSetCompactCbor,
-          preSubmitBoundary: certificateBoundary,
         })
       : undefined);
+  if (isPrerequisiteTurn(certificateUtxo)) return certificateUtxo;
   const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[stepIndex]!.spendingScriptHash,
@@ -241,7 +233,7 @@ export const submitSignerWitnessScan = async ({
       SignerWitnessScanRedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -255,14 +247,12 @@ export const submitSignerWitnessScan = async ({
     carriageUtxos,
     extraReferenceInputs:
       certificateUtxo === undefined ? [] : [certificateUtxo],
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined)
     throw new Error(`${family}: scan layout unresolved`);
   return {
-    txHash,
-    nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
     stage: turn.terminal ? ("terminal" as const) : ("scanning" as const),
     terminal: turn.terminal,
     nextCursor: turn.nextCursor,

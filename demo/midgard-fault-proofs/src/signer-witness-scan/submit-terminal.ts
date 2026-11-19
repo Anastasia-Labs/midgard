@@ -4,10 +4,9 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultFinalize } from "../linear-fault-finalize.js";
+import { buildLinearFaultFinalize } from "../linear-fault-finalize.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   type SignerWitnessScanEvidence,
   signerWitnessVerdictCloses,
@@ -35,7 +34,7 @@ export type SignerWitnessTerminalContracts = SignerWitnessScanContracts & {
 
 /** Finalizes a signer-witness verdict that contradicts the block: burns the
  * thread token and mints the fraud proof. */
-export const submitSignerWitnessTerminal = async ({
+export const buildSignerWitnessTerminal = async ({
   lucid,
   family,
   contracts,
@@ -45,8 +44,6 @@ export const submitSignerWitnessTerminal = async ({
   evidence,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly family: string;
@@ -57,8 +54,6 @@ export const submitSignerWitnessTerminal = async ({
   readonly evidence: SignerWitnessScanEvidence;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   if (!signerWitnessVerdictCloses(evidence))
     throw new Error(
@@ -89,7 +84,7 @@ export const submitSignerWitnessTerminal = async ({
     state.signer_present !== evidence.signerPresent
   )
     throw new Error(`${family}: terminal signer verdict changed`);
-  return await submitLinearFaultFinalize({
+  return await buildLinearFaultFinalize({
     lucid,
     family,
     stepIndex,
@@ -111,7 +106,5 @@ export const submitSignerWitnessTerminal = async ({
     }),
     referenceScriptUtxo,
     witnessReferenceScripts,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
 };

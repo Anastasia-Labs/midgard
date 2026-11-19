@@ -5,17 +5,14 @@ import {
   resolveFaultProofFieldCarriagePublications,
   resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening.js";
-import {
-  type StateQueueMutationLease,
-  type StateQueueMutationLeaseCoordinator,
-  submitRemoveFraudulentBlock,
-} from "../remove-fraudulent-block.js";
+import { type StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { WithdrawnReferenceInputContracts } from "../withdrawn-reference-input/contracts.js";
-import { submitWithdrawnReferenceInputInit } from "../withdrawn-reference-input/submit-withdrawn-reference-input-init.js";
-import { submitWithdrawnReferenceInputStep01 } from "../withdrawn-reference-input/submit-withdrawn-reference-input-step-01.js";
-import { submitWithdrawnReferenceInputStep02 } from "../withdrawn-reference-input/submit-withdrawn-reference-input-step-02.js";
-import { submitWithdrawnReferenceInputStep03 } from "../withdrawn-reference-input/submit-withdrawn-reference-input-step-03.js";
+import { buildWithdrawnReferenceInputInit } from "../withdrawn-reference-input/submit-withdrawn-reference-input-init.js";
+import { buildWithdrawnReferenceInputStep01 } from "../withdrawn-reference-input/submit-withdrawn-reference-input-step-01.js";
+import { buildWithdrawnReferenceInputStep02 } from "../withdrawn-reference-input/submit-withdrawn-reference-input-step-02.js";
+import { buildWithdrawnReferenceInputStep03 } from "../withdrawn-reference-input/submit-withdrawn-reference-input-step-03.js";
 import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
 import {
   type FieldPreimageCertificateBinding,
@@ -32,8 +29,9 @@ import {
 import { exactJournalRecord } from "./native-index-artifact.js";
 import { type FraudProofWorkflowAction } from "./orchestrator.js";
 import type { OwnOutputJournal } from "./own-outputs.js";
+import { admitRemovalTransaction } from "./removal-admission.js";
+import { journaledStepTransaction } from "./step-transaction.js";
 import {
-  captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
   workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary.js";
@@ -130,53 +128,38 @@ const captureRemoval = async (
   config: BoundConfig,
   input: Readonly<Record<string, unknown>>,
 ) => {
-  let mutationLease: StateQueueMutationLease | undefined;
-  const retainingCoordinator: StateQueueMutationLeaseCoordinator = {
-    acquire: async () => {
-      const acquired =
-        await config.stateQueueMutationLeaseCoordinator.acquire();
-      mutationLease = acquired;
-      return acquired;
-    },
-  };
   const nextRemovalOutRef = stringField(input, "nextRemovalOutRef");
   const fraudProofOutRef = stringField(input, "fraudProofOutRef");
-  const transaction = await captureLocallyEvaluatedTransaction(
-    async (boundary) => {
-      await submitRemoveFraudulentBlock({
-        fraudProofOutRef,
-        lucid: config.lucid,
-        blueprint: config.blueprint,
-        deploymentInfo: config.deploymentInfo,
-        network: config.network,
-        signer: config.signer,
-        fraudCategory: "withdrawnReferenceInput",
-        fraudulentHeaderHash: config.headerHash,
-        requireReferenceScripts: true,
-        stateQueueMutationLeaseCoordinator: retainingCoordinator,
-        fraudProverRewardLovelace: config.fraudProverRewardLovelace,
-        preSubmitBoundary: async (built) => {
-          if (
-            !workflowTransactionInputOutRefs(built.signed).includes(
-              nextRemovalOutRef,
-            ) ||
-            !workflowTransactionReferenceInputOutRefs(built.signed).includes(
-              fraudProofOutRef,
-            )
-          ) {
-            throw new Error(
-              "withdrawn-reference-input removal changed authenticated inputs",
-            );
-          }
-          await boundary(built);
-        },
-      });
+  return await admitRemovalTransaction(
+    await buildRemoveFraudulentBlock({
+      fraudProofOutRef,
+      lucid: config.lucid,
+      blueprint: config.blueprint,
+      deploymentInfo: config.deploymentInfo,
+      network: config.network,
+      signer: config.signer,
+      fraudCategory: "withdrawnReferenceInput",
+      fraudulentHeaderHash: config.headerHash,
+      requireReferenceScripts: true,
+      stateQueueMutationLeaseCoordinator:
+        config.stateQueueMutationLeaseCoordinator,
+      fraudProverRewardLovelace: config.fraudProverRewardLovelace,
+    }),
+    async (built) => {
+      if (
+        !workflowTransactionInputOutRefs(built.signed).includes(
+          nextRemovalOutRef,
+        ) ||
+        !workflowTransactionReferenceInputOutRefs(built.signed).includes(
+          fraudProofOutRef,
+        )
+      ) {
+        throw new Error(
+          "withdrawn-reference-input removal changed authenticated inputs",
+        );
+      }
     },
   );
-  return Object.freeze({
-    transaction,
-    ...(mutationLease === undefined ? {} : { mutationLease }),
-  });
 };
 
 export const createTransactionPort = (
@@ -204,9 +187,9 @@ export const createTransactionPort = (
     const input = actionInput(action);
     if (input.stage === "init") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitWithdrawnReferenceInputInit({
+        transaction: (
+          await journaledStepTransaction(
+            await buildWithdrawnReferenceInputInit({
               lucid: config.lucid,
               blueprint: config.blueprint,
               network: config.network,
@@ -220,18 +203,17 @@ export const createTransactionPort = (
               ),
               fraudulentHeaderHash: config.headerHash,
               witnessReferenceScripts: config.referenceScripts.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "withdrawn-reference-input buildWithdrawnReferenceInputInit",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "step_01") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitWithdrawnReferenceInputStep01({
+        transaction: (
+          await journaledStepTransaction(
+            await buildWithdrawnReferenceInputStep01({
               lucid: config.lucid,
               blueprint: config.blueprint,
               contracts: config.contracts,
@@ -246,11 +228,10 @@ export const createTransactionPort = (
               txInclusion: admitted.inclusion,
               referenceScriptUtxo: config.referenceScripts.steps[0],
               witnessReferenceScripts: config.referenceScripts.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "withdrawn-reference-input buildWithdrawnReferenceInputStep01",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "step_02") {
@@ -260,9 +241,9 @@ export const createTransactionPort = (
         ownOutputs,
       );
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitWithdrawnReferenceInputStep02({
+        transaction: (
+          await journaledStepTransaction(
+            await buildWithdrawnReferenceInputStep02({
               ownOutputs,
               lucid: config.lucid,
               contracts: config.contracts,
@@ -280,18 +261,17 @@ export const createTransactionPort = (
                 ? {}
                 : { certificateUtxo: field.certificate }),
               publishMissingCarriage: false,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "withdrawn-reference-input buildWithdrawnReferenceInputStep02",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "step_03") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitWithdrawnReferenceInputStep03({
+        transaction: (
+          await journaledStepTransaction(
+            await buildWithdrawnReferenceInputStep03({
               lucid: config.lucid,
               contracts: config.contracts,
               categoryId: config.category.categoryId,
@@ -300,11 +280,10 @@ export const createTransactionPort = (
               withdrawalMembership: admitted.withdrawalMembership,
               referenceScriptUtxo: config.referenceScripts.steps[2],
               witnessReferenceScripts: config.referenceScripts.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "withdrawn-reference-input buildWithdrawnReferenceInputStep03",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "remove") return await captureRemoval(config, input);

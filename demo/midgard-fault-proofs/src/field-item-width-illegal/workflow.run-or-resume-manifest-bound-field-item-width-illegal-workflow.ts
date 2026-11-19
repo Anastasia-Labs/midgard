@@ -1,10 +1,8 @@
-import { fetchCanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import { type FamilyDeploymentContext } from "../workflow/family-definition.js";
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";
-import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import { type FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import {
@@ -18,42 +16,13 @@ import {
   withManifestBoundFamilyRecovery,
 } from "../workflow/manifest-bound-family-recovery.js";
 import {
-  type FieldItemWidthJournal,
-  type FieldItemWidthStage,
-} from "./field-item-width-illegal.js";
-import {
   createFieldItemWidthIllegalBoundConfig,
-  createFieldItemWidthIllegalRawL1StageResolver,
   FIELD_ITEM_WIDTH_ILLEGAL_WORKFLOW,
-  type FieldItemWidthIllegalRuntimeLoader,
   type LoadManifestBoundFieldItemWidthIllegalConfig,
   type ManifestBoundFieldItemWidthIllegalConfig,
 } from "./workflow.create-field-item-width-illegal-raw-l1-stage-resolver.js";
-import {
-  deriveFieldItemWidthIllegalAuthenticatedSource,
-  deriveFieldItemWidthIllegalEvidenceFromCanonicalBlock,
-  fieldItemWidthStageFromL1,
-  prepareFieldItemWidthIllegalRecoveryMaterial,
-} from "./workflow.derive-field-item-width-illegal-authenticated-source.js";
-import {
-  createManifestBoundFieldItemWidthIllegalRuntime,
-  FIELD_ITEM_WIDTH_ILLEGAL_FAMILY_DEFINITION,
-  loadManifestBoundFieldItemWidthIllegalConfig,
-} from "./workflow.field-item-width-illegal-family-definition.js";
-
-export const loadFieldItemWidthIllegalRuntime = async (
-  input: FieldItemWidthIllegalRuntimeLoader,
-) => {
-  const config = await loadManifestBoundFieldItemWidthIllegalConfig(
-    input.config,
-  );
-  return createManifestBoundFieldItemWidthIllegalRuntime({
-    config,
-    journal: input.journal,
-    observe: input.observe,
-    resolveStage: input.resolveStage,
-  });
-};
+import { prepareFieldItemWidthIllegalRecoveryMaterial } from "./workflow.derive-field-item-width-illegal-authenticated-source.js";
+import { FIELD_ITEM_WIDTH_ILLEGAL_FAMILY_DEFINITION } from "./workflow.field-item-width-illegal-family-definition.js";
 
 export type ManifestBoundFieldItemWidthIllegalWorkflowConfig =
   LoadManifestBoundFieldItemWidthIllegalConfig &
@@ -120,52 +89,6 @@ export const createManifestBoundFieldItemWidthIllegalWorkflow = async (
     createFieldItemWidthIllegalRecoveryAdapter,
   );
 };
-
-/**
- * Watcher-facing runner. Evidence is always reconstructed from authenticated
- * L1 plus public retained DA; unknown/caller-authored evidence fields fail.
- */
-export const runOrResumeManifestBoundFieldItemWidthIllegalWorkflow =
-  async (input: {
-    readonly workflow: ManifestBoundFieldItemWidthIllegalWorkflow;
-    readonly sources: readonly RetainedDaPayloadSource[];
-    readonly journal: FieldItemWidthJournal;
-  }): Promise<FieldItemWidthStage> => {
-    if (Object.keys(input).sort().join(",") !== "journal,sources,workflow") {
-      throw new Error(
-        "fieldItemWidthIllegal runner rejects caller-authored evidence inputs",
-      );
-    }
-    const headerHash = input.workflow.binding.definition.headerHash;
-    const observation = await observeFraudProofWorkflowHeader(
-      input.workflow.l1,
-      { headerHash },
-    );
-    const canonical = await fetchCanonicalBlockEvidence({
-      observation,
-      sources: input.sources,
-    });
-    const evidence =
-      deriveFieldItemWidthIllegalEvidenceFromCanonicalBlock(canonical);
-    const source = await deriveFieldItemWidthIllegalAuthenticatedSource({
-      block: canonical,
-      evidence,
-    });
-    const runtime = createManifestBoundFieldItemWidthIllegalRuntime({
-      config: input.workflow.config,
-      journal: input.journal,
-      observe: async () =>
-        fieldItemWidthStageFromL1(
-          (await input.workflow.l1.observe({ headerHash })).stage,
-        ),
-      resolveStage: createFieldItemWidthIllegalRawL1StageResolver({
-        config: input.workflow.config,
-        l1: input.workflow.l1,
-        source,
-      }),
-    });
-    return await runtime.runOrResume(evidence);
-  };
 
 export const createFieldItemWidthIllegalRecoveryAdapter = (
   workflow: ManifestBoundFieldItemWidthIllegalInstallation,

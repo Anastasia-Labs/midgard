@@ -8,14 +8,18 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import {
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
+} from "../workflow/transaction-boundary.js";
+import {
   committedFieldShapeStepLabel,
   committedFieldShapeSubmitError,
 } from "./submit-common.js";
 
 export const STEP_LABEL = committedFieldShapeStepLabel(0);
 
-export type SubmitCommittedFieldShapeStep01Result = {
-  readonly txHash: string;
+export type CommittedFieldShapeStep01Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -32,8 +36,10 @@ export type SubmitCommittedFieldShapeStep01Result = {
   readonly inputIndex: number;
   readonly outputIndex: number;
   readonly proofCarriage: "redeemer" | "published-chunks";
-  readonly awaitedConfirmation: boolean;
 };
+
+export type SubmitCommittedFieldShapeStep01Result =
+  UnjournaledSubmission<CommittedFieldShapeStep01Build>;
 
 /**
  * The slot a claim names, its witness-set hash, and — when the claim spells a

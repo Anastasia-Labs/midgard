@@ -5,10 +5,6 @@ import type { UTxO } from "@lucid-evolution/lucid";
 
 import type { DirectPurposeFieldPlan } from "../../src/direct-purpose-family/index.js";
 import type { DirectScriptMaterial } from "../../src/direct-script-derivation/material.js";
-import {
-  certifyFaultProofFieldCarriage,
-  publishFaultProofFieldCarriage,
-} from "../../src/field-opening.js";
 import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import type { FaultProofEmulatorHarness } from "./emulator/harness.js";
 import {
@@ -17,6 +13,10 @@ import {
   network,
   publishPlainReferenceScriptUtxo,
 } from "./submit-init-emulator-shared.js";
+import {
+  certifyCarriageUnjournaled,
+  publishCarriageUnjournaled,
+} from "./submit-unjournaled.js";
 
 /** Publishes (and, at tier 3, certifies) every planned field of `fields`
  * that does not travel inline. */
@@ -46,7 +46,7 @@ export const publishDirectWalkCarriage = async ({
     const tier = planned.plan.tier;
     if (tier === "Inline") continue;
     const published = await captureEmulatorSubmission(harness.emulator, () =>
-      publishFaultProofFieldCarriage({
+      publishCarriageUnjournaled({
         ownOutputs,
         lucid: harness.proverLucid,
         signer: harness.proverSigner,
@@ -67,7 +67,7 @@ export const publishDirectWalkCarriage = async ({
         })
       ).utxo;
       const certified = await captureEmulatorSubmission(harness.emulator, () =>
-        certifyFaultProofFieldCarriage({
+        certifyCarriageUnjournaled({
           ownOutputs,
           lucid: harness.proverLucid,
           network,

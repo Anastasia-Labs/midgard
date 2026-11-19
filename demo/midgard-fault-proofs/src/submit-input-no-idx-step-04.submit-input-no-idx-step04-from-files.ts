@@ -9,12 +9,13 @@ import {
   resolveInputNoIdxDeploymentContracts,
   resolveProverSigner,
 } from "./runtime.js";
+import { submitFaultProofTurns } from "./submit-fault-proof-turns.js";
 import {
   parseSubmitInputNoIdxOutputsPreimage,
   type SubmitInputNoIdxStep04CliConfig,
   type SubmitInputNoIdxStep04Result,
 } from "./submit-input-no-idx-step-04.make-input-no-idx-step04-spend-redeemer.js";
-import { submitInputNoIdxStep04 } from "./submit-input-no-idx-step-04.submit-input-no-idx-step04.js";
+import { buildInputNoIdxStep04 } from "./submit-input-no-idx-step-04.submit-input-no-idx-step04.js";
 
 export const submitInputNoIdxStep04FromFiles = async (
   config: SubmitInputNoIdxStep04CliConfig,
@@ -54,27 +55,34 @@ export const submitInputNoIdxStep04FromFiles = async (
       contracts.fieldPreimageCertificate.policyId,
     label: "submit-input-no-idx-step-04",
   });
-  return await submitInputNoIdxStep04({
-    lucid,
-    blueprint,
-    deploymentInfo,
-    network: config.network,
-    signer,
-    threadOutRef: config.threadOutRef,
-    outputsPreimage: parseSubmitInputNoIdxOutputsPreimage(outputsPreimageJson),
-    nativeTxCompactCbor: parseNativeTxCompactCbor(
-      nativeTxCompactJson,
-      "--native-tx-compact",
-    ),
-    ...(witnessSetCompactJson === undefined
-      ? {}
-      : {
-          witnessSetCompactCbor: parseNativeTxWitnessSetCompactCbor(
-            witnessSetCompactJson,
-            "--witness-set-compact",
-          ),
-        }),
-    fieldGrammar,
-    awaitConfirmation: config.awaitConfirmation,
-  });
+  return await submitFaultProofTurns(
+    buildInputNoIdxStep04,
+    {
+      lucid,
+      blueprint,
+      deploymentInfo,
+      network: config.network,
+      signer,
+      threadOutRef: config.threadOutRef,
+      outputsPreimage:
+        parseSubmitInputNoIdxOutputsPreimage(outputsPreimageJson),
+      nativeTxCompactCbor: parseNativeTxCompactCbor(
+        nativeTxCompactJson,
+        "--native-tx-compact",
+      ),
+      ...(witnessSetCompactJson === undefined
+        ? {}
+        : {
+            witnessSetCompactCbor: parseNativeTxWitnessSetCompactCbor(
+              witnessSetCompactJson,
+              "--witness-set-compact",
+            ),
+          }),
+      fieldGrammar,
+    },
+    {
+      label: "input-no-idx-step04",
+      awaitConfirmation: config.awaitConfirmation ?? true,
+    },
+  );
 };

@@ -15,6 +15,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { isPrerequisiteTurn } from "../fault-proof-turn.js";
 import {
   faultProofFieldOpening,
   publishFaultProofFieldCarriage,
@@ -38,17 +39,15 @@ import {
   SIGNER_WITNESS_SCAN_STEP_INDEX,
   SIGNER_WITNESS_TERMINAL_STEP_INDEX,
 } from "../signer-witness-scan/submit-scan.js";
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessWithdrawalValidatorCarriage } from "../witness-reference-scripts.js";
 import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
-import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScript,
-} from "../workflow/transaction-boundary.js";
+import { workflowReferenceScript } from "../workflow/transaction-boundary.js";
 import type { SpendInputSignerMissingContracts } from "./contracts.js";
 import { planSpendInputSignerInputOpening } from "./field-plans.js";
 import {
@@ -69,7 +68,7 @@ import {
  * verdict. The out-of-range
  * arm reads no prior-ledger membership, so it carries none.
  */
-export const submitSpendInputSignerMissingStep02 = async ({
+export const buildSpendInputSignerMissingStep02 = async ({
   lucid,
   network,
   contracts,
@@ -83,10 +82,6 @@ export const submitSpendInputSignerMissingStep02 = async ({
   certificateReferenceScriptUtxo,
   membershipReferenceScriptUtxo,
   publishCarriage = false,
-  publicationBoundary,
-  certificateBoundary,
-  preSubmitBoundary,
-  awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
@@ -102,10 +97,6 @@ export const submitSpendInputSignerMissingStep02 = async ({
   readonly certificateReferenceScriptUtxo?: UTxO;
   readonly membershipReferenceScriptUtxo: UTxO;
   readonly publishCarriage?: boolean;
-  readonly publicationBoundary?: FraudProofPreSubmitBoundary;
-  readonly certificateBoundary?: FraudProofPreSubmitBoundary;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
 }) => {
@@ -159,8 +150,8 @@ export const submitSpendInputSignerMissingStep02 = async ({
     planned,
     publisherAddress: signer.proofMaterialsAddress,
     label: "spend-input-signer-missing spend inputs",
-    preSubmitBoundary: publicationBoundary,
   });
+  if (isPrerequisiteTurn(carriageUtxos)) return carriageUtxos;
   const certificateUtxo =
     planned.plan.tier === "Certified"
       ? await reuseOrCertifyFaultProofFieldCarriage({
@@ -178,9 +169,9 @@ export const submitSpendInputSignerMissingStep02 = async ({
           chunkUtxos: carriageUtxos,
           compactCbor: nativeTxCompactCbor,
           witnessSetCompactCbor,
-          preSubmitBoundary: certificateBoundary,
         })
       : undefined;
+  if (isPrerequisiteTurn(certificateUtxo)) return certificateUtxo;
   const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[1].spendingScriptHash,
@@ -337,8 +328,7 @@ export const submitSpendInputSignerMissingStep02 = async ({
   );
   if (outputIndex === undefined)
     throw new Error("spend-input-signer-missing: step-02 layout unresolved");
-  const txHash = await submitStep(lucid, signed, {
-    label: "spend-input-signer-missing step-02",
+  const transaction = finishStep(signed, {
     referenceScripts: [
       workflowReferenceScript({
         role: "spend-input-signer-missing-step-02",
@@ -355,12 +345,10 @@ export const submitSpendInputSignerMissingStep02 = async ({
             }),
           ]),
     ],
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
   });
   return {
-    txHash,
-    nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
     carriageTier: planned.plan.tier,
     route: evidence.route,
     stage: scan ? ("scanning" as const) : ("terminal" as const),

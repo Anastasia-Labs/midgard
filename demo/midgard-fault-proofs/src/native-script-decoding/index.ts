@@ -1,7 +1,6 @@
 export * from "./contracts.js";
 export * from "./evidence.js";
 export * from "./finding.js";
-export * from "./prover.js";
 export * from "./scan-plan.js";
 export * from "./submit-common.js";
 export * from "./submit-native-script-decoding-init.js";

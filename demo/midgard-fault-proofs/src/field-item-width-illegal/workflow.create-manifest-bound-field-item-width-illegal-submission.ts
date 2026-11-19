@@ -3,23 +3,23 @@ import {
   PROOF_THREAD_SOURCE_KIND_FORCED,
 } from "@al-ft/midgard-sdk";
 
-import { submitCommittedFieldShapeInit } from "../committed-field-shape/submit-committed-field-shape-init.js";
+import { buildCommittedFieldShapeInit } from "../committed-field-shape/submit-committed-field-shape-init.js";
+import { isPrerequisiteTurn } from "../fault-proof-turn.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
-import { submitRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   type FieldItemWidthEvidence,
   type FieldItemWidthStage,
 } from "./field-item-width-illegal.js";
-import { submitFieldItemWidthIllegalCancel } from "./submit-cancel.js";
-import { submitFieldItemWidthIllegalStep01Accepted } from "./submit-step-01-accepted.js";
-import { submitFieldItemWidthIllegalStep01Forced } from "./submit-step-01-forced.js";
-import { submitFieldItemWidthIllegalStep02 } from "./submit-step-02.js";
-import { submitFieldItemWidthIllegalStep03 } from "./submit-step-03.js";
+import { buildFieldItemWidthIllegalCancel } from "./submit-cancel.js";
+import { buildFieldItemWidthIllegalStep01Accepted } from "./submit-step-01-accepted.js";
+import { buildFieldItemWidthIllegalStep01Forced } from "./submit-step-01-forced.js";
+import { buildFieldItemWidthIllegalStep02 } from "./submit-step-02.js";
+import { buildFieldItemWidthIllegalStep03 } from "./submit-step-03.js";
 import {
   type FieldItemWidthIllegalRuntimeLoader,
   type ManifestBoundFieldItemWidthIllegalConfig,
@@ -30,14 +30,12 @@ export const createManifestBoundFieldItemWidthIllegalSubmission = ({
   config,
   observe,
   resolveStage,
-  preSubmitBoundary,
   stateQueueMutationLeaseCoordinator,
   ownOutputs = createOwnOutputJournal(),
 }: {
   readonly config: ManifestBoundFieldItemWidthIllegalConfig;
   readonly observe: (identity: string) => Promise<FieldItemWidthStage>;
   readonly resolveStage: FieldItemWidthIllegalRuntimeLoader["resolveStage"];
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
@@ -58,7 +56,7 @@ export const createManifestBoundFieldItemWidthIllegalSubmission = ({
       );
     const stage = await resolveStage({ action, evidence });
     if (action === "submitInit") {
-      const result = await submitCommittedFieldShapeInit({
+      const result = await buildCommittedFieldShapeInit({
         lucid: config.lucid,
         blueprint: config.binding.blueprint,
         network: config.binding.network,
@@ -69,17 +67,17 @@ export const createManifestBoundFieldItemWidthIllegalSubmission = ({
         fraudulentBlockOutRef: stage.fraudulentBlockOutRef,
         fraudulentHeaderHash: config.binding.definition.headerHash,
         witnessReferenceScripts: config.referenceScripts.witnesses,
-        preSubmitBoundary,
       });
       return {
+        transaction: result.transaction,
         stage: "step01" as const,
-        txHash: result.txHash,
-        outputReference: `${result.txHash}#${result.firstStepOutputIndex.toString()}`,
+        txHash: result.transaction.txHash,
+        outputReference: `${result.transaction.txHash}#${result.firstStepOutputIndex.toString()}`,
       };
     }
     if (action === "submitStep01") {
       if (evidence.subject.source_kind === PROOF_THREAD_SOURCE_KIND_ACCEPTED) {
-        const result = await submitFieldItemWidthIllegalStep01Accepted({
+        const result = await buildFieldItemWidthIllegalStep01Accepted({
           lucid: config.lucid,
           blueprint: config.binding.blueprint,
           network: config.binding.network,
@@ -95,11 +93,11 @@ export const createManifestBoundFieldItemWidthIllegalSubmission = ({
           txInclusion: required(stage.acceptedInclusion, "accepted inclusion"),
           referenceScriptUtxo: config.referenceScripts.step01,
           witnessReferenceScripts: config.referenceScripts.witnesses,
-          preSubmitBoundary,
         });
         return {
+          transaction: result.transaction,
           stage: "step02" as const,
-          txHash: result.txHash,
+          txHash: result.transaction.txHash,
           outputReference: result.nextThreadOutRef,
         };
       }
@@ -107,7 +105,7 @@ export const createManifestBoundFieldItemWidthIllegalSubmission = ({
         throw new Error(
           "fieldItemWidthIllegal evidence source kind is invalid",
         );
-      const result = await submitFieldItemWidthIllegalStep01Forced({
+      const result = await buildFieldItemWidthIllegalStep01Forced({
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -119,16 +117,16 @@ export const createManifestBoundFieldItemWidthIllegalSubmission = ({
           membership: required(stage.forcedMembership, "forced membership"),
         },
         referenceScriptUtxo: config.referenceScripts.step01,
-        preSubmitBoundary,
       });
       return {
+        transaction: result.transaction,
         stage: "step02" as const,
-        txHash: result.txHash,
+        txHash: result.transaction.txHash,
         outputReference: result.nextThreadOutRef,
       };
     }
     if (action === "submitStep02") {
-      const result = await submitFieldItemWidthIllegalStep02({
+      const result = await buildFieldItemWidthIllegalStep02({
         ownOutputs,
         lucid: config.lucid,
         contracts: config.contracts,
@@ -149,20 +147,19 @@ export const createManifestBoundFieldItemWidthIllegalSubmission = ({
         certificateUtxo: stage.certificateUtxo,
         certificateReferenceScriptUtxo:
           config.referenceScripts.fieldPreimageCertificateMint,
-        publicationPreSubmitBoundary: preSubmitBoundary,
-        certificatePreSubmitBoundary: preSubmitBoundary,
         fieldGrammar: config.fieldGrammar,
         referenceScriptUtxo: config.referenceScripts.step02,
-        preSubmitBoundary,
       });
+      if (isPrerequisiteTurn(result)) return result;
       return {
+        transaction: result.transaction,
         stage: "step03" as const,
-        txHash: result.txHash,
+        txHash: result.transaction.txHash,
         outputReference: result.nextThreadOutRef,
       };
     }
     if (action === "submitStep03") {
-      const result = await submitFieldItemWidthIllegalStep03({
+      const result = await buildFieldItemWidthIllegalStep03({
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -171,15 +168,15 @@ export const createManifestBoundFieldItemWidthIllegalSubmission = ({
         evidence,
         referenceScriptUtxo: config.referenceScripts.step03,
         witnessReferenceScripts: config.referenceScripts.witnesses,
-        preSubmitBoundary,
       });
       return {
+        transaction: result.transaction,
         stage: "proven" as const,
-        txHash: result.txHash,
+        txHash: result.transaction.txHash,
         outputReference: null,
       };
     }
-    const result = await submitRemoveFraudulentBlock({
+    const result = await buildRemoveFraudulentBlock({
       lucid: config.lucid,
       blueprint: config.binding.blueprint,
       deploymentInfo: config.binding.deploymentInfo,
@@ -195,14 +192,18 @@ export const createManifestBoundFieldItemWidthIllegalSubmission = ({
             "fieldItemWidthIllegal production removal requires a state-queue mutation lease coordinator",
           );
         })(),
-      awaitConfirmation: true,
       validFrom: stage.validFrom,
       validTo: stage.validTo,
-      preSubmitBoundary,
     });
     return {
-      stage: "removed" as const,
-      txHash: result.txHash,
+      transaction: result.transaction,
+      stateQueueMutationLease: result.stateQueueMutationLease,
+      // A removal of a successor leaves the fraud proof in place.
+      stage:
+        result.kind === "remove-target"
+          ? ("removed" as const)
+          : ("proven" as const),
+      txHash: result.transaction.txHash,
       outputReference: null,
     };
   },
@@ -212,7 +213,7 @@ export const createManifestBoundFieldItemWidthIllegalSubmission = ({
   ) => {
     const stage = await resolveStage({ action: "cancel", evidence });
     const index = current === "step01" ? 0 : current === "step02" ? 1 : 2;
-    const result = await submitFieldItemWidthIllegalCancel({
+    const result = await buildFieldItemWidthIllegalCancel({
       lucid: config.lucid,
       contracts: config.contracts,
       categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -226,8 +227,9 @@ export const createManifestBoundFieldItemWidthIllegalSubmission = ({
       witnessReferenceScripts: config.referenceScripts.witnesses,
     });
     return {
+      transaction: result.transaction,
       stage: "cancelled" as const,
-      txHash: result.txHash,
+      txHash: result.transaction.txHash,
       outputReference: null,
     };
   },

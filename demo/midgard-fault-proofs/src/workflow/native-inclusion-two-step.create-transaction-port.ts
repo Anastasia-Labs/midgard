@@ -1,16 +1,16 @@
 import {
-  submitInvalidRangeStep01Forced,
-  submitInvalidRangeStep02V1,
+  buildInvalidRangeStep01Forced,
+  buildInvalidRangeStep02V1,
 } from "../invalid-range/submit.js";
 import { requireLinearFaultThreadUtxo } from "../linear-fault-family.js";
-import { submitInit } from "../submit-init.js";
-import { submitInvalidRangeStep01 } from "../submit-invalid-range-step-01.js";
+import { buildInit } from "../submit-init.js";
+import { buildInvalidRangeStep01 } from "../submit-invalid-range-step-01.js";
 import type { ZeroInputContracts } from "../zero-input/contracts.js";
 import {
-  submitZeroInputStep01Accepted,
-  submitZeroInputStep01Forced,
+  buildZeroInputStep01Accepted,
+  buildZeroInputStep01Forced,
 } from "../zero-input/submit-step-01.js";
-import { submitZeroInputStep02V1 } from "../zero-input/submit-step-02.js";
+import { buildZeroInputStep02V1 } from "../zero-input/submit-step-02.js";
 import {
   type ManifestBoundLinearFamilyWorkflow,
   type ManifestBoundLinearFamilyWorkflowConfig,
@@ -34,7 +34,7 @@ import {
   type WitnessRole,
 } from "./native-inclusion-two-step.prepare-native-inclusion-two-step-artifact.js";
 import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.js";
-import { captureLocallyEvaluatedTransaction } from "./transaction-boundary.js";
+import { journaledStepTransaction } from "./step-transaction.js";
 
 export const createTransactionPort = <
   Category extends NativeInclusionTwoStepCategory,
@@ -64,9 +64,9 @@ export const createTransactionPort = <
     const input = actionInput({ category: config.category, action });
     if (input.stage === "init") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitInit({
+        transaction: (
+          await journaledStepTransaction(
+            await buildInit({
               lucid: config.lucid,
               blueprint: config.blueprint,
               deploymentInfo: config.deploymentInfo,
@@ -79,11 +79,10 @@ export const createTransactionPort = <
               ),
               fraudulentHeaderHash: config.headerHash,
               witnessReferenceScripts: config.referenceScripts.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "native-inclusion-two-step buildInit",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "step_01") {
@@ -97,173 +96,171 @@ export const createTransactionPort = <
             })
           : undefined;
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            const common = {
-              lucid: config.lucid,
-              blueprint: config.blueprint,
-              deploymentInfo: config.deploymentInfo,
-              network: config.network,
-              signer: config.signer,
-              threadOutRef: stringField(input, "threadOutRef"),
-              stateQueueBlockOutRef: stringField(
-                input,
-                "stateQueueBlockOutRef",
-              ),
-              txInclusion: admitted.inclusion,
-              publishedProofChunks: chunks,
-              referenceScriptUtxo: config.referenceScripts.steps[0],
-              witnessReferenceScripts: config.referenceScripts.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            } as const;
-            void common;
-            if (config.category === "invalidRange") {
-              if (admitted.artifact.sourceKind === "forced") {
+        transaction: (
+          await journaledStepTransaction(
+            await (async () => {
+              const common = {
+                lucid: config.lucid,
+                blueprint: config.blueprint,
+                deploymentInfo: config.deploymentInfo,
+                network: config.network,
+                signer: config.signer,
+                threadOutRef: stringField(input, "threadOutRef"),
+                stateQueueBlockOutRef: stringField(
+                  input,
+                  "stateQueueBlockOutRef",
+                ),
+                txInclusion: admitted.inclusion,
+                publishedProofChunks: chunks,
+                referenceScriptUtxo: config.referenceScripts.steps[0],
+                witnessReferenceScripts: config.referenceScripts.witnesses,
+              } as const;
+              void common;
+              if (config.category === "invalidRange") {
+                if (admitted.artifact.sourceKind === "forced") {
+                  if (
+                    config.invalidRangeContracts === null ||
+                    admitted.invalidRangeEvidence === null ||
+                    admitted.forcedSource === null
+                  )
+                    throw new Error(
+                      "invalidRange forced authority disappeared",
+                    );
+                  return await buildInvalidRangeStep01Forced({
+                    lucid: config.lucid,
+                    contracts: config.invalidRangeContracts,
+                    categoryId: config.categoryId,
+                    signer: config.signer,
+                    threadOutRef: stringField(input, "threadOutRef"),
+                    evidence: admitted.invalidRangeEvidence,
+                    forcedSource: admitted.forcedSource,
+                    referenceScriptUtxo: config.referenceScripts.steps[0],
+                  });
+                } else {
+                  if (admitted.inclusion === null)
+                    throw new Error(
+                      "invalidRange accepted inclusion disappeared",
+                    );
+                  return await buildInvalidRangeStep01({
+                    ...common,
+                    txInclusion: admitted.inclusion,
+                  });
+                }
+              } else {
+                const contracts = config.zeroInputContracts;
+                const evidence = admitted.zeroInputEvidence;
+                if (contracts === null || evidence === null)
+                  throw new Error(
+                    "zeroInput workflow omitted family authority",
+                  );
+                if (admitted.artifact.sourceKind === "forced") {
+                  if (admitted.forcedSource === null)
+                    throw new Error("zeroInput forced source disappeared");
+                  return await buildZeroInputStep01Forced({
+                    lucid: config.lucid,
+                    contracts,
+                    categoryId: config.categoryId,
+                    signer: config.signer,
+                    threadOutRef: stringField(input, "threadOutRef"),
+                    finding: evidence,
+                    forcedSource: admitted.forcedSource,
+                    referenceScriptUtxo: config.referenceScripts.steps[0],
+                  });
+                } else {
+                  if (admitted.inclusion === null)
+                    throw new Error("zeroInput accepted inclusion disappeared");
+                  const thread = await requireLinearFaultThreadUtxo({
+                    lucid: config.lucid,
+                    contracts,
+                    categoryId: config.categoryId,
+                    family: "zero-input",
+                    stepIndex: 0,
+                    threadOutRef: stringField(input, "threadOutRef"),
+                  });
+                  return await buildZeroInputStep01Accepted({
+                    lucid: config.lucid,
+                    blueprint: config.blueprint,
+                    network: config.network,
+                    contracts,
+                    signer: config.signer,
+                    finding: evidence,
+                    threadUtxo: thread.threadUtxo,
+                    threadToken: thread.threadToken,
+                    stateQueueBlockOutRef: stringField(
+                      input,
+                      "stateQueueBlockOutRef",
+                    ),
+                    txInclusion: admitted.inclusion,
+                    referenceScriptUtxo: config.referenceScripts.steps[0],
+                    witnessReferenceScripts: config.referenceScripts.witnesses,
+                  });
+                }
+              }
+            })(),
+            "native-inclusion-two-step step_01",
+          )
+        ).transaction,
+      });
+    }
+    if (input.stage === "step_02") {
+      return Object.freeze({
+        transaction: (
+          await journaledStepTransaction(
+            await (async () => {
+              const common = {
+                lucid: config.lucid,
+                blueprint: config.blueprint,
+                deploymentInfo: config.deploymentInfo,
+                network: config.network,
+                signer: config.signer,
+                threadOutRef: stringField(input, "threadOutRef"),
+                referenceScriptUtxo: config.referenceScripts.steps[1],
+                witnessReferenceScripts: config.referenceScripts.witnesses,
+              } as const;
+              void common;
+              if (config.category === "invalidRange") {
                 if (
                   config.invalidRangeContracts === null ||
-                  admitted.invalidRangeEvidence === null ||
-                  admitted.forcedSource === null
+                  admitted.invalidRangeEvidence === null
                 )
-                  throw new Error("invalidRange forced authority disappeared");
-                await submitInvalidRangeStep01Forced({
+                  throw new Error(
+                    "invalidRange terminal authority disappeared",
+                  );
+                return await buildInvalidRangeStep02V1({
                   lucid: config.lucid,
                   contracts: config.invalidRangeContracts,
                   categoryId: config.categoryId,
                   signer: config.signer,
                   threadOutRef: stringField(input, "threadOutRef"),
                   evidence: admitted.invalidRangeEvidence,
-                  forcedSource: admitted.forcedSource,
-                  referenceScriptUtxo: config.referenceScripts.steps[0],
-                  preSubmitBoundary,
-                  awaitConfirmation: false,
-                });
-              } else {
-                if (admitted.inclusion === null)
-                  throw new Error(
-                    "invalidRange accepted inclusion disappeared",
-                  );
-                await submitInvalidRangeStep01({
-                  ...common,
-                  txInclusion: admitted.inclusion,
-                });
-              }
-            } else {
-              const contracts = config.zeroInputContracts;
-              const evidence = admitted.zeroInputEvidence;
-              if (contracts === null || evidence === null)
-                throw new Error("zeroInput workflow omitted family authority");
-              if (admitted.artifact.sourceKind === "forced") {
-                if (admitted.forcedSource === null)
-                  throw new Error("zeroInput forced source disappeared");
-                await submitZeroInputStep01Forced({
-                  lucid: config.lucid,
-                  contracts,
-                  categoryId: config.categoryId,
-                  signer: config.signer,
-                  threadOutRef: stringField(input, "threadOutRef"),
-                  finding: evidence,
-                  forcedSource: admitted.forcedSource,
-                  referenceScriptUtxo: config.referenceScripts.steps[0],
-                  preSubmitBoundary,
-                  awaitConfirmation: false,
-                });
-              } else {
-                if (admitted.inclusion === null)
-                  throw new Error("zeroInput accepted inclusion disappeared");
-                const thread = await requireLinearFaultThreadUtxo({
-                  lucid: config.lucid,
-                  contracts,
-                  categoryId: config.categoryId,
-                  family: "zero-input",
-                  stepIndex: 0,
-                  threadOutRef: stringField(input, "threadOutRef"),
-                });
-                await submitZeroInputStep01Accepted({
-                  lucid: config.lucid,
-                  blueprint: config.blueprint,
-                  network: config.network,
-                  contracts,
-                  signer: config.signer,
-                  finding: evidence,
-                  threadUtxo: thread.threadUtxo,
-                  threadToken: thread.threadToken,
-                  stateQueueBlockOutRef: stringField(
-                    input,
-                    "stateQueueBlockOutRef",
-                  ),
-                  txInclusion: admitted.inclusion,
-                  referenceScriptUtxo: config.referenceScripts.steps[0],
+                  referenceScriptUtxo: config.referenceScripts.steps[1],
                   witnessReferenceScripts: config.referenceScripts.witnesses,
-                  preSubmitBoundary,
-                  awaitConfirmation: false,
+                });
+              } else {
+                if (
+                  config.zeroInputContracts === null ||
+                  admitted.zeroInputEvidence === null
+                )
+                  throw new Error(
+                    "zeroInput workflow omitted terminal authority",
+                  );
+                return await buildZeroInputStep02V1({
+                  ownOutputs,
+                  lucid: config.lucid,
+                  contracts: config.zeroInputContracts,
+                  categoryId: config.categoryId,
+                  signer: config.signer,
+                  threadOutRef: stringField(input, "threadOutRef"),
+                  evidence: admitted.zeroInputEvidence,
+                  nativeTxCompactCbor: admitted.artifact.nativeTxCompactCbor,
+                  referenceScriptUtxo: config.referenceScripts.steps[1],
+                  witnessReferenceScripts: config.referenceScripts.witnesses,
                 });
               }
-            }
-          },
-        ),
-      });
-    }
-    if (input.stage === "step_02") {
-      return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            const common = {
-              lucid: config.lucid,
-              blueprint: config.blueprint,
-              deploymentInfo: config.deploymentInfo,
-              network: config.network,
-              signer: config.signer,
-              threadOutRef: stringField(input, "threadOutRef"),
-              referenceScriptUtxo: config.referenceScripts.steps[1],
-              witnessReferenceScripts: config.referenceScripts.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            } as const;
-            void common;
-            if (config.category === "invalidRange") {
-              if (
-                config.invalidRangeContracts === null ||
-                admitted.invalidRangeEvidence === null
-              )
-                throw new Error("invalidRange terminal authority disappeared");
-              await submitInvalidRangeStep02V1({
-                lucid: config.lucid,
-                contracts: config.invalidRangeContracts,
-                categoryId: config.categoryId,
-                signer: config.signer,
-                threadOutRef: stringField(input, "threadOutRef"),
-                evidence: admitted.invalidRangeEvidence,
-                referenceScriptUtxo: config.referenceScripts.steps[1],
-                witnessReferenceScripts: config.referenceScripts.witnesses,
-                preSubmitBoundary,
-                awaitConfirmation: false,
-              });
-            } else {
-              if (
-                config.zeroInputContracts === null ||
-                admitted.zeroInputEvidence === null
-              )
-                throw new Error(
-                  "zeroInput workflow omitted terminal authority",
-                );
-              await submitZeroInputStep02V1({
-                ownOutputs,
-                lucid: config.lucid,
-                contracts: config.zeroInputContracts,
-                categoryId: config.categoryId,
-                signer: config.signer,
-                threadOutRef: stringField(input, "threadOutRef"),
-                evidence: admitted.zeroInputEvidence,
-                nativeTxCompactCbor: admitted.artifact.nativeTxCompactCbor,
-                referenceScriptUtxo: config.referenceScripts.steps[1],
-                witnessReferenceScripts: config.referenceScripts.witnesses,
-                preSubmitBoundary,
-                awaitConfirmation: false,
-              });
-            }
-          },
-        ),
+            })(),
+            "native-inclusion-two-step step_02",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "remove") {

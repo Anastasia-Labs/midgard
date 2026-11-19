@@ -15,7 +15,7 @@ import { Data, getAddressDetails, toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../../src/evidence/canonical-block-evidence.js";
-import { submitLinearFaultCancel } from "../../src/linear-fault-cancel.js";
+import { buildLinearFaultCancel } from "../../src/linear-fault-cancel.js";
 import { admitMintAuthorizationWorkflowArtifact } from "../../src/mint-authorization/artifact.js";
 import { MINT_AUTHORIZATION_CATEGORY_LABEL } from "../../src/mint-authorization/contracts.js";
 import {
@@ -78,6 +78,7 @@ import {
   publishPlainReferenceScriptUtxo,
   publishRemovalReferenceScripts,
 } from "./submit-init-emulator-shared.js";
+import { buildAndSubmitUnjournaled } from "./submit-unjournaled.js";
 
 /** Every scenario of the suite, in the order one file running them all runs them. */
 const MINT_AUTHORIZATION_INSTALLED_CASES = [
@@ -132,7 +133,7 @@ const partOf = (name: string): MintAuthorizationInstalledPart =>
  * Runs one scenario through mint and removal, restarting the workflow from its
  * journal at every boundary.
  */
-const captureAndRestart = async (name: string): Promise<void> => {
+export const captureAndRestart = async (name: string): Promise<void> => {
   if (name === "maximum-selected-assets") {
     await runMintAuthorizationProofMaximum(
       mintAuthorizationMaximumSelectedAssets(),
@@ -608,7 +609,7 @@ const captureAndRestart = async (name: string): Promise<void> => {
       );
       expect(thread).toBeDefined();
       const cancelled = await captureEmulatorSubmission(h.emulator, () =>
-        submitLinearFaultCancel({
+        buildAndSubmitUnjournaled(buildLinearFaultCancel, {
           lucid: h.proverLucid,
           family: MINT_AUTHORIZATION_CATEGORY_LABEL,
           steps: h.family.steps,

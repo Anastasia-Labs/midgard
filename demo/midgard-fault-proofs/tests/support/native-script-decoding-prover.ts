@@ -22,26 +22,26 @@
  * - **Outcome as data:** proven, refused (classification/policy, with the
  *   reason), or stalled (unexpected abort — surfaced loudly, never
  *   silently cancelled; cancellation is its own explicit call,
- *   `submitLinearFaultCancel`).
+ *   `buildLinearFaultCancel`).
  */
 
 import "@al-ft/midgard-core";
 import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "effect";
-import "../runtime.js";
-import "./finding.js";
-import "./scan-plan.js";
-import "./submit-common.js";
-import "./submit-native-script-decoding-init.js";
-import "./submit-native-script-decoding-step-01.js";
-import "./submit-native-script-decoding-step-02.js";
-import "./submit-native-script-decoding-step-03.js";
-import "./submit-native-script-decoding-step-04.js";
-import "./prover.locate-native-script-decoding-thread.js";
-import "./prover.remaining-tx-count.js";
-import "./prover.run-native-script-decoding-prover.js";
-import "./prover.prove-native-script-decoding-fault.js";
+import "../../src/runtime.js";
+import "../../src/native-script-decoding/finding.js";
+import "../../src/native-script-decoding/scan-plan.js";
+import "../../src/native-script-decoding/submit-common.js";
+import "../../src/native-script-decoding/submit-native-script-decoding-init.js";
+import "../../src/native-script-decoding/submit-native-script-decoding-step-01.js";
+import "../../src/native-script-decoding/submit-native-script-decoding-step-02.js";
+import "../../src/native-script-decoding/submit-native-script-decoding-step-03.js";
+import "../../src/native-script-decoding/submit-native-script-decoding-step-04.js";
+import "./native-script-decoding-prover.locate-native-script-decoding-thread.js";
+import "./native-script-decoding-prover.remaining-tx-count.js";
+import "./native-script-decoding-prover.run-native-script-decoding-prover.js";
+import "./native-script-decoding-prover.prove-native-script-decoding-fault.js";
 export {
   locateNativeScriptDecodingThread,
   NATIVE_SCRIPT_DECODING_PROVER_POLICY_DEFAULTS,
@@ -52,6 +52,6 @@ export {
   type NativeScriptDecodingProverObservations,
   type NativeScriptDecodingProverPolicy,
   type NativeScriptDecodingThreadPosition,
-} from "./prover.locate-native-script-decoding-thread.js";
-export { proveNativeScriptDecodingFault } from "./prover.prove-native-script-decoding-fault.js";
-export { runNativeScriptDecodingProver } from "./prover.run-native-script-decoding-prover.js";
+} from "./native-script-decoding-prover.locate-native-script-decoding-thread.js";
+export { proveNativeScriptDecodingFault } from "./native-script-decoding-prover.prove-native-script-decoding-fault.js";
+export { runNativeScriptDecodingProver } from "./native-script-decoding-prover.run-native-script-decoding-prover.js";

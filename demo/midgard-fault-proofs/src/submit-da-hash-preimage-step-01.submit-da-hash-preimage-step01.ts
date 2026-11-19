@@ -38,15 +38,15 @@ import {
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
 } from "./runtime.js";
-import { completeStep, fundStep, submitStep } from "./step-completion.js";
+import { completeStep, finishStep, fundStep } from "./step-completion.js";
 import {
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
   requireComputationThreadToken,
   requireInitialStepDatum,
 } from "./step-support.js";
 import {
+  type DaHashPreimageStep01Build,
   type DaHashPreimageStep01Layout,
-  type SubmitDaHashPreimageStep01Result,
   type SubmitDaHashPreimageTxInclusion,
 } from "./submit-da-hash-preimage-step-01.parse-submit-da-hash-preimage-tx-inclusion.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
@@ -55,12 +55,8 @@ import {
   witnessSpendingValidatorCarriage,
   witnessWithdrawalValidatorCarriage,
 } from "./witness-reference-scripts.js";
-import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
-} from "./workflow/transaction-boundary.js";
 
-export const submitDaHashPreimageStep01 = async ({
+export const buildDaHashPreimageStep01 = async ({
   lucid,
   blueprint,
   deploymentInfo,
@@ -71,8 +67,6 @@ export const submitDaHashPreimageStep01 = async ({
   txInclusion,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -86,9 +80,7 @@ export const submitDaHashPreimageStep01 = async ({
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitDaHashPreimageStep01Result> => {
+}): Promise<DaHashPreimageStep01Build> => {
   const resolvedDeployment = await resolveDaHashPreimageDeploymentContracts({
     blueprint,
     deploymentInfo,
@@ -309,34 +301,28 @@ export const submitDaHashPreimageStep01 = async ({
       "BuildTxWithRedeemer did not resolve da-hash-preimage step 01 layout.",
     );
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: "da-hash-preimage step-01",
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: "V1 fraud-proof da-hash-preimage step-01",
-          utxo: referenceScriptUtxo,
-          expectedScript: contracts.daHashPreimage.steps[0].spendingScript,
-        },
-        {
-          role: "membership proof withdrawal",
-          utxo: witnessReferenceScripts?.phasMembershipWithdraw,
-          expectedScript: phasMembershipScript,
-        },
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: "V1 fraud-proof da-hash-preimage step-01",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.daHashPreimage.steps[0].spendingScript,
+      },
+      {
+        role: "membership proof withdrawal",
+        utxo: witnessReferenceScripts?.phasMembershipWithdraw,
+        expectedScript: phasMembershipScript,
+      },
+    ],
   });
 
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
     threadOutRef,
-    nextThreadOutRef: `${txHash}#${resolvedLayout.outputIndex.toString()}`,
+    nextThreadOutRef: `${transaction.txHash}#${resolvedLayout.outputIndex.toString()}`,
     stateQueueBlockOutRef,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadPolicyId: contracts.computationThread.policyId,
@@ -355,6 +341,5 @@ export const submitDaHashPreimageStep01 = async ({
     stateQueueNodeRefInputIndex: Number(
       resolvedLayout.stateQueueNodeRefInputIndex,
     ),
-    awaitedConfirmation: awaitConfirmation,
   };
 };

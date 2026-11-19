@@ -8,15 +8,15 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { outRefLabel, type ResolvedProverSigner } from "../runtime.js";
-import type { SubmitStep01TxInclusion } from "../step-support.js";
-import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import type { MissingSignatureContracts } from "./contracts.js";
-import { type MissingSignatureFinding } from "./finding.js";
+import type { MissingSignatureContracts } from "../../src/missing-signature/contracts.js";
+import { type MissingSignatureFinding } from "../../src/missing-signature/finding.js";
 import {
   type MissingSignatureCatalogueCategory,
   missingSignatureSubmitError,
-} from "./submit-common.js";
+} from "../../src/missing-signature/submit-common.js";
+import { outRefLabel, type ResolvedProverSigner } from "../../src/runtime.js";
+import type { SubmitStep01TxInclusion } from "../../src/step-support.js";
+import type { FaultProofWitnessReferenceScripts } from "../../src/witness-reference-scripts.js";
 
 export type MissingSignatureProverPolicy = {
   /** Minimum L1 depth before a new thread may be initialized. */

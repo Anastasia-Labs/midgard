@@ -51,11 +51,7 @@ import {
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import {
-  certifyFaultProofFieldCarriage,
-  planFaultProofFieldOpening,
-  publishFaultProofFieldCarriage,
-} from "../src/field-opening.js";
+import { planFaultProofFieldOpening } from "../src/field-opening.js";
 import {
   NETWORK_ID_FORCED_CERTIFIED_SCAN_DRIVER_BATCH,
   NETWORK_ID_FORCED_GRAMMAR_DRIVER_BATCH,
@@ -82,6 +78,10 @@ import {
   MAXIMUM_CERTIFIED_OUTPUT_COUNT,
   MAXIMUM_SUPPORTED_OUTPUT_COUNT,
 } from "./support/network-id-shapes.js";
+import {
+  certifyCarriageUnjournaled,
+  publishCarriageUnjournaled,
+} from "./support/submit-unjournaled.js";
 
 describe("networkId wrongful-rejection real lifecycle", () => {
   it("runs Init through the forced door to a permanent mint and removal, cancels every nonterminal step, and restarts by out-ref", async () => {
@@ -328,7 +328,7 @@ describe("networkId wrongful-rejection real lifecycle", () => {
       expect(plan.steps.filter((step) => step.kind === "advance")).toHaveLength(
         2,
       );
-      await publishFaultProofFieldCarriage({
+      await publishCarriageUnjournaled({
         ownOutputs,
         lucid: harness.proverLucid,
         signer: harness.proverSigner,
@@ -567,7 +567,7 @@ describe("networkId wrongful-rejection real lifecycle", () => {
       prepared,
     );
     const publication = await captureEmulatorSubmission(harness.emulator, () =>
-      publishFaultProofFieldCarriage({
+      publishCarriageUnjournaled({
         ownOutputs,
         lucid: harness.proverLucid,
         signer: harness.proverSigner,
@@ -660,7 +660,7 @@ describe("networkId wrongful-rejection real lifecycle", () => {
       await stages.dispatch(await stages.initialize(), prepared),
       prepared,
     );
-    const chunks = await publishFaultProofFieldCarriage({
+    const chunks = await publishCarriageUnjournaled({
       ownOutputs,
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
@@ -673,7 +673,7 @@ describe("networkId wrongful-rejection real lifecycle", () => {
       script: harness.contracts.fieldPreimageCertificate.mintingScript,
       label: "network-id field certificate mint",
     });
-    const certificate = await certifyFaultProofFieldCarriage({
+    const certificate = await certifyCarriageUnjournaled({
       ownOutputs,
       lucid: harness.proverLucid,
       network,
@@ -740,7 +740,7 @@ describe("networkId wrongful-rejection real lifecycle", () => {
     });
     const stages = makeStages(harness, refs, block.setup);
     const { opening, plan } = stages.scanPlanFor(prepared, true);
-    await publishFaultProofFieldCarriage({
+    await publishCarriageUnjournaled({
       ownOutputs,
       lucid: harness.proverLucid,
       signer: harness.proverSigner,

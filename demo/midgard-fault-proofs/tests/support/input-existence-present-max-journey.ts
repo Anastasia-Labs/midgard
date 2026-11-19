@@ -14,10 +14,6 @@ import { Data, getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
 import {
-  certifyFaultProofFieldCarriage,
-  publishFaultProofFieldCarriage,
-} from "../../src/field-opening.js";
-import {
   admitNoReferenceInputForcedArtifact,
   noReferenceInputForcedArtifact,
 } from "../../src/no-reference-input/artifact.js";
@@ -39,7 +35,7 @@ import {
   type PreparedNonExistentInputWrongfulRejection,
 } from "../../src/non-existent-input/wrongful-rejection.js";
 import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.js";
-import { submitInit } from "../../src/submit-init.js";
+import { buildInit } from "../../src/submit-init.js";
 import { commitCountedRoot } from "../../src/transition-trace/phas.js";
 import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { verifiedMaximumForkPrefixes } from "./canonical-decodability-emulator.long-fork-proof.js";
@@ -61,6 +57,11 @@ import {
   publishPlainReferenceScriptUtxo,
   publishRemovalReferenceScripts,
 } from "./submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  certifyCarriageUnjournaled,
+  publishCarriageUnjournaled,
+} from "./submit-unjournaled.js";
 import { syntheticDeepMembershipProof } from "./synthetic-deep-proof.js";
 
 /** The Present maximum: the largest input field (819 inputs, a Certified
@@ -360,7 +361,7 @@ export const runPresentMaxJourney = async ({
   ).toBe(32763);
   const ownOutputs = createOwnOutputJournal();
   const chunks = await captures("field-publication", () =>
-    publishFaultProofFieldCarriage({
+    publishCarriageUnjournaled({
       ownOutputs,
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
@@ -379,7 +380,7 @@ export const runPresentMaxJourney = async ({
       }),
   );
   const certified = await captures("field-certification", () =>
-    certifyFaultProofFieldCarriage({
+    certifyCarriageUnjournaled({
       ownOutputs,
       lucid: harness.proverLucid,
       network: "Custom",
@@ -395,7 +396,7 @@ export const runPresentMaxJourney = async ({
     }),
   );
   const initResult = await captures("init", () =>
-    submitInit({
+    buildAndSubmitUnjournaled(buildInit, {
       lucid: harness.proverLucid,
       witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: harness.realBlueprint,

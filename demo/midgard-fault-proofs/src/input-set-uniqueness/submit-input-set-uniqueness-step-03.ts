@@ -15,19 +15,19 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { isPrerequisiteTurn } from "../fault-proof-turn.js";
 import {
   faultProofFieldCarriage,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
 } from "../field-opening.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { InputSetUniquenessContracts } from "./contracts.js";
 import {
   requireInputSetUniquenessReferenceScript,
@@ -49,7 +49,7 @@ const uniqueUtxos = (utxos: readonly UTxO[]): readonly UTxO[] => {
   });
 };
 
-export const submitInputSetUniquenessStep03 = async ({
+export const buildInputSetUniquenessStep03 = async ({
   lucid,
   contracts,
   categoryId,
@@ -63,8 +63,6 @@ export const submitInputSetUniquenessStep03 = async ({
   spendCertificateUtxo,
   referenceCertificateUtxo,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
@@ -80,8 +78,6 @@ export const submitInputSetUniquenessStep03 = async ({
   readonly spendCertificateUtxo?: UTxO;
   readonly referenceCertificateUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
 }) => {
@@ -121,8 +117,9 @@ export const submitInputSetUniquenessStep03 = async ({
     planned: typeof spendPlan,
     supplied: readonly UTxO[] | undefined,
     certificate: UTxO | undefined,
-  ) => [
-    ...(supplied ??
+  ) => {
+    const publications =
+      supplied ??
       (await publishFaultProofFieldCarriage({
         ownOutputs,
         lucid,
@@ -130,21 +127,26 @@ export const submitInputSetUniquenessStep03 = async ({
         planned,
         publisherAddress: signer.proofMaterialsAddress,
         label: "input-set-uniqueness step-03 field",
-      }))),
-    ...(certificate === undefined ? [] : [certificate]),
-  ];
-  const carriageUtxos = uniqueUtxos([
-    ...(await resolve(
-      spendPlan,
-      publishedSpendCarriageUtxos,
-      spendCertificateUtxo,
-    )),
-    ...(await resolve(
-      referencePlan,
-      publishedReferenceCarriageUtxos,
-      referenceCertificateUtxo,
-    )),
-  ]);
+      }));
+    if (isPrerequisiteTurn(publications)) return publications;
+    return [
+      ...publications,
+      ...(certificate === undefined ? [] : [certificate]),
+    ];
+  };
+  const spendCarriage = await resolve(
+    spendPlan,
+    publishedSpendCarriageUtxos,
+    spendCertificateUtxo,
+  );
+  if (isPrerequisiteTurn(spendCarriage)) return spendCarriage;
+  const referenceCarriage = await resolve(
+    referencePlan,
+    publishedReferenceCarriageUtxos,
+    referenceCertificateUtxo,
+  );
+  if (isPrerequisiteTurn(referenceCarriage)) return referenceCarriage;
+  const carriageUtxos = uniqueUtxos([...spendCarriage, ...referenceCarriage]);
   // The accused pair is not checked here: in either orientation the complete
   // scan answers it, and a pair naming no duplicate finalizes at cursor 0.
   const spendCount = BigInt(spendInputItemCbors.length);
@@ -220,7 +222,7 @@ export const submitInputSetUniquenessStep03 = async ({
       InputSetUniquenessStep03SpendRedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -232,14 +234,12 @@ export const submitInputSetUniquenessStep03 = async ({
     nextDatum,
     redeemer,
     carriageUtxos,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined)
     throw new Error("input-set-uniqueness: unresolved layout");
   return Object.freeze({
-    txHash,
-    nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
     state: scanState,
   });
 };

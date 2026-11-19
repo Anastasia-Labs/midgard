@@ -29,12 +29,18 @@ import {
 import { Effect } from "effect";
 
 import {
+  type ContinuationTurn,
+  type FaultProofTurn,
+  isPrerequisiteTurn,
+} from "../fault-proof-turn.js";
+import {
   faultProofFieldOpening,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
 } from "../field-opening.js";
 import { type ResolvedProverSigner } from "../runtime.js";
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts.js";
@@ -47,10 +53,6 @@ import {
   structuredDataPublicationPlan,
   structuredDataTreeData,
 } from "../workflow/structured-data-preimage.js";
-import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary.js";
 import type { MintAuthorizationContracts } from "./contracts.js";
 import { buildMintAuthorizationStep02Evidence } from "./evidence.js";
 import {
@@ -64,31 +66,10 @@ import {
   requireMintAuthorizationStepState,
   requireMintAuthorizationThreadUtxo,
 } from "./submit-common.js";
-import {
-  STEP_LABEL,
-  type SubmitMintAuthorizationStep02Result,
-} from "./submit-mint-authorization-step-02.submit-mint-authorization-step02-result.js";
+import type { MintAuthorizationStep02Build } from "./submit-mint-authorization-step-02.submit-mint-authorization-step02-result.js";
+import { STEP_LABEL } from "./submit-mint-authorization-step-02.submit-mint-authorization-step02-result.js";
 
-export const submitMintAuthorizationStep02 = async ({
-  lucid,
-  contracts,
-  categoryId,
-  signer,
-  threadOutRef,
-  reconstruction,
-  policyIndex,
-  direction,
-  nativeTxCompactCbor,
-  mintItemCbors,
-  certificateUtxo,
-  publishedCarriageUtxos,
-  claimEvidence,
-  evidenceReferences,
-  referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
-  ownOutputs = createOwnOutputJournal(),
-}: {
+export type BuildMintAuthorizationStep02Args = {
   readonly lucid: LucidEvolution;
   readonly contracts: MintAuthorizationContracts;
   readonly categoryId: string;
@@ -119,11 +100,45 @@ export const submitMintAuthorizationStep02 = async ({
   readonly evidenceReferences?: readonly UTxO[];
   /** The mandatory published step-02 reference script. */
   readonly referenceScriptUtxo?: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
-}): Promise<SubmitMintAuthorizationStep02Result> => {
+};
+
+/** The thread out-ref, carriage and evidence a mint scan continues with. */
+export type MintAuthorizationStep02ScanContinuation = Pick<
+  BuildMintAuthorizationStep02Args,
+  "threadOutRef" | "publishedCarriageUtxos" | "claimEvidence"
+>;
+
+/**
+ * The next step-02 transaction. A mint field the thread cannot scan in one
+ * transaction is scanned over several: each call builds one scan checkpoint
+ * as a {@link ContinuationTurn} naming the thread's next out-ref, and the
+ * call that completes the scan builds the step-02 result.
+ */
+export const buildMintAuthorizationStep02 = async ({
+  lucid,
+  contracts,
+  categoryId,
+  signer,
+  threadOutRef,
+  reconstruction,
+  policyIndex,
+  direction,
+  nativeTxCompactCbor,
+  mintItemCbors,
+  certificateUtxo,
+  publishedCarriageUtxos,
+  claimEvidence,
+  evidenceReferences,
+  referenceScriptUtxo,
+  ownOutputs = createOwnOutputJournal(),
+}: BuildMintAuthorizationStep02Args): Promise<
+  FaultProofTurn<
+    | ContinuationTurn<MintAuthorizationStep02ScanContinuation>
+    | MintAuthorizationStep02Build
+  >
+> => {
   const { threadUtxo, threadToken } = await requireMintAuthorizationThreadUtxo({
     lucid,
     contracts,
@@ -274,6 +289,7 @@ export const submitMintAuthorizationStep02 = async ({
       publisherAddress: signer.proofMaterialsAddress,
       label: `${STEP_LABEL} mint`,
     }));
+  if (isPrerequisiteTurn(carriageUtxos)) return carriageUtxos;
   const stepReference =
     referenceScriptUtxo === undefined
       ? undefined
@@ -416,57 +432,42 @@ export const submitMintAuthorizationStep02 = async ({
       "BuildTxWithRedeemer did not resolve the step-02 layout.",
     );
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: "mint-authorization step-02",
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: "V1 fraud-proof mint-authorization step-02",
-          utxo: referenceScriptUtxo,
-          expectedScript: contracts.steps[1].spendingScript,
-        },
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation: awaitConfirmation || !complete,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: "V1 fraud-proof mint-authorization step-02",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.steps[1].spendingScript,
+      },
+    ],
   });
 
+  // The next checkpoint spends this transaction's thread output, so it is
+  // built only once this one is confirmed.
   if (!complete)
-    return submitMintAuthorizationStep02({
-      ownOutputs,
-      lucid,
-      contracts,
-      categoryId,
-      signer,
-      threadOutRef: `${txHash}#${resolvedLayout.outputIndex.toString()}`,
-      reconstruction,
-      policyIndex,
-      direction,
-      nativeTxCompactCbor,
-      mintItemCbors,
-      certificateUtxo,
-      publishedCarriageUtxos: carriageUtxos,
-      claimEvidence: evidence,
-      evidenceReferences,
-      referenceScriptUtxo,
-      preSubmitBoundary,
-      awaitConfirmation,
-    });
+    return {
+      kind: "continuation",
+      transaction,
+      label: `${STEP_LABEL} mint scan`,
+      next: {
+        threadOutRef: `${transaction.txHash}#${resolvedLayout.outputIndex.toString()}`,
+        publishedCarriageUtxos: carriageUtxos,
+        claimEvidence: evidence,
+      },
+    };
 
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
     threadOutRef,
-    nextThreadOutRef: `${txHash}#${resolvedLayout.outputIndex.toString()}`,
+    nextThreadOutRef: `${transaction.txHash}#${resolvedLayout.outputIndex.toString()}`,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadUnit: threadToken.unit,
     thirdStepAddress: contracts.steps[2].spendingScriptAddress,
     step03State,
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
-    awaitedConfirmation: awaitConfirmation,
   };
 };

@@ -17,10 +17,10 @@ import { acceptedVerdictSubject } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
-  submitMintItemNonCanonicalStep01Accepted,
-  submitMintItemNonCanonicalStep02,
-  submitMintItemNonCanonicalStep03,
-  submitMintItemNonCanonicalStep04,
+  buildMintItemNonCanonicalStep01Accepted,
+  buildMintItemNonCanonicalStep02,
+  buildMintItemNonCanonicalStep03,
+  buildMintItemNonCanonicalStep04,
 } from "../src/mint-item-non-canonical/index.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
@@ -39,6 +39,11 @@ import {
   mintItem,
 } from "./support/mint-item-vectors.js";
 import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
+import {
+  buildAndSubmitUnjournaled,
+  type SubmittedStep,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 
 /** The largest item with its last 32-byte name repeating the one before. */
 const maximumItemRepeatingLastName = () => {
@@ -207,7 +212,7 @@ describe("mintItemNonCanonical over a mint that repeats a key", () => {
       );
       fraudulentHeaderHash = init.result.fraudulentHeaderHash;
       const bound = await measured(async () =>
-        submitMintItemNonCanonicalStep01Accepted({
+        buildAndSubmitUnjournaled(buildMintItemNonCanonicalStep01Accepted, {
           lucid: harness.proverLucid,
           blueprint: harness.realBlueprint,
           network: "Custom",
@@ -231,11 +236,11 @@ describe("mintItemNonCanonical over a mint that repeats a key", () => {
       // Step 02 walks the field to the item, then step 03 scans it.
       let threadOutRef = bound.nextThreadOutRef;
       let carriage:
-        | Awaited<ReturnType<typeof submitMintItemNonCanonicalStep02>>
+        | SubmittedStep<typeof buildMintItemNonCanonicalStep02>
         | undefined;
       for (;;) {
         const opened = await measured(() =>
-          submitMintItemNonCanonicalStep02({
+          submitTurnsUnjournaled(buildMintItemNonCanonicalStep02, {
             ...common(threadOutRef, 1),
             ...source,
             publishCarriage: true,
@@ -250,7 +255,7 @@ describe("mintItemNonCanonical over a mint that repeats a key", () => {
       }
       for (;;) {
         const scanned = await measured(() =>
-          submitMintItemNonCanonicalStep03({
+          buildAndSubmitUnjournaled(buildMintItemNonCanonicalStep03, {
             ...common(threadOutRef, 2),
             evidence,
           }),
@@ -260,7 +265,7 @@ describe("mintItemNonCanonical over a mint that repeats a key", () => {
       }
       if (shape.repeated) {
         const minted = await measured(() =>
-          submitMintItemNonCanonicalStep04({
+          buildAndSubmitUnjournaled(buildMintItemNonCanonicalStep04, {
             ...common(threadOutRef, 3),
             evidence,
             witnessReferenceScripts: harness.witnessReferenceScripts,

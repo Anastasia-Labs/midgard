@@ -16,14 +16,14 @@ import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";
 
-import { submitCommittedFieldShapeInit } from "../../src/committed-field-shape/submit-committed-field-shape-init.js";
+import { buildCommittedFieldShapeInit } from "../../src/committed-field-shape/submit-committed-field-shape-init.js";
 import {
   applyMintItemNonCanonicalScripts,
+  buildMintItemNonCanonicalCancel,
   createManifestBoundMintItemNonCanonicalSubmission,
   MINT_ITEM_NON_CANONICAL_BLUEPRINT_TITLES,
   type MintItemNonCanonicalContracts,
   prepareMintItemEvidence,
-  submitMintItemNonCanonicalCancel,
 } from "../../src/mint-item-non-canonical/index.js";
 import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.js";
 import { nativeTxFromCoreCompact } from "../../src/step-support.js";
@@ -38,6 +38,10 @@ import {
 import { buildRemovalDeploymentInfo } from "./emulator/removal-deployment.js";
 import type { Common } from "./mint-item-non-canonical-emulator.js";
 import { publishRemovalReferenceScripts } from "./submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  submitBoundUnjournaled,
+} from "./submit-unjournaled.js";
 
 const network = "Custom" as const;
 const CATEGORY_ID = "00000036";
@@ -120,7 +124,7 @@ export const registeredContracts = async (harness: Harness) => {
   });
   const init = async (fraudulentBlockOutRef: string) =>
     await captureEmulatorSubmission(harness.emulator, () =>
-      submitCommittedFieldShapeInit({
+      buildAndSubmitUnjournaled(buildCommittedFieldShapeInit, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -149,7 +153,7 @@ export const registeredContracts = async (harness: Harness) => {
   };
   const cancel = async (threadOutRef: string, stepIndex: 0 | 1 | 2 | 3) =>
     await captureEmulatorSubmission(harness.emulator, () =>
-      submitMintItemNonCanonicalCancel({
+      buildAndSubmitUnjournaled(buildMintItemNonCanonicalCancel, {
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -304,7 +308,9 @@ export const journaledMintContinuation = async ({
       ...carriage,
     }),
   });
-  const result = await submission.submit(action, evidence);
+  const result = await submitBoundUnjournaled(common.lucid, action, () =>
+    submission.submit(action, evidence),
+  );
   expect(result.outputReference).not.toBeNull();
   return {
     nextThreadOutRef: result.outputReference!,

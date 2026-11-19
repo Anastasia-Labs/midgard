@@ -3,13 +3,13 @@
  * resolved-input scan, over the reference inputs (field 1) and then the
  * spent inputs (field 0).
  *
- * - `submitMintAuthorizationStep04ResolveNext` — the self-loop. Opens the
+ * - `buildMintAuthorizationStep04ResolveNext` — the self-loop. Opens the
  *   committed input field the thread names at its cursor, resolves the
  *   outpoint under the pre-state ledger root (MPF membership of the
  *   descriptor), and lets the validator prove the resolved output carries no
  *   reference script of the claimed policy hash. The thread returns to
  *   step-04's own address with the cursor advanced.
- * - `submitMintAuthorizationStep04AdvanceComplete` — once the cursor equals
+ * - `buildMintAuthorizationStep04AdvanceComplete` — once the cursor equals
  *   the field's authenticated item count, moves the scan from field 1 to
  *   field 0 at cursor 0, or, after field 0, pays the direction-A verdict
  *   forward to step-05.
@@ -47,22 +47,23 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  type FaultProofTurn,
+  isPrerequisiteTurn,
+} from "../fault-proof-turn.js";
+import {
   faultProofFieldOpening,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
 } from "../field-opening.js";
 import { type ResolvedProverSigner } from "../runtime.js";
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts.js";
 import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
-import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary.js";
 import type { MintAuthorizationContracts } from "./contracts.js";
 import {
   buildMintAuthorizationLedgerMembership,
@@ -75,10 +76,8 @@ import {
   requireMintAuthorizationStepState,
   requireMintAuthorizationThreadUtxo,
 } from "./submit-common.js";
-import {
-  step04ScanField,
-  type SubmitMintAuthorizationStep04Result,
-} from "./submit-mint-authorization-step-04.submit-mint-authorization-step04-scan-field.js";
+import type { MintAuthorizationStep04Build } from "./submit-mint-authorization-step-04.submit-mint-authorization-step04-scan-field.js";
+import { step04ScanField } from "./submit-mint-authorization-step-04.submit-mint-authorization-step04-scan-field.js";
 
 export { type SubmitMintAuthorizationStep04Result } from "./submit-mint-authorization-step-04.submit-mint-authorization-step04-scan-field.js";
 
@@ -106,8 +105,6 @@ type Step04Shared = {
   readonly publishedCarriageUtxos?: readonly UTxO[];
   /** The mandatory published step-04 reference script. */
   readonly referenceScriptUtxo?: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
 };
@@ -153,6 +150,7 @@ const prepareStep04 = async (shared: Step04Shared) => {
       publisherAddress: shared.signer.proofMaterialsAddress,
       label: `${STEP_LABEL} ${scan.label}`,
     }));
+  if (isPrerequisiteTurn(carriageUtxos)) return carriageUtxos;
   const fieldReferenceInputs = [
     ...(shared.certificateUtxo === undefined ? [] : [shared.certificateUtxo]),
     ...carriageUtxos,
@@ -169,7 +167,7 @@ const prepareStep04 = async (shared: Step04Shared) => {
   };
 };
 
-const submitPreparedStep04 = async ({
+const buildPreparedStep04 = async ({
   shared,
   threadUtxo,
   threadToken,
@@ -195,7 +193,7 @@ const submitPreparedStep04 = async ({
   /** 3 = the self-loop back to step-04's own address, 4 = step-05. */
   readonly nextStepIndex: 3 | 4;
   readonly nextStepDatum: string;
-  readonly nextScan: SubmitMintAuthorizationStep04Result["nextScan"];
+  readonly nextScan: MintAuthorizationStep04Build["nextScan"];
   readonly argsOf: (
     layout: {
       readonly inputIndex: bigint;
@@ -203,9 +201,8 @@ const submitPreparedStep04 = async ({
     },
     inputsOpening: ReturnType<typeof faultProofFieldOpening>,
   ) => MintAuthorizationStep04Args;
-}): Promise<SubmitMintAuthorizationStep04Result> => {
+}): Promise<MintAuthorizationStep04Build> => {
   const { lucid, contracts, signer, referenceScriptUtxo } = shared;
-  const awaitConfirmation = shared.awaitConfirmation ?? true;
   const stepReference =
     referenceScriptUtxo === undefined
       ? undefined
@@ -283,41 +280,34 @@ const submitPreparedStep04 = async ({
       "BuildTxWithRedeemer did not resolve the step-04 layout.",
     );
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: "mint-authorization step-04",
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: "V1 fraud-proof mint-authorization step-04",
-          utxo: referenceScriptUtxo,
-          expectedScript: contracts.steps[3].spendingScript,
-        },
-      ],
-    }),
-    boundary: shared.preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: "V1 fraud-proof mint-authorization step-04",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.steps[3].spendingScript,
+      },
+    ],
   });
 
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
     threadOutRef: shared.threadOutRef,
-    nextThreadOutRef: `${txHash}#${resolvedLayout.outputIndex.toString()}`,
+    nextThreadOutRef: `${transaction.txHash}#${resolvedLayout.outputIndex.toString()}`,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadUnit: threadToken.unit,
     nextStepAddress: contracts.steps[nextStepIndex].spendingScriptAddress,
     nextScan,
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
-    awaitedConfirmation: awaitConfirmation,
   };
 };
 
 /** The self-loop: clear the scanned input at the thread's cursor. */
-export const submitMintAuthorizationStep04ResolveNext = async ({
+export const buildMintAuthorizationStep04ResolveNext = async ({
   trie,
   descriptorCborHex,
   ...shared
@@ -326,7 +316,9 @@ export const submitMintAuthorizationStep04ResolveNext = async ({
   readonly trie: MintAuthorizationLedgerTrieHandle;
   /** The scanned outpoint's ledger descriptor bytes, hex (the MPF value). */
   readonly descriptorCborHex: string;
-}): Promise<SubmitMintAuthorizationStep04Result> => {
+}): Promise<FaultProofTurn<MintAuthorizationStep04Build>> => {
+  const prepared = await prepareStep04(shared);
+  if (isPrerequisiteTurn(prepared)) return prepared;
   const {
     threadUtxo,
     threadToken,
@@ -336,7 +328,7 @@ export const submitMintAuthorizationStep04ResolveNext = async ({
     planned,
     carriageUtxos,
     fieldReferenceInputs,
-  } = await prepareStep04(shared);
+  } = prepared;
   const cursor = state.cursor;
   if (cursor < 0n || cursor >= BigInt(scannedItems.length)) {
     throw mintAuthorizationSubmitError(
@@ -371,7 +363,7 @@ export const submitMintAuthorizationStep04ResolveNext = async ({
     { fraud_prover: shared.signer.paymentKeyHash, data: nextState },
     MintAuthorizationStep04Datum,
   );
-  return submitPreparedStep04({
+  return buildPreparedStep04({
     shared,
     threadUtxo,
     threadToken,
@@ -398,9 +390,11 @@ export const submitMintAuthorizationStep04ResolveNext = async ({
  * Close the scanned field: field 1 moves the scan to field 0 at cursor 0,
  * and field 0 closes it into the direction-A verdict.
  */
-export const submitMintAuthorizationStep04AdvanceComplete = async (
+export const buildMintAuthorizationStep04AdvanceComplete = async (
   shared: Step04Shared,
-): Promise<SubmitMintAuthorizationStep04Result> => {
+): Promise<FaultProofTurn<MintAuthorizationStep04Build>> => {
+  const prepared = await prepareStep04(shared);
+  if (isPrerequisiteTurn(prepared)) return prepared;
   const {
     threadUtxo,
     threadToken,
@@ -410,7 +404,7 @@ export const submitMintAuthorizationStep04AdvanceComplete = async (
     planned,
     carriageUtxos,
     fieldReferenceInputs,
-  } = await prepareStep04(shared);
+  } = prepared;
   if (state.cursor !== BigInt(scannedItems.length)) {
     throw mintAuthorizationSubmitError(
       `cursor ${state.cursor.toString()} has not covered the committed field ${scan.fieldIndex.toString()}'s ${scannedItems.length.toString()} items — the scan is incomplete.`,
@@ -435,7 +429,7 @@ export const submitMintAuthorizationStep04AdvanceComplete = async (
         { fraud_prover: shared.signer.paymentKeyHash, data: nextState },
         MintAuthorizationStep04Datum,
       );
-  return submitPreparedStep04({
+  return buildPreparedStep04({
     shared,
     threadUtxo,
     threadToken,

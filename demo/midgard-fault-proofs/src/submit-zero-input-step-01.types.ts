@@ -1,4 +1,8 @@
 import { type SubmitProviderConfig } from "./runtime.js";
+import {
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
+} from "./workflow/transaction-boundary.js";
 
 export type SubmitZeroInputStep01CliConfig = SubmitProviderConfig & {
   readonly blueprintPath: string;
@@ -13,8 +17,8 @@ export type SubmitZeroInputStep01CliConfig = SubmitProviderConfig & {
   readonly awaitConfirmation?: boolean;
 };
 
-export type SubmitZeroInputStep01Result = {
-  readonly txHash: string;
+export type ZeroInputStep01Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -42,8 +46,10 @@ export type SubmitZeroInputStep01Result = {
   /** Which route the membership opening took to L1 (issue #545). */
   readonly proofCarriage: "redeemer" | "published-chunks";
   readonly publishedChunkOutRefs: readonly string[];
-  readonly awaitedConfirmation: boolean;
 };
+
+export type SubmitZeroInputStep01Result =
+  UnjournaledSubmission<ZeroInputStep01Build>;
 
 export type ZeroInputStep01Layout = {
   readonly inputIndex: bigint;

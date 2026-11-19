@@ -18,7 +18,7 @@ import {
   resolveFaultProofFieldCarriagePublications,
   resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import { fetchUtxoByOutRef, outRefLabel, parseOutRef } from "../runtime.js";
 import { requireComputationThreadToken } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
@@ -32,12 +32,12 @@ import {
   type NetworkIdForcedScanStep,
 } from "./forced-scan-plan.js";
 import { networkIdSubmitError } from "./submit-common.js";
+import type { NetworkIdForcedScanBuild } from "./submit-network-id-forced-scan.require-scan-state.js";
 import {
   requireForcedScanContract,
   requireScanState,
   STEP_LABEL,
   type SubmitNetworkIdForcedScanParams,
-  type SubmitNetworkIdForcedScanResult,
   successorScanState,
 } from "./submit-network-id-forced-scan.require-scan-state.js";
 import { networkIdWrongfulRejectionCloses } from "./wrongful-rejection.js";
@@ -47,7 +47,7 @@ import { networkIdWrongfulRejectionCloses } from "./wrongful-rejection.js";
  * datum are the validator's own for every action but the completing
  * `Advance`, which writes step 02's terminal state.
  */
-export const submitNetworkIdForcedScanAction = async ({
+export const buildNetworkIdForcedScanAction = async ({
   lucid,
   contracts,
   categoryId,
@@ -61,12 +61,10 @@ export const submitNetworkIdForcedScanAction = async ({
   carriageUtxos,
   certificateUtxos,
   network,
-  preSubmitBoundary,
-  awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
 }: SubmitNetworkIdForcedScanParams & {
   readonly step: NetworkIdForcedScanStep;
-}): Promise<SubmitNetworkIdForcedScanResult> => {
+}): Promise<NetworkIdForcedScanBuild> => {
   const forcedScan = requireForcedScanContract(contracts);
   if (prepared.expectedNetworkId !== contracts.expectedNetworkId) {
     throw networkIdSubmitError("forced evidence targets another deployment");
@@ -268,7 +266,7 @@ export const submitNetworkIdForcedScanAction = async ({
       NetworkIdForcedScanSpendRedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -281,15 +279,13 @@ export const submitNetworkIdForcedScanAction = async ({
     redeemer,
     carriageUtxos: carriage,
     extraReferenceInputs: certificates,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined) {
     throw networkIdSubmitError(`forced scan ${step.kind} layout unresolved`);
   }
   return {
-    txHash,
-    nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
     step,
     nextScanState,
     step02State,
@@ -302,13 +298,13 @@ const actionSubmitter =
     params: SubmitNetworkIdForcedScanParams & {
       readonly step: NetworkIdForcedScanStep;
     },
-  ): Promise<SubmitNetworkIdForcedScanResult> => {
+  ): Promise<NetworkIdForcedScanBuild> => {
     if (params.step.kind !== kind) {
       throw networkIdSubmitError(
         `forced scan ${kind} builder was handed a planned ${params.step.kind} action`,
       );
     }
-    return await submitNetworkIdForcedScanAction(params);
+    return await buildNetworkIdForcedScanAction(params);
   };
 
 /** Tier-1/2 whole-view opening: `Ready` becomes `Scanning` at item zero. */
@@ -328,10 +324,3 @@ export const submitNetworkIdForcedScanFinishGrammar =
 
 /** One semantic batch; the completing one writes step 02's terminal state. */
 export const submitNetworkIdForcedScanAdvance = actionSubmitter("advance");
-
-export type DriveNetworkIdForcedScanResult = {
-  readonly results: readonly SubmitNetworkIdForcedScanResult[];
-  /** Out-ref of the step-02 thread the completing batch produced. */
-  readonly step02ThreadOutRef: string;
-  readonly step02State: NetworkIdStep02State;
-};

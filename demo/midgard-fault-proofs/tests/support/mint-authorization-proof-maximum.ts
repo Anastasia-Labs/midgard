@@ -9,24 +9,19 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import {
-  certifyFaultProofFieldCarriage,
-  planFaultProofFieldOpening,
-  publishFaultProofFieldCarriage,
-} from "../../src/field-opening.js";
+import { planFaultProofFieldOpening } from "../../src/field-opening.js";
 import { MINT_AUTHORIZATION_CATEGORY_LABEL } from "../../src/mint-authorization/contracts.js";
 import { buildMintAuthorizationStep02Evidence } from "../../src/mint-authorization/evidence.js";
 import {
-  submitMintAuthorizationStep01,
-  submitMintAuthorizationStep02,
-  submitMintAuthorizationStep03WitnessAbsence,
-  submitMintAuthorizationStep04AdvanceComplete,
-  submitMintAuthorizationStep04ResolveNext,
-  submitMintAuthorizationStep05,
+  buildMintAuthorizationStep01,
+  buildMintAuthorizationStep02,
+  buildMintAuthorizationStep03WitnessAbsence,
+  buildMintAuthorizationStep04AdvanceComplete,
+  buildMintAuthorizationStep04ResolveNext,
+  buildMintAuthorizationStep05,
 } from "../../src/mint-authorization/index.js";
-import { publishProofChunks } from "../../src/publish-proof-chunks.js";
 import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.js";
-import { submitResolvedInit } from "../../src/submit-init.js";
+import { buildResolvedInit } from "../../src/submit-init.js";
 import { commitCountedRoot } from "../../src/transition-trace/phas.js";
 import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { createStructuredDataPreimageRequirement } from "../../src/workflow/raw-datum-preimage.js";
@@ -47,6 +42,13 @@ import {
   publishPlainReferenceScriptUtxo,
   publishRemovalReferenceScripts,
 } from "./submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  certifyCarriageUnjournaled,
+  publishCarriageUnjournaled,
+  publishProofChunks,
+  submitTurnsUnjournaled,
+} from "./submit-unjournaled.js";
 import { syntheticDeepMembershipProof } from "./synthetic-deep-proof.js";
 
 /** Synthetic sibling frontiers measure physical proof ceilings separately from retained-DA workflow cases. */
@@ -219,7 +221,7 @@ export const runMintAuthorizationProofMaximum = async (
     witnessSet: subject.witnessSetCompact,
   };
   const init = await capture("init", () =>
-    submitResolvedInit({
+    buildAndSubmitUnjournaled(buildResolvedInit, {
       label: MINT_AUTHORIZATION_CATEGORY_LABEL,
       ...common,
       blueprint: h.realBlueprint,
@@ -236,7 +238,7 @@ export const runMintAuthorizationProofMaximum = async (
     }),
   );
   const one = await capture("step_01", () =>
-    submitMintAuthorizationStep01({
+    buildAndSubmitUnjournaled(buildMintAuthorizationStep01, {
       ...common,
       blueprint: h.realBlueprint,
       network,
@@ -258,7 +260,7 @@ export const runMintAuthorizationProofMaximum = async (
     label: "maximum mint field with maximum proofs",
   });
   const field = await capture("field-publications", () =>
-    publishFaultProofFieldCarriage({
+    publishCarriageUnjournaled({
       ownOutputs,
       lucid: h.proverLucid,
       signer: h.proverSigner,
@@ -268,7 +270,7 @@ export const runMintAuthorizationProofMaximum = async (
     }),
   );
   const certified = await capture("field-certificate", () =>
-    certifyFaultProofFieldCarriage({
+    certifyCarriageUnjournaled({
       ownOutputs,
       lucid: h.proverLucid,
       network,
@@ -325,7 +327,7 @@ export const runMintAuthorizationProofMaximum = async (
     }
   });
   const two = await capture("step_02", () =>
-    submitMintAuthorizationStep02({
+    submitTurnsUnjournaled(buildMintAuthorizationStep02, {
       ownOutputs,
       ...common,
       threadOutRef: one.nextThreadOutRef,
@@ -341,7 +343,7 @@ export const runMintAuthorizationProofMaximum = async (
     }),
   );
   const three = await capture("step_03", () =>
-    submitMintAuthorizationStep03WitnessAbsence({
+    submitTurnsUnjournaled(buildMintAuthorizationStep03WitnessAbsence, {
       ...common,
       threadOutRef: two.nextThreadOutRef,
       scriptTxWitsItemCbors: [],
@@ -353,7 +355,7 @@ export const runMintAuthorizationProofMaximum = async (
     spendInputsItemCbors: subject.spendInputItemCbors,
   };
   const references = await capture("step_04-complete-references", () =>
-    submitMintAuthorizationStep04AdvanceComplete({
+    submitTurnsUnjournaled(buildMintAuthorizationStep04AdvanceComplete, {
       ...common,
       ...inputFields,
       threadOutRef: three.nextThreadOutRef,
@@ -361,7 +363,7 @@ export const runMintAuthorizationProofMaximum = async (
     }),
   );
   const four = await capture("step_04", () =>
-    submitMintAuthorizationStep04ResolveNext({
+    submitTurnsUnjournaled(buildMintAuthorizationStep04ResolveNext, {
       ...common,
       ...inputFields,
       threadOutRef: references.nextThreadOutRef,
@@ -374,7 +376,7 @@ export const runMintAuthorizationProofMaximum = async (
     }),
   );
   const final = await capture("step_04-complete", () =>
-    submitMintAuthorizationStep04AdvanceComplete({
+    submitTurnsUnjournaled(buildMintAuthorizationStep04AdvanceComplete, {
       ...common,
       ...inputFields,
       threadOutRef: four.nextThreadOutRef,
@@ -382,7 +384,7 @@ export const runMintAuthorizationProofMaximum = async (
     }),
   );
   const proof = await capture("step_05", () =>
-    submitMintAuthorizationStep05({
+    buildAndSubmitUnjournaled(buildMintAuthorizationStep05, {
       ...common,
       threadOutRef: final.nextThreadOutRef,
       referenceScriptUtxo: refs.steps[4],

@@ -15,12 +15,6 @@ import {
 } from "@lucid-evolution/lucid";
 
 import type { NativeScriptDecodingContracts } from "../../src/native-script-decoding/contracts.js";
-import {
-  NATIVE_SCRIPT_DECODING_PROVER_POLICY_DEFAULTS,
-  type NativeScriptDecodingProverDeps,
-  type NativeScriptDecodingProverEvent,
-  type NativeScriptDecodingProverPolicy,
-} from "../../src/native-script-decoding/prover.js";
 import { resolveProverSigner } from "../../src/runtime.js";
 import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.build-decoding-block-fixture.js";
 import {
@@ -29,6 +23,12 @@ import {
   type DecodingLedgerFixture,
   decodingSubjectTransaction,
 } from "./native-script-decoding-emulator.build-decoding-ledger-fixture.js";
+import {
+  NATIVE_SCRIPT_DECODING_PROVER_POLICY_DEFAULTS,
+  type NativeScriptDecodingProverDeps,
+  type NativeScriptDecodingProverEvent,
+  type NativeScriptDecodingProverPolicy,
+} from "./native-script-decoding-prover.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   funderPaymentKeyHash,

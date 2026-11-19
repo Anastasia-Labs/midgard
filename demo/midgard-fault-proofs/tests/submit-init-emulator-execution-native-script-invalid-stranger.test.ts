@@ -27,7 +27,6 @@ import {
   type DirectPurposeRole,
   directPurposeRoleValidator,
   type DirectPurposeTransition,
-  submitDirectPurposeTransition,
 } from "../src/direct-purpose-family/index.js";
 import {
   EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK,
@@ -64,6 +63,7 @@ import {
 import { scriptAddress } from "./support/missing-redeemer-emulator.purposes.js";
 import { rejectedFor } from "./support/script-integrity-hash-mismatch-emulator.subject.js";
 import { network } from "./support/submit-init-emulator-shared.js";
+import { submitDirectPurposeTransition } from "./support/submit-unjournaled.direct-purpose.js";
 
 const STRANGER_FUNDING_LOVELACE = 1_000_000_000n;
 

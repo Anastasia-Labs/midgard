@@ -3,15 +3,15 @@ import { outRefLabel } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { submitLinearFaultCancel } from "../src/linear-fault-cancel.js";
+import { buildLinearFaultCancel } from "../src/linear-fault-cancel.js";
 import { MINT_AUTHORIZATION_CATEGORY_LABEL } from "../src/mint-authorization/contracts.js";
 import {
-  submitMintAuthorizationStep01,
-  submitMintAuthorizationStep02,
-  submitMintAuthorizationStep03WitnessAbsence,
-  submitMintAuthorizationStep04AdvanceComplete,
+  buildMintAuthorizationStep01,
+  buildMintAuthorizationStep02,
+  buildMintAuthorizationStep03WitnessAbsence,
+  buildMintAuthorizationStep04AdvanceComplete,
 } from "../src/mint-authorization/index.js";
-import { submitResolvedInit } from "../src/submit-init.js";
+import { buildResolvedInit } from "../src/submit-init.js";
 import {
   buildMintAuthorizationSubject,
   makeMintAuthorizationEmulatorHarness,
@@ -20,6 +20,10 @@ import {
   smallMintItemCbors,
 } from "./support/mint-authorization-emulator.js";
 import { network } from "./support/submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 
 describe("mint-authorization cancellation and restart", () => {
   it("cancels through the public submitter after all evidence is resolved and starts a fresh thread", async () => {
@@ -46,7 +50,7 @@ describe("mint-authorization cancellation and restart", () => {
         harness.contracts.fraudProofCatalogue.spendingScriptAddress,
       root: harness.catalogue.root,
     };
-    const init = await submitResolvedInit({
+    const init = await buildAndSubmitUnjournaled(buildResolvedInit, {
       label: MINT_AUTHORIZATION_CATEGORY_LABEL,
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
@@ -58,20 +62,23 @@ describe("mint-authorization cancellation and restart", () => {
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
       witnessReferenceScripts: setup.witnessReferenceScripts,
     });
-    const step01 = await submitMintAuthorizationStep01({
-      lucid: harness.proverLucid,
-      blueprint: harness.realBlueprint,
-      contracts: harness.family,
-      categoryId: harness.category.categoryId,
-      network,
-      signer: harness.proverSigner,
-      threadOutRef: init.nextThreadOutRef,
-      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-      txInclusion: block.txInclusion,
-      referenceScriptUtxo: refs[0],
-      witnessReferenceScripts: setup.witnessReferenceScripts,
-    });
-    const step02 = await submitMintAuthorizationStep02({
+    const step01 = await buildAndSubmitUnjournaled(
+      buildMintAuthorizationStep01,
+      {
+        lucid: harness.proverLucid,
+        blueprint: harness.realBlueprint,
+        contracts: harness.family,
+        categoryId: harness.category.categoryId,
+        network,
+        signer: harness.proverSigner,
+        threadOutRef: init.nextThreadOutRef,
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+        txInclusion: block.txInclusion,
+        referenceScriptUtxo: refs[0],
+        witnessReferenceScripts: setup.witnessReferenceScripts,
+      },
+    );
+    const step02 = await submitTurnsUnjournaled(buildMintAuthorizationStep02, {
       lucid: harness.proverLucid,
       contracts: harness.family,
       categoryId: harness.category.categoryId,
@@ -84,19 +91,22 @@ describe("mint-authorization cancellation and restart", () => {
       mintItemCbors: subject.mintItemCbors,
       referenceScriptUtxo: refs[1],
     });
-    const step03 = await submitMintAuthorizationStep03WitnessAbsence({
-      lucid: harness.proverLucid,
-      contracts: harness.family,
-      categoryId: harness.category.categoryId,
-      signer: harness.proverSigner,
-      threadOutRef: step02.nextThreadOutRef,
-      nativeTxCompactCbor: block.nativeTxCompactCbor,
-      witnessSet: subject.witnessSetCompact,
-      scriptTxWitsItemCbors: subject.scriptWitnessItemCbors,
-      referenceScriptUtxo: refs[2],
-    });
+    const step03 = await submitTurnsUnjournaled(
+      buildMintAuthorizationStep03WitnessAbsence,
+      {
+        lucid: harness.proverLucid,
+        contracts: harness.family,
+        categoryId: harness.category.categoryId,
+        signer: harness.proverSigner,
+        threadOutRef: step02.nextThreadOutRef,
+        nativeTxCompactCbor: block.nativeTxCompactCbor,
+        witnessSet: subject.witnessSetCompact,
+        scriptTxWitsItemCbors: subject.scriptWitnessItemCbors,
+        referenceScriptUtxo: refs[2],
+      },
+    );
     const advance = (threadOutRef: string) =>
-      submitMintAuthorizationStep04AdvanceComplete({
+      submitTurnsUnjournaled(buildMintAuthorizationStep04AdvanceComplete, {
         lucid: harness.proverLucid,
         contracts: harness.family,
         categoryId: harness.category.categoryId,
@@ -111,7 +121,7 @@ describe("mint-authorization cancellation and restart", () => {
       (await advance(step03.nextThreadOutRef)).nextThreadOutRef,
     );
 
-    const cancelled = await submitLinearFaultCancel({
+    const cancelled = await buildAndSubmitUnjournaled(buildLinearFaultCancel, {
       lucid: harness.proverLucid,
       family: MINT_AUTHORIZATION_CATEGORY_LABEL,
       steps: harness.family.steps,
@@ -133,7 +143,7 @@ describe("mint-authorization cancellation and restart", () => {
       ).resolves.toHaveLength(0);
     }
 
-    const restarted = await submitResolvedInit({
+    const restarted = await buildAndSubmitUnjournaled(buildResolvedInit, {
       label: MINT_AUTHORIZATION_CATEGORY_LABEL,
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,

@@ -9,7 +9,6 @@ import {
 import {
   faultProofFieldOpening,
   planFaultProofFieldOpening,
-  publishFaultProofFieldCarriage,
 } from "../../src/field-opening.js";
 import {
   requireFaultProofStepReferenceScript,
@@ -27,11 +26,12 @@ import {
   type InvalidSignatureSubject,
 } from "./invalid-signature-emulator.build-invalid-signature-subject.js";
 import { network } from "./submit-init-emulator-shared.js";
+import { publishCarriageUnjournaled } from "./submit-unjournaled.js";
 
 /**
  * Raw guard-bypassing finalizer for the adversarial polarity.
  *
- * It reproduces `submitInvalidSignatureStep02`'s transaction shape exactly —
+ * It reproduces `buildInvalidSignatureStep02`'s transaction shape exactly —
  * the same §8.8 opening, the same complete reference-input set, the same burn /
  * mint / output layout — and omits one thing: the local
  * `verifyAddressWitness(...)` refusal. An honest witness therefore reaches
@@ -101,7 +101,7 @@ export const submitRawInvalidSignatureStep02 = async ({
     label: "Raw invalid-signature step 02",
   });
   signer.selectWallet(lucid);
-  const published = await publishFaultProofFieldCarriage({
+  const published = await publishCarriageUnjournaled({
     ownOutputs,
     lucid,
     signer,

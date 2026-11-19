@@ -244,10 +244,7 @@ describe("production da-hash-preimage workflow V1", () => {
         stateQueueBlockOutRef: outRef("10"),
       } as FraudProofRawL1FamilyStage,
     };
-    const step01 = vi.fn(async (input: { preSubmitBoundary?: Function }) => {
-      await input.preSubmitBoundary?.(transaction());
-      throw new Error("pre-submit boundary did not stop provider I/O");
-    });
+    const step01 = vi.fn(async () => ({ transaction: transaction() }));
     const transactions = unsafeCreateDaHashPreimageTransactionPortForTest({
       config: {
         lucid: {} as never,
@@ -319,7 +316,6 @@ describe("production da-hash-preimage workflow V1", () => {
       expect.objectContaining({
         threadOutRef: outRef("11"),
         stateQueueBlockOutRef: outRef("10"),
-        awaitConfirmation: false,
       }),
     );
     stage.value = {

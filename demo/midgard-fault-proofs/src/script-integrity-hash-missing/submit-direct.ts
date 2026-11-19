@@ -17,11 +17,10 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { requireLinearFaultThreadUtxo } from "../linear-fault-family.js";
-import { submitNativeTxBinding } from "../native-tx-binding.js";
+import { buildNativeTxBinding } from "../native-tx-binding.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { SubmitStep01TxInclusion } from "../step-support.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { ScriptIntegrityHashMissingContracts } from "./contracts.js";
 import type { ScriptIntegrityHashMissingEvidence } from "./family.js";
 import { prepareScriptIntegrityHashMissingEvidence } from "./family.js";
@@ -32,9 +31,9 @@ import {
   ScriptIntegrityStep04DatumSchema,
 } from "./schemas.js";
 import {
-  submitScriptIntegrityHashMissingStep01,
-  submitScriptIntegrityHashMissingStep02,
-  submitScriptIntegrityHashMissingStep03,
+  buildScriptIntegrityHashMissingStep01,
+  buildScriptIntegrityHashMissingStep02,
+  buildScriptIntegrityHashMissingStep03,
 } from "./submitters.js";
 
 type Common = {
@@ -44,11 +43,9 @@ type Common = {
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 };
 
-export const submitScriptIntegrityHashMissingStep01Accepted = async ({
+export const buildScriptIntegrityHashMissingStep01Accepted = async ({
   blueprint,
   network,
   stateQueueBlockOutRef,
@@ -82,7 +79,7 @@ export const submitScriptIntegrityHashMissingStep01Accepted = async ({
     } as never,
     ScriptIntegrityStep02DatumSchema as never,
   );
-  return await submitNativeTxBinding({
+  return await buildNativeTxBinding({
     lucid: common.lucid,
     blueprint,
     network,
@@ -100,12 +97,10 @@ export const submitScriptIntegrityHashMissingStep01Accepted = async ({
     }),
     referenceScriptUtxo: common.referenceScriptUtxo,
     witnessReferenceScripts,
-    preSubmitBoundary: common.preSubmitBoundary,
-    awaitConfirmation: common.awaitConfirmation ?? true,
   });
 };
 
-export const submitScriptIntegrityHashMissingStep01Forced = async (
+export const buildScriptIntegrityHashMissingStep01Forced = async (
   args: Common & { readonly direction: 0n | 1n },
 ) => {
   const nextDatum = Data.to(
@@ -115,7 +110,7 @@ export const submitScriptIntegrityHashMissingStep01Forced = async (
     } as never,
     ScriptIntegrityStep02DatumSchema as never,
   );
-  return await submitScriptIntegrityHashMissingStep01({
+  return await buildScriptIntegrityHashMissingStep01({
     ...args,
     nextDatum,
     buildArgs: ({ input_index, output_index }) => ({
@@ -127,7 +122,7 @@ export const submitScriptIntegrityHashMissingStep01Forced = async (
   });
 };
 
-export const submitScriptIntegrityHashMissingStep02Binding = async ({
+export const buildScriptIntegrityHashMissingStep02Binding = async ({
   header,
   forcedMembership,
   witnessSetHash,
@@ -162,7 +157,7 @@ export const submitScriptIntegrityHashMissingStep02Binding = async ({
     } as never,
     ScriptIntegrityStep03DatumSchema as never,
   );
-  return await submitScriptIntegrityHashMissingStep02({
+  return await buildScriptIntegrityHashMissingStep02({
     ...args,
     nextDatum,
     buildArgs: ({ input_index, output_index }) => ({
@@ -177,7 +172,7 @@ export const submitScriptIntegrityHashMissingStep02Binding = async ({
   });
 };
 
-export const submitScriptIntegrityHashMissingStep02Accepted = async ({
+export const buildScriptIntegrityHashMissingStep02Accepted = async ({
   header,
   subject,
   witnessSetHash,
@@ -194,7 +189,7 @@ export const submitScriptIntegrityHashMissingStep02Accepted = async ({
     } as never,
     ScriptIntegrityStep03DatumSchema as never,
   );
-  return await submitScriptIntegrityHashMissingStep02({
+  return await buildScriptIntegrityHashMissingStep02({
     ...args,
     nextDatum,
     buildArgs: ({ input_index, output_index }) => ({
@@ -206,7 +201,7 @@ export const submitScriptIntegrityHashMissingStep02Accepted = async ({
   });
 };
 
-export const submitScriptIntegrityHashMissingStep03Direct = async ({
+export const buildScriptIntegrityHashMissingStep03Direct = async ({
   evidence: rawEvidence,
   nativeTxCompactCbor,
   witnessSet,
@@ -237,7 +232,7 @@ export const submitScriptIntegrityHashMissingStep03Direct = async ({
   const redeemerCarriage: FieldCarriage = {
     Inline: { preimage: evidence.redeemersPreimageCbor },
   };
-  return await submitScriptIntegrityHashMissingStep03({
+  return await buildScriptIntegrityHashMissingStep03({
     ...args,
     nextDatum,
     buildArgs: ({ input_index, output_index }) => ({

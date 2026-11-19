@@ -26,22 +26,20 @@ import {
   parseOutRef,
   type ResolvedProverSigner,
 } from "./runtime.js";
-import { completeStep, fundStep, submitStep } from "./step-completion.js";
+import { completeStep, fundStep } from "./step-completion.js";
+import { finishStep } from "./step-completion.js";
 import { requireComputationThreadToken } from "./step-support.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
 } from "./witness-reference-scripts.js";
-import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScript,
-} from "./workflow/transaction-boundary.js";
+import { workflowReferenceScript } from "./workflow/transaction-boundary.js";
 
 const CancelSchema = faultProofStepRedeemerSchema(Data.Any());
 type Cancel = Data.Static<typeof CancelSchema>;
 const Cancel = asDataType<Cancel>(CancelSchema);
 
-export const submitLinearFaultCancel = async ({
+export const buildLinearFaultCancel = async ({
   lucid,
   family,
   steps,
@@ -51,8 +49,6 @@ export const submitLinearFaultCancel = async ({
   threadOutRef,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly family: string;
@@ -70,8 +66,6 @@ export const submitLinearFaultCancel = async ({
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const threadUtxo = await fetchUtxoByOutRef({
     lucid,
@@ -151,8 +145,7 @@ export const submitLinearFaultCancel = async ({
   if (inputIndex === undefined || mintRedeemerIndex === undefined) {
     throw new Error(`${label}: unresolved cancellation layout`);
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: `${label} cancel`,
+  const transaction = finishStep(signed, {
     referenceScripts: [
       workflowReferenceScript({
         role: `${label}-cancel`,
@@ -165,11 +158,9 @@ export const submitLinearFaultCancel = async ({
         expectedScript: computationThread.mintingScript,
       }),
     ],
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
   });
   return {
-    txHash,
+    transaction,
     cancelledStepIndex: stepIndex,
     fraudulentHeaderHash: token.fraudulentHeaderHash,
     computationThreadUnit: token.unit,

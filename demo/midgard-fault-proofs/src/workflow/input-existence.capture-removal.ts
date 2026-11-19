@@ -7,11 +7,7 @@ import type {
   InputExistenceCategory,
   InputExistenceKind,
 } from "../input-existence/kind.js";
-import {
-  type StateQueueMutationLease,
-  type StateQueueMutationLeaseCoordinator,
-  submitRemoveFraudulentBlock,
-} from "../remove-fraudulent-block.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import {
   type LinearFamilyAssemblyContext,
   type LinearFamilyReferenceScripts,
@@ -20,8 +16,8 @@ import {
 import { type FraudProofWorkflowAction } from "./orchestrator.js";
 import type { OwnOutputJournal } from "./own-outputs.js";
 import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.js";
+import { admitRemovalTransaction } from "./removal-admission.js";
 import {
-  captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
   workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary.js";
@@ -136,53 +132,38 @@ export const inputExistenceRemoval = <Category extends InputExistenceCategory>({
     config: BoundConfig<Category>,
     input: Readonly<Record<string, unknown>>,
   ) => {
-    let mutationLease: StateQueueMutationLease | undefined;
-    const retainingCoordinator: StateQueueMutationLeaseCoordinator = {
-      acquire: async () => {
-        const acquired =
-          await config.stateQueueMutationLeaseCoordinator.acquire();
-        mutationLease = acquired;
-        return acquired;
-      },
-    };
     const nextRemovalOutRef = stringField(input, "nextRemovalOutRef");
     const fraudProofOutRef = stringField(input, "fraudProofOutRef");
-    const transaction = await captureLocallyEvaluatedTransaction(
-      async (boundary) => {
-        await submitRemoveFraudulentBlock({
-          fraudProofOutRef,
-          lucid: config.lucid,
-          blueprint: config.binding.blueprint,
-          deploymentInfo: config.binding.deploymentInfo,
-          network: config.binding.network,
-          signer: config.signer,
-          fraudCategory: category,
-          fraudulentHeaderHash: config.binding.definition.headerHash,
-          requireReferenceScripts: true,
-          stateQueueMutationLeaseCoordinator: retainingCoordinator,
-          fraudProverRewardLovelace: BigInt(
-            config.binding.releaseEconomics.policy.fraudProverRewardLovelace,
-          ),
-          preSubmitBoundary: async (built) => {
-            if (
-              !workflowTransactionInputOutRefs(built.signed).includes(
-                nextRemovalOutRef,
-              ) ||
-              !workflowTransactionReferenceInputOutRefs(built.signed).includes(
-                fraudProofOutRef,
-              )
-            ) {
-              throw new Error(`${name} removal changed authenticated inputs`);
-            }
-            await boundary(built);
-          },
-        });
+    return await admitRemovalTransaction(
+      await buildRemoveFraudulentBlock({
+        fraudProofOutRef,
+        lucid: config.lucid,
+        blueprint: config.binding.blueprint,
+        deploymentInfo: config.binding.deploymentInfo,
+        network: config.binding.network,
+        signer: config.signer,
+        fraudCategory: category,
+        fraudulentHeaderHash: config.binding.definition.headerHash,
+        requireReferenceScripts: true,
+        stateQueueMutationLeaseCoordinator:
+          config.stateQueueMutationLeaseCoordinator,
+        fraudProverRewardLovelace: BigInt(
+          config.binding.releaseEconomics.policy.fraudProverRewardLovelace,
+        ),
+      }),
+      async (built) => {
+        if (
+          !workflowTransactionInputOutRefs(built.signed).includes(
+            nextRemovalOutRef,
+          ) ||
+          !workflowTransactionReferenceInputOutRefs(built.signed).includes(
+            fraudProofOutRef,
+          )
+        ) {
+          throw new Error(`${name} removal changed authenticated inputs`);
+        }
       },
     );
-    return Object.freeze({
-      transaction,
-      ...(mutationLease === undefined ? {} : { mutationLease }),
-    });
   };
   return { actionInput, stringField, resolveField, captureRemoval };
 };

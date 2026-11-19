@@ -11,9 +11,10 @@ import {
   resolveProverSigner,
   type SubmitProviderConfig,
 } from "./runtime.js";
+import { submitFaultProofTurns } from "./submit-fault-proof-turns.js";
 import { type TransitionL2ReplayMaterial } from "./transition-trace/proof-material.js";
 import {
-  submitTransitionTraceProof,
+  buildTransitionTraceProof,
   type SubmitTransitionTraceProofResult,
 } from "./transition-trace/submit.js";
 
@@ -126,24 +127,31 @@ export const submitTransitionTraceProofFromCborFile = async (
     ),
   );
 
-  return await submitTransitionTraceProof({
-    lucid,
-    blueprint,
-    deploymentInfo,
-    network: config.network,
-    signer: resolveProverSigner(config),
-    threadOutRef: config.threadOutRef,
-    proof: Object.freeze({
-      proofCbor,
-      ...(config.transitionL2ReplayPath === undefined
-        ? {}
-        : {
-            l2Replay: await readTransitionL2ReplayFile(
-              config.transitionL2ReplayPath,
-            ),
-          }),
-    }),
-    additionalReferenceInputs,
-    awaitConfirmation: config.awaitConfirmation,
-  });
+  return await submitFaultProofTurns(
+    buildTransitionTraceProof,
+    {
+      lucid,
+      blueprint,
+      deploymentInfo,
+      network: config.network,
+      signer: resolveProverSigner(config),
+      threadOutRef: config.threadOutRef,
+      proof: Object.freeze({
+        proofCbor,
+        ...(config.transitionL2ReplayPath === undefined
+          ? {}
+          : {
+              l2Replay: await readTransitionL2ReplayFile(
+                config.transitionL2ReplayPath,
+              ),
+            }),
+      }),
+      additionalReferenceInputs,
+      publishCarriage: true,
+    },
+    {
+      label: "transition-trace proof",
+      awaitConfirmation: config.awaitConfirmation ?? true,
+    },
+  );
 };

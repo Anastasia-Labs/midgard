@@ -9,6 +9,7 @@ import {
   resolveProverSigner,
   type SubmitProviderConfig,
 } from "../runtime.js";
+import { submitFaultProofTurns } from "../submit-fault-proof-turns.js";
 import { exactJournalRecord } from "../workflow/native-index-artifact.js";
 import { admitInputExistenceArtifact } from "./artifact.js";
 import { createInputExistenceDeploymentStep } from "./deployment-step.js";
@@ -144,30 +145,33 @@ export const createInputExistenceFileSubmitter =
       resolveReference(refs.pexcludesWithdraw),
       Promise.all(refs.fieldCarriage.map(resolveReference)),
     ]);
-    return createInputExistenceDeploymentStep(
-      field,
-      stepIndex,
-    )({
-      lucid,
-      blueprint,
-      deploymentInfo,
-      network: config.network,
-      signer,
-      prepared,
-      threadOutRef: config.threadOutRef,
-      stateQueueBlockOutRef: config.stateQueueBlockOutRef,
-      referenceScripts: { steps, computationThreadMint, fraudProofMint },
-      witnessReferenceScripts: {
-        computationThreadMint,
-        fraudProofMint,
-        phasMembershipWithdraw,
-        chunkedVerifyWithdraw,
-        pexcludesWithdraw,
+    return await submitFaultProofTurns(
+      createInputExistenceDeploymentStep(field, stepIndex),
+      {
+        lucid,
+        blueprint,
+        deploymentInfo,
+        network: config.network,
+        signer,
+        prepared,
+        threadOutRef: config.threadOutRef,
+        stateQueueBlockOutRef: config.stateQueueBlockOutRef,
+        referenceScripts: { steps, computationThreadMint, fraudProofMint },
+        witnessReferenceScripts: {
+          computationThreadMint,
+          fraudProofMint,
+          phasMembershipWithdraw,
+          chunkedVerifyWithdraw,
+          pexcludesWithdraw,
+        },
+        fieldCarriageUtxos,
+        ...(refs.certificatePolicyId === null
+          ? {}
+          : { certificatePolicyId: refs.certificatePolicyId }),
       },
-      fieldCarriageUtxos,
-      ...(refs.certificatePolicyId === null
-        ? {}
-        : { certificatePolicyId: refs.certificatePolicyId }),
-      awaitConfirmation: config.awaitConfirmation,
-    });
+      {
+        label: `input-existence step ${stepIndex.toString()}`,
+        awaitConfirmation: config.awaitConfirmation ?? true,
+      },
+    );
   };

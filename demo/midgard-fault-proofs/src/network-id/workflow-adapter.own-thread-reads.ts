@@ -78,7 +78,7 @@ export const createNetworkIdOwnThreadReads = (
   /**
    * The forced door is deliberately not a link in the linear chain the raw-L1
    * family definition walks, so its occupancy is read directly. Nothing here
-   * is trusted: `submitNetworkIdForcedBind` re-authenticates the thread token,
+   * is trusted: `buildNetworkIdForcedBind` re-authenticates the thread token,
    * the handoff datum, the prover and the header before it spends this UTxO.
    */
   const forcedThreadOutRef = async (

@@ -2,14 +2,14 @@ import { InputSetUniquenessStep04DatumSchema } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { InputSetUniquenessContracts } from "../input-set-uniqueness/contracts.js";
-import { submitInputSetUniquenessForcedStep01 } from "../input-set-uniqueness/submit-input-set-uniqueness-forced-step-01.js";
-import { submitInputSetUniquenessInit } from "../input-set-uniqueness/submit-input-set-uniqueness-init.js";
-import { submitInputSetUniquenessStep01 } from "../input-set-uniqueness/submit-input-set-uniqueness-step-01.js";
-import { submitInputSetUniquenessStep02 } from "../input-set-uniqueness/submit-input-set-uniqueness-step-02.js";
-import { submitInputSetUniquenessStep03 } from "../input-set-uniqueness/submit-input-set-uniqueness-step-03.js";
+import { buildInputSetUniquenessForcedStep01 } from "../input-set-uniqueness/submit-input-set-uniqueness-forced-step-01.js";
+import { buildInputSetUniquenessInit } from "../input-set-uniqueness/submit-input-set-uniqueness-init.js";
+import { buildInputSetUniquenessStep01 } from "../input-set-uniqueness/submit-input-set-uniqueness-step-01.js";
+import { buildInputSetUniquenessStep02 } from "../input-set-uniqueness/submit-input-set-uniqueness-step-02.js";
+import { buildInputSetUniquenessStep03 } from "../input-set-uniqueness/submit-input-set-uniqueness-step-03.js";
 import {
-  submitInputSetUniquenessStep04Advance,
-  submitInputSetUniquenessStep04Finalize,
+  buildInputSetUniquenessStep04Advance,
+  buildInputSetUniquenessStep04Finalize,
 } from "../input-set-uniqueness/submit-input-set-uniqueness-step-04.js";
 import {
   inputSetPairNamesNoDuplicate,
@@ -37,7 +37,7 @@ import {
   type LinearFamilyTransactionPort,
 } from "./linear-family-adapter.js";
 import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.js";
-import { captureLocallyEvaluatedTransaction } from "./transaction-boundary.js";
+import { journaledStepTransaction } from "./step-transaction.js";
 
 export const createTransactionPort = (
   config: BoundConfig,
@@ -64,9 +64,9 @@ export const createTransactionPort = (
     const input = actionInput(action);
     if (input.stage === "init") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitInputSetUniquenessInit({
+        transaction: (
+          await journaledStepTransaction(
+            await buildInputSetUniquenessInit({
               lucid: config.lucid,
               blueprint: config.blueprint,
               network: config.network,
@@ -80,19 +80,18 @@ export const createTransactionPort = (
               ),
               fraudulentHeaderHash: config.headerHash,
               witnessReferenceScripts: config.referenceScripts.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "input-set-uniqueness buildInputSetUniquenessInit",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "step_01") {
       if (admitted.sourceKind === "forced") {
         return Object.freeze({
-          transaction: await captureLocallyEvaluatedTransaction(
-            async (preSubmitBoundary) => {
-              await submitInputSetUniquenessForcedStep01({
+          transaction: (
+            await journaledStepTransaction(
+              await buildInputSetUniquenessForcedStep01({
                 lucid: config.lucid,
                 contracts: config.contracts,
                 categoryId: config.category.categoryId,
@@ -101,11 +100,10 @@ export const createTransactionPort = (
                 header: admitted.forcedSource.header,
                 membership: admitted.forcedSource.membership,
                 referenceScriptUtxo: config.referenceScripts.steps[0],
-                preSubmitBoundary,
-                awaitConfirmation: false,
-              });
-            },
-          ),
+              }),
+              "input-set-uniqueness buildInputSetUniquenessForcedStep01",
+            )
+          ).transaction,
         });
       }
       const chunks = await resolveDirectFirstProofChunks({
@@ -115,9 +113,9 @@ export const createTransactionPort = (
         proofCbor: admitted.artifact.tx.txMembershipProofCbor,
       });
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitInputSetUniquenessStep01({
+        transaction: (
+          await journaledStepTransaction(
+            await buildInputSetUniquenessStep01({
               lucid: config.lucid,
               blueprint: config.blueprint,
               contracts: config.contracts,
@@ -133,11 +131,10 @@ export const createTransactionPort = (
               publishedProofChunks: chunks,
               referenceScriptUtxo: config.referenceScripts.steps[0],
               witnessReferenceScripts: config.referenceScripts.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "input-set-uniqueness buildInputSetUniquenessStep01",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "step_02") {
@@ -153,9 +150,9 @@ export const createTransactionPort = (
         ownOutputs,
       );
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitInputSetUniquenessStep02({
+        transaction: (
+          await journaledStepTransaction(
+            await buildInputSetUniquenessStep02({
               ownOutputs,
               lucid: config.lucid,
               contracts: config.contracts,
@@ -178,11 +175,10 @@ export const createTransactionPort = (
               publishMissingCarriage: false,
               referenceScriptUtxo: config.referenceScripts.steps[1],
               witnessReferenceScripts: config.referenceScripts.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "input-set-uniqueness buildInputSetUniquenessStep02",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "step_03") {
@@ -198,9 +194,9 @@ export const createTransactionPort = (
         ownOutputs,
       );
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitInputSetUniquenessStep03({
+        transaction: (
+          await journaledStepTransaction(
+            await buildInputSetUniquenessStep03({
               ownOutputs,
               lucid: config.lucid,
               contracts: config.contracts,
@@ -220,11 +216,10 @@ export const createTransactionPort = (
                 ? {}
                 : { referenceCertificateUtxo: reference.certificate }),
               referenceScriptUtxo: config.referenceScripts.steps[2],
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "input-set-uniqueness buildInputSetUniquenessStep03",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "step_04") {
@@ -259,9 +254,9 @@ export const createTransactionPort = (
         })
       ) {
         return Object.freeze({
-          transaction: await captureLocallyEvaluatedTransaction(
-            async (preSubmitBoundary) => {
-              await submitInputSetUniquenessStep04Finalize({
+          transaction: (
+            await journaledStepTransaction(
+              await buildInputSetUniquenessStep04Finalize({
                 lucid: config.lucid,
                 contracts: config.contracts,
                 categoryId: config.category.categoryId,
@@ -272,11 +267,10 @@ export const createTransactionPort = (
                   admitted.artifact.referenceInputItemCbors,
                 referenceScriptUtxo: config.referenceScripts.steps[3],
                 witnessReferenceScripts: config.referenceScripts.witnesses,
-                preSubmitBoundary,
-                awaitConfirmation: false,
-              });
-            },
-          ),
+              }),
+              "input-set-uniqueness buildInputSetUniquenessStep04Finalize",
+            )
+          ).transaction,
         });
       }
       const readingSpend = state.data.cursor < state.data.spend_count;
@@ -286,9 +280,9 @@ export const createTransactionPort = (
         ownOutputs,
       );
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitInputSetUniquenessStep04Advance({
+        transaction: (
+          await journaledStepTransaction(
+            await buildInputSetUniquenessStep04Advance({
               ownOutputs,
               lucid: config.lucid,
               contracts: config.contracts,
@@ -304,11 +298,10 @@ export const createTransactionPort = (
                 ? {}
                 : { certificateUtxo: opening.certificate }),
               referenceScriptUtxo: config.referenceScripts.steps[3],
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "input-set-uniqueness buildInputSetUniquenessStep04Advance",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "remove") return await captureRemoval(config, input);

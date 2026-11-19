@@ -9,24 +9,22 @@ import { expect } from "vitest";
 
 import type { FaultProofFieldGrammarDeployment } from "../src/field-grammar-certificate.js";
 import {
-  certifyFaultProofFieldCarriage,
   type FaultProofFieldOpeningPlan,
   planFaultProofFieldOpening,
-  publishFaultProofFieldCarriage,
 } from "../src/field-opening.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import type { SubmitStep01TxInclusion } from "../src/step-support.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
 import {
   applyWitnessScriptDecodingScripts,
+  buildWitnessScriptDecodingCancel,
+  buildWitnessScriptDecodingInit,
+  buildWitnessScriptDecodingStep01Accepted,
+  buildWitnessScriptDecodingStep01Forced,
+  buildWitnessScriptDecodingStep02,
+  buildWitnessScriptDecodingStep03,
+  buildWitnessScriptDecodingStep04,
   planWitnessScriptDecodingStep03Transition,
-  submitWitnessScriptDecodingCancel,
-  submitWitnessScriptDecodingInit,
-  submitWitnessScriptDecodingStep01Accepted,
-  submitWitnessScriptDecodingStep01Forced,
-  submitWitnessScriptDecodingStep02,
-  submitWitnessScriptDecodingStep03,
-  submitWitnessScriptDecodingStep04,
   WITNESS_SCRIPT_DECODING_BLUEPRINT_TITLES,
   type WitnessScriptDecodingContracts,
   type WitnessScriptDecodingEvidence,
@@ -54,6 +52,12 @@ import {
   publishRemovalReferenceScripts,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  certifyCarriageUnjournaled,
+  publishCarriageUnjournaled,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 import {
   ADJACENT_FIELD_BYTES,
   overBoundFieldCarriagePlan,
@@ -270,7 +274,7 @@ export const makeHarness = async ({
   const init = async (fraudulentBlockOutRef: string, name: string | null) =>
     (
       await measured(name, () =>
-        submitWitnessScriptDecodingInit({
+        buildAndSubmitUnjournaled(buildWitnessScriptDecodingInit, {
           lucid,
           blueprint: harness.realBlueprint,
           network,
@@ -295,7 +299,7 @@ export const makeHarness = async ({
     name: string | null = null,
   ) => {
     await measured(name, () =>
-      submitWitnessScriptDecodingCancel({
+      buildAndSubmitUnjournaled(buildWitnessScriptDecodingCancel, {
         lucid,
         contracts,
         categoryId,
@@ -317,7 +321,7 @@ export const makeHarness = async ({
   ) =>
     (
       await measured(name, () =>
-        submitWitnessScriptDecodingStep01Accepted({
+        buildAndSubmitUnjournaled(buildWitnessScriptDecodingStep01Accepted, {
           lucid,
           blueprint: harness.realBlueprint,
           network,
@@ -343,7 +347,7 @@ export const makeHarness = async ({
   ) =>
     (
       await measured(name, () =>
-        submitWitnessScriptDecodingStep01Forced({
+        buildAndSubmitUnjournaled(buildWitnessScriptDecodingStep01Forced, {
           lucid,
           contracts,
           categoryId,
@@ -396,7 +400,7 @@ export const makeHarness = async ({
       item && (await recordPlutusItem(harness.emulator, lucid, item));
     return (
       await measured(name, () =>
-        submitWitnessScriptDecodingStep02({
+        submitTurnsUnjournaled(buildWitnessScriptDecodingStep02, {
           ownOutputs,
           lucid,
           network,
@@ -448,7 +452,7 @@ export const makeHarness = async ({
       label: `witness field ${shape.label}`,
     });
     const carriage = await captureEmulatorSubmission(harness.emulator, () =>
-      publishFaultProofFieldCarriage({
+      publishCarriageUnjournaled({
         ownOutputs,
         lucid,
         signer,
@@ -469,7 +473,7 @@ export const makeHarness = async ({
       return { carriageUtxos: carriage.result, certificateUtxo: undefined };
     }
     const certificate = await captureEmulatorSubmission(harness.emulator, () =>
-      certifyFaultProofFieldCarriage({
+      certifyCarriageUnjournaled({
         ownOutputs,
         lucid,
         network,
@@ -520,7 +524,7 @@ export const makeHarness = async ({
       witnessSet: shape.carriage.witnessSet,
       witnessSetHash: shape.carriage.witnessSetHash,
     };
-    const chunkUtxos = await publishFaultProofFieldCarriage({
+    const chunkUtxos = await publishCarriageUnjournaled({
       ownOutputs,
       lucid,
       signer,
@@ -530,7 +534,7 @@ export const makeHarness = async ({
     });
     expect(chunkUtxos).toHaveLength(3);
     await expectOnchainRefusal(() =>
-      certifyFaultProofFieldCarriage({
+      certifyCarriageUnjournaled({
         ownOutputs,
         lucid,
         network,
@@ -629,7 +633,7 @@ export const makeHarness = async ({
     let close: CompleteSignedTransactionMeasurement | undefined;
     while (!closed) {
       const { result, measurement } = await measured(null, () =>
-        submitWitnessScriptDecodingStep03({
+        buildAndSubmitUnjournaled(buildWitnessScriptDecodingStep03, {
           lucid,
           contracts,
           categoryId,
@@ -669,7 +673,7 @@ export const makeHarness = async ({
     name: string | null,
   ) => {
     const { result } = await measured(name, () =>
-      submitWitnessScriptDecodingStep04({
+      buildAndSubmitUnjournaled(buildWitnessScriptDecodingStep04, {
         lucid,
         contracts,
         categoryId,

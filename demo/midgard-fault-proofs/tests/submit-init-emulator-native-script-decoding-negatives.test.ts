@@ -29,21 +29,11 @@ import { Data, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { submitLinearFaultCancel } from "../src/linear-fault-cancel.js";
 import { NATIVE_SCRIPT_DECODING_CATEGORY_LABEL } from "../src/native-script-decoding/contracts.js";
 import {
   buildNativeScriptDecodingScanPlan,
   type NativeScriptDecodingFinding,
   NativeScriptDecodingProvability,
-  proveNativeScriptDecodingFault,
-  submitNativeScriptDecodingInit,
-  submitNativeScriptDecodingStep01BindNormal,
-  submitNativeScriptDecodingStep01RecordForced,
-  submitNativeScriptDecodingStep02,
-  submitNativeScriptDecodingStep03AdvanceOrCloseClose,
-  submitNativeScriptDecodingStep03AdvanceOrCloseSegment,
-  submitNativeScriptDecodingStep03BindDescriptor,
-  submitNativeScriptDecodingStep03OpenSubject,
 } from "../src/native-script-decoding/index.js";
 import {
   decodingCanonicalItem,
@@ -53,12 +43,22 @@ import {
   makeDecodingEmulatorHarness,
   publishDecodingReferenceScripts,
   setupDecodingScenario,
+  submitNativeScriptDecodingInit,
+  submitNativeScriptDecodingStep01BindNormal,
+  submitNativeScriptDecodingStep01RecordForced,
+  submitNativeScriptDecodingStep02,
+  submitNativeScriptDecodingStep03AdvanceOrCloseClose,
+  submitNativeScriptDecodingStep03AdvanceOrCloseSegment,
+  submitNativeScriptDecodingStep03BindDescriptor,
+  submitNativeScriptDecodingStep03OpenSubject,
   submitRawDecodingCancel,
 } from "./support/native-script-decoding-emulator.js";
+import { proveNativeScriptDecodingFault } from "./support/native-script-decoding-prover.js";
 import {
   expectSingleUtxoWithUnit,
   network,
 } from "./support/submit-init-emulator-shared.js";
+import { submitLinearFaultCancel } from "./support/submit-unjournaled.linear-fault.js";
 
 const FORCED_ORDER_KEY: SDK.OutputReference = {
   transactionId: "cd".repeat(32),

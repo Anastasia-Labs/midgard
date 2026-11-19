@@ -63,7 +63,8 @@ import {
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
 } from "../runtime.js";
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import {
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
   requireInitialStepDatum,
@@ -76,8 +77,8 @@ import {
   witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts.js";
 import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
 } from "../workflow/transaction-boundary.js";
 import type { WithdrawnReferenceInputContracts } from "./contracts.js";
 import {
@@ -92,8 +93,8 @@ import {
 // `submit-step-01`'s and to what `prepareWithdrawnReferenceInputV1` returns.
 export type WithdrawnReferenceInputStep01TxInclusion = SubmitStep01TxInclusion;
 
-export type SubmitWithdrawnReferenceInputStep01Result = {
-  readonly txHash: string;
+export type WithdrawnReferenceInputStep01Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -119,8 +120,10 @@ export type SubmitWithdrawnReferenceInputStep01Result = {
   readonly hubOracleRefInputIndex: number;
   readonly stateQueueNodeRefInputIndex: number;
   readonly referenceScriptOutRef: string;
-  readonly awaitedConfirmation: boolean;
 };
+
+export type SubmitWithdrawnReferenceInputStep01Result =
+  UnjournaledSubmission<WithdrawnReferenceInputStep01Build>;
 
 type WithdrawnReferenceInputStep01Layout = {
   readonly inputIndex: bigint;
@@ -129,7 +132,7 @@ type WithdrawnReferenceInputStep01Layout = {
   readonly stateQueueNodeRefInputIndex: bigint;
 };
 
-export const submitWithdrawnReferenceInputStep01 = async ({
+export const buildWithdrawnReferenceInputStep01 = async ({
   lucid,
   blueprint,
   contracts,
@@ -141,8 +144,6 @@ export const submitWithdrawnReferenceInputStep01 = async ({
   txInclusion,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -155,9 +156,7 @@ export const submitWithdrawnReferenceInputStep01 = async ({
   readonly txInclusion: WithdrawnReferenceInputStep01TxInclusion;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitWithdrawnReferenceInputStep01Result> => {
+}): Promise<WithdrawnReferenceInputStep01Build> => {
   const steps = contracts.steps;
   const [{ threadUtxo, threadToken }, hubOracleUtxo, stateQueueBlockUtxo] =
     await Promise.all([
@@ -347,34 +346,28 @@ export const submitWithdrawnReferenceInputStep01 = async ({
       "BuildTxWithRedeemer did not resolve withdrawn-reference-input step 01 layout.",
     );
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: "withdrawn-reference-input step-01",
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: "V1 fraud-proof withdrawn-reference-input step-01",
-          utxo: referenceScriptUtxo,
-          expectedScript: contracts.steps[0].spendingScript,
-        },
-        {
-          role: "membership proof withdrawal",
-          utxo: witnessReferenceScripts?.phasMembershipWithdraw,
-          expectedScript: phasMembershipScript,
-        },
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: "V1 fraud-proof withdrawn-reference-input step-01",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.steps[0].spendingScript,
+      },
+      {
+        role: "membership proof withdrawal",
+        utxo: witnessReferenceScripts?.phasMembershipWithdraw,
+        expectedScript: phasMembershipScript,
+      },
+    ],
   });
 
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
     threadOutRef,
-    nextThreadOutRef: `${txHash}#${resolvedLayout.outputIndex.toString()}`,
+    nextThreadOutRef: `${transaction.txHash}#${resolvedLayout.outputIndex.toString()}`,
     stateQueueBlockOutRef,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadPolicyId: contracts.computationThread.policyId,
@@ -392,6 +385,5 @@ export const submitWithdrawnReferenceInputStep01 = async ({
       resolvedLayout.stateQueueNodeRefInputIndex,
     ),
     referenceScriptOutRef: `${stepReference.txHash}#${stepReference.outputIndex.toString()}`,
-    awaitedConfirmation: awaitConfirmation,
   };
 };

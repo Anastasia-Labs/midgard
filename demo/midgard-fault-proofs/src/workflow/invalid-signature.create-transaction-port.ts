@@ -3,20 +3,16 @@ import {
   resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening.js";
 import { prepareInvalidSignatureForcedArtifact } from "../invalid-signature/artifact.js";
-import { submitInvalidSignatureStep01Forced } from "../invalid-signature/submit.js";
+import { buildInvalidSignatureStep01Forced } from "../invalid-signature/submit.js";
 import {
   detectInvalidSignatureWrongfulRejections,
   INVALID_SIGNATURE_WRONGFUL_REJECTION_VIOLATION_ID,
 } from "../invalid-signature/wrongful-rejection.js";
-import {
-  type StateQueueMutationLease,
-  type StateQueueMutationLeaseCoordinator,
-  submitRemoveFraudulentBlock,
-} from "../remove-fraudulent-block.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import { resolveInvalidSignatureDeploymentContracts } from "../runtime.js";
-import { submitInit } from "../submit-init.js";
-import { submitInvalidSignatureStep01 } from "../submit-invalid-signature-step-01.js";
-import { submitInvalidSignatureStep02 } from "../submit-invalid-signature-step-02.js";
+import { buildInit } from "../submit-init.js";
+import { buildInvalidSignatureStep01 } from "../submit-invalid-signature-step-01.js";
+import { buildInvalidSignatureStep02 } from "../submit-invalid-signature-step-02.js";
 import {
   type ManifestBoundLinearFamilyWorkflow,
   type ManifestBoundLinearFamilyWorkflowConfig,
@@ -36,8 +32,9 @@ import {
 } from "./linear-family-adapter.js";
 import type { OwnOutputJournal } from "./own-outputs.js";
 import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.js";
+import { admitRemovalTransaction } from "./removal-admission.js";
+import { journaledStepTransaction } from "./step-transaction.js";
 import {
-  captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
   workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary.js";
@@ -57,53 +54,38 @@ const captureRemoval = async (
   config: BoundConfig,
   input: Readonly<Record<string, unknown>>,
 ) => {
-  let mutationLease: StateQueueMutationLease | undefined;
-  const retainingCoordinator: StateQueueMutationLeaseCoordinator = {
-    acquire: async () => {
-      const acquired =
-        await config.stateQueueMutationLeaseCoordinator.acquire();
-      mutationLease = acquired;
-      return acquired;
-    },
-  };
   const nextRemovalOutRef = stringField(input, "nextRemovalOutRef");
   const fraudProofOutRef = stringField(input, "fraudProofOutRef");
-  const transaction = await captureLocallyEvaluatedTransaction(
-    async (boundary) => {
-      await submitRemoveFraudulentBlock({
-        fraudProofOutRef,
-        lucid: config.lucid,
-        blueprint: config.blueprint,
-        deploymentInfo: config.deploymentInfo,
-        network: config.network,
-        signer: config.signer,
-        fraudCategory: "invalidSignature",
-        fraudulentHeaderHash: config.headerHash,
-        requireReferenceScripts: true,
-        stateQueueMutationLeaseCoordinator: retainingCoordinator,
-        fraudProverRewardLovelace: config.fraudProverRewardLovelace,
-        preSubmitBoundary: async (built) => {
-          if (
-            !workflowTransactionInputOutRefs(built.signed).includes(
-              nextRemovalOutRef,
-            ) ||
-            !workflowTransactionReferenceInputOutRefs(built.signed).includes(
-              fraudProofOutRef,
-            )
-          ) {
-            throw new Error(
-              "invalid-signature removal changed its authenticated queue/proof inputs",
-            );
-          }
-          await boundary(built);
-        },
-      });
+  return await admitRemovalTransaction(
+    await buildRemoveFraudulentBlock({
+      fraudProofOutRef,
+      lucid: config.lucid,
+      blueprint: config.blueprint,
+      deploymentInfo: config.deploymentInfo,
+      network: config.network,
+      signer: config.signer,
+      fraudCategory: "invalidSignature",
+      fraudulentHeaderHash: config.headerHash,
+      requireReferenceScripts: true,
+      stateQueueMutationLeaseCoordinator:
+        config.stateQueueMutationLeaseCoordinator,
+      fraudProverRewardLovelace: config.fraudProverRewardLovelace,
+    }),
+    async (built) => {
+      if (
+        !workflowTransactionInputOutRefs(built.signed).includes(
+          nextRemovalOutRef,
+        ) ||
+        !workflowTransactionReferenceInputOutRefs(built.signed).includes(
+          fraudProofOutRef,
+        )
+      ) {
+        throw new Error(
+          "invalid-signature removal changed its authenticated queue/proof inputs",
+        );
+      }
     },
   );
-  return Object.freeze({
-    transaction,
-    ...(mutationLease === undefined ? {} : { mutationLease }),
-  });
 };
 
 const resolveFieldCarriage = async (
@@ -185,9 +167,9 @@ export const createTransactionPort = (
     const input = actionInput(action);
     if (input.stage === "init") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitInit({
+        transaction: (
+          await journaledStepTransaction(
+            await buildInit({
               lucid: config.lucid,
               blueprint: config.blueprint,
               deploymentInfo: config.deploymentInfo,
@@ -200,11 +182,10 @@ export const createTransactionPort = (
               ),
               fraudulentHeaderHash: config.headerHash,
               witnessReferenceScripts: config.referenceScripts.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "invalid-signature buildInit",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "step_01") {
@@ -218,9 +199,9 @@ export const createTransactionPort = (
           });
         const forced = admitted.forced;
         return {
-          transaction: await captureLocallyEvaluatedTransaction(
-            async (preSubmitBoundary) => {
-              await submitInvalidSignatureStep01Forced({
+          transaction: (
+            await journaledStepTransaction(
+              await buildInvalidSignatureStep01Forced({
                 lucid: config.lucid,
                 contracts: {
                   steps: contracts.invalidSignature.steps.map(
@@ -239,11 +220,10 @@ export const createTransactionPort = (
                 evidence: forced.evidence,
                 forcedSource: forced.forcedSource,
                 referenceScriptUtxo: config.referenceScripts.steps[0],
-                preSubmitBoundary,
-                awaitConfirmation: false,
-              });
-            },
-          ),
+              }),
+              "invalid-signature buildInvalidSignatureStep01Forced",
+            )
+          ).transaction,
         };
       }
       if (admitted.inclusion === null)
@@ -255,9 +235,9 @@ export const createTransactionPort = (
         proofCbor: admitted.artifact.txMembershipProofCbor,
       });
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitInvalidSignatureStep01({
+        transaction: (
+          await journaledStepTransaction(
+            await buildInvalidSignatureStep01({
               lucid: config.lucid,
               blueprint: config.blueprint,
               deploymentInfo: config.deploymentInfo,
@@ -273,19 +253,18 @@ export const createTransactionPort = (
               publishedProofChunks: chunks,
               referenceScriptUtxo: config.referenceScripts.steps[0],
               witnessReferenceScripts: config.referenceScripts.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "invalid-signature buildInvalidSignatureStep01",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "step_02") {
       const carriage = await resolveFieldCarriage(config, admitted, ownOutputs);
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitInvalidSignatureStep02({
+        transaction: (
+          await journaledStepTransaction(
+            await buildInvalidSignatureStep02({
               ownOutputs,
               lucid: config.lucid,
               blueprint: config.blueprint,
@@ -303,11 +282,10 @@ export const createTransactionPort = (
               certificateUtxos: carriage.certificates,
               existingPublicationUtxos: carriage.publications,
               publishMissingCarriage: false,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "invalid-signature buildInvalidSignatureStep02",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "remove") {

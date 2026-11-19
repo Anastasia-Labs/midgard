@@ -1,10 +1,14 @@
 import type { MintAuthorizationStep04State } from "@al-ft/midgard-sdk";
 import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk";
 
+import {
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
+} from "../workflow/transaction-boundary.js";
 import { mintAuthorizationSubmitError } from "./submit-common.js";
 
-export type SubmitMintAuthorizationStep04Result = {
-  readonly txHash: string;
+export type MintAuthorizationStep04Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -23,8 +27,10 @@ export type SubmitMintAuthorizationStep04Result = {
   } | null;
   readonly inputIndex: number;
   readonly outputIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
+
+export type SubmitMintAuthorizationStep04Result =
+  UnjournaledSubmission<MintAuthorizationStep04Build>;
 
 /** The input field the thread's state names: field 1, then field 0. */
 export const step04ScanField = (

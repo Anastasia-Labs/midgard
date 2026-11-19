@@ -8,6 +8,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { type FaultProofTurn } from "../fault-proof-turn.js";
 import {
   faultProofFieldOpening,
   type FaultProofFieldOpeningPlan,
@@ -19,10 +20,8 @@ import type { ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import type { FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import type { OwnOutputJournal } from "../workflow/own-outputs.js";
-import {
-  captureLocallyEvaluatedTransaction,
-  type FraudProofPreSubmitBoundary,
-} from "../workflow/transaction-boundary.js";
+import { journaledStepTransaction } from "../workflow/step-transaction.js";
+import { type LocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import { type AdmittedScriptIntegrityHashMissingArtifact } from "./artifact.js";
 import type { ScriptIntegrityHashMissingContracts } from "./contracts.js";
 import { ScriptIntegrityStepDatums } from "./schemas.js";
@@ -127,10 +126,11 @@ export const phaseHash = (
 };
 
 export const captured = async (
-  submit: (boundary: FraudProofPreSubmitBoundary) => Promise<void>,
+  built: FaultProofTurn<{ readonly transaction: LocallyEvaluatedTransaction }>,
+  label: string,
 ) =>
   Object.freeze({
-    transaction: await captureLocallyEvaluatedTransaction(submit),
+    transaction: (await journaledStepTransaction(built, label)).transaction,
   });
 
 export const direct = (

@@ -5,7 +5,7 @@
 import { outRefLabel } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
-import { submitStep04 } from "../src/double-spend/submit-step-04.js";
+import { buildStep04 } from "../src/double-spend/submit-step-04.js";
 import {
   parseSpendInputCbors,
   parseSubmitStep01TxInclusion,
@@ -17,6 +17,7 @@ import {
 import { pinStepTranscript } from "./support/step-transcript.js";
 import { stageDoubleSpendStep04 } from "./support/submit-init/double-spend-staging.js";
 import { network } from "./support/submit-init-emulator-shared.js";
+import { submitTurnsUnjournaled } from "./support/submit-unjournaled.js";
 
 describe("double-spend steps under the watcher's restricted wallet", () => {
   it("funds step 03 and step 04 and posts their collateral from the reserved pool", async () => {
@@ -44,7 +45,7 @@ describe("double-spend steps under the watcher's restricted wallet", () => {
       signer: staged.proverSigner,
     });
     const { transactionInclusion } = staged;
-    const step04 = await submitStep04({
+    const step04 = await submitTurnsUnjournaled(buildStep04, {
       lucid: staged.proverLucid,
       blueprint: staged.realBlueprint,
       deploymentInfo: staged.deploymentInfo,
@@ -63,7 +64,7 @@ describe("double-spend steps under the watcher's restricted wallet", () => {
         staged.doubleSpendStepReferenceScripts["fraudProofDoubleSpendStep04"]!
           .utxo,
       witnessReferenceScripts: staged.witnessReferenceScripts,
-      preSubmitBoundary: funding.preSubmitBoundary,
+      beforeSubmit: funding.beforeSubmit,
       awaitConfirmation: true,
     });
     expect(funding.checked()).toBe(1);

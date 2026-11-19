@@ -16,16 +16,13 @@ import {
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
 import { type ResolvedProverSigner } from "../runtime.js";
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
 } from "../witness-reference-scripts.js";
-import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary.js";
 import {
   type DirectPurposeContracts,
   type DirectPurposeFamily,
@@ -36,7 +33,7 @@ import {
 const directClaimFinalize = (indices: SDK.DirectClaimFinalizeArgs): string =>
   Data.to({ Continue: [indices] }, SDK.DirectClaimFinalizeRedeemer);
 
-export const submitDirectPurposeTerminal = async <State>({
+export const buildDirectPurposeTerminal = async <State>({
   family,
   lucid,
   contracts,
@@ -45,8 +42,6 @@ export const submitDirectPurposeTerminal = async <State>({
   threadOutRef,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
   onSigned,
   requireConviction = true,
 }: {
@@ -58,8 +53,6 @@ export const submitDirectPurposeTerminal = async <State>({
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
   readonly onSigned?: (label: string, signed: TxSigned) => void;
   /** False only to reach the validator with a non-convicting state. */
   readonly requireConviction?: boolean;
@@ -181,35 +174,29 @@ export const submitDirectPurposeTerminal = async <State>({
   if (outputIndex === undefined)
     throw new Error(`${label}: completed layout unresolved`);
   onSigned?.("terminal", signed);
-  const txHash = await submitStep(lucid, signed, {
-    label: label,
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: label,
-          utxo: stepReference,
-          expectedScript: step.spendingScript,
-        },
-        {
-          role: "V1 fraud-proof computation-thread minting",
-          utxo: witnessReferenceScripts?.computationThreadMint,
-          expectedScript: contracts.computationThread.mintingScript,
-        },
-        {
-          role: "V1 fraud-proof token minting",
-          utxo: witnessReferenceScripts?.fraudProofMint,
-          expectedScript: contracts.fraudProof.mintingScript,
-        },
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: label,
+        utxo: stepReference,
+        expectedScript: step.spendingScript,
+      },
+      {
+        role: "V1 fraud-proof computation-thread minting",
+        utxo: witnessReferenceScripts?.computationThreadMint,
+        expectedScript: contracts.computationThread.mintingScript,
+      },
+      {
+        role: "V1 fraud-proof token minting",
+        utxo: witnessReferenceScripts?.fraudProofMint,
+        expectedScript: contracts.fraudProof.mintingScript,
+      },
+    ],
   });
   return {
-    txHash,
+    transaction,
     finalState: state,
-    fraudProofOutRef: `${txHash}#${outputIndex.toString()}`,
+    fraudProofOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
     fraudProofUnit,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
   };

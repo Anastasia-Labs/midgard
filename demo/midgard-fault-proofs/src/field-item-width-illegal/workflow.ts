@@ -57,7 +57,6 @@ export {
   prepareFieldItemWidthIllegalRecoveryMaterial,
 } from "./workflow.derive-field-item-width-illegal-authenticated-source.js";
 export {
-  createManifestBoundFieldItemWidthIllegalRuntime,
   FIELD_ITEM_WIDTH_ILLEGAL_FAMILY_DEFINITION,
   loadManifestBoundFieldItemWidthIllegalConfig,
 } from "./workflow.field-item-width-illegal-family-definition.js";
@@ -65,8 +64,6 @@ export {
   createFieldItemWidthIllegalRecoveryAdapter,
   createManifestBoundFieldItemWidthIllegalWorkflow,
   executeManifestBoundFieldItemWidthIllegalWorkflow,
-  loadFieldItemWidthIllegalRuntime,
   type ManifestBoundFieldItemWidthIllegalWorkflow,
   type ManifestBoundFieldItemWidthIllegalWorkflowConfig,
-  runOrResumeManifestBoundFieldItemWidthIllegalWorkflow,
 } from "./workflow.run-or-resume-manifest-bound-field-item-width-illegal-workflow.js";

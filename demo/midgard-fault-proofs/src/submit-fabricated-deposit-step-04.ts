@@ -48,20 +48,22 @@ import {
   resolveProverSigner,
   type SubmitProviderConfig,
 } from "./runtime.js";
-import { completeStep, fundStep, submitStep } from "./step-completion.js";
+import { completeStep, fundStep } from "./step-completion.js";
+import { finishStep } from "./step-completion.js";
 import { requireComputationThreadToken } from "./step-support.js";
 import {
   FABRICATED_DEPOSIT_CATEGORY_LABEL,
   type FabricatedDepositContracts,
 } from "./submit-fabricated-deposit-step-01.js";
+import { submitFaultProofTurns } from "./submit-fault-proof-turns.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
 } from "./witness-reference-scripts.js";
 import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
 } from "./workflow/transaction-boundary.js";
 
 export const requireFabricatedDepositStep04Datum = ({
@@ -124,8 +126,8 @@ export type SubmitFabricatedDepositStep04CliConfig = SubmitProviderConfig & {
   readonly awaitConfirmation?: boolean;
 };
 
-export type SubmitFabricatedDepositStep04Result = {
-  readonly txHash: string;
+export type FabricatedDepositStep04Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -145,8 +147,10 @@ export type SubmitFabricatedDepositStep04Result = {
   readonly outputIndex: number;
   readonly computationThreadMintRedeemerIndex: number;
   readonly fraudProofMintRedeemerIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
+
+export type SubmitFabricatedDepositStep04Result =
+  UnjournaledSubmission<FabricatedDepositStep04Build>;
 
 type FabricatedDepositStep04SpendLayout = {
   readonly inputIndex: bigint;
@@ -154,15 +158,13 @@ type FabricatedDepositStep04SpendLayout = {
   readonly fraudProofMintRedeemerIndex: bigint;
 };
 
-export const submitFabricatedDepositStep04 = async ({
+export const buildFabricatedDepositStep04 = async ({
   lucid,
   contracts,
   signer,
   threadOutRef,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
   now = Date.now,
 }: {
   readonly now?: () => number;
@@ -175,9 +177,7 @@ export const submitFabricatedDepositStep04 = async ({
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts & {
     readonly stateQueueSpend?: UTxO;
   };
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitFabricatedDepositStep04Result> => {
+}): Promise<FabricatedDepositStep04Build> => {
   const threadUtxo = await fetchUtxoByOutRef({
     lucid,
     outRef: parseOutRef(threadOutRef, "--thread-out-ref"),
@@ -345,45 +345,39 @@ export const submitFabricatedDepositStep04 = async ({
       "BuildTxWithRedeemer did not resolve fabricated-deposit step 04 layout.",
     );
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: "fabricated-deposit step-04",
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: "state queue spending",
-          utxo: completedFraud.queueReferenceScript,
-          expectedScript:
-            completedFraud.queueReferenceScript?.scriptRef ?? undefined,
-        },
-        {
-          role: "V1 fraud-proof fabricated-deposit step-04",
-          utxo: referenceScriptUtxo,
-          expectedScript: contracts.steps[3].spendingScript,
-        },
-        {
-          role: "V1 fraud-proof computation-thread minting",
-          utxo: witnessReferenceScripts?.computationThreadMint,
-          expectedScript: contracts.computationThread.mintingScript,
-        },
-        {
-          role: "V1 fraud-proof token minting",
-          utxo: witnessReferenceScripts?.fraudProofMint,
-          expectedScript: contracts.fraudProof.mintingScript,
-        },
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: "state queue spending",
+        utxo: completedFraud.queueReferenceScript,
+        expectedScript:
+          completedFraud.queueReferenceScript?.scriptRef ?? undefined,
+      },
+      {
+        role: "V1 fraud-proof fabricated-deposit step-04",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.steps[3].spendingScript,
+      },
+      {
+        role: "V1 fraud-proof computation-thread minting",
+        utxo: witnessReferenceScripts?.computationThreadMint,
+        expectedScript: contracts.computationThread.mintingScript,
+      },
+      {
+        role: "V1 fraud-proof token minting",
+        utxo: witnessReferenceScripts?.fraudProofMint,
+        expectedScript: contracts.fraudProof.mintingScript,
+      },
+    ],
   });
 
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
     threadOutRef,
-    fraudProofOutRef: `${txHash}#${spendLayout.outputIndex.toString()}`,
+    fraudProofOutRef: `${transaction.txHash}#${spendLayout.outputIndex.toString()}`,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadPolicyId: contracts.computationThread.policyId,
     computationThreadAssetName: threadToken.assetName,
@@ -402,7 +396,6 @@ export const submitFabricatedDepositStep04 = async ({
     fraudProofMintRedeemerIndex: Number(
       spendLayout.fraudProofMintRedeemerIndex,
     ),
-    awaitedConfirmation: awaitConfirmation,
   };
 };
 
@@ -417,13 +410,19 @@ export const submitFabricatedDepositStep04FromFiles = async (
 ): Promise<SubmitFabricatedDepositStep04Result> => {
   const lucid = await makeLucidForSubmit(config);
   const signer = resolveProverSigner(config);
-  return await submitFabricatedDepositStep04({
-    lucid,
-    contracts: config.contracts,
-    signer,
-    threadOutRef: config.threadOutRef,
-    referenceScriptUtxo: config.referenceScriptUtxo,
-    witnessReferenceScripts: config.witnessReferenceScripts,
-    awaitConfirmation: config.awaitConfirmation,
-  });
+  return await submitFaultProofTurns(
+    buildFabricatedDepositStep04,
+    {
+      lucid,
+      contracts: config.contracts,
+      signer,
+      threadOutRef: config.threadOutRef,
+      referenceScriptUtxo: config.referenceScriptUtxo,
+      witnessReferenceScripts: config.witnessReferenceScripts,
+    },
+    {
+      label: "fabricated-deposit-step04",
+      awaitConfirmation: config.awaitConfirmation ?? true,
+    },
+  );
 };

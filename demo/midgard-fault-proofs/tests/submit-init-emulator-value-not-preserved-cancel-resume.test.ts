@@ -2,10 +2,11 @@
 import { outRefLabel } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
-import { submitLinearFaultCancel } from "../src/linear-fault-cancel.js";
-import { submitResolvedInit } from "../src/submit-init.js";
+import { buildLinearFaultCancel } from "../src/linear-fault-cancel.js";
+import { buildResolvedInit } from "../src/submit-init.js";
 import { VALUE_NOT_PRESERVED_CATEGORY_LABEL } from "../src/value-not-preserved/contracts.js";
 import { network } from "./support/submit-init-emulator-shared.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 import {
   buildValueNotPreservedFixture,
   makeValueNotPreservedEmulatorHarness,
@@ -45,7 +46,7 @@ describe("value-not-preserved cancellation and restart", () => {
       through: "finish",
     });
 
-    const cancelled = await submitLinearFaultCancel({
+    const cancelled = await buildAndSubmitUnjournaled(buildLinearFaultCancel, {
       lucid: harness.proverLucid,
       family: VALUE_NOT_PRESERVED_CATEGORY_LABEL,
       steps: harness.family.steps,
@@ -67,7 +68,7 @@ describe("value-not-preserved cancellation and restart", () => {
       ).resolves.toHaveLength(0);
     }
 
-    const restarted = await submitResolvedInit({
+    const restarted = await buildAndSubmitUnjournaled(buildResolvedInit, {
       label: VALUE_NOT_PRESERVED_CATEGORY_LABEL,
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,

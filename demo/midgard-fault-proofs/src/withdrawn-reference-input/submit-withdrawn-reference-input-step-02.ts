@@ -45,20 +45,26 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  type FaultProofTurn,
+  isPrerequisiteTurn,
+} from "../fault-proof-turn.js";
+import {
   faultProofFieldOpening,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
 } from "../field-opening.js";
 import { type ResolvedProverSigner } from "../runtime.js";
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
+import { workflowReferenceScript } from "../workflow/transaction-boundary.js";
 import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScript,
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
 } from "../workflow/transaction-boundary.js";
 import type { WithdrawnReferenceInputContracts } from "./contracts.js";
 import {
@@ -68,8 +74,8 @@ import {
   withdrawnReferenceInputSubmitError,
 } from "./submit-common.js";
 
-export type SubmitWithdrawnReferenceInputStep02Result = {
-  readonly txHash: string;
+export type WithdrawnReferenceInputStep02Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -90,10 +96,12 @@ export type SubmitWithdrawnReferenceInputStep02Result = {
   readonly inputIndex: number;
   readonly outputIndex: number;
   readonly referenceScriptOutRef: string;
-  readonly awaitedConfirmation: boolean;
 };
 
-export const submitWithdrawnReferenceInputStep02 = async ({
+export type SubmitWithdrawnReferenceInputStep02Result =
+  UnjournaledSubmission<WithdrawnReferenceInputStep02Build>;
+
+export const buildWithdrawnReferenceInputStep02 = async ({
   lucid,
   contracts,
   categoryId,
@@ -106,8 +114,6 @@ export const submitWithdrawnReferenceInputStep02 = async ({
   publishedCarriageUtxos,
   certificateUtxo,
   publishMissingCarriage = true,
-  preSubmitBoundary,
-  awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
@@ -126,11 +132,9 @@ export const submitWithdrawnReferenceInputStep02 = async ({
   readonly certificateUtxo?: UTxO;
   /** Diagnostic/emulator fallback only. Production workflows set false. */
   readonly publishMissingCarriage?: boolean;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
-}): Promise<SubmitWithdrawnReferenceInputStep02Result> => {
+}): Promise<FaultProofTurn<WithdrawnReferenceInputStep02Build>> => {
   const steps = contracts.steps;
   const { threadUtxo, threadToken } =
     await requireWithdrawnReferenceInputThreadUtxo({
@@ -198,6 +202,7 @@ export const submitWithdrawnReferenceInputStep02 = async ({
               "step-02 requires authenticated pre-published field carriage",
             );
           })());
+  if (isPrerequisiteTurn(carriageUtxos)) return carriageUtxos;
   if (planned.plan.tier === "Certified" && certificateUtxo === undefined) {
     throw withdrawnReferenceInputSubmitError(
       "step-02 requires its authenticated field-preimage certificate",
@@ -292,8 +297,7 @@ export const submitWithdrawnReferenceInputStep02 = async ({
       "BuildTxWithRedeemer did not resolve withdrawn-reference-input step 02 layout.",
     );
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: "withdrawn-reference-input step-02",
+  const transaction = finishStep(signed, {
     referenceScripts: [
       workflowReferenceScript({
         role: "V1 fraud-proof withdrawn-reference-input step-02",
@@ -301,17 +305,15 @@ export const submitWithdrawnReferenceInputStep02 = async ({
         expectedScript: contracts.steps[1].spendingScript,
       }),
     ],
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
   });
 
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
     threadOutRef,
-    nextThreadOutRef: `${txHash}#${resolvedLayout.outputIndex.toString()}`,
+    nextThreadOutRef: `${transaction.txHash}#${resolvedLayout.outputIndex.toString()}`,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadUnit: threadToken.unit,
     secondStepAddress: steps[1].spendingScriptAddress,
@@ -324,6 +326,5 @@ export const submitWithdrawnReferenceInputStep02 = async ({
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
     referenceScriptOutRef: `${stepReference.txHash}#${stepReference.outputIndex.toString()}`,
-    awaitedConfirmation: awaitConfirmation,
   };
 };

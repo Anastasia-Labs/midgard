@@ -4,8 +4,7 @@ import { readFileSync } from "node:fs";
 import { paymentCredentialOf } from "@lucid-evolution/lucid";
 import { makeGenuineDeploymentRegistryForTest } from "midgard-node/tests/helpers/deployment-parameter-registry";
 
-import { submitResolvedInit } from "../../src/submit-init.js";
-import { captureLocallyEvaluatedTransaction } from "../../src/workflow/transaction-boundary.js";
+import { buildResolvedInit } from "../../src/submit-init.js";
 import { commitInitializedProvedFixtureHeader } from "./submit-init/commit-header.js";
 import { buildProvedFixtureDeploymentContext } from "./submit-init/deployment.js";
 import { EMULATOR_HEADER_CLOCK_HEADROOM_MS } from "./submit-init/successor.js";
@@ -63,31 +62,27 @@ export const makeGenuineFundingInitCaptureForTest = async () => {
       .digest("hex"),
     fundingPaymentKeyHash: proverSigner.paymentKeyHash,
   };
-  const transaction = await captureLocallyEvaluatedTransaction(
-    (preSubmitBoundary) =>
-      submitResolvedInit({
-        lucid: proverLucid,
-        blueprint: fixture.realBlueprint,
-        network: "Preprod",
-        label: "funding producer Init",
-        contracts: {
-          steps: [contracts.fraudProofContracts.doubleSpend.steps[0]!] as const,
-          computationThread: contracts.computationThread,
-          hubOraclePolicyId: contracts.hubOracle.policyId,
-          stateQueuePolicyId: contracts.stateQueue.policyId,
-        },
-        category: fixture.catalogue.categories.doubleSpend,
-        catalogue: {
-          policyId: contracts.fraudProofCatalogue.policyId,
-          spendingScriptAddress:
-            contracts.fraudProofCatalogue.spendingScriptAddress,
-          root: fixture.catalogue.root,
-        },
-        signer: proverSigner,
-        fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
-        witnessReferenceScripts: canonical.witnessReferenceScripts,
-        preSubmitBoundary,
-      }),
-  );
+  const { transaction } = await buildResolvedInit({
+    lucid: proverLucid,
+    blueprint: fixture.realBlueprint,
+    network: "Preprod",
+    label: "funding producer Init",
+    contracts: {
+      steps: [contracts.fraudProofContracts.doubleSpend.steps[0]!] as const,
+      computationThread: contracts.computationThread,
+      hubOraclePolicyId: contracts.hubOracle.policyId,
+      stateQueuePolicyId: contracts.stateQueue.policyId,
+    },
+    category: fixture.catalogue.categories.doubleSpend,
+    catalogue: {
+      policyId: contracts.fraudProofCatalogue.policyId,
+      spendingScriptAddress:
+        contracts.fraudProofCatalogue.spendingScriptAddress,
+      root: fixture.catalogue.root,
+    },
+    signer: proverSigner,
+    fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+    witnessReferenceScripts: canonical.witnessReferenceScripts,
+  });
   return { fixture, contextInput, transaction };
 };

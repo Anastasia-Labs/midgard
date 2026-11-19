@@ -1,12 +1,12 @@
 import { type UTxO } from "@lucid-evolution/lucid";
 
-import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
+import { buildCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
 import { requireLinearFaultThreadUtxo } from "../src/linear-fault-family.js";
-import { submitLinearFaultFinalize } from "../src/linear-fault-finalize.js";
+import { buildLinearFaultFinalize } from "../src/linear-fault-finalize.js";
 import type { RedeemerCanonicityContracts } from "../src/redeemer-canonicity/contracts.js";
 import type { RedeemerCanonicityEvidence } from "../src/redeemer-canonicity/family.js";
 import { RedeemerCanonicityStep03RedeemerSchema } from "../src/redeemer-canonicity/schemas.js";
-import { submitRedeemerCanonicityStep02Data } from "../src/redeemer-canonicity/submit-step-02-data.js";
+import { buildRedeemerCanonicityStep02Data } from "../src/redeemer-canonicity/submit-step-02-data.js";
 import { network } from "./support/emulator/blueprints.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import {
@@ -14,6 +14,7 @@ import {
   type CompleteSignedTransactionMeasurement,
 } from "./support/emulator/measurement.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 export const emitFit = (
   stage: string,
@@ -94,7 +95,7 @@ export const initThread = async ({
   >;
   readonly fraudulentBlockOutRef: string;
 }) =>
-  await submitCommittedFieldShapeInit({
+  await buildAndSubmitUnjournaled(buildCommittedFieldShapeInit, {
     lucid: harness.proverLucid,
     blueprint: harness.realBlueprint,
     network,
@@ -138,7 +139,7 @@ export const readRedeemerData = async ({
   let current = threadOutRef;
   for (let steps = 0; ; ) {
     const captured = await captureEmulatorSubmission(harness.emulator, () =>
-      submitRedeemerCanonicityStep02Data({
+      buildAndSubmitUnjournaled(buildRedeemerCanonicityStep02Data, {
         lucid: harness.proverLucid,
         contracts,
         categoryId,
@@ -156,7 +157,7 @@ export const readRedeemerData = async ({
 };
 
 /**
- * The step-03 finalize exactly as `submitRedeemerCanonicityStep03` builds it,
+ * The step-03 finalize exactly as `buildRedeemerCanonicityStep03` builds it,
  * without its off-chain closing guards, so the validator itself decides.
  */
 export const finalizeWithoutGuards = async ({
@@ -171,7 +172,7 @@ export const finalizeWithoutGuards = async ({
   readonly categoryId: string;
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: Parameters<
-    typeof submitLinearFaultFinalize
+    typeof buildLinearFaultFinalize
   >[0]["referenceScriptUtxo"];
 }) => {
   const stepIndex = 3;
@@ -183,7 +184,7 @@ export const finalizeWithoutGuards = async ({
     stepIndex,
     threadOutRef,
   });
-  return await submitLinearFaultFinalize({
+  return await buildAndSubmitUnjournaled(buildLinearFaultFinalize, {
     lucid: harness.proverLucid,
     family: "redeemer-canonicity",
     stepIndex,

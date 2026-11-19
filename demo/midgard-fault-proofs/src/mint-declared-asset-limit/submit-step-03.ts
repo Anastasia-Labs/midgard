@@ -23,14 +23,13 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { MintDeclaredAssetLimitContracts } from "./contracts.js";
 import {
   MINT_DECLARED_OUTCOME_CROSSING,
@@ -59,7 +58,7 @@ import {
  * exists so a lifecycle can present the validator with a substituted
  * checkpoint, budget, successor or claimed state and observe its refusal.
  */
-export const submitMintDeclaredAssetLimitStep03Raw = async ({
+export const buildMintDeclaredAssetLimitStep03Raw = async ({
   lucid,
   contracts,
   categoryId,
@@ -74,8 +73,6 @@ export const submitMintDeclaredAssetLimitStep03Raw = async ({
   nextStepIndex = next.kind === "decision" ? 3 : 2,
   referenceScriptUtxo,
   stepRole,
-  preSubmitBoundary,
-  awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
@@ -96,8 +93,6 @@ export const submitMintDeclaredAssetLimitStep03Raw = async ({
   readonly nextStepIndex?: 0 | 1 | 2 | 3;
   readonly referenceScriptUtxo: UTxO;
   readonly stepRole: string;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
 }) => {
@@ -210,7 +205,7 @@ export const submitMintDeclaredAssetLimitStep03Raw = async ({
       MintDeclaredAssetLimitStep03RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -224,12 +219,13 @@ export const submitMintDeclaredAssetLimitStep03Raw = async ({
     carriageUtxos,
     extraReferenceInputs:
       certificateUtxo === undefined ? [] : [certificateUtxo],
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined)
     throw new Error("mintDeclaredAssetLimit: step-03 layout unresolved");
-  return { txHash, nextThreadOutRef: `${txHash}#${outputIndex.toString()}` };
+  return {
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
+  };
 };
 
 /** The fold datum committed by snapshot `ordinal` of the plan (-1: initial). */
@@ -249,7 +245,7 @@ export const mintDeclaredFoldSnapshotData = ({
     checkpointHash: hashMintDeclaredWalkCheckpoint(snapshot.checkpoint),
   });
 
-export const submitMintDeclaredAssetLimitStep03 = async ({
+export const buildMintDeclaredAssetLimitStep03 = async ({
   lucid,
   contracts,
   categoryId,
@@ -260,8 +256,6 @@ export const submitMintDeclaredAssetLimitStep03 = async ({
   staged,
   walkOrdinal,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
@@ -274,8 +268,6 @@ export const submitMintDeclaredAssetLimitStep03 = async ({
   readonly staged: MintDeclaredAssetLimitStagedPlan;
   readonly walkOrdinal: number;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
 }) => {
@@ -294,7 +286,7 @@ export const submitMintDeclaredAssetLimitStep03 = async ({
     throw new Error("mintDeclaredAssetLimit: staged plan target changed");
   const terminal =
     nextSnapshot.cursor.outcome !== MINT_DECLARED_OUTCOME_SCANNING;
-  return await submitMintDeclaredAssetLimitStep03Raw({
+  return await buildMintDeclaredAssetLimitStep03Raw({
     ownOutputs,
     lucid,
     contracts,
@@ -328,7 +320,5 @@ export const submitMintDeclaredAssetLimitStep03 = async ({
         },
     referenceScriptUtxo,
     stepRole: `mintDeclaredAssetLimit step-03 walk ${walkOrdinal.toString()}`,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
 };

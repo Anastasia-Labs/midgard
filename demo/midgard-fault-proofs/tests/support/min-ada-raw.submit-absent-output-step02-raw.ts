@@ -34,10 +34,11 @@ import {
 import type { ResolvedProverSigner } from "../../src/runtime.js";
 import {
   completeStep,
+  finishStep,
   fundStep,
-  submitStep,
 } from "../../src/step-completion.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
+import { submitUnjournaled } from "../../src/workflow/transaction-boundary.js";
 
 /**
  * Min-ada step 02 built by hand on a thread whose field-2 grammar is
@@ -173,9 +174,9 @@ export const submitRawMinAdaAbsentOutputStep02 = async ({
       { lovelace: threadUtxo.assets.lovelace ?? 0n, [threadToken.unit]: 1n },
     );
   const signed = await completeStep(tx, funding);
-  return await submitStep(lucid, signed, {
-    label,
-    referenceScripts: [],
-    awaitConfirmation: true,
-  });
+  return await submitUnjournaled(
+    lucid,
+    finishStep(signed, { referenceScripts: [] }),
+    { label, awaitConfirmation: true },
+  );
 };

@@ -38,9 +38,9 @@ export {
   type SubmitTransitionTraceRouteResult,
   TRANSITION_TRACE_FINAL_REFERENCE_SCRIPT_ENTRIES,
 } from "./submit.make-transition-trace-route-spend-redeemer.js";
-export { submitTransitionTraceFinal } from "./submit.submit-transition-trace-final.js";
-export { submitTransitionTraceProof } from "./submit.submit-transition-trace-proof.js";
+export { buildTransitionTraceFinal } from "./submit.submit-transition-trace-final.js";
+export { buildTransitionTraceProof } from "./submit.submit-transition-trace-proof.js";
 export {
+  buildTransitionTraceRoute,
   submitTransitionTraceProofFromFiles,
-  submitTransitionTraceRoute,
 } from "./submit.submit-transition-trace-route.js";

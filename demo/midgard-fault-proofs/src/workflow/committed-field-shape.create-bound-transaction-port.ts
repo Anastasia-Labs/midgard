@@ -1,9 +1,9 @@
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 import type { CommittedFieldShapeContracts } from "../committed-field-shape/contracts.js";
-import { submitCommittedFieldShapeInit } from "../committed-field-shape/submit-committed-field-shape-init.js";
-import { submitCommittedFieldShapeStep01 } from "../committed-field-shape/submit-committed-field-shape-step-01.js";
-import { submitCommittedFieldShapeStep02 } from "../committed-field-shape/submit-committed-field-shape-step-02.js";
+import { buildCommittedFieldShapeInit } from "../committed-field-shape/submit-committed-field-shape-init.js";
+import { buildCommittedFieldShapeStep01 } from "../committed-field-shape/submit-committed-field-shape-step-01.js";
+import { buildCommittedFieldShapeStep02 } from "../committed-field-shape/submit-committed-field-shape-step-02.js";
 import {
   admitCanonicalEvidenceForProofBuild,
   type CanonicalEvidenceBuilderInput,
@@ -16,9 +16,8 @@ import {
   transactionSourceTrieItem,
 } from "../prepare-double-spend.js";
 import {
-  type StateQueueMutationLease,
+  buildRemoveFraudulentBlock,
   type StateQueueMutationLeaseCoordinator,
-  submitRemoveFraudulentBlock,
 } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { CanonicalBlockClassification } from "./classification.js";
@@ -50,8 +49,9 @@ import {
 } from "./field-carriage-prerequisite.js";
 import { normalizeJournalJson } from "./journal.js";
 import { type FraudProofWorkflowAction } from "./orchestrator.js";
+import { admitRemovalTransaction } from "./removal-admission.js";
+import { journaledStepTransaction } from "./step-transaction.js";
 import {
-  captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
   workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary.js";
@@ -159,17 +159,17 @@ export type BoundCommittedFieldShapeTransactionsConfig = Readonly<{
 }>;
 
 export type CommittedFieldShapeBuilderSet = Readonly<{
-  init: typeof submitCommittedFieldShapeInit;
-  step01: typeof submitCommittedFieldShapeStep01;
-  step02: typeof submitCommittedFieldShapeStep02;
-  remove: typeof submitRemoveFraudulentBlock;
+  init: typeof buildCommittedFieldShapeInit;
+  step01: typeof buildCommittedFieldShapeStep01;
+  step02: typeof buildCommittedFieldShapeStep02;
+  remove: typeof buildRemoveFraudulentBlock;
 }>;
 
 export const productionBuilders: CommittedFieldShapeBuilderSet = Object.freeze({
-  init: submitCommittedFieldShapeInit,
-  step01: submitCommittedFieldShapeStep01,
-  step02: submitCommittedFieldShapeStep02,
-  remove: submitRemoveFraudulentBlock,
+  init: buildCommittedFieldShapeInit,
+  step01: buildCommittedFieldShapeStep01,
+  step02: buildCommittedFieldShapeStep02,
+  remove: buildRemoveFraudulentBlock,
 });
 
 const requiredAction = (
@@ -217,8 +217,8 @@ export const createBoundTransactionPort = ({
     }
     const input = requiredAction(action);
     if (input.stage === "init") {
-      const transaction = await captureLocallyEvaluatedTransaction(
-        async (preSubmitBoundary) => {
+      const transaction = (
+        await journaledStepTransaction(
           await builders.init({
             lucid: config.lucid,
             blueprint: config.blueprint,
@@ -230,11 +230,10 @@ export const createBoundTransactionPort = ({
             fraudulentBlockOutRef: stringField(input, "stateQueueBlockOutRef"),
             fraudulentHeaderHash: config.headerHash,
             witnessReferenceScripts: config.referenceScripts.witnesses,
-            preSubmitBoundary,
-            awaitConfirmation: false,
-          });
-        },
-      );
+          }),
+          "committed-field-shape init",
+        )
+      ).transaction;
       return Object.freeze({ transaction });
     }
     if (input.stage === "step_01") {
@@ -249,8 +248,8 @@ export const createBoundTransactionPort = ({
           "committed-field-shape field carriage disappeared before step-01",
         );
       }
-      const transaction = await captureLocallyEvaluatedTransaction(
-        async (preSubmitBoundary) => {
+      const transaction = (
+        await journaledStepTransaction(
           await builders.step01({
             lucid: config.lucid,
             blueprint: config.blueprint,
@@ -268,16 +267,15 @@ export const createBoundTransactionPort = ({
               : { fieldCertificateUtxo: field.certificate }),
             referenceScriptUtxo: config.referenceScripts.steps[0],
             witnessReferenceScripts: config.referenceScripts.witnesses,
-            preSubmitBoundary,
-            awaitConfirmation: false,
-          });
-        },
-      );
+          }),
+          "committed-field-shape step01",
+        )
+      ).transaction;
       return Object.freeze({ transaction });
     }
     if (input.stage === "step_02") {
-      const transaction = await captureLocallyEvaluatedTransaction(
-        async (preSubmitBoundary) => {
+      const transaction = (
+        await journaledStepTransaction(
           await builders.step02({
             lucid: config.lucid,
             contracts: config.contracts,
@@ -286,67 +284,51 @@ export const createBoundTransactionPort = ({
             threadOutRef: stringField(input, "threadOutRef"),
             referenceScriptUtxo: config.referenceScripts.steps[1],
             witnessReferenceScripts: config.referenceScripts.witnesses,
-            preSubmitBoundary,
-            awaitConfirmation: false,
-          });
-        },
-      );
+          }),
+          "committed-field-shape step02",
+        )
+      ).transaction;
       return Object.freeze({ transaction });
     }
     if (input.stage === "remove") {
-      let mutationLease: StateQueueMutationLease | undefined;
-      const retainingCoordinator: StateQueueMutationLeaseCoordinator = {
-        acquire: async () => {
-          const acquired =
-            await config.stateQueueMutationLeaseCoordinator.acquire();
-          mutationLease = acquired;
-          return acquired;
-        },
-      };
       const nextRemovalOutRef = stringField(input, "nextRemovalOutRef");
       const fraudProofOutRef = stringField(input, "fraudProofOutRef");
-      const transaction = await captureLocallyEvaluatedTransaction(
-        async (boundary) => {
-          await builders.remove({
-            fraudProofOutRef,
-            lucid: config.lucid,
-            blueprint: config.blueprint,
-            deploymentInfo: config.deploymentInfo,
-            network: config.network,
-            signer: config.signer,
-            fraudCategory: "committedFieldShape",
-            fraudulentHeaderHash: config.headerHash,
-            requireReferenceScripts: true,
-            stateQueueMutationLeaseCoordinator: retainingCoordinator,
-            fraudProverRewardLovelace: config.fraudProverRewardLovelace,
-            preSubmitBoundary: async (built) => {
-              if (
-                !workflowTransactionInputOutRefs(built.signed).includes(
-                  nextRemovalOutRef,
-                )
-              ) {
-                throw new Error(
-                  "committed-field-shape removal does not consume the authenticated next queue input",
-                );
-              }
-              if (
-                !workflowTransactionReferenceInputOutRefs(
-                  built.signed,
-                ).includes(fraudProofOutRef)
-              ) {
-                throw new Error(
-                  "committed-field-shape removal does not reference the authenticated retained proof token",
-                );
-              }
-              await boundary(built);
-            },
-          });
+      return await admitRemovalTransaction(
+        await builders.remove({
+          fraudProofOutRef,
+          lucid: config.lucid,
+          blueprint: config.blueprint,
+          deploymentInfo: config.deploymentInfo,
+          network: config.network,
+          signer: config.signer,
+          fraudCategory: "committedFieldShape",
+          fraudulentHeaderHash: config.headerHash,
+          requireReferenceScripts: true,
+          stateQueueMutationLeaseCoordinator:
+            config.stateQueueMutationLeaseCoordinator,
+          fraudProverRewardLovelace: config.fraudProverRewardLovelace,
+        }),
+        async (built) => {
+          if (
+            !workflowTransactionInputOutRefs(built.signed).includes(
+              nextRemovalOutRef,
+            )
+          ) {
+            throw new Error(
+              "committed-field-shape removal does not consume the authenticated next queue input",
+            );
+          }
+          if (
+            !workflowTransactionReferenceInputOutRefs(built.signed).includes(
+              fraudProofOutRef,
+            )
+          ) {
+            throw new Error(
+              "committed-field-shape removal does not reference the authenticated retained proof token",
+            );
+          }
         },
       );
-      return Object.freeze({
-        transaction,
-        ...(mutationLease === undefined ? {} : { mutationLease }),
-      });
     }
     throw new Error(
       `committed-field-shape workflow action has unsupported stage ${String(input.stage)}`,

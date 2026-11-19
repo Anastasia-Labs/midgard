@@ -18,8 +18,8 @@ import {
   requireLinearFaultReferenceScript,
   requireLinearFaultThreadUtxo,
 } from "../../src/linear-fault-family.js";
-import { submitLinearFaultFinalize } from "../../src/linear-fault-finalize.js";
-import { submitLinearFaultContinue } from "../../src/linear-fault-submit.js";
+import { buildLinearFaultFinalize } from "../../src/linear-fault-finalize.js";
+import { buildLinearFaultContinue } from "../../src/linear-fault-submit.js";
 import type { MintItemNonCanonicalContracts } from "../../src/mint-item-non-canonical/contracts.js";
 import {
   type MintItemEvidence,
@@ -38,6 +38,10 @@ import {
 import type { ResolvedProverSigner } from "../../src/runtime.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
 import type { FaultProofWitnessReferenceScripts } from "../../src/witness-reference-scripts.js";
+import {
+  buildAndSubmitTransactionUnjournaled,
+  buildAndSubmitUnjournaled,
+} from "./submit-unjournaled.js";
 
 const FAMILY = "mint-item-non-canonical";
 export type Common = Readonly<{
@@ -107,21 +111,24 @@ const continueRaw = async ({
       redeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
-    lucid,
-    signer,
-    threadUtxo,
-    threadUnit: threadToken.unit,
-    stepReference,
-    stepScript: contracts.steps[stepIndex]!.spendingScript,
-    stepRole: role,
-    nextAddress,
-    nextDatum,
-    redeemer,
-    carriageUtxos,
-    extraReferenceInputs,
-    awaitConfirmation: true,
-  });
+  const txHash = await buildAndSubmitTransactionUnjournaled(
+    buildLinearFaultContinue,
+    {
+      lucid,
+      signer,
+      threadUtxo,
+      threadUnit: threadToken.unit,
+      stepReference,
+      stepScript: contracts.steps[stepIndex]!.spendingScript,
+      stepRole: role,
+      nextAddress,
+      nextDatum,
+      redeemer,
+      carriageUtxos,
+      extraReferenceInputs,
+      awaitConfirmation: true,
+    },
+  );
   if (outputIndex === undefined) throw new Error(`${role}: no layout`);
   return { txHash, nextThreadOutRef: `${txHash}#${outputIndex.toString()}` };
 };
@@ -298,7 +305,7 @@ export const submitMintStep04Raw = async ({
     stepIndex: 3,
     threadOutRef: common.threadOutRef,
   });
-  return await submitLinearFaultFinalize({
+  return await buildAndSubmitUnjournaled(buildLinearFaultFinalize, {
     lucid: common.lucid,
     family: FAMILY,
     stepIndex: 3,

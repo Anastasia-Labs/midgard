@@ -20,10 +20,10 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
+  buildTransitionTraceProof,
   FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY,
   resolveProverSigner,
   submitRemoveFraudulentBlock,
-  submitTransitionTraceProof,
 } from "../src/index.js";
 import { alignEmulatorToWholeSecond } from "./support/emulator/emulator-context.js";
 import { createReferenceScriptPublisher } from "./support/emulator/reference-script-publisher.js";
@@ -31,7 +31,7 @@ import {
   publishFaultProofWitnessReferenceScripts,
   publishOperatorLifecycleReferenceScripts,
 } from "./support/emulator/reference-scripts.js";
-import { submitInit } from "./support/legacy-submit-emulator.js";
+import { buildInit } from "./support/legacy-submit-emulator.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
 import {
   buildInvalidForcedTransitionTraceFixture,
@@ -54,6 +54,10 @@ import {
   registerPhasMembershipRewardAccount,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 import { publishTransitionTraceYields } from "./support/transition-trace-yields.js";
 
 describe("fault-proof emulator integration", () => {
@@ -177,7 +181,7 @@ describe("fault-proof emulator integration", () => {
         ...transitionTraceYieldReferences,
       },
     });
-    const initResult = await submitInit({
+    const initResult = await buildAndSubmitUnjournaled(buildInit, {
       lucid: proverLucid,
       blueprint: realBlueprint,
       deploymentInfo,
@@ -210,17 +214,20 @@ describe("fault-proof emulator integration", () => {
     expect(proverPaymentCredential?.type).toBe("Key");
     const proverPaymentKeyHash = proverPaymentCredential!.hash;
 
-    const proofResult = await submitTransitionTraceProof({
-      lucid: proverLucid,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: proverSigner,
-      threadOutRef: outRefLabel(firstStepUtxo),
-      proof: traceFixture.proof,
-      witnessReferenceScripts,
-      awaitConfirmation: true,
-    });
+    const proofResult = await submitTurnsUnjournaled(
+      buildTransitionTraceProof,
+      {
+        lucid: proverLucid,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        threadOutRef: outRefLabel(firstStepUtxo),
+        proof: traceFixture.proof,
+        witnessReferenceScripts,
+        awaitConfirmation: true,
+      },
+    );
 
     expect(proofResult.txHash).toHaveLength(64);
     expect(proofResult.fraudulentHeaderHash).toBe(traceFixture.headerHash);

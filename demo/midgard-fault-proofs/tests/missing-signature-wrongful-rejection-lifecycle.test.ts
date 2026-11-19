@@ -6,15 +6,15 @@ import {
   ledgerEd25519SignatureReady,
   midgardFieldCarriageBounds,
 } from "@al-ft/midgard-core";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   admitMissingSignatureForcedArtifact,
   missingSignatureForcedArtifact,
 } from "../src/missing-signature/forced-artifact.js";
 import * as family from "../src/missing-signature/index.js";
-import { submitMissingSignatureForcedCancel } from "../src/missing-signature/submit-forced.js";
-import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
+import { buildMissingSignatureForcedCancel } from "../src/missing-signature/submit-forced.js";
+import { buildRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { workflowFieldCarriageOwnOutputs } from "../src/workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import {
   computeFraudProofWorkflowId,
@@ -28,6 +28,12 @@ import {
 } from "../src/workflow/missing-signature.js";
 import { missingSignatureObservation } from "../src/workflow/missing-signature-state.js";
 import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../src/workflow/raw-l1-publication-observation.js";
+import {
+  carriageNeedsByField,
+  carriagePlanRecord,
+  publishedCoverage,
+  resetCarriagePlanRecord,
+} from "./support/carriage-plan-parity.js";
 import { createConfirmedActionJournal } from "./support/confirmed-action-journal.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import {
@@ -35,10 +41,26 @@ import {
   setupMissingSignatureForcedScenario,
 } from "./support/missing-signature-forced-scenario.js";
 import { buildMissingSignatureForcedTransaction as transactionFor } from "./support/missing-signature-forced-shapes.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 // The ledger's Ed25519 check is libsodium's, which initialises
 // asynchronously; production entry points await it, and so does this file.
 beforeAll(() => ledgerEd25519SignatureReady());
+// Records each field requirement the prerequisite returns and each carriage
+// plan a builder asks to publish; every call passes through unchanged.
+vi.mock("../src/field-opening.js", async (importOriginal) =>
+  (await import("./support/carriage-plan-parity.js")).recordingFieldOpening(
+    await importOriginal(),
+  ),
+);
+vi.mock(
+  "../src/workflow/field-carriage-prerequisite.js",
+  async (importOriginal) =>
+    (
+      await import("./support/carriage-plan-parity.js")
+    ).recordingFieldCarriagePrerequisite(await importOriginal()),
+);
+beforeEach(resetCarriagePlanRecord);
 const setupScenario = (
   shape?: Parameters<typeof transactionFor>[0],
   signerIndex?: bigint,
@@ -156,12 +178,12 @@ describe("missingSignature wrongful rejection real lifecycle", () => {
             deploymentInfo: {},
           },
           builders: {
-            init: family.submitMissingSignatureInit,
-            step01: family.submitMissingSignatureStep01,
-            step02: family.submitMissingSignatureStep02,
-            step03: family.submitMissingSignatureStep03,
-            step04: family.submitMissingSignatureStep04,
-            remove: submitRemoveFraudulentBlock,
+            init: family.buildMissingSignatureInit,
+            step01: family.buildMissingSignatureStep01,
+            step02: family.buildMissingSignatureStep02,
+            step03: family.buildMissingSignatureStep03,
+            step04: family.buildMissingSignatureStep04,
+            remove: buildRemoveFraudulentBlock,
           },
         });
         const observation = missingSignatureObservation({
@@ -214,7 +236,7 @@ describe("missingSignature wrongful rejection real lifecycle", () => {
       let thread = await s.init();
       for (let i = 0; i < position; i++) thread = await s.advance(thread, i);
       await s.record(`cancel-${position}`, () =>
-        submitMissingSignatureForcedCancel({
+        buildAndSubmitUnjournaled(buildMissingSignatureForcedCancel, {
           lucid: s.harness.proverLucid,
           contracts: s.harness.missingSignature,
           categoryId: s.harness.category.categoryId,
@@ -252,11 +274,19 @@ describe("missingSignature wrongful rejection real lifecycle", () => {
     600_000,
   );
   it.each([
-    { witnessCount: 317, signerCount: 1 },
-    { witnessCount: 1, signerCount: 1088 },
+    {
+      witnessCount: 317,
+      signerCount: 1,
+      coverage: ["4:Inline", "7:Certified"],
+    },
+    {
+      witnessCount: 1,
+      signerCount: 1088,
+      coverage: ["4:Certified", "7:Inline"],
+    },
   ])(
     "automatically publishes and certifies installed maximum $witnessCount witnesses/$signerCount signers with recovery",
-    async (shape) => {
+    async ({ coverage, ...shape }) => {
       const s = await setupScenario(shape, BigInt(shape.signerCount - 1));
       const artifact = missingSignatureForcedArtifact(
         s.prepared,
@@ -374,6 +404,31 @@ describe("missingSignature wrongful rejection real lifecycle", () => {
             "proven",
           );
       }
+      // The forced steps' builders, fed the journaled claims, asked for
+      // exactly the carriage slots the prerequisite required, from the
+      // prover's proof-materials address, and each found them journaled.
+      expect(publishedCoverage()).toEqual(coverage);
+      expect(carriageNeedsByField(carriagePlanRecord.published)).toEqual(
+        carriageNeedsByField(carriagePlanRecord.required),
+      );
+      expect(
+        carriagePlanRecord.published.map(({ publisherAddress, turn }) => ({
+          publisherAddress,
+          turn,
+        })),
+      ).toEqual(
+        carriagePlanRecord.published.map(() => ({
+          publisherAddress: s.harness.proverSigner.proofMaterialsAddress,
+          turn: false,
+        })),
+      );
+      expect(
+        new Set(
+          carriagePlanRecord.required.map(
+            ({ publisherAddress }) => publisherAddress,
+          ),
+        ),
+      ).toEqual(new Set([s.harness.proverSigner.proofMaterialsAddress]));
       await s.remove();
     },
     600_000,

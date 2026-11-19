@@ -14,7 +14,6 @@ import {
 } from "./field-opening.js";
 import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary.js";
 import {
-  DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
   makeLucidForSubmit,
   outRefLabel,
@@ -24,10 +23,13 @@ import {
   resolveProverSigner,
   resolveZeroInputDeploymentContracts,
 } from "./runtime.js";
+import { finishStep } from "./step-completion.js";
 import {
   requireComputationThreadToken,
   selectFeeInput,
 } from "./step-support.js";
+import { submitFaultProofTurns } from "./submit-fault-proof-turns.js";
+import type { ZeroInputStep02Build } from "./submit-zero-input-step-02.make-zero-input-step02-spend-redeemer.js";
 import {
   makeComputationThreadSuccessRedeemer,
   makeFraudProofMintRedeemer,
@@ -43,13 +45,9 @@ import {
   witnessMintingPolicyCarriage,
   witnessSpendingValidatorCarriage,
 } from "./witness-reference-scripts.js";
-import {
-  type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
-} from "./workflow/transaction-boundary.js";
+import { workflowReferenceScriptsUsedByTransaction } from "./workflow/transaction-boundary.js";
 
-export const submitZeroInputStep02V1 = async ({
+export const buildZeroInputStep02V1 = async ({
   lucid,
   blueprint,
   deploymentInfo,
@@ -59,8 +57,6 @@ export const submitZeroInputStep02V1 = async ({
   nativeTxCompactCbor,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -74,9 +70,7 @@ export const submitZeroInputStep02V1 = async ({
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitZeroInputStep02Result> => {
+}): Promise<ZeroInputStep02Build> => {
   const { zeroInputCategory, contracts } =
     await resolveZeroInputDeploymentContracts({
       blueprint,
@@ -239,8 +233,7 @@ export const submitZeroInputStep02V1 = async ({
     computationThreadMintRedeemerIndex,
   };
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const transaction = finishStep(signed, {
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
@@ -261,20 +254,11 @@ export const submitZeroInputStep02V1 = async ({
         },
       ],
     }),
-    boundary: preSubmitBoundary,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw new Error(
-      `zero-input step 02 provider returned ${txHash}, expected ${expectedTxHash}`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
+  const { txHash } = transaction;
 
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
@@ -299,7 +283,6 @@ export const submitZeroInputStep02V1 = async ({
     fraudProofMintRedeemerIndex: Number(
       resolvedLayout.fraudProofMintRedeemerIndex,
     ),
-    awaitedConfirmation: awaitConfirmation,
   };
 };
 
@@ -317,17 +300,23 @@ export const submitZeroInputStep02FromFiles = async (
       makeLucidForSubmit(config),
     ]);
   const signer = resolveProverSigner(config);
-  return await submitZeroInputStep02V1({
-    lucid,
-    blueprint,
-    deploymentInfo,
-    network: config.network,
-    signer,
-    threadOutRef: config.threadOutRef,
-    nativeTxCompactCbor: parseNativeTxCompactCbor(
-      nativeTxCompactJson,
-      "--native-tx-compact",
-    ),
-    awaitConfirmation: config.awaitConfirmation,
-  });
+  return await submitFaultProofTurns(
+    buildZeroInputStep02V1,
+    {
+      lucid,
+      blueprint,
+      deploymentInfo,
+      network: config.network,
+      signer,
+      threadOutRef: config.threadOutRef,
+      nativeTxCompactCbor: parseNativeTxCompactCbor(
+        nativeTxCompactJson,
+        "--native-tx-compact",
+      ),
+    },
+    {
+      label: "zero-input-step02-v1",
+      awaitConfirmation: config.awaitConfirmation ?? true,
+    },
+  );
 };

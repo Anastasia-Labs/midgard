@@ -44,14 +44,11 @@ export {
   prepareMintItemNonCanonicalRecoveryMaterial,
 } from "./workflow.derive-mint-item-non-canonical-authenticated-source.js";
 export {
-  createManifestBoundMintItemNonCanonicalRuntime,
   createManifestBoundMintItemNonCanonicalWorkflow,
   createMintItemNonCanonicalRecoveryAdapter,
   executeManifestBoundMintItemNonCanonicalWorkflow,
-  loadMintItemNonCanonicalRuntime,
   type ManifestBoundMintItemNonCanonicalWorkflow,
   type ManifestBoundMintItemNonCanonicalWorkflowConfig,
-  runOrResumeManifestBoundMintItemNonCanonicalWorkflow,
 } from "./workflow.execute-manifest-bound-mint-item-non-canonical-workflow.js";
 export {
   bindMintItemNonCanonicalReferenceScripts,

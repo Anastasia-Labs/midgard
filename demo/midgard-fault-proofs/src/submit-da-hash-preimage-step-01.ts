@@ -28,10 +28,11 @@ import "./submit-da-hash-preimage-step-01.parse-submit-da-hash-preimage-tx-inclu
 import "./submit-da-hash-preimage-step-01.submit-da-hash-preimage-step01.js";
 import "./submit-da-hash-preimage-step-01.submit-da-hash-preimage-step01-from-files.js";
 export {
+  type DaHashPreimageStep01Build,
   parseSubmitDaHashPreimageTxInclusion,
   type SubmitDaHashPreimageStep01CliConfig,
   type SubmitDaHashPreimageStep01Result,
   type SubmitDaHashPreimageTxInclusion,
 } from "./submit-da-hash-preimage-step-01.parse-submit-da-hash-preimage-tx-inclusion.js";
-export { submitDaHashPreimageStep01 } from "./submit-da-hash-preimage-step-01.submit-da-hash-preimage-step01.js";
+export { buildDaHashPreimageStep01 } from "./submit-da-hash-preimage-step-01.submit-da-hash-preimage-step01.js";
 export { submitDaHashPreimageStep01FromFiles } from "./submit-da-hash-preimage-step-01.submit-da-hash-preimage-step01-from-files.js";

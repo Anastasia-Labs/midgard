@@ -1,19 +1,23 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  submitWithdrawnInputStep01,
-  submitWithdrawnInputStep02,
+  buildWithdrawnInputStep01,
+  buildWithdrawnInputStep02,
 } from "../src/index.js";
-import { submitLinearFaultCancel } from "../src/linear-fault-cancel.js";
+import { buildLinearFaultCancel } from "../src/linear-fault-cancel.js";
 import { WITHDRAWN_INPUT_CATEGORY_LABEL } from "../src/withdrawn-input/contracts.js";
 import { network } from "./support/submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 import { makeWithdrawnInputEmulatorScenario } from "./support/withdrawn-input-emulator.js";
 
 describe("withdrawn-input resume and cancellation", () => {
   it("refuses a wrong step reference, resumes, then cancels at step 03", async () => {
     const scenario = await makeWithdrawnInputEmulatorScenario("fault");
     await expect(
-      submitWithdrawnInputStep01({
+      buildAndSubmitUnjournaled(buildWithdrawnInputStep01, {
         lucid: scenario.harness.proverLucid,
         blueprint: scenario.harness.realBlueprint,
         contracts: scenario.contracts,
@@ -28,7 +32,7 @@ describe("withdrawn-input resume and cancellation", () => {
       }),
     ).rejects.toThrow(/reference script/u);
 
-    const step01 = await submitWithdrawnInputStep01({
+    const step01 = await buildAndSubmitUnjournaled(buildWithdrawnInputStep01, {
       lucid: scenario.harness.proverLucid,
       blueprint: scenario.harness.realBlueprint,
       contracts: scenario.contracts,
@@ -41,7 +45,7 @@ describe("withdrawn-input resume and cancellation", () => {
       referenceScriptUtxo: scenario.references[0],
       witnessReferenceScripts: scenario.harness.witnessReferenceScripts,
     });
-    const step02 = await submitWithdrawnInputStep02({
+    const step02 = await submitTurnsUnjournaled(buildWithdrawnInputStep02, {
       lucid: scenario.harness.proverLucid,
       contracts: scenario.contracts,
       categoryId: scenario.category.categoryId,
@@ -54,7 +58,7 @@ describe("withdrawn-input resume and cancellation", () => {
       },
       referenceScriptUtxo: scenario.references[1],
     });
-    const cancelled = await submitLinearFaultCancel({
+    const cancelled = await buildAndSubmitUnjournaled(buildLinearFaultCancel, {
       lucid: scenario.harness.proverLucid,
       family: WITHDRAWN_INPUT_CATEGORY_LABEL,
       steps: scenario.contracts.steps,

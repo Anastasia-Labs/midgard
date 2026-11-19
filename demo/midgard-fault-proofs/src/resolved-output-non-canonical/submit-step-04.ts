@@ -16,10 +16,9 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { ResolvedOutputNonCanonicalContracts } from "./contracts.js";
 import { resolvedOutputDatumState } from "./datum-plan.js";
 import { planResolvedOutputReconstructionTransition } from "./reconstruction-plan.js";
@@ -41,7 +40,7 @@ import {
  * structural fault, `FinalizeCanonical` ends the envelope at the exact
  * canonical end, opening the datum step when the output has an inline datum.
  */
-export const submitResolvedOutputNonCanonicalStep04 = async ({
+export const buildResolvedOutputNonCanonicalStep04 = async ({
   lucid,
   contracts,
   categoryId,
@@ -49,8 +48,6 @@ export const submitResolvedOutputNonCanonicalStep04 = async ({
   threadOutRef,
   evidence,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: ResolvedOutputNonCanonicalContracts;
@@ -59,8 +56,6 @@ export const submitResolvedOutputNonCanonicalStep04 = async ({
   readonly threadOutRef: string;
   readonly evidence: ResolvedOutputEvidence;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 3;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
@@ -176,7 +171,7 @@ export const submitResolvedOutputNonCanonicalStep04 = async ({
       ResolvedOutputStep04RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -193,14 +188,12 @@ export const submitResolvedOutputNonCanonicalStep04 = async ({
     nextDatum,
     redeemer,
     carriageUtxos: [],
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined)
     throw new Error("resolved-output-non-canonical: step-04 layout unresolved");
   return {
-    txHash,
-    nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
     terminal,
     nextStage: next.stage,
     action: transition.kind,

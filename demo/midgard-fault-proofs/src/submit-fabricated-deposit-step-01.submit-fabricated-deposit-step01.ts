@@ -35,11 +35,13 @@ import {
   resolveFraudulentHeaderHash,
   resolveProverSigner,
 } from "./runtime.js";
-import { completeStep, fundStep, submitStep } from "./step-completion.js";
+import { completeStep, fundStep } from "./step-completion.js";
+import { finishStep } from "./step-completion.js";
 import {
   requireComputationThreadToken,
   requireInitialStepDatum,
 } from "./step-support.js";
+import type { FabricatedDepositStep01Build } from "./submit-fabricated-deposit-step-01.derive-fabricated-deposit-step01-handoff.js";
 import {
   deriveFabricatedDepositStep01Handoff,
   FABRICATED_DEPOSIT_CATEGORY_LABEL,
@@ -50,13 +52,11 @@ import {
   type SubmitFabricatedDepositStep01CliConfig,
   type SubmitFabricatedDepositStep01Result,
 } from "./submit-fabricated-deposit-step-01.derive-fabricated-deposit-step01-handoff.js";
+import { submitFaultProofTurns } from "./submit-fault-proof-turns.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
-import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScript,
-} from "./workflow/transaction-boundary.js";
+import { workflowReferenceScript } from "./workflow/transaction-boundary.js";
 
-export const submitFabricatedDepositStep01 = async ({
+export const buildFabricatedDepositStep01 = async ({
   lucid,
   contracts,
   network,
@@ -65,8 +65,6 @@ export const submitFabricatedDepositStep01 = async ({
   stateQueueBlockOutRef,
   depositInclusion,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
   now = Date.now,
 }: {
   readonly now?: () => number;
@@ -78,9 +76,7 @@ export const submitFabricatedDepositStep01 = async ({
   readonly stateQueueBlockOutRef: string;
   readonly depositInclusion: SubmitFabricatedDepositInclusion;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitFabricatedDepositStep01Result> => {
+}): Promise<FabricatedDepositStep01Build> => {
   const parsedThreadOutRef = parseOutRef(threadOutRef, "--thread-out-ref");
   const parsedStateQueueBlockOutRef = parseOutRef(
     stateQueueBlockOutRef,
@@ -236,8 +232,7 @@ export const submitFabricatedDepositStep01 = async ({
       "BuildTxWithRedeemer did not resolve fabricated-deposit step 01 layout.",
     );
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: "fabricated-deposit step-01",
+  const transaction = finishStep(signed, {
     referenceScripts: [
       workflowReferenceScript({
         role: "V1 fraud-proof fabricated-deposit step-01",
@@ -245,17 +240,15 @@ export const submitFabricatedDepositStep01 = async ({
         expectedScript: contracts.steps[0].spendingScript,
       }),
     ],
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
   });
 
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
     threadOutRef,
-    nextThreadOutRef: `${txHash}#${resolvedLayout.outputIndex.toString()}`,
+    nextThreadOutRef: `${transaction.txHash}#${resolvedLayout.outputIndex.toString()}`,
     stateQueueBlockOutRef,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadPolicyId: contracts.computationThread.policyId,
@@ -273,7 +266,6 @@ export const submitFabricatedDepositStep01 = async ({
     stateQueueNodeRefInputIndex: Number(
       resolvedLayout.stateQueueNodeRefInputIndex,
     ),
-    awaitedConfirmation: awaitConfirmation,
   };
 };
 
@@ -288,16 +280,22 @@ export const submitFabricatedDepositStep01FromFiles = async (
     makeLucidForSubmit(config),
   ]);
   const signer = resolveProverSigner(config);
-  return await submitFabricatedDepositStep01({
-    lucid,
-    contracts: config.contracts,
-    network: config.network,
-    signer,
-    threadOutRef: config.threadOutRef,
-    stateQueueBlockOutRef: config.stateQueueBlockOutRef,
-    depositInclusion:
-      parseSubmitFabricatedDepositInclusion(depositInclusionJson),
-    referenceScriptUtxo: config.referenceScriptUtxo,
-    awaitConfirmation: config.awaitConfirmation,
-  });
+  return await submitFaultProofTurns(
+    buildFabricatedDepositStep01,
+    {
+      lucid,
+      contracts: config.contracts,
+      network: config.network,
+      signer,
+      threadOutRef: config.threadOutRef,
+      stateQueueBlockOutRef: config.stateQueueBlockOutRef,
+      depositInclusion:
+        parseSubmitFabricatedDepositInclusion(depositInclusionJson),
+      referenceScriptUtxo: config.referenceScriptUtxo,
+    },
+    {
+      label: "fabricated-deposit-step01",
+      awaitConfirmation: config.awaitConfirmation ?? true,
+    },
+  );
 };

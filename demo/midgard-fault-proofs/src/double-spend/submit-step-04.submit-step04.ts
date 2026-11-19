@@ -12,6 +12,10 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  type FaultProofTurn,
+  isPrerequisiteTurn,
+} from "../fault-proof-turn.js";
+import {
   faultProofFieldOpening,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
@@ -24,7 +28,8 @@ import {
   type ResolvedProverSigner,
 } from "../runtime.js";
 import { spendInputsWitnessFromCbors } from "../spend-input-witness.js";
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import { requireComputationThreadToken } from "../step-support.js";
 import {
   type FaultProofWitnessReferenceScripts,
@@ -35,10 +40,8 @@ import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
-import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScript,
-} from "../workflow/transaction-boundary.js";
+import { workflowReferenceScript } from "../workflow/transaction-boundary.js";
+import type { Step04Build } from "./submit-step-04.make-step04-spend-redeemer.js";
 import {
   makeComputationThreadSuccessRedeemer,
   makeFraudProofMintRedeemer,
@@ -47,10 +50,9 @@ import {
   sameMidgardTxInput,
   type Step04ResolvedLayout,
   type Step04SpendLayout,
-  type SubmitStep04Result,
 } from "./submit-step-04.make-step04-spend-redeemer.js";
 
-export const submitStep04 = async ({
+export const buildStep04 = async ({
   lucid,
   blueprint,
   deploymentInfo,
@@ -66,8 +68,6 @@ export const submitStep04 = async ({
   certificatePolicyId,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
@@ -81,7 +81,7 @@ export const submitStep04 = async ({
   readonly nativeTxCompactCbor: string;
   readonly doubleSpentInputIndex: bigint;
   /**
-   * Force §8 tier 2 for tx2's field-0 preimage; see `submitStep03`'s
+   * Force §8 tier 2 for tx2's field-0 preimage; see `buildStep03`'s
    * same-named option. Programmatic only — the retired CLI route never
    * sets it, and below the tier-1 bound the ladder would otherwise carry
    * the preimage inline in this step's redeemer (#612).
@@ -96,12 +96,9 @@ export const submitStep04 = async ({
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  /** Production workflow seam for carriage and proof-step submissions. */
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
-}): Promise<SubmitStep04Result> => {
+}): Promise<FaultProofTurn<Step04Build>> => {
   const { doubleSpendCategory, contracts } =
     await resolveDoubleSpendDeploymentContracts({
       blueprint,
@@ -177,8 +174,8 @@ export const submitStep04 = async ({
       planned,
       publisherAddress: signer.proofMaterialsAddress,
       label: "Double-spend step 04 tx2 spend-inputs",
-      preSubmitBoundary,
     }));
+  if (isPrerequisiteTurn(carriageUtxos)) return carriageUtxos;
   const stepScriptCarriage = witnessSpendingValidatorCarriage({
     script: contracts.doubleSpend.steps[3].spendingScript,
     referenceUtxo: referenceScriptUtxo,
@@ -287,8 +284,7 @@ export const submitStep04 = async ({
     ...spendLayout,
     computationThreadMintRedeemerIndex,
   };
-  const txHash = await submitStep(lucid, signed, {
-    label: "double-spend step-04",
+  const transaction = finishStep(signed, {
     referenceScripts: [
       workflowReferenceScript({
         role: "V1 fraud-proof double-spend step-04",
@@ -306,17 +302,15 @@ export const submitStep04 = async ({
         expectedScript: contracts.fraudProof.mintingScript,
       }),
     ],
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
   });
 
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
     threadOutRef,
-    fraudProofOutRef: `${txHash}#${resolvedLayout.outputIndex.toString()}`,
+    fraudProofOutRef: `${transaction.txHash}#${resolvedLayout.outputIndex.toString()}`,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadPolicyId: contracts.computationThread.policyId,
     computationThreadAssetName: threadToken.assetName,
@@ -340,6 +334,5 @@ export const submitStep04 = async ({
     fraudProofMintRedeemerIndex: Number(
       resolvedLayout.fraudProofMintRedeemerIndex,
     ),
-    awaitedConfirmation: awaitConfirmation,
   };
 };

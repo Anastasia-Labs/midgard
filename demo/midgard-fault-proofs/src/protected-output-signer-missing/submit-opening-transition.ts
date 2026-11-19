@@ -17,13 +17,12 @@ import {
   requireLinearFaultReferenceScript,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { ProtectedOutputSignerMissingContracts } from "./contracts.js";
 
-export const submitProtectedOutputSignerOpeningTransition = async ({
+export const buildProtectedOutputSignerOpeningTransition = async ({
   lucid,
   contracts,
   categoryId,
@@ -38,8 +37,6 @@ export const submitProtectedOutputSignerOpeningTransition = async ({
   referenceScriptUtxo,
   carriageReferenceInputs,
   redeemerSchema,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: ProtectedOutputSignerMissingContracts;
@@ -61,8 +58,6 @@ export const submitProtectedOutputSignerOpeningTransition = async ({
   readonly referenceScriptUtxo: UTxO;
   readonly carriageReferenceInputs: readonly UTxO[];
   readonly redeemerSchema: PlutusData;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
@@ -117,7 +112,7 @@ export const submitProtectedOutputSignerOpeningTransition = async ({
       redeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -133,13 +128,11 @@ export const submitProtectedOutputSignerOpeningTransition = async ({
         utxo.txHash !== stepReference.txHash ||
         utxo.outputIndex !== stepReference.outputIndex,
     ),
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined)
     throw new Error("protected-output-signer-missing: layout unresolved");
   return {
-    txHash,
-    nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
   };
 };

@@ -10,7 +10,7 @@ import {
 import { resolvePublishedProofChunks } from "../publish-proof-chunks.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { parseOutRef, type ResolvedProverSigner } from "../runtime.js";
-import { submitInit } from "../submit-init.js";
+import { buildInit } from "../submit-init.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import type { CompleteCanonicalReplayContext } from "../workflow/complete-replay.js";
 import { parseComputationThreadStage } from "../workflow/computation-thread-steps.js";
@@ -32,7 +32,7 @@ import type {
 } from "../workflow/family-definition.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import { workflowConfirmedTransactions } from "../workflow/own-outputs.js";
-import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
+import { journaledStepTransaction } from "../workflow/step-transaction.js";
 import {
   directPurposeSourceInclusion,
   planDirectPurposeArtifact,
@@ -48,14 +48,14 @@ import {
 } from "./family.js";
 import { fitDirectPurposeTransition } from "./fit.js";
 import {
-  submitDirectPurposeStep01Accepted,
-  submitDirectPurposeStep01Forced,
+  buildDirectPurposeStep01Accepted,
+  buildDirectPurposeStep01Forced,
 } from "./step01.js";
 import {
+  buildDirectPurposeTransitionTx,
   type DirectPurposeCustody,
-  submitDirectPurposeTransition,
 } from "./submit.js";
-import { submitDirectPurposeTerminal } from "./terminal.js";
+import { buildDirectPurposeTerminal } from "./terminal.js";
 import type {
   DirectWalkFamily,
   DirectWalkProof,
@@ -233,158 +233,150 @@ export const createDirectWalkTransactionPort = <
             config.binding.releaseEconomics.policy.fraudProverRewardLovelace,
           ),
         });
-      return {
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            if (input.stage === "init") {
-              await submitInit({
-                lucid: config.lucid,
-                blueprint: config.binding.blueprint,
-                deploymentInfo: config.binding.deploymentInfo,
-                network: config.binding.network,
-                signer: config.signer,
-                fraudCategory: category,
-                fraudulentBlockOutRef: cursorStringField(
-                  input,
-                  "stateQueueBlockOutRef",
-                ),
-                fraudulentHeaderHash: admitted.current.headerHash,
-                witnessReferenceScripts: config.references.witnesses,
-                preSubmitBoundary,
-                awaitConfirmation: false,
-              });
-              return;
-            }
-            const step = parseComputationThreadStage(input.stage);
-            if (step === undefined)
-              throw new Error(`${category} unsupported stage ${input.stage}`);
-            const role = directWalkRoleAt(walk, step);
-            const threadOutRef = cursorStringField(input, "threadOutRef");
-            const common = {
-              family,
-              lucid: config.lucid,
-              contracts: config.contracts,
-              categoryId: config.binding.resolvedContracts.category.categoryId,
-              signer: config.signer,
-              threadOutRef,
-              referenceScriptUtxo: reference(role),
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            };
-            if (role === "step01") {
-              if (admitted.coordinate.sourceKind === 1) {
-                await submitDirectPurposeStep01Forced({
-                  ...common,
-                  material: admitted.material,
-                  reconstruction: admitted.current,
-                });
-                return;
-              }
-              const inclusion = await directPurposeSourceInclusion(
-                artifactFamily,
-                admitted,
-              );
-              const chunks = await resolvePublishedProofChunks({
-                lucid: config.lucid,
-                address: config.signer.proofMaterialsAddress,
-                proofCbor: inclusion.txMembershipProofCbor,
-                ownTransactions: workflowConfirmedTransactions(entries),
-              });
-              await submitDirectPurposeStep01Accepted({
-                ...common,
-                material: admitted.material,
-                blueprint: config.binding.blueprint,
-                network: config.binding.network,
-                stateQueueBlockOutRef: cursorStringField(
-                  input,
-                  "stateQueueBlockOutRef",
-                ),
-                txInclusion: inclusion,
-                ...(chunks === undefined
-                  ? {}
-                  : { publishedProofChunks: chunks }),
-                witnessReferenceScripts: config.references.witnesses,
-              });
-              return;
-            }
-            if (role === "terminal") {
-              await submitDirectPurposeTerminal({
-                ...common,
-                family: directWalkTerminalFamily(walk, plan),
-                witnessReferenceScripts: config.references.witnesses,
-              });
-              return;
-            }
-            const thread = await threadAt(category, config.lucid, threadOutRef);
-            const fieldPlan = directWalkFieldPlan(category, plan.proof);
-            // A page that opens MPF proofs is sized to the transaction
-            // budget; the carriage covers every transaction of the page,
-            // since the fit builds them all at the page start (page-fit.ts).
-            const opened = new Set(
-              (plan.paging.isPageStart(role, thread.datum)
-                ? plan.paging.page(role, thread.datum).transitions
-                : [plan.paging.transitionAt(role, thread.datum)]
-              ).flatMap((transition) => transition.fields),
-            );
-            const carriage = new Map<number, readonly UTxO[]>();
-            for (const field of opened) {
-              const opening = fieldPlan(field).openingPlan;
-              if (opening.plan.tier === "Inline") continue;
-              const published =
-                await resolveFaultProofFieldCarriagePublications({
+      const built = await (async () => {
+        if (input.stage === "init") {
+          return await buildInit({
+            lucid: config.lucid,
+            blueprint: config.binding.blueprint,
+            deploymentInfo: config.binding.deploymentInfo,
+            network: config.binding.network,
+            signer: config.signer,
+            fraudCategory: category,
+            fraudulentBlockOutRef: cursorStringField(
+              input,
+              "stateQueueBlockOutRef",
+            ),
+            fraudulentHeaderHash: admitted.current.headerHash,
+            witnessReferenceScripts: config.references.witnesses,
+          });
+        }
+        const step = parseComputationThreadStage(input.stage);
+        if (step === undefined)
+          throw new Error(`${category} unsupported stage ${input.stage}`);
+        const role = directWalkRoleAt(walk, step);
+        const threadOutRef = cursorStringField(input, "threadOutRef");
+        const common = {
+          family,
+          lucid: config.lucid,
+          contracts: config.contracts,
+          categoryId: config.binding.resolvedContracts.category.categoryId,
+          signer: config.signer,
+          threadOutRef,
+          referenceScriptUtxo: reference(role),
+        };
+        if (role === "step01") {
+          if (admitted.coordinate.sourceKind === 1) {
+            return await buildDirectPurposeStep01Forced({
+              ...common,
+              material: admitted.material,
+              reconstruction: admitted.current,
+            });
+          }
+          const inclusion = await directPurposeSourceInclusion(
+            artifactFamily,
+            admitted,
+          );
+          const chunks = await resolvePublishedProofChunks({
+            lucid: config.lucid,
+            address: config.signer.proofMaterialsAddress,
+            proofCbor: inclusion.txMembershipProofCbor,
+            ownTransactions: workflowConfirmedTransactions(entries),
+          });
+          return await buildDirectPurposeStep01Accepted({
+            ...common,
+            material: admitted.material,
+            blueprint: config.binding.blueprint,
+            network: config.binding.network,
+            stateQueueBlockOutRef: cursorStringField(
+              input,
+              "stateQueueBlockOutRef",
+            ),
+            txInclusion: inclusion,
+            ...(chunks === undefined ? {} : { publishedProofChunks: chunks }),
+            witnessReferenceScripts: config.references.witnesses,
+          });
+        }
+        if (role === "terminal") {
+          return await buildDirectPurposeTerminal({
+            ...common,
+            family: directWalkTerminalFamily(walk, plan),
+            witnessReferenceScripts: config.references.witnesses,
+          });
+        }
+        const thread = await threadAt(category, config.lucid, threadOutRef);
+        const fieldPlan = directWalkFieldPlan(category, plan.proof);
+        // A page that opens MPF proofs is sized to the transaction
+        // budget; the carriage covers every transaction of the page,
+        // since the fit builds them all at the page start (page-fit.ts).
+        const opened = new Set(
+          (plan.paging.isPageStart(role, thread.datum)
+            ? plan.paging.page(role, thread.datum).transitions
+            : [plan.paging.transitionAt(role, thread.datum)]
+          ).flatMap((transition) => transition.fields),
+        );
+        const carriage = new Map<number, readonly UTxO[]>();
+        for (const field of opened) {
+          const opening = fieldPlan(field).openingPlan;
+          if (opening.plan.tier === "Inline") continue;
+          const published = await resolveFaultProofFieldCarriagePublications({
+            ownOutputs,
+            lucid: config.lucid,
+            planned: opening,
+            publisherAddress: config.signer.proofMaterialsAddress,
+          });
+          const certificate =
+            opening.plan.tier === "Certified"
+              ? await resolveFaultProofFieldPreimageCertificate({
                   ownOutputs,
                   lucid: config.lucid,
                   planned: opening,
-                  publisherAddress: config.signer.proofMaterialsAddress,
-                });
-              const certificate =
-                opening.plan.tier === "Certified"
-                  ? await resolveFaultProofFieldPreimageCertificate({
-                      ownOutputs,
-                      lucid: config.lucid,
-                      planned: opening,
-                      certificatePolicyId:
-                        config.contracts.fieldPreimageCertificatePolicyId,
-                      network: config.binding.network,
-                    })
-                  : undefined;
-              if (
-                published === undefined ||
-                (opening.plan.tier === "Certified" && certificate === undefined)
-              )
-                throw new Error(
-                  `${category} field ${field.toString()} carriage is not published`,
-                );
-              carriage.set(field, [
-                ...published,
-                ...(certificate === undefined ? [] : [certificate]),
-              ]);
-            }
-            const custody: DirectPurposeCustody = {
-              family,
-              lucid: config.lucid,
-              blueprint: config.binding.blueprint,
-              network: config.binding.network,
-              contracts: config.contracts,
-              signer: config.signer,
-              unit: threadUnit(category, thread, config.contracts),
-              references: reference,
-              carriage: (field) => carriage.get(field) ?? [],
-              plan: fieldPlan,
-              witnessReferenceScripts: config.references.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            };
-            const transition = await fitDirectPurposeTransition({
-              custody,
-              paging: plan.paging,
-              role,
-              thread,
-            });
-            await submitDirectPurposeTransition(custody, thread, transition);
-          },
-        ),
-      };
+                  certificatePolicyId:
+                    config.contracts.fieldPreimageCertificatePolicyId,
+                  network: config.binding.network,
+                })
+              : undefined;
+          if (
+            published === undefined ||
+            (opening.plan.tier === "Certified" && certificate === undefined)
+          )
+            throw new Error(
+              `${category} field ${field.toString()} carriage is not published`,
+            );
+          carriage.set(field, [
+            ...published,
+            ...(certificate === undefined ? [] : [certificate]),
+          ]);
+        }
+        const custody: DirectPurposeCustody = {
+          family,
+          lucid: config.lucid,
+          blueprint: config.binding.blueprint,
+          network: config.binding.network,
+          contracts: config.contracts,
+          signer: config.signer,
+          unit: threadUnit(category, thread, config.contracts),
+          references: reference,
+          carriage: (field) => carriage.get(field) ?? [],
+          plan: fieldPlan,
+          witnessReferenceScripts: config.references.witnesses,
+        };
+        const transition = await fitDirectPurposeTransition({
+          custody,
+          paging: plan.paging,
+          role,
+          thread,
+        });
+        return await buildDirectPurposeTransitionTx(
+          custody,
+          thread,
+          transition,
+        );
+      })();
+      const { transaction } = await journaledStepTransaction(
+        built,
+        `${category} ${input.stage}`,
+      );
+      return { transaction };
     },
   };
 };

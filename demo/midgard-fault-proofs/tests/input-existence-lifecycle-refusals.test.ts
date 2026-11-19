@@ -13,9 +13,9 @@ import {
   type PreparedInputExistence,
   prepareInputExistence,
 } from "../src/input-existence/prepare.js";
-import { submitInputExistenceStep } from "../src/input-existence/submit.js";
+import { buildInputExistenceStep } from "../src/input-existence/submit.js";
 import { checkLedgerAgainstRoot } from "../src/ledger-at.js";
-import { submitInit } from "../src/submit-init.js";
+import { buildInit } from "../src/submit-init.js";
 import { keyValuePhasNonMembershipProof } from "../src/transition-trace/phas.js";
 import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
 import type { InputChronology } from "./helpers/input-existence-chronology-fixture.js";
@@ -40,6 +40,7 @@ import {
   publishPlainReferenceScriptUtxo,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 const TIMEOUT = 600_000;
 const FIELDS = [0, 1] as const;
@@ -169,7 +170,7 @@ const startHonestRejectionJourney = async (field: 0 | 1) => {
     ),
   };
   const init = await captureEmulatorSubmission(h.emulator, () =>
-    submitInit({
+    buildAndSubmitUnjournaled(buildInit, {
       lucid: h.proverLucid,
       blueprint: h.realBlueprint,
       deploymentInfo: buildRemovalDeploymentInfo(h.contracts, h.catalogue),
@@ -184,7 +185,7 @@ const startHonestRejectionJourney = async (field: 0 | 1) => {
   let threadOutRef = `${init.result.txHash}#${init.result.firstStepOutputIndex}`;
   const send = async (stepIndex: 0 | 1 | 2 | 3) => {
     const submitted = await captureEmulatorSubmission(h.emulator, () =>
-      submitInputExistenceStep({
+      buildAndSubmitUnjournaled(buildInputExistenceStep, {
         lucid: h.proverLucid,
         blueprint: h.realBlueprint,
         network,

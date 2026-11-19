@@ -19,10 +19,7 @@ import {
   type SpendInputSignerMissingContracts,
 } from "./contracts.js";
 import { type SpendInputSignerMissingEvidence } from "./spend-input-signer-missing.js";
-import {
-  type SpendInputSignerJournal,
-  type SpendInputSignerStage,
-} from "./workflow.js";
+import { type SpendInputSignerStage } from "./workflow.js";
 
 export const SPEND_INPUT_SIGNER_MISSING_WORKFLOW =
   "midgard-spend-input-signer-missing-production-workflow-v1" as const;
@@ -235,7 +232,6 @@ export type SpendInputSignerMissingAuthenticatedSource = Readonly<{
 /** Complete replay member: scans every accepted field-2 output and exact forced reason. */
 export type SpendInputSignerMissingRuntimeLoader = Readonly<{
   config: LoadManifestBoundSpendInputSignerMissingConfig;
-  journal: SpendInputSignerJournal;
   observe: (identity: string) => Promise<SpendInputSignerStage>;
   resolveStage: (input: {
     readonly action:

@@ -19,24 +19,13 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  certifyFaultProofFieldCarriage,
   type FaultProofFieldOpeningPlan,
   faultProofRawFieldCarriage,
-  publishFaultProofFieldCarriage,
 } from "../src/field-opening.js";
 import {
   fieldPreimageLengthCommittedClaim,
   prepareAcceptedFieldPreimageLengthMismatch,
 } from "../src/field-preimage-length-mismatch/prepare-accepted.js";
-import {
-  submitFieldPreimageLengthAcceptedAuthentication,
-  submitFieldPreimageLengthAcceptedDispatch,
-  submitFieldPreimageLengthCancel,
-  submitFieldPreimageLengthForcedAuthentication,
-  submitFieldPreimageLengthForcedDispatch,
-  submitFieldPreimageLengthInit,
-  submitFieldPreimageLengthTerminal,
-} from "../src/field-preimage-length-mismatch/submit-lucid.js";
 import {
   type PreparedFieldPreimageLengthWorkflow,
   prepareFieldPreimageLengthWorkflow,
@@ -74,6 +63,17 @@ import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import { FIELD_PREIMAGE_LENGTH_FORCED_FIELD_INDEX } from "./support/field-preimage-length-mismatch-forced-fixture.js";
 import { countedTransactionsRoot } from "./support/submit-init-emulator-fixtures.js";
+import {
+  certifyCarriageUnjournaled,
+  publishCarriageUnjournaled,
+  submitFieldPreimageLengthAcceptedAuthentication,
+  submitFieldPreimageLengthAcceptedDispatch,
+  submitFieldPreimageLengthCancel,
+  submitFieldPreimageLengthForcedAuthentication,
+  submitFieldPreimageLengthForcedDispatch,
+  submitFieldPreimageLengthInit,
+  submitFieldPreimageLengthTerminal,
+} from "./support/submit-unjournaled.field-preimage-length-mismatch.js";
 
 describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
   it.each([
@@ -160,7 +160,7 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
     const rawPublication = await captureEmulatorSubmission(
       fixture.harness.emulator,
       () =>
-        publishFaultProofFieldCarriage({
+        publishCarriageUnjournaled({
           ownOutputs,
           lucid: fixture.harness.proverLucid,
           signer: fixture.harness.proverSigner,
@@ -179,7 +179,7 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
     const chunkPublication = await captureEmulatorSubmission(
       fixture.harness.emulator,
       () =>
-        publishFaultProofFieldCarriage({
+        publishCarriageUnjournaled({
           ownOutputs,
           lucid: fixture.harness.proverLucid,
           signer: fixture.harness.proverSigner,
@@ -205,7 +205,7 @@ describe("field-preimage-length-mismatch registered-chain lifecycle", () => {
     const certificateMint = await captureEmulatorSubmission(
       fixture.harness.emulator,
       () =>
-        certifyFaultProofFieldCarriage({
+        certifyCarriageUnjournaled({
           ownOutputs,
           lucid: fixture.harness.proverLucid,
           network,

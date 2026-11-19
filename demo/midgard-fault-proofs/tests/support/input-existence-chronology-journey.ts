@@ -11,8 +11,8 @@ import {
   type PreparedInputExistence,
   prepareInputExistence,
 } from "../../src/input-existence/prepare.js";
-import { submitInputExistenceStep } from "../../src/input-existence/submit.js";
-import { submitInit } from "../../src/submit-init.js";
+import { buildInputExistenceStep } from "../../src/input-existence/submit.js";
+import { buildInit } from "../../src/submit-init.js";
 import {
   type InputChronology,
   inputExistenceChronologyFixture,
@@ -35,6 +35,7 @@ import {
   publishPlainReferenceScriptUtxo,
   submitSetupTx,
 } from "./submit-init-emulator-shared.js";
+import { buildAndSubmitUnjournaled } from "./submit-unjournaled.js";
 import { depositEventsRetainedBlock } from "./transition-trace-retained.deposit-events-retained-block.js";
 
 export type JourneyStep = 0 | 1 | 2 | 3;
@@ -165,7 +166,7 @@ export const startChronologyJourney = async ({
     ),
   };
   const init = await captureEmulatorSubmission(h.emulator, () =>
-    submitInit({
+    buildAndSubmitUnjournaled(buildInit, {
       lucid: h.proverLucid,
       blueprint: h.realBlueprint,
       deploymentInfo: buildRemovalDeploymentInfo(h.contracts, h.catalogue),
@@ -223,7 +224,7 @@ export const startChronologyJourney = async ({
               ? {}
               : { claimedPreUtxosRoot: carriage.claimedPreUtxosRoot }),
           })
-        : submitInputExistenceStep({
+        : buildAndSubmitUnjournaled(buildInputExistenceStep, {
             ...common(stepIndex),
             prepared: carried,
             usePublishedFieldCarriage: fieldCarriage !== undefined,

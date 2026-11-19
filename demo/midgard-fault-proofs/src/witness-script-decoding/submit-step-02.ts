@@ -21,6 +21,7 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { claimedItem } from "../evidence/claimed-coordinate.js";
+import { isPrerequisiteTurn } from "../fault-proof-turn.js";
 import {
   type FaultProofFieldGrammarDeployment,
   routeFaultProofFieldGrammar,
@@ -36,14 +37,13 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   WITNESS_SCRIPT_DECODING_CATEGORY_LABEL as FAMILY,
   type WitnessScriptDecodingContracts,
@@ -53,7 +53,7 @@ import {
   type WitnessScriptDecodingEvidence,
 } from "./witness-script-decoding.js";
 
-export const submitWitnessScriptDecodingStep02 = async ({
+export const buildWitnessScriptDecodingStep02 = async ({
   lucid,
   network,
   contracts,
@@ -71,11 +71,7 @@ export const submitWitnessScriptDecodingStep02 = async ({
   certificateReferenceScriptUtxo,
   referenceScriptUtxo,
   scriptDecodeRecordUtxo,
-  publicationPreSubmitBoundary,
-  certificatePreSubmitBoundary,
   fieldGrammar,
-  preSubmitBoundary,
-  awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
@@ -99,12 +95,8 @@ export const submitWitnessScriptDecodingStep02 = async ({
    * (`recordScriptDecode`); a native or malformed item takes none.
    */
   readonly scriptDecodeRecordUtxo?: UTxO;
-  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly certificatePreSubmitBoundary?: FraudProofPreSubmitBoundary;
   /** The field grammar certificate, for a field past the walked limit. */
   readonly fieldGrammar?: FaultProofFieldGrammarDeployment;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
 }) => {
@@ -160,8 +152,8 @@ export const submitWitnessScriptDecodingStep02 = async ({
       planned,
       publisherAddress: signer.proofMaterialsAddress,
       label: `${FAMILY} step 02 field 6`,
-      preSubmitBoundary: publicationPreSubmitBoundary,
     }));
+  if (isPrerequisiteTurn(carriageUtxos)) return carriageUtxos;
   // A certificate already on chain (the workflow's certify action ran) is
   // reused; only an absent one is minted here.
   const resolvedCertificateUtxo =
@@ -181,9 +173,10 @@ export const submitWitnessScriptDecodingStep02 = async ({
           chunkUtxos: carriageUtxos,
           compactCbor: nativeTxCompactCbor,
           witnessSetCompactCbor,
-          preSubmitBoundary: certificatePreSubmitBoundary,
         })
       : undefined);
+  if (isPrerequisiteTurn(resolvedCertificateUtxo))
+    return resolvedCertificateUtxo;
   const grammar = await routeFaultProofFieldGrammar({
     lucid,
     signer,
@@ -280,7 +273,7 @@ export const submitWitnessScriptDecodingStep02 = async ({
       WitnessScriptDecodingStep02RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -293,14 +286,12 @@ export const submitWitnessScriptDecodingStep02 = async ({
     redeemer,
     carriageUtxos,
     extraReferenceInputs,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined)
     throw new Error(`${FAMILY}: unresolved layout`);
   return {
-    txHash,
-    nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
     scanState: nextState,
     carriageTier: planned.plan.tier,
   };

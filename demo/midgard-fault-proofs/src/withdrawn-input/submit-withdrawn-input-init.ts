@@ -1,7 +1,7 @@
 import {
-  submitResolvedInit,
+  buildResolvedInit,
+  type ResolvedInitBuild,
   type SubmitResolvedInitParams,
-  type SubmitResolvedInitResult,
 } from "../submit-init.js";
 import {
   WITHDRAWN_INPUT_CATEGORY_LABEL,
@@ -12,21 +12,21 @@ import {
   withdrawnInputSubmitError,
 } from "./submit-common.js";
 
-export type SubmitWithdrawnInputInitResult = SubmitResolvedInitResult;
+export type WithdrawnInputInitBuild = ResolvedInitBuild;
 
-export const submitWithdrawnInputInit = async (
+export const buildWithdrawnInputInit = async (
   params: Omit<SubmitResolvedInitParams, "contracts" | "category"> & {
     readonly contracts: WithdrawnInputContracts;
     readonly category: WithdrawnInputCatalogueCategory;
   },
-): Promise<SubmitWithdrawnInputInitResult> => {
+): Promise<WithdrawnInputInitBuild> => {
   const { contracts, category } = params;
   if (category.scriptHash !== contracts.steps[0].spendingScriptHash) {
     throw withdrawnInputSubmitError(
       `catalogue category registers ${category.scriptHash}, but step-01 hashes to ${contracts.steps[0].spendingScriptHash}.`,
     );
   }
-  return await submitResolvedInit({
+  return await buildResolvedInit({
     ...params,
     label: WITHDRAWN_INPUT_CATEGORY_LABEL,
   });

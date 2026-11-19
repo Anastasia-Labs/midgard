@@ -13,13 +13,14 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { isPrerequisiteTurn } from "../fault-proof-turn.js";
 import {
   faultProofFieldOpening,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
 } from "../field-opening.js";
-import { submitLinearFaultFinalize } from "../linear-fault-finalize.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultFinalize } from "../linear-fault-finalize.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
@@ -27,7 +28,6 @@ import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { InputSetUniquenessContracts } from "./contracts.js";
 import {
   requireInputSetUniquenessReferenceScript,
@@ -55,7 +55,7 @@ const requireAuthenticState = (state: InputSetUniqueScanState) => {
   }
 };
 
-export const submitInputSetUniquenessStep04Advance = async ({
+export const buildInputSetUniquenessStep04Advance = async ({
   lucid,
   contracts,
   categoryId,
@@ -67,8 +67,6 @@ export const submitInputSetUniquenessStep04Advance = async ({
   publishedCarriageUtxos,
   certificateUtxo,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
@@ -82,8 +80,6 @@ export const submitInputSetUniquenessStep04Advance = async ({
   readonly publishedCarriageUtxos?: readonly UTxO[];
   readonly certificateUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
 }) => {
@@ -141,16 +137,19 @@ export const submitInputSetUniquenessStep04Advance = async ({
     owner: signer.paymentKeyHash,
     label: "input-set-uniqueness step-04",
   });
+  const publications =
+    publishedCarriageUtxos ??
+    (await publishFaultProofFieldCarriage({
+      ownOutputs,
+      lucid,
+      signer,
+      planned,
+      publisherAddress: signer.proofMaterialsAddress,
+      label: "input-set-uniqueness step-04 field",
+    }));
+  if (isPrerequisiteTurn(publications)) return publications;
   const carriageUtxos = [
-    ...(publishedCarriageUtxos ??
-      (await publishFaultProofFieldCarriage({
-        ownOutputs,
-        lucid,
-        signer,
-        planned,
-        publisherAddress: signer.proofMaterialsAddress,
-        label: "input-set-uniqueness step-04 field",
-      }))),
+    ...publications,
     ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
   ];
   const nextPartial = {
@@ -216,7 +215,7 @@ export const submitInputSetUniquenessStep04Advance = async ({
       InputSetUniquenessStep04SpendRedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -228,19 +227,17 @@ export const submitInputSetUniquenessStep04Advance = async ({
     nextDatum,
     redeemer,
     carriageUtxos,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined)
     throw new Error("input-set-uniqueness: unresolved layout");
   return Object.freeze({
-    txHash,
-    nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
     state: nextState,
   });
 };
 
-export const submitInputSetUniquenessStep04Finalize = async ({
+export const buildInputSetUniquenessStep04Finalize = async ({
   lucid,
   contracts,
   categoryId,
@@ -250,8 +247,6 @@ export const submitInputSetUniquenessStep04Finalize = async ({
   referenceInputItemCbors,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: InputSetUniquenessContracts;
@@ -262,8 +257,6 @@ export const submitInputSetUniquenessStep04Finalize = async ({
   readonly referenceInputItemCbors: readonly string[];
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 3 as const;
   const { threadUtxo, threadToken } = await requireInputSetUniquenessThreadUtxo(
@@ -297,7 +290,7 @@ export const submitInputSetUniquenessStep04Finalize = async ({
   ) {
     throw new Error("input-set-uniqueness: complete unique scan is absent");
   }
-  return await submitLinearFaultFinalize({
+  return await buildLinearFaultFinalize({
     lucid,
     family: "input-set-uniqueness",
     stepIndex,
@@ -321,7 +314,5 @@ export const submitInputSetUniquenessStep04Finalize = async ({
     }),
     referenceScriptUtxo,
     witnessReferenceScripts,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
 };

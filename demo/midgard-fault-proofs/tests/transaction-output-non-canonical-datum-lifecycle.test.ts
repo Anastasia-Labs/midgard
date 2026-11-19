@@ -10,10 +10,10 @@ import { acceptedVerdictSubject } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
-  submitTransactionOutputNonCanonicalStep01Accepted,
-  submitTransactionOutputNonCanonicalStep02,
-  submitTransactionOutputNonCanonicalStep03Datum,
-  submitTransactionOutputNonCanonicalStep04,
+  buildTransactionOutputNonCanonicalStep01Accepted,
+  buildTransactionOutputNonCanonicalStep02,
+  buildTransactionOutputNonCanonicalStep03Datum,
+  buildTransactionOutputNonCanonicalStep04,
   transactionOutputDatumScanState,
   transactionOutputDatumStepArgs,
 } from "../src/transaction-output-non-canonical/index.js";
@@ -26,6 +26,10 @@ import {
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { nodeForcedVerdict } from "./support/emulator/node-forced-verdict.js";
 import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
+import {
+  buildAndSubmitUnjournaled,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 import {
   outputWithInlineDatum,
   readOutputScanState,
@@ -168,12 +172,15 @@ describe("transactionOutputNonCanonical inline-datum verdict", () => {
     });
 
     // Honest first read, then forged reveals against the stored stack root.
-    const firstStep = await submitTransactionOutputNonCanonicalStep03Datum({
-      ...stepCommon(registered),
-      threadOutRef: thread,
-      evidence,
-      referenceScriptUtxo: registered.references[3]!,
-    });
+    const firstStep = await buildAndSubmitUnjournaled(
+      buildTransactionOutputNonCanonicalStep03Datum,
+      {
+        ...stepCommon(registered),
+        threadOutRef: thread,
+        evidence,
+        referenceScriptUtxo: registered.references[3]!,
+      },
+    );
     expect(firstStep.finished).toBe(false);
     const second = plan.steps[1]!;
     expect(second.stack.length).toBeGreaterThan(0);
@@ -224,7 +231,7 @@ describe("transactionOutputNonCanonical inline-datum verdict", () => {
     );
     expect(terminal.outcome).toBe(2n);
     await expect(
-      submitTransactionOutputNonCanonicalStep04({
+      buildAndSubmitUnjournaled(buildTransactionOutputNonCanonicalStep04, {
         ...stepCommon(registered),
         threadOutRef: verdict.threadOutRef,
         evidence,
@@ -275,7 +282,7 @@ describe("transactionOutputNonCanonical inline-datum verdict", () => {
     });
     expect(verdict.datumSteps).toBe(plan.steps.length);
     const minted = await captureEmulatorSubmission(s.harness.emulator, () =>
-      submitTransactionOutputNonCanonicalStep04({
+      buildAndSubmitUnjournaled(buildTransactionOutputNonCanonicalStep04, {
         ...stepCommon(registered),
         threadOutRef: verdict.threadOutRef,
         evidence,
@@ -322,35 +329,41 @@ describe("transactionOutputNonCanonical inline-datum verdict", () => {
     expect(evidence.envelopeCanonical).toBe(true);
     expect(evidence.canonical).toBe(false);
     const init = await registered.init(setup.fraudulentBlockOutRef);
-    const bound = await submitTransactionOutputNonCanonicalStep01Accepted({
-      lucid: harness.proverLucid,
-      blueprint: harness.realBlueprint,
-      network,
-      contracts: registered.contracts,
-      signer: harness.proverSigner,
-      finding: evidence,
-      threadUtxo: await registered.threadUtxoOf(
-        init.result.txHash,
-        init.result.firstStepOutputIndex,
-      ),
-      threadToken: {
-        unit: init.result.computationThreadUnit,
-        fraudulentHeaderHash: init.result.fraudulentHeaderHash,
+    const bound = await buildAndSubmitUnjournaled(
+      buildTransactionOutputNonCanonicalStep01Accepted,
+      {
+        lucid: harness.proverLucid,
+        blueprint: harness.realBlueprint,
+        network,
+        contracts: registered.contracts,
+        signer: harness.proverSigner,
+        finding: evidence,
+        threadUtxo: await registered.threadUtxoOf(
+          init.result.txHash,
+          init.result.firstStepOutputIndex,
+        ),
+        threadToken: {
+          unit: init.result.computationThreadUnit,
+          fraudulentHeaderHash: init.result.fraudulentHeaderHash,
+        },
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+        txInclusion: inclusion,
+        referenceScriptUtxo: registered.references[0]!,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
       },
-      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-      txInclusion: inclusion,
-      referenceScriptUtxo: registered.references[0]!,
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-    });
-    const authenticated = await submitTransactionOutputNonCanonicalStep02({
-      ...stepCommon(registered),
-      threadOutRef: bound.nextThreadOutRef,
-      evidence,
-      nativeTxCompactCbor: inclusion.nativeTxCompactCbor,
-      witnessSetCompactCbor: witnessSetCborOf(transaction),
-      referenceScriptUtxo: registered.references[1]!,
-      certificateReferenceScriptUtxo: certificateReference,
-    });
+    );
+    const authenticated = await submitTurnsUnjournaled(
+      buildTransactionOutputNonCanonicalStep02,
+      {
+        ...stepCommon(registered),
+        threadOutRef: bound.nextThreadOutRef,
+        evidence,
+        nativeTxCompactCbor: inclusion.nativeTxCompactCbor,
+        witnessSetCompactCbor: witnessSetCborOf(transaction),
+        referenceScriptUtxo: registered.references[1]!,
+        certificateReferenceScriptUtxo: certificateReference,
+      },
+    );
     const thread = await scanToDatum(
       registered,
       authenticated.nextThreadOutRef,
@@ -363,13 +376,16 @@ describe("transactionOutputNonCanonical inline-datum verdict", () => {
       label: "accepted-datum",
     });
     expect(verdict.datumSteps).toBe(1);
-    const minted = await submitTransactionOutputNonCanonicalStep04({
-      ...stepCommon(registered),
-      threadOutRef: verdict.threadOutRef,
-      evidence,
-      referenceScriptUtxo: registered.references[4]!,
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-    });
+    const minted = await buildAndSubmitUnjournaled(
+      buildTransactionOutputNonCanonicalStep04,
+      {
+        ...stepCommon(registered),
+        threadOutRef: verdict.threadOutRef,
+        evidence,
+        referenceScriptUtxo: registered.references[4]!,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+      },
+    );
     expect(minted.fraudProofUnit).toBeTruthy();
     coverage.reason("OutputNonCanonical", "accepted_invalid");
   }, 900_000);
@@ -414,13 +430,16 @@ describe("transactionOutputNonCanonical inline-datum verdict", () => {
           costliest.measurement.executionMemory
       )
         costliest = { shape, measurement: verdict.costliest! };
-      const minted = await submitTransactionOutputNonCanonicalStep04({
-        ...stepCommon(s.registered),
-        threadOutRef: verdict.threadOutRef,
-        evidence: s.evidence,
-        referenceScriptUtxo: s.registered.references[4]!,
-        witnessReferenceScripts: s.harness.witnessReferenceScripts,
-      });
+      const minted = await buildAndSubmitUnjournaled(
+        buildTransactionOutputNonCanonicalStep04,
+        {
+          ...stepCommon(s.registered),
+          threadOutRef: verdict.threadOutRef,
+          evidence: s.evidence,
+          referenceScriptUtxo: s.registered.references[4]!,
+          witnessReferenceScripts: s.harness.witnessReferenceScripts,
+        },
+      );
       expect(minted.fraudProofUnit).toBeTruthy();
     }
     record("tonc_datum_verdict_step_max", costliest!.measurement);

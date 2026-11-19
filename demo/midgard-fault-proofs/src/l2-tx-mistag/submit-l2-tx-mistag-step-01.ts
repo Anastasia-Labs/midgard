@@ -35,7 +35,8 @@ import {
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
 } from "../runtime.js";
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import {
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
   requireInitialStepDatum,
@@ -47,8 +48,10 @@ import {
   type FaultProofWitnessReferenceScripts,
   witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
-import { workflowReferenceScriptsUsedByTransaction } from "../workflow/transaction-boundary.js";
+import {
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
+} from "../workflow/transaction-boundary.js";
 import type { L2TxMistagContracts } from "./contracts.js";
 import {
   L2TxMistagStep01SpendRedeemer,
@@ -64,8 +67,8 @@ import {
 
 const STEP_LABEL = l2TxMistagStepLabel(0);
 
-export type SubmitL2TxMistagStep01Result = {
-  readonly txHash: string;
+export type L2TxMistagStep01Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -77,10 +80,12 @@ export type SubmitL2TxMistagStep01Result = {
   readonly state: L2TxMistagStep02State;
   readonly inputIndex: number;
   readonly outputIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
 
-export const submitL2TxMistagStep01 = async ({
+export type SubmitL2TxMistagStep01Result =
+  UnjournaledSubmission<L2TxMistagStep01Build>;
+
+export const buildL2TxMistagStep01 = async ({
   lucid,
   blueprint,
   contracts,
@@ -93,8 +98,6 @@ export const submitL2TxMistagStep01 = async ({
   publishedProofChunks,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -109,9 +112,7 @@ export const submitL2TxMistagStep01 = async ({
   /** Mandatory published step-01 reference script. */
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitL2TxMistagStep01Result> => {
+}): Promise<L2TxMistagStep01Build> => {
   const { threadUtxo, threadToken } = await requireL2TxMistagThreadUtxo({
     lucid,
     contracts,
@@ -306,44 +307,37 @@ export const submitL2TxMistagStep01 = async ({
   if (layout === undefined) {
     throw l2TxMistagSubmitError("step-01 layout was not resolved.");
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: "l2-tx-mistag step-01",
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: "V1 fraud-proof l2-tx-mistag step-01",
-          utxo: referenceScriptUtxo,
-          expectedScript: contracts.steps[0].spendingScript,
-        },
-        {
-          role: "membership proof withdrawal",
-          utxo: witnessReferenceScripts?.phasMembershipWithdraw,
-          expectedScript: phasMembershipScript,
-        },
-        {
-          role: "V1 MPF chunked-verify withdrawal",
-          utxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
-          expectedScript: chunkedVerifyScript,
-        },
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: "V1 fraud-proof l2-tx-mistag step-01",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.steps[0].spendingScript,
+      },
+      {
+        role: "membership proof withdrawal",
+        utxo: witnessReferenceScripts?.phasMembershipWithdraw,
+        expectedScript: phasMembershipScript,
+      },
+      {
+        role: "V1 MPF chunked-verify withdrawal",
+        utxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
+        expectedScript: chunkedVerifyScript,
+      },
+    ],
   });
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
     threadOutRef,
-    nextThreadOutRef: `${txHash}#${layout.outputIndex.toString()}`,
+    nextThreadOutRef: `${transaction.txHash}#${layout.outputIndex.toString()}`,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadUnit: threadToken.unit,
     secondStepAddress: contracts.steps[1].spendingScriptAddress,
     state,
     inputIndex: Number(layout.inputIndex),
     outputIndex: Number(layout.outputIndex),
-    awaitedConfirmation: awaitConfirmation,
   };
 };

@@ -57,7 +57,6 @@ export {
   createSpendInputSignerMissingRecoveryAdapter,
   executeManifestBoundSpendInputSignerMissingWorkflow,
   type ManifestBoundSpendInputSignerMissingWorkflow,
-  runOrResumeManifestBoundSpendInputSignerMissingWorkflow,
 } from "./authenticated-workflow.run-or-resume-manifest-bound-spend-input-signer-missing-workflow.js";
 export {
   loadManifestBoundSpendInputSignerMissingConfig,

@@ -20,14 +20,15 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
+import { isPrerequisiteTurn } from "../fault-proof-turn.js";
 import {
   faultProofFieldOpening,
   publishFaultProofFieldCarriage,
   resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening.js";
-import { submitLinearFaultCancel } from "../linear-fault-cancel.js";
-import { submitLinearFaultFinalize } from "../linear-fault-finalize.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultCancel } from "../linear-fault-cancel.js";
+import { buildLinearFaultFinalize } from "../linear-fault-finalize.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import {
   fetchUtxoByOutRef,
   parseOutRef,
@@ -43,7 +44,6 @@ import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { MissingSignatureContracts } from "./contracts.js";
 import {
   planMissingSignatureAddressWitnessesOpening,
@@ -65,13 +65,11 @@ export type SubmitMissingSignatureForcedParams = Readonly<{
   certificateUtxo?: UTxO;
   publishCarriage?: boolean;
   witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
   ownOutputs?: OwnOutputJournal;
 }>;
 
-export const submitMissingSignatureForcedAction = async (
+export const buildMissingSignatureForcedAction = async (
   params: SubmitMissingSignatureForcedParams,
 ) => {
   const {
@@ -82,9 +80,7 @@ export const submitMissingSignatureForcedAction = async (
     threadOutRef,
     prepared,
     referenceScriptUtxo,
-    preSubmitBoundary,
   } = params;
-  const awaitConfirmation = params.awaitConfirmation ?? true;
   const ownOutputs = params.ownOutputs ?? createOwnOutputJournal();
   const threadUtxo = await fetchUtxoByOutRef({
     lucid,
@@ -199,6 +195,7 @@ export const submitMissingSignatureForcedAction = async (
           publisherAddress: signer.proofMaterialsAddress,
           label: "missing-signature forced field",
         });
+  if (isPrerequisiteTurn(carriageUtxos)) return carriageUtxos;
   const certificateUtxo =
     params.certificateUtxo ??
     (planned === undefined
@@ -222,7 +219,7 @@ export const submitMissingSignatureForcedAction = async (
           label: "missing-signature forced field",
         });
   if (stage === "forcedWitness") {
-    const result = await submitLinearFaultFinalize({
+    const result = await buildLinearFaultFinalize({
       lucid,
       family: "missing-signature forced",
       stepIndex: 3,
@@ -247,8 +244,6 @@ export const submitMissingSignatureForcedAction = async (
       carriageUtxos,
       extraReferenceInputs,
       witnessReferenceScripts: params.witnessReferenceScripts,
-      preSubmitBoundary,
-      awaitConfirmation,
     });
     return { kind: "proven" as const, ...result };
   }
@@ -325,7 +320,7 @@ export const submitMissingSignatureForcedAction = async (
       MissingSignatureForcedSignerSpendRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -338,25 +333,23 @@ export const submitMissingSignatureForcedAction = async (
     redeemer,
     carriageUtxos,
     extraReferenceInputs,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined)
     throw new Error("missingSignature: unresolved output layout");
   return {
     kind: "advanced" as const,
-    txHash,
-    nextThreadOutRef: `${txHash}#${outputIndex}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex}`,
   };
 };
 
-export const submitMissingSignatureForcedCancel = (
+export const buildMissingSignatureForcedCancel = (
   params: Omit<
-    Parameters<typeof submitLinearFaultCancel>[0],
+    Parameters<typeof buildLinearFaultCancel>[0],
     "family" | "steps" | "computationThread"
   > & { readonly contracts: MissingSignatureContracts },
 ) =>
-  submitLinearFaultCancel({
+  buildLinearFaultCancel({
     ...params,
     family: "missing-signature",
     steps: [

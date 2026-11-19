@@ -19,12 +19,12 @@ import {
   prepareInvalidRangeEvidence,
 } from "../src/invalid-range/family.js";
 import {
-  submitInvalidRangeStep01Forced,
-  submitInvalidRangeStep02V1,
+  buildInvalidRangeStep01Forced,
+  buildInvalidRangeStep02V1,
 } from "../src/invalid-range/submit.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { forcedTxFromCoreCompact } from "../src/step-support.js";
-import { submitInit } from "../src/submit-init.js";
+import { buildInit } from "../src/submit-init.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import {
   admitNativeInclusionTwoStepArtifact,
@@ -43,6 +43,7 @@ import { submitFamilyCancel } from "./support/linear-fault-cancel.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 const network = "Custom" as const;
 
@@ -205,7 +206,7 @@ const stageForcedRejection = async (interval: {
   const captures: Awaited<ReturnType<typeof captureEmulatorSubmission>>[] = [];
   const initialize = async () => {
     const c = await captureEmulatorSubmission(harness.emulator, () =>
-      submitInit({
+      buildAndSubmitUnjournaled(buildInit, {
         lucid: harness.proverLucid,
         witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: harness.realBlueprint,
@@ -225,7 +226,7 @@ const stageForcedRejection = async (interval: {
   };
   const bind = async (threadOutRef: string) => {
     const c = await captureEmulatorSubmission(harness.emulator, () =>
-      submitInvalidRangeStep01Forced({
+      buildAndSubmitUnjournaled(buildInvalidRangeStep01Forced, {
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -295,7 +296,7 @@ describe("invalidRange wrongful-rejection real lifecycle", () => {
     await cancel(await bind(await initialize()), 1);
     const terminalOutRef = await bind(await initialize());
     const final = await captureEmulatorSubmission(harness.emulator, () =>
-      submitInvalidRangeStep02V1({
+      buildAndSubmitUnjournaled(buildInvalidRangeStep02V1, {
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
@@ -377,7 +378,7 @@ describe("invalidRange wrongful-rejection real lifecycle", () => {
     expect(invalidRangeEvidenceCloses(claimed)).toBe(true);
     await expectOnchainRefusal(
       () =>
-        submitInvalidRangeStep02V1({
+        buildAndSubmitUnjournaled(buildInvalidRangeStep02V1, {
           lucid: staged.harness.proverLucid,
           contracts: staged.contracts,
           categoryId: staged.category.categoryId,

@@ -1,11 +1,14 @@
 import { type CommittedFieldClaim } from "@al-ft/midgard-sdk";
 import { type UTxO, validatorToScriptHash } from "@lucid-evolution/lucid";
 
-import { submitCommittedFieldShapeInit } from "../committed-field-shape/submit-committed-field-shape-init.js";
-import { submitLinearFaultCancel } from "../linear-fault-cancel.js";
+import { buildCommittedFieldShapeInit } from "../committed-field-shape/submit-committed-field-shape-init.js";
+import { buildLinearFaultCancel } from "../linear-fault-cancel.js";
 import { fetchUtxoByOutRef, outRefLabel, parseOutRef } from "../runtime.js";
 import { requireComputationThreadToken } from "../step-support.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
+import {
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
+} from "../workflow/transaction-boundary.js";
 import type { ManifestBoundFieldPreimageLengthConfig } from "./config.js";
 
 export const LABEL = "field-preimage-length-mismatch";
@@ -26,18 +29,14 @@ const initAdapterContracts = (
 };
 
 /** Generic registered-category Init, specialized to this family's first step. */
-export const submitFieldPreimageLengthInit = async ({
+export const buildFieldPreimageLengthInit = async ({
   config,
   fraudulentBlockOutRef,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly config: ManifestBoundFieldPreimageLengthConfig;
   readonly fraudulentBlockOutRef: string;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) =>
-  await submitCommittedFieldShapeInit({
+  await buildCommittedFieldShapeInit({
     lucid: config.lucid,
     blueprint: config.binding.blueprint,
     network: config.binding.network,
@@ -48,23 +47,17 @@ export const submitFieldPreimageLengthInit = async ({
     fraudulentBlockOutRef,
     fraudulentHeaderHash: config.binding.definition.headerHash,
     witnessReferenceScripts: config.referenceScripts.witnesses,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
 
 /** Shared linear cancel over the four physical validators. */
-export const submitFieldPreimageLengthCancel = async ({
+export const buildFieldPreimageLengthCancel = async ({
   config,
   threadOutRef,
   stepIndex,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly config: ManifestBoundFieldPreimageLengthConfig;
   readonly threadOutRef: string;
   readonly stepIndex: 0 | 1 | 2 | 3;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const referenceScriptUtxo =
     stepIndex === 0
@@ -74,7 +67,7 @@ export const submitFieldPreimageLengthCancel = async ({
         : stepIndex === 2
           ? config.referenceScripts.step02Forced
           : config.referenceScripts.step03;
-  return await submitLinearFaultCancel({
+  return await buildLinearFaultCancel({
     lucid: config.lucid,
     family: LABEL,
     steps: config.contracts.fieldPreimageLengthMismatch.steps,
@@ -84,8 +77,6 @@ export const submitFieldPreimageLengthCancel = async ({
     threadOutRef,
     referenceScriptUtxo,
     witnessReferenceScripts: config.referenceScripts.witnesses,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
 };
 
@@ -141,13 +132,16 @@ export const requireThread = async ({
   return { threadUtxo, threadToken, step };
 };
 
-export type SubmitFieldPreimageLengthForcedDispatchResult = Readonly<{
-  txHash: string;
+export type FieldPreimageLengthForcedDispatchBuild = Readonly<{
+  transaction: LocallyEvaluatedTransaction;
   nextThreadOutRef: string;
   computationThreadUnit: string;
   inputIndex: number;
   outputIndex: number;
 }>;
+
+export type SubmitFieldPreimageLengthForcedDispatchResult =
+  UnjournaledSubmission<FieldPreimageLengthForcedDispatchBuild>;
 
 export type FieldPreimageLengthClaimResolver = (
   completeReferenceInputs: readonly UTxO[],

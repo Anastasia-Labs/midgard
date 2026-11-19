@@ -70,8 +70,9 @@ export interface LinearFamilyTransactionPort<
     > & { readonly category: Category };
   }): Promise<JournalJsonObject>;
   /**
-   * Invokes the exact family builder through its pre-submit boundary. The
-   * returned body has passed local UPLC and has not reached provider I/O.
+   * Invokes the exact family builder, which returns the signed body without
+   * submitting it: the body has passed local UPLC and has not reached
+   * provider I/O.
    */
   capture(input: {
     readonly action: FraudProofWorkflowAction;

@@ -17,8 +17,8 @@ import {
   requireLinearFaultReferenceScript,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
-import { submitNativeTxBinding } from "../native-tx-binding.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildNativeTxBinding } from "../native-tx-binding.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import {
   requireInitialStepDatum,
@@ -26,7 +26,6 @@ import {
 } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { RedeemerCanonicityContracts } from "./contracts.js";
 import {
   classifyRedeemerCanonicityFinding,
@@ -59,7 +58,7 @@ const nextDatum = (
   }
 };
 
-export const submitRedeemerCanonicityStep01Accepted = async ({
+export const buildRedeemerCanonicityStep01Accepted = async ({
   lucid,
   blueprint,
   network,
@@ -72,8 +71,6 @@ export const submitRedeemerCanonicityStep01Accepted = async ({
   txInclusion,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -90,11 +87,9 @@ export const submitRedeemerCanonicityStep01Accepted = async ({
   readonly txInclusion: SubmitStep01TxInclusion;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const finding = classifyRedeemerCanonicityFinding(rawFinding);
-  return await submitNativeTxBinding({
+  return await buildNativeTxBinding({
     lucid,
     blueprint,
     network,
@@ -121,12 +116,10 @@ export const submitRedeemerCanonicityStep01Accepted = async ({
     }),
     referenceScriptUtxo,
     witnessReferenceScripts,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
 };
 
-export const submitRedeemerCanonicityStep01Forced = async ({
+export const buildRedeemerCanonicityStep01Forced = async ({
   lucid,
   contracts,
   categoryId,
@@ -136,8 +129,6 @@ export const submitRedeemerCanonicityStep01Forced = async ({
   forcedSource,
   witnessSetHash,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: RedeemerCanonicityContracts;
@@ -148,8 +139,6 @@ export const submitRedeemerCanonicityStep01Forced = async ({
   readonly forcedSource: Readonly<Record<string, unknown>>;
   readonly witnessSetHash: string;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const finding = classifyRedeemerCanonicityFinding(rawFinding);
   const stepIndex = 0;
@@ -213,7 +202,7 @@ export const submitRedeemerCanonicityStep01Forced = async ({
       RedeemerCanonicityStep01RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -224,10 +213,11 @@ export const submitRedeemerCanonicityStep01Forced = async ({
     nextAddress: contracts.steps[1].spendingScriptAddress,
     nextDatum: datum,
     redeemer,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined)
     throw new Error("redeemer-canonicity: forced layout unresolved");
-  return { txHash, nextThreadOutRef: `${txHash}#${outputIndex.toString()}` };
+  return {
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
+  };
 };

@@ -1,6 +1,6 @@
 /**
  * A proven-record removal spends prover-wallet coins (its fee input and
- * collateral) outside any funding reservation. From its pre-submit boundary
+ * collateral) outside any funding reservation. From the moment it is signed
  * until it confirms or its validity ends, the funding store holds them, so a
  * reservation plan never selects one and the two transactions never race
  * for a coin.

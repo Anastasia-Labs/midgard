@@ -13,8 +13,8 @@
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
-import { submitNativeScriptInvalidStep02 } from "../src/native-script-invalid/submit-step-02.js";
-import { submitNativeScriptInvalidStep03AbsentFinalize } from "../src/native-script-invalid/submit-step-03.js";
+import { buildNativeScriptInvalidStep02 } from "../src/native-script-invalid/submit-step-02.js";
+import { buildNativeScriptInvalidStep03AbsentFinalize } from "../src/native-script-invalid/submit-step-03.js";
 import {
   VAN_ROSSEM_MAX_CPU_UNITS,
   VAN_ROSSEM_MAX_MEMORY_UNITS,
@@ -28,6 +28,10 @@ import { setup } from "./native-script-invalid-wrongful-rejection-lifecycle.setu
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { submitRawNativeScriptInvalidAbsentScriptStep02 } from "./support/native-script-invalid-raw.submit-absent-script-step02-raw.js";
+import {
+  buildAndSubmitUnjournaled,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 
 /** A thread bound through step 01 with field 6's carriage published. */
 const boundThread = async (options: Parameters<typeof setup>[0]) => {
@@ -62,7 +66,7 @@ const convict = async ({
   const step02Measurements = [];
   while (step02Measurements.length < 1000 && closed === undefined) {
     const step = await captureEmulatorSubmission(f.h.emulator, () =>
-      submitNativeScriptInvalidStep02({
+      submitTurnsUnjournaled(buildNativeScriptInvalidStep02, {
         ownOutputs,
         ...f.common,
         ...carriage,
@@ -79,7 +83,7 @@ const convict = async ({
   if (closed === undefined) throw new Error("step 02 did not close");
   expect(closed.result.scriptItemCbor).toBe("");
   const finalized = await captureEmulatorSubmission(f.h.emulator, () =>
-    submitNativeScriptInvalidStep03AbsentFinalize({
+    buildAndSubmitUnjournaled(buildNativeScriptInvalidStep03AbsentFinalize, {
       ...f.common,
       threadOutRef,
       referenceScriptUtxo: f.refs[2]!,

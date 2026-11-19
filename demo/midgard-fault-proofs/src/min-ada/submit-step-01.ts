@@ -38,14 +38,11 @@ import {
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
 } from "../runtime.js";
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import { parseSubmitStep01TxInclusion } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary.js";
 import {
   MIN_ADA_CATEGORY_LABEL as FAMILY,
   type MinAdaContracts,
@@ -128,11 +125,9 @@ type Common = {
   readonly stateQueueBlockOutRef: string;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 };
 
-export const submitMinAdaTxStep01 = async ({
+export const buildMinAdaTxStep01 = async ({
   lucid,
   blueprint,
   contracts,
@@ -145,8 +140,6 @@ export const submitMinAdaTxStep01 = async ({
   publishedProofChunks = [],
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: Common & {
   readonly prepared: PreparedMinAdaTx;
   readonly publishedProofChunks?: readonly PublishedProofChunk[];
@@ -249,25 +242,19 @@ export const submitMinAdaTxStep01 = async ({
     );
   const signed = await completeStep(inclusion.attachWithdrawal(base), funding);
   if (outputIndex === undefined) throw new Error(`${label}: unresolved layout`);
-  const txHash = await submitStep(lucid, signed, {
-    label: "min-ada step-01",
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: label,
-          utxo: stepReference,
-          expectedScript: contracts.steps[stepIndex].spendingScript,
-        },
-        ...inclusion.referenceScriptCandidates,
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: label,
+        utxo: stepReference,
+        expectedScript: contracts.steps[stepIndex].spendingScript,
+      },
+      ...inclusion.referenceScriptCandidates,
+    ],
   });
   return {
-    txHash,
-    nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
     fraudulentHeaderHash: anchors.headerHash,
     computationThreadUnit: threadToken.unit,
     proofCarriage:

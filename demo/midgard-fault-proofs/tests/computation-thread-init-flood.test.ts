@@ -2,11 +2,12 @@
 import { generateSeedPhrase } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { submitLinearFaultCancel } from "../src/linear-fault-cancel.js";
+import { buildLinearFaultCancel } from "../src/linear-fault-cancel.js";
 import { parseOutRef } from "../src/runtime.js";
-import { submitInit } from "../src/submit-init.js";
+import { buildInit } from "../src/submit-init.js";
 import { stageDoubleSpendStep04 } from "./support/submit-init/double-spend-staging.js";
 import { network } from "./support/submit-init-emulator-shared.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 const THREADS_PER_ROUND = 8;
 
@@ -30,7 +31,7 @@ describe("computation-thread Init flood against an honest block", () => {
     const flood = async () => {
       for (let index = 0; index < THREADS_PER_ROUND; index += 1) {
         const before = await walletLovelace();
-        const init = await submitInit({
+        const init = await buildAndSubmitUnjournaled(buildInit, {
           lucid,
           blueprint: staged.realBlueprint,
           deploymentInfo: staged.deploymentInfo,
@@ -70,18 +71,22 @@ describe("computation-thread Init flood against an honest block", () => {
     let cancelFees = 0n;
     for (const { outRef, lovelace } of threads) {
       const walletBefore = await walletLovelace();
-      const cancelled = await submitLinearFaultCancel({
-        lucid,
-        family: "double-spend",
-        steps: staged.contracts.fraudProofContracts.doubleSpend.steps,
-        computationThread: staged.contracts.computationThread,
-        categoryId: staged.catalogue.categories.doubleSpend.categoryId,
-        signer,
-        threadOutRef: outRef,
-        referenceScriptUtxo:
-          staged.doubleSpendStepReferenceScripts["fraudProofDoubleSpend"]!.utxo,
-        witnessReferenceScripts: staged.witnessReferenceScripts,
-      });
+      const cancelled = await buildAndSubmitUnjournaled(
+        buildLinearFaultCancel,
+        {
+          lucid,
+          family: "double-spend",
+          steps: staged.contracts.fraudProofContracts.doubleSpend.steps,
+          computationThread: staged.contracts.computationThread,
+          categoryId: staged.catalogue.categories.doubleSpend.categoryId,
+          signer,
+          threadOutRef: outRef,
+          referenceScriptUtxo:
+            staged.doubleSpendStepReferenceScripts["fraudProofDoubleSpend"]!
+              .utxo,
+          witnessReferenceScripts: staged.witnessReferenceScripts,
+        },
+      );
       expect(cancelled.reclaimedLovelace).toBe(lovelace);
       cancelFees += lovelace - ((await walletLovelace()) - walletBefore);
     }

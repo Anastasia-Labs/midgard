@@ -41,5 +41,5 @@ export {
   type SubmitInvalidSignatureStep02CliConfig,
   type SubmitInvalidSignatureStep02Result,
 } from "./submit-invalid-signature-step-02.make-invalid-signature-step02-spend-redeemer.js";
-export { submitInvalidSignatureStep02 } from "./submit-invalid-signature-step-02.submit-invalid-signature-step02.js";
+export { buildInvalidSignatureStep02 } from "./submit-invalid-signature-step-02.submit-invalid-signature-step02.js";
 export { submitInvalidSignatureStep02FromFiles } from "./submit-invalid-signature-step-02.submit-invalid-signature-step02-from-files.js";

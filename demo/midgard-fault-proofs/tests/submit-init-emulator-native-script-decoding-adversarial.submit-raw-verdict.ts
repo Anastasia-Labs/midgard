@@ -3,18 +3,18 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 
 import {
+  buildNativeScriptDecodingInit,
+  buildNativeScriptDecodingStep01BindNormal,
+  buildNativeScriptDecodingStep01RecordForced,
+  buildNativeScriptDecodingStep02,
+  buildNativeScriptDecodingStep03AdvanceOrCloseSegment,
+  buildNativeScriptDecodingStep03BindDescriptor,
+  buildNativeScriptDecodingStep03OpenSubject,
   type NativeScriptDecodingContracts,
   type NativeScriptDecodingScanPlan,
   type NativeScriptDecodingVerdictPlan,
   nativeScriptDecodingWindowProofs,
   requireNativeScriptDecodingThreadUtxo,
-  submitNativeScriptDecodingInit,
-  submitNativeScriptDecodingStep01BindNormal,
-  submitNativeScriptDecodingStep01RecordForced,
-  submitNativeScriptDecodingStep02,
-  submitNativeScriptDecodingStep03AdvanceOrCloseSegment,
-  submitNativeScriptDecodingStep03BindDescriptor,
-  submitNativeScriptDecodingStep03OpenSubject,
 } from "../src/native-script-decoding/index.js";
 import type { ResolvedProverSigner } from "../src/runtime.js";
 import {
@@ -23,6 +23,10 @@ import {
   submitRawDecodingStep,
 } from "./support/native-script-decoding-emulator.js";
 import { network } from "./support/submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 
 type DecodingHarness = Awaited<ReturnType<typeof makeDecodingEmulatorHarness>>;
 
@@ -82,7 +86,7 @@ export const driveNormalThreadToStep03 = async ({
 }): Promise<string> => {
   const { proverLucid, proverSigner, decoding, category, realBlueprint } =
     harness;
-  const init = await submitNativeScriptDecodingInit({
+  const init = await buildAndSubmitUnjournaled(buildNativeScriptDecodingInit, {
     lucid: proverLucid,
     witnessReferenceScripts: harness.witnessReferenceScripts,
     blueprint: realBlueprint,
@@ -101,29 +105,35 @@ export const driveNormalThreadToStep03 = async ({
   if (scenario.block.txInclusion === null) {
     throw new Error("normal-source fixture carries no tx inclusion");
   }
-  const step01 = await submitNativeScriptDecodingStep01BindNormal({
-    lucid: proverLucid,
-    witnessReferenceScripts: harness.witnessReferenceScripts,
-    blueprint: realBlueprint,
-    contracts: decoding,
-    categoryId: category.categoryId,
-    network,
-    signer: proverSigner,
-    threadOutRef: init.nextThreadOutRef,
-    stateQueueBlockOutRef: scenario.setup.fraudulentBlockOutRef,
-    txInclusion: scenario.block.txInclusion,
-    referenceScriptUtxo: refs[0],
-  });
-  const step02 = await submitNativeScriptDecodingStep02({
-    lucid: proverLucid,
-    contracts: decoding,
-    categoryId: category.categoryId,
-    signer: proverSigner,
-    threadOutRef: step01.nextThreadOutRef,
-    reconstruction: scenario.block.reconstruction,
-    chosenOutpoint: { sourceKind: scenario.accusedSourceKind, cursor: 0n },
-    referenceScriptUtxo: refs[1],
-  });
+  const step01 = await buildAndSubmitUnjournaled(
+    buildNativeScriptDecodingStep01BindNormal,
+    {
+      lucid: proverLucid,
+      witnessReferenceScripts: harness.witnessReferenceScripts,
+      blueprint: realBlueprint,
+      contracts: decoding,
+      categoryId: category.categoryId,
+      network,
+      signer: proverSigner,
+      threadOutRef: init.nextThreadOutRef,
+      stateQueueBlockOutRef: scenario.setup.fraudulentBlockOutRef,
+      txInclusion: scenario.block.txInclusion,
+      referenceScriptUtxo: refs[0],
+    },
+  );
+  const step02 = await buildAndSubmitUnjournaled(
+    buildNativeScriptDecodingStep02,
+    {
+      lucid: proverLucid,
+      contracts: decoding,
+      categoryId: category.categoryId,
+      signer: proverSigner,
+      threadOutRef: step01.nextThreadOutRef,
+      reconstruction: scenario.block.reconstruction,
+      chosenOutpoint: { sourceKind: scenario.accusedSourceKind, cursor: 0n },
+      referenceScriptUtxo: refs[1],
+    },
+  );
   return step02.nextThreadOutRef;
 };
 
@@ -139,7 +149,7 @@ export const driveForcedThreadToStep02 = async ({
 }): Promise<string> => {
   const { proverLucid, proverSigner, decoding, category, realBlueprint } =
     harness;
-  const init = await submitNativeScriptDecodingInit({
+  const init = await buildAndSubmitUnjournaled(buildNativeScriptDecodingInit, {
     lucid: proverLucid,
     witnessReferenceScripts: harness.witnessReferenceScripts,
     blueprint: realBlueprint,
@@ -155,14 +165,17 @@ export const driveForcedThreadToStep02 = async ({
     signer: proverSigner,
     fraudulentBlockOutRef: scenario.setup.fraudulentBlockOutRef,
   });
-  const step01 = await submitNativeScriptDecodingStep01RecordForced({
-    lucid: proverLucid,
-    contracts: decoding,
-    categoryId: category.categoryId,
-    signer: proverSigner,
-    threadOutRef: init.nextThreadOutRef,
-    referenceScriptUtxo: refs[0],
-  });
+  const step01 = await buildAndSubmitUnjournaled(
+    buildNativeScriptDecodingStep01RecordForced,
+    {
+      lucid: proverLucid,
+      contracts: decoding,
+      categoryId: category.categoryId,
+      signer: proverSigner,
+      threadOutRef: init.nextThreadOutRef,
+      referenceScriptUtxo: refs[0],
+    },
+  );
   return step01.nextThreadOutRef;
 };
 
@@ -183,44 +196,53 @@ export const bindAndScanHonestly = async ({
   readonly threadOutRef: string;
 }): Promise<string> => {
   const { proverLucid, proverSigner, decoding, category } = harness;
-  const opened = await submitNativeScriptDecodingStep03OpenSubject({
-    lucid: proverLucid,
-    contracts: decoding,
-    categoryId: category.categoryId,
-    signer: proverSigner,
-    threadOutRef,
-    nativeTxCompactCbor: scenario.block.nativeTxCompactCbor,
-    subjectFieldInputs: scenario.subjectFieldInputs,
-    referenceScriptUtxo: refs[2],
-  });
-  const subjectOutpoint = scenario.subjectFieldInputs[0]!;
-  const bind = await submitNativeScriptDecodingStep03BindDescriptor({
-    lucid: proverLucid,
-    contracts: decoding,
-    categoryId: category.categoryId,
-    signer: proverSigner,
-    threadOutRef: opened.nextThreadOutRef,
-    outpointKeyCbor: Buffer.from(
-      SDK.encodeMidgardTxInputCanonical(subjectOutpoint),
-    ).toString("hex"),
-    descriptorCbor: scenario.ledger.descriptorCbor,
-    ledgerTrie: scenario.ledger.trie,
-    plan,
-    referenceScriptItemBytes: item,
-    referenceScriptUtxo: refs[3],
-  });
-  let cursor = bind.nextThreadOutRef;
-  for (const segment of plan.segments) {
-    const scan = await submitNativeScriptDecodingStep03AdvanceOrCloseSegment({
+  const opened = await submitTurnsUnjournaled(
+    buildNativeScriptDecodingStep03OpenSubject,
+    {
       lucid: proverLucid,
       contracts: decoding,
       categoryId: category.categoryId,
       signer: proverSigner,
-      threadOutRef: cursor,
-      segment,
+      threadOutRef,
+      nativeTxCompactCbor: scenario.block.nativeTxCompactCbor,
+      subjectFieldInputs: scenario.subjectFieldInputs,
+      referenceScriptUtxo: refs[2],
+    },
+  );
+  const subjectOutpoint = scenario.subjectFieldInputs[0]!;
+  const bind = await buildAndSubmitUnjournaled(
+    buildNativeScriptDecodingStep03BindDescriptor,
+    {
+      lucid: proverLucid,
+      contracts: decoding,
+      categoryId: category.categoryId,
+      signer: proverSigner,
+      threadOutRef: opened.nextThreadOutRef,
+      outpointKeyCbor: Buffer.from(
+        SDK.encodeMidgardTxInputCanonical(subjectOutpoint),
+      ).toString("hex"),
+      descriptorCbor: scenario.ledger.descriptorCbor,
+      ledgerTrie: scenario.ledger.trie,
+      plan,
       referenceScriptItemBytes: item,
-      referenceScriptUtxo: refs[4],
-    });
+      referenceScriptUtxo: refs[3],
+    },
+  );
+  let cursor = bind.nextThreadOutRef;
+  for (const segment of plan.segments) {
+    const scan = await buildAndSubmitUnjournaled(
+      buildNativeScriptDecodingStep03AdvanceOrCloseSegment,
+      {
+        lucid: proverLucid,
+        contracts: decoding,
+        categoryId: category.categoryId,
+        signer: proverSigner,
+        threadOutRef: cursor,
+        segment,
+        referenceScriptItemBytes: item,
+        referenceScriptUtxo: refs[4],
+      },
+    );
     cursor = scan.nextThreadOutRef;
   }
   return cursor;

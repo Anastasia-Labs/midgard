@@ -6,17 +6,14 @@ import {
   resolveFaultProofFieldCarriagePublications,
   resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening.js";
-import {
-  type StateQueueMutationLease,
-  type StateQueueMutationLeaseCoordinator,
-  submitRemoveFraudulentBlock,
-} from "../remove-fraudulent-block.js";
+import { type StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import { submitInit } from "../submit-init.js";
-import { submitReferenceInputNoIdxStep01 } from "../submit-reference-input-no-idx-step-01.js";
-import { submitReferenceInputNoIdxStep02 } from "../submit-reference-input-no-idx-step-02.js";
-import { submitReferenceInputNoIdxStep03 } from "../submit-reference-input-no-idx-step-03.js";
-import { submitReferenceInputNoIdxStep04 } from "../submit-reference-input-no-idx-step-04.js";
+import { buildInit } from "../submit-init.js";
+import { buildReferenceInputNoIdxStep01 } from "../submit-reference-input-no-idx-step-01.js";
+import { buildReferenceInputNoIdxStep02 } from "../submit-reference-input-no-idx-step-02.js";
+import { buildReferenceInputNoIdxStep03 } from "../submit-reference-input-no-idx-step-03.js";
+import { buildReferenceInputNoIdxStep04 } from "../submit-reference-input-no-idx-step-04.js";
 import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
 import {
   type FieldPreimageCertificateBinding,
@@ -39,8 +36,9 @@ import {
   type ReferenceInputNoIdxWorkflowReferenceScripts,
   WITNESS_ROLES,
 } from "./reference-input-no-idx.admit-reference-input-no-idx-artifact.js";
+import { admitRemovalTransaction } from "./removal-admission.js";
+import { journaledStepTransaction } from "./step-transaction.js";
 import {
-  captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
   workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary.js";
@@ -120,53 +118,38 @@ const captureRemoval = async (
   config: BoundConfig,
   input: Readonly<Record<string, unknown>>,
 ) => {
-  let mutationLease: StateQueueMutationLease | undefined;
-  const retainingCoordinator: StateQueueMutationLeaseCoordinator = {
-    acquire: async () => {
-      const acquired =
-        await config.stateQueueMutationLeaseCoordinator.acquire();
-      mutationLease = acquired;
-      return acquired;
-    },
-  };
   const nextRemovalOutRef = stringField(input, "nextRemovalOutRef");
   const fraudProofOutRef = stringField(input, "fraudProofOutRef");
-  const transaction = await captureLocallyEvaluatedTransaction(
-    async (boundary) => {
-      await submitRemoveFraudulentBlock({
-        fraudProofOutRef,
-        lucid: config.lucid,
-        blueprint: config.blueprint,
-        deploymentInfo: config.deploymentInfo,
-        network: config.network,
-        signer: config.signer,
-        fraudCategory: "referenceInputNoIdx",
-        fraudulentHeaderHash: config.headerHash,
-        requireReferenceScripts: true,
-        stateQueueMutationLeaseCoordinator: retainingCoordinator,
-        fraudProverRewardLovelace: config.fraudProverRewardLovelace,
-        preSubmitBoundary: async (built) => {
-          if (
-            !workflowTransactionInputOutRefs(built.signed).includes(
-              nextRemovalOutRef,
-            ) ||
-            !workflowTransactionReferenceInputOutRefs(built.signed).includes(
-              fraudProofOutRef,
-            )
-          ) {
-            throw new Error(
-              "reference-input-no-idx removal changed authenticated inputs",
-            );
-          }
-          await boundary(built);
-        },
-      });
+  return await admitRemovalTransaction(
+    await buildRemoveFraudulentBlock({
+      fraudProofOutRef,
+      lucid: config.lucid,
+      blueprint: config.blueprint,
+      deploymentInfo: config.deploymentInfo,
+      network: config.network,
+      signer: config.signer,
+      fraudCategory: "referenceInputNoIdx",
+      fraudulentHeaderHash: config.headerHash,
+      requireReferenceScripts: true,
+      stateQueueMutationLeaseCoordinator:
+        config.stateQueueMutationLeaseCoordinator,
+      fraudProverRewardLovelace: config.fraudProverRewardLovelace,
+    }),
+    async (built) => {
+      if (
+        !workflowTransactionInputOutRefs(built.signed).includes(
+          nextRemovalOutRef,
+        ) ||
+        !workflowTransactionReferenceInputOutRefs(built.signed).includes(
+          fraudProofOutRef,
+        )
+      ) {
+        throw new Error(
+          "reference-input-no-idx removal changed authenticated inputs",
+        );
+      }
     },
   );
-  return Object.freeze({
-    transaction,
-    ...(mutationLease === undefined ? {} : { mutationLease }),
-  });
 };
 
 export const createTransactionPort = (
@@ -196,9 +179,9 @@ export const createTransactionPort = (
     const input = actionInput(action);
     if (input.stage === "init") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitInit({
+        transaction: (
+          await journaledStepTransaction(
+            await buildInit({
               lucid: config.lucid,
               blueprint: config.blueprint,
               deploymentInfo: config.deploymentInfo,
@@ -211,11 +194,10 @@ export const createTransactionPort = (
               ),
               fraudulentHeaderHash: config.headerHash,
               witnessReferenceScripts: config.referenceScripts.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "reference-input-no-idx buildInit",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "step_01" || input.stage === "step_03") {
@@ -235,33 +217,34 @@ export const createTransactionPort = (
         proofCbor,
       });
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            const common = {
-              lucid: config.lucid,
-              blueprint: config.blueprint,
-              deploymentInfo: config.deploymentInfo,
-              network: config.network,
-              signer: config.signer,
-              threadOutRef: stringField(input, "threadOutRef"),
-              stateQueueBlockOutRef: stringField(
-                input,
-                "stateQueueBlockOutRef",
-              ),
-              txInclusion: inclusion,
-              publishedProofChunks: chunks,
-              referenceScriptUtxo: config.referenceScripts.steps[stepIndex],
-              witnessReferenceScripts: config.referenceScripts.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            } as const;
-            if (input.stage === "step_01") {
-              await submitReferenceInputNoIdxStep01(common);
-            } else {
-              await submitReferenceInputNoIdxStep03(common);
-            }
-          },
-        ),
+        transaction: (
+          await journaledStepTransaction(
+            await (async () => {
+              const common = {
+                lucid: config.lucid,
+                blueprint: config.blueprint,
+                deploymentInfo: config.deploymentInfo,
+                network: config.network,
+                signer: config.signer,
+                threadOutRef: stringField(input, "threadOutRef"),
+                stateQueueBlockOutRef: stringField(
+                  input,
+                  "stateQueueBlockOutRef",
+                ),
+                txInclusion: inclusion,
+                publishedProofChunks: chunks,
+                referenceScriptUtxo: config.referenceScripts.steps[stepIndex],
+                witnessReferenceScripts: config.referenceScripts.witnesses,
+              } as const;
+              if (input.stage === "step_01") {
+                return await buildReferenceInputNoIdxStep01(common);
+              } else {
+                return await buildReferenceInputNoIdxStep03(common);
+              }
+            })(),
+            `reference-input-no-idx ${input.stage}`,
+          )
+        ).transaction,
       });
     }
     if (input.stage === "step_02" || input.stage === "step_04") {
@@ -272,44 +255,45 @@ export const createTransactionPort = (
           : admitted.outputFieldPlan;
       const carriage = await resolveField(config, plan, ownOutputs);
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            const common = {
-              lucid: config.lucid,
-              blueprint: config.blueprint,
-              deploymentInfo: config.deploymentInfo,
-              network: config.network,
-              signer: config.signer,
-              threadOutRef: stringField(input, "threadOutRef"),
-              publishedCarriageUtxos: carriage.publications,
-              ...(carriage.certificate === undefined
-                ? {}
-                : { certificateUtxo: carriage.certificate }),
-              referenceScriptUtxo: config.referenceScripts.steps[stepIndex],
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            } as const;
-            if (input.stage === "step_02") {
-              await submitReferenceInputNoIdxStep02({
-                ownOutputs,
-                ...common,
-                referenceInputsPreimage: admitted.referenceInputs,
-                nativeTxCompactCbor:
-                  admitted.artifact.badTx.nativeTxCompactCbor,
-              });
-            } else {
-              await submitReferenceInputNoIdxStep04({
-                ownOutputs,
-                ...common,
-                outputsPreimage: admitted.outputs,
-                nativeTxCompactCbor:
-                  admitted.artifact.producingTx.nativeTxCompactCbor,
-                witnessReferenceScripts: config.referenceScripts.witnesses,
-                fieldGrammar: config.fieldGrammar,
-              });
-            }
-          },
-        ),
+        transaction: (
+          await journaledStepTransaction(
+            await (async () => {
+              const common = {
+                lucid: config.lucid,
+                blueprint: config.blueprint,
+                deploymentInfo: config.deploymentInfo,
+                network: config.network,
+                signer: config.signer,
+                threadOutRef: stringField(input, "threadOutRef"),
+                publishedCarriageUtxos: carriage.publications,
+                ...(carriage.certificate === undefined
+                  ? {}
+                  : { certificateUtxo: carriage.certificate }),
+                referenceScriptUtxo: config.referenceScripts.steps[stepIndex],
+              } as const;
+              if (input.stage === "step_02") {
+                return await buildReferenceInputNoIdxStep02({
+                  ownOutputs,
+                  ...common,
+                  referenceInputsPreimage: admitted.referenceInputs,
+                  nativeTxCompactCbor:
+                    admitted.artifact.badTx.nativeTxCompactCbor,
+                });
+              } else {
+                return await buildReferenceInputNoIdxStep04({
+                  ownOutputs,
+                  ...common,
+                  outputsPreimage: admitted.outputs,
+                  nativeTxCompactCbor:
+                    admitted.artifact.producingTx.nativeTxCompactCbor,
+                  witnessReferenceScripts: config.referenceScripts.witnesses,
+                  fieldGrammar: config.fieldGrammar,
+                });
+              }
+            })(),
+            `reference-input-no-idx ${input.stage}`,
+          )
+        ).transaction,
       });
     }
     if (input.stage === "remove") {

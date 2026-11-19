@@ -1,5 +1,6 @@
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
+import { isPrerequisiteTurn } from "../fault-proof-turn.js";
 import {
   type FaultProofFieldGrammarDeployment,
   routeFaultProofFieldGrammar,
@@ -22,7 +23,6 @@ import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { ProtectedOutputSignerMissingContracts } from "./contracts.js";
 import { actuateProtectedOutputSignerFieldOpening } from "./field-opening-actuation.js";
 import { planProtectedOutputSignerOutputOpening } from "./field-plans.js";
@@ -34,9 +34,9 @@ import {
   ProtectedOutputSignerStep02DatumSchema,
   ProtectedOutputSignerStep02RedeemerSchema,
 } from "./schemas.js";
-import { submitProtectedOutputSignerOpeningTransition } from "./submit-opening-transition.js";
+import { buildProtectedOutputSignerOpeningTransition } from "./submit-opening-transition.js";
 
-export const submitProtectedOutputSignerMissingStep02 = async ({
+export const buildProtectedOutputSignerMissingStep02 = async ({
   lucid,
   contracts,
   categoryId,
@@ -47,11 +47,7 @@ export const submitProtectedOutputSignerMissingStep02 = async ({
   witnessSetCompactCbor,
   referenceScriptUtxo,
   certificateReferenceScriptUtxo,
-  publicationBoundary,
-  certificateBoundary,
   fieldGrammar,
-  preSubmitBoundary,
-  awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
@@ -64,12 +60,8 @@ export const submitProtectedOutputSignerMissingStep02 = async ({
   readonly witnessSetCompactCbor: string;
   readonly referenceScriptUtxo: UTxO;
   readonly certificateReferenceScriptUtxo: UTxO;
-  readonly publicationBoundary?: FraudProofPreSubmitBoundary;
-  readonly certificateBoundary?: FraudProofPreSubmitBoundary;
   /** The field grammar certificate, for an outputs field the walk cannot read. */
   readonly fieldGrammar?: FaultProofFieldGrammarDeployment;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
 }) => {
@@ -119,10 +111,9 @@ export const submitProtectedOutputSignerMissingStep02 = async ({
     witnessSetCompactCbor,
     stepReference,
     certificateReferenceScriptUtxo,
-    publicationBoundary,
-    certificateBoundary,
     label: "protected-output-signer-missing outputs",
   });
+  if (isPrerequisiteTurn(actuated)) return actuated;
   const coordinateOutOfRange = evidence.route === "coordinate_out_of_range";
   // The out-of-range arm reads the field's item count; every other arm reads
   // the bound output.
@@ -178,7 +169,7 @@ export const submitProtectedOutputSignerMissingStep02 = async ({
         } as never,
         SignerWitnessTerminalDatumSchema as never,
       );
-  const result = await submitProtectedOutputSignerOpeningTransition({
+  const result = await buildProtectedOutputSignerOpeningTransition({
     lucid,
     contracts,
     categoryId,
@@ -198,8 +189,6 @@ export const submitProtectedOutputSignerMissingStep02 = async ({
       ...grammar.referenceInputs,
     ],
     redeemerSchema: ProtectedOutputSignerStep02RedeemerSchema as never,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   return {
     ...result,

@@ -31,7 +31,6 @@ import {
   type PublishedProofChunk,
 } from "./proof-chunk-carriage.js";
 import {
-  DEFAULT_CONFIRMATION_POLL_MS,
   encodeRawPhasMembershipProofRedeemer,
   fetchUtxoByOutRef,
   getCompiledScript,
@@ -43,6 +42,7 @@ import {
   resolveFraudulentHeaderHash,
   resolveZeroInputDeploymentContracts,
 } from "./runtime.js";
+import { finishStep } from "./step-completion.js";
 import {
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
   requireComputationThreadToken,
@@ -50,23 +50,17 @@ import {
   requireNativeTxMatchesCompactCbor,
   type SubmitStep01TxInclusion,
 } from "./step-support.js";
-import {
-  type SubmitZeroInputStep01Result,
-  type ZeroInputStep01Layout,
-} from "./submit-zero-input-step-01.types.js";
+import type { ZeroInputStep01Build } from "./submit-zero-input-step-01.types.js";
+import { type ZeroInputStep01Layout } from "./submit-zero-input-step-01.types.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessSpendingValidatorCarriage,
   witnessWithdrawalValidatorCarriage,
 } from "./witness-reference-scripts.js";
-import {
-  type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
-} from "./workflow/transaction-boundary.js";
+import { workflowReferenceScriptsUsedByTransaction } from "./workflow/transaction-boundary.js";
 
-export const submitZeroInputStep01 = async ({
+export const buildZeroInputStep01 = async ({
   lucid,
   blueprint,
   deploymentInfo,
@@ -78,8 +72,6 @@ export const submitZeroInputStep01 = async ({
   publishedProofChunks,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -99,9 +91,7 @@ export const submitZeroInputStep01 = async ({
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitZeroInputStep01Result> => {
+}): Promise<ZeroInputStep01Build> => {
   const resolvedDeployment = await resolveZeroInputDeploymentContracts({
     blueprint,
     deploymentInfo,
@@ -356,8 +346,7 @@ export const submitZeroInputStep01 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const transaction = finishStep(signed, {
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
@@ -378,20 +367,11 @@ export const submitZeroInputStep01 = async ({
         },
       ],
     }),
-    boundary: preSubmitBoundary,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw new Error(
-      `zero-input step 01 provider returned ${txHash}, expected ${expectedTxHash}`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
+  const { txHash } = transaction;
 
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
@@ -414,6 +394,5 @@ export const submitZeroInputStep01 = async ({
     ),
     proofCarriage: carriedByChunks ? "published-chunks" : "redeemer",
     publishedChunkOutRefs: chunks.map((chunk) => chunk.outRef),
-    awaitedConfirmation: awaitConfirmation,
   };
 };

@@ -4,9 +4,9 @@ import { MIDGARD_ENVELOPE_VERDICT_MISSING_ITEM_HEADER } from "@al-ft/midgard-sdk
 import { describe, expect, it } from "vitest";
 
 import {
-  submitCanonicalDecodabilityInit,
-  submitCanonicalDecodabilityStep01,
-  submitCanonicalDecodabilityStep02,
+  buildCanonicalDecodabilityInit,
+  buildCanonicalDecodabilityStep01,
+  buildCanonicalDecodabilityStep02,
 } from "../src/index.js";
 import {
   buildCanonicalDecodabilityWitnessFixture,
@@ -18,6 +18,7 @@ import {
 } from "./support/canonical-decodability-emulator.js";
 import { expectOnchainRefusal } from "./support/native-script-decoding-emulator.js";
 import { expectSingleUtxoWithUnit } from "./support/submit-init-emulator-shared.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 describe("canonical-decodability witness-field lifecycle", () => {
   it("opens field 6 through its committed witness set and mints", async () => {
@@ -49,22 +50,25 @@ describe("canonical-decodability witness-field lifecycle", () => {
       harness,
       fixture,
     });
-    const init = await submitCanonicalDecodabilityInit({
-      lucid: proverLucid,
-      blueprint: realBlueprint,
-      network,
-      contracts: canonicalDecodability,
-      category,
-      catalogue: {
-        policyId: contracts.fraudProofCatalogue.policyId,
-        spendingScriptAddress:
-          contracts.fraudProofCatalogue.spendingScriptAddress,
-        root: catalogue.root,
+    const init = await buildAndSubmitUnjournaled(
+      buildCanonicalDecodabilityInit,
+      {
+        lucid: proverLucid,
+        blueprint: realBlueprint,
+        network,
+        contracts: canonicalDecodability,
+        category,
+        catalogue: {
+          policyId: contracts.fraudProofCatalogue.policyId,
+          spendingScriptAddress:
+            contracts.fraudProofCatalogue.spendingScriptAddress,
+          root: catalogue.root,
+        },
+        signer: proverSigner,
+        fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+        witnessReferenceScripts,
       },
-      signer: proverSigner,
-      fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
-      witnessReferenceScripts,
-    });
+    );
     const firstStep = await expectSingleUtxoWithUnit(
       proverLucid,
       init.firstStepAddress,
@@ -102,36 +106,42 @@ describe("canonical-decodability witness-field lifecycle", () => {
         ),
       ),
     ).toBe(outRefLabel(firstStep));
-    const step01 = await submitCanonicalDecodabilityStep01({
-      lucid: proverLucid,
-      blueprint: realBlueprint,
-      contracts: canonicalDecodability,
-      categoryId: category.categoryId,
-      network,
-      signer: proverSigner,
-      threadOutRef: outRefLabel(firstStep),
-      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-      txInclusion: fixture.txInclusion,
-      fieldIndex: fixture.fieldIndex,
-      committedPreimage: fixture.committedPreimage,
-      witnessSet: fixture.witnessSet,
-      referenceScriptUtxo: step01Ref,
-      witnessReferenceScripts,
-    });
+    const step01 = await buildAndSubmitUnjournaled(
+      buildCanonicalDecodabilityStep01,
+      {
+        lucid: proverLucid,
+        blueprint: realBlueprint,
+        contracts: canonicalDecodability,
+        categoryId: category.categoryId,
+        network,
+        signer: proverSigner,
+        threadOutRef: outRefLabel(firstStep),
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+        txInclusion: fixture.txInclusion,
+        fieldIndex: fixture.fieldIndex,
+        committedPreimage: fixture.committedPreimage,
+        witnessSet: fixture.witnessSet,
+        referenceScriptUtxo: step01Ref,
+        witnessReferenceScripts,
+      },
+    );
     const secondStep = await expectSingleUtxoWithUnit(
       proverLucid,
       step01.nextStepAddress,
       init.computationThreadUnit,
     );
-    const step02 = await submitCanonicalDecodabilityStep02({
-      lucid: proverLucid,
-      contracts: canonicalDecodability,
-      categoryId: category.categoryId,
-      signer: proverSigner,
-      threadOutRef: outRefLabel(secondStep),
-      referenceScriptUtxo: step02Ref,
-      witnessReferenceScripts,
-    });
+    const step02 = await buildAndSubmitUnjournaled(
+      buildCanonicalDecodabilityStep02,
+      {
+        lucid: proverLucid,
+        contracts: canonicalDecodability,
+        categoryId: category.categoryId,
+        signer: proverSigner,
+        threadOutRef: outRefLabel(secondStep),
+        referenceScriptUtxo: step02Ref,
+        witnessReferenceScripts,
+      },
+    );
     expect(step02.state).toEqual(prepared.step02State);
     await expectSingleUtxoWithUnit(
       proverLucid,

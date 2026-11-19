@@ -19,7 +19,7 @@ import {
   type PreparedNoReferenceInputWrongfulRejection,
 } from "../src/no-reference-input/wrongful-rejection.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
-import { submitInit } from "../src/submit-init.js";
+import { buildInit } from "../src/submit-init.js";
 import {
   buildCountedRoot,
   keyValuePhasProof,
@@ -40,6 +40,7 @@ import {
   publishPlainReferenceScriptUtxo,
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 /**
  * A forced InputNotFound reason names a reference input by source kind 1 and
@@ -258,7 +259,7 @@ const setupScenario = async (inputIndex: bigint) => {
     prepared,
   };
   const init = async () => {
-    const result = await submitInit({
+    const result = await buildAndSubmitUnjournaled(buildInit, {
       lucid: harness.proverLucid,
       witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: harness.realBlueprint,
@@ -272,7 +273,7 @@ const setupScenario = async (inputIndex: bigint) => {
     return `${result.txHash}#${result.firstStepOutputIndex}`;
   };
   const step = (threadOutRef: string, stepIndex: 0 | 1 | 2 | 3) =>
-    submitNoReferenceInputForcedStep({
+    buildAndSubmitUnjournaled(submitNoReferenceInputForcedStep, {
       blueprint: harness.realBlueprint,
       network: "Custom",
       witnessReferenceScripts: harness.witnessReferenceScripts,

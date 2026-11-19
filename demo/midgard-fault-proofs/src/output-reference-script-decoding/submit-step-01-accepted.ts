@@ -5,11 +5,10 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { submitNativeTxBinding } from "../native-tx-binding.js";
+import { buildNativeTxBinding } from "../native-tx-binding.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { SubmitStep01TxInclusion } from "../step-support.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { OutputReferenceScriptDecodingContracts } from "./contracts.js";
 import {
   classifyOutputReferenceScriptDecodingFinding,
@@ -21,7 +20,7 @@ import {
   OutputReferenceStep02DatumSchema,
 } from "./schemas.js";
 
-export const submitOutputReferenceScriptDecodingStep01Accepted = async ({
+export const buildOutputReferenceScriptDecodingStep01Accepted = async ({
   lucid,
   blueprint,
   network,
@@ -34,8 +33,6 @@ export const submitOutputReferenceScriptDecodingStep01Accepted = async ({
   txInclusion,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -52,8 +49,6 @@ export const submitOutputReferenceScriptDecodingStep01Accepted = async ({
   readonly txInclusion: SubmitStep01TxInclusion;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   classifyOutputReferenceScriptDecodingFinding(finding);
   const nextDatum = Data.to(
@@ -67,7 +62,7 @@ export const submitOutputReferenceScriptDecodingStep01Accepted = async ({
     } as never,
     OutputReferenceStep02DatumSchema as never,
   );
-  return await submitNativeTxBinding({
+  return await buildNativeTxBinding({
     lucid,
     blueprint,
     network,
@@ -90,7 +85,5 @@ export const submitOutputReferenceScriptDecodingStep01Accepted = async ({
     }),
     referenceScriptUtxo,
     witnessReferenceScripts,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
 };

@@ -62,7 +62,6 @@ import { Data, getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
 import { faultProofFieldCarriage } from "../src/field-opening.js";
 import { createMintDeclaredAssetLimitActuator } from "../src/mint-declared-asset-limit/actuator.js";
 import { buildMintDeclaredAssetLimitArtifact } from "../src/mint-declared-asset-limit/artifact.js";
@@ -84,26 +83,11 @@ import {
   planMintDeclaredAssetLimitStagedWalk,
 } from "../src/mint-declared-asset-limit/staged-plan.js";
 import {
-  submitMintDeclaredAssetLimitStep01Accepted,
-  submitMintDeclaredAssetLimitStep01Forced,
-  submitMintDeclaredAssetLimitStep01ForcedRaw,
-} from "../src/mint-declared-asset-limit/submit-step-01.js";
-import {
   mintDeclaredStep02WirePlan,
   planMintDeclaredFieldOpening,
   resolveMintDeclaredFieldCarriage,
-  submitMintDeclaredAssetLimitStep02,
-  submitMintDeclaredAssetLimitStep02Raw,
 } from "../src/mint-declared-asset-limit/submit-step-02.js";
-import {
-  mintDeclaredFoldSnapshotData,
-  submitMintDeclaredAssetLimitStep03,
-  submitMintDeclaredAssetLimitStep03Raw,
-} from "../src/mint-declared-asset-limit/submit-step-03.js";
-import {
-  submitMintDeclaredAssetLimitStep04,
-  submitMintDeclaredAssetLimitStep04Raw,
-} from "../src/mint-declared-asset-limit/submit-step-04.js";
+import { mintDeclaredFoldSnapshotData } from "../src/mint-declared-asset-limit/submit-step-03.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
@@ -141,6 +125,18 @@ import {
   setupFraudulentBlock,
 } from "./support/submit-init-emulator-fixtures.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
+import {
+  submitCommittedFieldShapeInit,
+  submitMintDeclaredAssetLimitStep01Accepted,
+  submitMintDeclaredAssetLimitStep01Forced,
+  submitMintDeclaredAssetLimitStep01ForcedRaw,
+  submitMintDeclaredAssetLimitStep02,
+  submitMintDeclaredAssetLimitStep02Raw,
+  submitMintDeclaredAssetLimitStep03,
+  submitMintDeclaredAssetLimitStep03Raw,
+  submitMintDeclaredAssetLimitStep04,
+  submitMintDeclaredAssetLimitStep04Raw,
+} from "./support/submit-unjournaled.mint-declared-asset-limit.js";
 
 const measureSubmissions =
   (

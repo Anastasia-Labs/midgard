@@ -19,6 +19,10 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  type FaultProofTurn,
+  isPrerequisiteTurn,
+} from "../fault-proof-turn.js";
+import {
   type FaultProofFieldGrammarDeployment,
   routeFaultProofFieldGrammar,
   WALKED_FIELD_GRAMMAR_ROUTE,
@@ -29,7 +33,8 @@ import {
   publishFaultProofFieldCarriage,
 } from "../field-opening.js";
 import { type ResolvedProverSigner } from "../runtime.js";
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
@@ -39,10 +44,7 @@ import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
-import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScript,
-} from "../workflow/transaction-boundary.js";
+import { workflowReferenceScript } from "../workflow/transaction-boundary.js";
 import { isAcceptedForcedPrepared } from "./accepted-forced.js";
 import type { NetworkIdContracts } from "./contracts.js";
 import type { PreparedNetworkIdProof } from "./prepare.js";
@@ -52,17 +54,17 @@ import {
   requireNetworkIdStepState,
   requireNetworkIdThreadUtxo,
 } from "./submit-common.js";
+import type { NetworkIdStep02Build } from "./submit-network-id-step-02.same-fault.js";
 import {
   isForcedPrepared,
   type PreparedNetworkIdFinalProof,
   sameFault,
   STEP_LABEL,
-  type SubmitNetworkIdStep02Result,
   uniqueUtxos,
 } from "./submit-network-id-step-02.same-fault.js";
 import { networkIdWrongfulRejectionCloses } from "./wrongful-rejection.js";
 
-export const submitNetworkIdStep02 = async ({
+export const buildNetworkIdStep02 = async ({
   lucid,
   contracts,
   categoryId,
@@ -75,8 +77,6 @@ export const submitNetworkIdStep02 = async ({
   certificateUtxos = [],
   fieldGrammar,
   witnessSetCompactCbor = "",
-  preSubmitBoundary,
-  awaitConfirmation = true,
   unsafeSkipLocalViolationCheckForTest = false,
   ownOutputs = createOwnOutputJournal(),
 }: {
@@ -101,13 +101,11 @@ export const submitNetworkIdStep02 = async ({
    * against the whole compact transaction, so a certified read needs it.
    */
   readonly witnessSetCompactCbor?: string;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
   /** Test-only: make an honest body-network claim reach the validator. */
   readonly unsafeSkipLocalViolationCheckForTest?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
-}): Promise<SubmitNetworkIdStep02Result> => {
+}): Promise<FaultProofTurn<NetworkIdStep02Build>> => {
   const { threadUtxo, threadToken } = await requireNetworkIdThreadUtxo({
     lucid,
     contracts,
@@ -224,8 +222,8 @@ export const submitNetworkIdStep02 = async ({
           planned,
           publisherAddress: signer.proofMaterialsAddress,
           label: `${STEP_LABEL} outputs`,
-          preSubmitBoundary,
         });
+  if (isPrerequisiteTurn(published)) return published;
   const grammar =
     planned === undefined
       ? WALKED_FIELD_GRAMMAR_ROUTE
@@ -394,8 +392,7 @@ export const submitNetworkIdStep02 = async ({
   ) {
     throw networkIdSubmitError("step-02 transaction layout was not resolved");
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: "network-id step-02",
+  const transaction = finishStep(signed, {
     referenceScripts: [
       workflowReferenceScript({
         role: "V1 fraud-proof network-id step-02",
@@ -413,16 +410,14 @@ export const submitNetworkIdStep02 = async ({
         expectedScript: contracts.fraudProof.mintingScript,
       }),
     ],
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
   });
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
     threadOutRef,
-    fraudProofOutRef: `${txHash}#${spendLayout.outputIndex.toString()}`,
+    fraudProofOutRef: `${transaction.txHash}#${spendLayout.outputIndex.toString()}`,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadUnit: threadToken.unit,
     fraudProofUnit,
@@ -437,6 +432,5 @@ export const submitNetworkIdStep02 = async ({
     fraudProofMintRedeemerIndex: Number(
       spendLayout.fraudProofMintRedeemerIndex,
     ),
-    awaitedConfirmation: awaitConfirmation,
   };
 };

@@ -18,18 +18,18 @@ import type { ManifestBoundFamilyWorkflow } from "../workflow/family-definition.
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
 import { workflowConfirmedTransactions } from "../workflow/own-outputs.js";
-import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
-import { submitNativeScriptInvalidInit } from "./submit-init.js";
-import { submitNativeScriptInvalidStep01 } from "./submit-step-01.js";
-import { submitNativeScriptInvalidStep01Forced } from "./submit-step-01-forced.js";
-import { submitNativeScriptInvalidStep02 } from "./submit-step-02.js";
+import { journaledStepTransaction } from "../workflow/step-transaction.js";
+import { buildNativeScriptInvalidInit } from "./submit-init.js";
+import { buildNativeScriptInvalidStep01 } from "./submit-step-01.js";
+import { buildNativeScriptInvalidStep01Forced } from "./submit-step-01-forced.js";
+import { buildNativeScriptInvalidStep02 } from "./submit-step-02.js";
 import {
-  submitNativeScriptInvalidStep03,
-  submitNativeScriptInvalidStep03AbsentFinalize,
+  buildNativeScriptInvalidStep03,
+  buildNativeScriptInvalidStep03AbsentFinalize,
 } from "./submit-step-03.js";
-import { submitNativeScriptInvalidStep03StartSignerScan } from "./submit-step-03-staged.js";
-import { submitNativeScriptInvalidStep04 } from "./submit-step-04.js";
-import { submitNativeScriptInvalidStep05 } from "./submit-step-05.js";
+import { buildNativeScriptInvalidStep03StartSignerScan } from "./submit-step-03-staged.js";
+import { buildNativeScriptInvalidStep04 } from "./submit-step-04.js";
+import { buildNativeScriptInvalidStep05 } from "./submit-step-05.js";
 import {
   type BoundConfig,
   buffers,
@@ -84,9 +84,9 @@ export const transactionPort = (
     } as const;
     if (stage === "init") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitNativeScriptInvalidInit({
+        transaction: (
+          await journaledStepTransaction(
+            await buildNativeScriptInvalidInit({
               lucid: config.lucid,
               blueprint: config.binding.blueprint,
               deploymentInfo: config.binding.deploymentInfo,
@@ -98,28 +98,27 @@ export const transactionPort = (
               ),
               fraudulentHeaderHash: admitted.artifact.headerHash,
               witnessReferenceScripts: config.references.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "native-script-invalid buildNativeScriptInvalidInit",
+          )
+        ).transaction,
       });
     }
     if (stage === "step_01" && admitted.forced !== undefined) {
       const forced = admitted.forced;
       return {
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitNativeScriptInvalidStep01Forced({
+        transaction: (
+          await journaledStepTransaction(
+            await buildNativeScriptInvalidStep01Forced({
               ...common,
               threadOutRef: threadOutRef(),
               state: forced.evidence.state,
               forcedSource: forced.forcedSource,
               referenceScriptUtxo: config.references.steps[0],
-              preSubmitBoundary,
-            });
-          },
-        ),
+            }),
+            "native-script-invalid buildNativeScriptInvalidStep01Forced",
+          )
+        ).transaction,
       };
     }
     if (stage === "step_01") {
@@ -136,9 +135,9 @@ export const transactionPort = (
         throw new Error("native-script-invalid transaction proof disappeared");
       }
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitNativeScriptInvalidStep01({
+        transaction: (
+          await journaledStepTransaction(
+            await buildNativeScriptInvalidStep01({
               lucid: config.lucid,
               blueprint: config.binding.blueprint,
               network: config.binding.network,
@@ -153,11 +152,10 @@ export const transactionPort = (
               txInclusion: parseSubmitStep01TxInclusion(txInclusion),
               referenceScriptUtxo: config.references.steps[0],
               witnessReferenceScripts: config.references.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "native-script-invalid buildNativeScriptInvalidStep01",
+          )
+        ).transaction,
       });
     }
     if (stage === "step_02") {
@@ -167,9 +165,9 @@ export const transactionPort = (
         plan: scriptFieldPlan(admitted, config.signer.paymentKeyHash),
       });
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitNativeScriptInvalidStep02({
+        transaction: (
+          await journaledStepTransaction(
+            await buildNativeScriptInvalidStep02({
               ownOutputs,
               ...common,
               threadOutRef: threadOutRef(),
@@ -182,19 +180,19 @@ export const transactionPort = (
                 ? {}
                 : { certificateUtxo: carriage.certificate }),
               referenceScriptUtxo: config.references.steps[1],
-              preSubmitBoundary,
-            });
-          },
-        ),
+            }),
+            "native-script-invalid buildNativeScriptInvalidStep02",
+          )
+        ).transaction,
       });
     }
     // A position field 6 lacks closed at step 02 with no script selected;
     // step 03 finalizes it without evaluating one.
     if (stage === "step_03" && admitted.prepared.scriptItemCbor === "")
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitNativeScriptInvalidStep03AbsentFinalize({
+        transaction: (
+          await journaledStepTransaction(
+            await buildNativeScriptInvalidStep03AbsentFinalize({
               lucid: config.lucid,
               contracts: config.contracts,
               categoryId,
@@ -202,11 +200,10 @@ export const transactionPort = (
               threadOutRef: threadOutRef(),
               referenceScriptUtxo: config.references.steps[2],
               witnessReferenceScripts: config.references.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "native-script-invalid buildNativeScriptInvalidStep03AbsentFinalize",
+          )
+        ).transaction,
       });
     if (stage === "step_03") {
       const carriage = await resolveField({
@@ -216,42 +213,47 @@ export const transactionPort = (
       });
       const direct = isDirect(admitted);
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            const args = {
-              ...common,
-              threadOutRef: threadOutRef(),
-              scriptItemCbor: Buffer.from(
-                admitted.prepared.scriptItemCbor,
-                "hex",
-              ),
-              addressWitnessItems: buffers(
-                admitted.prepared.addrWitnessItemCbors,
-              ),
-              publishedCarriageUtxos: carriage.publications,
-              ...(carriage.certificate === undefined
-                ? {}
-                : { certificateUtxo: carriage.certificate }),
-              referenceScriptUtxo: config.references.steps[2],
-              preSubmitBoundary,
-              ownOutputs,
-            } as const;
-            if (direct) {
-              await submitNativeScriptInvalidStep03({
-                ...args,
-                addressWitnessVerificationKeys:
-                  admitted.prepared.addrWitnessItemCbors.map(
-                    (item) =>
-                      decodeMidgardAddressWitnessItem(Buffer.from(item, "hex"))
-                        .verificationKey,
-                  ),
-                witnessReferenceScripts: config.references.witnesses,
-              });
-            } else {
-              await submitNativeScriptInvalidStep03StartSignerScan(args);
-            }
-          },
-        ),
+        transaction: (
+          await journaledStepTransaction(
+            await (async () => {
+              const args = {
+                ...common,
+                threadOutRef: threadOutRef(),
+                scriptItemCbor: Buffer.from(
+                  admitted.prepared.scriptItemCbor,
+                  "hex",
+                ),
+                addressWitnessItems: buffers(
+                  admitted.prepared.addrWitnessItemCbors,
+                ),
+                publishedCarriageUtxos: carriage.publications,
+                ...(carriage.certificate === undefined
+                  ? {}
+                  : { certificateUtxo: carriage.certificate }),
+                referenceScriptUtxo: config.references.steps[2],
+                ownOutputs,
+              } as const;
+              if (direct) {
+                return await buildNativeScriptInvalidStep03({
+                  ...args,
+                  addressWitnessVerificationKeys:
+                    admitted.prepared.addrWitnessItemCbors.map(
+                      (item) =>
+                        decodeMidgardAddressWitnessItem(
+                          Buffer.from(item, "hex"),
+                        ).verificationKey,
+                    ),
+                  witnessReferenceScripts: config.references.witnesses,
+                });
+              } else {
+                return await buildNativeScriptInvalidStep03StartSignerScan(
+                  args,
+                );
+              }
+            })(),
+            "native-script-invalid step_03",
+          )
+        ).transaction,
       });
     }
     if (stage === "step_04") {
@@ -261,9 +263,9 @@ export const transactionPort = (
         plan: signerFieldPlan(admitted, config.signer.paymentKeyHash),
       });
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitNativeScriptInvalidStep04({
+        transaction: (
+          await journaledStepTransaction(
+            await buildNativeScriptInvalidStep04({
               ownOutputs,
               ...common,
               threadOutRef: threadOutRef(),
@@ -275,17 +277,17 @@ export const transactionPort = (
                 ? {}
                 : { certificateUtxo: carriage.certificate }),
               referenceScriptUtxo: config.references.steps[3],
-              preSubmitBoundary,
-            });
-          },
-        ),
+            }),
+            "native-script-invalid buildNativeScriptInvalidStep04",
+          )
+        ).transaction,
       });
     }
     if (stage === "step_05") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitNativeScriptInvalidStep05({
+        transaction: (
+          await journaledStepTransaction(
+            await buildNativeScriptInvalidStep05({
               lucid: config.lucid,
               contracts: config.contracts,
               categoryId,
@@ -300,11 +302,10 @@ export const transactionPort = (
               ),
               referenceScriptUtxo: config.references.steps[4],
               witnessReferenceScripts: config.references.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "native-script-invalid buildNativeScriptInvalidStep05",
+          )
+        ).transaction,
       });
     }
     if (stage === "remove") {

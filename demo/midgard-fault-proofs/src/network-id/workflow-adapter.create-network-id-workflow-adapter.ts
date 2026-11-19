@@ -7,6 +7,7 @@ import {
 import { Data, toUnit, type UTxO } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { isPrerequisiteTurn } from "../fault-proof-turn.js";
 import {
   certifyFaultProofFieldCarriage,
   type FaultProofFieldOpeningPlan,
@@ -15,11 +16,8 @@ import {
   resolveFaultProofFieldCarriagePublications,
   resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening.js";
-import type {
-  StateQueueMutationLease,
-  StateQueueMutationLeaseCoordinator,
-} from "../remove-fraudulent-block.js";
-import { submitRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
+import type { StateQueueMutationLease } from "../remove-fraudulent-block.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import { NETWORK_ID_FORCED_SCAN_DEPLOYMENT_ENTRY } from "../runtime.js";
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
 import {
@@ -43,11 +41,11 @@ import {
   createOwnOutputJournal,
   workflowConfirmedTransactions,
 } from "../workflow/own-outputs.js";
+import { admitRemovalTransaction } from "../workflow/removal-admission.js";
 import { reconcileSignedWorkflowTransaction } from "../workflow/signed-transaction-reconciliation.js";
+import { journaledStepTransaction } from "../workflow/step-transaction.js";
 import {
   bindWorkflowPreflightTransaction,
-  captureLocallyEvaluatedTransaction,
-  type FraudProofPreSubmitBoundary,
   LOCAL_UPLC_EVALUATOR,
   type LocallyEvaluatedTransaction,
   requireReferenceOnlyScriptWitnesses,
@@ -66,13 +64,13 @@ import {
   planNetworkIdOutputsOpening,
   type PreparedNetworkIdProof,
 } from "./prepare.js";
-import { submitNetworkIdAcceptedForcedBind } from "./submit-network-id-accepted-forced-bind.js";
-import { submitNetworkIdForcedBind } from "./submit-network-id-forced-bind.js";
-import { submitNetworkIdForcedScanAction } from "./submit-network-id-forced-scan.js";
-import { submitNetworkIdForcedStep01 } from "./submit-network-id-forced-step-01.js";
-import { submitNetworkIdInit } from "./submit-network-id-init.js";
-import { submitNetworkIdStep01 } from "./submit-network-id-step-01.js";
-import { submitNetworkIdStep02 } from "./submit-network-id-step-02.js";
+import { buildNetworkIdAcceptedForcedBind } from "./submit-network-id-accepted-forced-bind.js";
+import { buildNetworkIdForcedBind } from "./submit-network-id-forced-bind.js";
+import { buildNetworkIdForcedScanAction } from "./submit-network-id-forced-scan.js";
+import { buildNetworkIdForcedStep01 } from "./submit-network-id-forced-step-01.js";
+import { buildNetworkIdInit } from "./submit-network-id-init.js";
+import { buildNetworkIdStep01 } from "./submit-network-id-step-01.js";
+import { buildNetworkIdStep02 } from "./submit-network-id-step-02.js";
 import {
   admitNetworkIdWorkflowArtifact,
   type AdmittedNetworkIdArtifact,
@@ -688,27 +686,27 @@ export const createNetworkIdWorkflowAdapter = (
       const prepared = admitted.prepared;
       const kind = actionKind(context.action);
       let mutationLease: StateQueueMutationLease | undefined;
-      const boundaryInvocation = async (
-        boundary: FraudProofPreSubmitBoundary,
-      ) => {
+      const buildAction = async (): Promise<LocallyEvaluatedTransaction> => {
         if (kind === "init") {
-          await submitNetworkIdInit({
-            lucid: config.lucid,
-            blueprint: config.blueprint,
-            network: config.network,
-            contracts: config.contracts,
-            category: config.category,
-            catalogue: config.catalogue,
-            signer: config.signer,
-            fraudulentBlockOutRef: requireString(
-              context.action.input.fraudulentBlockOutRef,
-              "init block out-ref",
-            ),
-            witnessReferenceScripts: config.witnessReferenceScripts,
-            preSubmitBoundary: boundary,
-            awaitConfirmation: false,
-          });
-          return;
+          return (
+            await journaledStepTransaction(
+              await buildNetworkIdInit({
+                lucid: config.lucid,
+                blueprint: config.blueprint,
+                network: config.network,
+                contracts: config.contracts,
+                category: config.category,
+                catalogue: config.catalogue,
+                signer: config.signer,
+                fraudulentBlockOutRef: requireString(
+                  context.action.input.fraudulentBlockOutRef,
+                  "init block out-ref",
+                ),
+                witnessReferenceScripts: config.witnessReferenceScripts,
+              }),
+              "network-id init",
+            )
+          ).transaction;
         }
         if (kind === "step01") {
           if (admitted.direction !== "accepted") {
@@ -716,28 +714,30 @@ export const createNetworkIdWorkflowAdapter = (
               "network-id forced artifact cannot enter the accepted step-01",
             );
           }
-          await submitNetworkIdStep01({
-            lucid: config.lucid,
-            blueprint: config.blueprint,
-            contracts: config.contracts,
-            categoryId: config.category.categoryId,
-            network: config.network,
-            signer: config.signer,
-            threadOutRef: requireString(
-              context.action.input.threadOutRef,
-              "step-01 thread out-ref",
-            ),
-            stateQueueBlockOutRef: requireString(
-              context.action.input.stateQueueBlockOutRef,
-              "step-01 state-queue out-ref",
-            ),
-            prepared: admitted.prepared,
-            referenceScriptUtxo: config.stepReferenceScripts[0],
-            witnessReferenceScripts: config.witnessReferenceScripts,
-            preSubmitBoundary: boundary,
-            awaitConfirmation: false,
-          });
-          return;
+          return (
+            await journaledStepTransaction(
+              await buildNetworkIdStep01({
+                lucid: config.lucid,
+                blueprint: config.blueprint,
+                contracts: config.contracts,
+                categoryId: config.category.categoryId,
+                network: config.network,
+                signer: config.signer,
+                threadOutRef: requireString(
+                  context.action.input.threadOutRef,
+                  "step-01 thread out-ref",
+                ),
+                stateQueueBlockOutRef: requireString(
+                  context.action.input.stateQueueBlockOutRef,
+                  "step-01 state-queue out-ref",
+                ),
+                prepared: admitted.prepared,
+                referenceScriptUtxo: config.stepReferenceScripts[0],
+                witnessReferenceScripts: config.witnessReferenceScripts,
+              }),
+              "network-id step01",
+            )
+          ).transaction;
         }
         if (kind === "forced_step01") {
           if (admitted.direction === "accepted") {
@@ -746,21 +746,23 @@ export const createNetworkIdWorkflowAdapter = (
             );
           }
           requireForcedStep();
-          await submitNetworkIdForcedStep01({
-            lucid: config.lucid,
-            contracts: config.contracts,
-            categoryId: config.category.categoryId,
-            signer: config.signer,
-            threadOutRef: requireString(
-              context.action.input.threadOutRef,
-              "forced step-01 thread out-ref",
-            ),
-            prepared: admitted.prepared,
-            referenceScriptUtxo: config.stepReferenceScripts[0],
-            preSubmitBoundary: boundary,
-            awaitConfirmation: false,
-          });
-          return;
+          return (
+            await journaledStepTransaction(
+              await buildNetworkIdForcedStep01({
+                lucid: config.lucid,
+                contracts: config.contracts,
+                categoryId: config.category.categoryId,
+                signer: config.signer,
+                threadOutRef: requireString(
+                  context.action.input.threadOutRef,
+                  "forced step-01 thread out-ref",
+                ),
+                prepared: admitted.prepared,
+                referenceScriptUtxo: config.stepReferenceScripts[0],
+              }),
+              "network-id forced_step01",
+            )
+          ).transaction;
         }
         if (kind === "forced_bind") {
           if (admitted.direction === "accepted") {
@@ -778,21 +780,21 @@ export const createNetworkIdWorkflowAdapter = (
               "forced-step thread out-ref",
             ),
             referenceScriptUtxo: requireForcedStepReferenceScript(),
-            preSubmitBoundary: boundary,
-            awaitConfirmation: false,
           };
-          if (admitted.direction === "accepted_forced") {
-            await submitNetworkIdAcceptedForcedBind({
-              ...args,
-              prepared: admitted.prepared,
-            });
-          } else {
-            await submitNetworkIdForcedBind({
-              ...args,
-              prepared: admitted.prepared,
-            });
-          }
-          return;
+          return (
+            await journaledStepTransaction(
+              admitted.direction === "accepted_forced"
+                ? await buildNetworkIdAcceptedForcedBind({
+                    ...args,
+                    prepared: admitted.prepared,
+                  })
+                : await buildNetworkIdForcedBind({
+                    ...args,
+                    prepared: admitted.prepared,
+                  }),
+              "network-id forced_bind",
+            )
+          ).transaction;
         }
         if (isForcedScanKind(kind)) {
           if (admitted.direction !== "forced") {
@@ -866,25 +868,28 @@ export const createNetworkIdWorkflowAdapter = (
             publications,
             ...(certificate === undefined ? {} : { certificate }),
           });
-          await submitNetworkIdForcedScanAction({
-            ownOutputs,
-            lucid: config.lucid,
-            contracts: config.contracts,
-            categoryId: config.category.categoryId,
-            network: config.network,
-            signer: config.signer,
-            threadOutRef,
-            prepared: admitted.prepared,
-            outputsOpeningPlan: opening,
-            scan: plan,
-            step,
-            referenceScriptUtxo: requireForcedScanReferenceScript(),
-            carriageUtxos: publications,
-            certificateUtxos: certificate === undefined ? [] : [certificate],
-            preSubmitBoundary: boundary,
-            awaitConfirmation: false,
-          });
-          return;
+          return (
+            await journaledStepTransaction(
+              await buildNetworkIdForcedScanAction({
+                ownOutputs,
+                lucid: config.lucid,
+                contracts: config.contracts,
+                categoryId: config.category.categoryId,
+                network: config.network,
+                signer: config.signer,
+                threadOutRef,
+                prepared: admitted.prepared,
+                outputsOpeningPlan: opening,
+                scan: plan,
+                step,
+                referenceScriptUtxo: requireForcedScanReferenceScript(),
+                carriageUtxos: publications,
+                certificateUtxos:
+                  certificate === undefined ? [] : [certificate],
+              }),
+              "network-id forced scan",
+            )
+          ).transaction;
         }
         if (kind === "publish_field" || kind === "certify_field") {
           const opening = outputsOpeningPlanFor(admitted);
@@ -913,16 +918,20 @@ export const createNetworkIdWorkflowAdapter = (
                 "network-id publication action is not the next missing plan chunk",
               );
             }
-            await publishFaultProofFieldCarriage({
+            const publication = await publishFaultProofFieldCarriage({
               ownOutputs,
               lucid: config.lucid,
               signer: config.signer,
               planned: opening,
               publisherAddress: config.signer.proofMaterialsAddress,
               label: "network-id step-02 outputs",
-              preSubmitBoundary: boundary,
             });
-            return;
+            if (!isPrerequisiteTurn(publication)) {
+              throw new Error(
+                "network-id publication action built no publication transaction",
+              );
+            }
+            return publication.transaction;
           }
           if (opening.plan.tier !== "Certified") {
             throw new Error(
@@ -951,7 +960,7 @@ export const createNetworkIdWorkflowAdapter = (
               "network-id certification action changed the observed chunks",
             );
           }
-          await certifyFaultProofFieldCarriage({
+          const certification = await certifyFaultProofFieldCarriage({
             ownOutputs,
             lucid: config.lucid,
             network: config.network,
@@ -965,10 +974,8 @@ export const createNetworkIdWorkflowAdapter = (
               config.fieldPreimageCertificateReferenceScript,
             chunkUtxos: publications,
             compactCbor: prepared.nativeTxCompactCbor,
-            preSubmitBoundary: boundary,
-            awaitConfirmation: false,
           });
-          return;
+          return certification.transaction;
         }
         if (kind === "step02") {
           const opening = finalStepOutputsOpeningPlanFor(admitted);
@@ -1016,32 +1023,36 @@ export const createNetworkIdWorkflowAdapter = (
             publications,
             ...(certificate === undefined ? {} : { certificate }),
           });
-          await submitNetworkIdStep02({
-            ownOutputs,
-            lucid: config.lucid,
-            contracts: config.contracts,
-            categoryId: config.category.categoryId,
-            signer: config.signer,
-            threadOutRef: requireString(
-              context.action.input.threadOutRef,
-              "step-02 thread out-ref",
-            ),
-            prepared,
-            ...(opening === undefined ? {} : { outputsOpeningPlan: opening }),
-            ...(certificate === undefined
-              ? {}
-              : { certificateUtxos: [certificate] }),
-            referenceScriptUtxo: config.stepReferenceScripts[1],
-            witnessReferenceScripts: config.witnessReferenceScripts,
-            // Submitted inline ahead of the captured step; it never takes the
-            // step's boundary.
-            ...(config.fieldGrammar === undefined
-              ? {}
-              : { fieldGrammar: config.fieldGrammar }),
-            preSubmitBoundary: boundary,
-            awaitConfirmation: false,
-          });
-          return;
+          return (
+            await journaledStepTransaction(
+              await buildNetworkIdStep02({
+                ownOutputs,
+                lucid: config.lucid,
+                contracts: config.contracts,
+                categoryId: config.category.categoryId,
+                signer: config.signer,
+                threadOutRef: requireString(
+                  context.action.input.threadOutRef,
+                  "step-02 thread out-ref",
+                ),
+                prepared,
+                ...(opening === undefined
+                  ? {}
+                  : { outputsOpeningPlan: opening }),
+                ...(certificate === undefined
+                  ? {}
+                  : { certificateUtxos: [certificate] }),
+                referenceScriptUtxo: config.stepReferenceScripts[1],
+                witnessReferenceScripts: config.witnessReferenceScripts,
+                // A missing grammar certificate is certified and submitted
+                // inline before the step is built (certifyFaultProofFieldGrammar).
+                ...(config.fieldGrammar === undefined
+                  ? {}
+                  : { fieldGrammar: config.fieldGrammar }),
+              }),
+              "network-id step02",
+            )
+          ).transaction;
         }
         if (
           config.rawL1 !== undefined &&
@@ -1051,19 +1062,7 @@ export const createNetworkIdWorkflowAdapter = (
             "production network-id removal requires a state-queue mutation-lease coordinator",
           );
         }
-        const retainingCoordinator:
-          | StateQueueMutationLeaseCoordinator
-          | undefined =
-          config.removal.stateQueueMutationLeaseCoordinator === undefined
-            ? undefined
-            : {
-                acquire: async () => {
-                  mutationLease =
-                    await config.removal.stateQueueMutationLeaseCoordinator!.acquire();
-                  return mutationLease;
-                },
-              };
-        await submitRemoveFraudulentBlock({
+        const built = await buildRemoveFraudulentBlock({
           lucid: config.lucid,
           blueprint: config.blueprint,
           deploymentInfo: config.removal.deploymentInfo,
@@ -1077,49 +1076,51 @@ export const createNetworkIdWorkflowAdapter = (
           ),
           requireReferenceScripts:
             config.removal.requireReferenceScripts ?? true,
-          ...(retainingCoordinator === undefined
+          ...(config.removal.stateQueueMutationLeaseCoordinator === undefined
             ? {}
-            : { stateQueueMutationLeaseCoordinator: retainingCoordinator }),
+            : {
+                stateQueueMutationLeaseCoordinator:
+                  config.removal.stateQueueMutationLeaseCoordinator,
+              }),
           ...(config.removal.validFrom === undefined
             ? {}
             : { validFrom: config.removal.validFrom }),
           ...(config.removal.validTo === undefined
             ? {}
             : { validTo: config.removal.validTo }),
-          preSubmitBoundary: async (transaction) => {
-            if (
-              !workflowTransactionInputOutRefs(transaction.signed).includes(
-                requireString(
-                  context.action.input.nextRemovalOutRef,
-                  "next removal out-ref",
-                ),
-              )
-            ) {
-              throw new Error(
-                "network-id removal does not consume the authenticated next state-queue outRef",
-              );
-            }
-            if (
-              !workflowTransactionReferenceInputOutRefs(
-                transaction.signed,
-              ).includes(
-                requireString(
-                  context.action.input.fraudProofOutRef,
-                  "permanent proof-token out-ref",
-                ),
-              )
-            ) {
-              throw new Error(
-                "network-id removal does not reference the authenticated permanent proof token",
-              );
-            }
-            await boundary(transaction);
-          },
-          awaitConfirmation: false,
         });
+        const removal = await admitRemovalTransaction(built, (transaction) => {
+          if (
+            !workflowTransactionInputOutRefs(transaction.signed).includes(
+              requireString(
+                context.action.input.nextRemovalOutRef,
+                "next removal out-ref",
+              ),
+            )
+          ) {
+            throw new Error(
+              "network-id removal does not consume the authenticated next state-queue outRef",
+            );
+          }
+          if (
+            !workflowTransactionReferenceInputOutRefs(
+              transaction.signed,
+            ).includes(
+              requireString(
+                context.action.input.fraudProofOutRef,
+                "permanent proof-token out-ref",
+              ),
+            )
+          ) {
+            throw new Error(
+              "network-id removal does not reference the authenticated permanent proof token",
+            );
+          }
+        });
+        mutationLease = removal.mutationLease;
+        return removal.transaction;
       };
-      const transaction =
-        await captureLocallyEvaluatedTransaction(boundaryInvocation);
+      const transaction = await buildAction();
       requireReferenceOnlyScriptWitnesses({
         transaction,
         label: "network-id production transaction",

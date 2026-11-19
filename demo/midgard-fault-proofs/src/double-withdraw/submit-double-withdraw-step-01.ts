@@ -42,11 +42,15 @@ import {
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
 } from "../runtime.js";
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import { requireInitialStepDatum } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import { workflowReferenceScript } from "../workflow/transaction-boundary.js";
+import {
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
+} from "../workflow/transaction-boundary.js";
 import type { DoubleWithdrawContracts } from "./contracts.js";
 import {
   doubleWithdrawSubmitError,
@@ -139,8 +143,8 @@ export const deriveDoubleWithdrawMembership = async ({
   };
 };
 
-export type SubmitDoubleWithdrawStep01Result = {
-  readonly txHash: string;
+export type DoubleWithdrawStep01Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly nextThreadOutRef: string;
   readonly fraudulentHeaderHash: string;
   readonly computationThreadUnit: string;
@@ -150,10 +154,12 @@ export type SubmitDoubleWithdrawStep01Result = {
   readonly outputIndex: number;
   readonly hubOracleRefInputIndex: number;
   readonly stateQueueNodeRefInputIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
 
-export const submitDoubleWithdrawStep01 = async ({
+export type SubmitDoubleWithdrawStep01Result =
+  UnjournaledSubmission<DoubleWithdrawStep01Build>;
+
+export const buildDoubleWithdrawStep01 = async ({
   lucid,
   contracts,
   categoryId,
@@ -163,8 +169,6 @@ export const submitDoubleWithdrawStep01 = async ({
   stateQueueBlockOutRef,
   inclusion,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: DoubleWithdrawContracts;
@@ -175,9 +179,7 @@ export const submitDoubleWithdrawStep01 = async ({
   readonly stateQueueBlockOutRef: string;
   readonly inclusion: SubmitDoubleWithdrawInclusion;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitDoubleWithdrawStep01Result> => {
+}): Promise<DoubleWithdrawStep01Build> => {
   const [{ threadUtxo, threadToken }, hubOracleUtxo, stateQueueBlockUtxo] =
     await Promise.all([
       requireDoubleWithdrawThreadUtxo({
@@ -309,8 +311,7 @@ export const submitDoubleWithdrawStep01 = async ({
   if (layout === undefined) {
     throw doubleWithdrawSubmitError("step-01 layout was not resolved.");
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: "double-withdraw step-01",
+  const transaction = finishStep(signed, {
     referenceScripts: [
       workflowReferenceScript({
         role: "V1 fraud-proof double-withdraw step-01",
@@ -318,12 +319,10 @@ export const submitDoubleWithdrawStep01 = async ({
         expectedScript: contracts.steps[0].spendingScript,
       }),
     ],
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
   });
   return {
-    txHash,
-    nextThreadOutRef: `${txHash}#${layout.outputIndex.toString()}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${layout.outputIndex.toString()}`,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadUnit: threadToken.unit,
     secondStepAddress: contracts.steps[1].spendingScriptAddress,
@@ -332,6 +331,5 @@ export const submitDoubleWithdrawStep01 = async ({
     outputIndex: Number(layout.outputIndex),
     hubOracleRefInputIndex: Number(layout.hubOracleRefInputIndex),
     stateQueueNodeRefInputIndex: Number(layout.stateQueueNodeRefInputIndex),
-    awaitedConfirmation: awaitConfirmation,
   };
 };

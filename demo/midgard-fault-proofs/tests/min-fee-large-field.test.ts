@@ -13,12 +13,8 @@ import {
 } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
-import {
-  certifyFaultProofFieldCarriage,
-  planFaultProofFieldOpening,
-  publishFaultProofFieldCarriage,
-} from "../src/field-opening.js";
-import { submitMinFeeStep02 } from "../src/index.js";
+import { planFaultProofFieldOpening } from "../src/field-opening.js";
+import { buildMinFeeStep02 } from "../src/index.js";
 import {
   VAN_ROSSEM_MAX_CPU_UNITS,
   VAN_ROSSEM_MAX_MEMORY_UNITS,
@@ -36,6 +32,11 @@ import {
   network,
   publishPlainReferenceScriptUtxo,
 } from "./support/submit-init-emulator-shared.js";
+import {
+  certifyCarriageUnjournaled,
+  publishCarriageUnjournaled,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 
 /** 761 outputs of 43 preimage bytes fill field 2 to the maximum. */
 const OUTPUT_COUNT = 761;
@@ -86,7 +87,7 @@ describe("min-fee step 02 at a large field", () => {
       label: LABEL,
     });
     expect(planned.plan.tier).toBe("Certified");
-    const chunkUtxos = await publishFaultProofFieldCarriage({
+    const chunkUtxos = await publishCarriageUnjournaled({
       ownOutputs,
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
@@ -101,7 +102,7 @@ describe("min-fee step 02 at a large field", () => {
         script: preimageCertificate.mintingScript,
         label: "field preimage certificate",
       });
-    const { certificateUtxo } = await certifyFaultProofFieldCarriage({
+    const { certificateUtxo } = await certifyCarriageUnjournaled({
       ownOutputs,
       lucid: harness.proverLucid,
       network,
@@ -123,7 +124,7 @@ describe("min-fee step 02 at a large field", () => {
     });
 
     const convicted = await captureEmulatorSubmission(harness.emulator, () =>
-      submitMinFeeStep02({
+      submitTurnsUnjournaled(buildMinFeeStep02, {
         ownOutputs,
         lucid: harness.proverLucid,
         contracts: harness.minFee,

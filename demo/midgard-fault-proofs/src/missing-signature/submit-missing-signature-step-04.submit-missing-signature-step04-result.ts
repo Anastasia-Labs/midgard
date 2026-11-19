@@ -1,9 +1,13 @@
+import type {
+  LocallyEvaluatedTransaction,
+  UnjournaledSubmission,
+} from "../workflow/transaction-boundary.js";
 import { missingSignatureStepLabel } from "./submit-common.js";
 
 export const STEP_LABEL = missingSignatureStepLabel(3);
 
-type SubmitMissingSignatureStep04CommonResult = {
-  readonly txHash: string;
+type MissingSignatureStep04CommonBuild = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -12,18 +16,17 @@ type SubmitMissingSignatureStep04CommonResult = {
   readonly computationThreadUnit: string;
   readonly inputIndex: number;
   readonly outputIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
 
-export type SubmitMissingSignatureStep04Result =
-  | (SubmitMissingSignatureStep04CommonResult & {
+export type MissingSignatureStep04Build =
+  | (MissingSignatureStep04CommonBuild & {
       readonly kind: "advanced";
       readonly nextThreadOutRef: string;
       readonly nextItemIndex: number;
       readonly checkpointCbor: string;
       readonly checkpointHash: string;
     })
-  | (SubmitMissingSignatureStep04CommonResult & {
+  | (MissingSignatureStep04CommonBuild & {
       readonly kind: "proven";
       readonly fraudProofPolicyId: string;
       readonly fraudProofUnit: string;
@@ -32,6 +35,9 @@ export type SubmitMissingSignatureStep04Result =
       readonly fraudProofMintRedeemerIndex: number;
       readonly computationThreadMintRedeemerIndex: number;
     });
+
+export type SubmitMissingSignatureStep04Result =
+  UnjournaledSubmission<MissingSignatureStep04Build>;
 
 export type Step04SpendLayout = {
   readonly inputIndex: bigint;

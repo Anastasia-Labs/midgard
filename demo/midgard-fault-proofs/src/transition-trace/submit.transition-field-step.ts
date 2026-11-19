@@ -16,6 +16,10 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  type FaultProofTurn,
+  isPrerequisiteTurn,
+} from "../fault-proof-turn.js";
+import {
   certifyFaultProofFieldCarriage,
   faultProofFieldCarriage,
   faultProofFieldOpening,
@@ -57,10 +61,11 @@ export type TransitionFieldCarriage = {
 };
 
 /**
- * Plan, publish and (at tier 3) certify the carriage of `field` of the
- * accepted transaction `proof` disputes. Existing publications and
- * certificates are reused. With `publish` false nothing is submitted and a
- * missing publication or certificate is an error.
+ * Resolve the carriage of `field` of the accepted transaction `proof`
+ * disputes: its live publications and (at tier 3) certificate, which are
+ * reused, or else the next publication or certification turn. With `publish`
+ * false no turn is built and a missing publication or certificate is an
+ * error.
  */
 export const prepareTransitionFieldCarriage = async ({
   lucid,
@@ -85,7 +90,7 @@ export const prepareTransitionFieldCarriage = async ({
   readonly publish: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
-}): Promise<TransitionFieldCarriage> => {
+}): Promise<FaultProofTurn<TransitionFieldCarriage>> => {
   const proof = readTransitionProof(proofInput);
   const replay = transitionL2Replay(proofInput);
   const replayed =
@@ -131,11 +136,12 @@ export const prepareTransitionFieldCarriage = async ({
         publisherAddress: signer.proofMaterialsAddress,
         planned,
       });
+  if (isPrerequisiteTurn(chunks)) return chunks;
   if (chunks === undefined)
     throw new Error(`${label} carriage is not published`);
   signer.selectWallet(lucid);
   if (planned.plan.tier !== "Certified") return { planned, references: chunks };
-  let certificate = await resolveFaultProofFieldPreimageCertificate({
+  const certificate = await resolveFaultProofFieldPreimageCertificate({
     ownOutputs,
     lucid,
     network,
@@ -144,22 +150,19 @@ export const prepareTransitionFieldCarriage = async ({
   });
   if (certificate === undefined) {
     if (!publish) throw new Error(`${label} carriage is not certified`);
-    certificate = (
-      await certifyFaultProofFieldCarriage({
-        lucid,
-        network,
-        signer,
-        ownOutputs,
-        planned,
-        certificatePolicyId,
-        certificateMintingScript,
-        certificateReferenceScriptUtxo: await certificateReferenceScript(),
-        chunkUtxos: chunks,
-        compactCbor,
-        witnessSetCompactCbor: witnessSet,
-      })
-    ).certificateUtxo;
-    signer.selectWallet(lucid);
+    return await certifyFaultProofFieldCarriage({
+      lucid,
+      network,
+      signer,
+      ownOutputs,
+      planned,
+      certificatePolicyId,
+      certificateMintingScript,
+      certificateReferenceScriptUtxo: await certificateReferenceScript(),
+      chunkUtxos: chunks,
+      compactCbor,
+      witnessSetCompactCbor: witnessSet,
+    });
   }
   return { planned, references: [...chunks, certificate] };
 };
@@ -193,7 +196,10 @@ export type TransitionFieldStep = {
   }[];
 };
 
-/** The field carriage and verifiers the checkpoint at `state` needs. */
+/**
+ * The field carriage and verifiers the checkpoint at `state` needs, or the
+ * next turn that publishes or certifies that carriage.
+ */
 export const prepareTransitionFieldStep = async ({
   lucid,
   network,
@@ -224,7 +230,7 @@ export const prepareTransitionFieldStep = async ({
   readonly baseReferences: readonly UTxO[];
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
-}): Promise<TransitionFieldStep> => {
+}): Promise<FaultProofTurn<TransitionFieldStep>> => {
   const field = transitionTracePhaseField(state);
   const certificatePolicyId = contracts.fieldPreimageCertificate.policyId;
   const carriage =
@@ -249,6 +255,7 @@ export const prepareTransitionFieldStep = async ({
           publish,
           ownOutputs,
         });
+  if (isPrerequisiteTurn(carriage)) return carriage;
   const verifiers: readonly TransitionOutputVerifier[] =
     transitionTraceOutputStepIsWhole(state, outputCbors)
       ? await Promise.all(

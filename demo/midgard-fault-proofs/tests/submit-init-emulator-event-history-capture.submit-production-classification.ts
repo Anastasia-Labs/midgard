@@ -4,8 +4,8 @@ import { expect } from "vitest";
 
 import { fabricatedHistoryOpeningCbor } from "../src/fabricated-history-witness.js";
 import { proofMaterialsAddress } from "../src/funding/proof-materials-address.js";
-import { submitFabricatedDepositStep03 } from "../src/submit-fabricated-deposit-step-03.js";
-import { submitFabricatedWithdrawalStep03 } from "../src/submit-fabricated-withdrawal-step-03.js";
+import { buildFabricatedDepositStep03 } from "../src/submit-fabricated-deposit-step-03.js";
+import { buildFabricatedWithdrawalStep03 } from "../src/submit-fabricated-withdrawal-step-03.js";
 import { productionContracts } from "./submit-init-emulator-event-history-capture.build-capture.js";
 import {
   type Harness,
@@ -14,6 +14,7 @@ import {
 } from "./submit-init-emulator-event-history-capture.setup-proof.js";
 import { measureCompleteSignedTransaction } from "./support/emulator/measurement.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 export const submitProductionClassification = async (
   h: Harness,
@@ -22,11 +23,14 @@ export const submitProductionClassification = async (
   captured: ReturnType<typeof SDK.captureEventHistoryWitness> | undefined,
 ) => {
   const contracts = productionContracts(h, p);
-  const submit =
+  const submit = async (
+    input: Parameters<typeof buildFabricatedDepositStep03>[0] &
+      Parameters<typeof buildFabricatedWithdrawalStep03>[0],
+  ) =>
     p.kind === "Deposit"
-      ? submitFabricatedDepositStep03
-      : submitFabricatedWithdrawalStep03;
-  return submit({
+      ? await buildFabricatedDepositStep03(input)
+      : await buildFabricatedWithdrawalStep03(input);
+  return buildAndSubmitUnjournaled(submit, {
     lucid: h.lucid,
     contracts,
     // Built from the shared fields: a retirement journey's list harness
@@ -42,7 +46,7 @@ export const submitProductionClassification = async (
     openingCbor: captured ? fabricatedHistoryOpeningCbor(captured) : undefined,
     referenceScriptUtxo: p.refs[1]!,
     now: () => h.emulator.now(),
-    preSubmitBoundary: ({ signed, txHash }) => {
+    beforeSubmit: ({ signed, txHash }) => {
       const transactionCbor = signed.toCBOR();
       const measurement = measureCompleteSignedTransaction(transactionCbor);
       expect(measurement.completeSignedBytes).toBeLessThanOrEqual(

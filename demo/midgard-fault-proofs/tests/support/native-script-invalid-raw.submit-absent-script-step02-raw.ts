@@ -24,11 +24,12 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../../src/linear-fault-family.js";
-import { submitLinearFaultContinue } from "../../src/linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../../src/linear-fault-submit.js";
 import type { NativeScriptInvalidContracts } from "../../src/native-script-invalid/contracts.js";
 import { NATIVE_SCRIPT_INVALID_ABSENT_SCRIPT_ITEM_HASH } from "../../src/native-script-invalid/submit-step-02.js";
 import type { ResolvedProverSigner } from "../../src/runtime.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
+import { buildAndSubmitTransactionUnjournaled } from "./submit-unjournaled.js";
 
 const FAMILY = "native-script-invalid";
 const label = "raw native-script-invalid step-02 absent script";
@@ -68,7 +69,7 @@ export const submitRawNativeScriptInvalidAbsentScriptStep02 = async ({
   publishedCarriageUtxos,
   referenceScriptUtxo,
 }: {
-  readonly lucid: Parameters<typeof submitLinearFaultContinue>[0]["lucid"];
+  readonly lucid: Parameters<typeof buildLinearFaultContinue>[0]["lucid"];
   readonly contracts: NativeScriptInvalidContracts;
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
@@ -163,7 +164,7 @@ export const submitRawNativeScriptInvalidAbsentScriptStep02 = async ({
       Step02Redeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  return await submitLinearFaultContinue({
+  return await buildAndSubmitTransactionUnjournaled(buildLinearFaultContinue, {
     lucid,
     signer,
     threadUtxo,

@@ -16,4 +16,4 @@ export {
   committedFieldShapeClaimDetails,
   type SubmitCommittedFieldShapeStep01Result,
 } from "./submit-committed-field-shape-step-01.committed-field-shape-claim-details.js";
-export { submitCommittedFieldShapeStep01 } from "./submit-committed-field-shape-step-01.submit-committed-field-shape-step01.js";
+export { buildCommittedFieldShapeStep01 } from "./submit-committed-field-shape-step-01.submit-committed-field-shape-step01.js";

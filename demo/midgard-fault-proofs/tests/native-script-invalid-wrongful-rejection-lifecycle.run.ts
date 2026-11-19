@@ -1,16 +1,12 @@
 import { expect } from "vitest";
 
-import {
-  certifyFaultProofFieldCarriage,
-  planFaultProofFieldOpening,
-  publishFaultProofFieldCarriage,
-} from "../src/field-opening.js";
+import { planFaultProofFieldOpening } from "../src/field-opening.js";
 import { admitNativeScriptInvalidForcedArtifact } from "../src/native-script-invalid/forced-artifact.js";
-import { submitNativeScriptInvalidStep02 } from "../src/native-script-invalid/submit-step-02.js";
-import { submitNativeScriptInvalidStep03 } from "../src/native-script-invalid/submit-step-03.js";
-import { submitNativeScriptInvalidStep03StartSignerScan } from "../src/native-script-invalid/submit-step-03-staged.js";
-import { submitNativeScriptInvalidStep04 } from "../src/native-script-invalid/submit-step-04.js";
-import { submitNativeScriptInvalidStep05 } from "../src/native-script-invalid/submit-step-05.js";
+import { buildNativeScriptInvalidStep02 } from "../src/native-script-invalid/submit-step-02.js";
+import { buildNativeScriptInvalidStep03 } from "../src/native-script-invalid/submit-step-03.js";
+import { buildNativeScriptInvalidStep03StartSignerScan } from "../src/native-script-invalid/submit-step-03-staged.js";
+import { buildNativeScriptInvalidStep04 } from "../src/native-script-invalid/submit-step-04.js";
+import { buildNativeScriptInvalidStep05 } from "../src/native-script-invalid/submit-step-05.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import {
   createOwnOutputJournal,
@@ -24,6 +20,12 @@ import {
   publishPlainReferenceScriptUtxo,
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  certifyCarriageUnjournaled,
+  publishCarriageUnjournaled,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 
 /**
  * Publishes field `fieldIndex` of the setup's forced transaction and, when
@@ -47,7 +49,7 @@ export const publishNativeScriptFieldCarriage = async (
     anchorWitnessSetHash: f.state.bad_tx_witness_set_hash,
     label: "native-script maximum field",
   });
-  const chunks = await publishFaultProofFieldCarriage({
+  const chunks = await publishCarriageUnjournaled({
     ownOutputs,
     lucid: f.h.proverLucid,
     signer: f.h.proverSigner,
@@ -62,7 +64,7 @@ export const publishNativeScriptFieldCarriage = async (
     script: f.h.contracts.fieldPreimageCertificate.mintingScript,
     label: "native-script field certificate",
   });
-  const certified = await certifyFaultProofFieldCarriage({
+  const certified = await certifyCarriageUnjournaled({
     ownOutputs,
     lucid: f.h.proverLucid,
     network,
@@ -162,7 +164,7 @@ export const run = async (
     f.witnesses.map((w) => w.item),
   );
   for (let i = 0; i < 1000; i++) {
-    const next = await submitNativeScriptInvalidStep02({
+    const next = await submitTurnsUnjournaled(buildNativeScriptInvalidStep02, {
       ownOutputs,
       ...f.common,
       ...scriptCarriage,
@@ -181,7 +183,7 @@ export const run = async (
   }
   let proof;
   if (f.witnesses.length <= 28) {
-    proof = await submitNativeScriptInvalidStep03({
+    proof = await submitTurnsUnjournaled(buildNativeScriptInvalidStep03, {
       ownOutputs,
       ...f.common,
       ...signerCarriage,
@@ -196,15 +198,18 @@ export const run = async (
       witnessReferenceScripts: f.h.witnessReferenceScripts,
     });
   } else {
-    const started = await submitNativeScriptInvalidStep03StartSignerScan({
-      ownOutputs,
-      ...f.common,
-      ...signerCarriage,
-      threadOutRef,
-      scriptItemCbor: f.scriptItem,
-      addressWitnessItems: f.witnesses.map((w) => w.item),
-      referenceScriptUtxo: f.refs[2]!,
-    });
+    const started = await submitTurnsUnjournaled(
+      buildNativeScriptInvalidStep03StartSignerScan,
+      {
+        ownOutputs,
+        ...f.common,
+        ...signerCarriage,
+        threadOutRef,
+        scriptItemCbor: f.scriptItem,
+        addressWitnessItems: f.witnesses.map((w) => w.item),
+        referenceScriptUtxo: f.refs[2]!,
+      },
+    );
     threadOutRef = started.nextThreadOutRef;
     if (cancelAt === "signer") {
       await cancel(threadOutRef, 3);
@@ -212,27 +217,33 @@ export const run = async (
       return;
     }
     for (let i = 0; i < 1000; i++) {
-      const advanced = await submitNativeScriptInvalidStep04({
-        ownOutputs,
-        ...f.common,
-        ...signerCarriage,
-        threadOutRef,
-        addressWitnessItems: f.witnesses.map((w) => w.item),
-        referenceScriptUtxo: f.refs[3]!,
-      });
+      const advanced = await submitTurnsUnjournaled(
+        buildNativeScriptInvalidStep04,
+        {
+          ownOutputs,
+          ...f.common,
+          ...signerCarriage,
+          threadOutRef,
+          addressWitnessItems: f.witnesses.map((w) => w.item),
+          referenceScriptUtxo: f.refs[3]!,
+        },
+      );
       threadOutRef = advanced.nextThreadOutRef;
       if (advanced.action === "FinalizeSignerScan") break;
     }
     for (let i = 0; i < 1000; i++) {
-      const advanced = await submitNativeScriptInvalidStep05({
-        ...f.common,
-        unsafeSkipLocalViolationCheckForTest,
-        threadOutRef,
-        scriptItemCbor: f.scriptItem,
-        addressWitnessItems: f.witnesses.map((w) => w.item),
-        referenceScriptUtxo: f.refs[4]!,
-        witnessReferenceScripts: f.h.witnessReferenceScripts,
-      });
+      const advanced = await buildAndSubmitUnjournaled(
+        buildNativeScriptInvalidStep05,
+        {
+          ...f.common,
+          unsafeSkipLocalViolationCheckForTest,
+          threadOutRef,
+          scriptItemCbor: f.scriptItem,
+          addressWitnessItems: f.witnesses.map((w) => w.item),
+          referenceScriptUtxo: f.refs[4]!,
+          witnessReferenceScripts: f.h.witnessReferenceScripts,
+        },
+      );
       if ("fraudProofUnit" in advanced) {
         proof = advanced;
         break;

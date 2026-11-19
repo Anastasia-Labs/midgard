@@ -14,6 +14,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { type FaultProofTurn, isPrerequisiteTurn } from "./fault-proof-turn.js";
 import {
   faultProofFieldOpening,
   planFaultProofFieldOpening,
@@ -26,8 +27,10 @@ import {
   type ResolvedProverSigner,
   resolveInvalidSignatureDeploymentContracts,
 } from "./runtime.js";
-import { completeStep, fundStep, submitStep } from "./step-completion.js";
+import { completeStep, fundStep } from "./step-completion.js";
+import { finishStep } from "./step-completion.js";
 import { requireComputationThreadToken } from "./step-support.js";
+import type { InvalidSignatureStep02Build } from "./submit-invalid-signature-step-02.make-invalid-signature-step02-spend-redeemer.js";
 import {
   type InvalidSignatureStep02ResolvedLayout,
   type InvalidSignatureStep02SpendLayout,
@@ -35,7 +38,6 @@ import {
   makeFraudProofMintRedeemer,
   makeInvalidSignatureStep02SpendRedeemer,
   requireStep02Datum,
-  type SubmitInvalidSignatureStep02Result,
 } from "./submit-invalid-signature-step-02.make-invalid-signature-step02-spend-redeemer.js";
 import {
   type FaultProofWitnessReferenceScripts,
@@ -46,12 +48,8 @@ import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "./workflow/own-outputs.js";
-import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
-} from "./workflow/transaction-boundary.js";
 
-export const submitInvalidSignatureStep02 = async ({
+export const buildInvalidSignatureStep02 = async ({
   lucid,
   blueprint,
   deploymentInfo,
@@ -68,8 +66,6 @@ export const submitInvalidSignatureStep02 = async ({
   certificateUtxos = [],
   existingPublicationUtxos = [],
   publishMissingCarriage = true,
-  preSubmitBoundary,
-  awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
@@ -100,11 +96,9 @@ export const submitInvalidSignatureStep02 = async ({
    * false and journal every publication/certificate before this proof step.
    */
   readonly publishMissingCarriage?: boolean;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
-}): Promise<SubmitInvalidSignatureStep02Result> => {
+}): Promise<FaultProofTurn<InvalidSignatureStep02Build>> => {
   const { invalidSignatureCategory, contracts } =
     await resolveInvalidSignatureDeploymentContracts({
       blueprint,
@@ -156,19 +150,18 @@ export const submitInvalidSignatureStep02 = async ({
 
   // §8.4: publish tier-2 field carriage before the final transaction selects
   // fee inputs or resolves indices into the complete reference-input set.
-  const published = [
-    ...existingPublicationUtxos,
-    ...(publishMissingCarriage
-      ? await publishFaultProofFieldCarriage({
-          ownOutputs,
-          lucid,
-          signer,
-          planned,
-          publisherAddress: signer.proofMaterialsAddress,
-          label: "Invalid-signature step 02 address-witnesses field",
-        })
-      : []),
-  ];
+  const publishedHere = publishMissingCarriage
+    ? await publishFaultProofFieldCarriage({
+        ownOutputs,
+        lucid,
+        signer,
+        planned,
+        publisherAddress: signer.proofMaterialsAddress,
+        label: "Invalid-signature step 02 address-witnesses field",
+      })
+    : [];
+  if (isPrerequisiteTurn(publishedHere)) return publishedHere;
+  const published = [...existingPublicationUtxos, ...publishedHere];
   const stepScriptCarriage = witnessSpendingValidatorCarriage({
     script: contracts.invalidSignature.steps[1].spendingScript,
     referenceUtxo: referenceScriptUtxo,
@@ -299,39 +292,33 @@ export const submitInvalidSignatureStep02 = async ({
     ...spendLayout,
     computationThreadMintRedeemerIndex,
   };
-  const txHash = await submitStep(lucid, signed, {
-    label: "invalid-signature step-02",
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: "V1 fraud-proof invalid-signature step-02",
-          utxo: referenceScriptUtxo,
-          expectedScript: contracts.invalidSignature.steps[1].spendingScript,
-        },
-        {
-          role: "V1 fraud-proof computation-thread minting",
-          utxo: witnessReferenceScripts?.computationThreadMint,
-          expectedScript: contracts.computationThread.mintingScript,
-        },
-        {
-          role: "V1 fraud-proof token minting",
-          utxo: witnessReferenceScripts?.fraudProofMint,
-          expectedScript: contracts.fraudProof.mintingScript,
-        },
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: "V1 fraud-proof invalid-signature step-02",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.invalidSignature.steps[1].spendingScript,
+      },
+      {
+        role: "V1 fraud-proof computation-thread minting",
+        utxo: witnessReferenceScripts?.computationThreadMint,
+        expectedScript: contracts.computationThread.mintingScript,
+      },
+      {
+        role: "V1 fraud-proof token minting",
+        utxo: witnessReferenceScripts?.fraudProofMint,
+        expectedScript: contracts.fraudProof.mintingScript,
+      },
+    ],
   });
 
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
     threadOutRef,
-    fraudProofOutRef: `${txHash}#${resolvedLayout.outputIndex.toString()}`,
+    fraudProofOutRef: `${transaction.txHash}#${resolvedLayout.outputIndex.toString()}`,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadPolicyId: contracts.computationThread.policyId,
     computationThreadAssetName: threadToken.assetName,
@@ -356,6 +343,5 @@ export const submitInvalidSignatureStep02 = async ({
     fraudProofMintRedeemerIndex: Number(
       resolvedLayout.fraudProofMintRedeemerIndex,
     ),
-    awaitedConfirmation: awaitConfirmation,
   };
 };

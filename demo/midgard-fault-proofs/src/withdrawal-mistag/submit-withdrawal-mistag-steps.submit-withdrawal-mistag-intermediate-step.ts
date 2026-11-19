@@ -12,13 +12,10 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { type ResolvedProverSigner } from "../runtime.js";
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { structuredDataPublicationPlan } from "../workflow/structured-data-preimage.js";
-import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary.js";
 import type { WithdrawalMistagContracts } from "./contracts.js";
 import {
   requireWithdrawalMistagReferenceScript,
@@ -26,18 +23,18 @@ import {
   withdrawalMistagError,
   withdrawalMistagStepLabel,
 } from "./submit-common.js";
+import type { WithdrawalMistagStepBuild } from "./submit-withdrawal-mistag-steps.step-args.js";
 import {
   datumSchemas,
   type IntermediateStepIndex,
   referenceScriptRoles,
   requireLiveDatum,
-  type SubmitWithdrawalMistagStepResult,
   withdrawalMistagStates,
   withdrawalMistagStepPayloadCbor,
   withdrawalMistagStepRedeemerCbor,
 } from "./submit-withdrawal-mistag-steps.step-args.js";
 
-export const submitWithdrawalMistagIntermediateStep = async ({
+export const buildWithdrawalMistagIntermediateStep = async ({
   lucid,
   contracts,
   signer,
@@ -48,8 +45,6 @@ export const submitWithdrawalMistagIntermediateStep = async ({
   stateQueueBlockUtxo,
   referenceScriptUtxo,
   evidenceReferences,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: WithdrawalMistagContracts;
@@ -62,9 +57,7 @@ export const submitWithdrawalMistagIntermediateStep = async ({
   /** Production reference script used by this proof step. */
   readonly referenceScriptUtxo: UTxO;
   readonly evidenceReferences?: readonly UTxO[];
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitWithdrawalMistagStepResult> => {
+}): Promise<WithdrawalMistagStepBuild> => {
   const { threadUtxo, threadToken } = await requireWithdrawalMistagThreadUtxo({
     lucid,
     contracts,
@@ -159,57 +152,50 @@ export const submitWithdrawalMistagIntermediateStep = async ({
       "transaction builder did not resolve step layout",
     );
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: withdrawalMistagStepLabel(stepIndex),
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: referenceScriptRoles[stepIndex],
-          utxo: referenceScriptUtxo,
-          expectedScript: contracts.steps[stepIndex].spendingScript,
-        },
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: referenceScriptRoles[stepIndex],
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.steps[stepIndex].spendingScript,
+      },
+    ],
   });
   return {
-    txHash,
+    transaction,
     threadOutRef,
-    nextThreadOutRef: `${txHash}#${resolved.outputIndex.toString()}`,
+    nextThreadOutRef: `${transaction.txHash}#${resolved.outputIndex.toString()}`,
     stepIndex,
     nextStepIndex: (stepIndex + 1) as 1 | 2 | 3 | 4,
     inputIndex: Number(resolved.inputIndex),
     outputIndex: Number(resolved.outputIndex),
-    awaitedConfirmation: awaitConfirmation,
   };
 };
 
-export const submitWithdrawalMistagStep01 = (
+export const buildWithdrawalMistagStep01 = (
   args: Omit<
-    Parameters<typeof submitWithdrawalMistagIntermediateStep>[0],
+    Parameters<typeof buildWithdrawalMistagIntermediateStep>[0],
     "stepIndex"
   >,
-) => submitWithdrawalMistagIntermediateStep({ ...args, stepIndex: 0 });
+) => buildWithdrawalMistagIntermediateStep({ ...args, stepIndex: 0 });
 
-export const submitWithdrawalMistagStep02 = (
+export const buildWithdrawalMistagStep02 = (
   args: Omit<
-    Parameters<typeof submitWithdrawalMistagIntermediateStep>[0],
+    Parameters<typeof buildWithdrawalMistagIntermediateStep>[0],
     "stepIndex"
   >,
-) => submitWithdrawalMistagIntermediateStep({ ...args, stepIndex: 1 });
+) => buildWithdrawalMistagIntermediateStep({ ...args, stepIndex: 1 });
 
-export const submitWithdrawalMistagStep03 = (
+export const buildWithdrawalMistagStep03 = (
   args: Omit<
-    Parameters<typeof submitWithdrawalMistagIntermediateStep>[0],
+    Parameters<typeof buildWithdrawalMistagIntermediateStep>[0],
     "stepIndex"
   >,
-) => submitWithdrawalMistagIntermediateStep({ ...args, stepIndex: 2 });
+) => buildWithdrawalMistagIntermediateStep({ ...args, stepIndex: 2 });
 
-export const submitWithdrawalMistagStep04 = (
+export const buildWithdrawalMistagStep04 = (
   args: Omit<
-    Parameters<typeof submitWithdrawalMistagIntermediateStep>[0],
+    Parameters<typeof buildWithdrawalMistagIntermediateStep>[0],
     "stepIndex"
   >,
-) => submitWithdrawalMistagIntermediateStep({ ...args, stepIndex: 3 });
+) => buildWithdrawalMistagIntermediateStep({ ...args, stepIndex: 3 });

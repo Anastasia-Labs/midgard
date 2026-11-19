@@ -40,5 +40,5 @@ export {
   type SubmitInputNoIdxStep04CliConfig,
   type SubmitInputNoIdxStep04Result,
 } from "./submit-input-no-idx-step-04.make-input-no-idx-step04-spend-redeemer.js";
-export { submitInputNoIdxStep04 } from "./submit-input-no-idx-step-04.submit-input-no-idx-step04.js";
+export { buildInputNoIdxStep04 } from "./submit-input-no-idx-step-04.submit-input-no-idx-step04.js";
 export { submitInputNoIdxStep04FromFiles } from "./submit-input-no-idx-step-04.submit-input-no-idx-step04-from-files.js";

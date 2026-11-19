@@ -17,7 +17,7 @@ import {
 } from "midgard-node/transactions/register-active-operator";
 import { describe, expect, it } from "vitest";
 
-import { submitResolvedInit } from "../src/submit-init.js";
+import { buildResolvedInit } from "../src/submit-init.js";
 import {
   CURATED_EMULATOR_SEEDS,
   curatedKeyHash,
@@ -40,6 +40,7 @@ import {
   submitSetupTx,
   withPlaceholderDeposit,
 } from "./support/submit-init-emulator-shared.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 type DeploymentContext = Awaited<
   ReturnType<typeof buildProvedFixtureDeploymentContext>
@@ -175,7 +176,7 @@ describe("preprod-emulator-curated operator allow-list and catalogue", () => {
       scriptHash: claimed.spendingScriptHash,
     });
     await expectOnchainRefusal(() =>
-      submitResolvedInit({
+      buildAndSubmitUnjournaled(buildResolvedInit, {
         lucid: context.proverLucid,
         blueprint: realBlueprint,
         network,

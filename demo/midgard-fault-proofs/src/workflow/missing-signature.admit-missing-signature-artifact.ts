@@ -14,11 +14,11 @@ import {
   admitMissingSignatureForcedArtifact,
   missingSignatureForcedArtifact,
 } from "../missing-signature/forced-artifact.js";
-import { submitMissingSignatureInit } from "../missing-signature/submit-missing-signature-init.js";
-import { submitMissingSignatureStep01 } from "../missing-signature/submit-missing-signature-step-01.js";
-import { submitMissingSignatureStep02 } from "../missing-signature/submit-missing-signature-step-02.js";
-import { submitMissingSignatureStep03 } from "../missing-signature/submit-missing-signature-step-03.js";
-import { submitMissingSignatureStep04 } from "../missing-signature/submit-missing-signature-step-04.js";
+import { buildMissingSignatureInit } from "../missing-signature/submit-missing-signature-init.js";
+import { buildMissingSignatureStep01 } from "../missing-signature/submit-missing-signature-step-01.js";
+import { buildMissingSignatureStep02 } from "../missing-signature/submit-missing-signature-step-02.js";
+import { buildMissingSignatureStep03 } from "../missing-signature/submit-missing-signature-step-03.js";
+import { buildMissingSignatureStep04 } from "../missing-signature/submit-missing-signature-step-04.js";
 import {
   MISSING_SIGNATURE_WRONGFUL_REJECTION_VIOLATION_ID,
   prepareMissingSignatureWrongfulRejection,
@@ -32,8 +32,8 @@ import {
   transactionSourceTrieItem,
 } from "../prepare-double-spend.js";
 import {
+  buildRemoveFraudulentBlock,
   type StateQueueMutationLeaseCoordinator,
-  submitRemoveFraudulentBlock,
 } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { parseSubmitStep01TxInclusion } from "../step-support.js";
@@ -277,21 +277,21 @@ export type BoundMissingSignatureTransactionsConfig = Readonly<{
 }>;
 
 export type MissingSignatureBuilderSet = Readonly<{
-  init: typeof submitMissingSignatureInit;
-  step01: typeof submitMissingSignatureStep01;
-  step02: typeof submitMissingSignatureStep02;
-  step03: typeof submitMissingSignatureStep03;
-  step04: typeof submitMissingSignatureStep04;
-  remove: typeof submitRemoveFraudulentBlock;
+  init: typeof buildMissingSignatureInit;
+  step01: typeof buildMissingSignatureStep01;
+  step02: typeof buildMissingSignatureStep02;
+  step03: typeof buildMissingSignatureStep03;
+  step04: typeof buildMissingSignatureStep04;
+  remove: typeof buildRemoveFraudulentBlock;
 }>;
 
 export const productionBuilders: MissingSignatureBuilderSet = Object.freeze({
-  init: submitMissingSignatureInit,
-  step01: submitMissingSignatureStep01,
-  step02: submitMissingSignatureStep02,
-  step03: submitMissingSignatureStep03,
-  step04: submitMissingSignatureStep04,
-  remove: submitRemoveFraudulentBlock,
+  init: buildMissingSignatureInit,
+  step01: buildMissingSignatureStep01,
+  step02: buildMissingSignatureStep02,
+  step03: buildMissingSignatureStep03,
+  step04: buildMissingSignatureStep04,
+  remove: buildRemoveFraudulentBlock,
 });
 
 export const requiredAction = (

@@ -32,8 +32,8 @@ import { describe, expect, it } from "vitest";
 
 import { planFaultProofFieldOpening } from "../src/field-opening.js";
 import {
-  submitInvalidSignatureStep01,
-  submitInvalidSignatureStep02,
+  buildInvalidSignatureStep01,
+  buildInvalidSignatureStep02,
   submitRemoveFraudulentBlock,
 } from "../src/index.js";
 import {
@@ -45,7 +45,7 @@ import {
   setupInvalidSignatureScenario,
   submitRawInvalidSignatureStep02,
 } from "./support/invalid-signature-emulator.js";
-import { submitInit } from "./support/legacy-submit-emulator.js";
+import { buildInit } from "./support/legacy-submit-emulator.js";
 import { pinStepTranscript } from "./support/step-transcript.js";
 import { expectStateQueueHeaderOrder } from "./support/submit-init-emulator-fixtures.js";
 import {
@@ -58,6 +58,13 @@ import {
   network,
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  submitTurnsUnjournaled,
+  unjournaled,
+} from "./support/submit-unjournaled.js";
+
+const submitStep01 = unjournaled(buildInvalidSignatureStep01);
 
 describe("invalid-signature emulator lifecycle", () => {
   it("convicts an invalid address witness end to end, mints the permanent fraud-proof token, and removes the fraudulent commitment", async () => {
@@ -123,7 +130,7 @@ describe("invalid-signature emulator lifecycle", () => {
     const { maxTxExMem, maxTxExSteps } = emulator.protocolParameters;
 
     const initCapture = await captureEmulatorSubmission(emulator, async () =>
-      submitInit({
+      buildAndSubmitUnjournaled(buildInit, {
         lucid: proverLucid,
         witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
@@ -148,7 +155,7 @@ describe("invalid-signature emulator lifecycle", () => {
       initResult.computationThreadUnit,
     );
     const step01Capture = await captureEmulatorSubmission(emulator, async () =>
-      submitInvalidSignatureStep01({
+      submitStep01({
         lucid: proverLucid,
         witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
@@ -178,7 +185,7 @@ describe("invalid-signature emulator lifecycle", () => {
       initResult.computationThreadUnit,
     );
     const step02Capture = await captureEmulatorSubmission(emulator, async () =>
-      submitInvalidSignatureStep02({
+      submitTurnsUnjournaled(buildInvalidSignatureStep02, {
         lucid: proverLucid,
         witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
@@ -400,7 +407,7 @@ describe("invalid-signature emulator lifecycle", () => {
       catalogue,
     );
 
-    const initResult = await submitInit({
+    const initResult = await buildAndSubmitUnjournaled(buildInit, {
       lucid: proverLucid,
       witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
@@ -417,7 +424,7 @@ describe("invalid-signature emulator lifecycle", () => {
       initResult.firstStepAddress,
       initResult.computationThreadUnit,
     );
-    const step01 = await submitInvalidSignatureStep01({
+    const step01 = await submitStep01({
       lucid: proverLucid,
       witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
@@ -439,7 +446,7 @@ describe("invalid-signature emulator lifecycle", () => {
     const step02Capture = await captureEmulatorSubmission(
       harness.emulator,
       async () =>
-        submitInvalidSignatureStep02({
+        submitTurnsUnjournaled(buildInvalidSignatureStep02, {
           lucid: proverLucid,
           witnessReferenceScripts: harness.witnessReferenceScripts,
           blueprint: realBlueprint,
@@ -536,7 +543,7 @@ describe("invalid-signature emulator lifecycle", () => {
       catalogue,
     );
 
-    const initResult = await submitInit({
+    const initResult = await buildAndSubmitUnjournaled(buildInit, {
       lucid: proverLucid,
       witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
@@ -554,7 +561,7 @@ describe("invalid-signature emulator lifecycle", () => {
     );
     // Step-01 binds an honest transaction perfectly well: the rule it forwards
     // is about the witness set's contents, which nothing has read yet.
-    const step01 = await submitInvalidSignatureStep01({
+    const step01 = await submitStep01({
       lucid: proverLucid,
       witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
@@ -578,7 +585,7 @@ describe("invalid-signature emulator lifecycle", () => {
     // Plane one: the honest builder refuses before paying — both for the
     // accusation itself and for an index the committed collection never had.
     await expect(
-      submitInvalidSignatureStep02({
+      submitTurnsUnjournaled(buildInvalidSignatureStep02, {
         lucid: proverLucid,
         witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
@@ -595,7 +602,7 @@ describe("invalid-signature emulator lifecycle", () => {
       }),
     ).rejects.toThrow(/signs transaction .* validly/u);
     await expect(
-      submitInvalidSignatureStep02({
+      submitTurnsUnjournaled(buildInvalidSignatureStep02, {
         lucid: proverLucid,
         witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
@@ -674,7 +681,7 @@ describe("invalid-signature emulator lifecycle", () => {
       harness.contracts,
       catalogue,
     );
-    const initResult = await submitInit({
+    const initResult = await buildAndSubmitUnjournaled(buildInit, {
       lucid: proverLucid,
       witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
@@ -690,7 +697,7 @@ describe("invalid-signature emulator lifecycle", () => {
       initResult.firstStepAddress,
       initResult.computationThreadUnit,
     );
-    const step01 = await submitInvalidSignatureStep01({
+    const step01 = await submitStep01({
       lucid: proverLucid,
       witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,

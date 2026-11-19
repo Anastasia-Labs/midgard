@@ -39,5 +39,5 @@ export {
   type SubmitReferenceInputNoIdxStep04CliConfig,
   type SubmitReferenceInputNoIdxStep04Result,
 } from "./submit-reference-input-no-idx-step-04.make-reference-input-no-idx-step04-spend-redeemer.js";
-export { submitReferenceInputNoIdxStep04 } from "./submit-reference-input-no-idx-step-04.submit-reference-input-no-idx-step04.js";
+export { buildReferenceInputNoIdxStep04 } from "./submit-reference-input-no-idx-step-04.submit-reference-input-no-idx-step04.js";
 export { submitReferenceInputNoIdxStep04FromFiles } from "./submit-reference-input-no-idx-step-04.submit-reference-input-no-idx-step04-from-files.js";

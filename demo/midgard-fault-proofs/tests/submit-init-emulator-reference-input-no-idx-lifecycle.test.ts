@@ -49,13 +49,13 @@ import { describe, expect, it } from "vitest";
 
 import { planFaultProofFieldOpening } from "../src/field-opening.js";
 import {
-  submitReferenceInputNoIdxStep01,
-  submitReferenceInputNoIdxStep02,
-  submitReferenceInputNoIdxStep03,
-  submitReferenceInputNoIdxStep04,
+  buildReferenceInputNoIdxStep01,
+  buildReferenceInputNoIdxStep02,
+  buildReferenceInputNoIdxStep03,
+  buildReferenceInputNoIdxStep04,
   submitRemoveFraudulentBlock,
 } from "../src/index.js";
-import { submitInit } from "./support/legacy-submit-emulator.js";
+import { buildInit } from "./support/legacy-submit-emulator.js";
 import {
   buildReferenceInputNoIdxBlockFixture,
   expectOnchainRefusal,
@@ -77,6 +77,10 @@ import {
   network,
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 
 /** The out-of-range output index the fraudulent reader claims by default. */
 const CHALLENGED_OUTPUT_INDEX = 7n;
@@ -141,7 +145,7 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
     });
 
     // ## init
-    const initResult = await submitInit({
+    const initResult = await buildAndSubmitUnjournaled(buildInit, {
       lucid: proverLucid,
       witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
@@ -166,19 +170,22 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
     );
 
     // ## step-01: bind the BAD transaction to the committed header
-    const step01Result = await submitReferenceInputNoIdxStep01({
-      lucid: proverLucid,
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: proverSigner,
-      threadOutRef: outRefLabel(firstStepUtxo),
-      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-      txInclusion: fixture.badTxInclusion,
-      referenceScriptUtxo: step01Ref,
-      awaitConfirmation: true,
-    });
+    const step01Result = await buildAndSubmitUnjournaled(
+      buildReferenceInputNoIdxStep01,
+      {
+        lucid: proverLucid,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        threadOutRef: outRefLabel(firstStepUtxo),
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+        txInclusion: fixture.badTxInclusion,
+        referenceScriptUtxo: step01Ref,
+        awaitConfirmation: true,
+      },
+    );
     expect(step01Result.badTxId).toBe(fixture.badTxId);
     expect(step01Result.verifiedTxId).toBe(fixture.badTxId);
 
@@ -198,7 +205,7 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
     const step02Capture = await captureEmulatorSubmission(
       emulator,
       async () =>
-        await submitReferenceInputNoIdxStep02({
+        await submitTurnsUnjournaled(buildReferenceInputNoIdxStep02, {
           lucid: proverLucid,
           blueprint: realBlueprint,
           deploymentInfo,
@@ -243,19 +250,22 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
     });
 
     // ## step-03: bind the PRODUCING transaction from the same block
-    const step03Result = await submitReferenceInputNoIdxStep03({
-      lucid: proverLucid,
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: proverSigner,
-      threadOutRef: outRefLabel(thirdStepUtxo),
-      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-      txInclusion: fixture.producingTxInclusion,
-      referenceScriptUtxo: step03Ref,
-      awaitConfirmation: true,
-    });
+    const step03Result = await buildAndSubmitUnjournaled(
+      buildReferenceInputNoIdxStep03,
+      {
+        lucid: proverLucid,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        threadOutRef: outRefLabel(thirdStepUtxo),
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+        txInclusion: fixture.producingTxInclusion,
+        referenceScriptUtxo: step03Ref,
+        awaitConfirmation: true,
+      },
+    );
     expect(step03Result.producingTxId).toBe(fixture.producingTxId);
 
     const fourthStepUtxo = await expectSingleUtxoWithUnit(
@@ -274,19 +284,22 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
     });
 
     // ## step-04: open §2.5 field 2 and mint the permanent token
-    const step04Result = await submitReferenceInputNoIdxStep04({
-      lucid: proverLucid,
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: proverSigner,
-      threadOutRef: outRefLabel(fourthStepUtxo),
-      outputsPreimage: { outputsPreimage: fixture.producingOutputs },
-      nativeTxCompactCbor: fixture.producingTxInclusion.nativeTxCompactCbor,
-      referenceScriptUtxo: step04Ref,
-      awaitConfirmation: true,
-    });
+    const step04Result = await submitTurnsUnjournaled(
+      buildReferenceInputNoIdxStep04,
+      {
+        lucid: proverLucid,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        threadOutRef: outRefLabel(fourthStepUtxo),
+        outputsPreimage: { outputsPreimage: fixture.producingOutputs },
+        nativeTxCompactCbor: fixture.producingTxInclusion.nativeTxCompactCbor,
+        referenceScriptUtxo: step04Ref,
+        awaitConfirmation: true,
+      },
+    );
     expect(step04Result.producingTxOutputCount).toBe(1);
     expect(step04Result.producingTxOutputsHash).toBe(
       fixture.producingTxOutputsHash,
@@ -443,7 +456,7 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
       fixture,
     });
     const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {});
-    const initResult = await submitInit({
+    const initResult = await buildAndSubmitUnjournaled(buildInit, {
       lucid: proverLucid,
       witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
@@ -459,19 +472,22 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
       initResult.firstStepAddress,
       initResult.computationThreadUnit,
     );
-    const step01Result = await submitReferenceInputNoIdxStep01({
-      lucid: proverLucid,
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: proverSigner,
-      threadOutRef: outRefLabel(firstStepUtxo),
-      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-      txInclusion: fixture.badTxInclusion,
-      referenceScriptUtxo: step01Ref,
-      awaitConfirmation: true,
-    });
+    const step01Result = await buildAndSubmitUnjournaled(
+      buildReferenceInputNoIdxStep01,
+      {
+        lucid: proverLucid,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        threadOutRef: outRefLabel(firstStepUtxo),
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+        txInclusion: fixture.badTxInclusion,
+        referenceScriptUtxo: step01Ref,
+        awaitConfirmation: true,
+      },
+    );
     const secondStepUtxo = await expectSingleUtxoWithUnit(
       proverLucid,
       step01Result.secondStepAddress,
@@ -481,7 +497,7 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
     const step02Capture = await captureEmulatorSubmission(
       emulator,
       async () =>
-        await submitReferenceInputNoIdxStep02({
+        await submitTurnsUnjournaled(buildReferenceInputNoIdxStep02, {
           lucid: proverLucid,
           blueprint: realBlueprint,
           deploymentInfo,
@@ -524,37 +540,43 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
       step02Result.thirdStepAddress,
       initResult.computationThreadUnit,
     );
-    const step03Result = await submitReferenceInputNoIdxStep03({
-      lucid: proverLucid,
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: proverSigner,
-      threadOutRef: outRefLabel(thirdStepUtxo),
-      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-      txInclusion: fixture.producingTxInclusion,
-      referenceScriptUtxo: step03Ref,
-      awaitConfirmation: true,
-    });
+    const step03Result = await buildAndSubmitUnjournaled(
+      buildReferenceInputNoIdxStep03,
+      {
+        lucid: proverLucid,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        threadOutRef: outRefLabel(thirdStepUtxo),
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+        txInclusion: fixture.producingTxInclusion,
+        referenceScriptUtxo: step03Ref,
+        awaitConfirmation: true,
+      },
+    );
     const fourthStepUtxo = await expectSingleUtxoWithUnit(
       proverLucid,
       step03Result.fourthStepAddress,
       initResult.computationThreadUnit,
     );
-    const step04Result = await submitReferenceInputNoIdxStep04({
-      lucid: proverLucid,
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: proverSigner,
-      threadOutRef: outRefLabel(fourthStepUtxo),
-      outputsPreimage: { outputsPreimage: fixture.producingOutputs },
-      nativeTxCompactCbor: fixture.producingTxInclusion.nativeTxCompactCbor,
-      referenceScriptUtxo: step04Ref,
-      awaitConfirmation: true,
-    });
+    const step04Result = await submitTurnsUnjournaled(
+      buildReferenceInputNoIdxStep04,
+      {
+        lucid: proverLucid,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        threadOutRef: outRefLabel(fourthStepUtxo),
+        outputsPreimage: { outputsPreimage: fixture.producingOutputs },
+        nativeTxCompactCbor: fixture.producingTxInclusion.nativeTxCompactCbor,
+        referenceScriptUtxo: step04Ref,
+        awaitConfirmation: true,
+      },
+    );
     expect(step04Result.producingTxOutputCount).toBe(1);
     const fraudProofUtxo = await expectSingleUtxoWithUnit(
       proverLucid,
@@ -605,7 +627,7 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
       fixture,
     });
     const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {});
-    const initResult = await submitInit({
+    const initResult = await buildAndSubmitUnjournaled(buildInit, {
       lucid: proverLucid,
       witnessReferenceScripts: harness.witnessReferenceScripts,
       blueprint: realBlueprint,
@@ -621,19 +643,22 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
       initResult.firstStepAddress,
       initResult.computationThreadUnit,
     );
-    const step01Result = await submitReferenceInputNoIdxStep01({
-      lucid: proverLucid,
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: proverSigner,
-      threadOutRef: outRefLabel(firstStepUtxo),
-      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-      txInclusion: fixture.badTxInclusion,
-      referenceScriptUtxo: step01Ref,
-      awaitConfirmation: true,
-    });
+    const step01Result = await buildAndSubmitUnjournaled(
+      buildReferenceInputNoIdxStep01,
+      {
+        lucid: proverLucid,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        threadOutRef: outRefLabel(firstStepUtxo),
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+        txInclusion: fixture.badTxInclusion,
+        referenceScriptUtxo: step01Ref,
+        awaitConfirmation: true,
+      },
+    );
     const secondStepUtxo = await expectSingleUtxoWithUnit(
       proverLucid,
       step01Result.secondStepAddress,
@@ -646,7 +671,7 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
     // the SLOT because under §4 identical items commit identically in fields 0
     // and 1.
     await expect(
-      submitReferenceInputNoIdxStep02({
+      submitTurnsUnjournaled(buildReferenceInputNoIdxStep02, {
         lucid: proverLucid,
         blueprint: realBlueprint,
         deploymentInfo,
@@ -692,40 +717,46 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
     );
 
     // The honest steps 02 and 03 still advance: no verdict lives in them.
-    const step02Result = await submitReferenceInputNoIdxStep02({
-      lucid: proverLucid,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: proverSigner,
-      threadOutRef: outRefLabel(secondStepUtxo),
-      referenceInputsPreimage: {
-        referenceInputsPreimage: fixture.referenceInputs,
-        badReferenceInputIndex: fixture.challengedReferenceInputIndex,
+    const step02Result = await submitTurnsUnjournaled(
+      buildReferenceInputNoIdxStep02,
+      {
+        lucid: proverLucid,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        threadOutRef: outRefLabel(secondStepUtxo),
+        referenceInputsPreimage: {
+          referenceInputsPreimage: fixture.referenceInputs,
+          badReferenceInputIndex: fixture.challengedReferenceInputIndex,
+        },
+        nativeTxCompactCbor: fixture.badTxInclusion.nativeTxCompactCbor,
+        referenceScriptUtxo: step02Ref,
+        awaitConfirmation: true,
       },
-      nativeTxCompactCbor: fixture.badTxInclusion.nativeTxCompactCbor,
-      referenceScriptUtxo: step02Ref,
-      awaitConfirmation: true,
-    });
+    );
     expect(step02Result.badReferenceInputOutputIndex).toBe(0);
     const thirdStepUtxo = await expectSingleUtxoWithUnit(
       proverLucid,
       step02Result.thirdStepAddress,
       initResult.computationThreadUnit,
     );
-    const step03Result = await submitReferenceInputNoIdxStep03({
-      lucid: proverLucid,
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: proverSigner,
-      threadOutRef: outRefLabel(thirdStepUtxo),
-      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-      txInclusion: fixture.producingTxInclusion,
-      referenceScriptUtxo: step03Ref,
-      awaitConfirmation: true,
-    });
+    const step03Result = await buildAndSubmitUnjournaled(
+      buildReferenceInputNoIdxStep03,
+      {
+        lucid: proverLucid,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        threadOutRef: outRefLabel(thirdStepUtxo),
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+        txInclusion: fixture.producingTxInclusion,
+        referenceScriptUtxo: step03Ref,
+        awaitConfirmation: true,
+      },
+    );
     const fourthStepUtxo = await expectSingleUtxoWithUnit(
       proverLucid,
       step03Result.fourthStepAddress,
@@ -736,7 +767,7 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
     // in the producing transaction, so `isReferenceInputNoIdxViolationV1`
     // refuses finalization before a transaction is built.
     await expect(
-      submitReferenceInputNoIdxStep04({
+      submitTurnsUnjournaled(buildReferenceInputNoIdxStep04, {
         lucid: proverLucid,
         witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,
@@ -778,7 +809,7 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
     // commits to the empty-field constant, which is not what that transaction
     // commits AT FIELD 2, so the door refuses before the count is ever read.
     await expect(
-      submitReferenceInputNoIdxStep04({
+      submitTurnsUnjournaled(buildReferenceInputNoIdxStep04, {
         lucid: proverLucid,
         witnessReferenceScripts: harness.witnessReferenceScripts,
         blueprint: realBlueprint,

@@ -1,15 +1,12 @@
 import { type LucidEvolution } from "@lucid-evolution/lucid";
 
 import type { CanonicalDecodabilityContracts } from "../canonical-decodability/contracts.js";
-import { submitCanonicalDecodabilityInit } from "../canonical-decodability/submit-canonical-decodability-init.js";
-import { submitCanonicalDecodabilityStep01 } from "../canonical-decodability/submit-canonical-decodability-step-01.js";
-import { submitCanonicalDecodabilityStep02 } from "../canonical-decodability/submit-canonical-decodability-step-02.js";
+import { buildCanonicalDecodabilityInit } from "../canonical-decodability/submit-canonical-decodability-init.js";
+import { buildCanonicalDecodabilityStep01 } from "../canonical-decodability/submit-canonical-decodability-step-01.js";
+import { buildCanonicalDecodabilityStep02 } from "../canonical-decodability/submit-canonical-decodability-step-02.js";
 import { resolvePublishedProofChunks } from "../publish-proof-chunks.js";
-import {
-  type StateQueueMutationLease,
-  type StateQueueMutationLeaseCoordinator,
-  submitRemoveFraudulentBlock,
-} from "../remove-fraudulent-block.js";
+import { type StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import {
   admitCanonicalDecodabilityArtifact,
@@ -36,8 +33,9 @@ import {
 } from "./field-carriage-prerequisite.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
 import { workflowConfirmedTransactions } from "./own-outputs.js";
+import { admitRemovalTransaction } from "./removal-admission.js";
+import { journaledStepTransaction } from "./step-transaction.js";
 import {
-  captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
   workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary.js";
@@ -111,9 +109,9 @@ export const createTransactionPort = (
     const input = actionInput(action);
     if (input.stage === "init") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitCanonicalDecodabilityInit({
+        transaction: (
+          await journaledStepTransaction(
+            await buildCanonicalDecodabilityInit({
               lucid: config.lucid,
               blueprint: config.blueprint,
               network: config.network,
@@ -127,11 +125,10 @@ export const createTransactionPort = (
               ),
               fraudulentHeaderHash: config.headerHash,
               witnessReferenceScripts: config.referenceScripts.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "canonical-decodability buildCanonicalDecodabilityInit",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "step_01") {
@@ -155,9 +152,9 @@ export const createTransactionPort = (
         );
       }
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitCanonicalDecodabilityStep01({
+        transaction: (
+          await journaledStepTransaction(
+            await buildCanonicalDecodabilityStep01({
               lucid: config.lucid,
               blueprint: config.blueprint,
               contracts: config.contracts,
@@ -186,18 +183,17 @@ export const createTransactionPort = (
                   }),
               referenceScriptUtxo: config.referenceScripts.steps[0],
               witnessReferenceScripts: config.referenceScripts.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "canonical-decodability buildCanonicalDecodabilityStep01",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "step_02") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitCanonicalDecodabilityStep02({
+        transaction: (
+          await journaledStepTransaction(
+            await buildCanonicalDecodabilityStep02({
               lucid: config.lucid,
               contracts: config.contracts,
               categoryId: config.category.categoryId,
@@ -205,61 +201,45 @@ export const createTransactionPort = (
               threadOutRef: stringField(input, "threadOutRef"),
               referenceScriptUtxo: config.referenceScripts.steps[1],
               witnessReferenceScripts: config.referenceScripts.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "canonical-decodability buildCanonicalDecodabilityStep02",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "remove") {
-      let mutationLease: StateQueueMutationLease | undefined;
-      const retainingCoordinator: StateQueueMutationLeaseCoordinator = {
-        acquire: async () => {
-          const acquired =
-            await config.stateQueueMutationLeaseCoordinator.acquire();
-          mutationLease = acquired;
-          return acquired;
-        },
-      };
       const nextRemovalOutRef = stringField(input, "nextRemovalOutRef");
       const fraudProofOutRef = stringField(input, "fraudProofOutRef");
-      const transaction = await captureLocallyEvaluatedTransaction(
-        async (boundary) => {
-          await submitRemoveFraudulentBlock({
-            fraudProofOutRef,
-            lucid: config.lucid,
-            blueprint: config.blueprint,
-            deploymentInfo: config.deploymentInfo,
-            network: config.network,
-            signer: config.signer,
-            fraudCategory: "canonicalDecodability",
-            fraudulentHeaderHash: config.headerHash,
-            requireReferenceScripts: true,
-            stateQueueMutationLeaseCoordinator: retainingCoordinator,
-            fraudProverRewardLovelace: config.fraudProverRewardLovelace,
-            preSubmitBoundary: async (built) => {
-              if (
-                !workflowTransactionInputOutRefs(built.signed).includes(
-                  nextRemovalOutRef,
-                ) ||
-                !workflowTransactionReferenceInputOutRefs(
-                  built.signed,
-                ).includes(fraudProofOutRef)
-              ) {
-                throw new Error(
-                  "canonical-decodability removal changed queue/proof identity",
-                );
-              }
-              await boundary(built);
-            },
-          });
+      return await admitRemovalTransaction(
+        await buildRemoveFraudulentBlock({
+          fraudProofOutRef,
+          lucid: config.lucid,
+          blueprint: config.blueprint,
+          deploymentInfo: config.deploymentInfo,
+          network: config.network,
+          signer: config.signer,
+          fraudCategory: "canonicalDecodability",
+          fraudulentHeaderHash: config.headerHash,
+          requireReferenceScripts: true,
+          stateQueueMutationLeaseCoordinator:
+            config.stateQueueMutationLeaseCoordinator,
+          fraudProverRewardLovelace: config.fraudProverRewardLovelace,
+        }),
+        async (built) => {
+          if (
+            !workflowTransactionInputOutRefs(built.signed).includes(
+              nextRemovalOutRef,
+            ) ||
+            !workflowTransactionReferenceInputOutRefs(built.signed).includes(
+              fraudProofOutRef,
+            )
+          ) {
+            throw new Error(
+              "canonical-decodability removal changed queue/proof identity",
+            );
+          }
         },
       );
-      return Object.freeze({
-        transaction,
-        ...(mutationLease === undefined ? {} : { mutationLease }),
-      });
     }
     throw new Error(
       `canonical-decodability workflow action has unsupported stage ${String(input.stage)}`,

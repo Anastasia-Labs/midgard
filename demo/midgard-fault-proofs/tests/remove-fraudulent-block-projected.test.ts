@@ -177,7 +177,7 @@ it.skipIf(runDirectory === undefined)(
         awaitConfirmation: false,
         validFrom: BigInt(now - 59_877),
         validTo,
-        preSubmitBoundary: forbiddenSign,
+        beforeSubmit: forbiddenSign,
       });
     };
     await expect(runBuilder(originalLedger)).rejects.toBeInstanceOf(

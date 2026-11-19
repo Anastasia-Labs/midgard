@@ -12,6 +12,7 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
+import { isPrerequisiteTurn } from "../fault-proof-turn.js";
 import {
   faultProofFieldOpening,
   planFaultProofFieldOpening,
@@ -21,14 +22,13 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultFinalize } from "../linear-fault-finalize.js";
+import { buildLinearFaultFinalize } from "../linear-fault-finalize.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   NATIVE_SCRIPT_INVALID_CATEGORY_LABEL as FAMILY,
   type NativeScriptInvalidContracts,
@@ -49,7 +49,7 @@ const Redeemer = asDataType<Redeemer>(
   NativeScriptInvalidStep03SpendRedeemerSchema,
 );
 
-export const submitNativeScriptInvalidStep03 = async ({
+export const buildNativeScriptInvalidStep03 = async ({
   lucid,
   contracts,
   categoryId,
@@ -66,9 +66,6 @@ export const submitNativeScriptInvalidStep03 = async ({
   certificateUtxo,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  publicationPreSubmitBoundary,
-  preSubmitBoundary,
-  awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
@@ -87,9 +84,6 @@ export const submitNativeScriptInvalidStep03 = async ({
   readonly certificateUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
-  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
 }) => {
@@ -161,9 +155,9 @@ export const submitNativeScriptInvalidStep03 = async ({
       planned,
       publisherAddress: signer.proofMaterialsAddress,
       label: `${FAMILY} final field 7`,
-      preSubmitBoundary: publicationPreSubmitBoundary,
     }));
-  return await submitLinearFaultFinalize({
+  if (isPrerequisiteTurn(carriageUtxos)) return carriageUtxos;
+  return await buildLinearFaultFinalize({
     lucid,
     family: FAMILY,
     stepIndex,
@@ -193,8 +187,6 @@ export const submitNativeScriptInvalidStep03 = async ({
     extraReferenceInputs:
       certificateUtxo === undefined ? [] : [certificateUtxo],
     witnessReferenceScripts,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
 };
 
@@ -203,7 +195,7 @@ export const submitNativeScriptInvalidStep03 = async ({
  * script position field 6 does not have. No script is evaluated: canonical
  * validation evaluates none there, so the rejection is contradicted.
  */
-export const submitNativeScriptInvalidStep03AbsentFinalize = async ({
+export const buildNativeScriptInvalidStep03AbsentFinalize = async ({
   lucid,
   contracts,
   categoryId,
@@ -211,8 +203,6 @@ export const submitNativeScriptInvalidStep03AbsentFinalize = async ({
   threadOutRef,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: NativeScriptInvalidContracts;
@@ -221,8 +211,6 @@ export const submitNativeScriptInvalidStep03AbsentFinalize = async ({
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 2;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
@@ -243,7 +231,7 @@ export const submitNativeScriptInvalidStep03AbsentFinalize = async ({
   if (state.script_item_hash !== NATIVE_SCRIPT_INVALID_ABSENT_SCRIPT_ITEM_HASH)
     throw new Error(`${FAMILY}: thread carries a selected script`);
   signer.selectWallet(lucid);
-  return await submitLinearFaultFinalize({
+  return await buildLinearFaultFinalize({
     lucid,
     family: FAMILY,
     stepIndex,
@@ -263,7 +251,5 @@ export const submitNativeScriptInvalidStep03AbsentFinalize = async ({
     }),
     referenceScriptUtxo,
     witnessReferenceScripts,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
 };

@@ -17,11 +17,10 @@ import {
   requireLinearFaultReferenceScript,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { requireInitialStepDatum } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY_LABEL as FAMILY,
   type OutputReferenceScriptDecodingContracts,
@@ -42,7 +41,7 @@ import {
  * and observe the on-chain refusal. Production callers use the classified
  * entry point below.
  */
-export const submitOutputReferenceScriptDecodingStep01ForcedRaw = async ({
+export const buildOutputReferenceScriptDecodingStep01ForcedRaw = async ({
   lucid,
   contracts,
   categoryId,
@@ -52,8 +51,6 @@ export const submitOutputReferenceScriptDecodingStep01ForcedRaw = async ({
   claimedOutputIndex = bound.outputIndex,
   forcedSource,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: OutputReferenceScriptDecodingContracts;
@@ -69,8 +66,6 @@ export const submitOutputReferenceScriptDecodingStep01ForcedRaw = async ({
   readonly claimedOutputIndex?: bigint;
   readonly forcedSource: Readonly<Record<string, unknown>>;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 0;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
@@ -139,7 +134,7 @@ export const submitOutputReferenceScriptDecodingStep01ForcedRaw = async ({
       OutputReferenceStep01RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -150,25 +145,26 @@ export const submitOutputReferenceScriptDecodingStep01ForcedRaw = async ({
     nextAddress: contracts.steps[1].spendingScriptAddress,
     nextDatum,
     redeemer,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined)
     throw new Error(`${FAMILY}: forced step01 layout unresolved`);
-  return { txHash, nextThreadOutRef: `${txHash}#${outputIndex.toString()}` };
+  return {
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
+  };
 };
 
-export const submitOutputReferenceScriptDecodingStep01Forced = async ({
+export const buildOutputReferenceScriptDecodingStep01Forced = async ({
   evidence,
   ...rest
 }: Omit<
-  Parameters<typeof submitOutputReferenceScriptDecodingStep01ForcedRaw>[0],
+  Parameters<typeof buildOutputReferenceScriptDecodingStep01ForcedRaw>[0],
   "bound" | "claimedOutputIndex"
 > & {
   readonly evidence: OutputReferenceScriptDecodingEvidence;
 }) => {
   classifyOutputReferenceScriptDecodingFinding(evidence);
-  return await submitOutputReferenceScriptDecodingStep01ForcedRaw({
+  return await buildOutputReferenceScriptDecodingStep01ForcedRaw({
     ...rest,
     bound: {
       subject: evidence.subject,

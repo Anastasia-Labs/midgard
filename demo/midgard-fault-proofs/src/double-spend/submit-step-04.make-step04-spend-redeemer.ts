@@ -21,9 +21,13 @@ import {
 
 import { outRefLabel, type ResolvedProverSigner } from "../runtime.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
+import {
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
+} from "../workflow/transaction-boundary.js";
 
-export type SubmitStep04Result = {
-  readonly txHash: string;
+export type Step04Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -51,8 +55,9 @@ export type SubmitStep04Result = {
   readonly outputIndex: number;
   readonly computationThreadMintRedeemerIndex: number;
   readonly fraudProofMintRedeemerIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
+
+export type SubmitStep04Result = UnjournaledSubmission<Step04Build>;
 
 type Step04DatumWithState = DoubleSpendStep04Datum & {
   readonly data: NonNullable<DoubleSpendStep04Datum["data"]>;

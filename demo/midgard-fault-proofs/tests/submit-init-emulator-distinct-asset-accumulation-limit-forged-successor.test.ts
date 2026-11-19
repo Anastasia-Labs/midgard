@@ -22,14 +22,13 @@ import { describe, expect, it } from "vitest";
 import {
   buildDirectPurposeTransition,
   type DirectPurposeRole,
-  submitDirectPurposeTransition,
 } from "../src/direct-purpose-family/index.js";
 import {
   DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
   distinctAssetAccumulationLimitContractRoles,
   prepareDistinctAssetAccumulationLimitProof,
 } from "../src/distinct-asset-accumulation-limit/index.js";
-import { submitNativeTxBinding } from "../src/native-tx-binding.js";
+import { buildNativeTxBinding } from "../src/native-tx-binding.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
 import { computationThreadOutputPredicate } from "../src/tx-layout.js";
 import { witnessMintingPolicyCarriage } from "../src/witness-reference-scripts.js";
@@ -48,6 +47,8 @@ import {
 } from "./support/distinct-asset-accumulation-limit-emulator.subject.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { network } from "./support/submit-init-emulator-shared.js";
+import { submitDirectPurposeTransition } from "./support/submit-unjournaled.direct-purpose.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 type Scenario = Parameters<typeof setupDistinctAssetScenario>[0];
 
@@ -63,7 +64,7 @@ const forgedStep01 = async (
   const contracts = harness.direct;
   const signer = harness.proverSigner;
   if (scenario.block.txInclusion !== null)
-    return await submitNativeTxBinding({
+    return await buildAndSubmitUnjournaled(buildNativeTxBinding, {
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       network,

@@ -4,10 +4,9 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultFinalize } from "../linear-fault-finalize.js";
+import { buildLinearFaultFinalize } from "../linear-fault-finalize.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { ObserverOrderInvalidContracts } from "./contracts.js";
 import {
   type ObserverOrderInvalidEvidence,
@@ -18,7 +17,7 @@ import {
   ObserverOrderInvalidStep04RedeemerSchema,
 } from "./schemas.js";
 
-export const submitObserverOrderInvalidStep04 = async ({
+export const buildObserverOrderInvalidStep04 = async ({
   lucid,
   contracts,
   categoryId,
@@ -27,8 +26,6 @@ export const submitObserverOrderInvalidStep04 = async ({
   evidence,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: ObserverOrderInvalidContracts;
@@ -38,8 +35,6 @@ export const submitObserverOrderInvalidStep04 = async ({
   readonly evidence: ObserverOrderInvalidEvidence;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   if (!observerOrderInvalidEvidenceCloses(evidence))
     throw new Error("observerOrderInvalid: terminal evidence is honest");
@@ -70,7 +65,7 @@ export const submitObserverOrderInvalidStep04 = async ({
     throw new Error(
       "observerOrderInvalid: terminal datum differs from evidence",
     );
-  return await submitLinearFaultFinalize({
+  return await buildLinearFaultFinalize({
     lucid,
     family: "observer-order-invalid",
     stepIndex,
@@ -92,7 +87,5 @@ export const submitObserverOrderInvalidStep04 = async ({
     }),
     referenceScriptUtxo,
     witnessReferenceScripts,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
 };

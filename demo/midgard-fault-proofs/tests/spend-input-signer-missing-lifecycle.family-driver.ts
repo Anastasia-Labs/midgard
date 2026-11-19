@@ -1,21 +1,21 @@
 import { type UTxO } from "@lucid-evolution/lucid";
 
-import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
+import { buildCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
 import { requireLinearFaultThreadUtxo } from "../src/linear-fault-family.js";
-import { submitLinearFaultFinalize } from "../src/linear-fault-finalize.js";
+import { buildLinearFaultFinalize } from "../src/linear-fault-finalize.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { SignerWitnessTerminalRedeemerSchema } from "../src/signer-witness-scan/schemas.js";
 import {
+  buildSignerWitnessScan,
   SIGNER_WITNESS_TERMINAL_STEP_INDEX,
-  submitSignerWitnessScan,
 } from "../src/signer-witness-scan/submit-scan.js";
-import { submitSignerWitnessTerminal } from "../src/signer-witness-scan/submit-terminal.js";
+import { buildSignerWitnessTerminal } from "../src/signer-witness-scan/submit-terminal.js";
 import {
+  buildSpendInputSignerMissingCancel,
+  buildSpendInputSignerMissingStep01Accepted,
+  buildSpendInputSignerMissingStep01Forced,
+  buildSpendInputSignerMissingStep02,
   type SpendInputSignerMissingEvidence,
-  submitSpendInputSignerMissingCancel,
-  submitSpendInputSignerMissingStep01Accepted,
-  submitSpendInputSignerMissingStep01Forced,
-  submitSpendInputSignerMissingStep02,
 } from "../src/spend-input-signer-missing/index.js";
 import { type SubmitStep01TxInclusion } from "../src/step-support.js";
 import {
@@ -27,6 +27,10 @@ import {
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 
 /** Thin step drivers over one harness, family, and reference set. */
 export const familyDriver = (
@@ -40,7 +44,7 @@ export const familyDriver = (
   const signer = harness.proverSigner;
   const categoryId = category.categoryId;
   const init = (blockOutRef: string) =>
-    submitCommittedFieldShapeInit({
+    buildAndSubmitUnjournaled(buildCommittedFieldShapeInit, {
       lucid,
       blueprint: harness.realBlueprint,
       network,
@@ -77,7 +81,7 @@ export const familyDriver = (
     blockOutRef: string,
     txInclusion: SubmitStep01TxInclusion,
   ) =>
-    submitSpendInputSignerMissingStep01Accepted({
+    buildAndSubmitUnjournaled(buildSpendInputSignerMissingStep01Accepted, {
       lucid,
       blueprint: harness.realBlueprint,
       network,
@@ -99,7 +103,7 @@ export const familyDriver = (
     evidence: SpendInputSignerMissingEvidence,
     forcedSource: Readonly<Record<string, unknown>>,
   ) =>
-    submitSpendInputSignerMissingStep01Forced({
+    buildAndSubmitUnjournaled(buildSpendInputSignerMissingStep01Forced, {
       lucid,
       contracts,
       categoryId,
@@ -115,7 +119,7 @@ export const familyDriver = (
     nativeTxCompactCbor: string,
     witnessSetCompactCbor: string,
   ) =>
-    submitSpendInputSignerMissingStep02({
+    submitTurnsUnjournaled(buildSpendInputSignerMissingStep02, {
       lucid,
       network,
       contracts,
@@ -137,7 +141,7 @@ export const familyDriver = (
     nativeTxCompactCbor: string,
     witnessSetCompactCbor: string,
   ) =>
-    submitSignerWitnessScan({
+    submitTurnsUnjournaled(buildSignerWitnessScan, {
       lucid,
       family: FAMILY,
       contracts,
@@ -154,7 +158,7 @@ export const familyDriver = (
     threadOutRef: string,
     evidence: SpendInputSignerMissingEvidence,
   ) =>
-    submitSignerWitnessTerminal({
+    buildAndSubmitUnjournaled(buildSignerWitnessTerminal, {
       lucid,
       family: FAMILY,
       contracts,
@@ -166,7 +170,7 @@ export const familyDriver = (
       witnessReferenceScripts: harness.witnessReferenceScripts,
     });
   const cancel = (threadOutRef: string, stepIndex: number) =>
-    submitSpendInputSignerMissingCancel({
+    buildAndSubmitUnjournaled(buildSpendInputSignerMissingCancel, {
       lucid,
       contracts,
       categoryId,
@@ -188,7 +192,7 @@ export const familyDriver = (
       stepIndex: SIGNER_WITNESS_TERMINAL_STEP_INDEX,
       threadOutRef,
     });
-    return submitLinearFaultFinalize({
+    return buildAndSubmitUnjournaled(buildLinearFaultFinalize, {
       lucid,
       family: FAMILY,
       stepIndex: SIGNER_WITNESS_TERMINAL_STEP_INDEX,

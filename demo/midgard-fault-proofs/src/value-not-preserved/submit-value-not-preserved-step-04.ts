@@ -29,10 +29,8 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import {
-  DEFAULT_CONFIRMATION_POLL_MS,
-  type ResolvedProverSigner,
-} from "../runtime.js";
+import { type ResolvedProverSigner } from "../runtime.js";
+import { finishStep } from "../step-completion.js";
 import { selectFeeInput } from "../step-support.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
@@ -40,10 +38,10 @@ import {
   witnessMintingPolicyCarriage,
   witnessSpendingValidatorCarriage,
 } from "../witness-reference-scripts.js";
+import { workflowReferenceScriptsUsedByTransaction } from "../workflow/transaction-boundary.js";
 import {
-  type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
 } from "../workflow/transaction-boundary.js";
 import type { ValueNotPreservedContracts } from "./contracts.js";
 import {
@@ -62,8 +60,8 @@ import {
 
 const STEP_LABEL = valueNotPreservedStepLabel(3);
 
-export type SubmitValueNotPreservedStep04Result = {
-  readonly txHash: string;
+export type ValueNotPreservedStep04Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -81,8 +79,10 @@ export type SubmitValueNotPreservedStep04Result = {
   readonly outputIndex: number;
   readonly computationThreadMintRedeemerIndex: number;
   readonly fraudProofMintRedeemerIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
+
+export type SubmitValueNotPreservedStep04Result =
+  UnjournaledSubmission<ValueNotPreservedStep04Build>;
 
 type Step04SpendLayout = {
   readonly inputIndex: bigint;
@@ -90,7 +90,7 @@ type Step04SpendLayout = {
   readonly fraudProofMintRedeemerIndex: bigint;
 };
 
-export const submitValueNotPreservedStep04 = async ({
+export const buildValueNotPreservedStep04 = async ({
   lucid,
   contracts,
   categoryId,
@@ -98,8 +98,6 @@ export const submitValueNotPreservedStep04 = async ({
   threadOutRef,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: ValueNotPreservedContracts;
@@ -110,9 +108,7 @@ export const submitValueNotPreservedStep04 = async ({
   readonly referenceScriptUtxo?: UTxO;
   /** Published witness reference scripts required by this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitValueNotPreservedStep04Result> => {
+}): Promise<ValueNotPreservedStep04Build> => {
   const { threadUtxo, threadToken } = await requireValueNotPreservedThreadUtxo({
     lucid,
     contracts,
@@ -283,8 +279,7 @@ export const submitValueNotPreservedStep04 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const transaction = finishStep(signed, {
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
@@ -305,20 +300,11 @@ export const submitValueNotPreservedStep04 = async ({
         },
       ],
     }),
-    boundary: preSubmitBoundary,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw valueNotPreservedSubmitError(
-      `step-04 provider returned ${txHash}, expected ${expectedTxHash}.`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
+  const { txHash } = transaction;
 
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
@@ -339,6 +325,5 @@ export const submitValueNotPreservedStep04 = async ({
     fraudProofMintRedeemerIndex: Number(
       spendLayout.fraudProofMintRedeemerIndex,
     ),
-    awaitedConfirmation: awaitConfirmation,
   };
 };

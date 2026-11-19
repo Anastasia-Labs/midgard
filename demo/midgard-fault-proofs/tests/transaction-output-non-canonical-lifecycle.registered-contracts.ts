@@ -16,13 +16,13 @@ import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";
 
-import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
+import { buildCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { nativeTxFromCoreCompact } from "../src/step-support.js";
 import {
   applyTransactionOutputNonCanonicalScripts,
+  buildTransactionOutputNonCanonicalCancel,
   prepareTransactionOutputEvidence,
-  submitTransactionOutputNonCanonicalCancel,
   TRANSACTION_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES,
   type TransactionOutputNonCanonicalContracts,
   TransactionOutputScanControlSchema,
@@ -44,6 +44,7 @@ import {
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { createLifecycleCoverageRecorder } from "./support/lifecycle-coverage.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 import { type Common } from "./support/transaction-output-non-canonical-emulator.js";
 
 export const network = "Custom" as const;
@@ -148,7 +149,7 @@ export const registeredContracts = async (harness: Harness) => {
   });
   const init = async (fraudulentBlockOutRef: string) =>
     await captureEmulatorSubmission(harness.emulator, () =>
-      submitCommittedFieldShapeInit({
+      buildAndSubmitUnjournaled(buildCommittedFieldShapeInit, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -177,7 +178,7 @@ export const registeredContracts = async (harness: Harness) => {
   };
   const cancel = async (threadOutRef: string, stepIndex: StepIndex) =>
     await captureEmulatorSubmission(harness.emulator, () =>
-      submitTransactionOutputNonCanonicalCancel({
+      buildAndSubmitUnjournaled(buildTransactionOutputNonCanonicalCancel, {
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,

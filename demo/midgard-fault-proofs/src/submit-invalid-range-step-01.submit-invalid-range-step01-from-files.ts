@@ -5,7 +5,8 @@ import {
   resolveProverSigner,
 } from "./runtime.js";
 import { parseSubmitStep01TxInclusion } from "./step-support.js";
-import { submitInvalidRangeStep01 } from "./submit-invalid-range-step-01.submit-invalid-range-step01.js";
+import { submitFaultProofTurns } from "./submit-fault-proof-turns.js";
+import { buildInvalidRangeStep01 } from "./submit-invalid-range-step-01.submit-invalid-range-step01.js";
 import {
   type SubmitInvalidRangeStep01CliConfig,
   type SubmitInvalidRangeStep01Result,
@@ -26,15 +27,21 @@ export const submitInvalidRangeStep01FromFiles = async (
     ],
   );
   const signer = resolveProverSigner(config);
-  return await submitInvalidRangeStep01({
-    lucid,
-    blueprint,
-    deploymentInfo,
-    network: config.network,
-    signer,
-    threadOutRef: config.threadOutRef,
-    stateQueueBlockOutRef: config.stateQueueBlockOutRef,
-    txInclusion: parseSubmitStep01TxInclusion(txInclusionJson),
-    awaitConfirmation: config.awaitConfirmation,
-  });
+  return await submitFaultProofTurns(
+    buildInvalidRangeStep01,
+    {
+      lucid,
+      blueprint,
+      deploymentInfo,
+      network: config.network,
+      signer,
+      threadOutRef: config.threadOutRef,
+      stateQueueBlockOutRef: config.stateQueueBlockOutRef,
+      txInclusion: parseSubmitStep01TxInclusion(txInclusionJson),
+    },
+    {
+      label: "invalid-range-step01",
+      awaitConfirmation: config.awaitConfirmation ?? true,
+    },
+  );
 };

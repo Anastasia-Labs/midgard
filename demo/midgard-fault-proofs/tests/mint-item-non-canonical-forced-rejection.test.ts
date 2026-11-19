@@ -21,8 +21,8 @@ import { Data, getAddressDetails } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  submitMintItemNonCanonicalStep01Forced,
-  submitMintItemNonCanonicalStep04UnreachableClaim,
+  buildMintItemNonCanonicalStep01Forced,
+  buildMintItemNonCanonicalStep04UnreachableClaim,
 } from "../src/mint-item-non-canonical/index.js";
 import {
   VAN_ROSSEM_MAX_CPU_UNITS,
@@ -44,6 +44,7 @@ import {
   alignUnixTimeToEmulatorSlotBoundary,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 import {
   MAXIMUM_PROOF_STEP_COUNT,
   syntheticDeepMembershipProof,
@@ -183,14 +184,14 @@ const convict = async ({
   threadOutRef,
 }: Awaited<ReturnType<typeof forcedThread>>) => {
   const bound = await captureEmulatorSubmission(harness.emulator, () =>
-    submitMintItemNonCanonicalStep01Forced({
+    buildAndSubmitUnjournaled(buildMintItemNonCanonicalStep01Forced, {
       ...registered.common(threadOutRef, 0),
       finding: { subject, fieldIndex: 5, itemIndex: 0 },
       forcedSource,
     }),
   );
   const minted = await captureEmulatorSubmission(harness.emulator, () =>
-    submitMintItemNonCanonicalStep04UnreachableClaim({
+    buildAndSubmitUnjournaled(buildMintItemNonCanonicalStep04UnreachableClaim, {
       ...registered.common(bound.result.nextThreadOutRef, 3),
       witnessReferenceScripts: harness.witnessReferenceScripts,
     }),

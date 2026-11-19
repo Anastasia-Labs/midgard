@@ -4,6 +4,10 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import { type SubmitProviderConfig } from "./runtime.js";
+import {
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
+} from "./workflow/transaction-boundary.js";
 
 export type SubmitInvalidRangeStep01CliConfig = SubmitProviderConfig & {
   readonly blueprintPath: string;
@@ -18,8 +22,8 @@ export type SubmitInvalidRangeStep01CliConfig = SubmitProviderConfig & {
   readonly awaitConfirmation?: boolean;
 };
 
-export type SubmitInvalidRangeStep01Result = {
-  readonly txHash: string;
+export type InvalidRangeStep01Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -45,8 +49,10 @@ export type SubmitInvalidRangeStep01Result = {
   /** Which route the membership opening took to L1 (issue #545). */
   readonly proofCarriage: "redeemer" | "published-chunks";
   readonly publishedChunkOutRefs: readonly string[];
-  readonly awaitedConfirmation: boolean;
 };
+
+export type SubmitInvalidRangeStep01Result =
+  UnjournaledSubmission<InvalidRangeStep01Build>;
 
 export type InvalidRangeStep01Layout = {
   readonly inputIndex: bigint;

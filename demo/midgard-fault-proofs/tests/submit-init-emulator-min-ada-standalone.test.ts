@@ -4,11 +4,11 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  submitMinAdaInit,
-  submitMinAdaStep03,
-  submitMinAdaStep04,
-  submitMinAdaTxStep01,
-  submitMinAdaTxStep02,
+  buildMinAdaInit,
+  buildMinAdaStep03,
+  buildMinAdaStep04,
+  buildMinAdaTxStep01,
+  buildMinAdaTxStep02,
   submitRemoveFraudulentBlock,
 } from "../src/index.js";
 import {
@@ -25,6 +25,10 @@ import {
   network,
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 
 describe("min-ada standalone emulator lifecycle", () => {
   it("proves the transaction polarity, cancels and resumes, removes the header, and retains the permanent proof", async () => {
@@ -74,7 +78,10 @@ describe("min-ada standalone emulator lifecycle", () => {
       witnessReferenceScripts: harness.witnessReferenceScripts,
     } as const;
 
-    const cancelledInit = await submitMinAdaInit(initParams);
+    const cancelledInit = await buildAndSubmitUnjournaled(
+      buildMinAdaInit,
+      initParams,
+    );
     const cancelled = await submitFamilyCancel("min-ada", {
       lucid: harness.proverLucid,
       contracts: harness.family,
@@ -86,8 +93,8 @@ describe("min-ada standalone emulator lifecycle", () => {
     });
     expect(cancelled.cancelledStepIndex).toBe(0);
 
-    const init = await submitMinAdaInit(initParams);
-    const step01 = await submitMinAdaTxStep01({
+    const init = await buildAndSubmitUnjournaled(buildMinAdaInit, initParams);
+    const step01 = await buildAndSubmitUnjournaled(buildMinAdaTxStep01, {
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       contracts: harness.family,
@@ -100,7 +107,7 @@ describe("min-ada standalone emulator lifecycle", () => {
       referenceScriptUtxo: refs[0],
       witnessReferenceScripts: harness.witnessReferenceScripts,
     });
-    const step02 = await submitMinAdaTxStep02({
+    const step02 = await submitTurnsUnjournaled(buildMinAdaTxStep02, {
       lucid: harness.proverLucid,
       contracts: harness.family,
       categoryId: harness.category.categoryId,
@@ -110,7 +117,7 @@ describe("min-ada standalone emulator lifecycle", () => {
       referenceScriptUtxo: refs[1],
       yieldReferenceScriptUtxo: yieldRefs.tx.utxo,
     });
-    const step03 = await submitMinAdaStep03({
+    const step03 = await submitTurnsUnjournaled(buildMinAdaStep03, {
       lucid: harness.proverLucid,
       contracts: harness.family,
       categoryId: harness.category.categoryId,
@@ -119,7 +126,7 @@ describe("min-ada standalone emulator lifecycle", () => {
       outputItemCbors: prepared.outputItemCbors,
       referenceScriptUtxo: refs[2],
     });
-    const proof = await submitMinAdaStep04({
+    const proof = await buildAndSubmitUnjournaled(buildMinAdaStep04, {
       lucid: harness.proverLucid,
       contracts: harness.family,
       categoryId: harness.category.categoryId,

@@ -18,14 +18,13 @@ import {
   requireLinearFaultReferenceScript,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import {
   forcedTxFromCoreCompact,
   requireInitialStepDatum,
 } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { FieldItemWidthIllegalContracts } from "./contracts.js";
 import {
   classifyFieldItemWidthFinding,
@@ -37,7 +36,7 @@ import {
   FieldItemWidthStep02DatumSchema,
 } from "./schemas.js";
 
-export const submitFieldItemWidthIllegalStep01Forced = async ({
+export const buildFieldItemWidthIllegalStep01Forced = async ({
   lucid,
   contracts,
   categoryId,
@@ -46,8 +45,6 @@ export const submitFieldItemWidthIllegalStep01Forced = async ({
   finding,
   forcedSource,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: FieldItemWidthIllegalContracts;
@@ -60,8 +57,6 @@ export const submitFieldItemWidthIllegalStep01Forced = async ({
     membership: ForcedTransactionSourceMembershipProof;
   }>;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const exact = classifyFieldItemWidthFinding(finding);
   const compact = {
@@ -141,7 +136,7 @@ export const submitFieldItemWidthIllegalStep01Forced = async ({
       FieldItemWidthStep01RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -152,10 +147,11 @@ export const submitFieldItemWidthIllegalStep01Forced = async ({
     nextAddress: contracts.steps[1].spendingScriptAddress,
     nextDatum,
     redeemer,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined)
     throw new Error("field-item-width-illegal: forced layout unresolved");
-  return { txHash, nextThreadOutRef: `${txHash}#${outputIndex.toString()}` };
+  return {
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
+  };
 };

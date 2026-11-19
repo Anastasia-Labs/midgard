@@ -1,7 +1,7 @@
 /**
- * Step 02 at a Certified-tier opening, driven turn by turn through the
- * workflow capture boundary: once the field certificate is on chain, the
- * next captured transaction is the step itself, and only one certificate is
+ * Step 02 at a Certified-tier opening, driven turn by turn, one
+ * transaction per build: once the field certificate is on chain, the
+ * next built transaction is the step itself, and only one certificate is
  * ever minted.
  */
 import { describe, expect, it } from "vitest";
@@ -18,8 +18,8 @@ import {
 } from "./support/captured-step-turns.js";
 import { maximumIllegalOutputShape } from "./support/field-item-width-illegal-shapes.js";
 
-describe("fieldItemWidthIllegal step 02 under the workflow capture boundary", () => {
-  it("reuses the field certificate already on chain, so the next captured transaction is the step", async () => {
+describe("fieldItemWidthIllegal step 02 built turn by turn", () => {
+  it("reuses the field certificate already on chain, so the next built transaction is the step", async () => {
     const h = await makeHarness();
     const maximum = maximumIllegalOutputShape();
     const { setup, inclusions } = await acceptedBlock(h, [maximum]);
@@ -38,14 +38,8 @@ describe("fieldItemWidthIllegal step 02 under the workflow capture boundary", ()
       emulator: h.harness.emulator,
       threadOutRef,
       maxTurns: 6,
-      invoke: async (boundary) =>
-        await h.step02Turn(
-          threadOutRef,
-          evidence,
-          maximum,
-          boundary,
-          ownOutputs,
-        ),
+      invoke: async () =>
+        await h.step02Turn(threadOutRef, evidence, maximum, ownOutputs),
     });
     expect(drive.prerequisites.length).toBeGreaterThan(0);
     expect(

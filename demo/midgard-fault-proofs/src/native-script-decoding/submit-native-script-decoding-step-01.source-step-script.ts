@@ -1,6 +1,10 @@
 import { type NativeScriptDecodingBindState } from "@al-ft/midgard-sdk";
 import { type UTxO } from "@lucid-evolution/lucid";
 
+import {
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
+} from "../workflow/transaction-boundary.js";
 import type { NativeScriptDecodingContracts } from "./contracts.js";
 import {
   nativeScriptDecodingStepLabel,
@@ -9,8 +13,8 @@ import {
 
 export const STEP_LABEL = nativeScriptDecodingStepLabel(0);
 
-export type SubmitNativeScriptDecodingStep01Result = {
-  readonly txHash: string;
+export type NativeScriptDecodingStep01Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -23,8 +27,10 @@ export type SubmitNativeScriptDecodingStep01Result = {
   readonly bindState: NativeScriptDecodingBindState;
   readonly inputIndex: number;
   readonly outputIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
+
+export type SubmitNativeScriptDecodingStep01Result =
+  UnjournaledSubmission<NativeScriptDecodingStep01Build>;
 
 /** Source the mandatory authenticated step-01 reference script. */
 export const sourceStepScript = <

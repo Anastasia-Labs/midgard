@@ -42,16 +42,19 @@ import {
   resolveProverSigner,
   type SubmitProviderConfig,
 } from "./runtime.js";
-import { completeStep, fundStep, submitStep } from "./step-completion.js";
+import { completeStep, fundStep } from "./step-completion.js";
+import { finishStep } from "./step-completion.js";
 import { requireComputationThreadToken } from "./step-support.js";
 import {
   FABRICATED_WITHDRAWAL_CATEGORY_LABEL,
   type FabricatedWithdrawalContracts,
 } from "./submit-fabricated-withdrawal-step-01.js";
+import { submitFaultProofTurns } from "./submit-fault-proof-turns.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
+import { workflowReferenceScript } from "./workflow/transaction-boundary.js";
 import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScript,
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
 } from "./workflow/transaction-boundary.js";
 
 /** The step-03 handoff: the opening the redeemer carries and the fault it yields. */
@@ -198,8 +201,8 @@ export const parseSubmitFabricatedWithdrawalAuthenticContent = (
   };
 };
 
-export type SubmitFabricatedWithdrawalStep03Result = {
-  readonly txHash: string;
+export type FabricatedWithdrawalStep03Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -212,23 +215,23 @@ export type SubmitFabricatedWithdrawalStep03Result = {
   readonly fault: FabricatedWithdrawalFault;
   readonly inputIndex: number;
   readonly outputIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
+
+export type SubmitFabricatedWithdrawalStep03Result =
+  UnjournaledSubmission<FabricatedWithdrawalStep03Build>;
 
 type FabricatedWithdrawalStep03Layout = {
   readonly inputIndex: bigint;
   readonly outputIndex: bigint;
 };
 
-export const submitFabricatedWithdrawalStep03 = async ({
+export const buildFabricatedWithdrawalStep03 = async ({
   lucid,
   contracts,
   signer,
   threadOutRef,
   openingCbor,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
   now = Date.now,
 }: {
   readonly lucid: LucidEvolution;
@@ -237,10 +240,8 @@ export const submitFabricatedWithdrawalStep03 = async ({
   readonly threadOutRef: string;
   readonly openingCbor?: string;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
   readonly now?: () => number;
-}): Promise<SubmitFabricatedWithdrawalStep03Result> => {
+}): Promise<FabricatedWithdrawalStep03Build> => {
   const threadUtxo = await fetchUtxoByOutRef({
     lucid,
     outRef: parseOutRef(threadOutRef, "--thread-out-ref"),
@@ -338,8 +339,7 @@ export const submitFabricatedWithdrawalStep03 = async ({
       "BuildTxWithRedeemer did not resolve fabricated-withdrawal step 03 layout.",
     );
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: "fabricated-withdrawal step-03",
+  const transaction = finishStep(signed, {
     referenceScripts: [
       workflowReferenceScript({
         role: "V1 fraud-proof fabricated-withdrawal step-03",
@@ -347,17 +347,15 @@ export const submitFabricatedWithdrawalStep03 = async ({
         expectedScript: contracts.steps[2].spendingScript,
       }),
     ],
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
   });
 
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
     threadOutRef,
-    nextThreadOutRef: `${txHash}#${resolvedLayout.outputIndex.toString()}`,
+    nextThreadOutRef: `${transaction.txHash}#${resolvedLayout.outputIndex.toString()}`,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadUnit: threadToken.unit,
     thirdStepAddress: contracts.steps[2].spendingScriptAddress,
@@ -365,7 +363,6 @@ export const submitFabricatedWithdrawalStep03 = async ({
     fault: handoff.fault,
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
-    awaitedConfirmation: awaitConfirmation,
   };
 };
 
@@ -382,17 +379,24 @@ export const submitFabricatedWithdrawalStep03FromFiles = async (
     makeLucidForSubmit(config),
   ]);
   const signer = resolveProverSigner(config);
-  return await submitFabricatedWithdrawalStep03({
-    lucid,
-    contracts: config.contracts,
-    signer,
-    threadOutRef: config.threadOutRef,
-    openingCbor:
-      authenticContentJson === undefined
-        ? undefined
-        : (parseSubmitFabricatedWithdrawalAuthenticContent(authenticContentJson)
-            .openingCbor ?? undefined),
-    referenceScriptUtxo: config.referenceScriptUtxo,
-    awaitConfirmation: config.awaitConfirmation,
-  });
+  return await submitFaultProofTurns(
+    buildFabricatedWithdrawalStep03,
+    {
+      lucid,
+      contracts: config.contracts,
+      signer,
+      threadOutRef: config.threadOutRef,
+      openingCbor:
+        authenticContentJson === undefined
+          ? undefined
+          : (parseSubmitFabricatedWithdrawalAuthenticContent(
+              authenticContentJson,
+            ).openingCbor ?? undefined),
+      referenceScriptUtxo: config.referenceScriptUtxo,
+    },
+    {
+      label: "fabricated-withdrawal-step03",
+      awaitConfirmation: config.awaitConfirmation ?? true,
+    },
+  );
 };

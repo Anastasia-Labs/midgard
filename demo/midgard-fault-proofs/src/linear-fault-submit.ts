@@ -5,16 +5,11 @@ import type {
   UTxO,
 } from "@lucid-evolution/lucid";
 
-import {
-  completeStep,
-  fundStep,
-  type StepSigner,
-  submitStep,
-} from "./step-completion.js";
-import type { FraudProofPreSubmitBoundary } from "./workflow/transaction-boundary.js";
+import { completeStep, fundStep, type StepSigner } from "./step-completion.js";
+import { finishStep } from "./step-completion.js";
 import { workflowReferenceScript } from "./workflow/transaction-boundary.js";
 
-export const submitLinearFaultContinue = async ({
+export const buildLinearFaultContinue = async ({
   lucid,
   signer,
   threadUtxo,
@@ -27,8 +22,6 @@ export const submitLinearFaultContinue = async ({
   redeemer,
   carriageUtxos = [],
   extraReferenceInputs = [],
-  preSubmitBoundary,
-  awaitConfirmation,
 }: {
   readonly lucid: LucidEvolution;
   readonly signer: StepSigner;
@@ -42,8 +35,6 @@ export const submitLinearFaultContinue = async ({
   readonly redeemer: BuildTxWithRedeemer;
   readonly carriageUtxos?: readonly UTxO[];
   readonly extraReferenceInputs?: readonly UTxO[];
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation: boolean;
 }) => {
   const funding = await fundStep(lucid, { signer, excluding: carriageUtxos });
   const signed = await completeStep(
@@ -60,8 +51,7 @@ export const submitLinearFaultContinue = async ({
       ),
     funding,
   );
-  return await submitStep(lucid, signed, {
-    label: stepRole,
+  return finishStep(signed, {
     referenceScripts: [
       workflowReferenceScript({
         role: stepRole,
@@ -69,7 +59,5 @@ export const submitLinearFaultContinue = async ({
         expectedScript: stepScript,
       }),
     ],
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
   });
 };

@@ -6,16 +6,12 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import { requireFaultProofFieldGrammarDeployment } from "../field-grammar-certificate.js";
-import {
-  type StateQueueMutationLease,
-  type StateQueueMutationLeaseCoordinator,
-  submitRemoveFraudulentBlock,
-} from "../remove-fraudulent-block.js";
-import { submitInit } from "../submit-init.js";
-import { submitInputNoIdxStep01 } from "../submit-input-no-idx-step-01.js";
-import { submitInputNoIdxStep02 } from "../submit-input-no-idx-step-02.js";
-import { submitInputNoIdxStep03 } from "../submit-input-no-idx-step-03.js";
-import { submitInputNoIdxStep04 } from "../submit-input-no-idx-step-04.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
+import { buildInit } from "../submit-init.js";
+import { buildInputNoIdxStep01 } from "../submit-input-no-idx-step-01.js";
+import { buildInputNoIdxStep02 } from "../submit-input-no-idx-step-02.js";
+import { buildInputNoIdxStep03 } from "../submit-input-no-idx-step-03.js";
+import { buildInputNoIdxStep04 } from "../submit-input-no-idx-step-04.js";
 import { INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
 import {
   defineLinearFamily,
@@ -44,8 +40,9 @@ import {
   runOrResumeManifestBoundFamilyWorkflow,
 } from "./manifest-bound-family-assembly.js";
 import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.js";
+import { admitRemovalTransaction } from "./removal-admission.js";
+import { journaledStepTransaction } from "./step-transaction.js";
 import {
-  captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
   workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary.js";
@@ -54,53 +51,38 @@ const captureRemoval = async (
   config: BoundConfig,
   input: Readonly<Record<string, unknown>>,
 ) => {
-  let mutationLease: StateQueueMutationLease | undefined;
-  const retainingCoordinator: StateQueueMutationLeaseCoordinator = {
-    acquire: async () => {
-      const acquired =
-        await config.stateQueueMutationLeaseCoordinator.acquire();
-      mutationLease = acquired;
-      return acquired;
-    },
-  };
   const nextRemovalOutRef = stringField(input, "nextRemovalOutRef");
   const fraudProofOutRef = stringField(input, "fraudProofOutRef");
-  const transaction = await captureLocallyEvaluatedTransaction(
-    async (boundary) => {
-      await submitRemoveFraudulentBlock({
-        fraudProofOutRef,
-        lucid: config.lucid,
-        blueprint: config.blueprint,
-        deploymentInfo: config.deploymentInfo,
-        network: config.network,
-        signer: config.signer,
-        fraudCategory: "nonExistentInputNoIndex",
-        fraudulentHeaderHash: config.headerHash,
-        requireReferenceScripts: true,
-        stateQueueMutationLeaseCoordinator: retainingCoordinator,
-        fraudProverRewardLovelace: config.fraudProverRewardLovelace,
-        preSubmitBoundary: async (built) => {
-          if (
-            !workflowTransactionInputOutRefs(built.signed).includes(
-              nextRemovalOutRef,
-            ) ||
-            !workflowTransactionReferenceInputOutRefs(built.signed).includes(
-              fraudProofOutRef,
-            )
-          ) {
-            throw new Error(
-              "input-no-idx removal changed its authenticated inputs",
-            );
-          }
-          await boundary(built);
-        },
-      });
+  return await admitRemovalTransaction(
+    await buildRemoveFraudulentBlock({
+      fraudProofOutRef,
+      lucid: config.lucid,
+      blueprint: config.blueprint,
+      deploymentInfo: config.deploymentInfo,
+      network: config.network,
+      signer: config.signer,
+      fraudCategory: "nonExistentInputNoIndex",
+      fraudulentHeaderHash: config.headerHash,
+      requireReferenceScripts: true,
+      stateQueueMutationLeaseCoordinator:
+        config.stateQueueMutationLeaseCoordinator,
+      fraudProverRewardLovelace: config.fraudProverRewardLovelace,
+    }),
+    async (built) => {
+      if (
+        !workflowTransactionInputOutRefs(built.signed).includes(
+          nextRemovalOutRef,
+        ) ||
+        !workflowTransactionReferenceInputOutRefs(built.signed).includes(
+          fraudProofOutRef,
+        )
+      ) {
+        throw new Error(
+          "input-no-idx removal changed its authenticated inputs",
+        );
+      }
     },
   );
-  return Object.freeze({
-    transaction,
-    ...(mutationLease === undefined ? {} : { mutationLease }),
-  });
 };
 
 const createTransactionPort = (
@@ -125,9 +107,9 @@ const createTransactionPort = (
     const input = actionInput(action);
     if (input.stage === "init") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitInit({
+        transaction: (
+          await journaledStepTransaction(
+            await buildInit({
               lucid: config.lucid,
               blueprint: config.blueprint,
               deploymentInfo: config.deploymentInfo,
@@ -140,11 +122,10 @@ const createTransactionPort = (
               ),
               fraudulentHeaderHash: config.headerHash,
               witnessReferenceScripts: config.referenceScripts.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "input-no-idx buildInit",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "step_01" || input.stage === "step_03") {
@@ -164,33 +145,34 @@ const createTransactionPort = (
         proofCbor,
       });
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            const common = {
-              lucid: config.lucid,
-              blueprint: config.blueprint,
-              deploymentInfo: config.deploymentInfo,
-              network: config.network,
-              signer: config.signer,
-              threadOutRef: stringField(input, "threadOutRef"),
-              stateQueueBlockOutRef: stringField(
-                input,
-                "stateQueueBlockOutRef",
-              ),
-              txInclusion: inclusion,
-              publishedProofChunks: chunks,
-              referenceScriptUtxo: config.referenceScripts.steps[stepIndex],
-              witnessReferenceScripts: config.referenceScripts.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            } as const;
-            if (input.stage === "step_01") {
-              await submitInputNoIdxStep01(common);
-            } else {
-              await submitInputNoIdxStep03(common);
-            }
-          },
-        ),
+        transaction: (
+          await journaledStepTransaction(
+            await (async () => {
+              const common = {
+                lucid: config.lucid,
+                blueprint: config.blueprint,
+                deploymentInfo: config.deploymentInfo,
+                network: config.network,
+                signer: config.signer,
+                threadOutRef: stringField(input, "threadOutRef"),
+                stateQueueBlockOutRef: stringField(
+                  input,
+                  "stateQueueBlockOutRef",
+                ),
+                txInclusion: inclusion,
+                publishedProofChunks: chunks,
+                referenceScriptUtxo: config.referenceScripts.steps[stepIndex],
+                witnessReferenceScripts: config.referenceScripts.witnesses,
+              } as const;
+              if (input.stage === "step_01") {
+                return await buildInputNoIdxStep01(common);
+              } else {
+                return await buildInputNoIdxStep03(common);
+              }
+            })(),
+            `input-no-idx ${input.stage}`,
+          )
+        ).transaction,
       });
     }
     if (input.stage === "step_02" || input.stage === "step_04") {
@@ -201,44 +183,45 @@ const createTransactionPort = (
           : admitted.outputFieldPlan;
       const carriage = await resolveField(config, plan, ownOutputs);
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            const common = {
-              lucid: config.lucid,
-              blueprint: config.blueprint,
-              deploymentInfo: config.deploymentInfo,
-              network: config.network,
-              signer: config.signer,
-              threadOutRef: stringField(input, "threadOutRef"),
-              publishedCarriageUtxos: carriage.publications,
-              ...(carriage.certificate === undefined
-                ? {}
-                : { certificateUtxo: carriage.certificate }),
-              referenceScriptUtxo: config.referenceScripts.steps[stepIndex],
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            } as const;
-            if (input.stage === "step_02") {
-              await submitInputNoIdxStep02({
-                ownOutputs,
-                ...common,
-                inputsPreimage: admitted.inputs,
-                nativeTxCompactCbor:
-                  admitted.artifact.badTx.nativeTxCompactCbor,
-              });
-            } else {
-              await submitInputNoIdxStep04({
-                ownOutputs,
-                ...common,
-                outputsPreimage: admitted.outputs,
-                nativeTxCompactCbor:
-                  admitted.artifact.producingTx.nativeTxCompactCbor,
-                witnessReferenceScripts: config.referenceScripts.witnesses,
-                fieldGrammar: config.fieldGrammar,
-              });
-            }
-          },
-        ),
+        transaction: (
+          await journaledStepTransaction(
+            await (async () => {
+              const common = {
+                lucid: config.lucid,
+                blueprint: config.blueprint,
+                deploymentInfo: config.deploymentInfo,
+                network: config.network,
+                signer: config.signer,
+                threadOutRef: stringField(input, "threadOutRef"),
+                publishedCarriageUtxos: carriage.publications,
+                ...(carriage.certificate === undefined
+                  ? {}
+                  : { certificateUtxo: carriage.certificate }),
+                referenceScriptUtxo: config.referenceScripts.steps[stepIndex],
+              } as const;
+              if (input.stage === "step_02") {
+                return await buildInputNoIdxStep02({
+                  ownOutputs,
+                  ...common,
+                  inputsPreimage: admitted.inputs,
+                  nativeTxCompactCbor:
+                    admitted.artifact.badTx.nativeTxCompactCbor,
+                });
+              } else {
+                return await buildInputNoIdxStep04({
+                  ownOutputs,
+                  ...common,
+                  outputsPreimage: admitted.outputs,
+                  nativeTxCompactCbor:
+                    admitted.artifact.producingTx.nativeTxCompactCbor,
+                  witnessReferenceScripts: config.referenceScripts.witnesses,
+                  fieldGrammar: config.fieldGrammar,
+                });
+              }
+            })(),
+            `input-no-idx ${input.stage}`,
+          )
+        ).transaction,
       });
     }
     if (input.stage === "remove") {

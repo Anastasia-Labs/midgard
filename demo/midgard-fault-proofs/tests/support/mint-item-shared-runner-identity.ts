@@ -28,11 +28,7 @@ import {
 import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../../src/workflow/raw-l1-publication-observation.js";
 import { FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY } from "../../src/workflow/raw-l1-snapshot.js";
-import {
-  captureLocallyEvaluatedTransaction,
-  type FraudProofPreSubmitBoundary,
-  workflowPreflightTransaction,
-} from "../../src/workflow/transaction-boundary.js";
+import { workflowPreflightTransaction } from "../../src/workflow/transaction-boundary.js";
 import { makeFaultProofEmulatorHarness } from "./emulator/harness.js";
 import { makeHeader } from "./emulator/header-fixtures.js";
 import { makeNativeTx } from "./emulator/native-tx.js";
@@ -379,26 +375,29 @@ export const mintItemSharedRunnerIdentity = async () => {
       },
     } as never,
   );
-  // The bespoke claims persist across its aborted captures, as its own
-  // journal did, so its later steps reuse the carriage the runner published.
+  // The bespoke claims persist across its builds, as its own journal did, so
+  // its later steps reuse the carriage the runner published.
   const ownOutputs = createOwnOutputJournal();
-  const bespoke = async (stage: unknown) =>
-    await captureLocallyEvaluatedTransaction(
-      async (preSubmitBoundary: FraudProofPreSubmitBoundary) => {
-        await createManifestBoundMintItemNonCanonicalSubmission({
-          config,
-          observe: unexpected,
-          resolveStage: createMintItemNonCanonicalRawL1StageResolver({
-            config,
-            l1: l1 as never,
-            source,
-          }),
-          stateQueueMutationLeaseCoordinator,
-          ownOutputs,
-          preSubmitBoundary,
-        }).submit(bespokeAction(stage), evidence);
-      },
-    );
+  const bespoke = async (stage: unknown) => {
+    const built = await createManifestBoundMintItemNonCanonicalSubmission({
+      config,
+      observe: unexpected,
+      resolveStage: createMintItemNonCanonicalRawL1StageResolver({
+        config,
+        l1: l1 as never,
+        source,
+      }),
+      stateQueueMutationLeaseCoordinator,
+      ownOutputs,
+    }).submit(bespokeAction(stage), evidence);
+    // The bespoke build is compared, never submitted, so its removal lease
+    // ends here.
+    if ("stateQueueMutationLease" in built)
+      await built.stateQueueMutationLease?.fail(
+        "bespoke removal built for comparison only",
+      );
+    return built.transaction;
+  };
   const identity: FraudProofWorkflowIdentity = {
     schemaVersion: "midgard-fraud-proof-workflow-identity-v1",
     deploymentFingerprint: binding.deploymentFingerprint,

@@ -10,22 +10,32 @@ import {
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { type PrerequisiteTurn } from "./fault-proof-turn.js";
 import {
   fieldPublicationSlotClaims,
   fieldPublicationSlots,
   lucidOwnOutputReader,
 } from "./field-opening.own-field-carriage.js";
 import { type FaultProofFieldOpeningPlan } from "./field-opening.plan-fault-proof-field-opening.js";
-import { fetchUtxoByOutRef, type ResolvedProverSigner } from "./runtime.js";
-import { submitStep } from "./step-completion.js";
+import { type ResolvedProverSigner } from "./runtime.js";
+import { finishStep } from "./step-completion.js";
 import {
   claimOwnOutputs,
   type OwnOutputJournal,
-  parseOwnOutRef,
   readOwnOutputs,
   resolveOwnOutputs,
 } from "./workflow/own-outputs.js";
-import { type FraudProofPreSubmitBoundary } from "./workflow/transaction-boundary.js";
+
+/**
+ * The key and transaction count of a carriage plan's prerequisites: its
+ * publications, and under tier 3 its certificate.
+ */
+export const fieldCarriagePlanTransactions = (
+  plan: MidgardFieldCarriagePlan,
+): PrerequisiteTurn["plan"] => ({
+  key: `field-carriage:${plan.txId.toString("hex")}:${plan.fieldIndex.toString()}:${plan.commitment.toString("hex")}`,
+  transactions: plan.publications.length + (plan.tier === "Certified" ? 1 : 0),
+});
 
 /**
  * The §8 carriage as the step's redeemer must spell it, with every positional
@@ -155,8 +165,9 @@ export const faultProofFieldOpening = ({
   });
 
 /**
- * Publishes whatever a plan requires to exist on-chain before the step
- * transaction can reference it, and returns the carriage UTxOs in plan order.
+ * The carriage UTxOs a plan requires to exist on-chain before the step
+ * transaction can reference them, in plan order, when all are live; otherwise
+ * the next publication transaction, built and signed but not submitted.
  *
  * Empty under tier 1 — the preimage rides in the step's own redeemer and
  * nothing is published. Under tier 2 this is the whole of the carriage; under
@@ -166,9 +177,9 @@ export const faultProofFieldOpening = ({
  * step builder holds no such role.
  *
  * Each publication is a slot of `ownOutputs`: one of our earlier outputs for
- * the slot that is still live is reused; otherwise the slot is published, and
- * its out-ref, taken from our signed body, is claimed before submission. Two
- * chunks with the same bytes are two slots and take two outputs.
+ * the slot that is still live is reused; otherwise the slot's publication is
+ * built, and its out-ref, taken from our signed body, is claimed before it is
+ * returned. Two chunks with the same bytes are two slots and take two outputs.
  */
 export const publishFaultProofFieldCarriage = async ({
   lucid,
@@ -177,7 +188,6 @@ export const publishFaultProofFieldCarriage = async ({
   publisherAddress,
   label,
   ownOutputs,
-  preSubmitBoundary,
   beforePublication,
   publicationConfirmed,
 }: {
@@ -188,13 +198,11 @@ export const publishFaultProofFieldCarriage = async ({
   readonly label: string;
   /** Our claims on the carriage slots; a new publication is claimed here. */
   readonly ownOutputs: OwnOutputJournal;
-  /** Production workflow seam for each content publication transaction. */
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   /** Refresh reserved inputs before each new publication is built. */
   readonly beforePublication?: () => Promise<void>;
-  /** Authenticate inclusion and rotate funding before building another chunk. */
+  /** Authenticate inclusion of each reused publication. */
   readonly publicationConfirmed?: (txHash: string) => Promise<void>;
-}): Promise<readonly UTxO[]> => {
+}): Promise<readonly UTxO[] | PrerequisiteTurn> => {
   const publications = planned.plan.publications;
   if (publications.length === 0) {
     return [];
@@ -237,20 +245,16 @@ export const publishFaultProofFieldCarriage = async ({
     const signed = await unsigned.sign.withWallet().complete();
     const [claim] = claimOwnOutputs({ signed, slots: [slot] });
     ownOutputs.claim(key, claim!.outRef);
-    const txHash = await submitStep(lucid, signed, {
+    return {
+      kind: "publication",
+      transaction: finishStep(signed, { referenceScripts: [] }),
       label: `${label} §8 carriage publication`,
-      referenceScripts: [],
-      boundary: preSubmitBoundary,
-      awaitConfirmation: true,
-    });
-    await publicationConfirmed?.(txHash);
-    published.push(
-      await fetchUtxoByOutRef({
-        lucid,
-        outRef: parseOwnOutRef(claim!.outRef),
+      output: {
+        outRef: claim!.outRef,
         label: `${label} §8 carriage publication`,
-      }),
-    );
+      },
+      plan: fieldCarriagePlanTransactions(planned.plan),
+    };
   }
   return published;
 };

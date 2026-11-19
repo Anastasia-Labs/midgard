@@ -3,40 +3,38 @@ import {
   PROOF_THREAD_SOURCE_KIND_FORCED,
 } from "@al-ft/midgard-sdk";
 
-import { submitCommittedFieldShapeInit } from "../committed-field-shape/submit-committed-field-shape-init.js";
+import { buildCommittedFieldShapeInit } from "../committed-field-shape/submit-committed-field-shape-init.js";
+import { isPrerequisiteTurn } from "../fault-proof-turn.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
-import { submitRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
-import { submitSignerWitnessScan } from "../signer-witness-scan/submit-scan.js";
-import { submitSignerWitnessTerminal } from "../signer-witness-scan/submit-terminal.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
+import { buildSignerWitnessScan } from "../signer-witness-scan/submit-scan.js";
+import { buildSignerWitnessTerminal } from "../signer-witness-scan/submit-terminal.js";
 import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   type ManifestBoundSpendInputSignerMissingConfig,
   required,
   type SpendInputSignerMissingRuntimeLoader,
 } from "./authenticated-workflow.create-spend-input-signer-missing-bound-config.js";
 import { type SpendInputSignerMissingEvidence } from "./spend-input-signer-missing.js";
-import { submitSpendInputSignerMissingCancel } from "./submit-cancel.js";
-import { submitSpendInputSignerMissingStep01Accepted } from "./submit-step-01-accepted.js";
-import { submitSpendInputSignerMissingStep01Forced } from "./submit-step-01-forced.js";
-import { submitSpendInputSignerMissingStep02 } from "./submit-step-02.js";
+import { buildSpendInputSignerMissingCancel } from "./submit-cancel.js";
+import { buildSpendInputSignerMissingStep01Accepted } from "./submit-step-01-accepted.js";
+import { buildSpendInputSignerMissingStep01Forced } from "./submit-step-01-forced.js";
+import { buildSpendInputSignerMissingStep02 } from "./submit-step-02.js";
 import { type SpendInputSignerStage } from "./workflow.js";
 
 export const createManifestBoundSpendInputSignerMissingSubmission = ({
   config,
   observe,
   resolveStage,
-  preSubmitBoundary,
   stateQueueMutationLeaseCoordinator,
   ownOutputs = createOwnOutputJournal(),
 }: {
   readonly config: ManifestBoundSpendInputSignerMissingConfig;
   readonly observe: (identity: string) => Promise<SpendInputSignerStage>;
   readonly resolveStage: SpendInputSignerMissingRuntimeLoader["resolveStage"];
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
@@ -58,7 +56,7 @@ export const createManifestBoundSpendInputSignerMissingSubmission = ({
       );
     const stage = await resolveStage({ action, evidence });
     if (action === "submitInit") {
-      const result = await submitCommittedFieldShapeInit({
+      const result = await buildCommittedFieldShapeInit({
         lucid: config.lucid,
         blueprint: config.binding.blueprint,
         network: config.binding.network,
@@ -69,17 +67,17 @@ export const createManifestBoundSpendInputSignerMissingSubmission = ({
         fraudulentBlockOutRef: stage.fraudulentBlockOutRef,
         fraudulentHeaderHash: config.binding.definition.headerHash,
         witnessReferenceScripts: config.referenceScripts.witnesses,
-        preSubmitBoundary,
       });
       return {
+        transaction: result.transaction,
         stage: "step01" as const,
-        txHash: result.txHash,
-        outputReference: `${result.txHash}#${result.firstStepOutputIndex.toString()}`,
+        txHash: result.transaction.txHash,
+        outputReference: `${result.transaction.txHash}#${result.firstStepOutputIndex.toString()}`,
       };
     }
     if (action === "submitStep01") {
       if (evidence.subject.source_kind === PROOF_THREAD_SOURCE_KIND_ACCEPTED) {
-        const result = await submitSpendInputSignerMissingStep01Accepted({
+        const result = await buildSpendInputSignerMissingStep01Accepted({
           lucid: config.lucid,
           blueprint: config.binding.blueprint,
           network: config.binding.network,
@@ -95,11 +93,11 @@ export const createManifestBoundSpendInputSignerMissingSubmission = ({
           txInclusion: required(stage.acceptedInclusion, "accepted inclusion"),
           referenceScriptUtxo: config.referenceScripts.step01,
           witnessReferenceScripts: config.referenceScripts.witnesses,
-          preSubmitBoundary,
         });
         return {
+          transaction: result.transaction,
           stage: "step02" as const,
-          txHash: result.txHash,
+          txHash: result.transaction.txHash,
           outputReference: result.nextThreadOutRef,
         };
       }
@@ -107,7 +105,7 @@ export const createManifestBoundSpendInputSignerMissingSubmission = ({
         throw new Error(
           "spendInputSignerMissing evidence source kind is invalid",
         );
-      const result = await submitSpendInputSignerMissingStep01Forced({
+      const result = await buildSpendInputSignerMissingStep01Forced({
         lucid: config.lucid,
         contracts: config.contracts,
         categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -119,16 +117,16 @@ export const createManifestBoundSpendInputSignerMissingSubmission = ({
           membership: required(stage.forcedMembership, "forced membership"),
         },
         referenceScriptUtxo: config.referenceScripts.step01,
-        preSubmitBoundary,
       });
       return {
+        transaction: result.transaction,
         stage: "step02" as const,
-        txHash: result.txHash,
+        txHash: result.transaction.txHash,
         outputReference: result.nextThreadOutRef,
       };
     }
     if (action === "submitStep02") {
-      const result = await submitSpendInputSignerMissingStep02({
+      const result = await buildSpendInputSignerMissingStep02({
         ownOutputs,
         lucid: config.lucid,
         network: config.binding.network,
@@ -149,19 +147,18 @@ export const createManifestBoundSpendInputSignerMissingSubmission = ({
           config.referenceScripts.fieldPreimageCertificateMint,
         membershipReferenceScriptUtxo:
           config.referenceScripts.witnesses.phasMembershipWithdraw,
-        publicationBoundary: preSubmitBoundary,
-        certificateBoundary: preSubmitBoundary,
         referenceScriptUtxo: config.referenceScripts.step02,
-        preSubmitBoundary,
       });
+      if (isPrerequisiteTurn(result)) return result;
       return {
+        transaction: result.transaction,
         stage: result.stage,
-        txHash: result.txHash,
+        txHash: result.transaction.txHash,
         outputReference: result.nextThreadOutRef,
       };
     }
     if (action === "submitScan") {
-      const result = await submitSignerWitnessScan({
+      const result = await buildSignerWitnessScan({
         ownOutputs,
         lucid: config.lucid,
         family: "spend-input-signer-missing",
@@ -180,19 +177,18 @@ export const createManifestBoundSpendInputSignerMissingSubmission = ({
         ),
         certificateReferenceScriptUtxo:
           config.referenceScripts.fieldPreimageCertificateMint,
-        publicationBoundary: preSubmitBoundary,
-        certificateBoundary: preSubmitBoundary,
         referenceScriptUtxo: config.referenceScripts.step03,
-        preSubmitBoundary,
       });
+      if (isPrerequisiteTurn(result)) return result;
       return {
+        transaction: result.transaction,
         stage: result.stage,
-        txHash: result.txHash,
+        txHash: result.transaction.txHash,
         outputReference: result.nextThreadOutRef,
       };
     }
     if (action === "submitTerminal") {
-      const result = await submitSignerWitnessTerminal({
+      const result = await buildSignerWitnessTerminal({
         lucid: config.lucid,
         family: "spend-input-signer-missing",
         contracts: config.contracts,
@@ -202,15 +198,15 @@ export const createManifestBoundSpendInputSignerMissingSubmission = ({
         evidence,
         referenceScriptUtxo: config.referenceScripts.step04,
         witnessReferenceScripts: config.referenceScripts.witnesses,
-        preSubmitBoundary,
       });
       return {
+        transaction: result.transaction,
         stage: "proven" as const,
-        txHash: result.txHash,
+        txHash: result.transaction.txHash,
         outputReference: null,
       };
     }
-    const result = await submitRemoveFraudulentBlock({
+    const result = await buildRemoveFraudulentBlock({
       lucid: config.lucid,
       blueprint: config.binding.blueprint,
       deploymentInfo: config.binding.deploymentInfo,
@@ -226,14 +222,18 @@ export const createManifestBoundSpendInputSignerMissingSubmission = ({
             "spendInputSignerMissing production removal requires a state-queue mutation lease coordinator",
           );
         })(),
-      awaitConfirmation: true,
       validFrom: stage.validFrom,
       validTo: stage.validTo,
-      preSubmitBoundary,
     });
     return {
-      stage: "removed" as const,
-      txHash: result.txHash,
+      transaction: result.transaction,
+      stateQueueMutationLease: result.stateQueueMutationLease,
+      // A removal of a successor leaves the fraud proof in place.
+      stage:
+        result.kind === "remove-target"
+          ? ("removed" as const)
+          : ("proven" as const),
+      txHash: result.transaction.txHash,
       outputReference: null,
     };
   },
@@ -243,7 +243,7 @@ export const createManifestBoundSpendInputSignerMissingSubmission = ({
   ) => {
     const stage = await resolveStage({ action: "cancel", evidence });
     const index = { step01: 0, step02: 1, scanning: 2, terminal: 3 }[current];
-    const result = await submitSpendInputSignerMissingCancel({
+    const result = await buildSpendInputSignerMissingCancel({
       lucid: config.lucid,
       contracts: config.contracts,
       categoryId: config.binding.resolvedContracts.category.categoryId,
@@ -258,8 +258,9 @@ export const createManifestBoundSpendInputSignerMissingSubmission = ({
       witnessReferenceScripts: config.referenceScripts.witnesses,
     });
     return {
+      transaction: result.transaction,
       stage: "cancelled" as const,
-      txHash: result.txHash,
+      txHash: result.transaction.txHash,
       outputReference: null,
     };
   },

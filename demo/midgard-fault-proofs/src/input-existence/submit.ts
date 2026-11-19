@@ -23,25 +23,22 @@ import {
   type PublishedProofChunk,
 } from "../proof-chunk-carriage.js";
 import {
-  DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
   parseOutRef,
   requireSingletonUtxo,
   type ResolvedProverSigner,
 } from "../runtime.js";
+import { finishStep } from "../step-completion.js";
 import { requireInitialStepDatum } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { type FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import { admitNativeInclusionArtifact } from "../workflow/native-index-artifact.js";
 import {
-  type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary.js";
-import {
   admitInputExistenceArtifact,
   inputExistenceArtifact,
 } from "./artifact.js";
+import { inputExistenceWithPublishedFields } from "./field-carriage.js";
+import type { PreparedInputExistence } from "./prepare.js";
 import {
   type InputExistenceContracts,
   inputExistenceStates,
@@ -52,10 +49,8 @@ export {
   type InputExistenceContracts,
   inputExistenceStates,
 } from "./prepare-step-carriage.js";
-import { inputExistenceWithPublishedFields } from "./field-carriage.js";
-import type { PreparedInputExistence } from "./prepare.js";
 
-export const submitInputExistenceStep = async ({
+export const buildInputExistenceStep = async ({
   lucid,
   blueprint,
   network,
@@ -72,8 +67,6 @@ export const submitInputExistenceStep = async ({
   usePublishedFieldCarriage = false,
   certificatePolicyId,
   publishedProofChunks = [],
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -95,8 +88,6 @@ export const submitInputExistenceStep = async ({
   readonly usePublishedFieldCarriage?: boolean;
   readonly certificatePolicyId?: string;
   readonly publishedProofChunks?: readonly PublishedProofChunk[];
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const admitted = admitInputExistenceArtifact(
     inputExistenceArtifact(supplied),
@@ -462,25 +453,14 @@ export const submitInputExistenceStep = async ({
     .addSignerKey(signer.paymentKeyHash);
   const unsigned = await tx.complete({ localUPLCEval: true, ...walletInputs });
   const signed = await unsigned.sign.withWallet().complete();
-  const expected = await reachFraudProofPreSubmitBoundary({
-    signed,
-    boundary: preSubmitBoundary,
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates,
-    }),
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: candidates,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expected)
-    throw new Error(
-      `${family}: provider returned a different transaction hash`,
-    );
-  if (awaitConfirmation)
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
+  const { txHash } = transaction;
   if (outputIndex === undefined)
     throw new Error(`${family}: unresolved output`);
   return {
-    txHash,
+    transaction,
     nextThreadOutRef: `${txHash}#${outputIndex}`,
     fraudProofUnit: final ? proofUnit : undefined,
     fraudProofOutRef: final ? `${txHash}#${outputIndex}` : undefined,

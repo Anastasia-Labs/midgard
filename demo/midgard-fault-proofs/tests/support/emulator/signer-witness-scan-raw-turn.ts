@@ -17,7 +17,7 @@ import {
   requireLinearFaultReferenceScript,
   requireLinearFaultThreadUtxo,
 } from "../../../src/linear-fault-family.js";
-import { submitLinearFaultContinue } from "../../../src/linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../../../src/linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../../../src/runtime.js";
 import { SignerWitnessScanRedeemerSchema } from "../../../src/signer-witness-scan/schemas.js";
 import {
@@ -25,6 +25,7 @@ import {
   SIGNER_WITNESS_TERMINAL_STEP_INDEX,
 } from "../../../src/signer-witness-scan/submit-scan.js";
 import { computationThreadOutputPredicate } from "../../../src/tx-layout.js";
+import { buildAndSubmitTransactionUnjournaled } from "../submit-unjournaled.js";
 
 /**
  * One turn of the shared signer-witness scan carrying exactly the caller's
@@ -109,24 +110,27 @@ export const submitRawSignerWitnessScanTurn = async ({
       SignerWitnessScanRedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
-    lucid,
-    signer,
-    threadUtxo,
-    threadUnit: threadToken.unit,
-    stepReference,
-    stepScript: contracts.steps[stepIndex]!.spendingScript,
-    stepRole: role,
-    nextAddress: nextStep.spendingScriptAddress,
-    nextDatum,
-    redeemer,
-    carriageUtxos: carriageReferenceInputs.filter(
-      (utxo) =>
-        utxo.txHash !== stepReference.txHash ||
-        utxo.outputIndex !== stepReference.outputIndex,
-    ),
-    awaitConfirmation: true,
-  });
+  const txHash = await buildAndSubmitTransactionUnjournaled(
+    buildLinearFaultContinue,
+    {
+      lucid,
+      signer,
+      threadUtxo,
+      threadUnit: threadToken.unit,
+      stepReference,
+      stepScript: contracts.steps[stepIndex]!.spendingScript,
+      stepRole: role,
+      nextAddress: nextStep.spendingScriptAddress,
+      nextDatum,
+      redeemer,
+      carriageUtxos: carriageReferenceInputs.filter(
+        (utxo) =>
+          utxo.txHash !== stepReference.txHash ||
+          utxo.outputIndex !== stepReference.outputIndex,
+      ),
+      awaitConfirmation: true,
+    },
+  );
   if (outputIndex === undefined)
     throw new Error(`${family}: raw scan layout unresolved`);
   return { txHash, nextThreadOutRef: `${txHash}#${outputIndex.toString()}` };

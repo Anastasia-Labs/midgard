@@ -1,12 +1,11 @@
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
-import { submitLinearFaultCancel } from "../linear-fault-cancel.js";
+import { buildLinearFaultCancel } from "../linear-fault-cancel.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { ResolvedOutputNonCanonicalContracts } from "./contracts.js";
 
-export const submitResolvedOutputNonCanonicalCancel = async ({
+export const buildResolvedOutputNonCanonicalCancel = async ({
   lucid,
   contracts,
   categoryId,
@@ -14,8 +13,6 @@ export const submitResolvedOutputNonCanonicalCancel = async ({
   threadOutRef,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: ResolvedOutputNonCanonicalContracts;
@@ -24,10 +21,8 @@ export const submitResolvedOutputNonCanonicalCancel = async ({
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) =>
-  await submitLinearFaultCancel({
+  await buildLinearFaultCancel({
     lucid,
     family: "resolved-output-non-canonical",
     steps: contracts.steps,
@@ -37,6 +32,4 @@ export const submitResolvedOutputNonCanonicalCancel = async ({
     threadOutRef,
     referenceScriptUtxo,
     witnessReferenceScripts,
-    preSubmitBoundary,
-    awaitConfirmation,
   });

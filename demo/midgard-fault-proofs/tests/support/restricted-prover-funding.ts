@@ -22,7 +22,7 @@ import {
 } from "../../src/workflow/funding-reservation-permit.js";
 import { readWorkflowRuntimeFundingPolicy } from "../../src/workflow/runtime-funding-policy.js";
 import {
-  type FraudProofPreSubmitBoundary,
+  type LocallyEvaluatedTransaction,
   workflowTransactionCollateralInputOutRefs,
   workflowTransactionInputOutRefs,
 } from "../../src/workflow/transaction-boundary.js";
@@ -65,8 +65,8 @@ export const fundReservedCoin = async ({
 
 /**
  * `signer` restricted to a reservation begun for one action over the wallet
- * as it is now, and a pre-submit boundary that holds the signed transaction
- * to the reserved pool: every wallet coin it spends and every coin it posts
+ * as it is now, and a check, run before submission, that holds the signed
+ * transaction to the reserved pool: every wallet coin it spends and every coin it posts
  * as collateral is reserved.
  */
 export const restrictedProverFunding = async ({
@@ -77,7 +77,9 @@ export const restrictedProverFunding = async ({
   readonly signer: ResolvedProverSigner;
 }): Promise<{
   readonly signer: ResolvedProverSigner;
-  readonly preSubmitBoundary: FraudProofPreSubmitBoundary;
+  readonly beforeSubmit: (
+    transaction: LocallyEvaluatedTransaction,
+  ) => Promise<void>;
   readonly checked: () => number;
 }> => {
   // The snapshot lists its inputs in out-ref order (hex hashes and decimal
@@ -149,7 +151,7 @@ export const restrictedProverFunding = async ({
     // The rule `prepareWorkflowFundingReservationTransaction` enforces before
     // it records an attempt: wallet coins spent and coins posted as
     // collateral all come from the reservation.
-    preSubmitBoundary: async ({ signed }) => {
+    beforeSubmit: async ({ signed }) => {
       checked += 1;
       const wallet = new Set(
         (await emulator.getUtxos(signer.address)).map(label),

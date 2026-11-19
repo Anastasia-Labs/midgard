@@ -16,8 +16,8 @@ import {
   requireLinearFaultReferenceScript,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
-import { submitNativeTxBinding } from "../native-tx-binding.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildNativeTxBinding } from "../native-tx-binding.js";
 import type { PublishedProofChunk } from "../publish-proof-chunks.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import {
@@ -28,7 +28,6 @@ import type { TransitionTraceReconstruction } from "../transition-trace/reconstr
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type {
   DirectPurposeContracts,
   DirectPurposeCustodyFamily,
@@ -43,8 +42,6 @@ type Step01Common = {
   readonly threadOutRef: string;
   readonly material: DirectScriptMaterial;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 };
 
 /** The datum step-01 pays to `bindEvent`: the bound source, owned by `prover`. */
@@ -75,7 +72,7 @@ const initialThread = async (common: Step01Common) => {
   return { threadUtxo, threadToken };
 };
 
-export const submitDirectPurposeStep01Accepted = async ({
+export const buildDirectPurposeStep01Accepted = async ({
   blueprint,
   network,
   stateQueueBlockOutRef,
@@ -102,7 +99,7 @@ export const submitDirectPurposeStep01Accepted = async ({
       `${common.family.label}: inclusion names another transaction`,
     );
   const { threadUtxo, threadToken } = await initialThread(common);
-  return await submitNativeTxBinding({
+  return await buildNativeTxBinding({
     lucid: common.lucid,
     blueprint,
     network,
@@ -122,12 +119,10 @@ export const submitDirectPurposeStep01Accepted = async ({
     }),
     referenceScriptUtxo: common.referenceScriptUtxo,
     witnessReferenceScripts,
-    preSubmitBoundary: common.preSubmitBoundary,
-    awaitConfirmation: common.awaitConfirmation ?? true,
   });
 };
 
-export const submitDirectPurposeStep01Forced = async ({
+export const buildDirectPurposeStep01Forced = async ({
   reconstruction,
   ...common
 }: Step01Common & {
@@ -189,7 +184,7 @@ export const submitDirectPurposeStep01Forced = async ({
       common.family.step01Redeemer ?? SDK.DirectStep01Redeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid: common.lucid,
     signer,
     threadUtxo,
@@ -200,10 +195,11 @@ export const submitDirectPurposeStep01Forced = async ({
     nextAddress: next.spendingScriptAddress,
     nextDatum,
     redeemer,
-    preSubmitBoundary: common.preSubmitBoundary,
-    awaitConfirmation: common.awaitConfirmation ?? true,
   });
   if (outputIndex === undefined)
     throw new Error(`${label}: completed output index absent`);
-  return { txHash, nextThreadOutRef: `${txHash}#${outputIndex.toString()}` };
+  return {
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
+  };
 };

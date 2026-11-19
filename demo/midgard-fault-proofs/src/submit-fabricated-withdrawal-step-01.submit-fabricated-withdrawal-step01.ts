@@ -35,11 +35,13 @@ import {
   resolveFraudulentHeaderHash,
   resolveProverSigner,
 } from "./runtime.js";
-import { completeStep, fundStep, submitStep } from "./step-completion.js";
+import { completeStep, fundStep } from "./step-completion.js";
+import { finishStep } from "./step-completion.js";
 import {
   requireComputationThreadToken,
   requireInitialStepDatum,
 } from "./step-support.js";
+import type { FabricatedWithdrawalStep01Build } from "./submit-fabricated-withdrawal-step-01.derive-fabricated-withdrawal-step01-handoff.js";
 import {
   deriveFabricatedWithdrawalStep01Handoff,
   FABRICATED_WITHDRAWAL_CATEGORY_LABEL,
@@ -50,13 +52,11 @@ import {
   type SubmitFabricatedWithdrawalStep01CliConfig,
   type SubmitFabricatedWithdrawalStep01Result,
 } from "./submit-fabricated-withdrawal-step-01.derive-fabricated-withdrawal-step01-handoff.js";
+import { submitFaultProofTurns } from "./submit-fault-proof-turns.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
-import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScript,
-} from "./workflow/transaction-boundary.js";
+import { workflowReferenceScript } from "./workflow/transaction-boundary.js";
 
-export const submitFabricatedWithdrawalStep01 = async ({
+export const buildFabricatedWithdrawalStep01 = async ({
   lucid,
   contracts,
   network,
@@ -65,8 +65,6 @@ export const submitFabricatedWithdrawalStep01 = async ({
   stateQueueBlockOutRef,
   withdrawalInclusion,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
   now = Date.now,
 }: {
   readonly now?: () => number;
@@ -78,9 +76,7 @@ export const submitFabricatedWithdrawalStep01 = async ({
   readonly stateQueueBlockOutRef: string;
   readonly withdrawalInclusion: SubmitFabricatedWithdrawalInclusion;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitFabricatedWithdrawalStep01Result> => {
+}): Promise<FabricatedWithdrawalStep01Build> => {
   const parsedThreadOutRef = parseOutRef(threadOutRef, "--thread-out-ref");
   const parsedStateQueueBlockOutRef = parseOutRef(
     stateQueueBlockOutRef,
@@ -236,8 +232,7 @@ export const submitFabricatedWithdrawalStep01 = async ({
       "BuildTxWithRedeemer did not resolve fabricated-withdrawal step 01 layout.",
     );
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: "fabricated-withdrawal step-01",
+  const transaction = finishStep(signed, {
     referenceScripts: [
       workflowReferenceScript({
         role: "V1 fraud-proof fabricated-withdrawal step-01",
@@ -245,17 +240,15 @@ export const submitFabricatedWithdrawalStep01 = async ({
         expectedScript: contracts.steps[0].spendingScript,
       }),
     ],
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
   });
 
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
     threadOutRef,
-    nextThreadOutRef: `${txHash}#${resolvedLayout.outputIndex.toString()}`,
+    nextThreadOutRef: `${transaction.txHash}#${resolvedLayout.outputIndex.toString()}`,
     stateQueueBlockOutRef,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadPolicyId: contracts.computationThread.policyId,
@@ -274,7 +267,6 @@ export const submitFabricatedWithdrawalStep01 = async ({
     stateQueueNodeRefInputIndex: Number(
       resolvedLayout.stateQueueNodeRefInputIndex,
     ),
-    awaitedConfirmation: awaitConfirmation,
   };
 };
 
@@ -289,17 +281,23 @@ export const submitFabricatedWithdrawalStep01FromFiles = async (
     makeLucidForSubmit(config),
   ]);
   const signer = resolveProverSigner(config);
-  return await submitFabricatedWithdrawalStep01({
-    lucid,
-    contracts: config.contracts,
-    network: config.network,
-    signer,
-    threadOutRef: config.threadOutRef,
-    stateQueueBlockOutRef: config.stateQueueBlockOutRef,
-    withdrawalInclusion: parseSubmitFabricatedWithdrawalInclusion(
-      withdrawalInclusionJson,
-    ),
-    referenceScriptUtxo: config.referenceScriptUtxo,
-    awaitConfirmation: config.awaitConfirmation,
-  });
+  return await submitFaultProofTurns(
+    buildFabricatedWithdrawalStep01,
+    {
+      lucid,
+      contracts: config.contracts,
+      network: config.network,
+      signer,
+      threadOutRef: config.threadOutRef,
+      stateQueueBlockOutRef: config.stateQueueBlockOutRef,
+      withdrawalInclusion: parseSubmitFabricatedWithdrawalInclusion(
+        withdrawalInclusionJson,
+      ),
+      referenceScriptUtxo: config.referenceScriptUtxo,
+    },
+    {
+      label: "fabricated-withdrawal-step01",
+      awaitConfirmation: config.awaitConfirmation ?? true,
+    },
+  );
 };

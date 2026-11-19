@@ -5,6 +5,7 @@ import tseslint from "typescript-eslint";
 
 import moduleSizeExceptions from "./module-size-exceptions.json" with { type: "json" };
 import testModuleFacets from "./module-test-facets.json" with { type: "json" };
+import { faultProofRestrictedSyntaxConfigs } from "./scripts/lib/eslint-fault-proof-restricted-syntax.mjs";
 import midgard, {
   loadBaseline,
 } from "./scripts/lib/eslint-plugin-midgard/index.mjs";
@@ -266,31 +267,7 @@ export default tseslint.config(
       ],
     },
   },
-  {
-    // A fault-proof builder's wallet inputs come from one rule. Lucid takes
-    // collateral only from among preset wallet inputs, so a builder that
-    // presets the wallet without narrowing it drops the collateral the
-    // watcher's restricted wallet reserves, and the reservation refuses the
-    // transaction. The validation-trace dispute and the unattested-block
-    // removal own deliberate presets of their own.
-    files: ["midgard-fault-proofs/src/**/*.ts"],
-    ignores: [
-      "midgard-fault-proofs/src/funding/**",
-      "midgard-fault-proofs/src/validation-trace-dispute/**",
-      "midgard-fault-proofs/src/remove-unattested-block*",
-    ],
-    rules: {
-      "no-restricted-syntax": [
-        "error",
-        {
-          selector:
-            "Property[key.name='presetWalletInputs'], Property[key.value='presetWalletInputs'], AssignmentExpression[left.property.name='presetWalletInputs']",
-          message:
-            "A fault-proof builder does not choose its own presetWalletInputs: a needless preset hides the wallet's reserved collateral from Lucid. Fix: spread the wallet inputs of stepWalletFunding or plainWalletInputs (src/funding/plain-funding-output.ts) into complete, passing what the transaction must not spend as `excluding`.",
-        },
-      ],
-    },
-  },
+  ...faultProofRestrictedSyntaxConfigs,
   {
     // Static import-boundary gate for the independent watcher command
     // package, reported as lint rather than as a test. The watcher is an

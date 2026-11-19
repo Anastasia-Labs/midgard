@@ -5,9 +5,9 @@ import { describe, expect, it } from "vitest";
 import {
   buildEventToStepMismatchFault,
   buildTransitionFaultProof,
+  buildTransitionTraceProof,
   detectTransitionTraceFaults,
   resolveTransitionTraceDeploymentContracts,
-  submitTransitionTraceProof,
   transitionTraceFinalIndex,
 } from "../src/index.js";
 import { phaseForStepIndex } from "../src/transition-trace/phase-band.js";
@@ -24,6 +24,7 @@ import {
   funderPaymentKeyHash,
   network,
 } from "./support/submit-init-emulator-shared.js";
+import { submitTurnsUnjournaled } from "./support/submit-unjournaled.js";
 import { buildForcedAndL2Block } from "./support/transition-trace-phase-band.forced-and-l2-block.js";
 
 /**
@@ -52,7 +53,7 @@ const submit = async (
   landed: Awaited<ReturnType<typeof landBlock>>,
   proof: ReturnType<typeof buildTransitionFaultProof>,
 ) =>
-  await submitTransitionTraceProof({
+  await submitTurnsUnjournaled(buildTransitionTraceProof, {
     lucid: landed.harness.proverLucid,
     blueprint: landed.harness.realBlueprint,
     deploymentInfo: landed.lifecycle.deploymentInfo,

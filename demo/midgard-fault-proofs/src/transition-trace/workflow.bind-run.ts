@@ -2,7 +2,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import { fetchUtxoByOutRef, parseOutRef } from "../runtime.js";
-import { submitInit } from "../submit-init.js";
+import { buildInit } from "../submit-init.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import {
   CURSOR_FAMILY_TRANSACTION_PORT,
@@ -17,14 +17,14 @@ import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prer
 import type { JournalJsonObject } from "../workflow/journal.js";
 import { type FraudProofWorkflowAction } from "../workflow/orchestrator.js";
 import { createChunkedRawDatumPreimageRequirement } from "../workflow/raw-datum-preimage-prerequisite.js";
-import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
+import { journaledStepTransaction } from "../workflow/step-transaction.js";
 import {
   transitionTraceProofChunks,
   transitionTraceTimedProofNeedsChunks,
 } from "./proof-carriage.js";
 import {
-  submitTransitionTraceFinal,
-  submitTransitionTraceRoute,
+  buildTransitionTraceFinal,
+  buildTransitionTraceRoute,
   TRANSITION_TRACE_FINAL_REFERENCE_SCRIPT_ENTRIES,
   transitionTraceFinalIndex,
 } from "./submit.js";
@@ -228,53 +228,28 @@ const bindRun = (context: TransitionContext) => {
           : undefined;
       try {
         await mutationLease?.renew();
-        const transaction = await captureLocallyEvaluatedTransaction(
-          async (boundary) => {
-            const preSubmitBoundary: typeof boundary = async (built) => {
-              await mutationLease?.renew();
-              await boundary(built);
-            };
-            const common = {
-              lucid: config.lucid,
-              blueprint: binding.blueprint,
-              deploymentInfo: binding.deploymentInfo,
-              network: binding.network,
-              signer: config.signer,
-              witnessReferenceScripts: witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            };
-            if (input.stage === "init") {
-              await submitInit({
-                ...common,
-                fraudCategory: "transitionTrace",
-                fraudulentBlockOutRef: cursorStringField(
-                  input,
-                  "stateQueueBlockOutRef",
-                ),
-                fraudulentHeaderHash: binding.definition.headerHash,
-              });
-              return;
-            }
-            const threadOutRef = cursorStringField(input, "threadOutRef");
-            if (input.stage === "step_01") {
-              await submitTransitionTraceRoute({
-                ...common,
-                ownOutputs: workflowFieldCarriageOwnOutputs({
-                  category: "transitionTrace",
-                  entries,
-                }),
-                threadOutRef,
-                proof: prepared.proof,
-              });
-              return;
-            }
-            const expected = `step_${String(transitionTraceFinalIndex(prepared.proof) + 2).padStart(2, "0")}`;
-            if (input.stage !== expected)
-              throw new Error(
-                "Transition workflow cursor selected a different final",
-              );
-            await submitTransitionTraceFinal({
+        const common = {
+          lucid: config.lucid,
+          blueprint: binding.blueprint,
+          deploymentInfo: binding.deploymentInfo,
+          network: binding.network,
+          signer: config.signer,
+          witnessReferenceScripts: witnesses,
+        };
+        const built = await (async () => {
+          if (input.stage === "init")
+            return await buildInit({
+              ...common,
+              fraudCategory: "transitionTrace",
+              fraudulentBlockOutRef: cursorStringField(
+                input,
+                "stateQueueBlockOutRef",
+              ),
+              fraudulentHeaderHash: binding.definition.headerHash,
+            });
+          const threadOutRef = cursorStringField(input, "threadOutRef");
+          if (input.stage === "step_01")
+            return await buildTransitionTraceRoute({
               ...common,
               ownOutputs: workflowFieldCarriageOwnOutputs({
                 category: "transitionTrace",
@@ -282,11 +257,29 @@ const bindRun = (context: TransitionContext) => {
               }),
               threadOutRef,
               proof: prepared.proof,
-              additionalReferenceInputs: prepared.references,
-              depositOpening: prepared.depositOpening,
             });
-          },
+          const expected = `step_${String(transitionTraceFinalIndex(prepared.proof) + 2).padStart(2, "0")}`;
+          if (input.stage !== expected)
+            throw new Error(
+              "Transition workflow cursor selected a different final",
+            );
+          return await buildTransitionTraceFinal({
+            ...common,
+            ownOutputs: workflowFieldCarriageOwnOutputs({
+              category: "transitionTrace",
+              entries,
+            }),
+            threadOutRef,
+            proof: prepared.proof,
+            additionalReferenceInputs: prepared.references,
+            depositOpening: prepared.depositOpening,
+          });
+        })();
+        const { transaction } = await journaledStepTransaction(
+          built,
+          `transition-trace ${input.stage}`,
         );
+        await mutationLease?.renew();
         return {
           transaction,
           ...(mutationLease === undefined ? {} : { mutationLease }),

@@ -33,15 +33,16 @@ import {
 import { Effect } from "effect";
 
 import { type ResolvedProverSigner } from "../runtime.js";
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
 } from "../witness-reference-scripts.js";
 import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
 } from "../workflow/transaction-boundary.js";
 import type { WithdrawnReferenceInputContracts } from "./contracts.js";
 import { verifyWithdrawnReferenceInputMembership } from "./prepare-withdrawn-reference-input.js";
@@ -55,8 +56,8 @@ import {
 
 const STEP_LABEL = withdrawnReferenceInputStepLabel(2);
 
-export type SubmitWithdrawnReferenceInputStep03Result = {
-  readonly txHash: string;
+export type WithdrawnReferenceInputStep03Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -75,8 +76,10 @@ export type SubmitWithdrawnReferenceInputStep03Result = {
   readonly computationThreadMintRedeemerIndex: number;
   readonly fraudProofMintRedeemerIndex: number;
   readonly referenceScriptOutRef: string;
-  readonly awaitedConfirmation: boolean;
 };
+
+export type SubmitWithdrawnReferenceInputStep03Result =
+  UnjournaledSubmission<WithdrawnReferenceInputStep03Build>;
 
 type Step03SpendLayout = {
   readonly inputIndex: bigint;
@@ -84,7 +87,7 @@ type Step03SpendLayout = {
   readonly fraudProofMintRedeemerIndex: bigint;
 };
 
-export const submitWithdrawnReferenceInputStep03 = async ({
+export const buildWithdrawnReferenceInputStep03 = async ({
   lucid,
   contracts,
   categoryId,
@@ -93,8 +96,6 @@ export const submitWithdrawnReferenceInputStep03 = async ({
   withdrawalMembership,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: WithdrawnReferenceInputContracts;
@@ -104,9 +105,7 @@ export const submitWithdrawnReferenceInputStep03 = async ({
   readonly withdrawalMembership: WithdrawalSourceMembershipProof;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitWithdrawnReferenceInputStep03Result> => {
+}): Promise<WithdrawnReferenceInputStep03Build> => {
   const { threadUtxo, threadToken } =
     await requireWithdrawnReferenceInputThreadUtxo({
       lucid,
@@ -288,39 +287,33 @@ export const submitWithdrawnReferenceInputStep03 = async ({
       "BuildTxWithRedeemer did not resolve the step-03 layout.",
     );
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: "withdrawn-reference-input step-03",
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: "V1 fraud-proof withdrawn-reference-input step-03",
-          utxo: referenceScriptUtxo,
-          expectedScript: contracts.steps[2].spendingScript,
-        },
-        {
-          role: "V1 fraud-proof computation-thread minting",
-          utxo: witnessReferenceScripts?.computationThreadMint,
-          expectedScript: contracts.computationThread.mintingScript,
-        },
-        {
-          role: "V1 fraud-proof token minting",
-          utxo: witnessReferenceScripts?.fraudProofMint,
-          expectedScript: contracts.fraudProof.mintingScript,
-        },
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: "V1 fraud-proof withdrawn-reference-input step-03",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.steps[2].spendingScript,
+      },
+      {
+        role: "V1 fraud-proof computation-thread minting",
+        utxo: witnessReferenceScripts?.computationThreadMint,
+        expectedScript: contracts.computationThread.mintingScript,
+      },
+      {
+        role: "V1 fraud-proof token minting",
+        utxo: witnessReferenceScripts?.fraudProofMint,
+        expectedScript: contracts.fraudProof.mintingScript,
+      },
+    ],
   });
 
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
     threadOutRef,
-    fraudProofOutRef: `${txHash}#${spendLayout.outputIndex.toString()}`,
+    fraudProofOutRef: `${transaction.txHash}#${spendLayout.outputIndex.toString()}`,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadUnit: threadToken.unit,
     fraudProofPolicyId: contracts.fraudProof.policyId,
@@ -338,6 +331,5 @@ export const submitWithdrawnReferenceInputStep03 = async ({
       spendLayout.fraudProofMintRedeemerIndex,
     ),
     referenceScriptOutRef: `${stepReference.txHash}#${stepReference.outputIndex.toString()}`,
-    awaitedConfirmation: awaitConfirmation,
   };
 };

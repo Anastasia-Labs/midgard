@@ -27,12 +27,12 @@ import {
   VAN_ROSSEM_MAX_MEMORY_UNITS,
 } from "../src/proof-fit/van-rossem.js";
 import {
+  buildRedeemerCanonicityStep01Forced,
+  buildRedeemerCanonicityStep02,
+  buildRedeemerCanonicityStep03,
   prepareRedeemerCanonicityEvidence,
   REDEEMER_CANONICITY_EXECUTION_FAILED_INDEX,
   type RedeemerCanonicityEvidence,
-  submitRedeemerCanonicityStep01Forced,
-  submitRedeemerCanonicityStep02,
-  submitRedeemerCanonicityStep03,
 } from "../src/redeemer-canonicity/index.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
 import {
@@ -48,6 +48,10 @@ import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-sc
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
 import { deployHarnessFieldGrammarCertificate } from "./support/field-grammar-certificate-deployment-fixture.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
+import {
+  buildAndSubmitUnjournaled,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 
 const FIELD_CAP = MIDGARD_CONSENSUS_LIMITS.maxTransactionAggregateFieldBytes;
 
@@ -196,25 +200,28 @@ const boundForcedThread = async (
     category,
     fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
   });
-  const bound = await submitRedeemerCanonicityStep01Forced({
-    ...step,
-    threadOutRef: `${init.txHash}#${init.firstStepOutputIndex.toString()}`,
-    finding: evidence,
-    forcedSource: { header: forced.header, membership },
-    witnessSetHash: Buffer.from(
-      decodeMidgardForcedTxCompact(
-        Buffer.from(
-          forced.forcedTransaction.submitted_source.compact_cbor,
-          "hex",
-        ),
-      ).transactionWitnessSetHash,
-    ).toString("hex"),
-    referenceScriptUtxo: references[0],
-  });
+  const bound = await buildAndSubmitUnjournaled(
+    buildRedeemerCanonicityStep01Forced,
+    {
+      ...step,
+      threadOutRef: `${init.txHash}#${init.firstStepOutputIndex.toString()}`,
+      finding: evidence,
+      forcedSource: { header: forced.header, membership },
+      witnessSetHash: Buffer.from(
+        decodeMidgardForcedTxCompact(
+          Buffer.from(
+            forced.forcedTransaction.submitted_source.compact_cbor,
+            "hex",
+          ),
+        ).transactionWitnessSetHash,
+      ).toString("hex"),
+      referenceScriptUtxo: references[0],
+    },
+  );
   /** Step 02 from the bound thread for `claimed`. */
   const authenticate = async (claimed: RedeemerCanonicityEvidence) =>
     await captureEmulatorSubmission(harness.emulator, () =>
-      submitRedeemerCanonicityStep02({
+      submitTurnsUnjournaled(buildRedeemerCanonicityStep02, {
         ...step,
         threadOutRef: bound.nextThreadOutRef,
         evidence: claimed,
@@ -231,7 +238,7 @@ const boundForcedThread = async (
     );
   const mint = async (threadOutRef: string) =>
     await captureEmulatorSubmission(harness.emulator, () =>
-      submitRedeemerCanonicityStep03({
+      buildAndSubmitUnjournaled(buildRedeemerCanonicityStep03, {
         ...step,
         threadOutRef,
         evidence,

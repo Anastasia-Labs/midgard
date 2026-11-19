@@ -16,20 +16,13 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data, getAddressDetails } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import {
-  certifyFaultProofFieldCarriage,
-  planFaultProofFieldOpening,
-  publishFaultProofFieldCarriage,
-} from "../../src/field-opening.js";
+import { planFaultProofFieldOpening } from "../../src/field-opening.js";
 import {
   admitInvalidSignatureForcedArtifact,
   INVALID_SIGNATURE_FORCED_ARTIFACT,
 } from "../../src/invalid-signature/artifact.js";
 import type { InvalidSignatureContracts } from "../../src/invalid-signature/contracts.js";
-import { submitInvalidSignatureStep01Forced } from "../../src/invalid-signature/submit.js";
 import { submitRemoveFraudulentBlock } from "../../src/remove-fraudulent-block.js";
-import { submitInit } from "../../src/submit-init.js";
-import { submitInvalidSignatureStep02 } from "../../src/submit-invalid-signature-step-02.js";
 import {
   buildCountedRoot,
   commitCountedRoot,
@@ -50,6 +43,13 @@ import { submitFamilyCancel } from "./linear-fault-cancel.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./submit-init-emulator-fixtures.js";
 import { publishPlainReferenceScriptUtxo } from "./submit-init-emulator-shared.js";
 import { publishRemovalReferenceScripts } from "./submit-init-emulator-shared.js";
+import { submitInit } from "./submit-unjournaled.init.js";
+import {
+  certifyCarriageUnjournaled,
+  publishCarriageUnjournaled,
+  submitInvalidSignatureStep01Forced,
+  submitInvalidSignatureStep02,
+} from "./submit-unjournaled.invalid-signature.js";
 import { syntheticDeepMembershipProof } from "./synthetic-deep-proof.js";
 
 /** Complete registered invalid-signature lifecycle, including raw on-chain
@@ -469,7 +469,7 @@ export const runInvalidSignatureWrongfulRejectionScenario = async (scenario: {
     opening.plan.tier === "Inline"
       ? null
       : await captureEmulatorSubmission(harness.emulator, () =>
-          publishFaultProofFieldCarriage({
+          publishCarriageUnjournaled({
             ownOutputs,
             lucid: harness.proverLucid,
             signer: harness.proverSigner,
@@ -488,7 +488,7 @@ export const runInvalidSignatureWrongfulRejectionScenario = async (scenario: {
       label: "invalid signature field certificate",
     });
     const certified = await captureEmulatorSubmission(harness.emulator, () =>
-      certifyFaultProofFieldCarriage({
+      certifyCarriageUnjournaled({
         ownOutputs,
         lucid: harness.proverLucid,
         network,

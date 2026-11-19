@@ -8,9 +8,9 @@ import { Data } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
 import {
-  submitInputNoIdxStep02,
-  submitInputNoIdxStep03,
-  type submitInputNoIdxStep04,
+  buildInputNoIdxStep02,
+  buildInputNoIdxStep03,
+  type buildInputNoIdxStep04,
 } from "../../src/index.js";
 import type {
   InputNoIdxBlockFixture,
@@ -21,6 +21,11 @@ import {
   expectSingleUtxoWithUnit,
   network,
 } from "./submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  type SubmittedStep,
+  submitTurnsUnjournaled,
+} from "./submit-unjournaled.js";
 
 export type InputNoIdxEmulatorHarness = Awaited<
   ReturnType<typeof makeEmulatorHarness>
@@ -33,7 +38,7 @@ export const advanceInputNoIdxToStep04 = async (
 ) => {
   const { deploymentInfo, initResult, secondStepUtxo, setup } =
     await startInputNoIdxStep02Thread({ harness, fixture });
-  const step02 = await submitInputNoIdxStep02({
+  const step02 = await submitTurnsUnjournaled(buildInputNoIdxStep02, {
     lucid: harness.proverLucid,
     referenceScriptUtxo:
       harness.faultProofReferenceScripts
@@ -56,7 +61,7 @@ export const advanceInputNoIdxToStep04 = async (
     step02.thirdStepAddress,
     initResult.computationThreadUnit,
   );
-  const step03 = await submitInputNoIdxStep03({
+  const step03 = await buildAndSubmitUnjournaled(buildInputNoIdxStep03, {
     lucid: harness.proverLucid,
     referenceScriptUtxo:
       harness.faultProofReferenceScripts
@@ -81,7 +86,7 @@ export const advanceInputNoIdxToStep04 = async (
 
 export const expectInputNoIdxConviction = async (
   harness: InputNoIdxEmulatorHarness,
-  result: Awaited<ReturnType<typeof submitInputNoIdxStep04>>,
+  result: SubmittedStep<typeof buildInputNoIdxStep04>,
 ) => {
   const fraudProofUtxo = await expectSingleUtxoWithUnit(
     harness.proverLucid,

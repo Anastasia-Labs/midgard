@@ -16,11 +16,10 @@ import {
   requireLinearFaultReferenceScript,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { requireInitialStepDatum } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { ProtectedOutputSignerMissingContracts } from "./contracts.js";
 import {
   classifyProtectedOutputSignerMissingFinding,
@@ -31,7 +30,7 @@ import {
   ProtectedOutputSignerStep02DatumSchema,
 } from "./schemas.js";
 
-export const submitProtectedOutputSignerMissingStep01Forced = async ({
+export const buildProtectedOutputSignerMissingStep01Forced = async ({
   lucid,
   contracts,
   categoryId,
@@ -40,8 +39,6 @@ export const submitProtectedOutputSignerMissingStep01Forced = async ({
   evidence,
   forcedSource,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: ProtectedOutputSignerMissingContracts;
@@ -51,8 +48,6 @@ export const submitProtectedOutputSignerMissingStep01Forced = async ({
   readonly evidence: ProtectedOutputSignerMissingEvidence;
   readonly forcedSource: Readonly<Record<string, unknown>>;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   classifyProtectedOutputSignerMissingFinding(evidence);
   const stepIndex = 0;
@@ -128,7 +123,7 @@ export const submitProtectedOutputSignerMissingStep01Forced = async ({
       ProtectedOutputSignerStep01RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -139,12 +134,13 @@ export const submitProtectedOutputSignerMissingStep01Forced = async ({
     nextAddress: contracts.steps[1].spendingScriptAddress,
     nextDatum,
     redeemer,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined)
     throw new Error(
       "protected-output-signer-missing: forced layout unresolved",
     );
-  return { txHash, nextThreadOutRef: `${txHash}#${outputIndex.toString()}` };
+  return {
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
+  };
 };

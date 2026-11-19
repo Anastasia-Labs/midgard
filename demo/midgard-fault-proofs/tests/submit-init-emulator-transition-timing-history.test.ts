@@ -14,12 +14,7 @@ import {
 import { Effect } from "effect";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
-import { submitInit } from "../src/submit-init.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
-import {
-  submitTransitionTraceFinal,
-  submitTransitionTraceRoute,
-} from "../src/transition-trace/submit.js";
 import {
   awaitHeaderCommitWindow,
   FAMILY_HISTORY_HEADER_LEAD_MS,
@@ -42,6 +37,11 @@ import {
   publishRemovalReferenceScripts,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
+import { submitInit } from "./support/submit-unjournaled.init.js";
+import {
+  submitTransitionTraceFinal,
+  submitTransitionTraceRoute,
+} from "./support/submit-unjournaled.transition-trace.js";
 import { publishTransitionTraceYields } from "./support/transition-trace-yields.js";
 
 const records: unknown[] = [];

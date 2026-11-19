@@ -4,11 +4,8 @@ import {
   admitMissingSignatureForcedArtifact,
   MISSING_SIGNATURE_FORCED_ARTIFACT,
 } from "../missing-signature/forced-artifact.js";
-import { submitMissingSignatureForcedAction } from "../missing-signature/submit-forced.js";
-import {
-  type StateQueueMutationLease,
-  type StateQueueMutationLeaseCoordinator,
-} from "../remove-fraudulent-block.js";
+import { buildMissingSignatureForcedAction } from "../missing-signature/submit-forced.js";
+import { type StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { type FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
 import { type FraudProofFamilyL1ObservationPort } from "./family-l1-observation.js";
@@ -33,8 +30,9 @@ import {
   type FraudProofWorkflowTerminalVerifier,
 } from "./orchestrator.js";
 import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy.js";
+import { admitRemovalTransaction } from "./removal-admission.js";
+import { journaledStepTransaction } from "./step-transaction.js";
 import {
-  captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
   workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary.js";
@@ -78,8 +76,8 @@ export const createBoundTransactionPort = ({
         entries,
       });
       if (input.stage === "init") {
-        const transaction = await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
+        const transaction = (
+          await journaledStepTransaction(
             await builders.init({
               lucid: config.lucid,
               blueprint: config.blueprint,
@@ -94,11 +92,10 @@ export const createBoundTransactionPort = ({
               ),
               fraudulentHeaderHash: config.headerHash,
               witnessReferenceScripts: config.referenceScripts.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        );
+            }),
+            "missing-signature init",
+          )
+        ).transaction;
         return Object.freeze({ transaction });
       }
       if (forced !== undefined && input.stage !== "remove") {
@@ -121,9 +118,9 @@ export const createBoundTransactionPort = ({
           throw new Error(
             "missingSignature: forced artifact entered an accepted stage",
           );
-        const transaction = await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitMissingSignatureForcedAction({
+        const transaction = (
+          await journaledStepTransaction(
+            await buildMissingSignatureForcedAction({
               ownOutputs,
               lucid: config.lucid,
               contracts: config.contracts,
@@ -137,18 +134,17 @@ export const createBoundTransactionPort = ({
                 input.stage === "step_06"
                   ? config.referenceScripts.fieldCertificates?.forcedSigner
                   : config.referenceScripts.fieldCertificates?.forcedWitness,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        );
+            }),
+            "missing-signature buildMissingSignatureForcedAction",
+          )
+        ).transaction;
         return Object.freeze({ transaction });
       }
       if (input.stage === "step_01") {
         if (admitted === undefined)
           throw new Error("missingSignature: accepted artifact missing");
-        const transaction = await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
+        const transaction = (
+          await journaledStepTransaction(
             await builders.step01({
               lucid: config.lucid,
               blueprint: config.blueprint,
@@ -164,18 +160,17 @@ export const createBoundTransactionPort = ({
               txInclusion: admitted.txInclusion,
               referenceScriptUtxo: config.referenceScripts.steps[0],
               witnessReferenceScripts: config.referenceScripts.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        );
+            }),
+            "missing-signature step01",
+          )
+        ).transaction;
         return Object.freeze({ transaction });
       }
       if (input.stage === "step_02") {
         if (admitted === undefined)
           throw new Error("missingSignature: accepted artifact missing");
-        const transaction = await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
+        const transaction = (
+          await journaledStepTransaction(
             await builders.step02({
               ownOutputs,
               lucid: config.lucid,
@@ -189,18 +184,17 @@ export const createBoundTransactionPort = ({
               certificateUtxo:
                 config.referenceScripts.fieldCertificates?.step02,
               referenceScriptUtxo: config.referenceScripts.steps[1],
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        );
+            }),
+            "missing-signature step02",
+          )
+        ).transaction;
         return Object.freeze({ transaction });
       }
       if (input.stage === "step_03") {
         if (admitted === undefined)
           throw new Error("missingSignature: accepted artifact missing");
-        const transaction = await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
+        const transaction = (
+          await journaledStepTransaction(
             await builders.step03({
               lucid: config.lucid,
               contracts: config.contracts,
@@ -209,18 +203,17 @@ export const createBoundTransactionPort = ({
               threadOutRef: stringField(input, "threadOutRef"),
               missingRequiredSignerVkey: admitted.resolvedVkey,
               referenceScriptUtxo: config.referenceScripts.steps[2],
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        );
+            }),
+            "missing-signature step03",
+          )
+        ).transaction;
         return Object.freeze({ transaction });
       }
       if (input.stage === "step_04") {
         if (admitted === undefined)
           throw new Error("missingSignature: accepted artifact missing");
-        const transaction = await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
+        const transaction = (
+          await journaledStepTransaction(
             await builders.step04({
               ownOutputs,
               lucid: config.lucid,
@@ -235,61 +228,49 @@ export const createBoundTransactionPort = ({
                 config.referenceScripts.fieldCertificates?.step04,
               referenceScriptUtxo: config.referenceScripts.steps[3],
               witnessReferenceScripts: config.referenceScripts.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        );
+            }),
+            "missing-signature step04",
+          )
+        ).transaction;
         return Object.freeze({ transaction });
       }
       if (input.stage === "remove") {
-        let mutationLease: StateQueueMutationLease | undefined;
-        const retainingCoordinator: StateQueueMutationLeaseCoordinator = {
-          acquire: async () => {
-            const acquired =
-              await config.stateQueueMutationLeaseCoordinator.acquire();
-            mutationLease = acquired;
-            return acquired;
-          },
-        };
         const nextRemovalOutRef = stringField(input, "nextRemovalOutRef");
         const fraudProofOutRef = stringField(input, "fraudProofOutRef");
-        const transaction = await captureLocallyEvaluatedTransaction(
-          async (boundary) => {
-            await builders.remove({
-              fraudProofOutRef,
-              lucid: config.lucid,
-              blueprint: config.blueprint,
-              deploymentInfo: config.deploymentInfo,
-              network: config.network,
-              signer: config.signer,
-              fraudCategory: "missingSignature",
-              fraudulentHeaderHash: config.headerHash,
-              requireReferenceScripts: true,
-              stateQueueMutationLeaseCoordinator: retainingCoordinator,
-              fraudProverRewardLovelace: config.fraudProverRewardLovelace,
-              preSubmitBoundary: async (built) => {
-                if (
-                  !workflowTransactionInputOutRefs(built.signed).includes(
-                    nextRemovalOutRef,
-                  )
-                ) {
-                  throw new Error(
-                    "missing-signature removal does not consume the authenticated next queue input",
-                  );
-                }
-                if (
-                  !workflowTransactionReferenceInputOutRefs(
-                    built.signed,
-                  ).includes(fraudProofOutRef)
-                ) {
-                  throw new Error(
-                    "missing-signature removal does not reference the authenticated retained proof token",
-                  );
-                }
-                await boundary(built);
-              },
-            });
+        const { transaction, mutationLease } = await admitRemovalTransaction(
+          await builders.remove({
+            fraudProofOutRef,
+            lucid: config.lucid,
+            blueprint: config.blueprint,
+            deploymentInfo: config.deploymentInfo,
+            network: config.network,
+            signer: config.signer,
+            fraudCategory: "missingSignature",
+            fraudulentHeaderHash: config.headerHash,
+            requireReferenceScripts: true,
+            stateQueueMutationLeaseCoordinator:
+              config.stateQueueMutationLeaseCoordinator,
+            fraudProverRewardLovelace: config.fraudProverRewardLovelace,
+          }),
+          async (built) => {
+            if (
+              !workflowTransactionInputOutRefs(built.signed).includes(
+                nextRemovalOutRef,
+              )
+            ) {
+              throw new Error(
+                "missing-signature removal does not consume the authenticated next queue input",
+              );
+            }
+            if (
+              !workflowTransactionReferenceInputOutRefs(built.signed).includes(
+                fraudProofOutRef,
+              )
+            ) {
+              throw new Error(
+                "missing-signature removal does not reference the authenticated retained proof token",
+              );
+            }
           },
         );
         return Object.freeze({

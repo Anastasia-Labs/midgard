@@ -32,16 +32,13 @@ import {
 
 import {
   fetchUtxoByOutRef,
-  makeLucidForSubmit,
   outRefLabel,
   parseOutRef,
-  readJsonFile,
   resolveDaHashPreimageDeploymentContracts,
   type ResolvedProverSigner,
-  resolveProverSigner,
   type SubmitProviderConfig,
 } from "./runtime.js";
-import { completeStep, fundStep, submitStep } from "./step-completion.js";
+import { completeStep, finishStep, fundStep } from "./step-completion.js";
 import { requireComputationThreadToken } from "./step-support.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
 import {
@@ -49,10 +46,7 @@ import {
   witnessMintingPolicyCarriage,
   witnessSpendingValidatorCarriage,
 } from "./witness-reference-scripts.js";
-import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
-} from "./workflow/transaction-boundary.js";
+import { type LocallyEvaluatedTransaction } from "./workflow/transaction-boundary.js";
 
 export type SubmitDaHashPreimageStep02CliConfig = SubmitProviderConfig & {
   readonly blueprintPath: string;
@@ -65,8 +59,9 @@ export type SubmitDaHashPreimageStep02CliConfig = SubmitProviderConfig & {
   readonly awaitConfirmation?: boolean;
 };
 
-export type SubmitDaHashPreimageStep02Result = {
-  readonly txHash: string;
+/** The signed step-02 transaction and what its builder derived for it. */
+export type DaHashPreimageStep02Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -86,8 +81,14 @@ export type SubmitDaHashPreimageStep02Result = {
   readonly outputIndex: number;
   readonly computationThreadMintRedeemerIndex: number;
   readonly fraudProofMintRedeemerIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
+
+/** What the CLI reports after it submits step 02. */
+export type SubmitDaHashPreimageStep02Result = {
+  readonly txHash: string;
+} & Omit<DaHashPreimageStep02Build, "transaction"> & {
+    readonly awaitedConfirmation: boolean;
+  };
 
 type DaHashPreimageStep02DatumWithState = DaHashPreimageStep02Datum & {
   readonly data: NonNullable<DaHashPreimageStep02Datum["data"]>;
@@ -251,7 +252,7 @@ const makeComputationThreadSuccessRedeemer = ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-export const submitDaHashPreimageStep02 = async ({
+export const buildDaHashPreimageStep02 = async ({
   lucid,
   blueprint,
   deploymentInfo,
@@ -260,8 +261,6 @@ export const submitDaHashPreimageStep02 = async ({
   threadOutRef,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -273,9 +272,7 @@ export const submitDaHashPreimageStep02 = async ({
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitDaHashPreimageStep02Result> => {
+}): Promise<DaHashPreimageStep02Build> => {
   const { daHashPreimageCategory, contracts } =
     await resolveDaHashPreimageDeploymentContracts({
       blueprint,
@@ -407,39 +404,33 @@ export const submitDaHashPreimageStep02 = async ({
     ...spendLayout,
     computationThreadMintRedeemerIndex,
   };
-  const txHash = await submitStep(lucid, signed, {
-    label: "da-hash-preimage step-02",
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: "V1 fraud-proof da-hash-preimage step-02",
-          utxo: referenceScriptUtxo,
-          expectedScript: contracts.daHashPreimage.steps[1].spendingScript,
-        },
-        {
-          role: "V1 fraud-proof computation-thread minting",
-          utxo: witnessReferenceScripts?.computationThreadMint,
-          expectedScript: contracts.computationThread.mintingScript,
-        },
-        {
-          role: "V1 fraud-proof token minting",
-          utxo: witnessReferenceScripts?.fraudProofMint,
-          expectedScript: contracts.fraudProof.mintingScript,
-        },
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: "V1 fraud-proof da-hash-preimage step-02",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.daHashPreimage.steps[1].spendingScript,
+      },
+      {
+        role: "V1 fraud-proof computation-thread minting",
+        utxo: witnessReferenceScripts?.computationThreadMint,
+        expectedScript: contracts.computationThread.mintingScript,
+      },
+      {
+        role: "V1 fraud-proof token minting",
+        utxo: witnessReferenceScripts?.fraudProofMint,
+        expectedScript: contracts.fraudProof.mintingScript,
+      },
+    ],
   });
 
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
     threadOutRef,
-    fraudProofOutRef: `${txHash}#${resolvedLayout.outputIndex.toString()}`,
+    fraudProofOutRef: `${transaction.txHash}#${resolvedLayout.outputIndex.toString()}`,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadPolicyId: contracts.computationThread.policyId,
     computationThreadAssetName: threadToken.assetName,
@@ -458,26 +449,5 @@ export const submitDaHashPreimageStep02 = async ({
     fraudProofMintRedeemerIndex: Number(
       resolvedLayout.fraudProofMintRedeemerIndex,
     ),
-    awaitedConfirmation: awaitConfirmation,
   };
-};
-
-export const submitDaHashPreimageStep02FromFiles = async (
-  config: SubmitDaHashPreimageStep02CliConfig,
-): Promise<SubmitDaHashPreimageStep02Result> => {
-  const [blueprint, deploymentInfo, lucid] = await Promise.all([
-    readJsonFile(config.blueprintPath),
-    readJsonFile(config.deploymentInfoPath),
-    makeLucidForSubmit(config),
-  ]);
-  const signer = resolveProverSigner(config);
-  return await submitDaHashPreimageStep02({
-    lucid,
-    blueprint,
-    deploymentInfo,
-    network: config.network,
-    signer,
-    threadOutRef: config.threadOutRef,
-    awaitConfirmation: config.awaitConfirmation,
-  });
 };

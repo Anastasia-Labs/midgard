@@ -9,11 +9,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import {
-  certifyFaultProofFieldCarriage,
-  type FaultProofFieldOpeningPlan,
-  publishFaultProofFieldCarriage,
-} from "../../src/field-opening.js";
+import { type FaultProofFieldOpeningPlan } from "../../src/field-opening.js";
 import { resolveProverSigner } from "../../src/runtime.js";
 import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import {
@@ -21,6 +17,10 @@ import {
   network,
   publishPlainReferenceScriptUtxo,
 } from "./submit-init-emulator-shared.js";
+import {
+  certifyCarriageUnjournaled,
+  publishCarriageUnjournaled,
+} from "./submit-unjournaled.js";
 
 /** The address production publishes carriage from: the prover signer's. */
 const carriagePublisher = (seedPhrase: string) =>
@@ -104,7 +104,7 @@ const publishAsProverSigner = async ({
 }): Promise<UTxO[]> => {
   const ownOutputs = createOwnOutputJournal();
   const publication = await captureEmulatorSubmission(emulator, () =>
-    publishFaultProofFieldCarriage({
+    publishCarriageUnjournaled({
       ownOutputs,
       lucid,
       signer,
@@ -162,7 +162,7 @@ const publishAsProverSigner = async ({
     })
   ).utxo;
   const certified = await captureEmulatorSubmission(emulator, () =>
-    certifyFaultProofFieldCarriage({
+    certifyCarriageUnjournaled({
       ownOutputs,
       lucid,
       network,

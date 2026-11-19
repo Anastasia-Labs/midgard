@@ -21,6 +21,10 @@ import {
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import { type FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import { type OwnOutputJournal } from "../workflow/own-outputs.js";
+import {
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
+} from "../workflow/transaction-boundary.js";
 import { type TransitionDepositOpening } from "./history-opening.js";
 import {
   readTransitionProof,
@@ -47,7 +51,12 @@ export type SubmitTransitionTraceProofConfig = {
    * deployment's `fieldPreimageCertificateMint` reference script.
    */
   readonly fieldCertificateReferenceScript?: UTxO;
-  readonly awaitConfirmation?: boolean;
+  /**
+   * Whether carriage the transaction reads and finds missing is built as the
+   * next turn. Off by default: a journaled workflow publishes its carriage as
+   * actions of their own, so missing carriage is an error there.
+   */
+  readonly publishCarriage?: boolean;
   /** Our field-carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
 };
@@ -64,8 +73,8 @@ export type SubmitTransitionTraceProofFromFilesConfig = SubmitProviderConfig & {
   readonly awaitConfirmation?: boolean;
 };
 
-export type SubmitTransitionTraceProofResult = {
-  readonly txHash: string;
+export type TransitionTraceProofBuild = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly routeTxHash: string;
   readonly routeOutRef: string;
   readonly walletSource: string;
@@ -87,31 +96,37 @@ export type SubmitTransitionTraceProofResult = {
   readonly hubOracleRefInputIndex: number;
   readonly computationThreadMintRedeemerIndex: number;
   readonly fraudProofMintRedeemerIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
 
-export type SubmitTransitionTraceRouteResult = Readonly<{
-  txHash: string;
+export type SubmitTransitionTraceProofResult =
+  UnjournaledSubmission<TransitionTraceProofBuild>;
+
+export type TransitionTraceRouteBuild = Readonly<{
+  transaction: LocallyEvaluatedTransaction;
   routeOutRef: string;
   fraudulentHeaderHash: string;
   finalIndex: number;
-  awaitedConfirmation: boolean;
 }>;
 
-export type SubmitTransitionTraceFinalResult = Readonly<{
+export type SubmitTransitionTraceRouteResult =
+  UnjournaledSubmission<TransitionTraceRouteBuild>;
+
+export type TransitionTraceFinalBuild = Readonly<{
   inputIndex: number;
   outputIndex: number;
   hubOracleRefInputIndex: number;
   computationThreadMintRedeemerIndex: number;
   fraudProofMintRedeemerIndex: number;
-  txHash: string;
+  transaction: LocallyEvaluatedTransaction;
   fraudProofOutRef: string;
   fraudulentHeaderHash: string;
   computationThreadUnit: string;
   fraudProofUnit: string;
   finalIndex: number;
-  awaitedConfirmation: boolean;
 }>;
+
+export type SubmitTransitionTraceFinalResult =
+  UnjournaledSubmission<TransitionTraceFinalBuild>;
 
 export type TransitionTraceRouteSpendLayout = {
   readonly inputIndex: bigint;

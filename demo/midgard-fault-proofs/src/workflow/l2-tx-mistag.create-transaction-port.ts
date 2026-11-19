@@ -3,14 +3,11 @@ import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 import type { L2TxMistagContracts } from "../l2-tx-mistag/contracts.js";
 import { L2TxMistagStep02Datum } from "../l2-tx-mistag/schemas.js";
-import { submitL2TxMistagInit } from "../l2-tx-mistag/submit-l2-tx-mistag-init.js";
-import { submitL2TxMistagStep01 } from "../l2-tx-mistag/submit-l2-tx-mistag-step-01.js";
-import { submitL2TxMistagStep02 } from "../l2-tx-mistag/submit-l2-tx-mistag-step-02.js";
-import {
-  type StateQueueMutationLease,
-  type StateQueueMutationLeaseCoordinator,
-  submitRemoveFraudulentBlock,
-} from "../remove-fraudulent-block.js";
+import { buildL2TxMistagInit } from "../l2-tx-mistag/submit-l2-tx-mistag-init.js";
+import { buildL2TxMistagStep01 } from "../l2-tx-mistag/submit-l2-tx-mistag-step-01.js";
+import { buildL2TxMistagStep02 } from "../l2-tx-mistag/submit-l2-tx-mistag-step-02.js";
+import { type StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
+import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { L2_TX_MISTAG_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
 import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
@@ -40,8 +37,9 @@ import {
 } from "./manifest-bound-family-assembly.js";
 import { type FraudProofWorkflowAction } from "./orchestrator.js";
 import { resolveDirectFirstProofChunks } from "./proof-chunk-prerequisite.js";
+import { admitRemovalTransaction } from "./removal-admission.js";
+import { journaledStepTransaction } from "./step-transaction.js";
 import {
-  captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
   workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary.js";
@@ -93,59 +91,44 @@ const captureRemoval = async ({
   readonly config: BoundConfig;
   readonly input: Readonly<Record<string, unknown>>;
 }) => {
-  let mutationLease: StateQueueMutationLease | undefined;
-  const retainingCoordinator: StateQueueMutationLeaseCoordinator = {
-    acquire: async () => {
-      const acquired =
-        await config.stateQueueMutationLeaseCoordinator.acquire();
-      mutationLease = acquired;
-      return acquired;
-    },
-  };
   const nextRemovalOutRef = stringField(input, "nextRemovalOutRef");
   const fraudProofOutRef = stringField(input, "fraudProofOutRef");
-  const transaction = await captureLocallyEvaluatedTransaction(
-    async (boundary) => {
-      await submitRemoveFraudulentBlock({
-        fraudProofOutRef,
-        lucid: config.lucid,
-        blueprint: config.blueprint,
-        deploymentInfo: config.deploymentInfo,
-        network: config.network,
-        signer: config.signer,
-        fraudCategory: "l2TxMistag",
-        fraudulentHeaderHash: config.headerHash,
-        requireReferenceScripts: true,
-        stateQueueMutationLeaseCoordinator: retainingCoordinator,
-        fraudProverRewardLovelace: config.fraudProverRewardLovelace,
-        preSubmitBoundary: async (built) => {
-          if (
-            !workflowTransactionInputOutRefs(built.signed).includes(
-              nextRemovalOutRef,
-            )
-          ) {
-            throw new Error(
-              "l2-tx-mistag removal changed its authenticated queue input",
-            );
-          }
-          if (
-            !workflowTransactionReferenceInputOutRefs(built.signed).includes(
-              fraudProofOutRef,
-            )
-          ) {
-            throw new Error(
-              "l2-tx-mistag removal did not reference the retained proof token",
-            );
-          }
-          await boundary(built);
-        },
-      });
+  return await admitRemovalTransaction(
+    await buildRemoveFraudulentBlock({
+      fraudProofOutRef,
+      lucid: config.lucid,
+      blueprint: config.blueprint,
+      deploymentInfo: config.deploymentInfo,
+      network: config.network,
+      signer: config.signer,
+      fraudCategory: "l2TxMistag",
+      fraudulentHeaderHash: config.headerHash,
+      requireReferenceScripts: true,
+      stateQueueMutationLeaseCoordinator:
+        config.stateQueueMutationLeaseCoordinator,
+      fraudProverRewardLovelace: config.fraudProverRewardLovelace,
+    }),
+    async (built) => {
+      if (
+        !workflowTransactionInputOutRefs(built.signed).includes(
+          nextRemovalOutRef,
+        )
+      ) {
+        throw new Error(
+          "l2-tx-mistag removal changed its authenticated queue input",
+        );
+      }
+      if (
+        !workflowTransactionReferenceInputOutRefs(built.signed).includes(
+          fraudProofOutRef,
+        )
+      ) {
+        throw new Error(
+          "l2-tx-mistag removal did not reference the retained proof token",
+        );
+      }
     },
   );
-  return Object.freeze({
-    transaction,
-    ...(mutationLease === undefined ? {} : { mutationLease }),
-  });
 };
 
 const createTransactionPort = (
@@ -165,9 +148,9 @@ const createTransactionPort = (
     const input = actionInput(action);
     if (input.stage === "init") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitL2TxMistagInit({
+        transaction: (
+          await journaledStepTransaction(
+            await buildL2TxMistagInit({
               lucid: config.lucid,
               blueprint: config.blueprint,
               network: config.network,
@@ -181,11 +164,10 @@ const createTransactionPort = (
               ),
               fraudulentHeaderHash: config.headerHash,
               witnessReferenceScripts: config.referenceScripts.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "l2-tx-mistag buildL2TxMistagInit",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "step_01") {
@@ -196,9 +178,9 @@ const createTransactionPort = (
         proofCbor: admitted.artifact.txMembershipProofCbor,
       });
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitL2TxMistagStep01({
+        transaction: (
+          await journaledStepTransaction(
+            await buildL2TxMistagStep01({
               lucid: config.lucid,
               blueprint: config.blueprint,
               contracts: config.contracts,
@@ -214,18 +196,17 @@ const createTransactionPort = (
               publishedProofChunks: chunks,
               referenceScriptUtxo: config.referenceScripts.steps[0],
               witnessReferenceScripts: config.referenceScripts.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "l2-tx-mistag buildL2TxMistagStep01",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "step_02") {
       return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitL2TxMistagStep02({
+        transaction: (
+          await journaledStepTransaction(
+            await buildL2TxMistagStep02({
               lucid: config.lucid,
               contracts: config.contracts,
               categoryId: config.category.categoryId,
@@ -233,11 +214,10 @@ const createTransactionPort = (
               threadOutRef: stringField(input, "threadOutRef"),
               referenceScriptUtxo: config.referenceScripts.steps[1],
               witnessReferenceScripts: config.referenceScripts.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
+            }),
+            "l2-tx-mistag buildL2TxMistagStep02",
+          )
+        ).transaction,
       });
     }
     if (input.stage === "remove") {

@@ -16,10 +16,10 @@ import { Data, getAddressDetails } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import type { InvalidSignatureContracts } from "../src/invalid-signature/contracts.js";
-import { submitInvalidSignatureStep01Forced } from "../src/invalid-signature/submit.js";
+import { buildInvalidSignatureStep01Forced } from "../src/invalid-signature/submit.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
-import { submitInit } from "../src/submit-init.js";
-import { submitInvalidSignatureStep02 } from "../src/submit-invalid-signature-step-02.js";
+import { buildInit } from "../src/submit-init.js";
+import { buildInvalidSignatureStep02 } from "../src/submit-invalid-signature-step-02.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
@@ -39,6 +39,10 @@ import {
 import { network } from "./support/invalid-signature-wrongful-emulator.network.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
+import {
+  buildAndSubmitUnjournaled,
+  submitTurnsUnjournaled,
+} from "./support/submit-unjournaled.js";
 
 /**
  * A forced AddressWitnessSignatureInvalid reason names a field-7 witness by
@@ -212,7 +216,7 @@ const setupScenario = async (witnessIndex: bigint) => {
   });
   const header = setup.header;
   const witnessSet = signedSubject.witnessSetCompact;
-  const init = await submitInit({
+  const init = await buildAndSubmitUnjournaled(buildInit, {
     lucid: harness.proverLucid,
     witnessReferenceScripts: harness.witnessReferenceScripts,
     blueprint: harness.realBlueprint,
@@ -223,34 +227,37 @@ const setupScenario = async (witnessIndex: bigint) => {
     fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
     awaitConfirmation: true,
   });
-  const bound = await submitInvalidSignatureStep01Forced({
-    lucid: harness.proverLucid,
-    contracts,
-    categoryId: catalogue.categories.invalidSignature.categoryId,
-    signer: harness.proverSigner,
-    threadOutRef: `${init.txHash}#${init.firstStepOutputIndex}`,
-    evidence: {
-      subject: SDK.forcedVerdictSubject({
-        transactionId: nativeTxId,
-        sourceKey: key,
-        rejectionReason: reason,
-      }),
-      witnessIndex,
-      witnessSetHash:
-        adjudicated.compact.transactionWitnessSetHash.toString("hex"),
-      witnessSet,
-      addressWitnesses: signedSubject.addrTxWits,
-      nativeTxCompactCbor: leaf.submitted_source.compact_cbor,
+  const bound = await buildAndSubmitUnjournaled(
+    buildInvalidSignatureStep01Forced,
+    {
+      lucid: harness.proverLucid,
+      contracts,
+      categoryId: catalogue.categories.invalidSignature.categoryId,
+      signer: harness.proverSigner,
+      threadOutRef: `${init.txHash}#${init.firstStepOutputIndex}`,
+      evidence: {
+        subject: SDK.forcedVerdictSubject({
+          transactionId: nativeTxId,
+          sourceKey: key,
+          rejectionReason: reason,
+        }),
+        witnessIndex,
+        witnessSetHash:
+          adjudicated.compact.transactionWitnessSetHash.toString("hex"),
+        witnessSet,
+        addressWitnesses: signedSubject.addrTxWits,
+        nativeTxCompactCbor: leaf.submitted_source.compact_cbor,
+      },
+      forcedSource: {
+        header,
+        membership,
+      },
+      referenceScriptUtxo: references[0],
     },
-    forcedSource: {
-      header,
-      membership,
-    },
-    referenceScriptUtxo: references[0],
-  });
+  );
   const threadOutRef = bound.nextThreadOutRef;
   const finalize = () =>
-    submitInvalidSignatureStep02({
+    submitTurnsUnjournaled(buildInvalidSignatureStep02, {
       lucid: harness.proverLucid,
       blueprint: harness.realBlueprint,
       deploymentInfo,

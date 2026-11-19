@@ -5,11 +5,11 @@ import {
   forcedInputExistenceMaterial,
   reopenForcedInputExistence,
 } from "./reopen-forced.js";
-import { submitInputExistenceStep } from "./submit.js";
+import { buildInputExistenceStep } from "./submit.js";
 import type { PreparedInputExistenceWrongfulRejection } from "./wrongful-rejection.js";
 
 type ForcedStepArguments = Omit<
-  Parameters<typeof submitInputExistenceStep>[0],
+  Parameters<typeof buildInputExistenceStep>[0],
   "prepared"
 > & {
   readonly prepared: PreparedInputExistenceWrongfulRejection;
@@ -29,7 +29,7 @@ export const inputExistenceForcedSteps = ({
       forcedInputExistenceMaterial(prepared, fieldIndex, owner),
     ),
   submit: async ({ prepared, ...arguments_ }: ForcedStepArguments) =>
-    submitInputExistenceStep({
+    buildInputExistenceStep({
       ...arguments_,
       prepared: reopenForcedInputExistence(
         prepared,

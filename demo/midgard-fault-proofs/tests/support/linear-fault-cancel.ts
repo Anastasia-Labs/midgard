@@ -1,6 +1,7 @@
-import { submitLinearFaultCancel } from "../../src/linear-fault-cancel.js";
+import { buildLinearFaultCancel } from "../../src/linear-fault-cancel.js";
+import { buildAndSubmitUnjournaled } from "./submit-unjournaled.js";
 
-type LinearFaultCancelInput = Parameters<typeof submitLinearFaultCancel>[0];
+type LinearFaultCancelInput = Parameters<typeof buildLinearFaultCancel>[0];
 
 /** Cancels an owned thread at any step of the named family's linear chain. */
 export const submitFamilyCancel = (
@@ -15,7 +16,7 @@ export const submitFamilyCancel = (
     >;
   },
 ) =>
-  submitLinearFaultCancel({
+  buildAndSubmitUnjournaled(buildLinearFaultCancel, {
     ...input,
     family,
     steps: contracts.steps,

@@ -6,6 +6,10 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type { UTxO } from "@lucid-evolution/lucid";
 
 import {
+  buildDirectPurposeInit,
+  buildDirectPurposeStep01Accepted,
+  buildDirectPurposeStep01Forced,
+  buildDirectPurposeTerminal,
   DIRECT_PURPOSE_FIELDS,
   directPurposeArtifactPaging,
   type DirectPurposeContracts,
@@ -21,12 +25,6 @@ import {
   type DirectWalkProof,
   directWalkTerminalFamily,
   fitDirectPurposeTransition,
-  submitDirectPurposeInit,
-  submitDirectPurposeStep01Accepted,
-  submitDirectPurposeStep01Forced,
-  submitDirectPurposeTerminal,
-  submitDirectPurposeTransition,
-  submitDirectPurposeTransitions,
 } from "../../src/direct-purpose-family/index.js";
 import type { DirectScriptMaterial } from "../../src/direct-script-derivation/material.js";
 import { publishDirectWalkCarriage } from "./direct-walk-emulator.carriage.js";
@@ -39,6 +37,11 @@ import {
   publishPlainReferenceScriptUtxo,
   registerChunkedVerifyRewardAccount,
 } from "./submit-init-emulator-shared.js";
+import {
+  submitDirectPurposeTransition,
+  submitDirectPurposeTransitions,
+} from "./submit-unjournaled.direct-purpose.js";
+import { buildAndSubmitUnjournaled } from "./submit-unjournaled.js";
 
 /** The direct-walk families' catalogue categories. */
 export type DirectWalkCategory = Extract<
@@ -68,10 +71,10 @@ export type DirectWalkScenario = Readonly<{
   setup: Readonly<{ fraudulentBlockOutRef: string }>;
   block: Readonly<{
     txInclusion:
-      | Parameters<typeof submitDirectPurposeStep01Accepted>[0]["txInclusion"]
+      | Parameters<typeof buildDirectPurposeStep01Accepted>[0]["txInclusion"]
       | null;
     reconstruction: Parameters<
-      typeof submitDirectPurposeStep01Forced
+      typeof buildDirectPurposeStep01Forced
     >[0]["reconstruction"];
   }>;
 }>;
@@ -268,7 +271,7 @@ export const driveDirectWalkThread = async <
     return found.utxo;
   };
   const init = await captureEmulatorSubmission(harness.emulator, () =>
-    submitDirectPurposeInit({
+    buildAndSubmitUnjournaled(buildDirectPurposeInit, {
       family,
       lucid: proverLucid,
       blueprint: harness.realBlueprint,
@@ -311,11 +314,11 @@ export const driveDirectWalkThread = async <
   };
   const step01 = await captureEmulatorSubmission(harness.emulator, () =>
     scenario.block.txInclusion === null
-      ? submitDirectPurposeStep01Forced({
+      ? buildAndSubmitUnjournaled(buildDirectPurposeStep01Forced, {
           ...common,
           reconstruction: scenario.block.reconstruction,
         })
-      : submitDirectPurposeStep01Accepted({
+      : buildAndSubmitUnjournaled(buildDirectPurposeStep01Accepted, {
           ...common,
           blueprint: harness.realBlueprint,
           network,
@@ -379,7 +382,7 @@ export const driveDirectWalkThread = async <
   /** `at` is the terminal's input when the caller advanced the thread. */
   const terminal = (requireConviction = true, at: UTxO = thread) =>
     captureEmulatorSubmission(harness.emulator, () =>
-      submitDirectPurposeTerminal({
+      buildAndSubmitUnjournaled(buildDirectPurposeTerminal, {
         family: terminalFamily,
         lucid: proverLucid,
         contracts: direct,

@@ -32,21 +32,23 @@ import {
 import { fetchCurrentHistory } from "../fabricated-history-witness.js";
 import { fabricatedProofValidity } from "../fabricated-proof-validity.js";
 import {
+  type ContinuationTurn,
+  type FaultProofTurn,
+  isPrerequisiteTurn,
+} from "../fault-proof-turn.js";
+import {
   fetchUtxoByOutRef,
   parseOutRef,
   requireDeploymentReferenceScript,
   requireSingletonUtxo,
   resolveTransitionTraceDeploymentContracts,
 } from "../runtime.js";
-import { completeStep, fundStep, submitStep } from "../step-completion.js";
+import { completeStep, fundStep } from "../step-completion.js";
+import { finishStep } from "../step-completion.js";
 import { requireComputationThreadToken } from "../step-support.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import { witnessMintingPolicyCarriage } from "../witness-reference-scripts.js";
 import { createOwnOutputJournal } from "../workflow/own-outputs.js";
-import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary.js";
 import { governedUserEventAddress } from "../workflow/user-event-address.js";
 import { transitionTraceError } from "./errors.js";
 import {
@@ -74,8 +76,8 @@ import {
   transitionTraceFinalIndex,
   transitionTraceHistoryTimingTarget,
 } from "./submit.make-transition-trace-final-spend-redeemer.js";
+import type { TransitionTraceFinalBuild } from "./submit.make-transition-trace-route-spend-redeemer.js";
 import {
-  type SubmitTransitionTraceFinalResult,
   type SubmitTransitionTraceProofConfig,
   TRANSITION_TRACE_FINAL_REFERENCE_SCRIPT_ENTRIES,
   type TransitionTraceFinalSpendLayout,
@@ -85,31 +87,23 @@ import { transitionTraceRouteDatum } from "./submit.transition-trace-route-datum
 import { transitionTraceYieldData } from "./yield-data.js";
 import { TRANSITION_TRACE_YIELD_REFERENCES } from "./yield-references.js";
 
-type SubmitTransitionTraceFinalConfig = SubmitTransitionTraceProofConfig & {
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-};
+type SubmitTransitionTraceFinalConfig = SubmitTransitionTraceProofConfig & {};
+
+/** The thread out-ref and deposit opening a checkpoint continues with. */
+export type TransitionTraceCheckpointContinuation = Pick<
+  SubmitTransitionTraceFinalConfig,
+  "threadOutRef" | "depositOpening"
+>;
 
 /**
- * Exact terminal selected by the authenticated router output. A checkpoint
- * final continues the thread at its own output, one transaction per step;
- * the steps run in a loop, so each step's state is released once its
- * transaction confirms rather than held for the rest of the thread.
+ * The next transaction of the exact terminal selected by the authenticated
+ * router output at `threadOutRef`. A checkpoint final continues the thread
+ * at its own output, one transaction per step: each call builds that step as
+ * a {@link ContinuationTurn} naming the next thread out-ref, or the final
+ * transaction once the thread reaches its terminal phase, or the turn that
+ * publishes carriage the step reads when `publishCarriage` is set.
  */
-export const submitTransitionTraceFinal = async (
-  config: SubmitTransitionTraceFinalConfig,
-): Promise<SubmitTransitionTraceFinalResult> => {
-  let step: SubmitTransitionTraceFinalConfig = {
-    ...config,
-    ownOutputs: config.ownOutputs ?? createOwnOutputJournal(),
-  };
-  for (;;) {
-    const outcome = await submitTransitionTraceFinalStep(step);
-    if (outcome.kind === "final") return outcome.result;
-    step = { ...step, ...outcome.continuation };
-  }
-};
-
-const submitTransitionTraceFinalStep = async ({
+export const buildTransitionTraceFinal = async ({
   lucid,
   blueprint,
   deploymentInfo,
@@ -121,21 +115,13 @@ const submitTransitionTraceFinalStep = async ({
   depositOpening,
   witnessReferenceScripts,
   fieldCertificateReferenceScript,
-  preSubmitBoundary,
-  awaitConfirmation = true,
-  ownOutputs,
+  publishCarriage = false,
+  ownOutputs = createOwnOutputJournal(),
 }: SubmitTransitionTraceFinalConfig): Promise<
-  | {
-      readonly kind: "checkpoint";
-      readonly continuation: Pick<
-        SubmitTransitionTraceFinalConfig,
-        "threadOutRef" | "depositOpening"
-      >;
-    }
-  | {
-      readonly kind: "final";
-      readonly result: SubmitTransitionTraceFinalResult;
-    }
+  FaultProofTurn<
+    | ContinuationTurn<TransitionTraceCheckpointContinuation>
+    | TransitionTraceFinalBuild
+  >
 > => {
   const proof = readTransitionProof(proofInput);
   const {
@@ -221,10 +207,11 @@ const submitTransitionTraceFinalStep = async ({
           lucid,
           address: signer.proofMaterialsAddress,
           proof: proofInput,
-          ownOutputs: ownOutputs ?? createOwnOutputJournal(),
+          ownOutputs,
           publish: false,
         })
       : [];
+  if (isPrerequisiteTurn(proofReferences)) return proofReferences;
   const threadToken = requireComputationThreadToken({
     utxo: threadUtxo,
     computationThreadPolicyId: contracts.computationThread.policyId,
@@ -411,9 +398,10 @@ const submitTransitionTraceFinalStep = async ({
           lucid,
           address: signer.proofMaterialsAddress,
           chunks: transitionTraceByteChunks(selectedOutput),
-          ownOutputs: ownOutputs ?? createOwnOutputJournal(),
-          publish: preSubmitBoundary === undefined,
+          ownOutputs,
+          publish: publishCarriage,
         });
+  if (isPrerequisiteTurn(outputReferences)) return outputReferences;
   const selected =
     checkpoint?.data == null
       ? null
@@ -455,7 +443,7 @@ const submitTransitionTraceFinalStep = async ({
       state: checkpoint.data,
       yields: allYieldData,
       outputCbors,
-      publish: preSubmitBoundary === undefined,
+      publish: publishCarriage,
       fieldCertificateReferenceScript,
       ...(ownOutputs === undefined ? {} : { ownOutputs }),
       baseReferences: [
@@ -467,6 +455,7 @@ const submitTransitionTraceFinalStep = async ({
         ...outputReferences,
       ],
     });
+    if (isPrerequisiteTurn(fieldStep)) return fieldStep;
     // The next state and the verifier claims read no opening; the step
     // redeemer is re-planned below against the final reference inputs.
     const planned = fieldStep.plan(fieldStep.referenceInputs);
@@ -603,37 +592,33 @@ const submitTransitionTraceFinalStep = async ({
         cause,
       );
     });
-    const txHash = await submitStep(lucid, signed, {
-      label: `transition-trace checkpoint ${checkpoint.data?.kind}/${checkpoint.data?.phase}`,
-      referenceScripts: workflowReferenceScriptsUsedByTransaction({
-        signed,
-        candidates: [
-          {
-            role: `V1 fraud-proof transition-trace final-${finalIndex.toString()}`,
-            utxo: finalReferenceScript,
-            expectedScript: finalValidator.spendingScript,
-          },
-          ...(semantic === undefined
-            ? []
-            : [
-                {
-                  role: TRANSITION_TRACE_YIELD_REFERENCES[semantic.key].role,
-                  utxo: semantic.reference,
-                  expectedScript: semantic.validator.withdrawalScript,
-                },
-              ]),
-          ...fieldStep.referenceScripts,
-        ],
-      }),
-      boundary: preSubmitBoundary,
-      awaitConfirmation: true,
+    const transaction = finishStep(signed, {
+      referenceScriptCandidates: [
+        {
+          role: `V1 fraud-proof transition-trace final-${finalIndex.toString()}`,
+          utxo: finalReferenceScript,
+          expectedScript: finalValidator.spendingScript,
+        },
+        ...(semantic === undefined
+          ? []
+          : [
+              {
+                role: TRANSITION_TRACE_YIELD_REFERENCES[semantic.key].role,
+                utxo: semantic.reference,
+                expectedScript: semantic.validator.withdrawalScript,
+              },
+            ]),
+        ...fieldStep.referenceScripts,
+      ],
     });
     if (nextIndex === undefined)
       throw new Error("transition checkpoint layout unresolved");
     return {
-      kind: "checkpoint",
-      continuation: {
-        threadOutRef: `${txHash}#${nextIndex.toString()}`,
+      kind: "continuation",
+      transaction,
+      label: `transition-trace checkpoint ${checkpoint.data?.kind}/${checkpoint.data?.phase}`,
+      next: {
+        threadOutRef: `${transaction.txHash}#${nextIndex.toString()}`,
         depositOpening: retainedDeposit,
       },
     };
@@ -744,47 +729,41 @@ const submitTransitionTraceFinalStep = async ({
       "Transition-trace final layout was not resolved.",
     );
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: "transition-trace final",
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        ...(completedFraud?.queueReferenceScript === undefined
-          ? []
-          : [
-              {
-                role: "state queue spending",
-                utxo: completedFraud.queueReferenceScript,
-                expectedScript: completedFraud.queueReferenceScript.scriptRef!,
-              },
-            ]),
-        ...semanticYields.map((item) => ({
-          role: TRANSITION_TRACE_YIELD_REFERENCES[item.key].role,
-          utxo: item.reference,
-          expectedScript: item.validator.withdrawalScript,
-        })),
-        {
-          role: `V1 fraud-proof transition-trace final-${finalIndex.toString()}`,
-          utxo: finalReferenceScript,
-          expectedScript: finalValidator.spendingScript,
-        },
-        {
-          role: "V1 fraud-proof computation-thread minting",
-          utxo: witnessReferenceScripts?.computationThreadMint,
-          expectedScript: contracts.computationThread.mintingScript,
-        },
-        {
-          role: "V1 fraud-proof token minting",
-          utxo: witnessReferenceScripts?.fraudProofMint,
-          expectedScript: contracts.fraudProof.mintingScript,
-        },
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      ...(completedFraud?.queueReferenceScript === undefined
+        ? []
+        : [
+            {
+              role: "state queue spending",
+              utxo: completedFraud.queueReferenceScript,
+              expectedScript: completedFraud.queueReferenceScript.scriptRef!,
+            },
+          ]),
+      ...semanticYields.map((item) => ({
+        role: TRANSITION_TRACE_YIELD_REFERENCES[item.key].role,
+        utxo: item.reference,
+        expectedScript: item.validator.withdrawalScript,
+      })),
+      {
+        role: `V1 fraud-proof transition-trace final-${finalIndex.toString()}`,
+        utxo: finalReferenceScript,
+        expectedScript: finalValidator.spendingScript,
+      },
+      {
+        role: "V1 fraud-proof computation-thread minting",
+        utxo: witnessReferenceScripts?.computationThreadMint,
+        expectedScript: contracts.computationThread.mintingScript,
+      },
+      {
+        role: "V1 fraud-proof token minting",
+        utxo: witnessReferenceScripts?.fraudProofMint,
+        expectedScript: contracts.fraudProof.mintingScript,
+      },
+    ],
   });
-  const result = Object.freeze({
-    txHash,
+  return Object.freeze({
+    transaction,
     inputIndex: Number(spendLayout.inputIndex),
     outputIndex: Number(spendLayout.outputIndex),
     hubOracleRefInputIndex: Number(spendLayout.hubOracleRefInputIndex),
@@ -794,12 +773,10 @@ const submitTransitionTraceFinalStep = async ({
     fraudProofMintRedeemerIndex: Number(
       spendLayout.fraudProofMintRedeemerIndex,
     ),
-    fraudProofOutRef: `${txHash}#${spendLayout.outputIndex.toString()}`,
+    fraudProofOutRef: `${transaction.txHash}#${spendLayout.outputIndex.toString()}`,
     fraudulentHeaderHash: proof.challenged_header_hash,
     computationThreadUnit: threadToken.unit,
     fraudProofUnit,
     finalIndex,
-    awaitedConfirmation: awaitConfirmation,
   });
-  return { kind: "final", result };
 };

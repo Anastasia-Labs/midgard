@@ -21,7 +21,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildCountedRoot,
   buildOmittedDueL1EventFault,
-  submitTransitionTraceProof,
+  buildTransitionTraceProof,
   transitionTraceFinalIndex,
 } from "../src/index.js";
 import {
@@ -44,6 +44,7 @@ import {
   network,
   transitionTraceOutRef,
 } from "./support/submit-init-emulator-shared.js";
+import { submitTurnsUnjournaled } from "./support/submit-unjournaled.js";
 
 describe("transition-trace forced order validity interval", () => {
   it.each(["honest-inclusion", "late-inclusion", "omission"] as const)(
@@ -207,7 +208,7 @@ describe("transition-trace forced order validity interval", () => {
       expect(transitionTraceFinalIndex(proof)).toBe(6);
       const thread = await firstThreadUtxo({ harness, init: lifecycle.init });
       const run = () =>
-        submitTransitionTraceProof({
+        submitTurnsUnjournaled(buildTransitionTraceProof, {
           lucid: harness.proverLucid,
           blueprint: harness.realBlueprint,
           deploymentInfo: lifecycle.deploymentInfo,

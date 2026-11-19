@@ -6,6 +6,7 @@ import { Data } from "@lucid-evolution/lucid";
 
 import { parseHex, requireRecord } from "./json-file.js";
 import { type SubmitProviderConfig } from "./runtime.js";
+import type { LocallyEvaluatedTransaction } from "./workflow/transaction-boundary.js";
 
 /** Prepared committed-leaf inclusion produced by `prepare-da-hash-preimage`. */
 export type SubmitDaHashPreimageTxInclusion = {
@@ -60,8 +61,9 @@ export type SubmitDaHashPreimageStep01CliConfig = SubmitProviderConfig & {
   readonly awaitConfirmation?: boolean;
 };
 
-export type SubmitDaHashPreimageStep01Result = {
-  readonly txHash: string;
+/** The signed step-01 transaction and what its builder derived for it. */
+export type DaHashPreimageStep01Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -85,8 +87,14 @@ export type SubmitDaHashPreimageStep01Result = {
   readonly outputIndex: number;
   readonly hubOracleRefInputIndex: number;
   readonly stateQueueNodeRefInputIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
+
+/** What the CLI reports after it submits step 01. */
+export type SubmitDaHashPreimageStep01Result = {
+  readonly txHash: string;
+} & Omit<DaHashPreimageStep01Build, "transaction"> & {
+    readonly awaitedConfirmation: boolean;
+  };
 
 export type DaHashPreimageStep01Layout = {
   readonly inputIndex: bigint;

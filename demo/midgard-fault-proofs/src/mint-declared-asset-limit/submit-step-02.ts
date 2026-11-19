@@ -24,14 +24,13 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { MintDeclaredAssetLimitContracts } from "./contracts.js";
 import {
   initialMintDeclaredFoldCursor,
@@ -157,7 +156,7 @@ export const planMintDeclaredFieldOpening = ({
  * derives all of them; this form lets a lifecycle present a substituted
  * carriage, transaction, checkpoint, state or successor on chain.
  */
-export const submitMintDeclaredAssetLimitStep02Raw = async ({
+export const buildMintDeclaredAssetLimitStep02Raw = async ({
   lucid,
   contracts,
   categoryId,
@@ -171,8 +170,6 @@ export const submitMintDeclaredAssetLimitStep02Raw = async ({
   next,
   nextStepIndex = next.kind === "fold" ? 2 : next.kind === "absent" ? 3 : 1,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: MintDeclaredAssetLimitContracts;
@@ -188,8 +185,6 @@ export const submitMintDeclaredAssetLimitStep02Raw = async ({
   readonly next: MintDeclaredAssetLimitStep02Successor;
   readonly nextStepIndex?: 0 | 1 | 2 | 3;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const stepIndex = 1;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
@@ -314,7 +309,7 @@ export const submitMintDeclaredAssetLimitStep02Raw = async ({
       MintDeclaredAssetLimitStep02RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -328,12 +323,13 @@ export const submitMintDeclaredAssetLimitStep02Raw = async ({
     carriageUtxos,
     extraReferenceInputs:
       certificateUtxo === undefined ? [] : [certificateUtxo],
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined)
     throw new Error("mintDeclaredAssetLimit: step-02 layout unresolved");
-  return { txHash, nextThreadOutRef: `${txHash}#${outputIndex.toString()}` };
+  return {
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
+  };
 };
 
 /** The wire action and successor the staged plan prescribes for `action`. */
@@ -403,7 +399,7 @@ export const mintDeclaredStep02WirePlan = ({
   };
 };
 
-export const submitMintDeclaredAssetLimitStep02 = async ({
+export const buildMintDeclaredAssetLimitStep02 = async ({
   lucid,
   contracts,
   categoryId,
@@ -414,8 +410,6 @@ export const submitMintDeclaredAssetLimitStep02 = async ({
   staged,
   action,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
@@ -432,8 +426,6 @@ export const submitMintDeclaredAssetLimitStep02 = async ({
   >;
   readonly action: MintDeclaredAssetLimitStep02Action;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
 }) => {
@@ -470,7 +462,7 @@ export const submitMintDeclaredAssetLimitStep02 = async ({
     signer,
     planned,
   });
-  return await submitMintDeclaredAssetLimitStep02Raw({
+  return await buildMintDeclaredAssetLimitStep02Raw({
     lucid,
     contracts,
     categoryId,
@@ -487,7 +479,5 @@ export const submitMintDeclaredAssetLimitStep02 = async ({
     ...carriage,
     ...mintDeclaredStep02WirePlan({ staged, action }),
     referenceScriptUtxo,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
 };

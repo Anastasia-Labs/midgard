@@ -1,11 +1,15 @@
 import type { MintAuthorizationStep03State } from "@al-ft/midgard-sdk";
 
+import {
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
+} from "../workflow/transaction-boundary.js";
 import { mintAuthorizationStepLabel } from "./submit-common.js";
 
 export const STEP_LABEL = mintAuthorizationStepLabel(1);
 
-export type SubmitMintAuthorizationStep02Result = {
-  readonly txHash: string;
+export type MintAuthorizationStep02Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -18,5 +22,7 @@ export type SubmitMintAuthorizationStep02Result = {
   readonly step03State: MintAuthorizationStep03State;
   readonly inputIndex: number;
   readonly outputIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
+
+export type SubmitMintAuthorizationStep02Result =
+  UnjournaledSubmission<MintAuthorizationStep02Build>;

@@ -20,7 +20,7 @@ import { expect } from "vitest";
 
 import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
 import { MIN_ADA_FORCED_ARTIFACT } from "../src/min-ada/forced-artifact.js";
-import { submitMinAdaInit } from "../src/min-ada/submit-init.js";
+import { buildMinAdaInit } from "../src/min-ada/submit-init.js";
 import { prepareMinAdaWorkflowArtifact } from "../src/min-ada/workflow-artifact.js";
 import {
   buildCountedRoot,
@@ -41,6 +41,7 @@ import {
   network,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 import { syntheticDeepMembershipProof } from "./support/synthetic-deep-proof.js";
 
 export let scenarioSequence = 0;
@@ -299,7 +300,7 @@ export const setup = async ({
   };
   const initialize = () =>
     capture("init", () =>
-      submitMinAdaInit({
+      buildAndSubmitUnjournaled(buildMinAdaInit, {
         lucid: h.proverLucid,
         blueprint: h.realBlueprint,
         deploymentInfo: buildRemovalDeploymentInfo(h.contracts, h.catalogue),

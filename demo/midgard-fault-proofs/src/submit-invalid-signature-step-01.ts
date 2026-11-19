@@ -69,7 +69,8 @@ import {
   resolveProverSigner,
   type SubmitProviderConfig,
 } from "./runtime.js";
-import { completeStep, fundStep, submitStep } from "./step-completion.js";
+import { completeStep, fundStep } from "./step-completion.js";
+import { finishStep } from "./step-completion.js";
 import {
   parseSubmitStep01TxInclusion,
   requireComputationThreadToken,
@@ -77,14 +78,15 @@ import {
   requireNativeTxMatchesCompactCbor,
   type SubmitStep01TxInclusion,
 } from "./step-support.js";
+import { submitFaultProofTurns } from "./submit-fault-proof-turns.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessSpendingValidatorCarriage,
 } from "./witness-reference-scripts.js";
 import {
-  type FraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
 } from "./workflow/transaction-boundary.js";
 
 /**
@@ -129,8 +131,8 @@ export type SubmitInvalidSignatureStep01CliConfig = SubmitProviderConfig & {
   readonly awaitConfirmation?: boolean;
 };
 
-export type SubmitInvalidSignatureStep01Result = {
-  readonly txHash: string;
+export type InvalidSignatureStep01Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -156,8 +158,10 @@ export type SubmitInvalidSignatureStep01Result = {
   readonly outputIndex: number;
   readonly hubOracleRefInputIndex: number;
   readonly stateQueueNodeRefInputIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
+
+export type SubmitInvalidSignatureStep01Result =
+  UnjournaledSubmission<InvalidSignatureStep01Build>;
 
 type InvalidSignatureStep01Layout = {
   readonly inputIndex: bigint;
@@ -166,7 +170,7 @@ type InvalidSignatureStep01Layout = {
   readonly stateQueueNodeRefInputIndex: bigint;
 };
 
-export const submitInvalidSignatureStep01 = async ({
+export const buildInvalidSignatureStep01 = async ({
   lucid,
   blueprint,
   deploymentInfo,
@@ -179,8 +183,6 @@ export const submitInvalidSignatureStep01 = async ({
   publishedProofChunks,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -198,9 +200,7 @@ export const submitInvalidSignatureStep01 = async ({
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitInvalidSignatureStep01Result> => {
+}): Promise<InvalidSignatureStep01Build> => {
   const resolvedDeployment = await resolveInvalidSignatureDeploymentContracts({
     blueprint,
     deploymentInfo,
@@ -398,30 +398,24 @@ export const submitInvalidSignatureStep01 = async ({
       "BuildTxWithRedeemer did not resolve invalid-signature step 01 layout.",
     );
   }
-  const txHash = await submitStep(lucid, signed, {
-    label: "invalid-signature step-01",
-    referenceScripts: workflowReferenceScriptsUsedByTransaction({
-      signed,
-      candidates: [
-        {
-          role: "V1 fraud-proof invalid-signature step-01",
-          utxo: referenceScriptUtxo,
-          expectedScript: contracts.invalidSignature.steps[0].spendingScript,
-        },
-        ...inclusionCarriage.referenceScriptCandidates,
-      ],
-    }),
-    boundary: preSubmitBoundary,
-    awaitConfirmation,
+  const transaction = finishStep(signed, {
+    referenceScriptCandidates: [
+      {
+        role: "V1 fraud-proof invalid-signature step-01",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.invalidSignature.steps[0].spendingScript,
+      },
+      ...inclusionCarriage.referenceScriptCandidates,
+    ],
   });
 
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
     threadOutRef,
-    nextThreadOutRef: `${txHash}#${resolvedLayout.outputIndex.toString()}`,
+    nextThreadOutRef: `${transaction.txHash}#${resolvedLayout.outputIndex.toString()}`,
     stateQueueBlockOutRef,
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadPolicyId: contracts.computationThread.policyId,
@@ -438,7 +432,6 @@ export const submitInvalidSignatureStep01 = async ({
     stateQueueNodeRefInputIndex: Number(
       resolvedLayout.stateQueueNodeRefInputIndex,
     ),
-    awaitedConfirmation: awaitConfirmation,
   };
 };
 
@@ -459,18 +452,24 @@ export const submitInvalidSignatureStep01FromFiles = async (
     makeLucidForSubmit(config),
   ]);
   const signer = resolveProverSigner(config);
-  return await submitInvalidSignatureStep01({
-    lucid,
-    blueprint,
-    deploymentInfo,
-    network: config.network,
-    signer,
-    threadOutRef: config.threadOutRef,
-    stateQueueBlockOutRef: config.stateQueueBlockOutRef,
-    txInclusion: parseSubmitStep01TxInclusion(txInclusionJson),
-    badTxWitnessSetCompact: parseSubmitInvalidSignatureWitnessSetCompact(
-      witnessSetCompactJson,
-    ),
-    awaitConfirmation: config.awaitConfirmation,
-  });
+  return await submitFaultProofTurns(
+    buildInvalidSignatureStep01,
+    {
+      lucid,
+      blueprint,
+      deploymentInfo,
+      network: config.network,
+      signer,
+      threadOutRef: config.threadOutRef,
+      stateQueueBlockOutRef: config.stateQueueBlockOutRef,
+      txInclusion: parseSubmitStep01TxInclusion(txInclusionJson),
+      badTxWitnessSetCompact: parseSubmitInvalidSignatureWitnessSetCompact(
+        witnessSetCompactJson,
+      ),
+    },
+    {
+      label: "invalid-signature-step01",
+      awaitConfirmation: config.awaitConfirmation ?? true,
+    },
+  );
 };

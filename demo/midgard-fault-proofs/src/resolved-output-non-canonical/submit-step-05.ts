@@ -4,10 +4,9 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultFinalize } from "../linear-fault-finalize.js";
+import { buildLinearFaultFinalize } from "../linear-fault-finalize.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { ResolvedOutputNonCanonicalContracts } from "./contracts.js";
 import {
   type ResolvedOutputAbsentInputEvidence,
@@ -19,7 +18,7 @@ import {
   ResolvedOutputStep05RedeemerSchema,
 } from "./schemas.js";
 
-export const submitResolvedOutputNonCanonicalStep05 = async ({
+export const buildResolvedOutputNonCanonicalStep05 = async ({
   lucid,
   contracts,
   categoryId,
@@ -28,8 +27,6 @@ export const submitResolvedOutputNonCanonicalStep05 = async ({
   evidence,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: ResolvedOutputNonCanonicalContracts;
@@ -39,8 +36,6 @@ export const submitResolvedOutputNonCanonicalStep05 = async ({
   readonly evidence: ResolvedOutputEvidence | ResolvedOutputAbsentInputEvidence;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   if (!resolvedOutputEvidenceCloses(evidence))
     throw new Error(
@@ -67,7 +62,7 @@ export const submitResolvedOutputNonCanonicalStep05 = async ({
   });
   if (state.output_is_non_canonical !== evidence.outputIsNonCanonical)
     throw new Error("resolved-output-non-canonical: terminal verdict changed");
-  return await submitLinearFaultFinalize({
+  return await buildLinearFaultFinalize({
     lucid,
     family: "resolved-output-non-canonical",
     stepIndex,
@@ -89,7 +84,5 @@ export const submitResolvedOutputNonCanonicalStep05 = async ({
     }),
     referenceScriptUtxo,
     witnessReferenceScripts,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
 };

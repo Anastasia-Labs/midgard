@@ -5,10 +5,6 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { toUnit, type UTxO } from "@lucid-evolution/lucid";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../../src/evidence/canonical-block-evidence.js";
-import {
-  certifyFaultProofFieldCarriage,
-  publishFaultProofFieldCarriage,
-} from "../../src/field-opening.js";
 import type { InputExistenceDeploymentStepArguments } from "../../src/input-existence/deployment-step.js";
 import {
   inputExistenceFieldPlans,
@@ -16,7 +12,7 @@ import {
 } from "../../src/input-existence/field-carriage.js";
 import type { PreparedInputExistence } from "../../src/input-existence/prepare.js";
 import { prepareInputExistence } from "../../src/input-existence/prepare.js";
-import type { submitInputExistenceStep } from "../../src/input-existence/submit.js";
+import type { buildInputExistenceStep } from "../../src/input-existence/submit.js";
 import { checkLedgerAgainstRoot } from "../../src/ledger-at.js";
 import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { authenticatedHeaderObservation } from "../helpers/canonical-block-evidence-fixture.js";
@@ -33,6 +29,11 @@ import {
   publishPlainReferenceScriptUtxo,
   submitSetupTx,
 } from "./submit-init-emulator-shared.js";
+import {
+  certifyCarriageUnjournaled,
+  publishCarriageUnjournaled,
+  type SubmittedStep,
+} from "./submit-unjournaled.js";
 import { depositEventsRetainedBlock } from "./transition-trace-retained.deposit-events-retained-block.js";
 
 type Harness = Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>;
@@ -214,7 +215,7 @@ export const publishInputExistenceSelectionCarriage = async (
     : prepared;
   const fieldCarriageUtxos: UTxO[] = [];
   for (const planned of inputExistenceFieldPlans(selected)) {
-    const chunks = await publishFaultProofFieldCarriage({
+    const chunks = await publishCarriageUnjournaled({
       ownOutputs,
       lucid: harness.proverLucid,
       signer: harness.proverSigner,
@@ -230,7 +231,7 @@ export const publishInputExistenceSelectionCarriage = async (
         script: policy.mintingScript,
         label: "retained input-existence certificate",
       });
-      const certificate = await certifyFaultProofFieldCarriage({
+      const certificate = await certifyCarriageUnjournaled({
         ownOutputs,
         lucid: harness.proverLucid,
         network,
@@ -254,7 +255,7 @@ export const publishInputExistenceSelectionCarriage = async (
 };
 
 export const requireInputExistenceTerminalResult = (
-  result: Awaited<ReturnType<typeof submitInputExistenceStep>>,
+  result: SubmittedStep<typeof buildInputExistenceStep>,
 ) => {
   const fraudProofOutRef = result.fraudProofOutRef;
   const fraudProofUnit = result.fraudProofUnit;

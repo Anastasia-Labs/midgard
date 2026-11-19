@@ -27,7 +27,6 @@ import {
   prepareTransactionOutputEvidence,
   type TransactionOutputEvidence,
   transactionOutputEvidenceCloses,
-  type TransactionOutputJournal,
   type TransactionOutputStage,
 } from "./transaction-output-non-canonical.js";
 import { type TransactionOutputNonCanonicalAuthenticatedSource } from "./workflow.derive-transaction-output-non-canonical-authenticated-source.js";
@@ -157,7 +156,6 @@ export const detectTransactionOutputNonCanonicalCompleteReplay = (
 
 export type TransactionOutputNonCanonicalRuntimeLoader = Readonly<{
   config: LoadManifestBoundTransactionOutputNonCanonicalConfig;
-  journal: TransactionOutputJournal;
   observe: (identity: string) => Promise<TransactionOutputStage>;
   resolveStage: (input: {
     readonly action:

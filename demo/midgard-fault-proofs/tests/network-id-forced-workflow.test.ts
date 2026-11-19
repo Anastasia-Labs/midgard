@@ -16,7 +16,7 @@ import {
   planNetworkIdForcedScan,
 } from "../src/network-id/forced-scan-plan.js";
 import { planNetworkIdOutputsOpening } from "../src/network-id/prepare.js";
-import { submitNetworkIdInit } from "../src/network-id/submit-network-id-init.js";
+import { buildNetworkIdInit } from "../src/network-id/submit-network-id-init.js";
 import {
   admitNetworkIdForcedArtifact,
   admitNetworkIdWorkflowArtifact,
@@ -62,16 +62,16 @@ import {
 
 const FOREIGN_PROVER = "99".repeat(28);
 
-// The forced preflight must reach a real builder's pre-submit boundary; only
+// The forced preflight must reach a real builder's signed transaction; only
 // the init builder itself is replaced, so everything the adapter does with the
-// captured body stays under test.
+// returned body stays under test.
 vi.mock(
   "../src/network-id/submit-network-id-init.js",
   async (importOriginal) => ({
     ...(await importOriginal<
       typeof import("../src/network-id/submit-network-id-init.js")
     >()),
-    submitNetworkIdInit: vi.fn(),
+    buildNetworkIdInit: vi.fn(),
   }),
 );
 
@@ -588,21 +588,21 @@ describe("network-id forced (§5.2) production workflow", () => {
         }),
       }),
     } as unknown as LocallyEvaluatedTransaction["signed"];
-    vi.mocked(submitNetworkIdInit).mockImplementation(
-      async ({ preSubmitBoundary }) => {
-        await preSubmitBoundary?.({
-          txHash: capturedTxHash,
-          signed: capturedSigned,
-          referenceScripts: [
-            {
-              role: "V1 fraud-proof network-id init",
-              outRef: `${h32(0x19)}#0`,
-              scriptHash: h28(0x11),
-            },
-          ],
-        });
-        throw new Error("init builder must not run past its boundary");
-      },
+    vi.mocked(buildNetworkIdInit).mockImplementation(
+      async () =>
+        ({
+          transaction: {
+            txHash: capturedTxHash,
+            signed: capturedSigned,
+            referenceScripts: [
+              {
+                role: "V1 fraud-proof network-id init",
+                outRef: `${h32(0x19)}#0`,
+                scriptHash: h28(0x11),
+              },
+            ],
+          },
+        }) as never,
     );
 
     const harness = forcedHarness({

@@ -1,6 +1,6 @@
 /** The open step's three transactions, each built, locally evaluated and
- * signed from the prover wallet, and captured at the pre-submit boundary
- * with the durable recovery that names the outputs of ours it leaves; and
+ * signed from the prover wallet, and returned unsubmitted with the durable
+ * recovery that names the outputs of ours it leaves; and
  * what the close (close.ts) shares with them. */
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -24,14 +24,14 @@ import type {
   ResolvedInitCatalogueCategory,
   ResolvedInitContracts,
 } from "../submit-init.resolve-non-existent-input-no-index-init.js";
-import { submitResolvedInit } from "../submit-init.submit-resolved-init.js";
+import { buildResolvedInit } from "../submit-init.submit-resolved-init.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
 import { grantValidationDisputeFundingAuthority } from "../workflow/funding-reservation-permit.assert-validation-dispute-funding.js";
 import type { JournalJsonObject } from "../workflow/journal.js";
 import { ownOutRefLabel, parseOwnOutRef } from "../workflow/own-outputs.js";
+import { journaledStepTransaction } from "../workflow/step-transaction.js";
 import {
-  captureLocallyEvaluatedTransaction,
   type LocallyEvaluatedTransaction,
   workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary.js";
@@ -320,26 +320,24 @@ export const captureValidationTraceInit = async ({
     deployment,
     artifact.headerHash,
   );
-  const transaction = await captureLocallyEvaluatedTransaction(
-    async (boundary) =>
-      await submitResolvedInit({
-        lucid,
-        blueprint: deployment.blueprint,
-        network: deployment.network,
-        label: "validation-trace init",
-        contracts: deployment.init.contracts,
-        category: deployment.init.category,
-        catalogue: deployment.init.catalogue,
-        signer,
-        fraudulentBlockOutRef: ownOutRefLabel(block),
-        ...(deployment.init.witnessReferenceScripts === undefined
-          ? {}
-          : {
-              witnessReferenceScripts: deployment.init.witnessReferenceScripts,
-            }),
-        preSubmitBoundary: boundary,
-        awaitConfirmation: false,
-      }),
+  const { transaction } = await journaledStepTransaction(
+    await buildResolvedInit({
+      lucid,
+      blueprint: deployment.blueprint,
+      network: deployment.network,
+      label: "validation-trace init",
+      contracts: deployment.init.contracts,
+      category: deployment.init.category,
+      catalogue: deployment.init.catalogue,
+      signer,
+      fraudulentBlockOutRef: ownOutRefLabel(block),
+      ...(deployment.init.witnessReferenceScripts === undefined
+        ? {}
+        : {
+            witnessReferenceScripts: deployment.init.witnessReferenceScripts,
+          }),
+    }),
+    "validation-trace init",
   );
   return {
     transaction,

@@ -1,10 +1,12 @@
 import {
+  type LucidEvolution,
   type Script,
   type TxSigned,
   type UTxO,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
+import { DEFAULT_CONFIRMATION_POLL_MS } from "../runtime.resolve-prover-signer.js";
 import type { FraudProofWorkflowReferenceScript } from "./orchestrator.js";
 
 export const LOCAL_UPLC_EVALUATOR =
@@ -16,11 +18,6 @@ export type LocallyEvaluatedTransaction = {
   readonly signed: TxSigned;
   readonly referenceScripts: readonly FraudProofWorkflowReferenceScript[];
 };
-
-/** Invoked after local UPLC evaluation and signing, immediately before I/O. */
-export type FraudProofPreSubmitBoundary = (
-  transaction: LocallyEvaluatedTransaction,
-) => Promise<void> | void;
 
 const outRef = (utxo: UTxO): string =>
   `${utxo.txHash}#${utxo.outputIndex.toString()}`;
@@ -180,56 +177,6 @@ export const workflowReferenceScriptsUsedByTransaction = ({
 };
 
 /**
- * Enforces the Q51 crash boundary.  The callback can persist intent (normal
- * production submission) or deliberately interrupt control flow (workflow
- * preflight capture), but no provider submission occurs before it returns.
- */
-export const reachFraudProofPreSubmitBoundary = async ({
-  signed,
-  referenceScripts,
-  boundary,
-}: {
-  readonly signed: TxSigned;
-  readonly referenceScripts: readonly FraudProofWorkflowReferenceScript[];
-  readonly boundary?: FraudProofPreSubmitBoundary;
-}): Promise<string> => {
-  const txHash = signed.toHash().toLowerCase();
-  if (!/^[0-9a-f]{64}$/u.test(txHash)) {
-    throw new Error(
-      "locally evaluated transaction returned an invalid body hash",
-    );
-  }
-  await boundary?.({ txHash, signed, referenceScripts });
-  return txHash;
-};
-
-export class CapturedLocallyEvaluatedTransaction extends Error {
-  constructor(readonly transaction: LocallyEvaluatedTransaction) {
-    super(`captured locally evaluated transaction ${transaction.txHash}`);
-    this.name = "CapturedLocallyEvaluatedTransactionV1";
-  }
-}
-
-/** Captures a real builder's pre-network boundary without provider I/O. */
-export const captureLocallyEvaluatedTransaction = async (
-  invoke: (boundary: FraudProofPreSubmitBoundary) => Promise<unknown>,
-): Promise<LocallyEvaluatedTransaction> => {
-  try {
-    await invoke((transaction) => {
-      throw new CapturedLocallyEvaluatedTransaction(transaction);
-    });
-  } catch (cause) {
-    if (cause instanceof CapturedLocallyEvaluatedTransaction) {
-      return cause.transaction;
-    }
-    throw cause;
-  }
-  throw new Error(
-    "transaction builder returned without reaching pre-submit boundary",
-  );
-};
-
-/**
  * Submits a captured transaction and refuses a provider that reports another
  * hash; `label`, when given, names the transaction in that refusal.
  */
@@ -244,4 +191,42 @@ export const submitCapturedTransaction = async (
     );
   }
   return submitted;
+};
+
+/**
+ * What a direct submission of a built transaction reports: the submitted
+ * hash, every field the builder derived except the transaction itself, and
+ * whether confirmation was awaited. Distributes over a union of builds.
+ */
+export type UnjournaledSubmission<Built> = Built extends unknown
+  ? Readonly<
+      { txHash: string } & Omit<Built, "transaction"> & {
+          awaitedConfirmation: boolean;
+        }
+    >
+  : never;
+
+/**
+ * Submits a built transaction directly, with no crash journal entry,
+ * funding reservation or lease: after a crash nothing knows it was sent.
+ * For the diagnostic CLI and tests, which have no journal to write to; for
+ * the chain-driven proven-correction removal, which needs none because the
+ * correction lock and fraud-proof record on L1 say what is left to remove,
+ * so anyone can resume it; and for field-grammar certification
+ * (`certifyFaultProofFieldGrammar`), the one builder that submits.
+ * Refuses a provider that reports another hash, naming the transaction by
+ * `label`, and waits for confirmation only when `awaitConfirmation` is set.
+ */
+export const submitUnjournaled = async (
+  lucid: LucidEvolution,
+  transaction: LocallyEvaluatedTransaction,
+  {
+    label,
+    awaitConfirmation,
+  }: { readonly label: string; readonly awaitConfirmation: boolean },
+): Promise<string> => {
+  const txHash = await submitCapturedTransaction(transaction, label);
+  if (awaitConfirmation)
+    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
+  return txHash;
 };

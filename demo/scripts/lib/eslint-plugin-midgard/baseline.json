@@ -55,7 +55,7 @@
     }
   },
   "midgard/exact-fee-no-change-output": {
-    "midgard-fault-proofs/src/remove-fraudulent-block.submit-remove-fraudulent-block.ts": {
+    "midgard-fault-proofs/src/remove-fraudulent-block.build-remove-fraudulent-block.ts": {
       "reason": "Completion passes coinSelection: fraudRemovalUsesWalletCoinSelection(approach), which the rule cannot evaluate; the bond-backed branch disables coin selection with an exactly balanced remainder, and the signed fee is checked against the penalty after signing.",
       "sites": [": tx.setMinFee(slashEconomics.exactFeeLovelace);"]
     },
@@ -170,7 +170,7 @@
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": ["? left.detectionId.localeCompare(right.detectionId)"]
     },
-    "midgard-fault-proofs/src/remove-fraudulent-block.submit-remove-fraudulent-block.ts": {
+    "midgard-fault-proofs/src/remove-fraudulent-block.build-remove-fraudulent-block.ts": {
       "reason": "Pre-rule call site in production source that sorts with the host's default collation. Untriaged for whether the order feeds a digest, hash or on-chain datum; moving it to \"en\" (the canonical-JSON ruling) or to code-unit order is a per-site owner call, not a lint cleanup.",
       "sites": [
         ".sort((left, right) => left.outRef.localeCompare(right.outRef));"

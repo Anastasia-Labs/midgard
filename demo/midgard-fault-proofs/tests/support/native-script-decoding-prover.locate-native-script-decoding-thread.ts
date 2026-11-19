@@ -11,25 +11,25 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import type { PublishedProofChunk } from "../proof-chunk-carriage.js";
-import { outRefLabel, type ResolvedProverSigner } from "../runtime.js";
-import type { SubmitStep01TxInclusion } from "../step-support.js";
-import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
-import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import type { NativeScriptDecodingContracts } from "./contracts.js";
-import type { NativeScriptDecodingLedgerTrieHandle } from "./evidence.js";
+import type { NativeScriptDecodingContracts } from "../../src/native-script-decoding/contracts.js";
+import type { NativeScriptDecodingLedgerTrieHandle } from "../../src/native-script-decoding/evidence.js";
 import {
   type NativeScriptDecodingFinding,
   NativeScriptDecodingProvability,
-} from "./finding.js";
+} from "../../src/native-script-decoding/finding.js";
 import {
   NativeScriptDecodingPlanRoutes,
   type NativeScriptDecodingScanPlan,
-} from "./scan-plan.js";
+} from "../../src/native-script-decoding/scan-plan.js";
 import {
   type NativeScriptDecodingCatalogueCategory,
   nativeScriptDecodingSubmitError,
-} from "./submit-common.js";
+} from "../../src/native-script-decoding/submit-common.js";
+import type { PublishedProofChunk } from "../../src/proof-chunk-carriage.js";
+import { outRefLabel, type ResolvedProverSigner } from "../../src/runtime.js";
+import type { SubmitStep01TxInclusion } from "../../src/step-support.js";
+import type { TransitionTraceReconstruction } from "../../src/transition-trace/reconstruct.js";
+import type { FaultProofWitnessReferenceScripts } from "../../src/witness-reference-scripts.js";
 
 // ## Policy (§4.3, defaults per §10 Q5)
 

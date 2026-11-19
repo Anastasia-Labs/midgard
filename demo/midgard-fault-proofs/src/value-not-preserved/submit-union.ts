@@ -20,10 +20,10 @@ import {
   faultProofFieldOpening,
   type FaultProofFieldOpeningPlan,
 } from "../field-opening.js";
-import { submitLinearFaultCancel } from "../linear-fault-cancel.js";
-import { submitLinearFaultFinalize } from "../linear-fault-finalize.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
-import { submitNativeTxBinding } from "../native-tx-binding.js";
+import { buildLinearFaultCancel } from "../linear-fault-cancel.js";
+import { buildLinearFaultFinalize } from "../linear-fault-finalize.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildNativeTxBinding } from "../native-tx-binding.js";
 import {
   fetchUtxoByOutRef,
   parseOutRef,
@@ -32,7 +32,6 @@ import {
 import { requireComputationThreadToken } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { ValueNotPreservedContracts } from "./contracts.js";
 import type { ConservationAction, ConservationPosition } from "./union-plan.js";
 import {
@@ -67,7 +66,7 @@ export type ConservationSubmissionAction = Omit<
 };
 
 /** One restartable transition; the live datum must equal the reconstructed checkpoint. */
-export const submitConservationAction = async ({
+export const buildConservationAction = async ({
   lucid,
   contracts,
   categoryId,
@@ -79,8 +78,6 @@ export const submitConservationAction = async ({
   field,
   chunkUtxos,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: ValueNotPreservedContracts;
@@ -97,8 +94,6 @@ export const submitConservationAction = async ({
   };
   readonly chunkUtxos?: readonly UTxO[];
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const step = conservationStep(contracts, action.position);
   const threadUtxo = await fetchUtxoByOutRef({
@@ -132,7 +127,7 @@ export const submitConservationAction = async ({
   signer.selectWallet(lucid);
   if (action.position === "unionTerminal") {
     const args = Data.from(action.args, ConservationTerminalArgs);
-    const result = await submitLinearFaultFinalize({
+    const result = await buildLinearFaultFinalize({
       lucid,
       family: "value conservation",
       stepIndex: 16,
@@ -155,8 +150,6 @@ export const submitConservationAction = async ({
       }),
       referenceScriptUtxo,
       witnessReferenceScripts,
-      preSubmitBoundary,
-      awaitConfirmation,
     });
     return { kind: "proven" as const, ...result };
   }
@@ -215,7 +208,7 @@ export const submitConservationAction = async ({
     }
     return Data.to(new Constr(1, [args]));
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -229,25 +222,23 @@ export const submitConservationAction = async ({
     carriageUtxos: [...(field?.carriageUtxos ?? []), ...(chunkUtxos ?? [])],
     extraReferenceInputs:
       field?.certificateUtxo === undefined ? [] : [field.certificateUtxo],
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined)
     throw new Error("value conservation: output layout was not resolved");
   return {
     kind: "advanced" as const,
-    txHash,
-    nextThreadOutRef: `${txHash}#${outputIndex}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex}`,
   };
 };
 
-export const submitConservationCancel = (
+export const buildConservationCancel = (
   params: Omit<
-    Parameters<typeof submitLinearFaultCancel>[0],
+    Parameters<typeof buildLinearFaultCancel>[0],
     "family" | "steps" | "computationThread"
   > & { readonly contracts: ValueNotPreservedContracts },
 ) =>
-  submitLinearFaultCancel({
+  buildLinearFaultCancel({
     ...params,
     family: "value conservation",
     steps: [
@@ -270,9 +261,9 @@ export const submitConservationCancel = (
   });
 
 /** The carried native source door also supports published maximum MPF proofs. */
-export const submitConservationAcceptedSource = async (
+export const buildConservationAcceptedSource = async (
   params: Omit<
-    Parameters<typeof submitNativeTxBinding>[0],
+    Parameters<typeof buildNativeTxBinding>[0],
     | "contracts"
     | "stepIndex"
     | "nextDatum"
@@ -301,7 +292,7 @@ export const submitConservationAcceptedSource = async (
       )
   )
     throw new Error("value conservation: accepted claim checkpoint differs");
-  return await submitNativeTxBinding({
+  return await buildNativeTxBinding({
     ...params,
     contracts: {
       ...params.contracts,

@@ -24,6 +24,10 @@ import {
   type SubmitProviderConfig,
 } from "./runtime.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
+import {
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
+} from "./workflow/transaction-boundary.js";
 
 export type SubmitInvalidRangeStep02CliConfig = SubmitProviderConfig & {
   readonly blueprintPath: string;
@@ -36,8 +40,8 @@ export type SubmitInvalidRangeStep02CliConfig = SubmitProviderConfig & {
   readonly awaitConfirmation?: boolean;
 };
 
-export type SubmitInvalidRangeStep02Result = {
-  readonly txHash: string;
+export type InvalidRangeStep02Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -61,8 +65,10 @@ export type SubmitInvalidRangeStep02Result = {
   readonly outputIndex: number;
   readonly computationThreadMintRedeemerIndex: number;
   readonly fraudProofMintRedeemerIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
+
+export type SubmitInvalidRangeStep02Result =
+  UnjournaledSubmission<InvalidRangeStep02Build>;
 
 type InvalidRangeStep02DatumWithState = InvalidRangeStep02Datum & {
   readonly data: NonNullable<InvalidRangeStep02Datum["data"]>;

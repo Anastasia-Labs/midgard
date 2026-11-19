@@ -5,25 +5,26 @@ import { expect } from "vitest";
 
 import { parseOutRef } from "../../../src/runtime.js";
 import {
+  buildFabricatedDepositStep01,
   deriveFabricatedDepositStep01Handoff,
   parseSubmitFabricatedDepositInclusion,
-  submitFabricatedDepositStep01,
 } from "../../../src/submit-fabricated-deposit-step-01.js";
-import { submitFabricatedDepositStep02 } from "../../../src/submit-fabricated-deposit-step-02.js";
-import { submitFabricatedDepositStep03 } from "../../../src/submit-fabricated-deposit-step-03.js";
+import { buildFabricatedDepositStep02 } from "../../../src/submit-fabricated-deposit-step-02.js";
+import { buildFabricatedDepositStep03 } from "../../../src/submit-fabricated-deposit-step-03.js";
 import {
+  buildFabricatedWithdrawalStep01,
   deriveFabricatedWithdrawalStep01Handoff,
   parseSubmitFabricatedWithdrawalInclusion,
-  submitFabricatedWithdrawalStep01,
 } from "../../../src/submit-fabricated-withdrawal-step-01.js";
-import { submitFabricatedWithdrawalStep02 } from "../../../src/submit-fabricated-withdrawal-step-02.js";
-import { submitFabricatedWithdrawalStep03 } from "../../../src/submit-fabricated-withdrawal-step-03.js";
-import { submitInit } from "../../../src/submit-init.js";
+import { buildFabricatedWithdrawalStep02 } from "../../../src/submit-fabricated-withdrawal-step-02.js";
+import { buildFabricatedWithdrawalStep03 } from "../../../src/submit-fabricated-withdrawal-step-03.js";
+import { buildInit } from "../../../src/submit-init.js";
 import {
   bindFraudProofWorkflowDeployment,
   requireManifestBoundReferenceScriptUtxo,
 } from "../../../src/workflow/deployment-manifest-binding.js";
-import type { FraudProofPreSubmitBoundary } from "../../../src/workflow/transaction-boundary.js";
+import type { LocallyEvaluatedTransaction } from "../../../src/workflow/transaction-boundary.js";
+import { buildAndSubmitUnjournaled } from "../submit-unjournaled.js";
 import { measureCompleteSignedTransaction } from "./measurement.js";
 import {
   type RetiredFamilyProofInput,
@@ -104,10 +105,8 @@ export const prepare = async (
   };
   const transactions: RetiredFamilyProofTransaction[] = [];
   const boundary =
-    (
-      stage: RetiredFamilyProofTransaction["stage"],
-    ): FraudProofPreSubmitBoundary =>
-    async ({ signed }) => {
+    (stage: RetiredFamilyProofTransaction["stage"]) =>
+    async ({ signed }: LocallyEvaluatedTransaction): Promise<void> => {
       const signedCbor = signed.toCBOR();
       const measured = measureCompleteSignedTransaction(signedCbor);
       const protocol = binding.cardanoProtocolParameters;
@@ -176,7 +175,7 @@ export const prepare = async (
     withdrawalMembershipProofCbor: leaf.membershipProofCbor,
   });
   selectSigner();
-  const init = await submitInit({
+  const init = await buildAndSubmitUnjournaled(buildInit, {
     lucid,
     blueprint: JSON.parse(deployment.blueprintJson),
     deploymentInfo: deployment.deploymentInfo,
@@ -186,7 +185,7 @@ export const prepare = async (
     fraudulentBlockOutRef: input.stateQueueBlockOutRef,
     fraudulentHeaderHash: input.headerHash,
     witnessReferenceScripts: witnesses,
-    preSubmitBoundary: boundary("init"),
+    beforeSubmit: boundary("init"),
     awaitConfirmation: true,
   });
   expect(init.fraudulentHeaderHash).toBe(input.headerHash);
@@ -209,7 +208,7 @@ export const prepare = async (
     threadOutRef: initialOutRef,
     stateQueueBlockOutRef: input.stateQueueBlockOutRef,
     referenceScriptUtxo: references[0],
-    preSubmitBoundary: boundary("step01"),
+    beforeSubmit: boundary("step01"),
   };
   const expected02 = deposit
     ? (
@@ -232,8 +231,11 @@ export const prepare = async (
       ).step02State;
   selectSigner();
   const firstResult = deposit
-    ? await submitFabricatedDepositStep01({ ...firstInput, depositInclusion })
-    : await submitFabricatedWithdrawalStep01({
+    ? await buildAndSubmitUnjournaled(buildFabricatedDepositStep01, {
+        ...firstInput,
+        depositInclusion,
+      })
+    : await buildAndSubmitUnjournaled(buildFabricatedWithdrawalStep01, {
         ...firstInput,
         withdrawalInclusion,
       });
@@ -257,11 +259,14 @@ export const prepare = async (
       ? { kind: "absent_identity" as const }
       : { kind: "present_event" as const },
     referenceScriptUtxo: references[1],
-    preSubmitBoundary: boundary("step02"),
+    beforeSubmit: boundary("step02"),
   };
   const secondResult = deposit
-    ? await submitFabricatedDepositStep02(secondInput)
-    : await submitFabricatedWithdrawalStep02(secondInput);
+    ? await buildAndSubmitUnjournaled(buildFabricatedDepositStep02, secondInput)
+    : await buildAndSubmitUnjournaled(
+        buildFabricatedWithdrawalStep02,
+        secondInput,
+      );
   await spent(firstResult.nextThreadOutRef);
   const third = await threadAt(
     secondResult.nextThreadOutRef,
@@ -295,13 +300,13 @@ export const prepare = async (
       ? {}
       : { openingCbor: secondResult.openingCbor }),
     referenceScriptUtxo: references[2],
-    preSubmitBoundary: boundary("step03"),
+    beforeSubmit: boundary("step03"),
   };
   const step03 = async () => {
     selectSigner();
     return deposit
-      ? submitFabricatedDepositStep03(thirdInput)
-      : submitFabricatedWithdrawalStep03(thirdInput);
+      ? buildAndSubmitUnjournaled(buildFabricatedDepositStep03, thirdInput)
+      : buildAndSubmitUnjournaled(buildFabricatedWithdrawalStep03, thirdInput);
   };
   return {
     binding,

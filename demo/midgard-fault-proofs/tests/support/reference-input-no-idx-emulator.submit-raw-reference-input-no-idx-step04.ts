@@ -18,7 +18,6 @@ import { type BuildTxWithRedeemer, Data, toUnit } from "@lucid-evolution/lucid";
 import {
   faultProofFieldOpening,
   planFaultProofFieldOpening,
-  publishFaultProofFieldCarriage,
 } from "../../src/field-opening.js";
 import {
   fetchUtxoByOutRef,
@@ -39,6 +38,7 @@ import {
 import { createOwnOutputJournal } from "../../src/workflow/own-outputs.js";
 import { type RawStepConfig } from "./reference-input-no-idx-emulator.submit-raw-reference-input-no-idx-step02.js";
 import { network } from "./submit-init-emulator-shared.js";
+import { publishCarriageUnjournaled } from "./submit-unjournaled.js";
 
 /**
  * A raw step-04 finalize: the honest submitter's thread-burn/token-mint
@@ -104,7 +104,7 @@ export const submitRawReferenceInputNoIdxStep04 = async ({
     label: "Raw reference-input-no-idx step 04 outputs",
   });
   signer.selectWallet(lucid);
-  const published = await publishFaultProofFieldCarriage({
+  const published = await publishCarriageUnjournaled({
     ownOutputs,
     lucid,
     signer,

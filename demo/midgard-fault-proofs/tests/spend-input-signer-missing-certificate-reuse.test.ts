@@ -1,10 +1,10 @@
 /**
  * Step 02 and the shared signer-witness scan at Certified-tier openings, each
- * driven turn by turn through the workflow capture boundary. Step 02
+ * driven turn by turn, one transaction per build. Step 02
  * certifies the spend-input opening, the opening scan turn the
  * address-witness opening, and every resumed scan turn reuses the
  * address-witness certificate the opening turn left on chain, so each turn
- * after certification captures the scan itself and the thread holds exactly
+ * after certification builds the scan itself and the thread holds exactly
  * one certificate per opening.
  */
 import {
@@ -14,8 +14,8 @@ import {
 import { acceptedVerdictSubject } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { submitSignerWitnessScan } from "../src/signer-witness-scan/index.js";
-import { submitSpendInputSignerMissingStep02 } from "../src/spend-input-signer-missing/index.js";
+import { buildSignerWitnessScan } from "../src/signer-witness-scan/index.js";
+import { buildSpendInputSignerMissingStep02 } from "../src/spend-input-signer-missing/index.js";
 import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import {
   commitAcceptedBlock,
@@ -41,7 +41,7 @@ import { makeNativeTx } from "./support/emulator/native-tx.js";
 /** Enough repeated spend inputs to carry the input field above RawUtxo. */
 const SPEND_INPUT_COUNT = 800;
 
-describe("spendInputSignerMissing step 02 and the scan under the workflow capture boundary", () => {
+describe("spendInputSignerMissing step 02 and the scan built turn by turn", () => {
   it("reuses each field certificate already on chain, so every turn after certification is the step", async () => {
     const harness = await newHarness();
     const family = await registeredContracts(harness);
@@ -114,16 +114,13 @@ describe("spendInputSignerMissing step 02 and the scan under the workflow captur
       emulator: harness.emulator,
       threadOutRef: step01.nextThreadOutRef,
       maxTurns: 6,
-      invoke: async (boundary) =>
-        await submitSpendInputSignerMissingStep02({
+      invoke: async () =>
+        await buildSpendInputSignerMissingStep02({
           ...common,
           threadOutRef: step01.nextThreadOutRef,
           referenceScriptUtxo: references[1]!,
           membershipReferenceScriptUtxo:
             harness.witnessReferenceScripts.phasMembershipWithdraw!,
-          publicationBoundary: boundary,
-          certificateBoundary: boundary,
-          preSubmitBoundary: boundary,
         }),
     });
     expect(step02.prerequisites.length).toBeGreaterThan(0);
@@ -136,15 +133,12 @@ describe("spendInputSignerMissing step 02 and the scan under the workflow captur
         emulator: harness.emulator,
         threadOutRef,
         maxTurns: scanTurn === "opening" ? 6 : 3,
-        invoke: async (boundary) =>
-          await submitSignerWitnessScan({
+        invoke: async () =>
+          await buildSignerWitnessScan({
             ...common,
             family: FAMILY,
             threadOutRef,
             referenceScriptUtxo: references[2]!,
-            publicationBoundary: boundary,
-            certificateBoundary: boundary,
-            preSubmitBoundary: boundary,
           }),
       });
       if (scanTurn === "opening") {

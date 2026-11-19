@@ -1,12 +1,12 @@
 # Genuine workflow funding measurements
 
-The F04 measurement producer captures a signed SDK proof transaction at the
-existing `FraudProofPreSubmitBoundary`. It reads every exact spending,
-reference and collateral input before submission, independently runs the
-pinned Lucid Aiken phase-two evaluator, and retains signed budgets, actual
+The F04 measurement producer measures the signed SDK proof transaction a
+builder returns, before anything submits it. It reads every exact spending,
+reference and collateral input, independently runs the pinned Lucid Aiken
+phase-two evaluator, and retains signed budgets, actual
 execution units, exact fees, physical reference-script bytes, output minimum
-ADA and collateral return. The original SDK owns submission and confirmation.
-The measurement callback never submits or creates a wallet transaction.
+ADA and collateral return. Whoever submits the transaction owns submission and
+confirmation. The measurement never submits or creates a wallet transaction.
 
 Create `createWorkflowFundingMeasurementContext` with the actual finalized
 manifest, raw blueprint bytes, the declared blueprint build record, the

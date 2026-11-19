@@ -3,12 +3,12 @@ import { toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  submitL2TxMistagInit,
-  submitL2TxMistagStep01,
-  submitL2TxMistagStep02,
+  buildL2TxMistagInit,
+  buildL2TxMistagStep01,
+  buildL2TxMistagStep02,
 } from "../src/index.js";
 import { L2_TX_MISTAG_CATEGORY_LABEL } from "../src/l2-tx-mistag/contracts.js";
-import { submitLinearFaultCancel } from "../src/linear-fault-cancel.js";
+import { buildLinearFaultCancel } from "../src/linear-fault-cancel.js";
 import { network } from "./support/emulator/blueprints.js";
 import { expectSingleUtxoWithUnit } from "./support/emulator/emulator-context.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
@@ -18,6 +18,7 @@ import {
   publishL2TxMistagReferenceScripts,
 } from "./support/l2-tx-mistag-emulator.js";
 import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 describe("l2-tx-mistag cancellation and resume controls", () => {
   it("cancels at either step, then re-inits and completes the proof", async () => {
@@ -42,7 +43,7 @@ describe("l2-tx-mistag cancellation and resume controls", () => {
       fixture,
     });
     const init = () =>
-      submitL2TxMistagInit({
+      buildAndSubmitUnjournaled(buildL2TxMistagInit, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         network,
@@ -59,7 +60,7 @@ describe("l2-tx-mistag cancellation and resume controls", () => {
         witnessReferenceScripts: harness.witnessReferenceScripts,
       });
     const step01 = (threadOutRef: string) =>
-      submitL2TxMistagStep01({
+      buildAndSubmitUnjournaled(buildL2TxMistagStep01, {
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
         contracts,
@@ -74,7 +75,7 @@ describe("l2-tx-mistag cancellation and resume controls", () => {
       });
 
     const first = await init();
-    const cancel01 = await submitLinearFaultCancel({
+    const cancel01 = await buildAndSubmitUnjournaled(buildLinearFaultCancel, {
       lucid: harness.proverLucid,
       family: L2_TX_MISTAG_CATEGORY_LABEL,
       steps: contracts.steps,
@@ -95,7 +96,7 @@ describe("l2-tx-mistag cancellation and resume controls", () => {
 
     const second = await init();
     const advanced = await step01(second.nextThreadOutRef);
-    const cancel02 = await submitLinearFaultCancel({
+    const cancel02 = await buildAndSubmitUnjournaled(buildLinearFaultCancel, {
       lucid: harness.proverLucid,
       family: L2_TX_MISTAG_CATEGORY_LABEL,
       steps: contracts.steps,
@@ -125,7 +126,7 @@ describe("l2-tx-mistag cancellation and resume controls", () => {
       third.computationThreadUnit,
     );
     expect(outRefLabel(resumed02Utxo)).toBe(resumed01.nextThreadOutRef);
-    const completed = await submitL2TxMistagStep02({
+    const completed = await buildAndSubmitUnjournaled(buildL2TxMistagStep02, {
       lucid: harness.proverLucid,
       contracts,
       categoryId: category.categoryId,

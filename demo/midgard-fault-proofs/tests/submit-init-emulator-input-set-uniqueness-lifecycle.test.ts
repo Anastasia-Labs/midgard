@@ -30,9 +30,6 @@ import { submitRemoveFraudulentBlock } from "../src/index.js";
 import {
   requireInputSetUniquenessClaim,
   scanInputSetUniqueness,
-  submitInputSetUniquenessInit,
-  submitInputSetUniquenessStep01,
-  submitInputSetUniquenessStep02,
 } from "../src/input-set-uniqueness/index.js";
 import {
   buildInputSetUniquenessFixture,
@@ -53,6 +50,11 @@ import {
   network,
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
+import {
+  submitInputSetUniquenessInit,
+  submitInputSetUniquenessStep01,
+  submitInputSetUniquenessStep02,
+} from "./support/submit-unjournaled.input-set-uniqueness.js";
 
 describe("input-set-uniqueness emulator lifecycle", () => {
   it("proves a duplicate spend input end to end, mints the permanent fraud-proof token, and removes the fraudulent commitment", async () => {

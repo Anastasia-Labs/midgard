@@ -1,12 +1,13 @@
 import { expect } from "vitest";
 
 import {
-  submitTransactionOutputNonCanonicalStep03,
-  submitTransactionOutputNonCanonicalStep03Datum,
+  buildTransactionOutputNonCanonicalStep03,
+  buildTransactionOutputNonCanonicalStep03Datum,
   transactionOutputScanControlData,
 } from "../src/transaction-output-non-canonical/index.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 import {
   readOutputScanState,
   scanStateOf,
@@ -52,7 +53,7 @@ export const scanToTerminal = async ({
     const scan = await captureEmulatorSubmission(
       registered.harness.emulator,
       () =>
-        submitTransactionOutputNonCanonicalStep03({
+        buildAndSubmitUnjournaled(buildTransactionOutputNonCanonicalStep03, {
           lucid: registered.harness.proverLucid,
           contracts: registered.contracts,
           categoryId: registered.category.categoryId,
@@ -170,15 +171,18 @@ export const datumToVerdict = async ({
     const step = await captureEmulatorSubmission(
       registered.harness.emulator,
       () =>
-        submitTransactionOutputNonCanonicalStep03Datum({
-          lucid: registered.harness.proverLucid,
-          contracts: registered.contracts,
-          categoryId: registered.category.categoryId,
-          signer: registered.harness.proverSigner,
-          threadOutRef: current,
-          evidence,
-          referenceScriptUtxo: registered.references[3]!,
-        }),
+        buildAndSubmitUnjournaled(
+          buildTransactionOutputNonCanonicalStep03Datum,
+          {
+            lucid: registered.harness.proverLucid,
+            contracts: registered.contracts,
+            categoryId: registered.category.categoryId,
+            signer: registered.harness.proverSigner,
+            threadOutRef: current,
+            evidence,
+            referenceScriptUtxo: registered.references[3]!,
+          },
+        ),
     );
     onStep?.(step.measurement, datumSteps);
     datumSteps += 1;

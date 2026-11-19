@@ -17,14 +17,13 @@ import {
   requireLinearFaultReferenceScript,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
-import { submitNativeTxBinding } from "../native-tx-binding.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildNativeTxBinding } from "../native-tx-binding.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { SubmitStep01TxInclusion } from "../step-support.js";
 import { requireInitialStepDatum } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { ObserverOrderInvalidContracts } from "./contracts.js";
 import {
   classifyObserverOrderInvalidFinding,
@@ -56,7 +55,7 @@ const nextDatum = (
   );
 };
 
-export const submitObserverOrderInvalidStep01Accepted = async ({
+export const buildObserverOrderInvalidStep01Accepted = async ({
   lucid,
   blueprint,
   network,
@@ -69,8 +68,6 @@ export const submitObserverOrderInvalidStep01Accepted = async ({
   txInclusion,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -87,10 +84,8 @@ export const submitObserverOrderInvalidStep01Accepted = async ({
   readonly txInclusion: SubmitStep01TxInclusion;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) =>
-  await submitNativeTxBinding({
+  await buildNativeTxBinding({
     lucid,
     blueprint,
     network,
@@ -113,11 +108,9 @@ export const submitObserverOrderInvalidStep01Accepted = async ({
     }),
     referenceScriptUtxo,
     witnessReferenceScripts,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
 
-export const submitObserverOrderInvalidStep01Forced = async ({
+export const buildObserverOrderInvalidStep01Forced = async ({
   lucid,
   contracts,
   categoryId,
@@ -126,8 +119,6 @@ export const submitObserverOrderInvalidStep01Forced = async ({
   finding,
   forcedSource,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: ObserverOrderInvalidContracts;
@@ -137,8 +128,6 @@ export const submitObserverOrderInvalidStep01Forced = async ({
   readonly finding: ObserverOrderInvalidFinding;
   readonly forcedSource: Readonly<Record<string, unknown>>;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const exact = classifyObserverOrderInvalidFinding(finding);
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
@@ -201,7 +190,7 @@ export const submitObserverOrderInvalidStep01Forced = async ({
       ObserverOrderInvalidStep01RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -212,13 +201,11 @@ export const submitObserverOrderInvalidStep01Forced = async ({
     nextAddress: contracts.steps[1].spendingScriptAddress,
     nextDatum: datum,
     redeemer,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (resolvedOutputIndex === undefined)
     throw new Error("observerOrderInvalid: forced layout unresolved");
   return {
-    txHash,
-    nextThreadOutRef: `${txHash}#${resolvedOutputIndex.toString()}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${resolvedOutputIndex.toString()}`,
   };
 };

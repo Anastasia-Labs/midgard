@@ -15,8 +15,9 @@ import { type BuildTxWithRedeemer, Data } from "@lucid-evolution/lucid";
 
 import type { ManifestBoundFieldPreimageLengthConfig } from "../../src/field-preimage-length-mismatch/config.js";
 import { requireThread } from "../../src/field-preimage-length-mismatch/submit-lucid.submit-field-preimage-length-cancel.js";
-import { submitLinearFaultContinue } from "../../src/linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../../src/linear-fault-submit.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
+import { buildAndSubmitTransactionUnjournaled } from "./submit-unjournaled.js";
 
 /**
  * Forced step 02 built by hand on the out-of-layout route: the thread moves to
@@ -93,7 +94,7 @@ export const submitRawFieldPreimageLengthOutOfDomainStep02 = async ({
       FieldPreimageLengthStep02RedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  return await submitLinearFaultContinue({
+  return await buildAndSubmitTransactionUnjournaled(buildLinearFaultContinue, {
     lucid: config.lucid,
     signer: config.signer,
     threadUtxo,

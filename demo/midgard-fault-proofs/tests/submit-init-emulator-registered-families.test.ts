@@ -36,14 +36,14 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  submitInvalidSignatureStep01,
+  buildInvalidSignatureStep01,
+  buildReferenceInputNoIdxStep01,
   submitNoReferenceInputStep01,
-  submitReferenceInputNoIdxStep01,
 } from "../src/index.js";
 import type { SubmitStep01TxInclusion } from "../src/step-support.js";
 import { nativeTxFromCoreCompact } from "../src/step-support.js";
 import { inputExistenceExecutionContext } from "./support/input-existence-execution-context.js";
-import { submitInit } from "./support/legacy-submit-emulator.js";
+import { buildInit } from "./support/legacy-submit-emulator.js";
 import {
   expectStateQueueHeaderOrder,
   setupFraudulentBlock as setupFraudulentBlock,
@@ -57,6 +57,7 @@ import {
   network,
   trieRootHex,
 } from "./support/submit-init-emulator-shared.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 
 const inputCbor = (txId: string, outputIndex: bigint): Buffer =>
   Buffer.from(
@@ -158,7 +159,7 @@ describe("registered fraud-proof families emulator lifecycle", () => {
         expectedHeaderHashes: [setup.headerHash],
       });
 
-      const initResult = await submitInit({
+      const initResult = await buildAndSubmitUnjournaled(buildInit, {
         lucid: proverLucid,
         blueprint: realBlueprint,
         deploymentInfo,
@@ -187,10 +188,13 @@ describe("registered fraud-proof families emulator lifecycle", () => {
         initResult.computationThreadUnit,
       );
 
-      const step01Result = await submitNoReferenceInputStep01({
-        ...context.arguments,
-        threadOutRef: outRefLabel(firstStepUtxo),
-      });
+      const step01Result = await buildAndSubmitUnjournaled(
+        submitNoReferenceInputStep01,
+        {
+          ...context.arguments,
+          threadOutRef: outRefLabel(firstStepUtxo),
+        },
+      );
       expect(step01Result.txHash).toHaveLength(64);
       // #604: the thread carries the §2.5 anchor. The field-1 commitment it
       // used to forward is still in the compact structure step-02 opens, and is
@@ -243,7 +247,7 @@ describe("registered fraud-proof families emulator lifecycle", () => {
       });
       const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue);
 
-      const initResult = await submitInit({
+      const initResult = await buildAndSubmitUnjournaled(buildInit, {
         lucid: proverLucid,
         blueprint: realBlueprint,
         deploymentInfo,
@@ -268,20 +272,24 @@ describe("registered fraud-proof families emulator lifecycle", () => {
         initResult.computationThreadUnit,
       );
 
-      const step01Result = await submitReferenceInputNoIdxStep01({
-        lucid: proverLucid,
-        blueprint: realBlueprint,
-        deploymentInfo,
-        network,
-        signer: proverSigner,
-        threadOutRef: outRefLabel(firstStepUtxo),
-        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-        txInclusion: fixture.inclusion,
-        referenceScriptUtxo:
-          harness.faultProofReferenceScripts.fraudProofReferenceInputNoIdx.utxo,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-        awaitConfirmation: true,
-      });
+      const step01Result = await buildAndSubmitUnjournaled(
+        buildReferenceInputNoIdxStep01,
+        {
+          lucid: proverLucid,
+          blueprint: realBlueprint,
+          deploymentInfo,
+          network,
+          signer: proverSigner,
+          threadOutRef: outRefLabel(firstStepUtxo),
+          stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+          txInclusion: fixture.inclusion,
+          referenceScriptUtxo:
+            harness.faultProofReferenceScripts.fraudProofReferenceInputNoIdx
+              .utxo,
+          witnessReferenceScripts: harness.witnessReferenceScripts,
+          awaitConfirmation: true,
+        },
+      );
       expect(step01Result.txHash).toHaveLength(64);
       expect(step01Result.badTxId).toBe(fixture.nativeTxId);
       // #604: the thread carries the §2.5 anchor. Field 1's commitment is
@@ -335,7 +343,7 @@ describe("registered fraud-proof families emulator lifecycle", () => {
       });
       const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue);
 
-      const initResult = await submitInit({
+      const initResult = await buildAndSubmitUnjournaled(buildInit, {
         lucid: proverLucid,
         blueprint: realBlueprint,
         deploymentInfo,
@@ -360,21 +368,24 @@ describe("registered fraud-proof families emulator lifecycle", () => {
         initResult.computationThreadUnit,
       );
 
-      const step01Result = await submitInvalidSignatureStep01({
-        lucid: proverLucid,
-        blueprint: realBlueprint,
-        deploymentInfo,
-        network,
-        signer: proverSigner,
-        threadOutRef: outRefLabel(firstStepUtxo),
-        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-        txInclusion: fixture.inclusion,
-        badTxWitnessSetCompact,
-        referenceScriptUtxo:
-          harness.faultProofReferenceScripts.fraudProofInvalidSignature.utxo,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-        awaitConfirmation: true,
-      });
+      const step01Result = await buildAndSubmitUnjournaled(
+        buildInvalidSignatureStep01,
+        {
+          lucid: proverLucid,
+          blueprint: realBlueprint,
+          deploymentInfo,
+          network,
+          signer: proverSigner,
+          threadOutRef: outRefLabel(firstStepUtxo),
+          stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+          txInclusion: fixture.inclusion,
+          badTxWitnessSetCompact,
+          referenceScriptUtxo:
+            harness.faultProofReferenceScripts.fraudProofInvalidSignature.utxo,
+          witnessReferenceScripts: harness.witnessReferenceScripts,
+          awaitConfirmation: true,
+        },
+      );
       expect(step01Result.txHash).toHaveLength(64);
       expect(step01Result.nativeTxId).toBe(fixture.nativeTxId);
       // #604: the thread carries `WitnessAnchor` — the id plus the committed

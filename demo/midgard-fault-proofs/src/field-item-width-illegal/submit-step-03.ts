@@ -4,10 +4,9 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../linear-fault-family.js";
-import { submitLinearFaultFinalize } from "../linear-fault-finalize.js";
+import { buildLinearFaultFinalize } from "../linear-fault-finalize.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { FieldItemWidthIllegalContracts } from "./contracts.js";
 import {
   encodeFieldItemWidthAuthenticatedItem,
@@ -20,7 +19,7 @@ import {
   FieldItemWidthStep03RedeemerSchema,
 } from "./schemas.js";
 
-export const submitFieldItemWidthIllegalStep03 = async ({
+export const buildFieldItemWidthIllegalStep03 = async ({
   lucid,
   contracts,
   categoryId,
@@ -29,8 +28,6 @@ export const submitFieldItemWidthIllegalStep03 = async ({
   evidence,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: FieldItemWidthIllegalContracts;
@@ -40,8 +37,6 @@ export const submitFieldItemWidthIllegalStep03 = async ({
   readonly evidence: FieldItemWidthEvidence;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   if (!fieldItemWidthEvidenceCloses(evidence)) {
     throw new Error(
@@ -72,7 +67,7 @@ export const submitFieldItemWidthIllegalStep03 = async ({
       "field-item-width-illegal: terminal state differs from prepared evidence",
     );
   }
-  return await submitLinearFaultFinalize({
+  return await buildLinearFaultFinalize({
     lucid,
     family: "field-item-width-illegal",
     stepIndex,
@@ -94,7 +89,5 @@ export const submitFieldItemWidthIllegalStep03 = async ({
     }),
     referenceScriptUtxo,
     witnessReferenceScripts,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
 };

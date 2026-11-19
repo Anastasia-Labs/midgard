@@ -8,7 +8,8 @@ import {
   type SubmitDaHashPreimageStep01CliConfig,
   type SubmitDaHashPreimageStep01Result,
 } from "./submit-da-hash-preimage-step-01.parse-submit-da-hash-preimage-tx-inclusion.js";
-import { submitDaHashPreimageStep01 } from "./submit-da-hash-preimage-step-01.submit-da-hash-preimage-step01.js";
+import { buildDaHashPreimageStep01 } from "./submit-da-hash-preimage-step-01.submit-da-hash-preimage-step01.js";
+import { submitUnjournaled } from "./workflow/transaction-boundary.js";
 
 export const submitDaHashPreimageStep01FromFiles = async (
   config: SubmitDaHashPreimageStep01CliConfig,
@@ -22,7 +23,7 @@ export const submitDaHashPreimageStep01FromFiles = async (
     ],
   );
   const signer = resolveProverSigner(config);
-  return await submitDaHashPreimageStep01({
+  const { transaction, ...built } = await buildDaHashPreimageStep01({
     lucid,
     blueprint,
     deploymentInfo,
@@ -31,6 +32,11 @@ export const submitDaHashPreimageStep01FromFiles = async (
     threadOutRef: config.threadOutRef,
     stateQueueBlockOutRef: config.stateQueueBlockOutRef,
     txInclusion: parseSubmitDaHashPreimageTxInclusion(txInclusionJson),
-    awaitConfirmation: config.awaitConfirmation,
   });
+  const awaitConfirmation = config.awaitConfirmation ?? true;
+  const txHash = await submitUnjournaled(lucid, transaction, {
+    label: "da-hash-preimage step-01",
+    awaitConfirmation,
+  });
+  return { txHash, ...built, awaitedConfirmation: awaitConfirmation };
 };

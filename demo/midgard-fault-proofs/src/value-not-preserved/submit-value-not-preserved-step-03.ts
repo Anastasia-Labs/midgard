@@ -41,26 +41,28 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  type FaultProofTurn,
+  isPrerequisiteTurn,
+} from "../fault-proof-turn.js";
+import {
   faultProofFieldCarriage,
   type FaultProofFieldOpeningPlan,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
 } from "../field-opening.js";
 import { stepWalletFunding } from "../funding/plain-funding-output.js";
-import {
-  DEFAULT_CONFIRMATION_POLL_MS,
-  type ResolvedProverSigner,
-} from "../runtime.js";
+import { type ResolvedProverSigner } from "../runtime.js";
+import { finishStep } from "../step-completion.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts.js";
 import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
+import { workflowReferenceScriptsUsedByTransaction } from "../workflow/transaction-boundary.js";
 import {
-  type FraudProofPreSubmitBoundary,
-  reachFraudProofPreSubmitBoundary,
-  workflowReferenceScriptsUsedByTransaction,
+  type LocallyEvaluatedTransaction,
+  type UnjournaledSubmission,
 } from "../workflow/transaction-boundary.js";
 import type { ValueNotPreservedContracts } from "./contracts.js";
 import { claimedQuantityOfValue } from "./evidence.js";
@@ -123,8 +125,8 @@ const dedupUtxos = (utxos: readonly UTxO[]): readonly UTxO[] => {
   return unique;
 };
 
-export type SubmitValueNotPreservedStep03Result = {
-  readonly txHash: string;
+export type ValueNotPreservedStep03Build = {
+  readonly transaction: LocallyEvaluatedTransaction;
   readonly walletSource: string;
   readonly proverAddress: string;
   readonly fraudProver: string;
@@ -145,10 +147,12 @@ export type SubmitValueNotPreservedStep03Result = {
   readonly outputsPreimageBytes: number;
   readonly inputIndex: number;
   readonly outputIndex: number;
-  readonly awaitedConfirmation: boolean;
 };
 
-export const submitValueNotPreservedStep03 = async ({
+export type SubmitValueNotPreservedStep03Result =
+  UnjournaledSubmission<ValueNotPreservedStep03Build>;
+
+export const buildValueNotPreservedStep03 = async ({
   lucid,
   contracts,
   categoryId,
@@ -159,8 +163,6 @@ export const submitValueNotPreservedStep03 = async ({
   mintItems,
   referenceScriptUtxo,
   unsafeSpendFieldRawUtxoForTest,
-  preSubmitBoundary,
-  awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
@@ -189,11 +191,9 @@ export const submitValueNotPreservedStep03 = async ({
    * publication whose bytes differ from the committed field hash.
    */
   readonly unsafeSpendFieldRawUtxoForTest?: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
-}): Promise<SubmitValueNotPreservedStep03Result> => {
+}): Promise<FaultProofTurn<ValueNotPreservedStep03Build>> => {
   const { threadUtxo, threadToken } = await requireValueNotPreservedThreadUtxo({
     lucid,
     contracts,
@@ -276,6 +276,7 @@ export const submitValueNotPreservedStep03 = async ({
           label: `${STEP_LABEL} outputs`,
         })
       : [];
+  if (isPrerequisiteTurn(outputsCarriageUtxos)) return outputsCarriageUtxos;
   const mintCarriageUtxos =
     mintPlan === null
       ? []
@@ -287,6 +288,7 @@ export const submitValueNotPreservedStep03 = async ({
           publisherAddress: signer.proofMaterialsAddress,
           label: `${STEP_LABEL} mint`,
         });
+  if (isPrerequisiteTurn(mintCarriageUtxos)) return mintCarriageUtxos;
   const carriageUtxos = [...outputsCarriageUtxos, ...mintCarriageUtxos];
   const stepReference =
     referenceScriptUtxo === undefined
@@ -423,8 +425,7 @@ export const submitValueNotPreservedStep03 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
+  const transaction = finishStep(signed, {
     referenceScripts: workflowReferenceScriptsUsedByTransaction({
       signed,
       candidates: [
@@ -435,20 +436,11 @@ export const submitValueNotPreservedStep03 = async ({
         },
       ],
     }),
-    boundary: preSubmitBoundary,
   });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) {
-    throw valueNotPreservedSubmitError(
-      `step-03 provider returned ${txHash}, expected ${expectedTxHash}.`,
-    );
-  }
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
+  const { txHash } = transaction;
 
   return {
-    txHash,
+    transaction,
     walletSource: signer.source,
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
@@ -464,6 +456,5 @@ export const submitValueNotPreservedStep03 = async ({
     outputsPreimageBytes: outputsPlan.preimage.length,
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
-    awaitedConfirmation: awaitConfirmation,
   };
 };

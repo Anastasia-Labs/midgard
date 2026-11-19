@@ -19,6 +19,10 @@ import {
 import { Effect } from "effect";
 
 import {
+  type FaultProofTurn,
+  isPrerequisiteTurn,
+} from "../fault-proof-turn.js";
+import {
   faultProofFieldOpening,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
@@ -28,7 +32,6 @@ import {
   createOwnOutputJournal,
   type OwnOutputJournal,
 } from "../workflow/own-outputs.js";
-import { type FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { NativeScriptDecodingContracts } from "./contracts.js";
 import {
   classifyNativeScriptDecodingOutOfDomainFace,
@@ -39,6 +42,7 @@ import {
   nativeScriptDecodingSubmitError,
   requireNativeScriptDecodingThreadUtxo,
 } from "./submit-common.js";
+import type { NativeScriptDecodingStep03Build } from "./submit-native-script-decoding-step-03.advance-step03-thread.js";
 import {
   advanceStep03Thread,
   BIND_DESCRIPTOR_INDEX,
@@ -48,12 +52,11 @@ import {
   requireStep03State,
   STEP_04_INDEX,
   step03Result,
-  type SubmitNativeScriptDecodingStep03Result,
 } from "./submit-native-script-decoding-step-03.advance-step03-thread.js";
 
 // ## OpenSubject
 
-export const submitNativeScriptDecodingStep03OpenSubject = async ({
+export const buildNativeScriptDecodingStep03OpenSubject = async ({
   lucid,
   contracts,
   categoryId,
@@ -65,9 +68,6 @@ export const submitNativeScriptDecodingStep03OpenSubject = async ({
   publishedCarriageUtxos,
   certificateUtxo,
   referenceScriptUtxo,
-  publicationPreSubmitBoundary,
-  preSubmitBoundary,
-  awaitConfirmation = true,
   ownOutputs = createOwnOutputJournal(),
 }: {
   readonly lucid: LucidEvolution;
@@ -82,12 +82,9 @@ export const submitNativeScriptDecodingStep03OpenSubject = async ({
   readonly publishedCarriageUtxos?: readonly UTxO[];
   readonly certificateUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
-  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
   /** Our carriage claims; a fresh in-memory journal by default. */
   readonly ownOutputs?: OwnOutputJournal;
-}): Promise<SubmitNativeScriptDecodingStep03Result> => {
+}): Promise<FaultProofTurn<NativeScriptDecodingStep03Build>> => {
   const { threadUtxo, threadToken } =
     await requireNativeScriptDecodingThreadUtxo({
       lucid,
@@ -154,8 +151,8 @@ export const submitNativeScriptDecodingStep03OpenSubject = async ({
         planned,
         publisherAddress: signer.proofMaterialsAddress,
         label: `${OPEN_SUBJECT_LABEL} subject field`,
-        preSubmitBoundary: publicationPreSubmitBoundary,
       }));
+    if (isPrerequisiteTurn(published)) return published;
     subjectFieldOpeningFor = (ctx) =>
       faultProofFieldOpening({
         planned,
@@ -204,7 +201,7 @@ export const submitNativeScriptDecodingStep03OpenSubject = async ({
   }
 
   const openingFor = subjectFieldOpeningFor;
-  const { txHash, layout } = await advanceStep03Thread({
+  const { transaction, layout } = await advanceStep03Thread({
     lucid,
     contracts,
     signer,
@@ -228,17 +225,14 @@ export const submitNativeScriptDecodingStep03OpenSubject = async ({
       ),
     carriageUtxos,
     referenceScriptUtxo,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   return step03Result({
-    txHash,
+    transaction,
     layout,
     signer,
     threadOutRef,
     threadToken,
     destinationAddress,
     scanState: nextState,
-    awaitConfirmation,
   });
 };

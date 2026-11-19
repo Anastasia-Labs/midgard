@@ -30,26 +30,12 @@ import { Data, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import {
-  publishProofChunks,
-  submitRemoveFraudulentBlock,
-} from "../src/index.js";
+import { submitRemoveFraudulentBlock } from "../src/index.js";
 import {
   buildNativeScriptDecodingScanPlan,
-  NATIVE_SCRIPT_DECODING_PROVER_POLICY_DEFAULTS,
   type NativeScriptDecodingFinding,
   NativeScriptDecodingPlanRoutes,
   NativeScriptDecodingProvability,
-  type NativeScriptDecodingProverDeps,
-  proveNativeScriptDecodingFault,
-  submitNativeScriptDecodingInit,
-  submitNativeScriptDecodingStep01BindNormal,
-  submitNativeScriptDecodingStep02,
-  submitNativeScriptDecodingStep03AdvanceOrCloseClose,
-  submitNativeScriptDecodingStep03AdvanceOrCloseSegment,
-  submitNativeScriptDecodingStep03BindDescriptor,
-  submitNativeScriptDecodingStep03OpenSubject,
-  submitNativeScriptDecodingStep04,
 } from "../src/native-script-decoding/index.js";
 import {
   decodingMalformedMultiChunkItem,
@@ -58,11 +44,27 @@ import {
   setupDecodingScenario,
 } from "./support/native-script-decoding-emulator.js";
 import {
+  NATIVE_SCRIPT_DECODING_PROVER_POLICY_DEFAULTS,
+  type NativeScriptDecodingProverDeps,
+  proveNativeScriptDecodingFault,
+} from "./support/native-script-decoding-prover.js";
+import {
   buildRemovalDeploymentInfo,
   expectSingleUtxoWithUnit,
   network,
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
+import { publishProofChunks } from "./support/submit-unjournaled.js";
+import {
+  submitNativeScriptDecodingInit,
+  submitNativeScriptDecodingStep01BindNormal,
+  submitNativeScriptDecodingStep02,
+  submitNativeScriptDecodingStep03AdvanceOrCloseClose,
+  submitNativeScriptDecodingStep03AdvanceOrCloseSegment,
+  submitNativeScriptDecodingStep03BindDescriptor,
+  submitNativeScriptDecodingStep03OpenSubject,
+  submitNativeScriptDecodingStep04,
+} from "./support/submit-unjournaled.native-script-decoding.js";
 
 /** The emulator has no L1 depth or maturity to observe; both gates are off. */
 const EMULATOR_PROVER_POLICY = {
@@ -401,7 +403,6 @@ describe("native-script-decoding direction-A emulator lifecycle", () => {
       lucid: proverLucid,
       signer: proverSigner,
       proofCbor: block.txInclusion.txMembershipProofCbor,
-      awaitConfirmation: true,
     });
     expect(publication.chunks.length).toBeGreaterThan(0);
 

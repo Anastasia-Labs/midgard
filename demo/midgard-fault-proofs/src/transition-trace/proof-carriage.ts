@@ -2,10 +2,12 @@ import { compactPlutusDataCarriageCbor } from "@al-ft/midgard-core";
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
+import type { PrerequisiteTurn } from "../fault-proof-turn.js";
 import {
   fieldPublicationClaimKey,
   lucidOwnOutputReader,
 } from "../field-opening.own-field-carriage.js";
+import { finishStep } from "../step-completion.js";
 import {
   claimOwnOutputs,
   inlineDatumCarriageSlot,
@@ -52,7 +54,7 @@ export const resolveTransitionTraceProofCarriage = async ({
   /** Our claims on the chunks. */
   ownOutputs: OwnOutputJournal;
   publish?: boolean;
-}): Promise<readonly UTxO[]> => {
+}): Promise<readonly UTxO[] | PrerequisiteTurn> => {
   return resolveTransitionTraceByteCarriage({
     lucid,
     address,
@@ -79,7 +81,7 @@ export const resolveTransitionTraceByteCarriage = async ({
   /** Our claims on the chunks. */
   ownOutputs: OwnOutputJournal;
   publish?: boolean;
-}): Promise<readonly UTxO[]> => {
+}): Promise<readonly UTxO[] | PrerequisiteTurn> => {
   return resolveTransitionTraceDataCarriage({
     lucid,
     address,
@@ -96,8 +98,9 @@ export const resolveTransitionTraceByteCarriage = async ({
  * inline serves: an output that also carries a reference script or other
  * assets holds the same bytes but makes the step that reads it pay for more
  * than the chunk. Another workflow's output with the same bytes is never
- * taken for ours. With `publish`, a chunk we hold no live output for is paid
- * to that address first and claimed.
+ * taken for ours. With `publish`, the first chunk we hold no live output for
+ * is claimed and returned as a publication turn that pays it to that address;
+ * without it, a missing chunk is an error.
  */
 export const resolveTransitionTraceDataCarriage = async ({
   lucid,
@@ -111,43 +114,49 @@ export const resolveTransitionTraceDataCarriage = async ({
   datums: readonly string[];
   ownOutputs: OwnOutputJournal;
   publish?: boolean;
-}): Promise<readonly UTxO[]> => {
+}): Promise<readonly UTxO[] | PrerequisiteTurn> => {
   const slots = datums.map((datum, index) => ({
     key: fieldPublicationClaimKey(index, datum),
     slot: inlineDatumCarriageSlot(address, datum),
   }));
-  const published = new Set<number>();
-  for (;;) {
-    const resolved = await resolveOwnOutputs({
-      slots: slots.map(({ key, slot }) => ({
-        slot,
-        claims: ownOutputs.claims(key),
-      })),
-      read: lucidOwnOutputReader(lucid),
-    });
-    if (resolved.kind === "ready") return resolved.utxos;
-    if (!publish)
-      throw new Error(
-        "transition-trace proof carriage requires a journaled chunk publication",
-      );
-    if (published.has(resolved.ordinal))
-      throw new Error("submitted transition-trace proof chunk disappeared");
-    published.add(resolved.ordinal);
-    const { key, slot } = slots[resolved.ordinal]!;
-    const signed = await (
-      await lucid
-        .newTx()
-        .pay.ToAddressWithData(
-          address,
-          { kind: "inline", value: datums[resolved.ordinal]! },
-          { lovelace: 0n },
-        )
-        .complete({ localUPLCEval: true })
-    ).sign
-      .withWallet()
-      .complete();
-    const [claim] = claimOwnOutputs({ signed, slots: [slot] });
-    await lucid.awaitTx(await signed.submit());
-    ownOutputs.claim(key, claim!.outRef);
-  }
+  const resolved = await resolveOwnOutputs({
+    slots: slots.map(({ key, slot }) => ({
+      slot,
+      claims: ownOutputs.claims(key),
+    })),
+    read: lucidOwnOutputReader(lucid),
+  });
+  if (resolved.kind === "ready") return resolved.utxos;
+  if (!publish)
+    throw new Error(
+      "transition-trace proof carriage requires a journaled chunk publication",
+    );
+  const { key, slot } = slots[resolved.ordinal]!;
+  const signed = await (
+    await lucid
+      .newTx()
+      .pay.ToAddressWithData(
+        address,
+        { kind: "inline", value: datums[resolved.ordinal]! },
+        { lovelace: 0n },
+      )
+      .complete({ localUPLCEval: true })
+  ).sign
+    .withWallet()
+    .complete();
+  const [claim] = claimOwnOutputs({ signed, slots: [slot] });
+  ownOutputs.claim(key, claim!.outRef);
+  const label = "transition-trace proof chunk publication";
+  return {
+    kind: "publication",
+    transaction: finishStep(signed, { referenceScripts: [] }),
+    label,
+    output: { outRef: claim!.outRef, label },
+    plan: {
+      key: `transition-trace-data:${computeHash32(
+        Buffer.from(datums.join(""), "hex"),
+      ).toString("hex")}`,
+      transactions: datums.length,
+    },
+  };
 };

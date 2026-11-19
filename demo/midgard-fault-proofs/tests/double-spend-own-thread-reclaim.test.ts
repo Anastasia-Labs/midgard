@@ -10,7 +10,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { CML, getAddressDetails } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { submitInit } from "../src/submit-init.js";
+import { buildInit } from "../src/submit-init.js";
 import { createDoubleSpendRawL1ObservationPort } from "../src/workflow/double-spend-adapter.create-double-spend-raw-l1-observation-port.js";
 import type { ManifestBoundDoubleSpendWorkflow } from "../src/workflow/double-spend-adapter.preflight-of.js";
 import { MemoryFraudProofWorkflowJournalStore } from "../src/workflow/journal.js";
@@ -45,6 +45,7 @@ import {
   submitSetupTx,
   withPlaceholderDeposit,
 } from "./support/submit-init-emulator-shared.js";
+import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
 import {
   DEPLOYMENT_FINGERPRINT,
   makeAdapter,
@@ -120,7 +121,7 @@ const scene = async () => {
     lucid: h.proverLucid,
     contracts: h.contracts,
   });
-  await submitInit({
+  await buildAndSubmitUnjournaled(buildInit, {
     lucid: h.proverLucid,
     witnessReferenceScripts: h.witnessReferenceScripts,
     blueprint: h.realBlueprint,

@@ -18,11 +18,10 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { submitLinearFaultContinue } from "../linear-fault-submit.js";
+import { buildLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { requireInitialStepDatum } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { InputSetUniquenessContracts } from "./contracts.js";
 import {
   requireInputSetUniquenessReferenceScript,
@@ -30,7 +29,7 @@ import {
 } from "./submit-common.js";
 import { bindForcedDuplicateInput } from "./wrongful-rejection.js";
 
-export const submitInputSetUniquenessForcedStep01 = async ({
+export const buildInputSetUniquenessForcedStep01 = async ({
   lucid,
   contracts,
   categoryId,
@@ -39,8 +38,6 @@ export const submitInputSetUniquenessForcedStep01 = async ({
   header,
   membership,
   referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: InputSetUniquenessContracts;
@@ -53,8 +50,6 @@ export const submitInputSetUniquenessForcedStep01 = async ({
     ForcedInclusionTxV1
   >;
   readonly referenceScriptUtxo: UTxO;
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-  readonly awaitConfirmation?: boolean;
 }) => {
   const verdict = membership.value.verdict;
   if (verdict === "ForcedTxValid") {
@@ -125,7 +120,7 @@ export const submitInputSetUniquenessForcedStep01 = async ({
       InputSetUniquenessStep01SpendRedeemerSchema as never,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinue({
+  const transaction = await buildLinearFaultContinue({
     lucid,
     signer,
     threadUtxo,
@@ -136,14 +131,12 @@ export const submitInputSetUniquenessForcedStep01 = async ({
     nextAddress: contracts.steps[2].spendingScriptAddress,
     nextDatum,
     redeemer,
-    preSubmitBoundary,
-    awaitConfirmation,
   });
   if (outputIndex === undefined)
     throw new Error("input-set-uniqueness: unresolved layout");
   return Object.freeze({
-    txHash,
-    nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
+    transaction,
+    nextThreadOutRef: `${transaction.txHash}#${outputIndex.toString()}`,
     bound,
   });
 };
