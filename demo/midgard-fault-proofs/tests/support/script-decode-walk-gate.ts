@@ -84,13 +84,19 @@ const WALK_GATE_GROUPS = {
     "list of a unit pair chain over a pair of list unit and list Data",
     "list of a unit pair chain over a pair of list unit, every element ([()], [()])",
   ],
-  "nested lists": [
-    "lists 14 deep over 103 [()]",
+  // One row each: a nested-list row walks for minutes, so rows in one file
+  // add up to the longest file of the suite.
+  "nested lists 14 deep": ["lists 14 deep over 103 [()]"],
+  "nested lists 2 deep over pair chains": [
     "lists 2 deep over 23 unit pair chains of depth 6 over [()]",
+  ],
+  "nested lists 6 deep": [
     "lists 6 deep, [] ahead of each deeper list, over 31 unit pair chains of depth 4 over [()]",
   ],
-  "nested lists 4 deep": [
+  "nested lists 4 deep, [] ahead": [
     "lists 4 deep, [] ahead of each deeper list, over 26 unit pair chains of depth 5 over [()]",
+  ],
+  "nested lists 4 deep, a one-path list ahead": [
     "lists 4 deep, a one-path list ahead of each deeper list, over 26 unit pair chains of depth 5 over [()]",
   ],
   // The application chains walk longest; they are four groups so that no

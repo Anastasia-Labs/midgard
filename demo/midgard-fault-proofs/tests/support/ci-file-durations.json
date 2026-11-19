@@ -1,5 +1,5 @@
 {
-  "$comment": "CI seconds per test file (fork start, import, collection and tests, as FileDurationsReporter records them) that durationShards in @al-ft/midgard-test-support packs --shard by, and withDurationTier in @al-ft/midgard-test-support/vitest splits into the fast tier and the slow tier (files at or over SLOW_TIER_FILE_SECONDS). Each file is the median of Node CI runs 44252349699, 44209831618 and 43921606823 (commits 5a6e58e36, a6fc14a5f and 5b012594a); one run's records carry its runners' speeds. forksPerShard is the CI fork cap (MIDGARD_FAULT_PROOF_FORKS). reservedSeconds is the traced-refusal step that only shard 1 runs after its tests: 2,038/1,602/2,236 s in those runs, median 2,038. Refresh with demo/midgard-test-support/scripts/ci-file-durations.mjs --run <id> --run <id> ..., or take the ci-file-durations artifact of any Node CI run. A stale or missing entry only costs shard balance, or leaves a newly slow file in the fast tier until the next refresh, never coverage.",
+  "$comment": "CI seconds per test file (fork start, import, collection and tests, as FileDurationsReporter records them) that durationShards in @al-ft/midgard-test-support packs --shard by, and withDurationTier in @al-ft/midgard-test-support/vitest splits into the fast tier and the slow tier (files at or over SLOW_TIER_FILE_SECONDS). Each file is the median of Node CI runs 44252349699, 44209831618 and 43921606823 (commits 5a6e58e36, a6fc14a5f and 5b012594a); one run's records carry its runners' speeds. forksPerShard is the CI fork cap (MIDGARD_FAULT_PROOF_FORKS). reservedSeconds is the traced-refusal step that only shard 1 runs after its tests: 2,038/1,602/2,236 s in those runs, median 2,038. The five script-decode-walk-gate.nested-lists-* files, split from two files after those runs, carry their old file's seconds shared out by their rows' seconds in one local run; the two transition-trace-final-maximum-lifecycle files, split from one, carry half of its seconds each. Refresh with demo/midgard-test-support/scripts/ci-file-durations.mjs --run <id> --run <id> ..., or take the ci-file-durations artifact of any Node CI run. A stale or missing entry only costs shard balance, or leaves a newly slow file in the fast tier until the next refresh, never coverage.",
   "forksPerShard": 2,
   "reservedSeconds": {
     "1/6": 2038
@@ -336,8 +336,11 @@
     "tests/script-decode-walk-gate.chains-over-list-unit.test.ts": 184.1,
     "tests/script-decode-walk-gate.chains-over-pairs-of-lists.test.ts": 349.1,
     "tests/script-decode-walk-gate.flat-lists.test.ts": 101.6,
-    "tests/script-decode-walk-gate.nested-lists-4-deep.test.ts": 1038.6,
-    "tests/script-decode-walk-gate.nested-lists.test.ts": 1189.8,
+    "tests/script-decode-walk-gate.nested-lists-14-deep.test.ts": 214.9,
+    "tests/script-decode-walk-gate.nested-lists-2-deep.test.ts": 535.5,
+    "tests/script-decode-walk-gate.nested-lists-4-deep-empty-ahead.test.ts": 391.5,
+    "tests/script-decode-walk-gate.nested-lists-4-deep-one-path-ahead.test.ts": 647.1,
+    "tests/script-decode-walk-gate.nested-lists-6-deep.test.ts": 439.4,
     "tests/script-decode-walk-gate.terms.test.ts": 132.7,
     "tests/script-decode-walk-gate.unit-pair-chains.test.ts": 524.4,
     "tests/script-decoding.mixed-block-first-finding.test.ts": 1.3,
@@ -476,7 +479,8 @@
     "tests/submit-init-emulator-transition-trace-final-forced.test.ts": 14.1,
     "tests/submit-init-emulator-transition-trace-final-forged-steps.test.ts": 28.9,
     "tests/submit-init-emulator-transition-trace-final-many-assets.test.ts": 35.2,
-    "tests/submit-init-emulator-transition-trace-final-maximum-lifecycle.test.ts": 1078.8,
+    "tests/submit-init-emulator-transition-trace-final-maximum-lifecycle-honest.test.ts": 539.4,
+    "tests/submit-init-emulator-transition-trace-final-maximum-lifecycle.test.ts": 539.4,
     "tests/submit-init-emulator-transition-trace-final-maximum-shape.test.ts": 17.9,
     "tests/submit-init-emulator-transition-trace-final-output-step.test.ts": 19.4,
     "tests/submit-init-emulator-transition-trace-final.test.ts": 57.6,

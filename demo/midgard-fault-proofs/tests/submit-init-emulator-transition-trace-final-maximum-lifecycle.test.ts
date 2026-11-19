@@ -6,7 +6,9 @@
  * an enterprise address, lovelace alone and a one-byte inline datum, replayed
  * in 7 steps. Its fault proof runs from Init through conviction and removal in
  * one thread of 6,308 steps, and the honest operator's root at the same shape
- * is refused at the terminal comparison. The emulator deployment profiles
+ * is refused at the terminal comparison (in
+ * submit-init-emulator-transition-trace-final-maximum-lifecycle-honest.test.ts,
+ * so that the two plays run in parallel). The emulator deployment profiles
  * size block maturity for this thread
  * (demo/scripts/deployment-profile-budgets.mjs), so its shape is pinned here.
  */
@@ -14,10 +16,7 @@ import {
   encodeMidgardSpendInputItem,
   MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
 } from "@al-ft/midgard-core";
-import {
-  encodeMidgardFieldPreimage,
-  encodeMidgardTxOutput,
-} from "@al-ft/midgard-core/codec";
+import { encodeMidgardFieldPreimage } from "@al-ft/midgard-core/codec";
 import type * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
@@ -28,29 +27,17 @@ import {
 } from "../src/transition-trace/output-phases.js";
 import { TRANSITION_OUTPUTS_GRAMMAR_BATCH } from "../src/transition-trace/phases.js";
 import { transitionTraceFinalCaseRunner } from "./support/transition-trace-final-cases.js";
+import {
+  densestStaged,
+  MAXIMUM,
+  MAXIMUM_LIFECYCLE_TIMEOUT,
+  output,
+} from "./support/transition-trace-final-maximum-lifecycle.js";
 
-const TIMEOUT = 1_800_000;
 const run = transitionTraceFinalCaseRunner();
 
 const input = (outputIndex: number) =>
   encodeMidgardSpendInputItem({ txId: Buffer.alloc(32, 0xed), outputIndex });
-const output = (
-  extra: Partial<Parameters<typeof encodeMidgardTxOutput>[0]> = {},
-) =>
-  encodeMidgardTxOutput({
-    address: Buffer.from(`60${"aa".repeat(28)}`, "hex"),
-    value: { lovelace: 0n, assets: new Map() },
-    ...extra,
-  });
-const densestStaged = output({
-  datum: { kind: "inline", cbor: Buffer.from("00", "hex") },
-});
-const MAXIMUM = {
-  assetCount: 0,
-  spentCount: 819,
-  outputCount: 780,
-  outputCbor: densestStaged.toString("hex"),
-} as const;
 type ProfileBudgets = Readonly<{
   MAXIMUM_TRANSITION_TRACE_SHAPE: Readonly<Record<string, number>>;
   maximumTransitionTraceThreadSteps: () => number;
@@ -168,12 +155,6 @@ describe("the longest accepted-transaction fault proof", () => {
   it(
     "convicts and removes a wrong transition root at the maximum shape",
     () => run(MAXIMUM),
-    TIMEOUT,
-  );
-
-  it(
-    "refuses the honest operator's root at the terminal comparison at the maximum shape",
-    () => run({ ...MAXIMUM, honest: true }),
-    TIMEOUT,
+    MAXIMUM_LIFECYCLE_TIMEOUT,
   );
 });
