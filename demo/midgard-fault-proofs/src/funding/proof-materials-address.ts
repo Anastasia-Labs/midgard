@@ -81,3 +81,12 @@ export const isProverOwnAddress = (
 ): boolean =>
   address === fundingAddress ||
   address === proofMaterialsAddressOfFundingAddress(fundingAddress);
+
+/** Whether `inputs` include an output at the proof-materials address of `fundingAddress`. */
+export const spendsProofMaterial = (
+  fundingAddress: string,
+  inputs: Iterable<{ readonly address: string }>,
+): boolean => {
+  const materials = proofMaterialsAddressOfFundingAddress(fundingAddress);
+  return [...inputs].some((input) => input.address === materials);
+};

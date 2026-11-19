@@ -15,8 +15,10 @@ import {
 } from "./actuation-permit.js";
 import { balanceCbor } from "./funding-reservation-permit.apply-transition.js";
 import { assertFundingSubmissionAuthority } from "./funding-reservation-permit.begin-workflow-funding-reservation-action.js";
+import { stateForJournal } from "./funding-reservation-permit.create-workflow-funding-reservation-permit.js";
 import {
   admittedPermits,
+  type PermitState,
   WORKFLOW_FUNDING_RESERVATION_PERMIT,
   type WorkflowFundingReservationPermit,
   type WorkflowFundingReservationPort,
@@ -119,6 +121,10 @@ export const restrictWorkflowFundingSigner = ({
         }),
       });
       lucid.selectWallet.fromAPI(api);
+      sweepWallets.set(
+        state,
+        Object.freeze({ lucid, fundingAddress: signer.address }),
+      );
       const wallet = lucid.wallet();
       requiredFundingInputs.set(lucid, () =>
         // Only while this API is the wallet and an action is under way.
@@ -131,6 +137,24 @@ export const restrictWorkflowFundingSigner = ({
       collectRequiredFundingInputs(lucid);
     },
   });
+};
+
+/** The Lucid each reservation's restricted wallet was last installed on. */
+const sweepWallets = new WeakMap<
+  PermitState,
+  Readonly<{ lucid: LucidEvolution; fundingAddress: string }>
+>();
+
+/**
+ * The Lucid, under the restricted wallet, that sweeps the proof materials of
+ * the workflow `journal` is bound to, and its funding address; none before
+ * the workflow's signer is installed or without a production reservation.
+ */
+export const workflowProofMaterialsSweepWallet = (
+  journal: object,
+): Readonly<{ lucid: LucidEvolution; fundingAddress: string }> | undefined => {
+  const state = stateForJournal(journal);
+  return state === undefined ? undefined : sweepWallets.get(state);
 };
 
 const requiredFundingInputs = new WeakMap<

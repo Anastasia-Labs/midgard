@@ -80,6 +80,7 @@ import {
   validateAction,
   validatePreflight,
 } from "./orchestrator.normalize-workflow-terminal.js";
+import { adapterWithMaterialsSweep } from "./orchestrator.proof-materials-sweep-adapter.js";
 import { assertWorkflowJournalReconciliation } from "./orchestrator.reconcile-superseded-attempts.js";
 import { reobserveRequiredWorkflowParent } from "./orchestrator.reobserve-required-parent.js";
 import { resolvedByAnotherRecordResult } from "./orchestrator.resolved-by-another-record.js";
@@ -162,10 +163,11 @@ export const runAdmittedFraudProofWorkflow = async ({
       "release finality authority returned a different deployment identity",
     );
   }
-  const adapter = registry.get(category);
-  if (adapter === undefined) {
-    throw new Error(`classified family ${category} has no workflow adapter`);
-  }
+  const adapter = adapterWithMaterialsSweep(registry, category, {
+    journal,
+    terminalVerifier,
+    releaseFinality,
+  });
   assertWorkflowJournalActuation({
     journal,
     deploymentFingerprint,

@@ -1,7 +1,8 @@
 /** Actions of ours that run no script of the dispute: transactions our key
  * alone signs (a field copy spent back, an operand staged or spent back, a
  * field grammar certificate opened or advanced, whose validator runs from
- * its published reference script alone), put in front of a family adapter. Each is taken in place of what the
+ * its published reference script alone, or an ended workflow's proof
+ * materials swept back), put in front of a family adapter. Each is taken in place of what the
  * adapter observes when `next` says so, or in place of a resolution by
  * another record when `resolved` says so, built from the live chain at its
  * preflight, and reconciled from its exact signed bytes. A build that fails
@@ -29,7 +30,10 @@ import type {
   FraudProofWorkflowObservation,
 } from "../workflow/orchestrator.js";
 import { WorkflowActionUnbuiltError } from "../workflow/orchestrator.unbuilt-actions.js";
-import { isFraudProofResolvedByAnotherRecordError } from "../workflow/resolved-by-another-record.js";
+import {
+  type FraudProofResolvedByAnotherRecord,
+  isFraudProofResolvedByAnotherRecordError,
+} from "../workflow/resolved-by-another-record.js";
 import { reconcileSignedWorkflowTransaction } from "../workflow/signed-transaction-reconciliation.js";
 import {
   bindWorkflowPreflightTransaction,
@@ -55,10 +59,12 @@ export type OwnKeyActions = Readonly<{
     context: FraudProofWorkflowAdapterContext,
     observed: FraudProofWorkflowObservation,
   ) => Promise<FraudProofWorkflowObservation | undefined>;
-  /** What to take before the adapter's resolution by another record goes
-   * through: a spend back, or the wait on one; none to let it through. */
+  /** What to take before the adapter's resolution by another record,
+   * `resolution`, goes through: a spend back, or the wait on one; none to
+   * let it through. */
   resolved?: (
     context: FraudProofWorkflowAdapterContext,
+    resolution: FraudProofResolvedByAnotherRecord,
   ) => Promise<FraudProofWorkflowObservation | undefined>;
   /** The alarm `action` of ours pauses on when its reservation cannot be
    * funded, `shortfall` being the pause; none to pause on `shortfall`. */
@@ -122,12 +128,15 @@ export const withOwnKeyActions = ({
   own,
   signedRecovery,
   label,
+  family = "validation-trace",
 }: {
   readonly base: FraudProofFamilyWorkflowAdapter;
   readonly own: OwnKeyActions;
   readonly signedRecovery: FraudProofSignedTransactionRecovery;
   /** What the actions are, for their messages. */
   readonly label: string;
+  /** Whose actions they are, for their messages. */
+  readonly family?: string;
 }): FraudProofFamilyWorkflowAdapter => {
   const prepared = new Map<string, LocallyEvaluatedTransaction>();
   const keyOf = (workflowId: string, actionId: string) =>
@@ -144,7 +153,7 @@ export const withOwnKeyActions = ({
         !isFraudProofResolvedByAnotherRecordError(cause)
       )
         throw cause;
-      const instead = await own.resolved(context);
+      const instead = await own.resolved(context, cause.resolution);
       if (instead === undefined) throw cause;
       return instead;
     }
@@ -168,7 +177,7 @@ export const withOwnKeyActions = ({
         current.action.actionId !== actionId
       )
         throw new WorkflowActionChangedError(
-          `validation-trace ${actionId} is no longer the next action`,
+          `${family} ${actionId} is no longer the next action`,
         );
       const key = keyOf(context.workflowId, actionId);
       prepared.delete(key);
@@ -184,7 +193,7 @@ export const withOwnKeyActions = ({
           throw cause;
         throw new WorkflowActionUnbuiltError(
           actionId,
-          `validation-trace ${actionId} does not build: ${String(cause)}`,
+          `${family} ${actionId} does not build: ${String(cause)}`,
         );
       }
       const referenceScripts = built.referenceScripts ?? [];
@@ -196,7 +205,7 @@ export const withOwnKeyActions = ({
       if (referenceScripts.length > 0)
         requireReferenceOnlyScriptWitnesses({
           transaction,
-          label: `validation-trace ${label}`,
+          label: `${family} ${label}`,
         });
       prepared.set(key, transaction);
       return bindWorkflowPreflightTransaction(
@@ -229,7 +238,7 @@ export const withOwnKeyActions = ({
         transaction.txHash !== context.preflight.txHash
       )
         throw new Error(
-          `validation-trace ${context.action.actionId} has no captured body to submit`,
+          `${family} ${context.action.actionId} has no captured body to submit`,
         );
       try {
         return {
@@ -246,7 +255,7 @@ export const withOwnKeyActions = ({
       if (txHash === undefined)
         return {
           kind: "conflict",
-          reason: `validation-trace ${label} omitted its transaction hash`,
+          reason: `${family} ${label} omitted its transaction hash`,
         };
       const signed =
         context.signedTransactionCborHex ?? ownKeySignedBytes(durableRecovery);

@@ -8,8 +8,8 @@ import {
 
 import {
   isProverOwnAddress,
-  proofMaterialsAddressOfFundingAddress,
   proofMaterialsScript,
+  spendsProofMaterial,
 } from "../funding/proof-materials-address.js";
 import { validationDisputeFunding } from "./funding-reservation-permit.assert-validation-dispute-funding.js";
 import {
@@ -27,6 +27,7 @@ import {
   addMintedAssets,
   assertNoUnrelatedLedgerAccounting,
 } from "./funding-reservation-permit.ledger-accounting.js";
+import { bindProofMaterialsSweep } from "./funding-reservation-permit.proof-materials-sweep-binding.js";
 import { bindSlashFunding } from "./funding-reservation-permit.slash-funding-binding.js";
 import { assertThreadReclaimBound } from "./funding-reservation-permit.thread-reclaim-binding.js";
 import { validationDisputeStagingFunding } from "./funding-reservation-permit.validation-dispute-staging-authority.js";
@@ -80,6 +81,15 @@ export const assertRuntimeTransactionBound = async ({
     policy,
     state,
     action,
+  });
+  // The sweep of our proof materials: its page, at most a needed top-up.
+  const sweep = await bindProofMaterialsSweep({
+    state,
+    action,
+    signed,
+    bodyInputs,
+    fundingOutRefs,
+    coinsPerUtxoByte: BigInt(parameters.coinsPerUtxoByte),
   });
   // VerifySource's bond and case floor, or a thread move; else refused as before.
   // A lost-defense slash spends its receipt under the slash binding alone.
@@ -274,12 +284,9 @@ export const assertRuntimeTransactionBound = async ({
     outRefs: bodyInputs,
     label: "runtime funding ordinary inputs",
   });
-  const materials = proofMaterialsAddressOfFundingAddress(
-    state.snapshot.walletAddress,
-  );
   if (
     materialsWitness &&
-    ![...allInputs.values()].some((input) => input.address === materials)
+    !spendsProofMaterial(state.snapshot.walletAddress, allInputs.values())
   )
     throw new Error(
       "funding transaction embeds our proof-materials script without spending a proof material",
@@ -310,7 +317,7 @@ export const assertRuntimeTransactionBound = async ({
     if (own(input.address)) {
       if (slash !== null)
         throw new Error("fraud slash cannot consume ordinary wallet funding");
-      if (!fundingOutRefs.includes(outRef))
+      if (!fundingOutRefs.includes(outRef) && sweep?.admits(outRef) !== true)
         throw new Error(
           `signed transaction consumed an unreserved wallet input: ${outRef}`,
         );

@@ -25,6 +25,7 @@ import {
   WorkflowFundingShortfallError,
 } from "./funding-reservation-permit.workflow-funding-shortfall.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
+import { isProofMaterialsSweepAction } from "./proof-materials-sweep.action.js";
 
 export const bindWorkflowFundingReservationJournal = <Journal extends object>({
   journal,
@@ -64,9 +65,14 @@ const reconciliationReclaims = new WeakSet<PermitState>();
 export const isReconciliationReclaim = (state: PermitState): boolean =>
   reconciliationReclaims.has(state);
 
+/** Reservations whose current action is the sweep of their workflow's
+ * proof materials, which they sign under any authority. */
+const materialsSweeps = new WeakSet<PermitState>();
+
 /** Whether the reservation bound to `journal` signs `action` under
  * reconciliation-only authority: only the spend back of a staging output
- * of ours, which its runtime bound then admits only as such. */
+ * of ours or the sweep of our proof materials, which its runtime bound then
+ * admits only as such. */
 export const workflowJournalAdmitsReconciliationReclaim = (
   journal: object,
   action: FraudProofWorkflowAction,
@@ -74,14 +80,16 @@ export const workflowJournalAdmitsReconciliationReclaim = (
   const state = stateForJournal(journal);
   return (
     state?.policy !== undefined &&
-    isValidationDisputeStagingReclaim(state.category, action)
+    (isValidationDisputeStagingReclaim(state.category, action) ||
+      isProofMaterialsSweepAction(action))
   );
 };
 
 export const assertFundingSubmissionAuthority = (state: PermitState): void => {
   if (
     workflowActuationPermitIsReconciliationOnly(state.actuationPermit) &&
-    !reconciliationReclaims.has(state)
+    !reconciliationReclaims.has(state) &&
+    !materialsSweeps.has(state)
   )
     throw new Error(
       "reconciliation-only funding authority cannot spend or sign",
@@ -105,6 +113,36 @@ const beginReconciliationReclaim = async (
   reconciliationReclaims.add(state);
 };
 
+/** Begins the sweep `action` of the workflow's proof materials. It needs no
+ * funding beyond its materials, so no reserved coin is required of it and
+ * no idle refresh can hold it back; its runtime bound admits a reserved
+ * funding coin only where the materials alone fall under min-ADA, and none
+ * under reconciliation-only authority. */
+const beginProofMaterialsSweep = async (
+  state: PermitState,
+  action: FraudProofWorkflowAction,
+): Promise<void> => {
+  let current = true;
+  try {
+    await refresh(state);
+  } catch (error) {
+    if (!(error instanceof WorkflowFundingReservationUnavailableError))
+      throw error;
+    current = false;
+  }
+  if (state.snapshot.state !== "active")
+    throw new Error("production funding reservation is not active");
+  state.currentActionKind = actionKind(action);
+  state.currentActionDigest = computeDeploymentManifestJsonDigest(action);
+  // Reserved materials the sweep spends leave the reservation with it; with
+  // a stale reservation it spends its materials by their lineage alone.
+  state.currentFundingOutRefs = Object.freeze(
+    current ? state.snapshot.activeInputs.map(({ outRef }) => outRef) : [],
+  );
+  state.currentRequiredFundingOutRefs = Object.freeze([]);
+  materialsSweeps.add(state);
+};
+
 export const beginWorkflowFundingReservationAction = async ({
   journal,
   action,
@@ -117,6 +155,11 @@ export const beginWorkflowFundingReservationAction = async ({
   if (state.policy === undefined)
     throw new Error("test-only funding permit cannot build transactions");
   reconciliationReclaims.delete(state);
+  materialsSweeps.delete(state);
+  if (isProofMaterialsSweepAction(action)) {
+    await beginProofMaterialsSweep(state, action);
+    return;
+  }
   if (
     workflowActuationPermitIsReconciliationOnly(state.actuationPermit) &&
     isValidationDisputeStagingReclaim(state.category, action)
