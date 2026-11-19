@@ -121,22 +121,84 @@ const depositsOf = (
 ];
 
 /**
- * Deposit bytes whose block projects to exactly `innerBytes`: a coarse
- * entry found by bisection, then a short entry (24 to 64 bytes, one encoded
- * byte per value byte) that closes the remaining gap.
+ * The largest coarse entry in `[0, innerBytes]` whose block, beside a 24-byte
+ * short entry, projects to at most `innerBytes`. A block's projection grows
+ * with its coarse entry, so this is one bisection; it is bracketed first by
+ * doubling steps from where the block's fixed bytes put it, which is a few
+ * bytes off, rather than from the whole range.
  */
-const depositsForInnerBytes = async (
+const largestCoarseWithin = async (
+  innerBytes: number,
+  envelopeMode: DaPayloadEmissionMode,
+): Promise<number> => {
+  const projected = (coarseBytes: number) =>
+    innerBytesOf(depositsOf(coarseBytes, 24), envelopeMode);
+  const fits = async (coarseBytes: number) =>
+    (await projected(coarseBytes)) <= innerBytes;
+  const fixed = await projected(0);
+  if (fixed >= innerBytes) return 0;
+  // The block's bytes per coarse byte, from one probe.
+  const probe = innerBytes - fixed;
+  const perByte = ((await projected(probe)) - fixed) / probe;
+  // fits(low) holds, and the search stays within [0, innerBytes].
+  let low = 0;
+  let high = innerBytes;
+  const guess = Math.min(
+    innerBytes,
+    Math.max(1, Math.floor((innerBytes - fixed) / perByte)),
+  );
+  if (await fits(guess)) {
+    low = guess;
+    for (let step = 1; low < high; step *= 2) {
+      const next = Math.min(high, low + step);
+      if (!(await fits(next))) {
+        high = next - 1;
+        break;
+      }
+      low = next;
+    }
+  } else {
+    high = guess - 1;
+    for (let step = 1; low < high; step *= 2) {
+      const next = Math.max(low, high - step + 1);
+      if (await fits(next)) {
+        low = next;
+        break;
+      }
+      high = next - 1;
+    }
+  }
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    if (await fits(mid)) low = mid;
+    else high = mid - 1;
+  }
+  return low;
+};
+
+/**
+ * Deposit bytes whose block projects to exactly `innerBytes`: the largest
+ * coarse entry within it, then a short entry (24 to 64 bytes, one encoded
+ * byte per value byte) that closes the remaining gap. Each size is built
+ * once per mode and shared, unchanged, by the cases that use it.
+ */
+const depositsBySize = new Map<string, Promise<SDK.DaPayloadEntry[]>>();
+const depositsForInnerBytes = (
   innerBytes: number,
   envelopeMode: DaPayloadEmissionMode,
 ): Promise<SDK.DaPayloadEntry[]> => {
-  let low = 0;
-  let high = innerBytes;
-  while (low < high) {
-    const mid = Math.ceil((low + high) / 2);
-    if ((await innerBytesOf(depositsOf(mid, 24), envelopeMode)) <= innerBytes)
-      low = mid;
-    else high = mid - 1;
-  }
+  const key = `${envelopeMode}:${innerBytes.toString()}`;
+  const built =
+    depositsBySize.get(key) ?? buildDeposits(innerBytes, envelopeMode);
+  depositsBySize.set(key, built);
+  return built;
+};
+
+const buildDeposits = async (
+  innerBytes: number,
+  envelopeMode: DaPayloadEmissionMode,
+): Promise<SDK.DaPayloadEntry[]> => {
+  const low = await largestCoarseWithin(innerBytes, envelopeMode);
   const gap =
     innerBytes - (await innerBytesOf(depositsOf(low, 24), envelopeMode));
   if (gap < 0 || gap > 40) throw new Error(`unreachable size gap ${gap}`);
