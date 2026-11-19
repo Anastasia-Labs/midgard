@@ -283,10 +283,16 @@ const workspaceBundleGuard = fileURLToPath(
  *   module runner's partial exports can fail later and less clearly, or not
  *   at all if the value goes unused.
  * - Bundling renames colliding identifiers; `keepNames` keeps `.name`.
- * - Only Vite plugins of this project that transform workspace source would
- *   be skipped by the bundle, so never wrap a project that has one (the
- *   interactive-emulator projects rewrite a midgard-core module and stay
- *   source-mode).
+ * - A Vite plugin of this project that transforms workspace source never sees
+ *   bundled code, so the project passes the same rewrite in
+ *   `sourceTransforms`, named like its plugin, and the bundler applies it to
+ *   the source it bundles (the interactive-emulator projects pass
+ *   `interactiveEmulatorSourceTransform`, which selects their profile in a
+ *   midgard-core module). The rewrite is part of the bundle's key (its name,
+ *   options, function and the text of the modules defining it), so a project
+ *   is never served a bundle built without its rewrite or with another
+ *   project's. A plugin with a `transform` hook and no source transform of
+ *   its name, or a source transform with no plugin, refuses the project.
  * - A `globalSetup` or `setupFiles` entry that imports a bundled package must
  *   be declared on the project passed here, not on the root config, so the
  *   analysis sees it and serves that import from the bundle too; otherwise
@@ -298,8 +304,23 @@ const workspaceBundleGuard = fileURLToPath(
  * The source project is named `<name>:source`; a `--project <name>` filter
  * must also name it (or use `--project '<name>*'`).
  */
-export const workspaceBundleProjects = (project, { packageDirectory }) => {
+export const workspaceBundleProjects = (
+  project,
+  { packageDirectory, sourceTransforms = [] },
+) => {
   if (!workspaceBundleEnabled()) return [project];
+  const transformed = new Set(sourceTransforms.map(({ name }) => name));
+  const plugins = (project.plugins ?? []).flat(Infinity);
+  for (const plugin of plugins)
+    if (plugin?.transform !== undefined && !transformed.has(plugin.name))
+      throw new Error(
+        `[workspace-bundle] plugin ${String(plugin.name)} transforms source the bundle would carry unchanged; pass its rewrite in sourceTransforms`,
+      );
+  for (const name of transformed)
+    if (!plugins.some((plugin) => plugin?.name === name))
+      throw new Error(
+        `[workspace-bundle] source transform ${name} has no plugin of that name, so files loading from source would not get its rewrite`,
+      );
   const test = project.test ?? {};
   const exclude = test.exclude ?? configDefaults.exclude;
   const analysis = analyzeSuite({
@@ -330,7 +351,7 @@ export const workspaceBundleProjects = (project, { packageDirectory }) => {
       ...project,
       plugins: [
         ...(project.plugins ?? []),
-        workspaceBundlePlugin({ analysis }),
+        workspaceBundlePlugin({ analysis, sourceTransforms }),
       ],
       test: {
         ...test,
@@ -455,6 +476,7 @@ export {
   interactiveEmulatorBlueprint,
   interactiveEmulatorSetup,
   interactiveEmulatorPlugin,
+  interactiveEmulatorSourceTransform,
 } from "./interactive-emulator.js";
 export {
   curatedEmulatorBlueprint,

@@ -23,6 +23,9 @@ import {
  * Plain JavaScript for the same reason as `vitest.js`: it runs at config time.
  */
 
+/** `analyzeSuite`'s results in this process, by its arguments. */
+const analyses = new Map();
+
 /**
  * Static analysis of one suite: which workspace entry points its files reach,
  * which of those can be bundled, and which test files must keep loading
@@ -55,6 +58,19 @@ export const analyzeSuite = ({
   testFiles,
   setupRoots = [],
 }) => {
+  // Vitest evaluates the config once more for every project, so the same
+  // suite is analysed several times per process; like `scan`'s cache, this
+  // holds the result for the life of the process.
+  const key = JSON.stringify([packageDirectory, testFiles, setupRoots]);
+  let analysis = analyses.get(key);
+  if (analysis === undefined) {
+    analysis = analyze({ packageDirectory, testFiles, setupRoots });
+    analyses.set(key, analysis);
+  }
+  return analysis;
+};
+
+const analyze = ({ packageDirectory, testFiles, setupRoots }) => {
   const packages = workspacePackages();
   const self = packageOfFile(packages, join(packageDirectory, "package.json"));
   if (self === undefined)

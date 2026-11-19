@@ -9,6 +9,7 @@ import {
   interactiveEmulatorBlueprint,
   interactiveEmulatorPlugin,
   interactiveEmulatorSetup,
+  interactiveEmulatorSourceTransform,
   isolatedForksPool,
   midgardSourceEnvironments,
   rawSqlLoaderPlugin,
@@ -78,24 +79,34 @@ const config = defineConfig({
         },
         { packageDirectory: fileURLToPath(new URL(".", import.meta.url)) },
       ),
-      // Not bundled: its plugin rewrites a midgard-core module.
-      {
-        extends: true,
-        plugins: [interactiveEmulatorPlugin()],
-        test: {
-          name: "interactive-emulator",
-          include: interactiveTests,
-          globalSetup: [interactiveEmulatorSetup],
-          env: {
-            // scripts/run-traced-refusals.mjs swaps in a blueprint whose
-            // pinned validators carry their traces.
-            MIDGARD_REAL_BLUEPRINT_PATH:
-              process.env.MIDGARD_TRACED_INTERACTIVE_BLUEPRINT ??
-              interactiveEmulatorBlueprint,
+      // Bundled too: its plugin selects the emulator profile in a midgard-core
+      // module, and the bundle applies the same rewrite to the source it
+      // bundles. Files that need module-by-module loading run in
+      // `interactive-emulator:source`.
+      ...workspaceBundleProjects(
+        {
+          extends: true,
+          plugins: [interactiveEmulatorPlugin()],
+          test: {
+            name: "interactive-emulator",
+            include: interactiveTests,
+            globalSetup: [interactiveEmulatorSetup],
+            env: {
+              // scripts/run-traced-refusals.mjs swaps in a blueprint whose
+              // pinned validators carry their traces.
+              MIDGARD_REAL_BLUEPRINT_PATH:
+                process.env.MIDGARD_TRACED_INTERACTIVE_BLUEPRINT ??
+                interactiveEmulatorBlueprint,
+            },
           },
         },
-      },
-      // Not bundled, for the same reason.
+        {
+          packageDirectory: fileURLToPath(new URL(".", import.meta.url)),
+          sourceTransforms: [interactiveEmulatorSourceTransform],
+        },
+      ),
+      // Not bundled: wrapping it would need its plugin's rewrite as a source
+      // transform, as the interactive project passes.
       {
         extends: true,
         plugins: [curatedEmulatorPlugin()],

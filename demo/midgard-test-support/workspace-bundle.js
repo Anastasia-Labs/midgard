@@ -6,7 +6,6 @@ import {
   readFileSync,
   renameSync,
   rmSync,
-  statSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
@@ -23,6 +22,13 @@ import {
   resolveRelative,
   workspacePackages,
 } from "./workspace-bundle-files.js";
+import {
+  MAX_BUNDLES,
+  pruneWorkspaceBundles,
+  useBundle,
+} from "./workspace-bundle-cache.js";
+
+export { MAX_BUNDLES, pruneWorkspaceBundles };
 
 /**
  * The workspace bundle: the workspace packages a suite depends on, bundled
@@ -36,85 +42,6 @@ import {
  */
 
 const BUNDLE_SCHEMA = "midgard-test-bundle/v1";
-/** Bundles not used for this long are pruned when a new one is published. */
-const PRUNE_AFTER_MS = 24 * 60 * 60 * 1000;
-/**
- * At most this many bundles are kept when a new one is published, the most
- * recently used ones, even when the others were used within the day. Two for
- * each of the eight packages whose suites are bundled, so each keeps its
- * current bundle and the one before it under any mix of runs. A bundle is
- * about 30 MB, so the cache stays near half a gigabyte instead of holding
- * every bundle a day of edits produced (31 bundles, 870 MB, measured in one
- * checkout).
- */
-export const MAX_BUNDLES = 16;
-/**
- * Each run names its pid in this directory of the bundle it loads. Neither the
- * age limit nor the cap removes a bundle a running process named: its forks
- * import from it for as long as the run lasts.
- */
-const USERS_DIRECTORY = "users";
-
-const processEnded = (pid) => {
-  try {
-    process.kill(pid, 0);
-    return false;
-  } catch (error) {
-    // EPERM: a live process of another user.
-    return error.code === "ESRCH";
-  }
-};
-
-/** The pids named in `directory`'s users directory. */
-const bundleUsers = (directory) => {
-  try {
-    return readdirSync(join(directory, USERS_DIRECTORY))
-      .filter((name) => /^[1-9]\d*$/u.test(name))
-      .map(Number);
-  } catch {
-    return [];
-  }
-};
-
-/** Names this process a user of `directory`, dropping users that ended. */
-const useBundle = (directory) => {
-  const users = join(directory, USERS_DIRECTORY);
-  mkdirSync(users, { recursive: true });
-  for (const pid of bundleUsers(directory))
-    if (processEnded(pid)) rmSync(join(users, String(pid)), { force: true });
-  writeFileSync(join(users, String(process.pid)), "");
-};
-
-/**
- * Removes from `root` every entry other than `keep` that no running process
- * uses and that either went unused for `PRUNE_AFTER_MS` or falls outside the
- * `MAX_BUNDLES` most recently used bundles (`keep` counts as one). A bundle's
- * modification time is its last use. A staging directory counts only toward
- * the age limit, so a build in progress is never evicted for room.
- */
-export const pruneWorkspaceBundles = (root, keep) => {
-  const remove = (path) => {
-    if (bundleUsers(path).every(processEnded))
-      rmSync(path, { recursive: true, force: true });
-  };
-  const bundles = [];
-  for (const entry of readdirSync(root)) {
-    const path = join(root, entry);
-    if (path === keep) continue;
-    let used;
-    try {
-      used = statSync(path).mtimeMs;
-    } catch {
-      // Another run pruned it first.
-      continue;
-    }
-    if (Date.now() - used > PRUNE_AFTER_MS) remove(path);
-    else if (!entry.startsWith(".")) bundles.push({ path, used });
-  }
-  bundles.sort((a, b) => b.used - a.used);
-  for (const { path } of bundles.slice(MAX_BUNDLES - 1)) remove(path);
-};
-
 const hashTree = (hash, directory, hashed) => {
   const walk = (current) => {
     const entries = readdirSync(current, { withFileTypes: true }).sort(
@@ -155,15 +82,47 @@ const BUNDLER_MODULES = [
 /** Builds whose inputs changed underneath them before one is published. */
 const BUILD_ATTEMPTS = 3;
 
-const bundleKey = ({ analysis, options, packages }) => {
+/**
+ * Check each source transform names what decides its output: a `name`, the
+ * JSON `options` it was made with, the file URLs of the `modules` that define
+ * it, and `transform(text, path)`, which returns the rewritten text of the
+ * workspace file at `path` or `undefined` to leave it as it is.
+ */
+const checkSourceTransforms = (sourceTransforms) => {
+  for (const sourceTransform of sourceTransforms) {
+    const { name, options, modules, transform } = sourceTransform;
+    if (
+      typeof name !== "string" ||
+      options === undefined ||
+      !Array.isArray(modules) ||
+      modules.length === 0 ||
+      !modules.every((module) => String(module).startsWith("file:")) ||
+      typeof transform !== "function"
+    )
+      throw new Error(
+        `[workspace-bundle] source transform ${String(name)} must give a name, its options, the file URLs of the modules that define it, and a transform function; the bundle key covers each`,
+      );
+  }
+};
+
+const bundleKey = ({ analysis, options, packages, sourceTransforms }) => {
   const hash = createHash("sha256");
   hash.update(JSON.stringify({ options, entries: [...analysis.entries] }));
-  // The bundler's own text decides how the bundle is built.
-  for (const module of BUNDLER_MODULES) {
-    hash.update(`${module}\0`);
-    hash.update(readFileSync(new URL(module, import.meta.url)));
+  // The bundler's own text decides how the bundle is built, and each source
+  // transform's text (its function and every module it names) what the
+  // bundled source says.
+  for (const module of [
+    ...BUNDLER_MODULES.map((module) => new URL(module, import.meta.url)),
+    ...sourceTransforms.flatMap(({ modules }) =>
+      modules.map((module) => new URL(module)),
+    ),
+  ]) {
+    hash.update(`${module.href}\0`);
+    hash.update(readFileSync(module));
     hash.update("\0");
   }
+  for (const { transform } of sourceTransforms)
+    hash.update(`${transform.toString()}\0`);
   hash.update(readFileSync(join(demoDirectory, "pnpm-lock.yaml")));
   const hashed = new Set();
   for (const name of [...analysis.bundleable].sort())
@@ -178,7 +137,10 @@ const bundleKey = ({ analysis, options, packages }) => {
  * The key covers the text of this file and its two helper modules, the full
  * contents of every bundleable package directory (not just the files a
  * previous build read, so a newly added file that changes resolution changes
- * the key), the lockfile, the esbuild version and every option below. A
+ * the key), the lockfile, the esbuild version, every option below and every
+ * source transform (`checkSourceTransforms`: its name, options, function and
+ * the text of the modules defining it), so a bundle built with one rewrite is
+ * never served to a run with another or with none. A
  * changed byte anywhere means a new bundle, never a reused one. The key is
  * recomputed after esbuild finishes: if an input changed during the build, the
  * output may mix old and new source, so it is discarded and rebuilt rather
@@ -196,13 +158,29 @@ export const buildWorkspaceBundle = async (request, attempt = 1) => {
     target,
     conditions,
     resolveExternal,
+    sourceTransforms = [],
     packages = workspacePackages(),
     root = bundleRoot,
   } = request;
+  checkSourceTransforms(sourceTransforms);
   const started = performance.now();
   const version = await esbuildVersion();
-  const options = { target, conditions, version, schema: BUNDLE_SCHEMA };
-  const { key, hashed } = bundleKey({ analysis, options, packages });
+  const options = {
+    target,
+    conditions,
+    version,
+    schema: BUNDLE_SCHEMA,
+    sourceTransforms: sourceTransforms.map(({ name, options }) => ({
+      name,
+      options,
+    })),
+  };
+  const { key, hashed } = bundleKey({
+    analysis,
+    options,
+    packages,
+    sourceTransforms,
+  });
   const directory = join(root, key);
   const manifestPath = join(directory, "manifest.json");
 
@@ -262,10 +240,22 @@ export const buildWorkspaceBundle = async (request, attempt = 1) => {
             // parent (Vitest starts every worker with
             // `--experimental-import-meta-resolve`, which takes that parent),
             // and the bundled one is the same call.
+            //
+            // Each source transform rewrites a workspace file first, exactly
+            // as its Vite plugin does when the file loads from source.
             esbuild.onLoad({ filter: /\.(?:m?[jt]s|tsx)$/u }, (args) => {
               if (owner(args.path) === undefined) return undefined;
-              const text = readFileSync(args.path, "utf8");
-              if (!text.includes("import.meta")) return undefined;
+              const source = readFileSync(args.path, "utf8");
+              let text = source;
+              for (const { transform } of sourceTransforms)
+                text = transform(text, args.path) ?? text;
+              const loader = /\.tsx$/u.test(args.path)
+                ? "tsx"
+                : /\.m?ts$/u.test(args.path)
+                  ? "ts"
+                  : "js";
+              if (!text.includes("import.meta"))
+                return text === source ? undefined : { contents: text, loader };
               // The runner's `import.meta` has no `hot`; only `env` lacks a
               // faithful bundled form, and the analysis keeps modules reading
               // it out of the bundle.
@@ -283,11 +273,7 @@ export const buildWorkspaceBundle = async (request, attempt = 1) => {
                 // Same line as the source's first, so line numbers hold; a
                 // shebang is only legal as the very first bytes, so it goes.
                 contents: `const __midgardSourceImportMeta = ${meta};${text.replace(/^#!.*/u, "").replace(/\bimport\.meta\b/gu, "__midgardSourceImportMeta")}`,
-                loader: /\.tsx$/u.test(args.path)
-                  ? "tsx"
-                  : /\.m?ts$/u.test(args.path)
-                    ? "ts"
-                    : "js",
+                loader,
               };
             });
             esbuild.onResolve({ filter: /.*/u }, async (args) => {
@@ -369,7 +355,9 @@ export const buildWorkspaceBundle = async (request, attempt = 1) => {
       );
     }
     // An input edited while esbuild ran: the output matches neither key.
-    if (bundleKey({ analysis, options, packages }).key !== key) {
+    if (
+      bundleKey({ analysis, options, packages, sourceTransforms }).key !== key
+    ) {
       rmSync(staging, { recursive: true, force: true });
       if (attempt >= BUILD_ATTEMPTS)
         throw new Error(
@@ -417,8 +405,10 @@ const VITE_DEVELOPMENT_CONDITION = "development|production";
  * resolve to the bundled file (loaded natively by the fork), and any attempt
  * to load one of the bundle's input files from source fails the file loudly —
  * that would be a second, separate instance of the same module.
+ * `sourceTransforms` are the bundle's form of the project's source-rewriting
+ * Vite plugins (see `workspaceBundleProjects`).
  */
-export const workspaceBundlePlugin = ({ analysis }) => {
+export const workspaceBundlePlugin = ({ analysis, sourceTransforms = [] }) => {
   const packages = workspacePackages();
   const bundledDirectories = analysis.bundleable.map(
     (name) => packages.get(name).directory,
@@ -431,6 +421,7 @@ export const workspaceBundlePlugin = ({ analysis }) => {
       analysis,
       target,
       conditions,
+      sourceTransforms,
       resolveExternal: async (specifier, from) => {
         const resolved = await context.resolve(specifier, from, {
           skipSelf: true,

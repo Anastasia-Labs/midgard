@@ -82,6 +82,7 @@
     "workspace-bundle.js",
     "workspace-bundle-analysis.js",
     "workspace-bundle-files.js",
+    "workspace-bundle-cache.js",
     "workspace-bundle-guard.js",
     "blueprint-stamp-setup.js",
     "build-lock.js",

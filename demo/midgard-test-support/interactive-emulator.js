@@ -18,14 +18,18 @@ import { aikenBinary } from "../../scripts/lib/aiken.mjs";
 import { withBuildLock } from "./build-lock.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const profilesModule = resolve(
+  root,
+  "demo/midgard-core/src/generated-deployment-profiles.ts",
+);
 
 /**
  * One emulator-only profile's separately stamped blueprint, built under
  * `onchain/aiken/build/<directory>/plutus.json`, and the Vitest pieces that
  * select it: a plugin that selects the matching TypeScript profile inside the
- * project's module graph, and a global setup that builds (or admits) the
- * blueprint. The checkout's selected profile and default blueprint never
- * change.
+ * project's module graph, the same selection as a workspace-bundle source
+ * transform, and a global setup that builds (or admits) the blueprint. The
+ * checkout's selected profile and default blueprint never change.
  */
 export const emulatorProfileBlueprint = (profileName, directory) => {
   const blueprintPath = resolve(
@@ -33,30 +37,44 @@ export const emulatorProfileBlueprint = (profileName, directory) => {
     `onchain/aiken/build/${directory}/plutus.json`,
   );
 
+  const name = `midgard-${directory}-profile`;
+
+  /** The generated profiles module with this profile selected; undefined for
+   * any other file. */
+  const selectProfile = (code, id) => {
+    if (id !== profilesModule) return undefined;
+    for (const [exportName, table] of [
+      ["SELECTED_DEPLOYMENT_PROFILE", "DEPLOYMENT_PROFILES"],
+      ["SELECTED_DEPLOYMENT_PROFILE_DIGEST", "DEPLOYMENT_PROFILE_DIGESTS"],
+    ]) {
+      const pattern = new RegExp(`export const ${exportName} =[^;]+;`);
+      if (!pattern.test(code))
+        throw new Error(`Missing generated ${exportName}`);
+      code = code.replace(
+        pattern,
+        `export const ${exportName} = ${table}["${profileName}"];`,
+      );
+    }
+    return code;
+  };
+
   /** Select the profile only inside this Vitest project's module graph. */
   const plugin = () => ({
-    name: `midgard-${directory}-profile`,
+    name,
     transform(code, id) {
-      if (
-        id !==
-        resolve(root, "demo/midgard-core/src/generated-deployment-profiles.ts")
-      )
-        return null;
-      for (const [exportName, table] of [
-        ["SELECTED_DEPLOYMENT_PROFILE", "DEPLOYMENT_PROFILES"],
-        ["SELECTED_DEPLOYMENT_PROFILE_DIGEST", "DEPLOYMENT_PROFILE_DIGESTS"],
-      ]) {
-        const pattern = new RegExp(`export const ${exportName} =[^;]+;`);
-        if (!pattern.test(code))
-          throw new Error(`Missing generated ${exportName}`);
-        code = code.replace(
-          pattern,
-          `export const ${exportName} = ${table}["${profileName}"];`,
-        );
-      }
-      return { code, map: null };
+      const selected = selectProfile(code, id);
+      return selected === undefined ? null : { code: selected, map: null };
     },
   });
+
+  /** The same selection for the workspace bundle (`workspaceBundleProjects`),
+   * keyed by this module's text and the profile it selects. */
+  const sourceTransform = {
+    name,
+    options: { profileName, directory },
+    modules: [import.meta.url],
+    transform: selectProfile,
+  };
 
   /** Why the cached blueprint cannot be used, or undefined when it can. */
   const staleness = () => {
@@ -135,7 +153,13 @@ export const emulatorProfileBlueprint = (profileName, directory) => {
     );
   };
 
-  return { profile: profileName, blueprint: blueprintPath, plugin, setup };
+  return {
+    profile: profileName,
+    blueprint: blueprintPath,
+    plugin,
+    sourceTransform,
+    setup,
+  };
 };
 
 /**
@@ -153,6 +177,7 @@ export const interactiveEmulatorProfile = interactive.profile;
 export const interactiveEmulatorBlueprint = interactive.blueprint;
 export const interactiveEmulatorSetup = fileURLToPath(import.meta.url);
 export const interactiveEmulatorPlugin = interactive.plugin;
+export const interactiveEmulatorSourceTransform = interactive.sourceTransform;
 
 export default interactive.setup;
 

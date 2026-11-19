@@ -8,6 +8,8 @@
  * each pinned negative against its own project's blueprint.
  */
 export const interactiveTests = [
+  // Proves the project's files see the emulator profile.
+  "./tests/interactive-emulator-profile.test.ts",
   "./tests/submit-init-emulator-transition-trace-final-deep-deposit.test.ts",
   // Thousands of chained step-03 scans: longer than a 900 s maturity.
   "./tests/transaction-output-non-canonical-duplicate-asset-max-shape.test.ts",

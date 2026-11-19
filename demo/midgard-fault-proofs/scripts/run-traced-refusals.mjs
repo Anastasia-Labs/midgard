@@ -172,7 +172,7 @@ const projects = [
   },
   {
     name: "interactive-emulator",
-    projects: ["interactive-emulator"],
+    projects: ["interactive-emulator", "interactive-emulator:source"],
     sites: sitesIn(true),
     blueprint: async () => {
       await prepareInteractiveBlueprint();

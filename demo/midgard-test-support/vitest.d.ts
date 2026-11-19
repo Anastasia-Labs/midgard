@@ -38,6 +38,20 @@ export declare const interactiveEmulatorPlugin: () => {
   transform(code: string, id: string): { code: string; map: null } | null;
 };
 
+/**
+ * A rewrite the workspace bundle applies to the source it bundles, as the
+ * Vite plugin of the same name does to source loaded module by module; see
+ * `workspaceBundleProjects`.
+ */
+export interface WorkspaceSourceTransform {
+  readonly name: string;
+  readonly options: unknown;
+  readonly modules: readonly string[];
+  readonly transform: (text: string, path: string) => string | undefined;
+}
+
+export declare const interactiveEmulatorSourceTransform: WorkspaceSourceTransform;
+
 export declare const curatedEmulatorBlueprint: string;
 export declare const curatedEmulatorSetup: string;
 export declare const curatedEmulatorPlugin: () => {
@@ -100,5 +114,8 @@ export declare const workspaceBundleProjects: <
   },
 >(
   project: Project,
-  options: { readonly packageDirectory: string },
+  options: {
+    readonly packageDirectory: string;
+    readonly sourceTransforms?: readonly WorkspaceSourceTransform[];
+  },
 ) => Project[];

@@ -152,6 +152,7 @@
     "tests/input-set-uniqueness-wrongful-rejection-publication-fit.test.ts": 2,
     "tests/input-set-uniqueness-wrongful-rejection.test.ts": 1,
     "tests/input-set-uniqueness.test.ts": 1,
+    "tests/interactive-emulator-profile.test.ts": 2.1,
     "tests/invalid-range-wrongful-rejection-lifecycle.test.ts": 3.9,
     "tests/invalid-range-wrongful-rejection-publication-fit.test.ts": 1.9,
     "tests/invalid-range-wrongful-rejection.test.ts": 1,

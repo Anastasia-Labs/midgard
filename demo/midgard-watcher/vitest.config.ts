@@ -7,6 +7,7 @@ import {
   interactiveEmulatorBlueprint,
   interactiveEmulatorPlugin,
   interactiveEmulatorSetup,
+  interactiveEmulatorSourceTransform,
   isolatedForksPool,
   midgardSourceEnvironments,
   rawSqlLoaderPlugin,
@@ -88,17 +89,25 @@ const config = defineConfig({
         },
         { packageDirectory: fileURLToPath(new URL(".", import.meta.url)) },
       ),
-      // Not bundled: its plugin rewrites a midgard-core module.
-      {
-        extends: true,
-        plugins: [interactiveEmulatorPlugin()],
-        test: {
-          name: "interactive-emulator",
-          include: interactiveTests,
-          globalSetup: [interactiveEmulatorSetup],
-          env: { MIDGARD_REAL_BLUEPRINT_PATH: interactiveEmulatorBlueprint },
+      // Bundled too: its plugin selects the emulator profile in a midgard-core
+      // module, and the bundle applies the same rewrite to the source it
+      // bundles.
+      ...workspaceBundleProjects(
+        {
+          extends: true,
+          plugins: [interactiveEmulatorPlugin()],
+          test: {
+            name: "interactive-emulator",
+            include: interactiveTests,
+            globalSetup: [interactiveEmulatorSetup],
+            env: { MIDGARD_REAL_BLUEPRINT_PATH: interactiveEmulatorBlueprint },
+          },
         },
-      },
+        {
+          packageDirectory: fileURLToPath(new URL(".", import.meta.url)),
+          sourceTransforms: [interactiveEmulatorSourceTransform],
+        },
+      ),
     ],
     // Packs Node CI's `--shard=i/3` by the CI seconds each file took and starts
     // the longest files first: a handful of indexer, runtime and journey files
