@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { configDefaults } from "vitest/config";
 
+import { readShardDurationTable } from "./duration-plan.js";
 import { workspaceBundlePlugin } from "./workspace-bundle.js";
 import { analyzeSuite } from "./workspace-bundle-analysis.js";
 
@@ -350,6 +351,104 @@ export const workspaceBundleProjects = (project, { packageDirectory }) => {
           },
         ]),
   ];
+};
+
+/**
+ * A file whose CI seconds in its package's duration table reach this is in
+ * the slow tier; every other file, including one the table does not know yet,
+ * is in the fast tier.
+ */
+export const SLOW_TIER_FILE_SECONDS = 60;
+
+const TIERS = new Set(["fast", "slow", "all"]);
+
+/**
+ * The tier `MIDGARD_TEST_TIER` selects: `fast`, `slow`, or `all` (the
+ * default). Anything else refuses the run rather than silently running
+ * everything.
+ */
+export const selectedTestTier = () => {
+  const tier = process.env.MIDGARD_TEST_TIER?.trim() || "all";
+  if (!TIERS.has(tier))
+    throw new Error(
+      `MIDGARD_TEST_TIER must be fast, slow or all, got ${JSON.stringify(tier)}`,
+    );
+  return tier;
+};
+
+/**
+ * Restrict a package's projects to the tier `MIDGARD_TEST_TIER` selects, by
+ * the CI seconds in its duration table: files at or over `slowSeconds` are
+ * the slow tier (maximum shapes, maximum lifecycles, long journeys), the rest
+ * the fast tier a developer runs while iterating. The two tiers partition the
+ * files: `fast` excludes exactly the slow files and `slow` includes exactly
+ * them, project by project, so fast plus slow is the whole suite. Without a
+ * tier (the default, and CI) the projects are returned unchanged.
+ *
+ * Apply it to the finished project list (after `workspaceBundleProjects`), so
+ * a file keeps the project it would run in without a tier.
+ */
+export const durationTierProjects = (
+  projects,
+  { tablePath, packageDirectory, slowSeconds = SLOW_TIER_FILE_SECONDS },
+) => {
+  const tier = selectedTestTier();
+  if (tier === "all") return projects;
+  const slow = new Set(
+    [...readShardDurationTable(tablePath).files]
+      .filter(([, seconds]) => seconds >= slowSeconds)
+      .map(([file]) => file),
+  );
+  const asPattern = (file) => `./${file}`;
+  if (tier === "fast")
+    return projects.map((project) => ({
+      ...project,
+      test: {
+        ...project.test,
+        exclude: [
+          ...(project.test?.exclude ?? configDefaults.exclude),
+          ...[...slow].map(asPattern),
+        ],
+      },
+    }));
+  const restricted = projects
+    .map((project) => ({
+      ...project,
+      test: {
+        ...project.test,
+        include: listTestFiles(
+          packageDirectory,
+          project.test?.include ?? configDefaults.include,
+          project.test?.exclude ?? configDefaults.exclude,
+        )
+          .map((file) => relative(packageDirectory, file).split("\\").join("/"))
+          .filter((file) => slow.has(file))
+          .map(asPattern),
+      },
+    }))
+    .filter((project) => project.test.include.length > 0);
+  // No slow file at all: one project with nothing to include, so Vitest
+  // reports that no test file was found instead of running the package.
+  return restricted.length > 0
+    ? restricted
+    : [{ ...projects[0], test: { ...projects[0].test, include: [] } }];
+};
+
+/**
+ * A package's whole Vitest config with its `test.projects` restricted by
+ * {@link durationTierProjects}: `export default withDurationTier(defineConfig(
+ * { ... }), { tablePath, packageDirectory })`.
+ */
+export const withDurationTier = (config, options) => {
+  if (!Array.isArray(config.test?.projects))
+    throw new Error("withDurationTier needs a config with test.projects");
+  return {
+    ...config,
+    test: {
+      ...config.test,
+      projects: durationTierProjects(config.test.projects, options),
+    },
+  };
 };
 
 export {

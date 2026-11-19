@@ -35,6 +35,8 @@
     "replay": "env MALLOC_MMAP_THRESHOLD_=131072 node dist/cli.js replay",
     "start": "env MALLOC_MMAP_THRESHOLD_=131072 node dist/cli.js start",
     "test": "node ../scripts/package-test.mjs",
+    "test:fast": "MIDGARD_TEST_TIER=fast node ../scripts/package-test.mjs",
+    "test:slow": "MIDGARD_TEST_TIER=slow node ../scripts/package-test.mjs",
     "typecheck": "tsc --noEmit",
     "build:contrib-raw": "node ../scripts/package-tasks.mjs build"
   },

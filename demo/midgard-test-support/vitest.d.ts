@@ -57,6 +57,42 @@ export declare const preprodRehearsalPlugin: () => {
   transform(code: string, id: string): { code: string; map: null } | null;
 };
 
+/** CI seconds at which a file belongs to the slow tier; see vitest.js. */
+export declare const SLOW_TIER_FILE_SECONDS: number;
+
+/** The tier `MIDGARD_TEST_TIER` selects. */
+export declare const selectedTestTier: () => "fast" | "slow" | "all";
+
+/**
+ * The projects restricted to the tier `MIDGARD_TEST_TIER` selects, by the
+ * CI seconds in the package's duration table; unchanged without a tier.
+ */
+export declare const durationTierProjects: <
+  Project extends {
+    readonly test?: {
+      readonly include?: readonly string[];
+      readonly exclude?: readonly string[];
+    };
+  },
+>(
+  projects: readonly Project[],
+  options: {
+    readonly tablePath: string;
+    readonly packageDirectory: string;
+    readonly slowSeconds?: number;
+  },
+) => Project[];
+
+/** `config` with its `test.projects` restricted by `durationTierProjects`. */
+export declare const withDurationTier: <Config extends object>(
+  config: Config,
+  options: {
+    readonly tablePath: string;
+    readonly packageDirectory: string;
+    readonly slowSeconds?: number;
+  },
+) => Config;
+
 export declare const workspaceBundleProjects: <
   Project extends {
     readonly extends?: true | string;

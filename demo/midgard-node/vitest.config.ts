@@ -10,6 +10,7 @@ import {
   midgardSourceEnvironments,
   rawSqlLoaderPlugin,
   runSharedFixturesGlobalSetup,
+  withDurationTier,
   workspaceBundleProjects,
 } from "@al-ft/midgard-test-support/vitest";
 import { configDefaults, defineConfig } from "vitest/config";
@@ -39,7 +40,14 @@ const interactiveTests = [
 // is opt-in per run instead — `MIDGARD_NODE_TEST_BAIL=3 pnpm test`.
 const bail = parsePositiveInteger(process.env.MIDGARD_NODE_TEST_BAIL);
 
-export default defineConfig({
+/** CI seconds per file: shards are packed by them, and they split the
+ * suite into its fast and slow tiers (`MIDGARD_TEST_TIER=fast|slow`; unset,
+ * as in CI, runs everything). */
+const durationTablePath = fileURLToPath(
+  new URL("./tests/support/ci-file-durations.json", import.meta.url),
+);
+
+const config = defineConfig({
   plugins: [rawSqlLoaderPlugin()],
   test: {
     // The one-process-per-file requirement is stated once in
@@ -69,9 +77,7 @@ export default defineConfig({
     // holds inside every shard unchanged. The table refreshes itself from CI;
     // see `@al-ft/midgard-test-support/duration-shards`.
     ...durationShards({
-      tablePath: fileURLToPath(
-        new URL("./tests/support/ci-file-durations.json", import.meta.url),
-      ),
+      tablePath: durationTablePath,
       reporters: [["default", { summary: false }]],
     }),
     // Workspace packages load from a per-run source bundle; files that need
@@ -130,4 +136,9 @@ export default defineConfig({
   esbuild: {
     target: "es2020",
   },
+});
+
+export default withDurationTier(config, {
+  tablePath: durationTablePath,
+  packageDirectory: fileURLToPath(new URL(".", import.meta.url)),
 });

@@ -215,6 +215,7 @@ export const runTests = async (
     timeoutMs,
     refuseUncollected = false,
     reach: findReach = reachedTests,
+    tier,
   } = {},
 ) => {
   const pkg = packageByName(root, name);
@@ -222,6 +223,22 @@ export const runTests = async (
   const cwd = resolve(root, pkg.directory);
   if (related.length && files.length)
     throw new Error("--related and --file are exclusive");
+  // One tier of a package with a duration table (`withDurationTier` in
+  // @al-ft/midgard-test-support/vitest): the fast tier while iterating, the
+  // slow one before a push. Named files need no tier.
+  if (tier !== undefined && tier !== "fast" && tier !== "slow")
+    throw new Error(`--tier must be fast or slow, got ${tier}`);
+  if (tier !== undefined && (files.length || related.length))
+    throw new Error("--tier is exclusive with --file and --related");
+  if (tier !== undefined && flags.config !== undefined)
+    throw new Error("--tier is for the package's default config, not --config");
+  if (
+    tier !== undefined &&
+    !existsSync(
+      resolve(root, pkg.directory, "tests/support/ci-file-durations.json"),
+    )
+  )
+    throw new Error(`${pkg.name} has no duration table, so no tiers`);
   // Another config is for a selection the default run leaves out on purpose
   // (the watcher journeys, some of which need a live devnet): name its files.
   if (flags.config !== undefined) {
@@ -318,6 +335,8 @@ export const runTests = async (
     ),
     POSTGRES_HOST: "127.0.0.1",
     POSTGRES_PORT: "5433",
+    // An ambient tier never narrows a run that did not ask for one.
+    MIDGARD_TEST_TIER: tier ?? "all",
   };
   if (files.includes("tests/published-workflow-deployment.test.ts"))
     overrides.MIDGARD_PUBLISHED_WORKFLOW_RECEIPT_PATH = resolve(
@@ -512,6 +531,7 @@ export const runTests = async (
     failures: failed,
     blueprintAction: prepared.blueprintAction,
     ...(reach ? { reach } : {}),
+    ...(tier ? { tier } : {}),
     databasePrefix: runEnv.MIDGARD_TEST_DATABASE_PREFIX,
     databaseCleanup,
     removedWorktreeCleanup,

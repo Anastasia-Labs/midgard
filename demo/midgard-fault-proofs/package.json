@@ -124,6 +124,8 @@
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",
     "test": "node ../scripts/package-test.mjs",
+    "test:fast": "MIDGARD_TEST_TIER=fast node ../scripts/package-test.mjs",
+    "test:slow": "MIDGARD_TEST_TIER=slow node ../scripts/package-test.mjs",
     "bench": "vitest run --config vitest.bench.config.ts",
     "test:traced-refusals": "node scripts/run-traced-refusals.mjs",
     "check:builder-exports": "node scripts/check-builder-exports.mjs",

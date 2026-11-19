@@ -126,6 +126,17 @@ pnpm --dir demo/midgard-node test
 pnpm --dir demo/da-committee-node test
 ```
 
+The fault-proof, node and watcher suites also run as a fast and a slow tier,
+split by each file's CI seconds in its `tests/support/ci-file-durations.json`
+(60 s and over is slow). Iterate on the fast tier and run the slow tier, which
+holds the maximum-shape proofs and the long lifecycles, before handing over;
+CI always runs both:
+
+```sh
+pnpm --dir demo/midgard-fault-proofs run test:fast
+pnpm --dir demo/midgard-fault-proofs run test:slow
+```
+
 Set `MIDGARD_REAL_BLUEPRINT_PATH` to the absolute freshly built blueprint when
 running real-contract scenarios. Workspace source conditions resolve sibling
 source for typecheck/lint/Vitest; scripts that invoke plain `node` still require

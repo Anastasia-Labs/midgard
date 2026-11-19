@@ -51,8 +51,8 @@ export const HELP = `Midgard deterministic contributor tools (run from any cwd)
   node scripts/contrib.mjs prepare --package NAME [--plan | --execute] [--source-only]
   node scripts/contrib.mjs build --package NAME [--force]
   node scripts/contrib.mjs native --package NAME
-  node scripts/contrib.mjs test --package NAME [--file PATH... | --related PATH...] [--name REGEX]
-      [--seed N] [--source-only] [--maxWorkers N] [--exclude GLOB]... [--disableConsoleIntercept]
+  node scripts/contrib.mjs test --package NAME [--file PATH... | --related PATH... | --tier fast|slow]
+      [--name REGEX] [--seed N] [--source-only] [--maxWorkers N] [--exclude GLOB]... [--disableConsoleIntercept]
       [--config FILE (with --file)] [--timeout-seconds N]
   node scripts/contrib.mjs mutate --target PATH --from TEXT --to TEXT [--package NAME]
       [--file TEST...] [--name REGEX] [--expect REGEX] [--seed N]
@@ -179,6 +179,7 @@ const valueOptions = new Set([
   "to",
   "expect",
   "timeout-seconds",
+  "tier",
 ]);
 // Mutation text is taken verbatim: it may be empty or start with "--".
 const verbatimOptions = new Set(["from", "to"]);
@@ -398,6 +399,7 @@ export const main = async (argv) => {
     else if (command === "test" && !action)
       result = await runTests(root, required("package"), {
         ...execution,
+        tier: options.tier,
         ...(options["timeout-seconds"] === undefined
           ? {}
           : { timeoutMs: Number(options["timeout-seconds"]) * 1000 }),

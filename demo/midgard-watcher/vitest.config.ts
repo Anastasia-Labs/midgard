@@ -11,6 +11,7 @@ import {
   midgardSourceEnvironments,
   rawSqlLoaderPlugin,
   runSharedFixturesGlobalSetup,
+  withDurationTier,
   workspaceBundleProjects,
 } from "@al-ft/midgard-test-support/vitest";
 import { defineConfig } from "vitest/config";
@@ -55,7 +56,14 @@ const interactiveTests = [
   "./tests/fault-proofs/published-deposit-trace-live-tail.test.ts",
 ];
 
-export default defineConfig({
+/** CI seconds per file: shards are packed by them, and they split the
+ * suite into its fast and slow tiers (`MIDGARD_TEST_TIER=fast|slow`; unset,
+ * as in CI, runs everything). */
+const durationTablePath = fileURLToPath(
+  new URL("./tests/support/ci-file-durations.json", import.meta.url),
+);
+
+const config = defineConfig({
   plugins: [rawSqlLoaderPlugin()],
   test: {
     // Refuses the run when onchain/aiken/plutus.json is stale.
@@ -98,9 +106,7 @@ export default defineConfig({
     // left one shard at about twice another's wall time. The table refreshes
     // itself from CI; see `@al-ft/midgard-test-support/duration-shards`.
     ...durationShards({
-      tablePath: fileURLToPath(
-        new URL("./tests/support/ci-file-durations.json", import.meta.url),
-      ),
+      tablePath: durationTablePath,
       reporters: ["default"],
     }),
     environment: "node",
@@ -125,4 +131,9 @@ export default defineConfig({
     hookTimeout: 120_000,
   },
   environments: midgardSourceEnvironments(),
+});
+
+export default withDurationTier(config, {
+  tablePath: durationTablePath,
+  packageDirectory: fileURLToPath(new URL(".", import.meta.url)),
 });

@@ -12,6 +12,7 @@ import {
   isolatedForksPool,
   midgardSourceEnvironments,
   rawSqlLoaderPlugin,
+  withDurationTier,
   workspaceBundleProjects,
 } from "@al-ft/midgard-test-support/vitest";
 import { defineConfig } from "vitest/config";
@@ -48,7 +49,14 @@ const parseMaxForks = (raw: string | undefined): number => {
 
 const maxForks = parseMaxForks(process.env.MIDGARD_FAULT_PROOF_FORKS);
 
-export default defineConfig({
+/** CI seconds per file: shards are packed by them, and they split the
+ * suite into its fast and slow tiers (`MIDGARD_TEST_TIER=fast|slow`; unset,
+ * as in CI, runs everything). */
+const durationTablePath = fileURLToPath(
+  new URL("./tests/support/ci-file-durations.json", import.meta.url),
+);
+
+const config = defineConfig({
   plugins: [rawSqlLoaderPlugin()],
   test: {
     // Every project extends this config, so every emulator submission in the
@@ -106,9 +114,7 @@ export default defineConfig({
     // fork's wall time by itself. The table refreshes itself from CI; see
     // `@al-ft/midgard-test-support/duration-shards`.
     ...durationShards({
-      tablePath: fileURLToPath(
-        new URL("./tests/support/ci-file-durations.json", import.meta.url),
-      ),
+      tablePath: durationTablePath,
       reporters: ["verbose"],
     }),
     // The one-process-per-file requirement, and why `isolate` must stay
@@ -123,4 +129,9 @@ export default defineConfig({
     ...isolatedForksPool({ maxForks }),
   },
   environments: midgardSourceEnvironments(),
+});
+
+export default withDurationTier(config, {
+  tablePath: durationTablePath,
+  packageDirectory: fileURLToPath(new URL(".", import.meta.url)),
 });

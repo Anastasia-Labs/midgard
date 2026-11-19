@@ -7,6 +7,7 @@ node scripts/contrib.mjs test --package midgard-node --file tests/validation-wor
 node scripts/contrib.mjs test --package midgard-node --file tests/database.test.ts --seed 42
 node scripts/contrib.mjs test --package midgard-watcher --maxWorkers 2
 node scripts/contrib.mjs test --package midgard-node --related demo/midgard-core/src/canonical-json.ts
+node scripts/contrib.mjs test --package midgard-fault-proofs --tier fast
 node scripts/contrib.mjs test --package midgard-node-tools --config vitest.watcher-journeys.config.ts \
   --file devnet/watcher-journeys/catalogue.test.ts
 node scripts/contrib.mjs build --package midgard-sdk
@@ -73,6 +74,22 @@ reached prints `no test reached; nothing to run` and exits 0 with a
 changed files, `whole`, the reached files and why). A file named only through
 a computed path with no part of its name spelled is the one edge it cannot
 see.
+
+`--tier fast|slow` (exclusive with `--file`, `--related` and `--config`) runs
+one tier of a package whose `tests/support/ci-file-durations.json` exists
+(midgard-fault-proofs, midgard-node, midgard-watcher). A file whose CI seconds
+in that table reach `SLOW_TIER_FILE_SECONDS` (60, in
+`demo/midgard-test-support/vitest.js`) is slow; every other file, including
+one the table does not know yet, is fast. The two partition the package, so
+fast plus slow is the whole run: run the fast tier while iterating and the
+slow tier, or the whole package, before handing over. The tier is the
+`MIDGARD_TEST_TIER` environment variable the package config reads
+(`withDurationTier`); `pnpm --dir <package> run test:fast` and `test:slow` set
+it for an ordinary run. Without `--tier` contrib sets it to `all`, so an
+ambient value never narrows a run, and CI never sets it. The tiers move as the
+table is refreshed from CI.
+[script: scripts/contrib/run-tests.test.mjs]
+[script: demo/midgard-test-support/tests/duration-tier.test.mjs]
 
 The terminal gets a short verdict on stderr (counts, then each failed test or
 file that failed to load with its first message line, the log and the receipt)

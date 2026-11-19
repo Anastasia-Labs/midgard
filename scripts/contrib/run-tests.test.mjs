@@ -287,7 +287,7 @@ const value = (name) => rest.filter((arg) => arg.startsWith('--' + name + '=')).
 const glob = (pattern) => new RegExp('^' + pattern.replace(/[.+?^$()|[\\]\\\\]/g, '\\\\$&').replace(/\\*\\*/g, '\\0').replace(/\\*/g, '[^/]*').replace(/\\0/g, '.*') + '$');
 const filters = rest.filter((arg, index) => !arg.startsWith('--') && rest[index - 1] !== '--testNamePattern');
 const directory = value('config').length ? 'journeys' : 'tests';
-const collected = readdirSync(directory).map((name) => directory + '/' + name)
+const collected = readdirSync(directory).filter((name) => name.endsWith('.test.ts')).map((name) => directory + '/' + name)
   .filter((file) => !filters.length || filters.some((filter) => file.includes(filter)))
   .filter((file) => !value('exclude').some((pattern) => glob(pattern).test(file)));
 if (mode === 'list') {
@@ -295,7 +295,7 @@ if (mode === 'list') {
   process.exit(0);
 }
 const lease = listResources().some((entry) => entry.resource === 'workspace:' + process.env.FAKE_ROOT);
-appendFileSync(process.env.FAKE_LOG, JSON.stringify({vitest: rest, NODE_ENV: process.env.NODE_ENV, lease}) + '\\n');
+appendFileSync(process.env.FAKE_LOG, JSON.stringify({vitest: rest, NODE_ENV: process.env.NODE_ENV, tier: process.env.MIDGARD_TEST_TIER, lease}) + '\\n');
 for (const file of collected) if (readFileSync(file, 'utf8').includes('RUN_CLI')) {
   const result = spawnSync(process.execPath, [join(process.cwd(), 'dist', 'cli.js')], {encoding:'utf8'});
   if (result.status !== 0) throw new Error(result.stderr || 'compiled CLI failed');
@@ -679,6 +679,53 @@ test("--related is a test option, exclusive with --file", async (t) => {
     /exclusive/u,
   );
   assert.deepEqual(calls(), []);
+});
+
+test("--tier picks a tier of a package with a duration table, and only of the whole package", async (t) => {
+  assert.equal(
+    parse(["test", "--package", "example", "--tier", "fast"]).tier,
+    "fast",
+  );
+  const { root, env, calls } = workspace(
+    t,
+    { command: ["vitest", "run"] },
+    { "a.test.ts": "" },
+  );
+  await assert.rejects(
+    runTests(root, "example", { tier: "fast", sourceOnly: true, env }),
+    /no duration table/u,
+  );
+  atomicJson(
+    resolve(root, "demo/example/tests/support/ci-file-durations.json"),
+    {
+      files: {},
+    },
+  );
+  for (const [options, refusal] of [
+    [{ tier: "quick" }, /fast or slow/u],
+    [{ tier: "fast", files: ["tests/a.test.ts"] }, /exclusive/u],
+    [{ tier: "fast", related: ["a.ts"] }, /exclusive/u],
+    [{ tier: "slow", flags: { config: "vitest.other.ts" } }, /--config/u],
+  ])
+    await assert.rejects(
+      runTests(root, "example", { ...options, sourceOnly: true, env }),
+      refusal,
+    );
+  assert.deepEqual(calls(), []);
+  const receipt = await runTests(root, "example", {
+    tier: "fast",
+    sourceOnly: true,
+    env: { ...env, MIDGARD_TEST_TIER: "slow" },
+  });
+  assert.equal(receipt.status, "passed", receipt.reason ?? receipt.reportError);
+  assert.equal(receipt.tier, "fast");
+  assert.equal(calls().at(-1).tier, "fast");
+  // An ambient tier never narrows a run that did not ask for one.
+  await runTests(root, "example", {
+    sourceOnly: true,
+    env: { ...env, MIDGARD_TEST_TIER: "fast" },
+  });
+  assert.equal(calls().at(-1).tier, "all");
 });
 
 test("--config runs named files of another package config, and only named files", async (t) => {
