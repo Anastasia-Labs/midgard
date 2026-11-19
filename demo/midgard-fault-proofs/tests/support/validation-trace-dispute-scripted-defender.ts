@@ -57,24 +57,32 @@ export const scriptedTrace = (
   const depth = validationTraceDepthForStepCount(stepCount);
   const pendingHash = hashMidgardValidationMachineState(PENDING);
   const padding = new MidgardValidationTracePadding(pendingHash);
-  const agreed = Array.from(
-    { length: agreedUpTo + 1 },
-    (_, index) => material.leafProof(index).stateHash,
-  );
-  const memo = new Map<string, Hash>();
+  // The agreed state hashes and the memoised nodes over them live in one
+  // buffer per level, read through views: a deep trace keeps hundreds of
+  // thousands of them, and kept one by one each small pooled copy would pin
+  // an 8 KiB Buffer pool slab.
+  const agreedHashes = Buffer.alloc((agreedUpTo + 1) * 32);
+  for (let index = 0; index <= agreedUpTo; index += 1)
+    material.leafProof(index).stateHash.copy(agreedHashes, index * 32);
+  const agreed = (index: number): Hash =>
+    agreedHashes.subarray(index * 32, index * 32 + 32);
+  const memo = Array.from({ length: depth + 1 }, (_, height) => {
+    const count = Math.floor(agreedUpTo / 2 ** height) + 1;
+    return { hashes: Buffer.alloc(count * 32), known: new Uint8Array(count) };
+  });
   /** The node over leaves [index * 2^height, (index + 1) * 2^height). */
   const node = (height: number, index: number): Hash => {
     if (index * 2 ** height > agreedUpTo) return padding.root(height);
-    if (height === 0) return midgardValidationTraceLeafHash(agreed[index]!);
-    const key = `${height.toString()}:${index.toString()}`;
-    const cached = memo.get(key);
-    if (cached !== undefined) return cached;
-    const hash = midgardValidationTraceBranchHash(
+    if (height === 0) return midgardValidationTraceLeafHash(agreed(index));
+    const level = memo[height]!;
+    const cached = level.hashes.subarray(index * 32, index * 32 + 32);
+    if (level.known[index] === 1) return cached;
+    midgardValidationTraceBranchHash(
       node(height - 1, 2 * index),
       node(height - 1, 2 * index + 1),
-    );
-    memo.set(key, hash);
-    return hash;
+    ).copy(cached);
+    level.known[index] = 1;
+    return cached;
   };
   const proofAt = (stateIndex: number): MidgardValidationTraceProof => {
     const siblings: Hash[] = [];
@@ -85,7 +93,7 @@ export const scriptedTrace = (
     }
     return {
       stateIndex,
-      stateHash: stateIndex <= agreedUpTo ? agreed[stateIndex]! : pendingHash,
+      stateHash: stateIndex <= agreedUpTo ? agreed(stateIndex) : pendingHash,
       siblings,
     };
   };
