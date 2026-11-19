@@ -12,7 +12,7 @@
  * dispute's pending claim, case and bond; field publication and certificate
  * rows are in `own-field-carriage-installed.ts`. Other roles join later.
  */
-import { startScriptDecodeWalk } from "@al-ft/midgard-validation";
+import { startScriptDecodeWalk } from "@al-ft/midgard-validation/script-decode.step-walk";
 import {
   CML,
   coreToTxOutput,

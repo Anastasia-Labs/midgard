@@ -10,7 +10,7 @@ import {
   FraudProofL1CheckpointChangedError,
   FraudProofL1RefusedError,
   FraudProofL1UnavailableError,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/l1-source";
 import { afterEach, expect, it, vi } from "vitest";
 
 import {

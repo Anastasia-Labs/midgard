@@ -5,7 +5,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { setTimeout as waitForDisk } from "node:timers/promises";
 
-import { WALLET_ONLY_VALIDITY_MS } from "@al-ft/midgard-fault-proofs";
+import { WALLET_ONLY_VALIDITY_MS } from "@al-ft/midgard-fault-proofs/wallet-only-validity";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { WatcherFaultProofExecutionAdmission } from "../../src/fault-proofs/fault-proof-execution.js";

@@ -4,13 +4,11 @@ import { join } from "node:path";
 
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import {
-  buildCountedRoot,
-  canonicalBlockEvidenceFromVerifiedPayload,
-  detectTransitionTraceFaults,
-  DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
-} from "@al-ft/midgard-fault-proofs";
+import { canonicalBlockEvidenceFromVerifiedPayload } from "@al-ft/midgard-fault-proofs/evidence";
 import { authenticatedHeaderObservation } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
+import { detectTransitionTraceFaults } from "@al-ft/midgard-fault-proofs/transition-trace/detect";
+import { buildCountedRoot } from "@al-ft/midgard-fault-proofs/transition-trace/phas";
+import { DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY } from "@al-ft/midgard-fault-proofs/workflow/complete-replay";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";

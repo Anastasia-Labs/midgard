@@ -1,5 +1,5 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { placeholderValidationTraceDescriptorV1 } from "@al-ft/midgard-validation";
+import { placeholderValidationTraceDescriptorV1 } from "@al-ft/midgard-validation/validation-machine";
 import { Data } from "@lucid-evolution/lucid";
 
 /**

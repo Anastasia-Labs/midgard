@@ -3,8 +3,8 @@
  * input-existence chronologies. */
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
-import { canonicalCommittedWithdrawalTransitionEffect } from "@al-ft/midgard-validation";
 import { makeOutput } from "@al-ft/midgard-validation/tests/validation-fixtures";
+import { canonicalCommittedWithdrawalTransitionEffect } from "@al-ft/midgard-validation/transition-effect";
 import { Data } from "@lucid-evolution/lucid";
 
 import { ledgerEntriesRoot, type LedgerEntry } from "../../src/ledger-at.js";

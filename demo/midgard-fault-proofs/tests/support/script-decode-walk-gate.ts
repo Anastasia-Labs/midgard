@@ -18,7 +18,7 @@
  * WebAssembly heap out. Every shape belongs to exactly one group (checked by
  * the type below).
  */
-import { scriptDecodeRecordOfScript } from "@al-ft/midgard-validation";
+import { scriptDecodeRecordOfScript } from "@al-ft/midgard-validation/script-decode.step-walk";
 import {
   Emulator,
   generateEmulatorAccount,

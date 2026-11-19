@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
-import { createWorkflowActuationPermitController } from "@al-ft/midgard-fault-proofs";
+import { createWorkflowActuationPermitController } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { listWatcherProofObjectives } from "../../src/fault-proofs/fault-proof-objective-table.js";

@@ -1,9 +1,11 @@
 import {
   STATE_QUEUE_REMOVAL_VALIDITY_BACKDATE_MS,
   STATE_QUEUE_REMOVAL_VALIDITY_WINDOW_MS,
-  type TimeoutCorrectionJournal,
-  type TimeoutCorrectionJournalStore,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/remove-fraudulent-block";
+import type {
+  TimeoutCorrectionJournal,
+  TimeoutCorrectionJournalStore,
+} from "@al-ft/midgard-fault-proofs/remove-unattested-block";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, type Either, Ref } from "effect";
 

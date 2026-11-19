@@ -5,7 +5,7 @@ import { isAbsolute, join, normalize } from "node:path";
 import { createInterface } from "node:readline";
 
 import { canonicalJson } from "@al-ft/midgard-core/canonical-json";
-import { type FraudProofWorkflowTerminal } from "@al-ft/midgard-fault-proofs";
+import type { FraudProofWorkflowTerminal } from "@al-ft/midgard-fault-proofs/workflow/journal";
 import { CML, coreToUtxo } from "@lucid-evolution/lucid";
 import {
   readWatcherFaultDecisionEvidence,

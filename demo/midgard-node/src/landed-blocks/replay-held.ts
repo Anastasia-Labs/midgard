@@ -8,10 +8,8 @@
  * whatever their message, the hold is `replay_stuck`, still retried; the
  * node keeps running.
  */
-import {
-  createValidationTraceReplayHolds,
-  LOCAL_FAULT_RUN_LIMIT,
-} from "@al-ft/midgard-fault-proofs";
+import { LOCAL_FAULT_RUN_LIMIT } from "@al-ft/midgard-fault-proofs/local-fault-bound";
+import { createValidationTraceReplayHolds } from "@al-ft/midgard-fault-proofs/validation-trace-dispute/replay-hold";
 import { Effect } from "effect";
 
 import type { ReplayInput, ReplayOutcome } from "./replay.js";

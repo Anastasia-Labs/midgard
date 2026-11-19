@@ -4,8 +4,8 @@
  * `prover_funding_unavailable` alert is active, until a later run meets
  * something else, as one does after a top-up.
  */
-import { WORKFLOW_FUNDING_SHORTFALL } from "@al-ft/midgard-fault-proofs";
 import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "@al-ft/midgard-fault-proofs/test-support/wallet-only-send-always-open";
+import { WORKFLOW_FUNDING_SHORTFALL } from "@al-ft/midgard-fault-proofs/workflow/funding-reservation-permit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { setupFaultProofExecution } from "../support/fault-proof-execution-fixture.js";

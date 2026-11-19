@@ -8,7 +8,7 @@ import type {
   TimeoutCorrectionJournal,
   TimeoutCorrectionJournalStep,
   TimeoutCorrectionJournalStore,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/remove-unattested-block";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 

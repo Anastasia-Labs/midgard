@@ -4,15 +4,17 @@ import { join } from "node:path";
 
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
-  createReplayedLedger,
-  fileLedgerCheckpointStore,
   ledgerAfter,
   ledgerEntriesRoot,
   LedgerRootMismatchError,
+  singleLedgerAt,
+} from "@al-ft/midgard-fault-proofs/ledger-at";
+import {
+  createReplayedLedger,
   type ReplayedLedgerRefusal,
   type ReplayedLedgerSource,
-  singleLedgerAt,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/replayed-ledger";
+import { fileLedgerCheckpointStore } from "@al-ft/midgard-fault-proofs/replayed-ledger.checkpoint-file";
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";

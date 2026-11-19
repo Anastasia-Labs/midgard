@@ -7,7 +7,7 @@
 import {
   type ScriptDecodeWalkCursor,
   startScriptDecodeWalk,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/script-decode.step-walk";
 import type { UTxO } from "@lucid-evolution/lucid";
 
 import { scriptDecodeRunDatum } from "../script-decode/data.js";

@@ -5,7 +5,7 @@ import {
   isReplayLocalFault,
 } from "@al-ft/midgard-fault-proofs/block-replay";
 import { classifyWithdrawalFromLedger } from "@al-ft/midgard-sdk";
-import { awaitLedgerEd25519SignatureReady } from "@al-ft/midgard-validation";
+import { awaitLedgerEd25519SignatureReady } from "@al-ft/midgard-validation/ledger-ed25519-ready";
 import { Data, Effect, Option } from "effect";
 
 import { DatabaseError } from "../../../database/utils/common.js";

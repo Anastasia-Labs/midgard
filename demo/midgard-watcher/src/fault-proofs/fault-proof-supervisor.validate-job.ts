@@ -1,11 +1,13 @@
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import {
   assertWorkflowActuationPermitIdentity,
-  type HeaderDecision,
-  type HeaderFaultDecision,
   type WorkflowActuationPermit,
   type WorkflowActuationRevokedError,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
+import type {
+  HeaderDecision,
+  HeaderFaultDecision,
+} from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
 import { Header, StateQueueNode } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 

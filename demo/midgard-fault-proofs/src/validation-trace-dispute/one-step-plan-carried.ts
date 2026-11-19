@@ -10,11 +10,11 @@
  * that commits the evidence on carries the evidence so bound. */
 import type { MidgardValidationMachineState } from "@al-ft/midgard-core";
 import type { MidgardFieldCarriage } from "@al-ft/midgard-core/codec/native-tx-field-access";
+import type { ValidationTraceSteps } from "@al-ft/midgard-validation/validation-machine";
 import {
   buildValidationOneStepArgument,
   type ValidationMachineFieldCarriageResolver,
-  type ValidationTraceSteps,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/validation-machine-data";
 
 import { commonOf } from "./one-step-argument.js";
 import {

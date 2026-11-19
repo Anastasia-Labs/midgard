@@ -7,7 +7,7 @@ import {
   journalJsonDigest,
   normalizeJournalJson,
   validateFraudProofWorkflowJournal,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/journal";
 
 import type { E2EStateCorrectionAcceptance } from "./e2e-state-correction-acceptance.js";
 import {

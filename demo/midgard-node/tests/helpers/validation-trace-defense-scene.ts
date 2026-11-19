@@ -24,7 +24,7 @@
  * - the intents journaled under a workflow key, with their bytes and
  *   status, can be read.
  */
-import { isPlainFundingOutput } from "@al-ft/midgard-fault-proofs";
+import { isPlainFundingOutput } from "@al-ft/midgard-fault-proofs/funding/plain-funding-output";
 import {
   type ExpiryReferences,
   l1SlotConfig,

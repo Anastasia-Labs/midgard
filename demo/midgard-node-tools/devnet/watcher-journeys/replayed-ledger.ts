@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import type { LedgerAt } from "@al-ft/midgard-fault-proofs";
+import type { LedgerAt } from "@al-ft/midgard-fault-proofs/ledger-at";
 import {
   EVENT_WAIT_DURATION_MS,
   MAX_EVENT_VALIDITY_RANGE_LENGTH_MS,

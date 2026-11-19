@@ -1,7 +1,7 @@
-import {
-  type FraudProofRawL1Transaction,
-  type FraudProofRawL1Utxo,
-} from "@al-ft/midgard-fault-proofs";
+import type {
+  FraudProofRawL1Transaction,
+  FraudProofRawL1Utxo,
+} from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
 import type {
   DerivationContext,
   DerivationHook,

@@ -13,14 +13,14 @@ import {
 } from "@al-ft/midgard-core";
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
+import type { RejectedTx } from "@al-ft/midgard-validation/types";
 import {
   buildTraceAtStepCountV1,
   DirectValidationTraceUnavailable,
   openValidationTraceV1,
   validationTraceLevelsAtStepCountV1,
   ValidationTraceStopped,
-} from "@al-ft/midgard-validation";
-import type { RejectedTx } from "@al-ft/midgard-validation/types";
+} from "@al-ft/midgard-validation/validation-machine";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

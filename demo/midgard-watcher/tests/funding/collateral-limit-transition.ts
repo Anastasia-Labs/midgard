@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import type { WorkflowFundingPreparedTransition } from "@al-ft/midgard-fault-proofs";
+import type { WorkflowFundingPreparedTransition } from "@al-ft/midgard-fault-proofs/workflow/funding-reservation-permit";
 import { CML } from "@lucid-evolution/lucid";
 
 import type { WatcherProverFundingReservationRecord } from "../../src/funding/prover-funding-reservation.js";

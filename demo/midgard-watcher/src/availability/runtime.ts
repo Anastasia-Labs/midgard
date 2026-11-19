@@ -1,7 +1,12 @@
 import "node:crypto";
 import "@al-ft/midgard-core/availability-operation-journal";
 import "@al-ft/midgard-core/deployment-profile";
-import "@al-ft/midgard-fault-proofs";
+import "@al-ft/midgard-fault-proofs/transition-trace/fetch";
+import "@al-ft/midgard-fault-proofs/workflow/l1-source";
+import "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
+import "@al-ft/midgard-fault-proofs/workflow/release-economics-policy";
+import "@al-ft/midgard-fault-proofs/workflow/release-finality-policy";
+import "@al-ft/midgard-fault-proofs/workflow/runtime";
 import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "@lucid-evolution/scalus-uplc";

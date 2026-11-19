@@ -1,9 +1,7 @@
-import type {
-  FraudProofWorkflowJournalEntry,
-  HoldWalletInputs,
-  SignedWorkflowTransactionRetirement,
-  WorkflowFundingAttemptIntent,
-} from "@al-ft/midgard-fault-proofs";
+import type { HoldWalletInputs } from "@al-ft/midgard-fault-proofs/proven-correction-removal";
+import type { WorkflowFundingAttemptIntent } from "@al-ft/midgard-fault-proofs/workflow/funding-reservation-permit";
+import type { FraudProofWorkflowJournalEntry } from "@al-ft/midgard-fault-proofs/workflow/journal";
+import type { SignedWorkflowTransactionRetirement } from "@al-ft/midgard-fault-proofs/workflow/signed-transaction-retirement";
 
 export const WATCHER_PROVER_FUNDING_RESERVATION_PLAN =
   "midgard-watcher-production-prover-funding-reservation-plan-v1" as const;

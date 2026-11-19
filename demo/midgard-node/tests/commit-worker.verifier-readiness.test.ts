@@ -7,7 +7,7 @@
  * successful commit exit the node non-zero.
  */
 import { LedgerSignatureVerifierUnavailableError } from "@al-ft/midgard-core";
-import { LOCAL_FAULT_RUN_LIMIT } from "@al-ft/midgard-fault-proofs";
+import { LOCAL_FAULT_RUN_LIMIT } from "@al-ft/midgard-fault-proofs/local-fault-bound";
 import { HttpServerResponse } from "@effect/platform";
 import { SqlClient } from "@effect/sql";
 import {

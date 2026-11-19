@@ -4,10 +4,8 @@
  * payload, clears it at once unless a DA fetcher still names the header,
  * and once none does otherwise.
  */
-import {
-  FraudProofL1UnavailableError,
-  RetainedDaPayloadUnavailableError,
-} from "@al-ft/midgard-fault-proofs";
+import { RetainedDaPayloadUnavailableError } from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
+import { FraudProofL1UnavailableError } from "@al-ft/midgard-fault-proofs/workflow/l1-source";
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 

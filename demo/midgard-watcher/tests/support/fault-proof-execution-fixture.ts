@@ -5,11 +5,9 @@
  */
 import { join } from "node:path";
 
-import {
-  createWorkflowActuationPermitController,
-  type WorkflowAdapterRunnerInput,
-} from "@al-ft/midgard-fault-proofs";
 import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "@al-ft/midgard-fault-proofs/test-support/wallet-only-send-always-open";
+import { createWorkflowActuationPermitController } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
+import type { WorkflowAdapterRunnerInput } from "@al-ft/midgard-fault-proofs/workflow/adapters";
 import type { UTxO } from "@lucid-evolution/lucid";
 import { type Mock, vi } from "vitest";
 

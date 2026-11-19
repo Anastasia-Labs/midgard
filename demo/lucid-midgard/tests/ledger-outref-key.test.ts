@@ -6,7 +6,7 @@ import {
   decodeMidgardSpendInputItem,
   encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core/codec";
-import { midgardOutRefToCbor } from "@al-ft/midgard-validation";
+import { midgardOutRefToCbor } from "@al-ft/midgard-validation/validation-candidate";
 import { describe, expect, it } from "vitest";
 
 import { outRefToCbor, utxoOutRefCbor } from "../src/core/output.js";

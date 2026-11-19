@@ -25,11 +25,11 @@ import {
   EventKeySchema,
   GENESIS_HEADER_HASH,
 } from "@al-ft/midgard-sdk";
+import { replayValidationMachineEvent } from "@al-ft/midgard-validation/tests/validation-machine-event-replay.trace";
 import {
   MIDGARD_COINS_PER_UTXO_BYTE,
   minAdaLovelace,
-} from "@al-ft/midgard-validation";
-import { replayValidationMachineEvent } from "@al-ft/midgard-validation/tests/validation-machine-event-replay.trace";
+} from "@al-ft/midgard-validation/value-accounting";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { afterEach, describe, expect, it } from "vitest";

@@ -2,7 +2,7 @@ import "@aiken-lang/merkle-patricia-forestry";
 import "@al-ft/midgard-core";
 import "@al-ft/midgard-core/codec/forced";
 import "@al-ft/midgard-sdk";
-import "@al-ft/midgard-validation";
+import "@al-ft/midgard-validation/ledger-output-descriptor";
 import "@lucid-evolution/lucid";
 import "effect";
 import "vitest";

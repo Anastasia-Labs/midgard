@@ -3,13 +3,13 @@ import { createHash } from "node:crypto";
 import {
   activeCollateralForfeitures,
   standingCollateralAccountingFailures,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/collateral-forfeiture";
 
 import type {
   WatcherAlertCode,
   WatcherOperationsSink,
 } from "../runtime/operations-observability.js";
-import { WATCHER_PACKAGE_NAME } from "../runtime/scaffold.js";
+import { WATCHER_PACKAGE_NAME } from "../runtime/package-name.js";
 import { WATCHER_PROVER_FUNDING_UNAVAILABLE } from "./fault-proof-funding-hold.js";
 import type { WatcherProofObjective } from "./fault-proof-objective-journal.js";
 import type { WatcherFaultProofDeadline } from "./fault-proof-supervisor.validate-job.js";

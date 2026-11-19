@@ -6,7 +6,7 @@ import { writeTextFileAtomic } from "@al-ft/midgard-core/atomic-write";
 import {
   retainedDaPayloadHeaderVerifier,
   type RetainedDaPayloadSource,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
 import {
   createWatcherRetainedDaRuntime,
   parseWatcherProcessConfig,

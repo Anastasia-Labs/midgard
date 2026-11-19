@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { type HeaderDecision } from "@al-ft/midgard-fault-proofs";
+import type { HeaderDecision } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
 
 import { watcherCanonicalJson } from "../storage/durable-store.canonical-json.js";
 import type { WatcherInstalledWorkflowCategory } from "./fault-proof-application.js";

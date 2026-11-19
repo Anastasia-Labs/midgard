@@ -11,7 +11,7 @@ import {
   plutusConstrFieldCbor,
   replacePlutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
-import { buildValidationOneStepArgument } from "@al-ft/midgard-validation";
+import { buildValidationOneStepArgument } from "@al-ft/midgard-validation/validation-machine-data";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 

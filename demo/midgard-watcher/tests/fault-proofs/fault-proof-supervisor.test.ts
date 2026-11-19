@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { DatabaseSync } from "node:sqlite";
 
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
-import type { WorkflowActuationRevokedError } from "@al-ft/midgard-fault-proofs";
+import type { WorkflowActuationRevokedError } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
 import { h28 } from "@al-ft/midgard-test-support/hex";
 import { afterEach, describe, expect, it } from "vitest";
 

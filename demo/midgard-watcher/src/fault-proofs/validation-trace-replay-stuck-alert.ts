@@ -1,4 +1,4 @@
-import type { ValidationTraceReplayHold } from "@al-ft/midgard-fault-proofs";
+import type { ValidationTraceReplayHold } from "@al-ft/midgard-fault-proofs/validation-trace-dispute/replay-hold";
 
 import { watcherValidationTraceReplayStuckAlertSubject } from "../runtime/operations-observability.alert-book.js";
 import type { WatcherOperationsSink } from "../runtime/operations-observability.watcher-operations-metrics.js";

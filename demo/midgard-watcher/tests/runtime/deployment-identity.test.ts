@@ -20,7 +20,7 @@ import {
   DEPLOYMENT_PROFILES,
   SELECTED_DEPLOYMENT_PROFILE,
 } from "@al-ft/midgard-core/deployment-profile";
-import { RELEASE_L1_FINALITY_POLICY } from "@al-ft/midgard-fault-proofs";
+import { RELEASE_L1_FINALITY_POLICY } from "@al-ft/midgard-fault-proofs/workflow/release-finality-policy";
 import { describe, expect, it } from "vitest";
 
 import {

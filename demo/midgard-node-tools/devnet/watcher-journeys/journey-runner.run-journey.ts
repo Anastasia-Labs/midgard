@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
-import { journalJsonDigest } from "@al-ft/midgard-fault-proofs";
+import { journalJsonDigest } from "@al-ft/midgard-fault-proofs/workflow/journal";
 import { expect } from "vitest";
 
 import { journeyFamilyDirectory, writeJourneyArtifact } from "./artifacts.js";

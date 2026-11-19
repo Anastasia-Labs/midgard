@@ -6,11 +6,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as waitForDisk } from "node:timers/promises";
 
-import {
-  FAULT_PROOF_RESTART_WAIT,
-  WALLET_ONLY_VALIDITY_MS,
-  type WorkflowAdapterRunnerInput,
-} from "@al-ft/midgard-fault-proofs";
+import { WALLET_ONLY_VALIDITY_MS } from "@al-ft/midgard-fault-proofs/wallet-only-validity";
+import type { WorkflowAdapterRunnerInput } from "@al-ft/midgard-fault-proofs/workflow/adapters";
+import { FAULT_PROOF_RESTART_WAIT } from "@al-ft/midgard-fault-proofs/workflow/wallet-only-send-gate";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { openWatcherFaultDecisionJournal } from "../../src/fault-proofs/fault-decision-journal.create-journal.js";

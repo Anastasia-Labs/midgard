@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { isAbsolute, normalize } from "node:path";
 
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { isProverOwnAddress } from "@al-ft/midgard-fault-proofs";
+import { isProverOwnAddress } from "@al-ft/midgard-fault-proofs/funding/proof-materials-address";
 import { CML, coreToTxOutput } from "@lucid-evolution/lucid";
 
 import type { WatcherWorkflowJournal } from "../fault-proofs/watcher-workflow-journal.js";

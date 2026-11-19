@@ -4,7 +4,7 @@ import {
   type FraudProofWorkflowJournalEntry,
   type FraudProofWorkflowJournalEvent,
   type FraudProofWorkflowJournalStore,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/journal";
 
 import type { WatcherProverFundingReservationStore } from "../../src/funding/prover-funding-reservation.js";
 

@@ -2,7 +2,7 @@ import type {
   AvailabilityOperationIntent,
   AvailabilityOperationRecord,
 } from "@al-ft/midgard-core/availability-operation-journal";
-import { type FraudProofRawL1Point } from "@al-ft/midgard-fault-proofs";
+import type { FraudProofRawL1Point } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,

@@ -9,9 +9,9 @@ import {
   type ScriptDecodePositionedSegment,
   type ScriptDecodeStake,
   scriptDecodeWalkStakes,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/script-decode";
 import * as SDK from "@al-ft/midgard-sdk";
-import type { ScriptDecodeChainedWalk } from "@al-ft/midgard-validation";
+import type { ScriptDecodeChainedWalk } from "@al-ft/midgard-validation/script-decode.step-walk";
 import {
   type LucidEvolution,
   type OutRef,

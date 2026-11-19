@@ -4,7 +4,6 @@ import {
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
-import { buildCountedRoot } from "@al-ft/midgard-fault-proofs";
 import {
   buildCanonicalBlockFixture,
   buildFixtureTransaction,
@@ -13,6 +12,7 @@ import {
   outRefCbor,
 } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import { retainedTransactionFixture } from "@al-ft/midgard-fault-proofs/test-support/retained-transaction";
+import { buildCountedRoot } from "@al-ft/midgard-fault-proofs/transition-trace/phas";
 import * as SDK from "@al-ft/midgard-sdk";
 import { type CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";

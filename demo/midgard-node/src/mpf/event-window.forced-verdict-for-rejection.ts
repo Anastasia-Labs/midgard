@@ -3,12 +3,12 @@ import {
   forcedVerdictForRejection,
 } from "@al-ft/midgard-fault-proofs";
 import type * as SDK from "@al-ft/midgard-sdk";
+import type { CanonicalTransitionEffect } from "@al-ft/midgard-validation/transition-effect";
+import type { RejectCode, RejectedTx } from "@al-ft/midgard-validation/types";
 import type {
-  CanonicalTransitionEffect,
   ValidationMachineLedgerEntry,
   ValidationMachineLedgerMutationStep,
-} from "@al-ft/midgard-validation";
-import type { RejectCode, RejectedTx } from "@al-ft/midgard-validation/types";
+} from "@al-ft/midgard-validation/validation-machine";
 import { Effect } from "effect";
 
 import * as ForcedTransactionsDB from "../database/forcedTransactions.js";

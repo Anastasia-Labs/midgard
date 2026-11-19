@@ -7,7 +7,7 @@ import {
 import {
   FraudProofL1CheckpointChangedError,
   FraudProofL1UnavailableError,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/l1-source";
 import { describe, expect, it } from "vitest";
 
 import { isWatcherL1TransientFailure } from "../../src/l1/transient-failure.js";

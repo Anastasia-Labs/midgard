@@ -8,15 +8,15 @@ import {
   scriptDecodeRecordDatum,
   scriptDecodeWalkStakes,
   stageScriptDecodeBytes,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/script-decode";
 import * as SDK from "@al-ft/midgard-sdk";
+import { scriptDecodeScriptHash } from "@al-ft/midgard-validation/script-decode.step";
 import {
   nextScriptDecodeChainedWalk,
   scriptDecodeRecordOfScript,
-  scriptDecodeScriptHash,
   scriptDecodeWalkRecord,
   startScriptDecodeWalk,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/script-decode.step-walk";
 import { CML, validatorToScriptHash } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";

@@ -22,7 +22,7 @@ import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import {
   validationTraceDefenseFromPortable,
   type ValidationTraceDefenseMaterial,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/validation-trace-dispute/defender";
 import type * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Option } from "effect";
 

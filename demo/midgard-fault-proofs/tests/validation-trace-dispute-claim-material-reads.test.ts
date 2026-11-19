@@ -5,7 +5,7 @@
 import {
   buildDeterministicValidationMachineTrace,
   type DeterministicValidationMachineTrace,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/validation-machine";
 import { Effect } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
 

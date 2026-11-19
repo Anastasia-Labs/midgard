@@ -11,20 +11,22 @@ import {
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   computeFraudProofReleaseEconomicsPolicyDigest,
-  computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_ECONOMICS_AUTHORITY,
   FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_SCHEMA_VERSION,
+  type FraudProofReleaseEconomicsAuthority,
+  type ReleaseFraudProofEconomicsPolicy,
+  validateVerifiedFraudProofReleaseEconomicsPolicy,
+  type VerifiedFraudProofReleaseEconomicsPolicy,
+} from "@al-ft/midgard-fault-proofs/workflow/release-economics-policy";
+import {
+  computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-  type FraudProofReleaseEconomicsAuthority,
   type FraudProofReleaseFinalityAuthority,
-  type ReleaseFraudProofEconomicsPolicy,
   releaseL1FinalityPolicyOf,
-  validateVerifiedFraudProofReleaseEconomicsPolicy,
   validateVerifiedFraudProofReleaseFinalityPolicy,
-  type VerifiedFraudProofReleaseEconomicsPolicy,
   type VerifiedFraudProofReleaseFinalityPolicy,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/release-finality-policy";
 
 import {
   exactRecord,

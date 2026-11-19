@@ -10,10 +10,9 @@ through local constants and parameter defaults in one file, not across files.
 
 `demo/scripts/lib/eslint-plugin-midgard/baseline.json` lists the violations
 each rule already had when it was introduced, by rule, then file (relative to
-`demo/`), then the trimmed text of each reported line, with a reason for every
-file entry. A listed violation does not fail the lint. A listed line that no
-longer occurs does fail it, so fixing a violation and dropping its entry land
-in one change: from `demo/`, run
+`demo/`), then the trimmed text of each reported line. A listed violation does
+not fail the lint. A listed line that no longer occurs does fail it, so fixing
+a violation and dropping its entry land in one change: from `demo/`, run
 `node scripts/lib/eslint-plugin-midgard/prune-baseline.mjs`, which removes
 every stale site and adds none (`--check` only reports).
 
@@ -73,12 +72,11 @@ every stale site and adds none (`--check` only reports).
   else's pin are not checked. [eslint: midgard/scoped-utxo-override]
 - **Never take a validity lower bound from the wall clock without a 30-second
   margin.** The value passed to `.validFrom(...)` or a `validFrom*` property
-  is followed through constants, parameter defaults and call arguments to
-  `Date.now()`, `new Date().getTime()` or a parameter named like the current
-  time (`now`, `nowMs`, `currentTime`, ...); subtracting a constant of at
-  least 30,000 ms passes. Blind spot: a subtrahend it cannot evaluate passes, a
-  time from another module or a differently named parameter is not followed,
-  and `Math.max(bound, now - backoff)` shape is not checked.
+  is followed through call arguments to `Date.now()`, `new Date().getTime()`
+  or a parameter named like the current time (`now`, `nowMs`, `currentTime`,
+  ...); subtracting a constant of at least 30,000 ms passes. Blind spot: a
+  subtrahend it cannot evaluate passes, a differently named parameter is not
+  followed, and `Math.max(bound, now - backoff)` shape is not checked.
   [eslint: midgard/valid-from-wall-clock-margin]
 - **Do not register test, demo, bench, e2e or acceptance commands in the
   operator binary** (`demo/midgard-node/src/index.ts`); they belong to
@@ -91,11 +89,10 @@ every stale site and adds none (`--check` only reports).
   a recursive walk overflows the stack. Flagged: `cborg`, and Lucid
   `Data.from` / `Data.to` in midgard-core and midgard-validation. Use
   `plutusDataFromCborIterative` and `encodeMidgardCekPlutusData` in
-  midgard-validation, and
-  `@al-ft/midgard-core/plutus-data-lucid-iterative` for Lucid-shaped values.
-  The baselined Lucid encoders take repository-built values of bounded depth.
-  Blind spot: a hand-written recursive walk is not seen.
-  [eslint: midgard/no-recursive-plutus-data]
+  midgard-validation, and `@al-ft/midgard-core/plutus-data-lucid-iterative`
+  for Lucid-shaped values. The baselined Lucid encoders take repository-built
+  values of bounded depth. Blind spot: a hand-written recursive walk is not
+  seen. [eslint: midgard/no-recursive-plutus-data]
 - **Do not import `@harmoniclabs/*`** anywhere in the workspace. Neither
   Midgard nor Lucid depends on those packages: Plutus Data, constants, terms
   and the Flat encoder are owned in `@al-ft/midgard-validation/uplc`, and
@@ -108,23 +105,16 @@ every stale site and adds none (`--check` only reports).
   `heightAtDepth`, `isSafe`, `isFinal` or `levelAtDepth` from
   `@al-ft/midgard-l1-follower/heads`. Flagged: a `<`, `<=`, `>` or `>=` that
   reads `confirmationDepth`, `automaticRecoveryMaxDepth`, `securityParameter`
-  (or a variant) directly or through a local constant, arithmetic or a call
-  argument, together with anything not constant. Shape checks on parameters
-  and constants, equality, and values returned by follower-package functions
-  pass. Blind spot: a parameter under another name (`finalityDepth`) or from
-  another module is not seen; block-mining loop counters are flagged (the
-  baselined test drivers). [eslint: midgard/depth-through-heads]
+  (or a variant) directly or through arithmetic or a call argument, together
+  with anything not constant. Shape checks on parameters and constants, and
+  follower-package function results, pass. Blind spot: a parameter under
+  another name (`finalityDepth`) is not seen; block-mining loop counters are
+  flagged (the baselined test drivers). [eslint: midgard/depth-through-heads]
 - **Tests observe behaviour, not source text or stringified values.** Scope
   and blind spots: the rule file's header. [eslint: midgard/tests-observe-behavior]
 - **Redeemer ledger indices come from the builder callback.** Scope and blind
   spots: the rule file's header. [eslint: midgard/redeemer-index-from-builder]
-- **Inside midgard-fault-proofs, -node and -watcher, import a name from the
-  module that declares it, not from the package's own barrel** (`src/index.ts`
-  or the package's own name). `contrib test --related` and `--cached` follow
-  the import graph, and the barrel reaches every module of the package, so
-  whatever imports it reruns on every edit. The barrel stays the entry point
-  for other packages. The baselined sites assert the names the root publishes
-  or sit at their module-size cap. A name a test stubs through a re-exporting
-  module (`vi.spyOn` on its namespace, or `vi.mock` of it) stays imported
-  from that module: the stub replaces only that module's binding. Scope and
-  blind spots: the rule file's header. [eslint: midgard/no-own-package-barrel]
+- **Import from the declaring module, not the package's own barrel.** Scope
+  and blind spots: the rule file's header. [eslint: midgard/no-own-package-barrel]
+- **Import another package's subpath, not its root entry.** Scope and blind
+  spots: the rule file's header. [eslint: midgard/no-cross-package-root]

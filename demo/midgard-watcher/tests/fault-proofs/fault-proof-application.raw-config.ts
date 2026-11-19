@@ -1,12 +1,10 @@
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import {
-  type FraudProofL1Source,
-  proofMaterialsAddress,
-  type ResolvedProverSigner,
-  type StateQueueMutationLeaseCoordinator,
-  type WorkflowAdapterRunnerInput,
-} from "@al-ft/midgard-fault-proofs";
+import { proofMaterialsAddress } from "@al-ft/midgard-fault-proofs/funding/proof-materials-address";
+import type { StateQueueMutationLeaseCoordinator } from "@al-ft/midgard-fault-proofs/remove-fraudulent-block";
+import type { ResolvedProverSigner } from "@al-ft/midgard-fault-proofs/runtime";
+import type { WorkflowAdapterRunnerInput } from "@al-ft/midgard-fault-proofs/workflow/adapters";
+import type { FraudProofL1Source } from "@al-ft/midgard-fault-proofs/workflow/l1-source";
 import {
   credentialToAddress,
   type LucidEvolution,

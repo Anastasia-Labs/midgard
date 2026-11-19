@@ -57,7 +57,7 @@ import {
 import {
   deriveLedgerOutputProofStepClaims,
   ledgerOutputProofDatumRoleIndex,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/ledger-output-proof-plan";
 import {
   bytes,
   goldenChannelEmitter,

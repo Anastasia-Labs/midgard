@@ -20,10 +20,10 @@ import {
   type RejectionReason,
   rejectionReasonPhase,
 } from "@al-ft/midgard-sdk";
-import { resolveRejectionReason } from "@al-ft/midgard-validation";
 import { MidgardRedeemerTag } from "@al-ft/midgard-validation/midgard-redeemers";
 import { validatePhaseASingle } from "@al-ft/midgard-validation/phase-a";
 import { runPhaseBValidationWithPatch } from "@al-ft/midgard-validation/phase-b";
+import { resolveRejectionReason } from "@al-ft/midgard-validation/rejection-reason";
 import {
   encodeRecomputedNativeTx,
   hashScriptWitness,

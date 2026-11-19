@@ -1,9 +1,9 @@
 import * as SDK from "@al-ft/midgard-sdk";
+import type { RejectSubject } from "@al-ft/midgard-validation/reject-subject";
 import {
   REJECTION_REASON_ARMS_BY_CODE,
   rejectionReasonArmName,
-  type RejectSubject,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/rejection-reason";
 import { type RejectCode, RejectCodes } from "@al-ft/midgard-validation/types";
 import { describe, expect, it } from "vitest";
 

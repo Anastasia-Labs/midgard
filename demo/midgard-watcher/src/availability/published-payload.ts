@@ -1,7 +1,5 @@
-import {
-  type FraudProofRawL1Transaction,
-  type RetainedDaPayloadSource,
-} from "@al-ft/midgard-fault-proofs";
+import type { RetainedDaPayloadSource } from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
+import type { FraudProofRawL1Transaction } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,

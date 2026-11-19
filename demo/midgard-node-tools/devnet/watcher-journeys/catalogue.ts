@@ -1,4 +1,4 @@
-import { INSTALLED_FRAUD_PROOF_CATEGORY_ORDER } from "@al-ft/midgard-fault-proofs";
+import { INSTALLED_FRAUD_PROOF_CATEGORY_ORDER } from "@al-ft/midgard-fault-proofs/workflow/installed-categories";
 
 import type { JourneyCategory, JourneyFixture } from "./fixture.js";
 import { JOURNEY_HISTORY_FIXTURES } from "./history-fixtures.js";

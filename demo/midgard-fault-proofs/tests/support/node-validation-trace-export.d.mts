@@ -4,7 +4,7 @@ import type {
   EventKey,
   ValidationTraceDescriptor,
 } from "@al-ft/midgard-sdk";
-import type { buildDeterministicValidationMachineTrace } from "@al-ft/midgard-validation";
+import type { buildDeterministicValidationMachineTrace } from "@al-ft/midgard-validation/validation-machine";
 import type { Effect } from "effect";
 
 type Replay = Parameters<typeof buildDeterministicValidationMachineTrace>[0];

@@ -153,6 +153,120 @@
       "import": "./dist/uplc.js",
       "require": "./dist/uplc.cjs"
     },
+    "./cek-context": {
+      "midgard-source": "./src/cek-context.ts",
+      "types": "./dist/cek-context.d.ts",
+      "import": "./dist/cek-context.js",
+      "require": "./dist/cek-context.cjs"
+    },
+    "./cek-semantic-group": {
+      "midgard-source": "./src/cek-semantic-group.ts",
+      "types": "./dist/cek-semantic-group.d.ts",
+      "import": "./dist/cek-semantic-group.js",
+      "require": "./dist/cek-semantic-group.cjs"
+    },
+    "./cek-serialise": {
+      "midgard-source": "./src/cek-serialise.ts",
+      "types": "./dist/cek-serialise.d.ts",
+      "import": "./dist/cek-serialise.js",
+      "require": "./dist/cek-serialise.cjs"
+    },
+    "./cek-staged-builtin": {
+      "midgard-source": "./src/cek-staged-builtin.ts",
+      "types": "./dist/cek-staged-builtin.d.ts",
+      "import": "./dist/cek-staged-builtin.js",
+      "require": "./dist/cek-staged-builtin.cjs"
+    },
+    "./cek-write-bits": {
+      "midgard-source": "./src/cek-write-bits.ts",
+      "types": "./dist/cek-write-bits.d.ts",
+      "import": "./dist/cek-write-bits.js",
+      "require": "./dist/cek-write-bits.cjs"
+    },
+    "./ledger-ed25519-ready": {
+      "midgard-source": "./src/ledger-ed25519-ready.ts",
+      "types": "./dist/ledger-ed25519-ready.d.ts",
+      "import": "./dist/ledger-ed25519-ready.js",
+      "require": "./dist/ledger-ed25519-ready.cjs"
+    },
+    "./ledger-output-descriptor": {
+      "midgard-source": "./src/ledger-output-descriptor.ts",
+      "types": "./dist/ledger-output-descriptor.d.ts",
+      "import": "./dist/ledger-output-descriptor.js",
+      "require": "./dist/ledger-output-descriptor.cjs"
+    },
+    "./plutus-script-evaluator": {
+      "midgard-source": "./src/plutus-script-evaluator.ts",
+      "types": "./dist/plutus-script-evaluator.d.ts",
+      "import": "./dist/plutus-script-evaluator.js",
+      "require": "./dist/plutus-script-evaluator.cjs"
+    },
+    "./plutus-script-evaluator.capability-error": {
+      "midgard-source": "./src/plutus-script-evaluator.capability-error.ts",
+      "types": "./dist/plutus-script-evaluator.capability-error.d.ts",
+      "import": "./dist/plutus-script-evaluator.capability-error.js",
+      "require": "./dist/plutus-script-evaluator.capability-error.cjs"
+    },
+    "./reject-subject": {
+      "midgard-source": "./src/reject-subject.ts",
+      "types": "./dist/reject-subject.d.ts",
+      "import": "./dist/reject-subject.js",
+      "require": "./dist/reject-subject.cjs"
+    },
+    "./rejection-reason": {
+      "midgard-source": "./src/rejection-reason.ts",
+      "types": "./dist/rejection-reason.d.ts",
+      "import": "./dist/rejection-reason.js",
+      "require": "./dist/rejection-reason.cjs"
+    },
+    "./script-decode.step": {
+      "midgard-source": "./src/script-decode.step.ts",
+      "types": "./dist/script-decode.step.d.ts",
+      "import": "./dist/script-decode.step.js",
+      "require": "./dist/script-decode.step.cjs"
+    },
+    "./script-decode.step-walk": {
+      "midgard-source": "./src/script-decode.step-walk.ts",
+      "types": "./dist/script-decode.step-walk.d.ts",
+      "import": "./dist/script-decode.step-walk.js",
+      "require": "./dist/script-decode.step-walk.cjs"
+    },
+    "./transition-effect": {
+      "midgard-source": "./src/transition-effect.ts",
+      "types": "./dist/transition-effect.d.ts",
+      "import": "./dist/transition-effect.js",
+      "require": "./dist/transition-effect.cjs"
+    },
+    "./validation-candidate": {
+      "midgard-source": "./src/validation-candidate.ts",
+      "types": "./dist/validation-candidate.d.ts",
+      "import": "./dist/validation-candidate.js",
+      "require": "./dist/validation-candidate.cjs"
+    },
+    "./validation-machine": {
+      "midgard-source": "./src/validation-machine/index.ts",
+      "types": "./dist/validation-machine/index.d.ts",
+      "import": "./dist/validation-machine/index.js",
+      "require": "./dist/validation-machine/index.cjs"
+    },
+    "./validation-machine-data": {
+      "midgard-source": "./src/validation-machine-data.ts",
+      "types": "./dist/validation-machine-data.d.ts",
+      "import": "./dist/validation-machine-data.js",
+      "require": "./dist/validation-machine-data.cjs"
+    },
+    "./value-accounting": {
+      "midgard-source": "./src/value-accounting.ts",
+      "types": "./dist/value-accounting.d.ts",
+      "import": "./dist/value-accounting.js",
+      "require": "./dist/value-accounting.cjs"
+    },
+    "./wire": {
+      "midgard-source": "./src/wire.ts",
+      "types": "./dist/wire.d.ts",
+      "import": "./dist/wire.js",
+      "require": "./dist/wire.cjs"
+    },
     "./tests/forced-native-first-fault-fixture": {
       "midgard-source": "./tests/forced-native-first-fault.fixture.ts"
     },
@@ -389,6 +503,196 @@
           "types": "./dist/uplc.d.cts",
           "default": "./dist/uplc.cjs"
         }
+      },
+      "./cek-context": {
+        "import": {
+          "types": "./dist/cek-context.d.ts",
+          "default": "./dist/cek-context.js"
+        },
+        "require": {
+          "types": "./dist/cek-context.d.cts",
+          "default": "./dist/cek-context.cjs"
+        }
+      },
+      "./cek-semantic-group": {
+        "import": {
+          "types": "./dist/cek-semantic-group.d.ts",
+          "default": "./dist/cek-semantic-group.js"
+        },
+        "require": {
+          "types": "./dist/cek-semantic-group.d.cts",
+          "default": "./dist/cek-semantic-group.cjs"
+        }
+      },
+      "./cek-serialise": {
+        "import": {
+          "types": "./dist/cek-serialise.d.ts",
+          "default": "./dist/cek-serialise.js"
+        },
+        "require": {
+          "types": "./dist/cek-serialise.d.cts",
+          "default": "./dist/cek-serialise.cjs"
+        }
+      },
+      "./cek-staged-builtin": {
+        "import": {
+          "types": "./dist/cek-staged-builtin.d.ts",
+          "default": "./dist/cek-staged-builtin.js"
+        },
+        "require": {
+          "types": "./dist/cek-staged-builtin.d.cts",
+          "default": "./dist/cek-staged-builtin.cjs"
+        }
+      },
+      "./cek-write-bits": {
+        "import": {
+          "types": "./dist/cek-write-bits.d.ts",
+          "default": "./dist/cek-write-bits.js"
+        },
+        "require": {
+          "types": "./dist/cek-write-bits.d.cts",
+          "default": "./dist/cek-write-bits.cjs"
+        }
+      },
+      "./ledger-ed25519-ready": {
+        "import": {
+          "types": "./dist/ledger-ed25519-ready.d.ts",
+          "default": "./dist/ledger-ed25519-ready.js"
+        },
+        "require": {
+          "types": "./dist/ledger-ed25519-ready.d.cts",
+          "default": "./dist/ledger-ed25519-ready.cjs"
+        }
+      },
+      "./ledger-output-descriptor": {
+        "import": {
+          "types": "./dist/ledger-output-descriptor.d.ts",
+          "default": "./dist/ledger-output-descriptor.js"
+        },
+        "require": {
+          "types": "./dist/ledger-output-descriptor.d.cts",
+          "default": "./dist/ledger-output-descriptor.cjs"
+        }
+      },
+      "./plutus-script-evaluator": {
+        "import": {
+          "types": "./dist/plutus-script-evaluator.d.ts",
+          "default": "./dist/plutus-script-evaluator.js"
+        },
+        "require": {
+          "types": "./dist/plutus-script-evaluator.d.cts",
+          "default": "./dist/plutus-script-evaluator.cjs"
+        }
+      },
+      "./plutus-script-evaluator.capability-error": {
+        "import": {
+          "types": "./dist/plutus-script-evaluator.capability-error.d.ts",
+          "default": "./dist/plutus-script-evaluator.capability-error.js"
+        },
+        "require": {
+          "types": "./dist/plutus-script-evaluator.capability-error.d.cts",
+          "default": "./dist/plutus-script-evaluator.capability-error.cjs"
+        }
+      },
+      "./reject-subject": {
+        "import": {
+          "types": "./dist/reject-subject.d.ts",
+          "default": "./dist/reject-subject.js"
+        },
+        "require": {
+          "types": "./dist/reject-subject.d.cts",
+          "default": "./dist/reject-subject.cjs"
+        }
+      },
+      "./rejection-reason": {
+        "import": {
+          "types": "./dist/rejection-reason.d.ts",
+          "default": "./dist/rejection-reason.js"
+        },
+        "require": {
+          "types": "./dist/rejection-reason.d.cts",
+          "default": "./dist/rejection-reason.cjs"
+        }
+      },
+      "./script-decode.step": {
+        "import": {
+          "types": "./dist/script-decode.step.d.ts",
+          "default": "./dist/script-decode.step.js"
+        },
+        "require": {
+          "types": "./dist/script-decode.step.d.cts",
+          "default": "./dist/script-decode.step.cjs"
+        }
+      },
+      "./script-decode.step-walk": {
+        "import": {
+          "types": "./dist/script-decode.step-walk.d.ts",
+          "default": "./dist/script-decode.step-walk.js"
+        },
+        "require": {
+          "types": "./dist/script-decode.step-walk.d.cts",
+          "default": "./dist/script-decode.step-walk.cjs"
+        }
+      },
+      "./transition-effect": {
+        "import": {
+          "types": "./dist/transition-effect.d.ts",
+          "default": "./dist/transition-effect.js"
+        },
+        "require": {
+          "types": "./dist/transition-effect.d.cts",
+          "default": "./dist/transition-effect.cjs"
+        }
+      },
+      "./validation-candidate": {
+        "import": {
+          "types": "./dist/validation-candidate.d.ts",
+          "default": "./dist/validation-candidate.js"
+        },
+        "require": {
+          "types": "./dist/validation-candidate.d.cts",
+          "default": "./dist/validation-candidate.cjs"
+        }
+      },
+      "./validation-machine": {
+        "import": {
+          "types": "./dist/validation-machine/index.d.ts",
+          "default": "./dist/validation-machine/index.js"
+        },
+        "require": {
+          "types": "./dist/validation-machine/index.d.cts",
+          "default": "./dist/validation-machine/index.cjs"
+        }
+      },
+      "./validation-machine-data": {
+        "import": {
+          "types": "./dist/validation-machine-data.d.ts",
+          "default": "./dist/validation-machine-data.js"
+        },
+        "require": {
+          "types": "./dist/validation-machine-data.d.cts",
+          "default": "./dist/validation-machine-data.cjs"
+        }
+      },
+      "./value-accounting": {
+        "import": {
+          "types": "./dist/value-accounting.d.ts",
+          "default": "./dist/value-accounting.js"
+        },
+        "require": {
+          "types": "./dist/value-accounting.d.cts",
+          "default": "./dist/value-accounting.cjs"
+        }
+      },
+      "./wire": {
+        "import": {
+          "types": "./dist/wire.d.ts",
+          "default": "./dist/wire.js"
+        },
+        "require": {
+          "types": "./dist/wire.d.cts",
+          "default": "./dist/wire.cjs"
+        }
       }
     },
     "imports": {
@@ -524,6 +828,23 @@
             "src/uplc.ts",
             "src/validation-dispute-evidence.ts",
             "src/validation-machine/index.ts",
+            "src/cek-context.ts",
+            "src/cek-semantic-group.ts",
+            "src/cek-serialise.ts",
+            "src/cek-staged-builtin.ts",
+            "src/cek-write-bits.ts",
+            "src/ledger-ed25519-ready.ts",
+            "src/plutus-script-evaluator.capability-error.ts",
+            "src/plutus-script-evaluator.ts",
+            "src/reject-subject.ts",
+            "src/rejection-reason.ts",
+            "src/script-decode.step-walk.ts",
+            "src/script-decode.step.ts",
+            "src/transition-effect.ts",
+            "src/validation-candidate.ts",
+            "src/validation-machine-data.ts",
+            "src/value-accounting.ts",
+            "src/wire.ts",
             "--external",
             "#merkle-patricia-forestry",
             "--format",

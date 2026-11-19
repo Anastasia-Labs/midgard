@@ -1,10 +1,12 @@
 import {
   assertWorkflowActuationPermitIdentity,
   bindWorkflowActuationRecoveryIdentity,
+  type WorkflowActuationPermit,
+} from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
+import {
   journalJsonDigest,
   normalizeJournalJson,
-  type WorkflowActuationPermit,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/journal";
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 
 import {

@@ -1,9 +1,9 @@
 import { parseMidgardVersionedScriptHeader } from "@al-ft/midgard-core";
 import {
   type ScriptDecodeRecord,
-  scriptDecodeRecordOfScript,
   scriptDecodeScriptHash,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/script-decode.step";
+import { scriptDecodeRecordOfScript } from "@al-ft/midgard-validation/script-decode.step-walk";
 
 /**
  * A Plutus item whose decode record refuses it with class `c` closes the

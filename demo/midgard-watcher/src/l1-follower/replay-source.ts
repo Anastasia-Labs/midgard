@@ -1,9 +1,9 @@
+import type { BlockReplayMaterial } from "@al-ft/midgard-fault-proofs/replayed-ledger";
 import {
-  type BlockReplayMaterial,
-  computeFraudProofRawL1PointId,
   FraudProofL1CheckpointChangedError,
   FraudProofL1UnavailableError,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/l1-source";
+import { computeFraudProofRawL1PointId } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
 import {
   type FactStore,
   protocolInitIn,

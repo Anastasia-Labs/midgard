@@ -1,5 +1,5 @@
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import { MidgardUplcCapabilityError } from "@al-ft/midgard-validation";
+import { MidgardUplcCapabilityError } from "@al-ft/midgard-validation/plutus-script-evaluator.capability-error";
 import { SqlClient } from "@effect/sql";
 import { Effect, Logger } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";

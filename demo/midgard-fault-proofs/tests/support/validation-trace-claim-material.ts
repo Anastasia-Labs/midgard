@@ -4,7 +4,7 @@ import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-confi
 import {
   buildDeterministicValidationMachineTrace,
   type ValidationMachineReplayInput,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/validation-machine";
 import { Effect } from "effect";
 
 import { eventLedgerBefore } from "../../src/event-ledger.js";

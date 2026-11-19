@@ -3,7 +3,7 @@
  * the ledger rejects is refitted under refreshed parameters, a bounded number
  * of times.
  */
-import { scriptDecodeRecordOfScript } from "@al-ft/midgard-validation";
+import { scriptDecodeRecordOfScript } from "@al-ft/midgard-validation/script-decode.step-walk";
 import {
   CML,
   Emulator,

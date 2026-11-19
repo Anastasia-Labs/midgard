@@ -8,7 +8,8 @@ import {
   MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
-import { RejectCodes, runPhaseAValidation } from "@al-ft/midgard-validation";
+import { runPhaseAValidation } from "@al-ft/midgard-validation/phase-a";
+import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 

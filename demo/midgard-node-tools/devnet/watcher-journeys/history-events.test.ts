@@ -4,7 +4,7 @@ import {
   plutusConstrFieldCbor,
   replacePlutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
-import { canonicalBlockEvidenceFromVerifiedPayload } from "@al-ft/midgard-fault-proofs";
+import { canonicalBlockEvidenceFromVerifiedPayload } from "@al-ft/midgard-fault-proofs/evidence";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,

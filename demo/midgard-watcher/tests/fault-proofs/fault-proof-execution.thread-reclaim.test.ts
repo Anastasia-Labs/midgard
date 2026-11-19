@@ -10,7 +10,7 @@ import {
   FRAUD_PROOF_THREAD_RECLAIM_REFUSED,
   FRAUD_PROOF_THREAD_RECLAIM_UNAVAILABLE,
   FRAUD_PROOF_THREAD_RECLAIM_UNFUNDED,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/own-thread-reclaim";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { setupFaultProofExecution } from "../support/fault-proof-execution-fixture.js";

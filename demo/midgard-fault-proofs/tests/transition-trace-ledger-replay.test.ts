@@ -4,10 +4,8 @@ import {
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  buildCanonicalMidgardLedgerEntryOutputMaterial,
-  placeholderValidationTraceDescriptorV1,
-} from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
+import { placeholderValidationTraceDescriptorV1 } from "@al-ft/midgard-validation/validation-machine";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

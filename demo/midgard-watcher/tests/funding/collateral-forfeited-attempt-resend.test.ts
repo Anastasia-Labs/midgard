@@ -6,14 +6,14 @@
  * live, as one that could be sent again. An attempt with no upper validity
  * bound reads that way for as long as its inputs stay live.
  */
+import { createWorkflowActuationPermitController } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
+import type { FraudProofWorkflowJournalEvent } from "@al-ft/midgard-fault-proofs/workflow/journal";
+import { FraudProofL1UnavailableError } from "@al-ft/midgard-fault-proofs/workflow/l1-source";
+import { FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED } from "@al-ft/midgard-fault-proofs/workflow/orchestrator";
 import {
-  createWorkflowActuationPermitController,
-  FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED,
-  FraudProofL1UnavailableError,
-  type FraudProofWorkflowJournalEvent,
   reconcileSignedWorkflowTransaction,
   type SignedWorkflowTransaction,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/signed-transaction-reconciliation";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { FixtureProcessStop } from "../support/fault-proof-funding-fixture.process-stop.js";

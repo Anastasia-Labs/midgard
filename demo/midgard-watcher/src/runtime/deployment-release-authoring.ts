@@ -19,7 +19,7 @@ import {
   parseDeploymentReleaseProvenance,
   SIGNED_DEPLOYMENT_RELEASE_SCHEMA_VERSION as WATCHER_SIGNED_DEPLOYMENT_IDENTITY_SCHEMA_VERSION,
 } from "@al-ft/midgard-core/deployment-release";
-import { computeFraudProofReleaseEconomicsPolicyDigest } from "@al-ft/midgard-fault-proofs";
+import { computeFraudProofReleaseEconomicsPolicyDigest } from "@al-ft/midgard-fault-proofs/workflow/release-economics-policy";
 
 import {
   createWatcherWorkflowFundingProfileBundle,

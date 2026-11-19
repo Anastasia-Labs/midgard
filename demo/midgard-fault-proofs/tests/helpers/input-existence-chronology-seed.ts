@@ -4,7 +4,7 @@
  * ledger; no held root is invented. */
 import { computeHash28 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
-import { deriveCanonicalOriginalDepositTransitionEffect } from "@al-ft/midgard-validation";
+import { deriveCanonicalOriginalDepositTransitionEffect } from "@al-ft/midgard-validation/transition-effect";
 import { CML } from "@lucid-evolution/lucid";
 
 import type { LedgerEntry } from "../../src/ledger-at.js";

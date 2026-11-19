@@ -16,7 +16,7 @@
  * ledger stays the block's: a normal transaction it rejects is `invalid`,
  * and a forced transaction committed with its rejection imports.
  */
-import { LOCAL_FAULT_RUN_LIMIT } from "@al-ft/midgard-fault-proofs";
+import { LOCAL_FAULT_RUN_LIMIT } from "@al-ft/midgard-fault-proofs/local-fault-bound";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 

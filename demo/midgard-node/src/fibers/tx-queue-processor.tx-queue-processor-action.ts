@@ -1,5 +1,5 @@
-import { processedTxFromValidatedTx } from "@al-ft/midgard-validation";
 import { RejectCodes } from "@al-ft/midgard-validation/types";
+import { processedTxFromValidatedTx } from "@al-ft/midgard-validation/validation-candidate";
 import { SqlClient } from "@effect/sql/SqlClient";
 import { Duration, Effect, Exit, Metric, Ref, SubscriptionRef } from "effect";
 

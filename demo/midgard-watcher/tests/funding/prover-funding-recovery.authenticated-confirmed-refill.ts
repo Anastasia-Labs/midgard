@@ -2,11 +2,13 @@ import { createHash } from "node:crypto";
 
 import {
   beginWorkflowFundingReservationAction,
-  type FraudProofWorkflowJournalStore,
   releaseIdleWorkflowFundingReservation,
-  type SignedTransactionRecoveryObservation,
-  type SignedWorkflowTransaction,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/funding-reservation-permit";
+import type { FraudProofWorkflowJournalStore } from "@al-ft/midgard-fault-proofs/workflow/journal";
+import type {
+  SignedTransactionRecoveryObservation,
+  SignedWorkflowTransaction,
+} from "@al-ft/midgard-fault-proofs/workflow/signed-transaction-reconciliation";
 import { CML } from "@lucid-evolution/lucid";
 import { expect, it } from "vitest";
 

@@ -14,7 +14,7 @@ import {
 } from "@al-ft/midgard-core/codec/cbor";
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import { ValidationOneStepWitness } from "@al-ft/midgard-sdk";
-import { redeemerItemControlData } from "@al-ft/midgard-validation";
+import { redeemerItemControlData } from "@al-ft/midgard-validation/validation-machine-data";
 import { Constr, Data } from "@lucid-evolution/lucid";
 
 import {

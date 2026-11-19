@@ -12,6 +12,7 @@ import exactFeeNoChangeOutput from "./rules/exact-fee-no-change-output.mjs";
 import faultProofReferenceScriptsOnly from "./rules/fault-proof-reference-scripts-only.mjs";
 import localUplcEval from "./rules/local-uplc-eval.mjs";
 import localeCompareExplicitLocale from "./rules/locale-compare-explicit-locale.mjs";
+import noCrossPackageRoot from "./rules/no-cross-package-root.mjs";
 import noOwnPackageBarrel from "./rules/no-own-package-barrel.mjs";
 import noRecursivePlutusData from "./rules/no-recursive-plutus-data.mjs";
 import nodeCliOperatorCommandsOnly from "./rules/node-cli-operator-commands-only.mjs";
@@ -33,6 +34,7 @@ export default {
     "fault-proof-reference-scripts-only": faultProofReferenceScriptsOnly,
     "local-uplc-eval": localUplcEval,
     "locale-compare-explicit-locale": localeCompareExplicitLocale,
+    "no-cross-package-root": noCrossPackageRoot,
     "no-own-package-barrel": noOwnPackageBarrel,
     "no-recursive-plutus-data": noRecursivePlutusData,
     "node-cli-operator-commands-only": nodeCliOperatorCommandsOnly,

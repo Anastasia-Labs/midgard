@@ -1,9 +1,7 @@
 import { createHash } from "node:crypto";
 
-import {
-  type FraudProofWorkflowJournalEntry,
-  WORKFLOW_CONTINUATION_QUIET_BOUND_MS,
-} from "@al-ft/midgard-fault-proofs";
+import type { FraudProofWorkflowJournalEntry } from "@al-ft/midgard-fault-proofs/workflow/journal";
+import { WORKFLOW_CONTINUATION_QUIET_BOUND_MS } from "@al-ft/midgard-fault-proofs/workflow/pending-continuation";
 import { describe, expect, it } from "vitest";
 
 import {

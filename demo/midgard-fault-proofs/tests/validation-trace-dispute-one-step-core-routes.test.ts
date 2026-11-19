@@ -29,15 +29,13 @@ import {
   cekCoreRoute,
   parseFaultProofBlueprint,
 } from "@al-ft/midgard-sdk";
-import {
-  midgardCekSemanticGroup,
-  type MidgardCekStagedBuiltinMaterial,
-} from "@al-ft/midgard-validation";
 import type { MidgardCekDirectValueWitness } from "@al-ft/midgard-validation/cek-builtin";
 import type {
   MidgardCekCoreStepWitness,
   MidgardCekSemanticBuiltinWitness,
 } from "@al-ft/midgard-validation/cek-machine";
+import { midgardCekSemanticGroup } from "@al-ft/midgard-validation/cek-semantic-group";
+import type { MidgardCekStagedBuiltinMaterial } from "@al-ft/midgard-validation/cek-staged-builtin";
 import { Data, validatorToScriptHash } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

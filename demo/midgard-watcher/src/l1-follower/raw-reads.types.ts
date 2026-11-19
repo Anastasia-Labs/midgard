@@ -3,7 +3,7 @@ import {
   type FraudProofRawL1Point,
   type FraudProofRawL1Transaction,
   type FraudProofRawL1Utxo,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
 import type { OutRef, Point } from "@al-ft/midgard-l1-follower";
 
 /** The shapes and refusals of the follower-backed raw reads (see raw-reads.ts). */

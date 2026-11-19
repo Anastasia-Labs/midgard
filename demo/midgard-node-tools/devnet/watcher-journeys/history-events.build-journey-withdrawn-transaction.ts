@@ -7,7 +7,7 @@ import {
 } from "@al-ft/midgard-core";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { replacePlutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
-import { buildCountedRoot } from "@al-ft/midgard-fault-proofs";
+import { buildCountedRoot } from "@al-ft/midgard-fault-proofs/transition-trace/phas";
 import * as SDK from "@al-ft/midgard-sdk";
 import { type CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";

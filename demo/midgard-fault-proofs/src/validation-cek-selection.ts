@@ -1,11 +1,11 @@
 import { compareOutRefs, findOutRefIndex } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk";
+import type { ValidationTraceSteps } from "@al-ft/midgard-validation/validation-machine";
 import {
   buildValidationOneStepArgument,
   type CekSelectionDecodeRecord,
   type ValidationMachineFieldCarriageResolver,
-  type ValidationTraceSteps,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/validation-machine-data";
 import { Data, type RedeemerContext, type UTxO } from "@lucid-evolution/lucid";
 
 /**

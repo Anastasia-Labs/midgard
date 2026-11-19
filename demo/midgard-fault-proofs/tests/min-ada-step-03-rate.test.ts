@@ -10,7 +10,7 @@ import {
   MIDGARD_COINS_PER_UTXO_BYTE,
   minAdaLovelace,
   outputMeetsMinAda,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/value-accounting";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

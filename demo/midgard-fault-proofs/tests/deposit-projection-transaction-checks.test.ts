@@ -3,7 +3,7 @@ import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-
 import {
   MIDGARD_COINS_PER_UTXO_BYTE,
   outputMeetsMinAda,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/value-accounting";
 import { describe, expect, it } from "vitest";
 
 import { createCompleteCanonicalReplayUnion } from "../src/workflow/complete-replay.create-complete-canonical-replay-union.js";

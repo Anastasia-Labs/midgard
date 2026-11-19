@@ -1,22 +1,24 @@
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import {
-  authenticatedStateQueueObservationDigest,
-  bindWorkflowActuationJournal,
-  bindWorkflowFundingReservationJournal,
-  classifyHeader,
-  createHeaderClassifier,
-  createWorkflowActuationPermitController,
-  DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
-  FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
-  verifyCompletedFraudProofWorkflow,
-  type WorkflowAdapterRunnerInput,
-} from "@al-ft/midgard-fault-proofs";
-import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
   buildFixtureTransaction,
   outRefCbor,
 } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
+import {
+  bindWorkflowActuationJournal,
+  createWorkflowActuationPermitController,
+} from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
+import type { WorkflowAdapterRunnerInput } from "@al-ft/midgard-fault-proofs/workflow/adapters";
+import { DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY } from "@al-ft/midgard-fault-proofs/workflow/complete-replay";
+import { verifyCompletedFraudProofWorkflow } from "@al-ft/midgard-fault-proofs/workflow/completed-verification";
+import { bindWorkflowFundingReservationJournal } from "@al-ft/midgard-fault-proofs/workflow/funding-reservation-permit";
+import {
+  authenticatedStateQueueObservationDigest,
+  classifyHeader,
+  createHeaderClassifier,
+} from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
+import { FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { openWatcherFaultDecisionJournal } from "../../src/fault-proofs/fault-decision-journal.create-journal.js";

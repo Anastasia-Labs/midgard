@@ -1,8 +1,6 @@
-import {
-  FraudProofL1RefusedError,
-  RetainedDaPayloadUnavailableError,
-  TransitionTraceChallengerError,
-} from "@al-ft/midgard-fault-proofs";
+import { TransitionTraceChallengerError } from "@al-ft/midgard-fault-proofs/transition-trace/errors";
+import { RetainedDaPayloadUnavailableError } from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
+import { FraudProofL1RefusedError } from "@al-ft/midgard-fault-proofs/workflow/l1-source";
 import { describe, expect, it } from "vitest";
 
 import type { WatcherFaultProofSupervisor } from "../../src/fault-proofs/fault-proof-supervisor.js";

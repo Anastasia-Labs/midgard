@@ -1,4 +1,4 @@
-import { type HeaderDecision } from "@al-ft/midgard-fault-proofs";
+import type { HeaderDecision } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
 import { describe, expect, it } from "vitest";
 
 import { watcherProofFamilyCoverageGapAlertSubject } from "../../src/runtime/operations-observability.alert-book.js";

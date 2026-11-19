@@ -7,8 +7,8 @@ import {
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
   type FraudProofWorkflowJournalEntry,
-  WORKFLOW_CONTINUATION_QUIET_BOUND_MS,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/journal";
+import { WORKFLOW_CONTINUATION_QUIET_BOUND_MS } from "@al-ft/midgard-fault-proofs/workflow/pending-continuation";
 import { expect, vi } from "vitest";
 
 import { verifyJourneyCorrection } from "./correction.js";

@@ -6,9 +6,9 @@
  * signed measured profile yet. */
 import {
   createWorkflowFundingRequirements,
-  unsafeCreateMeasuredWorkflowRunnerForTest,
   workflowFundingRequirementsForRunner,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/funding-requirements";
+import { unsafeCreateMeasuredWorkflowRunnerForTest } from "@al-ft/midgard-fault-proofs/workflow/funding-requirements-test-support";
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

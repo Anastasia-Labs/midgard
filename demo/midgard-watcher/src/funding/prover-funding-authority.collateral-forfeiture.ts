@@ -1,8 +1,8 @@
 import {
   assertWorkflowActuationPermitIdentity,
   type WorkflowActuationPermit,
-  type WorkflowFundingReservationPort,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
+import type { WorkflowFundingReservationPort } from "@al-ft/midgard-fault-proofs/workflow/funding-reservation-permit";
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import type { UTxO } from "@lucid-evolution/lucid";
 

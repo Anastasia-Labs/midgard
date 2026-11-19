@@ -1,6 +1,6 @@
 import { findLedgerSignatureVerifierUnavailable } from "@al-ft/midgard-core";
-import { deserializePhaseACandidate } from "@al-ft/midgard-validation";
 import type { PhaseAResult, RejectedTx } from "@al-ft/midgard-validation/types";
+import { deserializePhaseACandidate } from "@al-ft/midgard-validation/wire";
 import { Duration, Effect, Either, Layer, Metric } from "effect";
 
 import {

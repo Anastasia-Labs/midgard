@@ -1,6 +1,6 @@
 import "@al-ft/midgard-core";
 import "@al-ft/midgard-sdk";
-import "@al-ft/midgard-validation";
+import "@al-ft/midgard-validation/ledger-output-descriptor";
 import "vitest";
 import "../src/evidence/canonical-block-evidence.js";
 import "../src/native-script-invalid/artifact.js";
@@ -16,7 +16,7 @@ import {
   hashMidgardVersionedScript,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { describe, expect, it } from "vitest";
 
 import {

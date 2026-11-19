@@ -2,11 +2,11 @@
  * settles through, and the decode of an arm-31 step's material by the
  * semantic group its tag selects. */
 import { StagedMaterialV1 } from "@al-ft/midgard-sdk";
+import type { MidgardCekCoreStepWitness } from "@al-ft/midgard-validation/cek-machine";
 import {
   midgardCekStagedBuiltinMaterialData,
   stageMidgardCekStagedBuiltinMaterial,
-} from "@al-ft/midgard-validation";
-import type { MidgardCekCoreStepWitness } from "@al-ft/midgard-validation/cek-machine";
+} from "@al-ft/midgard-validation/cek-staged-builtin";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

@@ -17,7 +17,7 @@ import {
 import {
   deriveLedgerOutputProofStepClaims,
   ledgerOutputProofDatumRoleIndex,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/ledger-output-proof-plan";
 import { expect } from "vitest";
 
 import { plutusDataToCborHex } from "../../src/plutus-data.js";

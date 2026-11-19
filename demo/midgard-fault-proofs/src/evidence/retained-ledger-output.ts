@@ -5,7 +5,7 @@ import {
   MidgardNativeScriptDecodingBindKinds,
   MidgardNativeScriptDecodingTraceOutcomeKinds,
 } from "@al-ft/midgard-core";
-import { buildOpaqueNativeReferenceScriptLedgerOutputMaterial } from "@al-ft/midgard-validation";
+import { buildOpaqueNativeReferenceScriptLedgerOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 
 /** Exact raw wrapper bytes; the bounded output scanner never interprets its native AST. */
 export const retainedOutputReferenceScript = (

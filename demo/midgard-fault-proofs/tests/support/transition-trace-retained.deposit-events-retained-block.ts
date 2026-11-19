@@ -9,10 +9,8 @@ import {
   plutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  createCanonicalMidgardLedgerDescriptorResolver,
-  deriveCanonicalOriginalDepositTransitionEffect,
-} from "@al-ft/midgard-validation";
+import { createCanonicalMidgardLedgerDescriptorResolver } from "@al-ft/midgard-validation/ledger-output-descriptor";
+import { deriveCanonicalOriginalDepositTransitionEffect } from "@al-ft/midgard-validation/transition-effect";
 import { type Assets, Data } from "@lucid-evolution/lucid";
 
 import { buildCountedRoot } from "../../src/transition-trace/phas.js";

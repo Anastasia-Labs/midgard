@@ -1,11 +1,11 @@
 import type { L1NodeTransport } from "@al-ft/l1-node-transport";
+import type { FraudProofRawL1SnapshotRequest } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
 import {
   computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-  type FraudProofRawL1SnapshotRequest,
   type ReleaseL1FinalityPolicy,
   type VerifiedFraudProofReleaseFinalityPolicy,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/release-finality-policy";
 import {
   cbor,
   encodeTxBody,

@@ -1,7 +1,6 @@
 import "node:fs";
 import "node:path";
 import "@al-ft/midgard-core/codec";
-import "@al-ft/midgard-validation";
 import "@al-ft/midgard-validation/midgard-redeemers";
 import "@al-ft/midgard-validation/script-context";
 import "@al-ft/midgard-validation/script-source";

@@ -6,7 +6,7 @@ import {
   createWorkflowFundingRequirements,
   type WorkflowFundingRequirements,
   type WorkflowFundingRequirementsInput,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/funding-requirements";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueCategoryName,

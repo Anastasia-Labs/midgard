@@ -1,9 +1,9 @@
 import {
-  type FraudProofWorkflowJournalEntry,
-  type HeaderFaultDecision,
   revokeWorkflowActuationPermit,
   type WorkflowActuationPermit,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
+import type { HeaderFaultDecision } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
+import type { FraudProofWorkflowJournalEntry } from "@al-ft/midgard-fault-proofs/workflow/journal";
 
 import type { WatcherProofRetention } from "../l1-follower/proof-retention.js";
 import type { WatcherFaultDecisionJournal } from "./fault-decision-journal.js";

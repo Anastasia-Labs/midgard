@@ -3,7 +3,7 @@ import {
   assertAdmittedWorkflowFundingRequirements,
   isProtocolFundedWorkflowAction,
   type WorkflowFundingRequirements,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/funding-requirements";
 import { CML } from "@lucid-evolution/lucid";
 
 import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.parse-trust-roots.js";

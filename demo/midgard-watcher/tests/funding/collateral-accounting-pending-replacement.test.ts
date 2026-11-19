@@ -4,7 +4,7 @@
  * superseded, and the next action is funded from the wallet as the chain
  * shows it. The superseded attempt's later reads retry the accounting.
  */
-import { FraudProofL1UnavailableError } from "@al-ft/midgard-fault-proofs";
+import { FraudProofL1UnavailableError } from "@al-ft/midgard-fault-proofs/workflow/l1-source";
 import { afterEach, expect, it, vi } from "vitest";
 
 import {

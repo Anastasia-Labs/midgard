@@ -13,7 +13,6 @@ import {
   type MidgardNativeTxWitnessSetCanonical,
 } from "@al-ft/midgard-core/codec";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import { buildPhaseAValidatedTx } from "@al-ft/midgard-validation";
 import { decodeMidgardSubmittedTxFromCanonicalCbor } from "@al-ft/midgard-validation/ledger-tx/codec";
 import { runPhaseAValidation } from "@al-ft/midgard-validation/phase-a";
 import { runPhaseBValidationWithPatch } from "@al-ft/midgard-validation/phase-b";
@@ -22,6 +21,7 @@ import {
   QueuedTx,
   RejectCodes,
 } from "@al-ft/midgard-validation/types";
+import { buildPhaseAValidatedTx } from "@al-ft/midgard-validation/validation-candidate";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";

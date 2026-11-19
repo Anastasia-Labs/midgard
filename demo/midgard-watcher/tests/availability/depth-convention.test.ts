@@ -9,7 +9,7 @@ import {
 import type {
   FraudProofRawL1Point,
   FraudProofRawL1Transaction,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
 import type { DaAvailabilityForeignSpendReaders } from "@al-ft/midgard-sdk";
 import { CML } from "@lucid-evolution/lucid";
 import { afterEach, expect, it, vi } from "vitest";

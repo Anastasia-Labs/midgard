@@ -9,12 +9,12 @@
  */
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
+import { canonicalBlockEvidenceFromVerifiedPayload } from "@al-ft/midgard-fault-proofs/evidence";
+import { checkLedgerAgainstRoot } from "@al-ft/midgard-fault-proofs/ledger-at";
 import {
   buildPortableValidationTraceDefenseMaterial,
-  canonicalBlockEvidenceFromVerifiedPayload,
-  checkLedgerAgainstRoot,
   type PortableValidationTraceDefense,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/validation-trace-dispute/defender";
 import * as SDK from "@al-ft/midgard-sdk";
 
 import { decodeStoredPayload } from "../da/stored-payload.js";

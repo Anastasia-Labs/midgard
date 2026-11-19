@@ -15,13 +15,13 @@ import { hashMidgardValidationMachineState } from "@al-ft/midgard-core";
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import type * as SDK from "@al-ft/midgard-sdk";
 import { cekCoreGroup } from "@al-ft/midgard-sdk";
+import type { ValidationTraceSteps } from "@al-ft/midgard-validation/validation-machine";
 import {
   buildValidationOneStepArgument,
   CekDecodeRecordRequiredError,
   type CekSelectionDecodeRecordResolver,
   type ValidationMachineFieldCarriageResolver,
-  type ValidationTraceSteps,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/validation-machine-data";
 import { Constr, Data } from "@lucid-evolution/lucid";
 
 import { plutusItemScriptDecode } from "../script-decode/item-record.js";

@@ -2,11 +2,11 @@ import {
   type L1SlotConfig,
   l1SlotToPosixTimeMs,
 } from "@al-ft/midgard-core/l1-slot-config";
+import { WALLET_ONLY_VALIDITY_MS } from "@al-ft/midgard-fault-proofs/wallet-only-validity";
 import {
   FAULT_PROOF_RESTART_WAIT,
-  WALLET_ONLY_VALIDITY_MS,
   type WalletOnlySend,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/wallet-only-send-gate";
 
 /**
  * Whether the restart wait is over: the clock and the time of the last

@@ -1,11 +1,11 @@
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import {
   assertWorkflowActuationPermitIdentity,
-  isSqliteBusyError,
-  requireRunnableHeaderFault,
   revokeWorkflowActuationPermit,
   type WorkflowActuationPermit,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
+import { requireRunnableHeaderFault } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
+import { isSqliteBusyError } from "@al-ft/midgard-fault-proofs/workflow/sqlite-busy";
 
 import type { WatcherProofRetention } from "../l1-follower/proof-retention.js";
 import { watcherSha256CanonicalJson } from "../storage/durable-store.canonical-json.js";

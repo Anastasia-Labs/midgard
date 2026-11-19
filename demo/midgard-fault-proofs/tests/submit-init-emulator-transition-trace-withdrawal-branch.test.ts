@@ -8,7 +8,7 @@ import {
   parseMidgardMpfProofJson,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

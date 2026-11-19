@@ -1,6 +1,6 @@
 import "./prover-funding-recovery.registration.js";
 
-import { computeFraudProofRawL1PointId } from "@al-ft/midgard-fault-proofs";
+import { computeFraudProofRawL1PointId } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
 import { expect, it } from "vitest";
 
 import { setupFundingRecoveryFixture as setup } from "../support/fault-proof-funding-fixture.setup-funding-recovery-fixture.js";

@@ -1,8 +1,8 @@
+import { createWorkflowActuationPermitController } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
 import {
   beginWorkflowFundingReservationAction,
-  createWorkflowActuationPermitController,
   readWorkflowFundingRecovery,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/funding-reservation-permit";
 import { afterEach, expect, it } from "vitest";
 
 import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";

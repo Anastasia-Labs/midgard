@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 import { WATCHER_JOURNAL_DATABASE_FILE } from "../fault-proofs/watcher-journal-database.types.js";
-import { WATCHER_PACKAGE_NAME } from "./scaffold.js";
+import { WATCHER_PACKAGE_NAME } from "./package-name.js";
 
 /**
  * The file journals SQLite tables replaced, each with the file whose fresh

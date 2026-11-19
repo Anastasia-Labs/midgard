@@ -8,7 +8,7 @@ import {
   type ScriptDecodeWalkCursor,
   scriptDecodeWalkRecord,
   startScriptDecodeWalk,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/script-decode.step-walk";
 import {
   Constr,
   Data,

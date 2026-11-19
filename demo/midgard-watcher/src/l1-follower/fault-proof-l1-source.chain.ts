@@ -2,8 +2,8 @@ import {
   FraudProofL1CheckpointChangedError,
   FraudProofL1RefusedError,
   FraudProofL1UnavailableError,
-  type FraudProofRawL1Point,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/l1-source";
+import type { FraudProofRawL1Point } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
 import type { FactStore, StoredBlock, View } from "@al-ft/midgard-l1-follower";
 
 import {

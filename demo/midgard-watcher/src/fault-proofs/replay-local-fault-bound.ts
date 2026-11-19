@@ -1,10 +1,10 @@
+import { LOCAL_FAULT_RUN_LIMIT } from "@al-ft/midgard-fault-proofs/local-fault-bound";
 import {
   createValidationTraceReplayHolds,
-  LOCAL_FAULT_RUN_LIMIT,
   type ValidationTraceReplayHold,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/validation-trace-dispute/replay-hold";
 
-import { WATCHER_PACKAGE_NAME } from "../runtime/scaffold.js";
+import { WATCHER_PACKAGE_NAME } from "../runtime/package-name.js";
 
 /** The readiness reason of a header or confirmed head held on a local
  * replay fault. */

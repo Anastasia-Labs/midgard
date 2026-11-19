@@ -4,12 +4,12 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import { forcedVerdictForRejection } from "@al-ft/midgard-fault-proofs";
 import {
   encodeEventToStepValueCbor,
   encodeTransitionIntegerCbor,
   encodeTransitionStepCbor,
 } from "@al-ft/midgard-fault-proofs/block-replay";
+import { forcedVerdictForRejection } from "@al-ft/midgard-fault-proofs/workflow/forced-rejection-reason";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";

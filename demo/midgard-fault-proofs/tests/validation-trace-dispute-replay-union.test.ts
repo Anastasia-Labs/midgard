@@ -5,9 +5,9 @@
  * leaves the block waiting on the hold. Evaluator failures are injected at
  * the validation package, per transaction. */
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import { ValidationTraceStopped } from "@al-ft/midgard-validation";
 import { ScriptEvaluationIndeterminateError } from "@al-ft/midgard-validation/phase-b";
 import { RejectCodes } from "@al-ft/midgard-validation/types";
+import { ValidationTraceStopped } from "@al-ft/midgard-validation/validation-machine";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {

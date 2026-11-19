@@ -6,7 +6,7 @@
  * and the objective raises `prover_collateral_forfeited`. A rollback that
  * drops the landing undoes all of it.
  */
-import { beginWorkflowFundingReservationAction } from "@al-ft/midgard-fault-proofs";
+import { beginWorkflowFundingReservationAction } from "@al-ft/midgard-fault-proofs/workflow/funding-reservation-permit";
 import { afterEach, expect, it, vi } from "vitest";
 
 import {

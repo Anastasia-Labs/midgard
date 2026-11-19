@@ -1,9 +1,9 @@
+import { FraudProofL1CheckpointChangedError } from "@al-ft/midgard-fault-proofs/workflow/l1-source";
 import {
   computeFraudProofRawL1PointId,
-  FraudProofL1CheckpointChangedError,
   type FraudProofRawL1Point,
   type FraudProofRawL1Transaction,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
 import type { FactStore } from "@al-ft/midgard-l1-follower";
 import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk";
 

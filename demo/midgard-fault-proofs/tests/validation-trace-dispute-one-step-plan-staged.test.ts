@@ -8,8 +8,8 @@ import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
   type MidgardCekStagingResult,
   stageMidgardCekStagedBuiltinMaterial,
-  type ValidationTraceSteps,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/cek-staged-builtin";
+import type { ValidationTraceSteps } from "@al-ft/midgard-validation/validation-machine";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 

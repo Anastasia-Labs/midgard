@@ -4,16 +4,20 @@ import { createHash } from "node:crypto";
 
 import {
   assertWorkflowJournalActuation,
-  beginWorkflowFundingReservationAction,
   bindWorkflowActuationJournal,
   bindWorkflowActuationRecoveryIdentity,
-  computeFraudProofWorkflowId,
   createWorkflowActuationPermitController,
+  workflowActuationDecisionDigest,
+} from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
+import {
+  beginWorkflowFundingReservationAction,
+  WorkflowFundingReservationUnavailableError,
+} from "@al-ft/midgard-fault-proofs/workflow/funding-reservation-permit";
+import {
+  computeFraudProofWorkflowId,
   journalJsonDigest,
   normalizeJournalJson,
-  workflowActuationDecisionDigest,
-  WorkflowFundingReservationUnavailableError,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/journal";
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 

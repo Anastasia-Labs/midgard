@@ -11,11 +11,11 @@
  *   the thread does not pay, from the pocket alone, so a commit, which
  *   selects from the Base wallet, never takes it.
  */
+import { isPlainFundingOutput } from "@al-ft/midgard-fault-proofs/funding/plain-funding-output";
 import {
-  isPlainFundingOutput,
   VALIDATION_TRACE_POCKET_COLLATERAL_LOVELACE,
   VALIDATION_TRACE_THREAD_FLOOR_LOVELACE,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/validation-trace-dispute/defender";
 import type { UTxO } from "@lucid-evolution/lucid";
 
 /** What a Defend keeps above the floor for its fee, collateral and change. */

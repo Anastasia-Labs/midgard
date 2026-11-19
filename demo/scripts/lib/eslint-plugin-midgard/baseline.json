@@ -567,6 +567,190 @@
       "sites": ["left.outRef.localeCompare(right.outRef),"]
     }
   },
+  "midgard/no-cross-package-root": {
+    "lucid-midgard/src/builder.complete-tx.ts": {
+      "reason": "Kept on the root because midgard-node/tests/commit-da-frame-step-down-persistence.test.ts, midgard-node/tests/commit-stage-eviction.test.ts, midgard-node/tests/foreign-block-import.local-fault-sites.test.ts, midgard-node/tests/foreign-block-import.phase-a-throw.test.ts stub runPhaseAValidation, runPhaseBValidationWithPatch on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
+      "sites": ["} from \"@al-ft/midgard-validation\";"]
+    },
+    "lucid-midgard/src/builder.ts": {
+      "reason": "Evaluation-order preamble: lucid-midgard/src/builder.complete-tx.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-validation\";"]
+    },
+    "midgard-fault-proofs/src/block-replay.ts": {
+      "reason": "Kept on the root because midgard-fault-proofs/tests/validation-trace-dispute-replay-hold-bounds.test.ts, midgard-fault-proofs/tests/validation-trace-dispute-replay-hold-runner.test.ts, midgard-fault-proofs/tests/validation-trace-dispute-replay-hold.test.ts, midgard-fault-proofs/tests/validation-trace-dispute-replay-union.test.ts, midgard-node/tests/foreign-block-import.replay-clock.test.ts stub replayValidationVerdictEvent on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
+      "sites": ["} from \"@al-ft/midgard-validation\";"]
+    },
+    "midgard-fault-proofs/src/validation-trace-dispute/claim-material.ts": {
+      "reason": "Kept on the root because midgard-fault-proofs/tests/validation-trace-dispute-claim-build-held.test.ts, midgard-fault-proofs/tests/validation-trace-dispute-replay-hold-runner.test.ts stub openValidationTraceV1 on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
+      "sites": ["} from \"@al-ft/midgard-validation\";"]
+    },
+    "midgard-fault-proofs/src/validation-trace-dispute/replay.ts": {
+      "reason": "Kept on the root because midgard-fault-proofs/tests/validation-trace-dispute-replay-hold-bounds.test.ts, midgard-fault-proofs/tests/validation-trace-dispute-replay-hold-runner.test.ts, midgard-fault-proofs/tests/validation-trace-dispute-replay-hold.test.ts, midgard-fault-proofs/tests/validation-trace-dispute-replay-union.test.ts, midgard-node/tests/foreign-block-import.replay-clock.test.ts stub commitValidationTraceV1, replayValidationVerdictEvent on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
+      "sites": ["} from \"@al-ft/midgard-validation\";"]
+    },
+    "midgard-fault-proofs/src/workflow/complete-replay.ts": {
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/src/validation-trace-dispute/replay.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-validation\";"]
+    },
+    "midgard-node-tools/devnet/watcher-journeys/journey-mocks.ts": {
+      "reason": "A literal dynamic import inside a journey mock's body; narrowing it is a test-body change, which the narrowing change made none of.",
+      "sites": ["\"@al-ft/midgard-fault-proofs\""]
+    },
+    "midgard-node-tools/devnet/watcher-journeys/journey-runner.ts": {
+      "reason": "Evaluation-order preamble: midgard-node-tools/devnet/watcher-journeys/readiness-evidence.verify-journey-result-evidence.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-fault-proofs\";"]
+    },
+    "midgard-node-tools/devnet/watcher-journeys/readiness-evidence.ts": {
+      "reason": "Evaluation-order preamble: midgard-node-tools/devnet/watcher-journeys/readiness-evidence.verify-journey-result-evidence.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-fault-proofs\";"]
+    },
+    "midgard-node-tools/devnet/watcher-journeys/readiness-evidence.verify-journey-result-evidence.ts": {
+      "reason": "Kept on the root because midgard-node-tools/devnet/watcher-journeys/readiness-evidence.test.ts stubs validateFraudProofWorkflowJournal on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
+      "sites": ["} from \"@al-ft/midgard-fault-proofs\";"]
+    },
+    "midgard-node-tools/src/funding-measurements.ts": {
+      "reason": "Its compiled dist is loaded by tests/funding-measurements.test.ts through a run-time URL import, which the workspace bundle's routing cannot see. Through the root it shares the bundled fault-proofs instance that the test's own root import makes a bundle entry; a subpath here loads a second instance from source. It and that test narrow together once the routing sees the dist import.",
+      "sites": ["} from \"@al-ft/midgard-fault-proofs\";"]
+    },
+    "midgard-node-tools/tests/funding-measurements.test.ts": {
+      "reason": "Its root import makes the fault-proofs root a workspace-bundle entry, which the compiled src/funding-measurements.ts it loads from dist resolves to; narrowing this import alone loads a second fault-proofs instance from source.",
+      "sites": [
+        "import { submitCapturedTransaction } from \"@al-ft/midgard-fault-proofs\";"
+      ]
+    },
+    "midgard-node/src/mpf/event-window.classify-forced-transactions.ts": {
+      "reason": "Kept on the root because midgard-node/tests/commit-da-frame-step-down-persistence.test.ts, midgard-node/tests/commit-stage-eviction.test.ts, midgard-node/tests/foreign-block-import.local-fault-sites.test.ts, midgard-node/tests/foreign-block-import.phase-a-throw.test.ts stub runPhaseAValidation, runPhaseBValidationWithPatch on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
+      "sites": ["} from \"@al-ft/midgard-validation\";"]
+    },
+    "midgard-node/src/mpf/event-window.forced-verdict-for-rejection.ts": {
+      "reason": "The settlement worker's only route to the fault-proofs root: midgard-node/tests/settlement-worker-module-graph.test.ts asserts the worker's bundle contains that root barrel, and node tests stub ForcedRejectionStopped and forcedVerdictForRejection on the root. Narrowing waits on that test's premise and on retargeting the stubs (the narrowing change edited no test).",
+      "sites": ["} from \"@al-ft/midgard-fault-proofs\";"]
+    },
+    "midgard-node/src/mpf/event-window.ts": {
+      "reason": "Evaluation-order preamble: midgard-node/src/mpf/event-window.forced-verdict-for-rejection.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-validation\";"]
+    },
+    "midgard-node/src/mpf/process.evaluate-normal-block-candidates.ts": {
+      "reason": "Kept on the root because midgard-node/tests/commit-da-frame-step-down-persistence.test.ts, midgard-node/tests/commit-stage-eviction.test.ts, midgard-node/tests/foreign-block-import.local-fault-sites.test.ts, midgard-node/tests/foreign-block-import.phase-a-throw.test.ts stub runPhaseBValidationWithPatch on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
+      "sites": [
+        "import { runPhaseBValidationWithPatch } from \"@al-ft/midgard-validation\";"
+      ]
+    },
+    "midgard-node/src/mpf/process.process-mpfs.ts": {
+      "reason": "Kept on the root because midgard-node/tests/commit-da-frame-step-down-persistence.test.ts, midgard-node/tests/commit-stage-eviction.test.ts stub runPhaseAValidation on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
+      "sites": ["} from \"@al-ft/midgard-validation\";"]
+    },
+    "midgard-node/src/mpf/verified-block-import.ts": {
+      "reason": "Kept on the root because midgard-node/tests/foreign-block-import.local-fault-sites.test.ts stubs decodeMidgardLedgerTxFromCanonicalCbor on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test). decodeMidgardLedgerTxFromCanonicalCbor also has no subpath yet.",
+      "sites": ["} from \"@al-ft/midgard-validation\";"]
+    },
+    "midgard-node/tests/forced-transactions.test.ts": {
+      "reason": "Evaluation-order preamble: midgard-node/src/mpf/event-window.classify-forced-transactions.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-validation\";"]
+    },
+    "midgard-node/tests/foreign-block-import.replay-clock.test.ts": {
+      "reason": "The test stubs replayValidationVerdictEvent on the validation root (vi.mock with a spread of the actual module) and imports that root to observe the stub; narrowing it is a test change, which the narrowing change made none of.",
+      "sites": ["} from \"@al-ft/midgard-validation\";"]
+    },
+    "midgard-watcher/src/fault-proofs/fault-decision-bridge.ts": {
+      "reason": "Evaluation-order preamble: midgard-watcher/src/fault-proofs/fault-proof-application.production-dependencies.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-fault-proofs\";"]
+    },
+    "midgard-watcher/src/fault-proofs/fault-proof-application.create-application.ts": {
+      "reason": "Kept on the root because midgard-watcher/tests/fault-proofs/fault-proof-application-decision-time.test.ts stubs bindFraudProofTerminalDeployment, bindFraudProofWorkflowDeployment, createHeaderClassifier, createTransitionTraceEventAuthority, headerDecisionReplayContext on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test). createTransitionTraceEventAuthority also has no subpath yet.",
+      "sites": ["} from \"@al-ft/midgard-fault-proofs\";"]
+    },
+    "midgard-watcher/src/fault-proofs/fault-proof-application.create-catalogue-replayer.ts": {
+      "reason": "Kept on the root because midgard-watcher/tests/fault-proofs/fault-proof-application-decision-time.test.ts stubs bindFraudProofWorkflowDeployment on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
+      "sites": ["} from \"@al-ft/midgard-fault-proofs\";"]
+    },
+    "midgard-watcher/src/fault-proofs/fault-proof-application.production-dependencies.ts": {
+      "reason": "Kept on the root because midgard-watcher/tests/runtime/secret-distinctness.test.ts stubs resolveProverSigner on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
+      "sites": [
+        "import { PREDECESSOR_LEDGER_PROOF_CATEGORIES } from \"@al-ft/midgard-fault-proofs\";",
+        "} from \"@al-ft/midgard-fault-proofs\";",
+        "} from \"@al-ft/midgard-fault-proofs\";"
+      ]
+    },
+    "midgard-watcher/src/fault-proofs/fault-proof-application.replayed-ledger.ts": {
+      "reason": "Kept on the root because midgard-watcher/tests/fault-proofs/fault-proof-application-decision-time.test.ts stubs classifyHeader, createHeaderClassifier, headerDecisionReplayContext on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
+      "sites": ["} from \"@al-ft/midgard-fault-proofs\";"]
+    },
+    "midgard-watcher/src/fault-proofs/fault-proof-application.ts": {
+      "reason": "Evaluation-order preamble: midgard-watcher/src/fault-proofs/fault-proof-application.production-dependencies.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-fault-proofs\";"]
+    },
+    "midgard-watcher/src/fault-proofs/fault-proof-execution.ts": {
+      "reason": "At its module-size cap: one import per declaring subpath would push it past the cap, so it keeps the root entry until the file is split.",
+      "sites": ["} from \"@al-ft/midgard-fault-proofs\";"]
+    },
+    "midgard-watcher/src/fault-proofs/fault-proof-objective-journal.ts": {
+      "reason": "Kept on the root because midgard-node-tools/devnet/watcher-journeys/readiness-evidence.test.ts stubs validateFraudProofWorkflowJournal on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
+      "sites": ["} from \"@al-ft/midgard-fault-proofs\";"]
+    },
+    "midgard-watcher/src/fault-proofs/fault-proof-progress-authority.ts": {
+      "reason": "Kept on the root because midgard-node-tools/devnet/watcher-journeys/readiness-evidence.test.ts, midgard-watcher/tests/fault-proofs/fault-proof-progress-authority-recovery-bound.test.ts, midgard-watcher/tests/fault-proofs/fault-proof-progress-authority-retention.test.ts stub createWorkflowReconciliationPermitController, validateFraudProofWorkflowJournal on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
+      "sites": ["} from \"@al-ft/midgard-fault-proofs\";"]
+    },
+    "midgard-watcher/src/fault-proofs/fault-proof-supervisor.ts": {
+      "reason": "Evaluation-order preamble: midgard-watcher/src/fault-proofs/fault-proof-objective-journal.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-fault-proofs\";"]
+    },
+    "midgard-watcher/src/funding/prover-funding-authority.create-watcher-prover-funding-authority-factory.ts": {
+      "reason": "Kept on the root because midgard-watcher/tests/fault-proofs/watcher-installed-journey.test.ts stubs createWorkflowRuntimeFundingPolicy on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test). VALIDATION_TRACE_ONE_STEP_CONTRACT_NAMES also has no subpath yet.",
+      "sites": ["} from \"@al-ft/midgard-fault-proofs\";"]
+    },
+    "midgard-watcher/src/funding/prover-funding-authority.create-watcher-prover-funding-authority.ts": {
+      "reason": "At its module-size cap: one import per declaring subpath would push it past the cap, so it keeps the root entry until the file is split.",
+      "sites": ["} from \"@al-ft/midgard-fault-proofs\";"]
+    },
+    "midgard-watcher/src/funding/prover-funding-authority.ts": {
+      "reason": "Evaluation-order preamble: midgard-watcher/src/funding/prover-funding-authority.create-watcher-prover-funding-authority.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-fault-proofs\";"]
+    },
+    "midgard-watcher/src/runtime/watcher-runtime.prepare-authority.ts": {
+      "reason": "Kept on the root because midgard-watcher/tests/runtime/secret-distinctness.test.ts stubs resolveProverSigner on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
+      "sites": [
+        "import { resolveProverSigner } from \"@al-ft/midgard-fault-proofs\";"
+      ]
+    },
+    "midgard-watcher/src/runtime/watcher-runtime.ts": {
+      "reason": "Evaluation-order preamble: midgard-watcher/src/fault-proofs/fault-proof-execution.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-fault-proofs\";"]
+    },
+    "midgard-watcher/tests/fault-proofs/fault-decision-bridge.test.ts": {
+      "reason": "Evaluation-order preamble: midgard-watcher/src/fault-proofs/fault-proof-application.production-dependencies.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-fault-proofs\";"]
+    },
+    "midgard-watcher/tests/fault-proofs/fault-proof-application.test.ts": {
+      "reason": "Evaluation-order preamble: midgard-watcher/src/fault-proofs/fault-proof-application.production-dependencies.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-fault-proofs\";"]
+    },
+    "midgard-watcher/tests/fault-proofs/fault-proof-execution.test.ts": {
+      "reason": "At its module-size cap: one import per declaring subpath would push it past the cap, so it keeps the root entry until the file is split.",
+      "sites": ["} from \"@al-ft/midgard-fault-proofs\";"]
+    },
+    "midgard-watcher/tests/fault-proofs/fault-proof-objective-progress.test.ts": {
+      "reason": "At its module-size cap: one import per declaring subpath would push it past the cap, so it keeps the root entry until the file is split.",
+      "sites": ["} from \"@al-ft/midgard-fault-proofs\";"]
+    },
+    "midgard-watcher/tests/funding/prover-funding-recovery.test.ts": {
+      "reason": "Evaluation-order preamble: midgard-watcher/tests/support/fault-proof-funding-fixture.setup-funding-recovery-fixture.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-fault-proofs\";"]
+    },
+    "midgard-watcher/tests/runtime/secret-distinctness.test.ts": {
+      "reason": "The test stubs resolveProverSigner on the fault-proofs root (vi.mock with a spread of the actual module) and imports that root to observe the stub; narrowing it is a test change, which the narrowing change made none of.",
+      "sites": ["import * as FaultProofs from \"@al-ft/midgard-fault-proofs\";"]
+    },
+    "midgard-watcher/tests/support/fault-proof-funding-fixture.setup-funding-recovery-fixture.ts": {
+      "reason": "At its module-size cap: one import per declaring subpath would push it past the cap, so it keeps the root entry until the file is split.",
+      "sites": ["} from \"@al-ft/midgard-fault-proofs\";"]
+    },
+    "midgard-watcher/tests/support/fault-proof-funding-fixture.ts": {
+      "reason": "Evaluation-order preamble: midgard-watcher/tests/support/fault-proof-funding-fixture.setup-funding-recovery-fixture.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-fault-proofs\";"]
+    }
+  },
   "midgard/no-own-package-barrel": {
     "midgard-fault-proofs/tests/canonical-evidence-source.q03-provenance-admission.ts": {
       "reason": "Asserts the names the package root publishes, so it imports the root barrel on purpose.",

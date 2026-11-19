@@ -1,8 +1,8 @@
 import {
   assertWorkflowActuationPermitIdentity,
-  authenticatedStateQueueObservationDigest,
   createWorkflowActuationPermitController,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
+import { authenticatedStateQueueObservationDigest } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
 import { GENESIS_HEADER_HASH, Header } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -10,7 +10,7 @@ import type { WatcherWalletLeases } from "../funding/prover-funding-reservation.
 import { assertWatcherStateQueueObservation } from "../indexers/authenticated-state-queue-observation.js";
 import type { WatcherQueueHeaderSource } from "../l1-follower/observation.js";
 import type { WatcherOperationsSink } from "../runtime/operations-observability.js";
-import { WATCHER_PACKAGE_NAME } from "../runtime/scaffold.js";
+import { WATCHER_PACKAGE_NAME } from "../runtime/package-name.js";
 import { createBridge } from "./fault-decision-bridge.create-bridge.js";
 import {
   ACTION_CONFIRMATION_DEPTH,

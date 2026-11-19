@@ -15,7 +15,7 @@ import {
   deriveMidgardForcedTxProofSourceFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
-import { countedMachineTransactionChunkSteps } from "@al-ft/midgard-validation";
+import { countedMachineTransactionChunkSteps } from "@al-ft/midgard-validation/validation-machine";
 
 type BoundaryCorpusEntry = {
   readonly label: string;

@@ -1,7 +1,7 @@
-import type { HeaderDecision } from "@al-ft/midgard-fault-proofs";
+import type { HeaderDecision } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
 
 import { watcherUnprovenFaultMergedAlertSubject } from "../runtime/operations-observability.alert-book.js";
-import { WATCHER_PACKAGE_NAME } from "../runtime/scaffold.js";
+import { WATCHER_PACKAGE_NAME } from "../runtime/package-name.js";
 import type { BridgeDependencies } from "./fault-decision-bridge.selected-target.js";
 import type { WatcherUnprovenFaultMerge } from "./watcher-unproven-fault-merges.js";
 

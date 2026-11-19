@@ -4,7 +4,7 @@ import {
   buildTraceAtStepCountV1,
   buildValidationMachineLedgerInsertOp,
   openValidationTraceV1,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/validation-machine";
 import { Effect } from "effect";
 import { expect } from "vitest";
 

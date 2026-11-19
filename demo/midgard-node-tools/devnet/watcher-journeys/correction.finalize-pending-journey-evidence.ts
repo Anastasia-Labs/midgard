@@ -2,10 +2,10 @@ import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 
-import {
-  type FraudProofWorkflowJournalEntry,
-  type FraudProofWorkflowTerminal,
-} from "@al-ft/midgard-fault-proofs";
+import type {
+  FraudProofWorkflowJournalEntry,
+  FraudProofWorkflowTerminal,
+} from "@al-ft/midgard-fault-proofs/workflow/journal";
 import * as SDK from "@al-ft/midgard-sdk";
 import { expect } from "vitest";
 

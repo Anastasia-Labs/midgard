@@ -1,9 +1,9 @@
+import { proofMaterialsAddressOfFundingAddress } from "@al-ft/midgard-fault-proofs/funding/proof-materials-address";
 import {
   createFileTimeoutCorrectionJournalStore,
-  proofMaterialsAddressOfFundingAddress,
   submitUnattestedTimeoutCorrection,
   type TimeoutCorrectionJournal,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/remove-unattested-block";
 import { depositEventsRetainedBlock } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-retained";
 import * as SDK from "@al-ft/midgard-sdk";
 import {

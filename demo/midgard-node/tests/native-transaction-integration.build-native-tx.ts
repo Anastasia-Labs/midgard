@@ -18,8 +18,8 @@ import {
   ScriptLanguageTags,
 } from "@al-ft/midgard-core/codec";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import { runPhaseBValidationWithPatch } from "@al-ft/midgard-validation";
 import { runPhaseAValidation } from "@al-ft/midgard-validation/phase-a";
+import { runPhaseBValidationWithPatch } from "@al-ft/midgard-validation/phase-b";
 import { type QueuedTx, RejectCodes } from "@al-ft/midgard-validation/types";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";

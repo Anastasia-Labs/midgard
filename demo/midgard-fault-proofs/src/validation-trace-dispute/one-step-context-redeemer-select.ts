@@ -13,15 +13,13 @@ import {
   MidgardRedeemerItemProofModes,
 } from "@al-ft/midgard-core";
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
-import {
-  redeemerTagForPurposeKind,
-  summarizeMidgardCekLucidData,
-} from "@al-ft/midgard-validation";
+import { summarizeMidgardCekLucidData } from "@al-ft/midgard-validation/cek-context";
 import {
   cardanoScriptPurposeData,
   type MidgardScriptPurpose,
   midgardScriptPurposeData,
 } from "@al-ft/midgard-validation/midgard-redeemers";
+import { redeemerTagForPurposeKind } from "@al-ft/midgard-validation/validation-machine";
 import { Constr, Data } from "@lucid-evolution/lucid";
 
 /** A redeemer select's states past the authenticate, each field as Data

@@ -1,15 +1,13 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import {
-  bindFraudProofWorkflowDeployment,
-  resolveProverSigner,
-  TRANSITION_TRACE_WORKFLOW_DATUM_SCHEMAS,
-} from "@al-ft/midgard-fault-proofs";
+import { resolveProverSigner } from "@al-ft/midgard-fault-proofs/runtime";
 import {
   captureTransitionTraceL1Events,
   requireTransitionTraceL1Events,
 } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-l1-events";
+import { TRANSITION_TRACE_WORKFLOW_DATUM_SCHEMAS } from "@al-ft/midgard-fault-proofs/transition-trace/workflow";
+import { bindFraudProofWorkflowDeployment } from "@al-ft/midgard-fault-proofs/workflow/deployment-manifest-binding";
 import {
   loadWatcherSecretText,
   parseWatcherProcessConfig,

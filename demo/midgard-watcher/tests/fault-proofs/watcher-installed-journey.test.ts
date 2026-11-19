@@ -7,12 +7,12 @@ import { DatabaseSync } from "node:sqlite";
 import { setTimeout as pause } from "node:timers/promises";
 
 import {
-  type FraudProofWorkflowJournalEntry,
   LOCAL_STATE_QUEUE_MUTATION_LEASE_SOURCE,
   LOCAL_STATE_QUEUE_MUTATION_LEASE_TOKEN,
-  resolveProverSigner,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/remove-fraudulent-block";
+import { resolveProverSigner } from "@al-ft/midgard-fault-proofs/runtime";
 import { recordCrossBlockRawEmulator } from "@al-ft/midgard-fault-proofs/test-support/cross-block-raw-emulator";
+import type { FraudProofWorkflowJournalEntry } from "@al-ft/midgard-fault-proofs/workflow/journal";
 import { L1FollowerProvider } from "@al-ft/midgard-l1-follower/provider";
 import * as SDK from "@al-ft/midgard-sdk";
 import {

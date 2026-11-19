@@ -2,7 +2,7 @@ import "node:fs";
 import "node:path";
 import "node:url";
 import "@al-ft/midgard-core/consensus-profile";
-import "@al-ft/midgard-validation";
+import "@al-ft/midgard-validation/wire";
 import "@al-ft/midgard-validation/types";
 import "@al-ft/midgard-validation/phase-a";
 import "@al-ft/midgard-validation/phase-b";
@@ -19,10 +19,10 @@ import "./validation-worker-pool.build-adversarial-corpus.js";
 import { existsSync } from "node:fs";
 
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import { deserializePhaseACandidate } from "@al-ft/midgard-validation";
 import { runPhaseAValidation } from "@al-ft/midgard-validation/phase-a";
 import { runPhaseBValidationWithPatch } from "@al-ft/midgard-validation/phase-b";
 import { RejectCodes } from "@al-ft/midgard-validation/types";
+import { deserializePhaseACandidate } from "@al-ft/midgard-validation/wire";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 

@@ -1,7 +1,5 @@
-import {
-  bindFraudProofWorkflowDeployment,
-  TRANSITION_TRACE_WORKFLOW_DATUM_SCHEMAS,
-} from "@al-ft/midgard-fault-proofs";
+import { TRANSITION_TRACE_WORKFLOW_DATUM_SCHEMAS } from "@al-ft/midgard-fault-proofs/transition-trace/workflow";
+import { bindFraudProofWorkflowDeployment } from "@al-ft/midgard-fault-proofs/workflow/deployment-manifest-binding";
 import {
   FabricatedDepositStep02Datum,
   FabricatedDepositStep03Datum,

@@ -7,12 +7,6 @@ import {
   encodeTransitionStepCbor,
 } from "@al-ft/midgard-fault-proofs/block-replay";
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  placeholderValidationTraceDescriptorV1,
-  replayValidationVerdictEvent,
-  validationMachineLedgerRoot,
-  validationTransactionCommitmentV1,
-} from "@al-ft/midgard-validation";
 import { encodeMidgardCekCardanoFlatProgram } from "@al-ft/midgard-validation/cek-program";
 import { MidgardRedeemerTag } from "@al-ft/midgard-validation/midgard-redeemers";
 import {
@@ -32,6 +26,12 @@ import {
   UPLCProgram,
   UPLCVar,
 } from "@al-ft/midgard-validation/uplc";
+import {
+  placeholderValidationTraceDescriptorV1,
+  replayValidationVerdictEvent,
+  validationMachineLedgerRoot,
+  validationTransactionCommitmentV1,
+} from "@al-ft/midgard-validation/validation-machine";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

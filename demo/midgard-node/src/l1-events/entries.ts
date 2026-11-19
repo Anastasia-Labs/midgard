@@ -16,7 +16,7 @@ import {
 } from "@al-ft/midgard-core/plutus-data-cbor";
 import type { ProjectedEvent } from "@al-ft/midgard-l1-follower/events";
 import * as SDK from "@al-ft/midgard-sdk";
-import { deriveCanonicalOriginalDepositTransitionEffect } from "@al-ft/midgard-validation";
+import { deriveCanonicalOriginalDepositTransitionEffect } from "@al-ft/midgard-validation/transition-effect";
 import { Data, type Network } from "@lucid-evolution/lucid";
 
 export type DepositEntryContent = Readonly<{

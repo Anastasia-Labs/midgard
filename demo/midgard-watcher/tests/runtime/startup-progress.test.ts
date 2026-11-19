@@ -2,7 +2,7 @@ import {
   SidecarExitedError,
   TransportRequestError,
 } from "@al-ft/l1-node-transport";
-import { FraudProofL1UnavailableError } from "@al-ft/midgard-fault-proofs";
+import { FraudProofL1UnavailableError } from "@al-ft/midgard-fault-proofs/workflow/l1-source";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { watcherFailureCauses } from "../../src/cli.js";

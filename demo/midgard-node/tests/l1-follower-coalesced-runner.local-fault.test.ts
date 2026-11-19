@@ -18,7 +18,7 @@
  * sibling, or a rollback onto one) keeps it. A run that ends on a local
  * fault does not start a transient failure's budget over.
  */
-import { LOCAL_FAULT_RUN_LIMIT } from "@al-ft/midgard-fault-proofs";
+import { LOCAL_FAULT_RUN_LIMIT } from "@al-ft/midgard-fault-proofs/local-fault-bound";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {

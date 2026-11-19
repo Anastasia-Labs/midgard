@@ -1,4 +1,4 @@
-import type { TimeoutCorrectionJournal } from "@al-ft/midgard-fault-proofs";
+import type { TimeoutCorrectionJournal } from "@al-ft/midgard-fault-proofs/remove-unattested-block";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 

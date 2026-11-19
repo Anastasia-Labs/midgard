@@ -6,12 +6,12 @@
  * Evaluator failures are injected at the validation package, per
  * transaction; with none, each block replays as it really does. */
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
+import { ScriptEvaluationIndeterminateError } from "@al-ft/midgard-validation/phase-b";
+import { RejectCodes } from "@al-ft/midgard-validation/types";
 import {
   DirectValidationTraceUnavailable,
   ValidationTraceStopped,
-} from "@al-ft/midgard-validation";
-import { ScriptEvaluationIndeterminateError } from "@al-ft/midgard-validation/phase-b";
-import { RejectCodes } from "@al-ft/midgard-validation/types";
+} from "@al-ft/midgard-validation/validation-machine";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { EventLedgerReplayRefusal } from "../src/event-ledger.js";

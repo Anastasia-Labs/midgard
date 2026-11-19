@@ -8,12 +8,12 @@ import {
 import type { MidgardVersionedScript } from "@al-ft/midgard-core/codec";
 import { protectMidgardAddress } from "@al-ft/midgard-core/codec/address";
 import * as SDK from "@al-ft/midgard-sdk";
-import { deriveCanonicalOriginalDepositTransitionEffect } from "@al-ft/midgard-validation";
 import {
   hashScriptWitness,
   makeMintPreimageCbor,
   nativeScriptWitness,
 } from "@al-ft/midgard-validation/tests/validation-fixtures";
+import { deriveCanonicalOriginalDepositTransitionEffect } from "@al-ft/midgard-validation/transition-effect";
 import { CML } from "@lucid-evolution/lucid";
 
 import type { LedgerEntry } from "../../src/ledger-at.js";

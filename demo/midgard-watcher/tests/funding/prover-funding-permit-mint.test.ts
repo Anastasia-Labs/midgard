@@ -1,12 +1,10 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 
-import {
-  createWorkflowFundingRequirements,
-  unsafeCreateMeasuredWorkflowRunnerForTest,
-  type WorkflowActuationPermit,
-  type WorkflowAdapterRunner,
-} from "@al-ft/midgard-fault-proofs";
+import type { WorkflowActuationPermit } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
+import type { WorkflowAdapterRunner } from "@al-ft/midgard-fault-proofs/workflow/adapters";
+import { createWorkflowFundingRequirements } from "@al-ft/midgard-fault-proofs/workflow/funding-requirements";
+import { unsafeCreateMeasuredWorkflowRunnerForTest } from "@al-ft/midgard-fault-proofs/workflow/funding-requirements-test-support";
 import { CML, type UTxO } from "@lucid-evolution/lucid";
 import { afterEach, describe, expect, it, vi } from "vitest";
 

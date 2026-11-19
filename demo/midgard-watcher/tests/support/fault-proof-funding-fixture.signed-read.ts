@@ -1,10 +1,10 @@
 import {
-  computeFraudProofRawL1PointId,
   FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
   type FraudProofWorkflowReconcileResult,
   type FraudProofWorkflowTerminalVerifier,
-  type SignedTransactionRecoveryObservation,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/orchestrator";
+import { computeFraudProofRawL1PointId } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
+import type { SignedTransactionRecoveryObservation } from "@al-ft/midgard-fault-proofs/workflow/signed-transaction-reconciliation";
 import { vi } from "vitest";
 
 const tipBlock = {

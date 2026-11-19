@@ -1,8 +1,8 @@
+import type { WorkflowActuationPermit } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
 import type {
   HeaderDecision,
   HeaderFaultDecision,
-  WorkflowActuationPermit,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
 
 import type { WatcherAuthenticatedStateQueueObservation } from "../indexers/authenticated-state-queue-observation.js";
 import type { WatcherProofCleanupFailure } from "./fault-proof-objective-cleanup.js";

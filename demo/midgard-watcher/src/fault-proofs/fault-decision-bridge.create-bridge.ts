@@ -1,7 +1,5 @@
-import {
-  type HeaderDecision,
-  type WorkflowActuationPermitController,
-} from "@al-ft/midgard-fault-proofs";
+import type { WorkflowActuationPermitController } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
+import type { HeaderDecision } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
 
 import { WatcherRetainedHeaderAttestationPendingError } from "../indexers/authenticated-state-queue-observation.js";
 import {

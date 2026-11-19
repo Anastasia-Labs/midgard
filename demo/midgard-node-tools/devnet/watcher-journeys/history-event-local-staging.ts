@@ -2,11 +2,11 @@ import {
   aikenSerialisedPlutusDataCborPreservingMapOrder as canonical,
   plutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
+import { recordCrossBlockRawEmulator } from "@al-ft/midgard-fault-proofs/test-support/cross-block-raw-emulator";
 import {
   buildCountedRoot,
   keyValuePhasProof,
-} from "@al-ft/midgard-fault-proofs";
-import { recordCrossBlockRawEmulator } from "@al-ft/midgard-fault-proofs/test-support/cross-block-raw-emulator";
+} from "@al-ft/midgard-fault-proofs/transition-trace/phas";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   type CML,

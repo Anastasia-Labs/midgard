@@ -13,7 +13,7 @@ import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-prof
 import {
   bindFraudProofWorkflowDeployment,
   requireManifestBoundReferenceScriptUtxo,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/deployment-manifest-binding";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   FraudProofComputationThreadStepDatum,

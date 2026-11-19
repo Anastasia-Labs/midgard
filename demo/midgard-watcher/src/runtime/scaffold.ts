@@ -5,12 +5,12 @@ import {
 } from "@al-ft/midgard-l1-follower";
 
 import type { WatcherAvailabilityStatusTransition } from "../availability/runtime.js";
+import { WATCHER_PACKAGE_NAME } from "./package-name.js";
 import {
   WATCHER_STARTUP_FAILED,
   WatcherStartupHeldError,
 } from "./startup-operations.js";
 
-export const WATCHER_PACKAGE_NAME = "midgard-watcher";
 export const WATCHER_COMMAND_FAILURE_EXIT_CODE = 70;
 export type WatcherCommand = "replay" | "start";
 

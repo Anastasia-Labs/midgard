@@ -1,9 +1,9 @@
+import { COMPLETE_CANONICAL_REPLAY } from "@al-ft/midgard-fault-proofs/workflow/complete-replay";
 import {
-  COMPLETE_CANONICAL_REPLAY,
   HEADER_CLASSIFIER,
   HEADER_DECISION,
   type HeaderDecision,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
 
 import {
   canonicalDigest,

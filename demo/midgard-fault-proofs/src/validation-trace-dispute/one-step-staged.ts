@@ -18,12 +18,12 @@ import {
   compareMidgardCekStagedOutRefs,
   type MidgardCekStagedOutRef,
 } from "@al-ft/midgard-core";
+import type { MidgardCekCoreStepWitness } from "@al-ft/midgard-validation/cek-machine";
 import {
   type MidgardCekStagingResult,
   stageMidgardCekStagedBuiltinMaterial,
-  type ValidationTraceSteps,
-} from "@al-ft/midgard-validation";
-import type { MidgardCekCoreStepWitness } from "@al-ft/midgard-validation/cek-machine";
+} from "@al-ft/midgard-validation/cek-staged-builtin";
+import type { ValidationTraceSteps } from "@al-ft/midgard-validation/validation-machine";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import type { ValidationTraceHop } from "./one-step-builders.js";

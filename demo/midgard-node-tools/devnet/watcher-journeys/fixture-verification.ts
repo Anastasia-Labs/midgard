@@ -1,16 +1,18 @@
 import { createHash } from "node:crypto";
 
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
+import type { LedgerAt } from "@al-ft/midgard-fault-proofs/ledger-at";
+import { authenticatedHeaderObservation } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
+import { classifyRetainedReasonFixture } from "@al-ft/midgard-fault-proofs/test-support/retained-reason-classifier";
+import {
+  headerDecisionCanonicalEvidence,
+  requireRunnableHeaderFault,
+} from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
 import {
   computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-  headerDecisionCanonicalEvidence,
-  type LedgerAt,
-  requireRunnableHeaderFault,
-} from "@al-ft/midgard-fault-proofs";
-import { authenticatedHeaderObservation } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
-import { classifyRetainedReasonFixture } from "@al-ft/midgard-fault-proofs/test-support/retained-reason-classifier";
+} from "@al-ft/midgard-fault-proofs/workflow/release-finality-policy";
 import type * as SDK from "@al-ft/midgard-sdk";
 
 type RetainedClassifierInput = Parameters<

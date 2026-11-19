@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 
-import type { FraudProofWorkflowJournalEntry } from "@al-ft/midgard-fault-proofs";
+import type { FraudProofWorkflowJournalEntry } from "@al-ft/midgard-fault-proofs/workflow/journal";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,

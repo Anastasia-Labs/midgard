@@ -1,5 +1,5 @@
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core";
-import type { WorkflowFundingPreparedTransition } from "@al-ft/midgard-fault-proofs";
+import type { WorkflowFundingPreparedTransition } from "@al-ft/midgard-fault-proofs/workflow/funding-reservation-permit";
 import { CML } from "@lucid-evolution/lucid";
 
 import type {

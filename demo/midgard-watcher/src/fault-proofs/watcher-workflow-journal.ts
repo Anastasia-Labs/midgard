@@ -6,7 +6,7 @@ import {
   type FraudProofWorkflowJournalEntry,
   type FraudProofWorkflowJournalFold,
   type FraudProofWorkflowJournalStore,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/journal";
 
 import type {
   WatcherProofExecution,

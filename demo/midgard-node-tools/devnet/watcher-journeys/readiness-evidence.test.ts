@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { computeFraudProofReleaseFinalityPolicyDigest } from "@al-ft/midgard-fault-proofs";
+import { computeFraudProofReleaseFinalityPolicyDigest } from "@al-ft/midgard-fault-proofs/workflow/release-finality-policy";
 import { Effect } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

@@ -5,19 +5,13 @@ import { join } from "node:path";
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
-  admitCompleteCanonicalReplayPredecessor,
   canonicalBlockEvidenceFromVerifiedPayload,
-  DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
-  INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY,
-  NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
-  NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY,
   prepareDoubleSpendFromCanonicalEvidence,
   prepareInputNoIdxFromCanonicalEvidence,
   prepareNonExistentInputFromCanonicalEvidence,
   prepareNoReferenceInputFromCanonicalEvidence,
-  prepareReferenceInputNoIdxFromCanonicalEvidence,
-  REFERENCE_INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/evidence";
+import { prepareReferenceInputNoIdxFromCanonicalEvidence } from "@al-ft/midgard-fault-proofs/prepare-reference-input-no-idx";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
@@ -27,6 +21,14 @@ import {
   checkedLedgerAfter,
   payloadLedgerAt,
 } from "@al-ft/midgard-fault-proofs/test-support/predecessor-ledger";
+import {
+  admitCompleteCanonicalReplayPredecessor,
+  DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
+  INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY,
+  NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
+  NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY,
+  REFERENCE_INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY,
+} from "@al-ft/midgard-fault-proofs/workflow/complete-replay";
 import {
   CML,
   generateEmulatorAccount,

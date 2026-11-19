@@ -9,10 +9,8 @@ import {
 } from "@al-ft/midgard-core";
 import { DEPLOYMENT_PROFILES } from "@al-ft/midgard-core/deployment-profile";
 import { Proof } from "@al-ft/midgard-sdk";
-import {
-  scriptDecodeScriptHash,
-  startScriptDecodeWalk,
-} from "@al-ft/midgard-validation";
+import { scriptDecodeScriptHash } from "@al-ft/midgard-validation/script-decode.step";
+import { startScriptDecodeWalk } from "@al-ft/midgard-validation/script-decode.step-walk";
 import {
   Data,
   Emulator,

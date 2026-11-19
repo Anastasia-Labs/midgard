@@ -11,7 +11,7 @@ import {
   type FraudProofWorkflowJournalEntry,
   type FraudProofWorkflowTerminal,
   journalJsonDigest,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/journal";
 import { openWatcherWorkflowStoreForTest } from "midgard-watcher/tests/support/watcher-workflow-store";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 

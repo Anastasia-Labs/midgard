@@ -1,7 +1,5 @@
-import {
-  type FraudProofWorkflowJournalEntry,
-  isCollateralForfeitureEvent,
-} from "@al-ft/midgard-fault-proofs";
+import { isCollateralForfeitureEvent } from "@al-ft/midgard-fault-proofs/workflow/collateral-forfeiture";
+import type { FraudProofWorkflowJournalEntry } from "@al-ft/midgard-fault-proofs/workflow/journal";
 import { isFinal } from "@al-ft/midgard-l1-follower";
 
 import type { WatcherProofRetention } from "../l1-follower/proof-retention.js";

@@ -9,7 +9,7 @@ import {
   selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core/codec/native-tx-field-access";
 import { compareOutRefs } from "@al-ft/midgard-core/out-ref";
-import type { ValidationMachineFieldCarriageResolver } from "@al-ft/midgard-validation";
+import type { ValidationMachineFieldCarriageResolver } from "@al-ft/midgard-validation/validation-machine-data";
 import {
   Constr,
   Data,

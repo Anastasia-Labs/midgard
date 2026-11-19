@@ -13,10 +13,8 @@ import {
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  buildCanonicalMidgardLedgerOutputMaterial,
-  MIDGARD_COINS_PER_UTXO_BYTE,
-} from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
+import { MIDGARD_COINS_PER_UTXO_BYTE } from "@al-ft/midgard-validation/value-accounting";
 import { Data, getAddressDetails } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 

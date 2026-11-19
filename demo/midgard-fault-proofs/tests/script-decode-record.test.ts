@@ -1,11 +1,13 @@
 import {
-  nextScriptDecodeChainedWalk,
   type ScriptDecodeRecord,
-  scriptDecodeRecordOfScript,
   scriptDecodeScriptHash,
+} from "@al-ft/midgard-validation/script-decode.step";
+import {
+  nextScriptDecodeChainedWalk,
+  scriptDecodeRecordOfScript,
   scriptDecodeWalkRecord,
   startScriptDecodeWalk,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/script-decode.step-walk";
 import {
   Emulator,
   generateEmulatorAccount,

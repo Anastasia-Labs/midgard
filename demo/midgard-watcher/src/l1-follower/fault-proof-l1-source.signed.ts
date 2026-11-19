@@ -1,9 +1,9 @@
 import type { L1NodeTransport } from "@al-ft/l1-node-transport";
 import {
   FraudProofL1UnavailableError,
-  type FraudProofRawL1Point,
   type FraudProofSignedTransactionRecovery,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/l1-source";
+import type { FraudProofRawL1Point } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
 import type { FactStore, OutRef, View } from "@al-ft/midgard-l1-follower";
 import { CML } from "@lucid-evolution/lucid";
 

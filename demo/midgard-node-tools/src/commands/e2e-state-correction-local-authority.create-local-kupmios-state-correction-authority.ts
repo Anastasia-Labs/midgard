@@ -1,5 +1,5 @@
 import type { DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { fraudSlashFeeLovelace } from "@al-ft/midgard-fault-proofs";
+import { fraudSlashFeeLovelace } from "@al-ft/midgard-fault-proofs/remove-fraudulent-block";
 import { credentialToAddress } from "@lucid-evolution/lucid";
 
 import { l1ProviderFailoverEnabled } from "../environment.js";

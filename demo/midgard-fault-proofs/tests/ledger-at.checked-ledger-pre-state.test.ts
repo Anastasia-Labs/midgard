@@ -4,11 +4,9 @@
  * ledger's entries, for keys it holds and keys it does not.
  */
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
-import {
-  buildCanonicalMidgardLedgerEntryOutputMaterial,
-  ledgerEntriesPreState,
-} from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { makeOutput } from "@al-ft/midgard-validation/tests/validation-fixtures";
+import { ledgerEntriesPreState } from "@al-ft/midgard-validation/validation-machine";
 import { describe, expect, it } from "vitest";
 
 import {

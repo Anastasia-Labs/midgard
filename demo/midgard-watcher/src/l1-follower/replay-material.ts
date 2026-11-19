@@ -11,13 +11,11 @@ import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
   plutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
-import {
-  type BlockReplayMaterial,
-  forcedVerdictForRejection,
-} from "@al-ft/midgard-fault-proofs";
 import { attributeWithdrawalClassificationFault } from "@al-ft/midgard-fault-proofs/block-replay";
+import type { BlockReplayMaterial } from "@al-ft/midgard-fault-proofs/replayed-ledger";
+import { forcedVerdictForRejection } from "@al-ft/midgard-fault-proofs/workflow/forced-rejection-reason";
 import * as SDK from "@al-ft/midgard-sdk";
-import { deriveCanonicalOriginalDepositTransitionEffect } from "@al-ft/midgard-validation";
+import { deriveCanonicalOriginalDepositTransitionEffect } from "@al-ft/midgard-validation/transition-effect";
 import { Data, type Network } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

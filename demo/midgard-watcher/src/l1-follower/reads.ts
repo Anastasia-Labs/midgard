@@ -1,4 +1,4 @@
-import type { FraudProofRawL1Utxo } from "@al-ft/midgard-fault-proofs";
+import type { FraudProofRawL1Utxo } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
 import type { OutRef, SqlTx } from "@al-ft/midgard-l1-follower";
 import { CML } from "@lucid-evolution/lucid";
 

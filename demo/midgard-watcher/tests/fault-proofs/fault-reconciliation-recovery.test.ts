@@ -2,28 +2,34 @@ import { mkdtemp, rm } from "node:fs/promises";
 
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "@al-ft/midgard-fault-proofs/test-support/wallet-only-send-always-open";
 import {
   assertWorkflowJournalActuation,
   bindWorkflowActuationJournal,
-  computeFraudProofReleaseFinalityPolicyDigest,
-  computeFraudProofWorkflowId,
   createWorkflowReconciliationPermitController,
-  FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
-  FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_ADAPTER,
+} from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
+import type { HeaderFaultDecision } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
+import {
+  computeFraudProofWorkflowId,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_SAFETY,
-  FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
   type FraudProofWorkflowJournalEntry,
   type FraudProofWorkflowJournalEvent,
-  type HeaderFaultDecision,
   journalJsonDigest,
   MemoryFraudProofWorkflowJournalStore,
   normalizeJournalJson,
+} from "@al-ft/midgard-fault-proofs/workflow/journal";
+import {
+  FRAUD_PROOF_WORKFLOW_ADAPTER,
+  FRAUD_PROOF_WORKFLOW_SAFETY,
+  FRAUD_PROOF_WORKFLOW_TERMINAL_VERIFIER,
   resumeRecordedFraudProofWorkflow,
-} from "@al-ft/midgard-fault-proofs";
-import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "@al-ft/midgard-fault-proofs/test-support/wallet-only-send-always-open";
+} from "@al-ft/midgard-fault-proofs/workflow/orchestrator";
+import {
+  computeFraudProofReleaseFinalityPolicyDigest,
+  FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
+  FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
+} from "@al-ft/midgard-fault-proofs/workflow/release-finality-policy";
 import { describe, expect, it, vi } from "vitest";
 
 import { unsafeOpenWatcherFaultDecisionJournalForTest } from "../../src/fault-proofs/fault-decision-journal.create-journal.js";

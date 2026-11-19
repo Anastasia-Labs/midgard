@@ -7,7 +7,7 @@
  * reads the field from the reference input its evidence names; and it
  * waits at a descriptor step whose descriptor does not advance. */
 import { replacePlutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
-import { buildValidationOneStepArgument } from "@al-ft/midgard-validation";
+import { buildValidationOneStepArgument } from "@al-ft/midgard-validation/validation-machine-data";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 

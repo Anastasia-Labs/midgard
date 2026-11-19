@@ -1,7 +1,7 @@
 import { mkdirSync, renameSync } from "node:fs";
 import { join } from "node:path";
 
-import { supersededAttemptReadSchedule } from "@al-ft/midgard-fault-proofs";
+import { supersededAttemptReadSchedule } from "@al-ft/midgard-fault-proofs/workflow/superseded-attempt-read-schedule";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";

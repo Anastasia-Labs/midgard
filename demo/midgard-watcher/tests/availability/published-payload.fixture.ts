@@ -1,7 +1,7 @@
 import type {
   FraudProofRawL1Transaction,
   FraudProofRawL1Utxo,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,

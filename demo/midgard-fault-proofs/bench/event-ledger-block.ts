@@ -7,7 +7,7 @@
  * block rebuilds no trie per step. */
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
-import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 
 import type { LedgerEntry } from "../src/ledger-at.js";
 import { committedL2BlockFixture } from "../tests/helpers/committed-l2-block-fixture.js";

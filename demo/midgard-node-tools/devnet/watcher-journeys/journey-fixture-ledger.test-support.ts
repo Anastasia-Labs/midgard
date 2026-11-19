@@ -1,4 +1,7 @@
-import type { CheckedLedger, LedgerAt } from "@al-ft/midgard-fault-proofs";
+import type {
+  CheckedLedger,
+  LedgerAt,
+} from "@al-ft/midgard-fault-proofs/ledger-at";
 import { fixtureLedgerEntriesByRoot } from "@al-ft/midgard-fault-proofs/test-support/fixture-ledger";
 import { depositEventsRetainedBlock as buildDeposit } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-retained";
 

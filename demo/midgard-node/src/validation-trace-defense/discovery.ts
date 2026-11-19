@@ -24,7 +24,7 @@ import {
   type ValidationTraceThread,
   type ValidationTraceThreadHolder,
   validationTraceThreadTokenName,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/validation-trace-dispute/defender";
 import {
   changedUtxosIn,
   type Dialect,

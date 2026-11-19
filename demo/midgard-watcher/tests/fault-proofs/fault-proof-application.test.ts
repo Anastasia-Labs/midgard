@@ -18,19 +18,21 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { TRANSITION_TRACE_WORKFLOW_REFERENCE_CONTRACT_NAMES } from "@al-ft/midgard-fault-proofs/transition-trace/workflow";
+import type { WorkflowAdapterReadinessInput } from "@al-ft/midgard-fault-proofs/workflow/adapters";
+import { workflowReadinessReport } from "@al-ft/midgard-fault-proofs/workflow/cli";
 import {
   applyFamilyApplicationRecord,
-  FAMILY_APPLICATION_REGISTRY,
   type FamilyApplicationRecord,
   type FamilyApplicationWorkflowIdentity,
+} from "@al-ft/midgard-fault-proofs/workflow/family-application";
+import { FAMILY_APPLICATION_REGISTRY } from "@al-ft/midgard-fault-proofs/workflow/family-application-registry";
+import { workflowFundingRequirementsForRunner } from "@al-ft/midgard-fault-proofs/workflow/funding-requirements";
+import {
   INSTALLED_FRAUD_PROOF_CATEGORY_ORDER,
-  PREDECESSOR_LEDGER_PROOF_CATEGORIES,
-  TRANSITION_TRACE_WORKFLOW_REFERENCE_CONTRACT_NAMES,
   UNINSTALLED_FRAUD_PROOF_CATEGORIES,
-  type WorkflowAdapterReadinessInput,
-  workflowFundingRequirementsForRunner,
-  workflowReadinessReport,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/installed-categories";
+import { PREDECESSOR_LEDGER_PROOF_CATEGORIES } from "@al-ft/midgard-fault-proofs/workflow/replay-requirements";
 import { describe, expect, it, vi } from "vitest";
 
 import { unsafeCreateWatcherFaultProofApplicationForTest } from "../../src/fault-proofs/fault-proof-application.create-watcher-fault-proof-readiness-application.js";

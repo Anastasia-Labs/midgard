@@ -1,10 +1,8 @@
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  buildCanonicalMidgardLedgerOutputMaterial,
-  deriveCanonicalOriginalDepositTransitionEffect,
-} from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
+import { deriveCanonicalOriginalDepositTransitionEffect } from "@al-ft/midgard-validation/transition-effect";
 import { Data, type Network } from "@lucid-evolution/lucid";
 
 import {

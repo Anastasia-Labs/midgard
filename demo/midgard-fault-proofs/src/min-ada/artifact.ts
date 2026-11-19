@@ -1,6 +1,6 @@
 import "@al-ft/midgard-core";
 import "@al-ft/midgard-sdk";
-import "@al-ft/midgard-validation";
+import "@al-ft/midgard-validation/value-accounting";
 import "@lucid-evolution/lucid";
 import "../workflow/native-index-artifact.js";
 import "./prepare.js";

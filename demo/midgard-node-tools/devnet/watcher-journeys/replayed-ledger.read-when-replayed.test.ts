@@ -1,8 +1,8 @@
+import { RetainedDaPayloadUnavailableError } from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
 import {
   FraudProofL1CheckpointChangedError,
   FraudProofL1UnavailableError,
-  RetainedDaPayloadUnavailableError,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/l1-source";
 import { expect, it } from "vitest";
 
 import {

@@ -3,7 +3,7 @@ import "@al-ft/midgard-core";
 import "@al-ft/midgard-core/codec";
 import "@al-ft/midgard-core/codec/cbor";
 import "@al-ft/midgard-sdk";
-import "@al-ft/midgard-validation";
+import "@al-ft/midgard-validation/ledger-output-descriptor";
 import "@lucid-evolution/lucid";
 import "./errors.js";
 import "./reconstruct.js";

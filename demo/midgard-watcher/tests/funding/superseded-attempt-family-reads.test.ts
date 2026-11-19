@@ -1,16 +1,20 @@
-import {
-  createMissingSignatureWorkflowAdapter,
-  type FraudProofFamilyWorkflowAdapter,
-  type FraudProofWorkflowReconcileResult,
-  MISSING_SIGNATURE_ACTION,
-  MISSING_SIGNATURE_TRANSACTION_PORT,
-  PROOF_CARRIAGE_RECOVERY,
-  PROOF_CHUNK_PREREQUISITE,
-  type StateQueueMutationLeaseCoordinator,
-  withProofChunkPrerequisite,
-} from "@al-ft/midgard-fault-proofs";
+import type { StateQueueMutationLeaseCoordinator } from "@al-ft/midgard-fault-proofs/remove-fraudulent-block";
 import { FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT } from "@al-ft/midgard-fault-proofs/test-support/family-l1-observation";
 import { createValueConservationAdapter } from "@al-ft/midgard-fault-proofs/test-support/value-conservation-adapter";
+import {
+  createMissingSignatureWorkflowAdapter,
+  MISSING_SIGNATURE_TRANSACTION_PORT,
+} from "@al-ft/midgard-fault-proofs/workflow/missing-signature-adapter";
+import { MISSING_SIGNATURE_ACTION } from "@al-ft/midgard-fault-proofs/workflow/missing-signature-state";
+import type {
+  FraudProofFamilyWorkflowAdapter,
+  FraudProofWorkflowReconcileResult,
+} from "@al-ft/midgard-fault-proofs/workflow/orchestrator";
+import {
+  PROOF_CARRIAGE_RECOVERY,
+  PROOF_CHUNK_PREREQUISITE,
+  withProofChunkPrerequisite,
+} from "@al-ft/midgard-fault-proofs/workflow/proof-chunk-prerequisite";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { setupFundingRecoveryFixture } from "../support/fault-proof-funding-fixture.setup-funding-recovery-fixture.js";

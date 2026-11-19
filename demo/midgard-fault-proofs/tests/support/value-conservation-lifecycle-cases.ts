@@ -12,7 +12,7 @@ import {
   materializeMidgardForcedTxFromCanonical as forcedView,
 } from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { Constr, Data, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

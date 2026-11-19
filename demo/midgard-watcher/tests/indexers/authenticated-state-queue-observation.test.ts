@@ -1,6 +1,7 @@
 import "@al-ft/midgard-core/codec/hash";
 import "@al-ft/midgard-core/deployment-manifest-identity";
-import "@al-ft/midgard-fault-proofs";
+import "@al-ft/midgard-fault-proofs/workflow/release-economics-policy";
+import "@al-ft/midgard-fault-proofs/workflow/release-finality-policy";
 import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "vitest";

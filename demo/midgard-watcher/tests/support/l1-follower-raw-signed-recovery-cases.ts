@@ -1,8 +1,8 @@
 import {
   FraudProofL1UnavailableError,
-  type FraudProofRawL1Point,
   fraudProofSignedTransactionRecovery,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/l1-source";
+import type { FraudProofRawL1Point } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
 import type { SimTx } from "@al-ft/midgard-l1-follower/testing";
 import { describe, expect, it } from "vitest";
 

@@ -22,7 +22,7 @@ import {
 } from "@al-ft/midgard-core/codec/forced";
 import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
 import * as SDK from "@al-ft/midgard-sdk";
-import { MIDGARD_COINS_PER_UTXO_BYTE } from "@al-ft/midgard-validation";
+import { MIDGARD_COINS_PER_UTXO_BYTE } from "@al-ft/midgard-validation/value-accounting";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

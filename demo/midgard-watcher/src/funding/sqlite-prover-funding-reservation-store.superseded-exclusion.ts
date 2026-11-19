@@ -2,7 +2,7 @@ import {
   workflowFundingExclusiveProtocolInput,
   type WorkflowFundingPreparedTransition,
   type WorkflowFundingSupersededAttempt,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/funding-reservation-permit";
 import { CML } from "@lucid-evolution/lucid";
 
 import { transactionInputOutRefs } from "./sqlite-prover-funding-reservation-store.derive-signed-transition.js";

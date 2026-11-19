@@ -17,7 +17,7 @@
  * open for it. Every transaction is checked against the ledger's limits and
  * reported with its bytes and execution units.
  */
-import { scriptDecodeRecordOfScript } from "@al-ft/midgard-validation";
+import { scriptDecodeRecordOfScript } from "@al-ft/midgard-validation/script-decode.step-walk";
 import { describe, expect, it } from "vitest";
 
 import { plutusItemScriptDecode } from "../src/script-decode/item-record.js";

@@ -1,8 +1,8 @@
 import {
-  beginWorkflowFundingReservationAction,
   createWorkflowActuationPermitController,
   isWorkflowActuationRevokedError,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
+import { beginWorkflowFundingReservationAction } from "@al-ft/midgard-fault-proofs/workflow/funding-reservation-permit";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { setupFundingRecoveryFixture } from "../support/fault-proof-funding-fixture.setup-funding-recovery-fixture.js";

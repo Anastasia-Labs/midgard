@@ -1,4 +1,4 @@
-import type { HeaderDecision } from "@al-ft/midgard-fault-proofs";
+import type { HeaderDecision } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
 
 import { watcherProofFamilyCoverageGapAlertSubject } from "../runtime/operations-observability.alert-book.js";
 import type { BridgeDependencies } from "./fault-decision-bridge.selected-target.js";

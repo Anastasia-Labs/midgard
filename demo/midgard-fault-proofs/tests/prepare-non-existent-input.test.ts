@@ -12,7 +12,7 @@ import {
 import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
 import * as SDK from "@al-ft/midgard-sdk";
 import { h28, h32 } from "@al-ft/midgard-test-support/hex";
-import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 

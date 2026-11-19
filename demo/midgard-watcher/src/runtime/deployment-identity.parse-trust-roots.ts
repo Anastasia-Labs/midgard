@@ -12,11 +12,11 @@ import {
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
 import { type L1Origin } from "@al-ft/midgard-core/l1-origin";
-import {
-  type FraudProofReleaseEconomicsAuthority,
-  type FraudProofReleaseFinalityAuthority,
-  type VerifiedFraudProofReleaseFinalityPolicy,
-} from "@al-ft/midgard-fault-proofs";
+import type { FraudProofReleaseEconomicsAuthority } from "@al-ft/midgard-fault-proofs/workflow/release-economics-policy";
+import type {
+  FraudProofReleaseFinalityAuthority,
+  VerifiedFraudProofReleaseFinalityPolicy,
+} from "@al-ft/midgard-fault-proofs/workflow/release-finality-policy";
 
 import {
   equalStringMaps,

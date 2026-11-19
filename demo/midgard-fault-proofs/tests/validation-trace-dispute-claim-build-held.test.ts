@@ -5,8 +5,8 @@
  * injected at the event-ledger walk, trace outcomes at the validation
  * package. */
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import { ValidationTraceStopped } from "@al-ft/midgard-validation";
 import { RejectCodes } from "@al-ft/midgard-validation/types";
+import { ValidationTraceStopped } from "@al-ft/midgard-validation/validation-machine";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { EventLedgerReplayRefusal } from "../src/event-ledger.js";

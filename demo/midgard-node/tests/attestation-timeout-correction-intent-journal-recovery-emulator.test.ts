@@ -20,7 +20,7 @@
  * the I1 predicates' and tested with them.
  */
 
-import { timeoutCorrectionAttemptStatus } from "@al-ft/midgard-fault-proofs";
+import { timeoutCorrectionAttemptStatus } from "@al-ft/midgard-fault-proofs/remove-unattested-block";
 import { decodeTransaction } from "@al-ft/midgard-l1-follower";
 import { SqlClient } from "@effect/sql";
 import { PgClient } from "@effect/sql-pg";

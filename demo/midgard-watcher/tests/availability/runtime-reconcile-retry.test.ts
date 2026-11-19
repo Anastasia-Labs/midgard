@@ -1,4 +1,4 @@
-import { FraudProofL1UnavailableError } from "@al-ft/midgard-fault-proofs";
+import { FraudProofL1UnavailableError } from "@al-ft/midgard-fault-proofs/workflow/l1-source";
 import { describe, expect, it, vi } from "vitest";
 
 import {

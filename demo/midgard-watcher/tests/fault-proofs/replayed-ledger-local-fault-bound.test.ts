@@ -12,13 +12,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import {
-  type LedgerCheckpoint,
-  LOCAL_FAULT_RUN_LIMIT,
-  type RetainedDaPayloadSource,
-} from "@al-ft/midgard-fault-proofs";
 import { ReplayLocalFault } from "@al-ft/midgard-fault-proofs/block-replay";
+import { LOCAL_FAULT_RUN_LIMIT } from "@al-ft/midgard-fault-proofs/local-fault-bound";
+import type { LedgerCheckpoint } from "@al-ft/midgard-fault-proofs/replayed-ledger";
 import { buildCanonicalBlockFixture } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
+import type { RetainedDaPayloadSource } from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
 import { SIM_ORIGIN } from "@al-ft/midgard-l1-follower/testing";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";

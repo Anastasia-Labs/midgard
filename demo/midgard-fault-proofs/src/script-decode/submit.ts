@@ -19,11 +19,11 @@ import {
   type ScriptDecodeValidator,
   type WithdrawalValidator,
 } from "@al-ft/midgard-sdk";
-import {
-  type ScriptDecodeChainedWalk,
-  type ScriptDecodeRecord,
-  type ScriptDecodeRun,
-} from "@al-ft/midgard-validation";
+import type {
+  ScriptDecodeRecord,
+  ScriptDecodeRun,
+} from "@al-ft/midgard-validation/script-decode.step";
+import type { ScriptDecodeChainedWalk } from "@al-ft/midgard-validation/script-decode.step-walk";
 import {
   type BuildTxWithRedeemer,
   CML,

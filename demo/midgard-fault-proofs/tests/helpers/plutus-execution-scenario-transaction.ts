@@ -5,7 +5,6 @@ import {
   MIDGARD_CARDANO_MAX_VALUE_CBOR_BYTES,
 } from "@al-ft/midgard-core";
 import type { MidgardVersionedScript } from "@al-ft/midgard-core/codec";
-import { outputCborMinAdaLovelace } from "@al-ft/midgard-validation";
 import { MidgardRedeemerTag } from "@al-ft/midgard-validation/midgard-redeemers";
 import {
   hashScriptWitness,
@@ -15,6 +14,7 @@ import {
   makeRedeemersCbor,
   nativeScriptWitness,
 } from "@al-ft/midgard-validation/tests/validation-fixtures";
+import { outputCborMinAdaLovelace } from "@al-ft/midgard-validation/value-accounting";
 import { CML } from "@lucid-evolution/lucid";
 
 import type { LedgerEntry } from "../../src/ledger-at.js";

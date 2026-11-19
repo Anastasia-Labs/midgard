@@ -3,10 +3,10 @@ import { mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
-  computeFraudProofRawL1PointId,
   computeFraudProofWorkflowId,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/journal";
+import { computeFraudProofRawL1PointId } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
 import { CML } from "@lucid-evolution/lucid";
 
 import {

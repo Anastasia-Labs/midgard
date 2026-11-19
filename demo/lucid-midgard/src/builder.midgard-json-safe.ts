@@ -5,12 +5,9 @@ import {
 import { isMidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
 import { validateMidgardConsensusTxCbor } from "@al-ft/midgard-core/consensus-validation";
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
-import {
-  LedgerColumns,
-  type PhaseAResult,
-  type PhaseBResultWithPatch,
-  type RejectedTx,
-} from "@al-ft/midgard-validation";
+import { LedgerColumns } from "@al-ft/midgard-validation/ledger";
+import type { PhaseBResultWithPatch } from "@al-ft/midgard-validation/phase-b";
+import type { PhaseAResult, RejectedTx } from "@al-ft/midgard-validation/types";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

@@ -6,7 +6,7 @@
  * objective held by name.
  */
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
-import { WORKFLOW_FUNDING_SHORTFALL } from "@al-ft/midgard-fault-proofs";
+import { WORKFLOW_FUNDING_SHORTFALL } from "@al-ft/midgard-fault-proofs/workflow/funding-reservation-permit";
 import { expect, it, vi } from "vitest";
 
 import { watcherFaultProofDeadline } from "../../src/fault-proofs/fault-proof-supervisor.validate-job.js";

@@ -1,7 +1,9 @@
 import "node:crypto";
 import "node:fs/promises";
 import "node:path";
-import "@al-ft/midgard-fault-proofs";
+import "@al-ft/midgard-fault-proofs/funding/proof-materials-address";
+import "@al-ft/midgard-fault-proofs/workflow/journal";
+import "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
 import "@lucid-evolution/lucid";
 import "vitest";
 import "../../src/funding/prover-funding-reservation.parse-watcher-prover-funding-reservation-record.js";
@@ -16,7 +18,7 @@ import {
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
   type FraudProofWorkflowJournalEntry,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/journal";
 import { CML } from "@lucid-evolution/lucid";
 import { afterEach, describe, expect, it } from "vitest";
 

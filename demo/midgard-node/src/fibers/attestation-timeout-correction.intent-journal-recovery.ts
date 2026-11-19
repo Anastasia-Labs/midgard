@@ -6,10 +6,10 @@
  * sends nothing: S6 (`l1-follower.intents.ts`) is the only resubmitter, and
  * it resends a live journaled correction and never a dead one.
  */
-import {
-  type TimeoutCorrectionAttemptObservation,
-  type TimeoutCorrectionRecovery,
-} from "@al-ft/midgard-fault-proofs";
+import type {
+  TimeoutCorrectionAttemptObservation,
+  TimeoutCorrectionRecovery,
+} from "@al-ft/midgard-fault-proofs/remove-unattested-block";
 import {
   deriveIntentStatusIn,
   type IntentStatusRead,

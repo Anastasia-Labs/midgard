@@ -4,10 +4,10 @@ import { DatabaseSync } from "node:sqlite";
 
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
-  type FraudProofWorkflowJournalEntry,
   parseWorkflowFundingRecordedAttempt,
   type WorkflowFundingRecordedAttempt,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/funding-reservation-permit";
+import type { FraudProofWorkflowJournalEntry } from "@al-ft/midgard-fault-proofs/workflow/journal";
 
 import { createWatcherWorkflowJournal } from "../fault-proofs/watcher-workflow-journal.js";
 import { watcherCanonicalJson } from "../storage/durable-store.canonical-json.js";

@@ -18,7 +18,7 @@ import {
   Proof,
   type RejectionReason,
 } from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

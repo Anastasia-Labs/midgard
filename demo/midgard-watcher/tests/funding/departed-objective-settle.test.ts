@@ -1,7 +1,5 @@
-import {
-  beginWorkflowFundingReservationAction,
-  supersededAttemptReadSchedule,
-} from "@al-ft/midgard-fault-proofs";
+import { beginWorkflowFundingReservationAction } from "@al-ft/midgard-fault-proofs/workflow/funding-reservation-permit";
+import { supersededAttemptReadSchedule } from "@al-ft/midgard-fault-proofs/workflow/superseded-attempt-read-schedule";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";

@@ -1,5 +1,5 @@
 import type { WatcherOperationsSink } from "../runtime/operations-observability.js";
-import { WATCHER_PACKAGE_NAME } from "../runtime/scaffold.js";
+import { WATCHER_PACKAGE_NAME } from "../runtime/package-name.js";
 import type { WatcherProofObjective } from "./fault-proof-objective-journal.js";
 import {
   isWatcherJournalIntegrityError,

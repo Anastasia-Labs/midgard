@@ -9,7 +9,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import {
   outputCborMeetsMinAda,
   outputCborMinAdaLovelace,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/value-accounting";
 import type { CML } from "@lucid-evolution/lucid";
 
 import {

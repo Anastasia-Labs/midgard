@@ -4,7 +4,7 @@ import {
   parseWorkflowFundingSupersededAttempt,
   type WorkflowFundingRecordedAttempt,
   type WorkflowFundingSupersededAttempt,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/funding-reservation-permit";
 import { CML } from "@lucid-evolution/lucid";
 
 import { watcherCanonicalJson } from "../storage/durable-store.canonical-json.js";

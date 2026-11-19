@@ -27,11 +27,11 @@ import {
 } from "@al-ft/midgard-core/consensus-profile";
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
+import { runPhaseAValidation } from "@al-ft/midgard-validation/phase-a";
 import {
   evaluateMidgardTxRedeemers,
-  runPhaseAValidation,
   runPhaseBValidationWithPatch,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/phase-b";
 import { Effect } from "effect";
 
 /** The Preprod fee coefficients, so fees are realistic. */

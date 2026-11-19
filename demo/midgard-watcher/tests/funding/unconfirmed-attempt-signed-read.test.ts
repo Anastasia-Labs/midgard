@@ -5,17 +5,17 @@
  * workflow accounts for it and moves on with a replacement that spends one of
  * its funding inputs, instead of waiting on it for ever.
  */
-import {
-  createMissingSignatureWorkflowAdapter,
-  FraudProofL1UnavailableError,
-  type FraudProofWorkflowReconcileResult,
-  MISSING_SIGNATURE_ACTION,
-  MISSING_SIGNATURE_TRANSACTION_PORT,
-  type SignedWorkflowTransaction,
-  type StateQueueMutationLeaseCoordinator,
-} from "@al-ft/midgard-fault-proofs";
+import type { StateQueueMutationLeaseCoordinator } from "@al-ft/midgard-fault-proofs/remove-fraudulent-block";
 import { FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT } from "@al-ft/midgard-fault-proofs/test-support/family-l1-observation";
 import { createValueConservationAdapter } from "@al-ft/midgard-fault-proofs/test-support/value-conservation-adapter";
+import { FraudProofL1UnavailableError } from "@al-ft/midgard-fault-proofs/workflow/l1-source";
+import {
+  createMissingSignatureWorkflowAdapter,
+  MISSING_SIGNATURE_TRANSACTION_PORT,
+} from "@al-ft/midgard-fault-proofs/workflow/missing-signature-adapter";
+import { MISSING_SIGNATURE_ACTION } from "@al-ft/midgard-fault-proofs/workflow/missing-signature-state";
+import type { FraudProofWorkflowReconcileResult } from "@al-ft/midgard-fault-proofs/workflow/orchestrator";
+import type { SignedWorkflowTransaction } from "@al-ft/midgard-fault-proofs/workflow/signed-transaction-reconciliation";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { forfeitureOf, showLanding } from "../support/collateral-landing.js";

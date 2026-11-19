@@ -4,11 +4,11 @@
  * something else. A run whose script re-execution is held is retried under
  * the hold's own reason. */
 import {
-  FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED,
   VALIDATION_TRACE_REPLAY_HELD,
   ValidationTraceReplayHeldError,
-  WORKFLOW_FUNDING_SHORTFALL,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/validation-trace-dispute/replay-hold";
+import { WORKFLOW_FUNDING_SHORTFALL } from "@al-ft/midgard-fault-proofs/workflow/funding-reservation-permit";
+import { FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED } from "@al-ft/midgard-fault-proofs/workflow/orchestrator";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WATCHER_FAULT_PROOF_CONTINUATION_STALLED } from "../../src/fault-proofs/fault-proof-continuation-stall.js";

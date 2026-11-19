@@ -20,8 +20,8 @@ import {
   validationTraceDepthForStepCount,
 } from "@al-ft/midgard-core";
 import type * as SDK from "@al-ft/midgard-sdk";
-import type { ValidationTraceSteps } from "@al-ft/midgard-validation";
 import { buildMidgardCanonicalCekProgram } from "@al-ft/midgard-validation/cek-program";
+import type { ValidationTraceSteps } from "@al-ft/midgard-validation/validation-machine";
 import { CML, type UTxO } from "@lucid-evolution/lucid";
 
 import type { ValidationTraceClaimMaterial } from "../../src/validation-trace-dispute/claim-material.js";

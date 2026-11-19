@@ -1,6 +1,8 @@
 import "node:fs/promises";
 import "node:path";
-import "@al-ft/midgard-fault-proofs";
+import "@al-ft/midgard-fault-proofs/funding/proof-materials-address";
+import "@al-ft/midgard-fault-proofs/remove-fraudulent-block";
+import "@al-ft/midgard-fault-proofs/remove-unattested-block";
 import "@al-ft/midgard-sdk";
 import "@effect/sql";
 import "@lucid-evolution/lucid";

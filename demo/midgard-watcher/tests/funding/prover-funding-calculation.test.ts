@@ -1,5 +1,9 @@
 import "@al-ft/midgard-core/deployment-manifest-identity";
-import "@al-ft/midgard-fault-proofs";
+import "@al-ft/midgard-fault-proofs/funding/plain-funding-output";
+import "@al-ft/midgard-fault-proofs/workflow/funding-requirements";
+import "@al-ft/midgard-fault-proofs/workflow/funding-requirements-test-support";
+import "@al-ft/midgard-fault-proofs/workflow/runtime";
+import "@al-ft/midgard-fault-proofs/workflow/runtime-funding-policy";
 import "@lucid-evolution/lucid";
 import "vitest";
 import "../../src/funding/prover-funding.js";
@@ -19,11 +23,11 @@ import "./prover-funding-calculation.runtime-authority.js";
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   createWorkflowFundingRequirements,
-  createWorkflowRuntimeFundingPolicy,
-  unsafeCreateMeasuredWorkflowRunnerForTest,
-  WORKFLOW_RUNNER_FACTORIES,
   workflowFundingRequirementsForRunner,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/funding-requirements";
+import { unsafeCreateMeasuredWorkflowRunnerForTest } from "@al-ft/midgard-fault-proofs/workflow/funding-requirements-test-support";
+import { WORKFLOW_RUNNER_FACTORIES } from "@al-ft/midgard-fault-proofs/workflow/runtime";
+import { createWorkflowRuntimeFundingPolicy } from "@al-ft/midgard-fault-proofs/workflow/runtime-funding-policy";
 import { CML, credentialToAddress } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

@@ -2,10 +2,10 @@ import { createHash } from "node:crypto";
 
 import {
   beginWorkflowFundingReservationAction,
-  bindWorkflowPreflightTransaction,
   createStoredWorkflowJournalWriter,
   prepareWorkflowFundingReservationTransaction,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/funding-reservation-permit";
+import { bindWorkflowPreflightTransaction } from "@al-ft/midgard-fault-proofs/workflow/transaction-boundary";
 import { CML } from "@lucid-evolution/lucid";
 
 import type { setupFundingRecoveryFixture } from "../support/fault-proof-funding-fixture.setup-funding-recovery-fixture.js";

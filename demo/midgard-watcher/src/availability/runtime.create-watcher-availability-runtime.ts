@@ -1,5 +1,5 @@
 import { openAvailabilityOperationJournal } from "@al-ft/midgard-core/availability-operation-journal";
-import { retainedDaPayloadCommitmentVerifier } from "@al-ft/midgard-fault-proofs";
+import { retainedDaPayloadCommitmentVerifier } from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   Lucid,

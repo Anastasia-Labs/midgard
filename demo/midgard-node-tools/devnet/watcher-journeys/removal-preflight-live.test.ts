@@ -1,10 +1,8 @@
 import { join } from "node:path";
 
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import {
-  resolveProverSigner,
-  submitRemoveFraudulentBlock,
-} from "@al-ft/midgard-fault-proofs";
+import { submitRemoveFraudulentBlock } from "@al-ft/midgard-fault-proofs/remove-fraudulent-block";
+import { resolveProverSigner } from "@al-ft/midgard-fault-proofs/runtime";
 import { CML, Lucid, utxoToCore } from "@lucid-evolution/lucid";
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 import * as UPLC from "@lucid-evolution/uplc";

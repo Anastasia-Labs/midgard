@@ -2,7 +2,7 @@ import { MIDGARD_POSIX_TIME_NONE } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { screenMidgardForcedTxAdmission } from "@al-ft/midgard-core/consensus-validation";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import { FORCED_REJECTION_NO_ARM_CODES } from "@al-ft/midgard-fault-proofs";
+import { FORCED_REJECTION_NO_ARM_CODES } from "@al-ft/midgard-fault-proofs/workflow/forced-rejection-reason";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Cause, Effect, Exit } from "effect";

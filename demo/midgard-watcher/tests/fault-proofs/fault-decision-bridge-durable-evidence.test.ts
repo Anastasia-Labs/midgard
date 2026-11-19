@@ -1,6 +1,6 @@
 import { mkdtemp, rm } from "node:fs/promises";
 
-import type { HeaderDecision } from "@al-ft/midgard-fault-proofs";
+import type { HeaderDecision } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
 import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "@al-ft/midgard-sdk";
 import { afterEach, describe, expect, it } from "vitest";
 

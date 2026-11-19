@@ -5,7 +5,7 @@
  * one that could be sent again. Without an upper validity bound it stays so
  * for as long as those inputs stay live.
  */
-import { fraudProofSignedTransactionRecovery } from "@al-ft/midgard-fault-proofs";
+import { fraudProofSignedTransactionRecovery } from "@al-ft/midgard-fault-proofs/workflow/l1-source";
 import type { SimTx } from "@al-ft/midgard-l1-follower/testing";
 import { expect, it } from "vitest";
 

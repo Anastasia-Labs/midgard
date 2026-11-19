@@ -1,14 +1,14 @@
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
+import { ledgerEntriesRoot } from "@al-ft/midgard-fault-proofs/ledger-at";
 import {
   createReplayedLedger,
   type LedgerCheckpoint,
-  ledgerEntriesRoot,
   type ReplayedLedgerRefusal,
   type ReplayedLedgerSource,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/replayed-ledger";
 import * as SDK from "@al-ft/midgard-sdk";
-import { placeholderValidationTraceDescriptorV1 } from "@al-ft/midgard-validation";
+import { placeholderValidationTraceDescriptorV1 } from "@al-ft/midgard-validation/validation-machine";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";

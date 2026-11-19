@@ -9,7 +9,7 @@ import {
   EMPTY_MERKLE_TREE_ROOT,
   GENESIS_HEADER_HASH,
 } from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { describe, expect, it } from "vitest";
 
 import { undecodableNativeOutputDescriptor } from "../src/evidence/retained-ledger-output.js";

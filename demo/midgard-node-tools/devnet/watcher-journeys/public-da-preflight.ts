@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { inspect } from "node:util";
 
-import { retainedDaPayloadHeaderVerifier } from "@al-ft/midgard-fault-proofs";
+import { retainedDaPayloadHeaderVerifier } from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
 import {
   createWatcherRetainedDaRuntime,
   parseWatcherProcessConfig,

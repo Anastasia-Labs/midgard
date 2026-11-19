@@ -18,7 +18,7 @@ import {
   plutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
-import type { CanonicalTransitionEffect } from "@al-ft/midgard-validation";
+import type { CanonicalTransitionEffect } from "@al-ft/midgard-validation/transition-effect";
 import { Data } from "@lucid-evolution/lucid";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../../src/evidence/canonical-block-evidence.js";

@@ -1,12 +1,14 @@
 import {
+  FraudProofL1CheckpointChangedError,
+  FraudProofL1UnavailableError,
+} from "@al-ft/midgard-fault-proofs/workflow/l1-source";
+import {
   admitFraudProofRawL1Snapshot,
   computeFraudProofRawL1RollbackCursor,
-  FraudProofL1CheckpointChangedError,
   type FraudProofL1ObservationDepth,
-  FraudProofL1UnavailableError,
   type FraudProofRawL1Point,
   type FraudProofRawL1Snapshot,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
 import { openSqliteFactStore } from "@al-ft/midgard-l1-follower";
 import { simStoreOptions } from "@al-ft/midgard-l1-follower/testing";
 import * as SDK from "@al-ft/midgard-sdk";

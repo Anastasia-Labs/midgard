@@ -4,8 +4,8 @@
  * blocks, and a source serving some of them.
  */
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import type { RetainedDaPayloadSource } from "@al-ft/midgard-fault-proofs";
 import { buildCanonicalBlockFixture } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
+import type { RetainedDaPayloadSource } from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 

@@ -4,9 +4,46 @@ import {
   deriveMidgardNativeTxCompact,
   encodeMidgardNativeTxCompact,
 } from "@al-ft/midgard-core";
-import * as Proofs from "@al-ft/midgard-fault-proofs";
+import { prepareCanonicalDecodability } from "@al-ft/midgard-fault-proofs/canonical-decodability";
+import { prepareCommittedFieldShapeFromCanonicalTx } from "@al-ft/midgard-fault-proofs/committed-field-shape";
+import { canonicalBlockEvidenceFromVerifiedPayload } from "@al-ft/midgard-fault-proofs/evidence";
+import { deriveFieldItemWidthIllegalEvidenceFromCanonicalBlock } from "@al-ft/midgard-fault-proofs/field-item-width-illegal";
+import { prepareFieldPreimageLengthWorkflow } from "@al-ft/midgard-fault-proofs/field-preimage-length-mismatch";
+import { prepareL2TxMistagFromTransactions } from "@al-ft/midgard-fault-proofs/l2-tx-mistag";
+import { prepareMinAdaForcedPlan } from "@al-ft/midgard-fault-proofs/min-ada";
+import { prepareMintAuthorizationReplay } from "@al-ft/midgard-fault-proofs/mint-authorization";
+import { prepareMintDeclaredAssetLimitForcedArtifact } from "@al-ft/midgard-fault-proofs/mint-declared-asset-limit";
+import { deriveMintItemNonCanonicalEvidenceFromCanonicalBlock } from "@al-ft/midgard-fault-proofs/mint-item-non-canonical";
+import { prepareMissingSignatureWrongfulRejection } from "@al-ft/midgard-fault-proofs/missing-signature";
+import { prepareNetworkIdFromCanonicalEvidence } from "@al-ft/midgard-fault-proofs/network-id";
+import {
+  observerOrderInvalidRawBlockEvidenceFromVerifiedPayload,
+  prepareObserverOrderInvalidAcceptedArtifact,
+} from "@al-ft/midgard-fault-proofs/observer-order-invalid";
+import {
+  observersForbiddenRawBlockEvidenceFromVerifiedPayload,
+  prepareObserversForbiddenAcceptedArtifact,
+} from "@al-ft/midgard-fault-proofs/observers-forbidden-on-untagged-network";
+import { prepareDaHashPreimageFromRetainedDa } from "@al-ft/midgard-fault-proofs/prepare-da-hash-preimage";
+import { prepareInvalidRangeFromTransactions } from "@al-ft/midgard-fault-proofs/prepare-invalid-range";
+import { prepareInvalidSignatureFromTransactions } from "@al-ft/midgard-fault-proofs/prepare-invalid-signature";
+import { prepareMinFeeFromTransactions } from "@al-ft/midgard-fault-proofs/prepare-min-fee";
+import { prepareZeroInputFromTransactions } from "@al-ft/midgard-fault-proofs/prepare-zero-input";
+import { prepareProtectedOutputSignerMissingEvidence } from "@al-ft/midgard-fault-proofs/protected-output-signer-missing";
+import {
+  deriveResolvedOutputPriorLedgerReplay,
+  detectResolvedOutputNonCanonicalCompleteReplay,
+  resolvedOutputEvidenceCloses,
+} from "@al-ft/midgard-fault-proofs/resolved-output-non-canonical";
+import { signerWitnessVerdictCloses } from "@al-ft/midgard-fault-proofs/signer-witness-scan";
+import { deriveSpendInputSignerMissingEvidenceFromCompleteReplay } from "@al-ft/midgard-fault-proofs/spend-input-signer-missing";
 import { authenticatedHeaderObservation } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import { checkedLedgerAfter } from "@al-ft/midgard-fault-proofs/test-support/predecessor-ledger";
+import { deriveTransactionOutputNonCanonicalEvidenceFromCanonicalBlock } from "@al-ft/midgard-fault-proofs/transaction-output-non-canonical";
+import { prepareValueConservationArtifact } from "@al-ft/midgard-fault-proofs/value-not-preserved";
+import { classifyCanonicalBlockViolations } from "@al-ft/midgard-fault-proofs/workflow/classification";
+import { INPUT_SET_UNIQUENESS_COMPLETE_CANONICAL_REPLAY } from "@al-ft/midgard-fault-proofs/workflow/complete-replay";
+import { prepareInputSetUniquenessArtifact } from "@al-ft/midgard-fault-proofs/workflow/input-set-uniqueness";
 import * as SDK from "@al-ft/midgard-sdk";
 
 import type { verifyJourneyFixture } from "./fixture-verification.js";
@@ -46,17 +83,17 @@ export const prepareJourneyTransactionProof = async (input: {
     },
   };
   if (category === "daHashPreimage")
-    return Proofs.prepareDaHashPreimageFromRetainedDa({
+    return prepareDaHashPreimageFromRetainedDa({
       observation: raw.observation,
       sources: verified.sources,
     });
   if (category === "observersForbiddenOnUntaggedNetwork")
-    return Proofs.prepareObserversForbiddenAcceptedArtifact(
-      await Proofs.observersForbiddenRawBlockEvidenceFromVerifiedPayload(raw),
+    return prepareObserversForbiddenAcceptedArtifact(
+      await observersForbiddenRawBlockEvidenceFromVerifiedPayload(raw),
     );
   if (category === "observerOrderInvalid")
-    return Proofs.prepareObserverOrderInvalidAcceptedArtifact(
-      await Proofs.observerOrderInvalidRawBlockEvidenceFromVerifiedPayload(raw),
+    return prepareObserverOrderInvalidAcceptedArtifact(
+      await observerOrderInvalidRawBlockEvidenceFromVerifiedPayload(raw),
     );
   if (
     category === "canonicalDecodability" ||
@@ -68,8 +105,8 @@ export const prepareJourneyTransactionProof = async (input: {
       Buffer.from(entry[1], "hex"),
     );
     return category === "committedFieldShape"
-      ? Proofs.prepareCommittedFieldShapeFromCanonicalTx({ tx, fieldIndex: 4 })
-      : Proofs.prepareCanonicalDecodability({
+      ? prepareCommittedFieldShapeFromCanonicalTx({ tx, fieldIndex: 4 })
+      : prepareCanonicalDecodability({
           badTxId: entry[0],
           nativeTxCompactCbor: encodeMidgardNativeTxCompact(
             deriveMidgardNativeTxCompact(tx.body, tx.witnessSet, tx.validity),
@@ -92,10 +129,10 @@ export const prepareJourneyTransactionProof = async (input: {
   ) {
     // The prior ledger is the named predecessor's; the helper refuses an
     // absent or substituted one for a non-genesis header.
-    const priorLedger = await Proofs.deriveResolvedOutputPriorLedgerReplay({
+    const priorLedger = await deriveResolvedOutputPriorLedgerReplay({
       block: evidence,
       predecessor: await checkedLedgerAfter(
-        await Proofs.canonicalBlockEvidenceFromVerifiedPayload({
+        await canonicalBlockEvidenceFromVerifiedPayload({
           ...raw,
           observation: authenticatedHeaderObservation(input.predecessor),
           payloadEnvelopeCbor: input.predecessor.payloadEnvelopeCbor,
@@ -103,34 +140,28 @@ export const prepareJourneyTransactionProof = async (input: {
       ),
     });
     if (category === "spendInputSignerMissing") {
-      const prepared =
-        Proofs.deriveSpendInputSignerMissingEvidenceFromCompleteReplay({
-          block: evidence,
-          priorLedger,
-        });
-      if (!Proofs.signerWitnessVerdictCloses(prepared))
+      const prepared = deriveSpendInputSignerMissingEvidenceFromCompleteReplay({
+        block: evidence,
+        priorLedger,
+      });
+      if (!signerWitnessVerdictCloses(prepared))
         throw new Error("Spend-input signer proof does not close");
       return prepared;
     }
-    const prepared = Proofs.detectResolvedOutputNonCanonicalCompleteReplay({
+    const prepared = detectResolvedOutputNonCanonicalCompleteReplay({
       block: evidence,
       priorLedger,
     });
-    if (
-      prepared.length !== 1 ||
-      !Proofs.resolvedOutputEvidenceCloses(prepared[0]!)
-    )
+    if (prepared.length !== 1 || !resolvedOutputEvidenceCloses(prepared[0]!))
       throw new Error("Resolved output proof does not close uniquely");
     return prepared[0];
   }
   if (category === "missingSignature")
-    return Proofs.prepareMissingSignatureWrongfulRejection({ block: evidence });
+    return prepareMissingSignatureWrongfulRejection({ block: evidence });
   if (category === "inputSetUniqueness") {
     const replay =
-      await Proofs.INPUT_SET_UNIQUENESS_COMPLETE_CANONICAL_REPLAY.replay(
-        evidence,
-      );
-    const classification = await Proofs.classifyCanonicalBlockViolations({
+      await INPUT_SET_UNIQUENESS_COMPLETE_CANONICAL_REPLAY.replay(evidence);
+    const classification = await classifyCanonicalBlockViolations({
       evidence,
       detections: replay.detections,
     });
@@ -139,63 +170,59 @@ export const prepareJourneyTransactionProof = async (input: {
       classification.category !== category
     )
       throw new Error("Proof preparation changed classification");
-    return Proofs.prepareInputSetUniquenessArtifact({
+    return prepareInputSetUniquenessArtifact({
       evidence,
       classification,
     });
   }
   switch (category) {
     case "zeroInput":
-      return Proofs.prepareZeroInputFromTransactions(common);
+      return prepareZeroInputFromTransactions(common);
     case "invalidRange":
-      return Proofs.prepareInvalidRangeFromTransactions({
+      return prepareInvalidRangeFromTransactions({
         ...common,
         blockSlot: block.header.blockSlot,
       });
     case "invalidSignature":
-      return Proofs.prepareInvalidSignatureFromTransactions(common);
+      return prepareInvalidSignatureFromTransactions(common);
     case "minFee":
-      return Proofs.prepareMinFeeFromTransactions({
+      return prepareMinFeeFromTransactions({
         ...common,
         minFeeA: block.header.minFeeA,
         minFeeB: block.header.minFeeB,
       });
     case "minAda":
-      return Proofs.prepareMinAdaForcedPlan({ block: evidence });
+      return prepareMinAdaForcedPlan({ block: evidence });
     case "networkId": {
       const expectedNetworkId = block.header.expectedNetworkId;
       if (expectedNetworkId !== 0n && expectedNetworkId !== 1n)
         throw new Error("Network proof needs tagged predecessor network");
-      return Proofs.prepareNetworkIdFromCanonicalEvidence({
+      return prepareNetworkIdFromCanonicalEvidence({
         evidence,
         expectedNetworkId,
       });
     }
     case "l2TxMistag":
-      return Proofs.prepareL2TxMistagFromTransactions(common);
+      return prepareL2TxMistagFromTransactions(common);
     case "transactionOutputNonCanonical":
-      return Proofs.deriveTransactionOutputNonCanonicalEvidenceFromCanonicalBlock(
+      return deriveTransactionOutputNonCanonicalEvidenceFromCanonicalBlock(
         evidence,
       );
     case "fieldItemWidthIllegal":
-      return Proofs.deriveFieldItemWidthIllegalEvidenceFromCanonicalBlock(
-        evidence,
-      );
+      return deriveFieldItemWidthIllegalEvidenceFromCanonicalBlock(evidence);
     case "mintDeclaredAssetLimit":
-      return Proofs.prepareMintDeclaredAssetLimitForcedArtifact(evidence);
+      return prepareMintDeclaredAssetLimitForcedArtifact(evidence);
     case "mintItemNonCanonical":
-      return Proofs.deriveMintItemNonCanonicalEvidenceFromCanonicalBlock(
-        evidence,
-      );
+      return deriveMintItemNonCanonicalEvidenceFromCanonicalBlock(evidence);
     case "mintAuthorization": {
       const predecessor = await checkedLedgerAfter(
-        await Proofs.canonicalBlockEvidenceFromVerifiedPayload({
+        await canonicalBlockEvidenceFromVerifiedPayload({
           ...raw,
           observation: authenticatedHeaderObservation(input.predecessor),
           payloadEnvelopeCbor: input.predecessor.payloadEnvelopeCbor,
         }),
       );
-      const prepared = await Proofs.prepareMintAuthorizationReplay({
+      const prepared = await prepareMintAuthorizationReplay({
         current: evidence.reconstruction,
         predecessor,
         sourceIndex: 0,
@@ -208,13 +235,13 @@ export const prepareJourneyTransactionProof = async (input: {
     }
     case "valueNotPreserved": {
       const predecessor = await checkedLedgerAfter(
-        await Proofs.canonicalBlockEvidenceFromVerifiedPayload({
+        await canonicalBlockEvidenceFromVerifiedPayload({
           ...raw,
           observation: authenticatedHeaderObservation(input.predecessor),
           payloadEnvelopeCbor: input.predecessor.payloadEnvelopeCbor,
         }),
       );
-      const prepared = await Proofs.prepareValueConservationArtifact({
+      const prepared = await prepareValueConservationArtifact({
         block: evidence,
         predecessor,
         sourceIndex: 0,
@@ -228,12 +255,12 @@ export const prepareJourneyTransactionProof = async (input: {
       const transaction = evidence.transactions[0];
       if (transaction === undefined)
         throw new Error("Protected-output transaction absent");
-      const prepared = Proofs.prepareProtectedOutputSignerMissingEvidence({
+      const prepared = prepareProtectedOutputSignerMissingEvidence({
         subject: SDK.acceptedVerdictSubject(transaction.nodeTxId),
         outputIndex: 0n,
         canonicalTransactionCbor: Buffer.from(transaction.txCbor, "hex"),
       });
-      if (!Proofs.signerWitnessVerdictCloses(prepared))
+      if (!signerWitnessVerdictCloses(prepared))
         throw new Error("Protected-output proof does not close");
       return prepared;
     }
@@ -244,7 +271,7 @@ export const prepareJourneyTransactionProof = async (input: {
       const tx = decodeMidgardForcedTxFullFromCanonicalCbor(
         forced.fullTransactionCbor,
       );
-      return Proofs.prepareFieldPreimageLengthWorkflow({
+      return prepareFieldPreimageLengthWorkflow({
         headerHash: block.headerHash,
         transactionId: forced.value.tx_id,
         direction: "wrongfulRejection",

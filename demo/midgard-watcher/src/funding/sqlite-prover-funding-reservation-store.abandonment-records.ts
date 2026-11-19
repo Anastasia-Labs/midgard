@@ -3,9 +3,9 @@ import { DatabaseSync } from "node:sqlite";
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   parseWorkflowFundingSupersededAttempt,
-  type SignedWorkflowTransactionRetirement,
   type WorkflowFundingRecordedAttempt,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/funding-reservation-permit";
+import type { SignedWorkflowTransactionRetirement } from "@al-ft/midgard-fault-proofs/workflow/signed-transaction-retirement";
 
 import { watcherCanonicalJson } from "../storage/durable-store.canonical-json.js";
 import {

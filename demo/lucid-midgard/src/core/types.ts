@@ -1,5 +1,5 @@
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
-import type { LedgerEntry } from "@al-ft/midgard-validation";
+import type { LedgerEntry } from "@al-ft/midgard-validation/ledger";
 
 import type { ProtocolScriptLanguage } from "../provider.js";
 import type { Assets } from "./assets.js";

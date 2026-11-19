@@ -1,8 +1,8 @@
-import { type CompleteCanonicalReplayIsolation } from "@al-ft/midgard-fault-proofs";
+import type { CompleteCanonicalReplayIsolation } from "@al-ft/midgard-fault-proofs/workflow/complete-replay";
 
 import { watcherFaultDetectorFailedAlertSubject } from "../runtime/operations-observability.alert-book.js";
 import type { WatcherOperationsSink } from "../runtime/operations-observability.watcher-operations-metrics.js";
-import { WATCHER_PACKAGE_NAME } from "../runtime/scaffold.js";
+import { WATCHER_PACKAGE_NAME } from "../runtime/package-name.js";
 import { isDecisionFailureTransient } from "../runtime/watcher-runtime.decision-failure.js";
 import { isClassificationMissHandled } from "./fault-decision-bridge.classification-miss.js";
 import { perHeaderAlert } from "./per-header-alert.js";

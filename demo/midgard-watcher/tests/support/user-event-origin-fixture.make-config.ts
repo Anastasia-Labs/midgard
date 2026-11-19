@@ -7,7 +7,7 @@ import {
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
-import { computeFraudProofRawL1PointId } from "@al-ft/midgard-fault-proofs";
+import { computeFraudProofRawL1PointId } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
 import {
   buildEventHistoryDeployments,
   buildHubOracleMintingValidator,

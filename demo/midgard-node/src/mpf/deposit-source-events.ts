@@ -1,7 +1,5 @@
-import {
-  canonicalDepositTransitionEffect,
-  transitionEffectToLedgerOps,
-} from "@al-ft/midgard-validation";
+import { canonicalDepositTransitionEffect } from "@al-ft/midgard-validation/transition-effect";
+import { transitionEffectToLedgerOps } from "@al-ft/midgard-validation/validation-machine";
 import { Effect } from "effect";
 
 import * as DepositsDB from "../database/deposits.js";

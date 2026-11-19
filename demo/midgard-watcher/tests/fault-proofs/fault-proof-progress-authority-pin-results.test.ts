@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 
-import { createWorkflowActuationPermitController } from "@al-ft/midgard-fault-proofs";
+import { createWorkflowActuationPermitController } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
 import { afterEach, describe, expect, it } from "vitest";
 
 import * as DecisionJournal from "../../src/fault-proofs/fault-decision-journal.js";

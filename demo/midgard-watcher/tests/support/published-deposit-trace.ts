@@ -1,4 +1,5 @@
-import "@al-ft/midgard-fault-proofs";
+import "@al-ft/midgard-fault-proofs/funding/proof-materials-address";
+import "@al-ft/midgard-fault-proofs/remove-unattested-block";
 import "@al-ft/midgard-fault-proofs/test-support/transition-trace-retained";
 import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";

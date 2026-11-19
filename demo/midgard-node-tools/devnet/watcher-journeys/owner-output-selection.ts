@@ -9,7 +9,7 @@ import { TX_HASH_BYTE_LENGTH } from "@al-ft/midgard-core/out-ref";
 import {
   outputCborMeetsMinAda,
   outputCborMinAdaLovelace,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/value-accounting";
 
 /** An output of the ledger owner's: its reference and canonical bytes. */
 export type OwnedOutput = Readonly<{ outRef: Buffer; output: Buffer }>;

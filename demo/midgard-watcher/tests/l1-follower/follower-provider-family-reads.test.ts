@@ -16,12 +16,6 @@
  */
 import { fakeL1NodeTransport } from "@al-ft/l1-node-transport/testing";
 import {
-  computeFraudProofReleaseFinalityPolicyDigest,
-  FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-  type ReleaseL1FinalityPolicy,
-  type VerifiedFraudProofReleaseFinalityPolicy,
-} from "@al-ft/midgard-fault-proofs";
-import {
   type FabricatedHistoryEnvironment,
   fetchCurrentHistory,
 } from "@al-ft/midgard-fault-proofs/test-support/fabricated-history-witness";
@@ -29,6 +23,12 @@ import {
   captureTransitionTraceL1Events,
   readFreshTransitionTraceL1Events,
 } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-l1-events";
+import {
+  computeFraudProofReleaseFinalityPolicyDigest,
+  FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
+  type ReleaseL1FinalityPolicy,
+  type VerifiedFraudProofReleaseFinalityPolicy,
+} from "@al-ft/midgard-fault-proofs/workflow/release-finality-policy";
 import { L1FollowerProvider } from "@al-ft/midgard-l1-follower/provider";
 import * as SDK from "@al-ft/midgard-sdk";
 import {

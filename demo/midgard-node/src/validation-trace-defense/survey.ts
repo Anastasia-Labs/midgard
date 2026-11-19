@@ -13,7 +13,7 @@
  *   at the next survey.
  */
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
-import { recordedValidationTraceDefenders } from "@al-ft/midgard-fault-proofs";
+import { recordedValidationTraceDefenders } from "@al-ft/midgard-fault-proofs/validation-trace-dispute/defender";
 import { postgresDialect } from "@al-ft/midgard-l1-follower";
 import { SqlClient } from "@effect/sql";
 import { Data, Effect } from "effect";

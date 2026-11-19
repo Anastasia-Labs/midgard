@@ -1,5 +1,5 @@
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core";
-import { LedgerRootMismatchError } from "@al-ft/midgard-fault-proofs";
+import { LedgerRootMismatchError } from "@al-ft/midgard-fault-proofs/ledger-at";
 import {
   buildCanonicalBlockFixture,
   outRefCbor,

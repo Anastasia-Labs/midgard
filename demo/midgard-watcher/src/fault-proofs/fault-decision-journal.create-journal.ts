@@ -4,7 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import {
   type HeaderDecision,
   headerDecisionEnvelope,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
 
 import {
   DIGEST,

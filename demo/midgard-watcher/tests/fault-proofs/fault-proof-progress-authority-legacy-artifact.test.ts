@@ -1,23 +1,25 @@
 import { createHash } from "node:crypto";
 
 import {
-  COMPLETE_CANONICAL_REPLAY,
-  computeFraudProofWorkflowId,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-  type FraudProofWorkflowJournalEntry,
-  HEADER_CLASSIFIER,
-  HEADER_DECISION,
-  type HeaderFaultDecision,
-  journalJsonDigest,
-  type JournalJsonObject,
-  normalizeJournalJson,
-} from "@al-ft/midgard-fault-proofs";
-import {
   buildCanonicalBlockFixture,
   buildFixtureTransaction,
   outRefCbor,
 } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
+import { COMPLETE_CANONICAL_REPLAY } from "@al-ft/midgard-fault-proofs/workflow/complete-replay";
+import {
+  HEADER_CLASSIFIER,
+  HEADER_DECISION,
+  type HeaderFaultDecision,
+} from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
+import {
+  computeFraudProofWorkflowId,
+  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
+  type FraudProofWorkflowJournalEntry,
+  journalJsonDigest,
+  type JournalJsonObject,
+  normalizeJournalJson,
+} from "@al-ft/midgard-fault-proofs/workflow/journal";
 import { afterEach, expect, it } from "vitest";
 
 import { unsafeOpenWatcherFaultDecisionJournalForTest } from "../../src/fault-proofs/fault-decision-journal.create-journal.js";

@@ -1,8 +1,8 @@
 import {
-  FraudProofL1RefusedError,
   isValidationTraceReplayHeldError,
   type ValidationTraceReplayHeldError,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/validation-trace-dispute/replay-hold";
+import { FraudProofL1RefusedError } from "@al-ft/midgard-fault-proofs/workflow/l1-source";
 
 import type { WatcherProofObjective } from "./fault-proof-objective-journal.js";
 

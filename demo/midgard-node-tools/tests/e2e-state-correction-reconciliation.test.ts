@@ -13,7 +13,7 @@ import {
   type FraudProofWorkflowTerminal,
   journalJsonDigest,
   normalizeJournalJson,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/journal";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@al-ft/midgard-core/deployment-manifest-identity", async (load) => ({

@@ -15,7 +15,7 @@ import {
   midgardCekWriteBitsHopData,
   midgardCekWriteBitsLoopOfWitness,
   planMidgardCekWriteBitsHops,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/cek-write-bits";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

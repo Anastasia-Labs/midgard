@@ -1,10 +1,10 @@
+import { fixture as terminalFixture } from "@al-ft/midgard-fault-proofs/test-support/raw-l1-terminal-fixture";
 import {
-  deriveFraudProofRawL1CompletedTerminal,
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
   type FraudProofWorkflowJournalEvent,
   journalJsonDigest,
-} from "@al-ft/midgard-fault-proofs";
-import { fixture as terminalFixture } from "@al-ft/midgard-fault-proofs/test-support/raw-l1-terminal-fixture";
+} from "@al-ft/midgard-fault-proofs/workflow/journal";
+import { deriveFraudProofRawL1CompletedTerminal } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-family-derivation";
 
 import { watcherDeploymentReleaseEconomicsAuthority } from "../../src/runtime/deployment-identity.watcher-deployment-availability-challenge-authority.js";
 import type { setupFundingRecoveryFixture } from "./fault-proof-funding-fixture.setup-funding-recovery-fixture.js";

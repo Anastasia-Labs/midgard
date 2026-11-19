@@ -7,11 +7,11 @@
  * reconciled.
  */
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
-import {
-  bindWorkflowPreflightTransaction,
-  type FraudProofFamilyWorkflowAdapter,
-  type FraudProofWorkflowAction,
-} from "@al-ft/midgard-fault-proofs";
+import type {
+  FraudProofFamilyWorkflowAdapter,
+  FraudProofWorkflowAction,
+} from "@al-ft/midgard-fault-proofs/workflow/orchestrator";
+import { bindWorkflowPreflightTransaction } from "@al-ft/midgard-fault-proofs/workflow/transaction-boundary";
 import { CML } from "@lucid-evolution/lucid";
 import { expect, it, vi } from "vitest";
 

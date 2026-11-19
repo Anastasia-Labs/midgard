@@ -1,10 +1,10 @@
-import {
-  type CompleteCanonicalReplayContext,
-  restrictWorkflowFundingSigner,
-  type WorkflowAdapterReadinessInput,
-  type WorkflowAdapterRunnerInput,
-  type WorkflowRuntimeLoader,
-} from "@al-ft/midgard-fault-proofs";
+import type {
+  WorkflowAdapterReadinessInput,
+  WorkflowAdapterRunnerInput,
+} from "@al-ft/midgard-fault-proofs/workflow/adapters";
+import type { CompleteCanonicalReplayContext } from "@al-ft/midgard-fault-proofs/workflow/complete-replay";
+import { restrictWorkflowFundingSigner } from "@al-ft/midgard-fault-proofs/workflow/funding-reservation-permit";
+import type { WorkflowRuntimeLoader } from "@al-ft/midgard-fault-proofs/workflow/runtime";
 
 import type { WatcherConfig } from "../runtime/config.js";
 import { type VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";

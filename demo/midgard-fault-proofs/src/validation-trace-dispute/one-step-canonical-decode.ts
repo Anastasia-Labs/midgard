@@ -21,9 +21,9 @@ import * as SDK from "@al-ft/midgard-sdk";
 import {
   canonicalCborArgumentHeaderSize,
   canonicalOrderedItemEncodedLength,
-  type ValidationMachineFieldCarriageResolver,
   type ValidationMachineWorkWitness,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/validation-machine";
+import type { ValidationMachineFieldCarriageResolver } from "@al-ft/midgard-validation/validation-machine-data";
 import {
   Constr,
   Data,

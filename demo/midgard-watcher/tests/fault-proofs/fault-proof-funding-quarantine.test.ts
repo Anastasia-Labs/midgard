@@ -1,5 +1,5 @@
-import { type FraudProofWorkflowJournalEvent } from "@al-ft/midgard-fault-proofs";
 import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "@al-ft/midgard-fault-proofs/test-support/wallet-only-send-always-open";
+import type { FraudProofWorkflowJournalEvent } from "@al-ft/midgard-fault-proofs/workflow/journal";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WATCHER_FAULT_PROOF_QUARANTINED } from "../../src/fault-proofs/fault-proof-quarantine.js";

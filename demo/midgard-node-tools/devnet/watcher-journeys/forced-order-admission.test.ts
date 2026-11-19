@@ -3,11 +3,68 @@ import {
   encodeMidgardTxOutput,
   midgardFieldCommitment,
 } from "@al-ft/midgard-core";
-import * as FP from "@al-ft/midgard-fault-proofs";
+import {
+  type DirectPurposeArtifactAdmission,
+  type DirectPurposeReplay,
+  prepareDirectPurposeArtifact,
+} from "@al-ft/midgard-fault-proofs/direct-purpose-family";
+import { DISTINCT_ASSET_ACCUMULATION_LIMIT_ARTIFACT_FAMILY } from "@al-ft/midgard-fault-proofs/distinct-asset-accumulation-limit";
+import { EXECUTION_NATIVE_SCRIPT_INVALID_ARTIFACT_FAMILY } from "@al-ft/midgard-fault-proofs/execution-native-script-invalid";
+import { EXECUTION_SOURCE_SCRIPT_DECODING_ARTIFACT_FAMILY } from "@al-ft/midgard-fault-proofs/execution-source-script-decoding";
+import { MISSING_REDEEMER_ARTIFACT_FAMILY } from "@al-ft/midgard-fault-proofs/missing-redeemer";
+import { MISSING_SCRIPT_SOURCE_ARTIFACT_FAMILY } from "@al-ft/midgard-fault-proofs/missing-script-source";
+import { prepareNativeScriptDecodingWorkflowArtifact } from "@al-ft/midgard-fault-proofs/native-script-decoding/artifact";
+import { prepareNativeScriptInvalidForcedArtifact } from "@al-ft/midgard-fault-proofs/native-script-invalid";
+import {
+  outputReferenceScriptEvidenceCloses,
+  prepareOutputReferenceScriptDecodingEvidence,
+} from "@al-ft/midgard-fault-proofs/output-reference-script-decoding";
+import { RECEIVE_PURPOSE_LANGUAGE_ARTIFACT_FAMILY } from "@al-ft/midgard-fault-proofs/receive-purpose-language";
+import {
+  prepareRedeemerCanonicityEvidence,
+  redeemerCanonicityEvidenceCloses,
+} from "@al-ft/midgard-fault-proofs/redeemer-canonicity";
+import { SCRIPT_INTEGRITY_HASH_MISMATCH_ARTIFACT_FAMILY } from "@al-ft/midgard-fault-proofs/script-integrity-hash-mismatch";
+import { prepareScriptIntegrityHashMissingArtifact } from "@al-ft/midgard-fault-proofs/script-integrity-hash-missing/artifact";
 import {
   buildCanonicalBlockFixture,
   outRefCbor,
 } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
+import { UNUSED_REDEEMER_ARTIFACT_FAMILY } from "@al-ft/midgard-fault-proofs/unused-redeemer";
+import { UNUSED_SCRIPT_WITNESS_ARTIFACT_FAMILY } from "@al-ft/midgard-fault-proofs/unused-script-witness";
+import {
+  prepareWitnessScriptDecodingEvidence,
+  witnessScriptDecodingEvidenceCloses,
+} from "@al-ft/midgard-fault-proofs/witness-script-decoding";
+import { classifyCanonicalBlockViolations } from "@al-ft/midgard-fault-proofs/workflow/classification";
+import {
+  type CompleteCanonicalReplay,
+  DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY,
+  EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY,
+  EXECUTION_SOURCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
+  FIELD_ITEM_WIDTH_ILLEGAL_COMPLETE_CANONICAL_REPLAY,
+  FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
+  MIN_ADA_COMPLETE_CANONICAL_REPLAY,
+  MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY,
+  MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY,
+  MISSING_SCRIPT_SOURCE_COMPLETE_CANONICAL_REPLAY,
+  MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY,
+  NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
+  NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY,
+  OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
+  RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY,
+  REDEEMER_CANONICITY_COMPLETE_CANONICAL_REPLAY,
+  requireCompleteCanonicalReplayDecision,
+  RESOLVED_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
+  SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
+  SCRIPT_INTEGRITY_HASH_MISSING_COMPLETE_CANONICAL_REPLAY,
+  TRANSACTION_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
+  UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY,
+  UNUSED_SCRIPT_WITNESS_COMPLETE_CANONICAL_REPLAY,
+  VALUE_NOT_PRESERVED_COMPLETE_CANONICAL_REPLAY,
+  WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
+} from "@al-ft/midgard-fault-proofs/workflow/complete-replay";
+import { headerDecisionReplayContext } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -50,60 +107,57 @@ const orderKey = { transactionId: "a1".repeat(32), outputIndex: 0n };
 
 const replayers: Record<
   JourneyForcedTransactionCategory | JourneyScriptForcedCategory,
-  FP.CompleteCanonicalReplay
+  CompleteCanonicalReplay
 > = {
-  minAda: FP.MIN_ADA_COMPLETE_CANONICAL_REPLAY,
-  valueNotPreserved: FP.VALUE_NOT_PRESERVED_COMPLETE_CANONICAL_REPLAY,
-  missingSignature: FP.MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY,
+  minAda: MIN_ADA_COMPLETE_CANONICAL_REPLAY,
+  valueNotPreserved: VALUE_NOT_PRESERVED_COMPLETE_CANONICAL_REPLAY,
+  missingSignature: MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY,
   transactionOutputNonCanonical:
-    FP.TRANSACTION_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
+    TRANSACTION_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
   resolvedOutputNonCanonical:
-    FP.RESOLVED_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
+    RESOLVED_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
   fieldPreimageLengthMismatch:
-    FP.FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
-  fieldItemWidthIllegal: FP.FIELD_ITEM_WIDTH_ILLEGAL_COMPLETE_CANONICAL_REPLAY,
-  mintDeclaredAssetLimit:
-    FP.MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY,
-  nativeScriptDecoding: FP.NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
-  nativeScriptInvalid: FP.NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY,
-  witnessScriptDecoding: FP.WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
+    FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
+  fieldItemWidthIllegal: FIELD_ITEM_WIDTH_ILLEGAL_COMPLETE_CANONICAL_REPLAY,
+  mintDeclaredAssetLimit: MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY,
+  nativeScriptDecoding: NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
+  nativeScriptInvalid: NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY,
+  witnessScriptDecoding: WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
   scriptIntegrityHashMissing:
-    FP.SCRIPT_INTEGRITY_HASH_MISSING_COMPLETE_CANONICAL_REPLAY,
+    SCRIPT_INTEGRITY_HASH_MISSING_COMPLETE_CANONICAL_REPLAY,
   outputReferenceScriptDecoding:
-    FP.OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
-  redeemerCanonicity: FP.REDEEMER_CANONICITY_COMPLETE_CANONICAL_REPLAY,
-  missingRedeemer: FP.MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY,
-  missingScriptSource: FP.MISSING_SCRIPT_SOURCE_COMPLETE_CANONICAL_REPLAY,
-  unusedRedeemer: FP.UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY,
-  receivePurposeLanguage: FP.RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY,
+    OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
+  redeemerCanonicity: REDEEMER_CANONICITY_COMPLETE_CANONICAL_REPLAY,
+  missingRedeemer: MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY,
+  missingScriptSource: MISSING_SCRIPT_SOURCE_COMPLETE_CANONICAL_REPLAY,
+  unusedRedeemer: UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY,
+  receivePurposeLanguage: RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY,
   scriptIntegrityHashMismatch:
-    FP.SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
+    SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
   executionSourceScriptDecoding:
-    FP.EXECUTION_SOURCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
+    EXECUTION_SOURCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
   executionNativeScriptInvalid:
-    FP.EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY,
+    EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY,
   distinctAssetAccumulationLimit:
-    FP.DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY,
-  unusedScriptWitness: FP.UNUSED_SCRIPT_WITNESS_COMPLETE_CANONICAL_REPLAY,
+    DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY,
+  unusedScriptWitness: UNUSED_SCRIPT_WITNESS_COMPLETE_CANONICAL_REPLAY,
 };
 
 /** The direct purpose families, by category, whose artifact the kit prepares. */
 const DIRECT_PURPOSE_ARTIFACT_FAMILIES: Partial<
-  Record<string, FP.DirectPurposeArtifactAdmission<FP.DirectPurposeReplay>>
+  Record<string, DirectPurposeArtifactAdmission<DirectPurposeReplay>>
 > = {
-  missingRedeemer: FP.MISSING_REDEEMER_ARTIFACT_FAMILY,
-  missingScriptSource: FP.MISSING_SCRIPT_SOURCE_ARTIFACT_FAMILY,
-  unusedRedeemer: FP.UNUSED_REDEEMER_ARTIFACT_FAMILY,
-  receivePurposeLanguage: FP.RECEIVE_PURPOSE_LANGUAGE_ARTIFACT_FAMILY,
-  scriptIntegrityHashMismatch:
-    FP.SCRIPT_INTEGRITY_HASH_MISMATCH_ARTIFACT_FAMILY,
+  missingRedeemer: MISSING_REDEEMER_ARTIFACT_FAMILY,
+  missingScriptSource: MISSING_SCRIPT_SOURCE_ARTIFACT_FAMILY,
+  unusedRedeemer: UNUSED_REDEEMER_ARTIFACT_FAMILY,
+  receivePurposeLanguage: RECEIVE_PURPOSE_LANGUAGE_ARTIFACT_FAMILY,
+  scriptIntegrityHashMismatch: SCRIPT_INTEGRITY_HASH_MISMATCH_ARTIFACT_FAMILY,
   executionSourceScriptDecoding:
-    FP.EXECUTION_SOURCE_SCRIPT_DECODING_ARTIFACT_FAMILY,
-  executionNativeScriptInvalid:
-    FP.EXECUTION_NATIVE_SCRIPT_INVALID_ARTIFACT_FAMILY,
+    EXECUTION_SOURCE_SCRIPT_DECODING_ARTIFACT_FAMILY,
+  executionNativeScriptInvalid: EXECUTION_NATIVE_SCRIPT_INVALID_ARTIFACT_FAMILY,
   distinctAssetAccumulationLimit:
-    FP.DISTINCT_ASSET_ACCUMULATION_LIMIT_ARTIFACT_FAMILY,
-  unusedScriptWitness: FP.UNUSED_SCRIPT_WITNESS_ARTIFACT_FAMILY,
+    DISTINCT_ASSET_ACCUMULATION_LIMIT_ARTIFACT_FAMILY,
+  unusedScriptWitness: UNUSED_SCRIPT_WITNESS_ARTIFACT_FAMILY,
 };
 
 type Predecessor = Parameters<
@@ -171,8 +225,8 @@ const prepareScriptProof = async (
     forced.fullTransactionCbor,
   );
   if (category === "redeemerCanonicity")
-    return FP.redeemerCanonicityEvidenceCloses(
-      FP.prepareRedeemerCanonicityEvidence({
+    return redeemerCanonicityEvidenceCloses(
+      prepareRedeemerCanonicityEvidence({
         finding: { subject, redeemerIndex: 0n },
         fieldPreimage: material.fieldPreimages[8]!,
         committedFieldHashHex: midgardFieldCommitment(
@@ -181,8 +235,8 @@ const prepareScriptProof = async (
       }),
     );
   if (category === "witnessScriptDecoding")
-    return FP.witnessScriptDecodingEvidenceCloses(
-      FP.prepareWitnessScriptDecodingEvidence({
+    return witnessScriptDecodingEvidenceCloses(
+      prepareWitnessScriptDecodingEvidence({
         finding: {
           subject,
           scriptIndex: 0n,
@@ -197,8 +251,8 @@ const prepareScriptProof = async (
       }),
     );
   if (category === "outputReferenceScriptDecoding")
-    return FP.outputReferenceScriptEvidenceCloses(
-      FP.prepareOutputReferenceScriptDecodingEvidence({
+    return outputReferenceScriptEvidenceCloses(
+      prepareOutputReferenceScriptDecodingEvidence({
         subject,
         outputIndex: 0n,
         canonicalTransactionCbor: forced.fullTransactionCbor,
@@ -206,18 +260,18 @@ const prepareScriptProof = async (
     );
   if (category === "nativeScriptInvalid")
     return (
-      (await FP.prepareNativeScriptInvalidForcedArtifact({ block: evidence }))
+      (await prepareNativeScriptInvalidForcedArtifact({ block: evidence }))
         .headerHash === headerHash
     );
-  const context = FP.headerDecisionReplayContext(verified.decision);
+  const context = headerDecisionReplayContext(verified.decision);
   const replayer = replayers[category];
-  const detections = FP.requireCompleteCanonicalReplayDecision({
+  const detections = requireCompleteCanonicalReplayDecision({
     evidence,
     replayer,
     decision: await replayer.replay(evidence, context),
     context,
   });
-  const selected = await FP.classifyCanonicalBlockViolations({
+  const selected = await classifyCanonicalBlockViolations({
     evidence,
     detections,
     minimumConfirmationDepth: 30,
@@ -227,18 +281,18 @@ const prepareScriptProof = async (
   const directPurpose = DIRECT_PURPOSE_ARTIFACT_FAMILIES[category];
   const artifact =
     category === "nativeScriptDecoding"
-      ? await FP.prepareNativeScriptDecodingWorkflowArtifact({
+      ? await prepareNativeScriptDecodingWorkflowArtifact({
           evidence,
           classification: selected,
           replayContext: context,
         })
       : directPurpose !== undefined
-        ? await FP.prepareDirectPurposeArtifact(directPurpose, {
+        ? await prepareDirectPurposeArtifact(directPurpose, {
             evidence,
             classification: selected,
             replayContext: context,
           })
-        : await FP.prepareScriptIntegrityHashMissingArtifact({
+        : await prepareScriptIntegrityHashMissingArtifact({
             evidence,
             classification: selected,
           });

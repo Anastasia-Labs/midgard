@@ -7,28 +7,32 @@ import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import {
-  authenticatedStateQueueObservationDigest,
-  classifyHeader,
-  completeCanonicalReplayPredecessorLedger,
-  computeFraudProofReleaseFinalityPolicyDigest,
-  createCatalogueCompleteCanonicalReplay,
-  createHeaderClassifier,
-  FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
-  FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
-  FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-  type FraudProofRawL1SnapshotAuthority,
-  headerDecisionCanonicalEvidence,
-  headerDecisionReplayContext,
-  type LedgerAt,
-  type RetainedDaPayloadSource,
-} from "@al-ft/midgard-fault-proofs";
+import type { LedgerAt } from "@al-ft/midgard-fault-proofs/ledger-at";
 import { authenticatedHeaderObservation } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import { captureRetainedPlutusIdentityOrigins } from "@al-ft/midgard-fault-proofs/test-support/retained-reason-classifier";
 import {
   requireTransitionTraceL1Events,
   unsafeCreateTransitionTraceEventAuthorityFromRawForTest,
 } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-l1-events";
+import type { RetainedDaPayloadSource } from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
+import { createCatalogueCompleteCanonicalReplay } from "@al-ft/midgard-fault-proofs/workflow/catalogue-replay";
+import { completeCanonicalReplayPredecessorLedger } from "@al-ft/midgard-fault-proofs/workflow/complete-replay";
+import {
+  authenticatedStateQueueObservationDigest,
+  classifyHeader,
+  createHeaderClassifier,
+  headerDecisionCanonicalEvidence,
+  headerDecisionReplayContext,
+} from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
+import {
+  FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
+  type FraudProofRawL1SnapshotAuthority,
+} from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
+import {
+  computeFraudProofReleaseFinalityPolicyDigest,
+  FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
+  FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
+} from "@al-ft/midgard-fault-proofs/workflow/release-finality-policy";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   credentialToAddress,

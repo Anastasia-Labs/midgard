@@ -2,7 +2,7 @@ import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import {
   authenticatedStateQueueObservationDigest,
   type HeaderDecision,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
 import { vi } from "vitest";
 
 import { unsafeCreateWatcherFaultDecisionBridgeForTest } from "../../src/fault-proofs/fault-decision-bridge.create-watcher-fault-decision-bridge.js";

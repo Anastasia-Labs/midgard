@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
 
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { fraudProofSignedTransactionRecovery } from "@al-ft/midgard-fault-proofs/workflow/l1-source";
 import {
   computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
-  fraudProofSignedTransactionRecovery,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/release-finality-policy";
 import { encodeTxBody, type SimTx } from "@al-ft/midgard-l1-follower/testing";
 import { describe, expect, it } from "vitest";
 

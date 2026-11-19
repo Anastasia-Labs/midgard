@@ -1,6 +1,6 @@
 import "@al-ft/midgard-core/codec";
 import "@al-ft/midgard-core/script-proof";
-import "@al-ft/midgard-validation";
+import "@al-ft/midgard-validation/validation-candidate";
 import "@effect/sql/SqlClient";
 import "effect";
 import "../database/index.js";

@@ -1,7 +1,7 @@
-import {
-  type FraudProofWorkflowJournalEntry,
-  type FraudProofWorkflowTerminal,
-} from "@al-ft/midgard-fault-proofs";
+import type {
+  FraudProofWorkflowJournalEntry,
+  FraudProofWorkflowTerminal,
+} from "@al-ft/midgard-fault-proofs/workflow/journal";
 
 import type {
   DbEvidence,

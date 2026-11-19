@@ -1,7 +1,7 @@
 import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core";
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core/codec";
 import * as SDK from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 
 import {
   authenticatedForcedTransactionSource,

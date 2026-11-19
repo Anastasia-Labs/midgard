@@ -16,7 +16,7 @@ import {
 import {
   redeemerItemControlData,
   redeemerItemProofWitnessData,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/validation-machine-data";
 import {
   type BuildTxWithRedeemer,
   Constr,

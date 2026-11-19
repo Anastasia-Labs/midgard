@@ -7,7 +7,7 @@ import {
   MIDGARD_CEK_STAGED_CHUNK_BYTES,
   MIDGARD_CEK_STAGED_RUN_MAX_CHUNKS,
 } from "@al-ft/midgard-core";
-import type { MidgardCekStagingResult } from "@al-ft/midgard-validation";
+import type { MidgardCekStagingResult } from "@al-ft/midgard-validation/cek-staged-builtin";
 import { Constr, Data, type UTxO } from "@lucid-evolution/lucid";
 
 import type { ValidationTraceClaimMaterial } from "../../src/validation-trace-dispute/claim-material.js";

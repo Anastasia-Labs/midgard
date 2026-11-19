@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core";
 import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { type FraudProofWorkflowTerminal } from "@al-ft/midgard-fault-proofs";
+import type { FraudProofWorkflowTerminal } from "@al-ft/midgard-fault-proofs/workflow/journal";
 
 import type { DbEvidence, RawEvidenceRef } from "../e2e/summary.js";
 import type { E2EStateCorrectionAcceptance } from "./e2e-state-correction-acceptance.js";

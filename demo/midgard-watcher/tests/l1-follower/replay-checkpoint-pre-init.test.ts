@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import type { LedgerCheckpoint } from "@al-ft/midgard-fault-proofs";
+import type { LedgerCheckpoint } from "@al-ft/midgard-fault-proofs/replayed-ledger";
 import type { OutRef } from "@al-ft/midgard-l1-follower";
 import {
   SIM_ORIGIN,

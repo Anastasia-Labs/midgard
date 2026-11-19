@@ -1,7 +1,7 @@
 import {
   DaLibp2pRetainedDaSource,
   type RetainedDaPayloadSource,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
 
 import { assertWatcherL1AvailabilityPayloadSource } from "../availability/published-payload.js";
 import {

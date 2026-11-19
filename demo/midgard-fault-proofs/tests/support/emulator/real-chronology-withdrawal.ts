@@ -4,7 +4,7 @@
  * own ingestion, classification, root-entry, event-key and transition-effect
  * code, so the committed event is exactly what block production derives. */
 import * as SDK from "@al-ft/midgard-sdk";
-import { canonicalCommittedWithdrawalTransitionEffect } from "@al-ft/midgard-validation";
+import { canonicalCommittedWithdrawalTransitionEffect } from "@al-ft/midgard-validation/transition-effect";
 import { Effect } from "effect";
 import { withdrawalDataToEntry } from "midgard-node/database/user-event-entries";
 import * as Ledger from "midgard-node/database/utils/ledger";

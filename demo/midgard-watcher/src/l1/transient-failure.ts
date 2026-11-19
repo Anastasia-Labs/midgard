@@ -1,7 +1,7 @@
 import {
   FraudProofL1CheckpointChangedError,
   FraudProofL1UnavailableError,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/l1-source";
 import {
   fromTransportError,
   L1ProviderTransientError,

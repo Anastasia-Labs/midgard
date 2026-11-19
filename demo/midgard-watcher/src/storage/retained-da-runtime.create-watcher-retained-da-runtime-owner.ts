@@ -1,10 +1,12 @@
+import type { WorkflowAdapterReadinessInput } from "@al-ft/midgard-fault-proofs/workflow/adapters";
+import type {
+  FamilyCommonInfrastructure,
+  FamilyReferenceScriptResolver,
+} from "@al-ft/midgard-fault-proofs/workflow/family-application";
 import {
-  type FamilyCommonInfrastructure,
-  type FamilyReferenceScriptResolver,
   WORKFLOW_RUNTIME_CONFIG,
-  type WorkflowAdapterReadinessInput,
   type WorkflowRuntimeLoader,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/runtime";
 
 import { parseWatcherConfig } from "../runtime/config.parse-watcher-config.js";
 import type { WatcherConfig } from "../runtime/config.watcher-config.js";

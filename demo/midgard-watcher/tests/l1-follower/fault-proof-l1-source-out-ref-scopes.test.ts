@@ -1,8 +1,8 @@
+import { fraudProofSignedTransactionRecovery } from "@al-ft/midgard-fault-proofs/workflow/l1-source";
 import {
   admitFraudProofRawL1Snapshot,
   type FraudProofRawL1Snapshot,
-  fraudProofSignedTransactionRecovery,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
 import { type SimTx, simTxHash } from "@al-ft/midgard-l1-follower/testing";
 import { describe, expect, it } from "vitest";
 

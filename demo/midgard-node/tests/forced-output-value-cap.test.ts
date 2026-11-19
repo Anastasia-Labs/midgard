@@ -20,12 +20,12 @@ import { screenMidgardForcedTxAdmission } from "@al-ft/midgard-core/consensus-va
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { hashMidgardValidationRejectionReasonV1 } from "@al-ft/midgard-core/validation-trace";
 import * as SDK from "@al-ft/midgard-sdk";
+import { RejectCodes } from "@al-ft/midgard-validation/types";
+import { replayValidationVerdictEvent } from "@al-ft/midgard-validation/validation-machine";
 import {
   MIDGARD_COINS_PER_UTXO_BYTE,
   minAdaLovelace,
-  replayValidationVerdictEvent,
-} from "@al-ft/midgard-validation";
-import { RejectCodes } from "@al-ft/midgard-validation/types";
+} from "@al-ft/midgard-validation/value-accounting";
 import { Data } from "@lucid-evolution/lucid";
 import { decodeDaPayloadStrict } from "da-committee-node/da/payload";
 import { Effect } from "effect";

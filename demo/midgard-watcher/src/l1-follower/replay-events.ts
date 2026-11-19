@@ -1,4 +1,4 @@
-import { FraudProofL1UnavailableError } from "@al-ft/midgard-fault-proofs";
+import { FraudProofL1UnavailableError } from "@al-ft/midgard-fault-proofs/workflow/l1-source";
 import type { FactStore } from "@al-ft/midgard-l1-follower";
 import { eventKeyOfId, EVENTS_TABLE } from "@al-ft/midgard-l1-follower/events";
 import * as SDK from "@al-ft/midgard-sdk";

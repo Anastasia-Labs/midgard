@@ -18,7 +18,7 @@ import {
   type DeploymentReleaseTrustRoot,
   verifySignedDeploymentRelease,
 } from "@al-ft/midgard-core/deployment-release";
-import { computeFraudProofReleaseEconomicsPolicyDigest } from "@al-ft/midgard-fault-proofs";
+import { computeFraudProofReleaseEconomicsPolicyDigest } from "@al-ft/midgard-fault-proofs/workflow/release-economics-policy";
 import { CML } from "@lucid-evolution/lucid";
 import { makeGenuineDeploymentRegistryForTest } from "midgard-node/tests/helpers/deployment-parameter-registry";
 import {

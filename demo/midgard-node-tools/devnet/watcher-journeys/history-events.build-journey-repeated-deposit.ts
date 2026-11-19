@@ -1,6 +1,6 @@
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
-import { buildCountedRoot } from "@al-ft/midgard-fault-proofs";
 import { buildCanonicalBlockFixture } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
+import { buildCountedRoot } from "@al-ft/midgard-fault-proofs/transition-trace/phas";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";

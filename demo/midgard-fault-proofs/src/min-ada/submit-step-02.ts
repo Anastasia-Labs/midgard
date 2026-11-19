@@ -3,7 +3,7 @@
 import "@al-ft/midgard-core";
 import "@al-ft/midgard-core/lucid-data";
 import "@al-ft/midgard-sdk";
-import "@al-ft/midgard-validation";
+import "@al-ft/midgard-validation/value-accounting";
 import "@lucid-evolution/lucid";
 import "../field-opening.js";
 import "../linear-fault-family.js";

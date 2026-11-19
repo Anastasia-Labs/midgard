@@ -1,7 +1,7 @@
 import "@al-ft/midgard-core";
 import "@al-ft/midgard-core/da-payload-envelope";
 import "@al-ft/midgard-core/plutus-data-cbor";
-import "@al-ft/midgard-fault-proofs";
+import "@al-ft/midgard-fault-proofs/transition-trace/phas";
 import "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import "@al-ft/midgard-fault-proofs/test-support/transition-trace-retained";
 import "@al-ft/midgard-sdk";

@@ -13,6 +13,11 @@
 // Blind spot: it reads specifiers, so a namespace import of a narrower module
 // that itself re-exports the package (a sub-barrel) passes, and so does a
 // `require` or a computed path.
+//
+// The baselined sites assert the names the root publishes or sit at their
+// module-size cap. A name a test stubs through a re-exporting module
+// (`vi.spyOn` on its namespace, or `vi.mock` of it) stays imported from that
+// module: the stub replaces only that module's binding.
 
 import { existsSync, readFileSync } from "node:fs";
 import { join, posix } from "node:path";

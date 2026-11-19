@@ -19,7 +19,7 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import * as SDK from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 
 import type { NativeScriptDecodingLedgerTrieHandle } from "../../src/native-script-decoding/evidence.js";
 import { nativeScriptDecodingOutpointKey } from "../../src/native-script-decoding/evidence.js";

@@ -1,5 +1,5 @@
 import { chainPoint, TransportRequestError } from "@al-ft/l1-node-transport";
-import type { FraudProofRawL1Utxo } from "@al-ft/midgard-fault-proofs";
+import type { FraudProofRawL1Utxo } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
 import {
   decodeLedgerUtxos,
   type OutRef,

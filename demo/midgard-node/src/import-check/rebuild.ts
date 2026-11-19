@@ -12,13 +12,11 @@ import { createHash } from "node:crypto";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { yieldToEventLoop } from "@al-ft/midgard-fault-proofs/block-replay";
-import {
-  midgardOutRefToCborHex,
-  replayValidationVerdictEvent,
-} from "@al-ft/midgard-validation";
 import { decodeMidgardLedgerTxFromCanonicalCbor } from "@al-ft/midgard-validation/ledger-tx/codec";
 import type { MidgardCekVerdictRequest } from "@al-ft/midgard-validation/phase-b";
 import { RejectCodes } from "@al-ft/midgard-validation/types";
+import { midgardOutRefToCborHex } from "@al-ft/midgard-validation/validation-candidate";
+import { replayValidationVerdictEvent } from "@al-ft/midgard-validation/validation-machine";
 import { Effect, Either } from "effect";
 
 import { type ImportCheckMaterial } from "../database/importChecks.js";

@@ -4,12 +4,10 @@
  * permit; from then on only the progress authority's reconciliation permit
  * drives the objective, and it never sends the proof again.
  */
-import {
-  assertWorkflowActuationPermitIdentity,
-  FraudProofL1UnavailableError,
-  journalJsonDigest,
-  type WorkflowAdapterRunnerInput,
-} from "@al-ft/midgard-fault-proofs";
+import { assertWorkflowActuationPermitIdentity } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
+import type { WorkflowAdapterRunnerInput } from "@al-ft/midgard-fault-proofs/workflow/adapters";
+import { journalJsonDigest } from "@al-ft/midgard-fault-proofs/workflow/journal";
+import { FraudProofL1UnavailableError } from "@al-ft/midgard-fault-proofs/workflow/l1-source";
 import { expect, it, vi } from "vitest";
 
 import { WATCHER_FAULT_PROOF_QUARANTINED } from "../../src/fault-proofs/fault-proof-quarantine.js";

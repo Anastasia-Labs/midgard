@@ -1,4 +1,4 @@
-import { FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED } from "@al-ft/midgard-fault-proofs";
+import { FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED } from "@al-ft/midgard-fault-proofs/workflow/orchestrator";
 
 import type { WatcherProofObjective } from "./fault-proof-objective-journal.js";
 

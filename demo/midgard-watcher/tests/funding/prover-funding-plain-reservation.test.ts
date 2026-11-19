@@ -8,11 +8,9 @@
  * the watcher resumes on a later observation. The one exception is an input
  * of a superseded attempt, which its replacement must spend.
  */
-import {
-  createWorkflowRuntimeFundingPolicy,
-  proofMaterialsAddressOfFundingAddress,
-  WORKFLOW_RUNNER_FACTORIES,
-} from "@al-ft/midgard-fault-proofs";
+import { proofMaterialsAddressOfFundingAddress } from "@al-ft/midgard-fault-proofs/funding/proof-materials-address";
+import { WORKFLOW_RUNNER_FACTORIES } from "@al-ft/midgard-fault-proofs/workflow/runtime";
+import { createWorkflowRuntimeFundingPolicy } from "@al-ft/midgard-fault-proofs/workflow/runtime-funding-policy";
 import { Constr, credentialToAddress, Data } from "@lucid-evolution/lucid";
 import { expect, it } from "vitest";
 

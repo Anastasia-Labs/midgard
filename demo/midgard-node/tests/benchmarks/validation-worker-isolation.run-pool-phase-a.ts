@@ -3,9 +3,9 @@ import { performance } from "node:perf_hooks";
 import { pathToFileURL } from "node:url";
 
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import { deserializePhaseACandidate } from "@al-ft/midgard-validation";
 import type { PhaseBResultWithPatch } from "@al-ft/midgard-validation/phase-b";
 import type { PhaseAResult, QueuedTx } from "@al-ft/midgard-validation/types";
+import { deserializePhaseACandidate } from "@al-ft/midgard-validation/wire";
 
 import {
   ledgerEntry,

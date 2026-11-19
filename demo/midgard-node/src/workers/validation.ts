@@ -4,12 +4,10 @@ import {
   findLedgerSignatureVerifierUnavailable,
   ledgerEd25519SignatureReady,
 } from "@al-ft/midgard-core";
-import {
-  phaseAAddressCacheStats,
-  serializePhaseACandidate,
-} from "@al-ft/midgard-validation";
 import { validatePhaseASingle } from "@al-ft/midgard-validation/phase-a";
 import { evaluateMidgardCekVerdict } from "@al-ft/midgard-validation/phase-b";
+import { phaseAAddressCacheStats } from "@al-ft/midgard-validation/validation-candidate";
+import { serializePhaseACandidate } from "@al-ft/midgard-validation/wire";
 
 import type {
   PhaseAJobRequest,

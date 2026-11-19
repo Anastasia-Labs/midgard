@@ -10,11 +10,9 @@
  * message varies reaches stuck too. A classification of the header releases
  * the hold; a deferral for any other cause neither counts nor releases it.
  */
-import {
-  FraudProofL1UnavailableError,
-  LOCAL_FAULT_RUN_LIMIT,
-} from "@al-ft/midgard-fault-proofs";
 import { ReplayLocalFault } from "@al-ft/midgard-fault-proofs/block-replay";
+import { LOCAL_FAULT_RUN_LIMIT } from "@al-ft/midgard-fault-proofs/local-fault-bound";
+import { FraudProofL1UnavailableError } from "@al-ft/midgard-fault-proofs/workflow/l1-source";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {

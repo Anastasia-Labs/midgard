@@ -11,7 +11,7 @@ import "../../src/runtime/operations-observability.js";
 import "./fault-decision-bridge.observation.js";
 import "./fault-decision-bridge.harness.js";
 
-import { FraudProofL1CheckpointChangedError } from "@al-ft/midgard-fault-proofs";
+import { FraudProofL1CheckpointChangedError } from "@al-ft/midgard-fault-proofs/workflow/l1-source";
 import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "@al-ft/midgard-sdk";
 import { describe, expect, it, vi } from "vitest";
 

@@ -1,18 +1,20 @@
 import type { L1NodeTransport } from "@al-ft/l1-node-transport";
 import {
+  FRAUD_PROOF_L1_SOURCE,
+  type FraudProofL1Source,
+} from "@al-ft/midgard-fault-proofs/workflow/l1-source";
+import {
   admitFraudProofRawL1Snapshot,
   computeFraudProofRawL1RollbackCursor,
-  FRAUD_PROOF_L1_SOURCE,
   FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
   FRAUD_PROOF_RAW_L1_SNAPSHOT_SCHEMA_VERSION,
   type FraudProofL1ObservationDepth,
-  type FraudProofL1Source,
   type FraudProofRawL1Point,
   type FraudProofRawL1SnapshotAuthority,
   type FraudProofRawL1SnapshotRequest,
   type FraudProofRawL1Transaction,
-  type VerifiedFraudProofReleaseFinalityPolicy,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
+import type { VerifiedFraudProofReleaseFinalityPolicy } from "@al-ft/midgard-fault-proofs/workflow/release-finality-policy";
 import type { FactStore } from "@al-ft/midgard-l1-follower";
 import { CML } from "@lucid-evolution/lucid";
 

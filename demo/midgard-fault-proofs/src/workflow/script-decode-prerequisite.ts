@@ -1,5 +1,6 @@
 import "@al-ft/midgard-sdk";
-import "@al-ft/midgard-validation";
+import "@al-ft/midgard-validation/script-decode.step";
+import "@al-ft/midgard-validation/script-decode.step-walk";
 import "@lucid-evolution/lucid";
 import "../runtime.js";
 import "../script-decode/data.js";

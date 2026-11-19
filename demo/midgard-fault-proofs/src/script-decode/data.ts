@@ -6,14 +6,16 @@ import {
   type ScriptDecodeData,
   scriptDecodeFrameData,
   scriptDecodeMachineData,
-  scriptDecodeMachineHash,
   type ScriptDecodeRecord,
   scriptDecodeRecordData,
   type ScriptDecodeRun,
   scriptDecodeRunData,
-  type ScriptDecodeWalkSegment,
   serialiseScriptDecodeData,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/script-decode.step";
+import {
+  scriptDecodeMachineHash,
+  type ScriptDecodeWalkSegment,
+} from "@al-ft/midgard-validation/script-decode.step-walk";
 
 const cborHex = (data: ScriptDecodeData): string =>
   serialiseScriptDecodeData(data).toString("hex");

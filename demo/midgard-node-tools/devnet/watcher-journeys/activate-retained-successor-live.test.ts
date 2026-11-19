@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { setTimeout as pause } from "node:timers/promises";
 
-import { type SignedWorkflowTransaction } from "@al-ft/midgard-fault-proofs";
+import type { SignedWorkflowTransaction } from "@al-ft/midgard-fault-proofs/workflow/signed-transaction-reconciliation";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,

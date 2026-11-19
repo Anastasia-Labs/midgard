@@ -1,5 +1,5 @@
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { isPlainFundingOutput } from "@al-ft/midgard-fault-proofs";
+import { isPlainFundingOutput } from "@al-ft/midgard-fault-proofs/funding/plain-funding-output";
 import { CML, getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
 
 import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.parse-trust-roots.js";

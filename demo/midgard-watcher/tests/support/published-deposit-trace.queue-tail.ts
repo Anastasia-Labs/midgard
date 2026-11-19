@@ -1,4 +1,4 @@
-import type { LedgerAt } from "@al-ft/midgard-fault-proofs";
+import type { LedgerAt } from "@al-ft/midgard-fault-proofs/ledger-at";
 import * as SDK from "@al-ft/midgard-sdk";
 import { type LucidEvolution, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";

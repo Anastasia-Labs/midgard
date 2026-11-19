@@ -1,8 +1,8 @@
+import { buildCanonicalBlockFixture } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import {
   FraudProofL1CheckpointChangedError,
   FraudProofL1UnavailableError,
-} from "@al-ft/midgard-fault-proofs";
-import { buildCanonicalBlockFixture } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
+} from "@al-ft/midgard-fault-proofs/workflow/l1-source";
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { expect, it } from "vitest";

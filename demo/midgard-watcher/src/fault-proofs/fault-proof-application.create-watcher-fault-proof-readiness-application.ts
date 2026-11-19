@@ -1,4 +1,4 @@
-import type { WorkflowAdapterReadinessInput } from "@al-ft/midgard-fault-proofs";
+import type { WorkflowAdapterReadinessInput } from "@al-ft/midgard-fault-proofs/workflow/adapters";
 
 import { watcherWorkflowFundingProfiles } from "../funding/workflow-funding-profile-overlay.js";
 import { assertWatcherVerifiedDeploymentAuthority } from "../runtime/deployment-authority.js";

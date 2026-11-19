@@ -5,7 +5,7 @@
  * names the hold `replay_stuck` after `LOCAL_FAULT_RUN_LIMIT` failures in a
  * row, and the block is still replayed on the backoff.
  */
-import { LOCAL_FAULT_RUN_LIMIT } from "@al-ft/midgard-fault-proofs";
+import { LOCAL_FAULT_RUN_LIMIT } from "@al-ft/midgard-fault-proofs/local-fault-bound";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 

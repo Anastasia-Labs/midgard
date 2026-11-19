@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 
-import type { ReplayedLedgerRefusal } from "@al-ft/midgard-fault-proofs";
+import type { ReplayedLedgerRefusal } from "@al-ft/midgard-fault-proofs/replayed-ledger";
 
 import type { WatcherOperationsSink } from "../runtime/operations-observability.js";
-import { WATCHER_PACKAGE_NAME } from "../runtime/scaffold.js";
+import { WATCHER_PACKAGE_NAME } from "../runtime/package-name.js";
 
 /** What a replay refusal says went wrong (`ReplayedLedgerRefusal.kind`). */
 export const WATCHER_REPLAY_REFUSAL_KINDS = Object.freeze([

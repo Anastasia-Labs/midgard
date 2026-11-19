@@ -4,7 +4,6 @@
  * and the same mint under a passing policy is healthy. */
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import * as FP from "@al-ft/midgard-fault-proofs";
 import {
   buildCanonicalBlockFixture,
   outRefCbor,
@@ -13,6 +12,9 @@ import {
   createValidationTraceDisputeCompleteCanonicalReplay,
   prepareValidationTraceArtifact,
 } from "@al-ft/midgard-fault-proofs/test-support/validation-trace-challenger-runner";
+import { classifyCanonicalBlockViolations } from "@al-ft/midgard-fault-proofs/workflow/classification";
+import { requireCompleteCanonicalReplayDecision } from "@al-ft/midgard-fault-proofs/workflow/complete-replay";
+import { headerDecisionReplayContext } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
 import {
   CML,
   generateEmulatorAccount,
@@ -92,10 +94,10 @@ describe("validation-trace journey fault", () => {
     });
     if (evidence === undefined)
       throw new Error("Validation-trace fixture has no canonical evidence");
-    const context = FP.headerDecisionReplayContext(decision);
-    const classification = await FP.classifyCanonicalBlockViolations({
+    const context = headerDecisionReplayContext(decision);
+    const classification = await classifyCanonicalBlockViolations({
       evidence,
-      detections: FP.requireCompleteCanonicalReplayDecision({
+      detections: requireCompleteCanonicalReplayDecision({
         evidence,
         replayer,
         decision: await replayer.replay(evidence, context),

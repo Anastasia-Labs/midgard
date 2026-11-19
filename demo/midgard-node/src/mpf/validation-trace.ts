@@ -9,7 +9,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import {
   placeholderValidationTraceDescriptorV1,
   validationTransactionCommitmentV1,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/validation-machine";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

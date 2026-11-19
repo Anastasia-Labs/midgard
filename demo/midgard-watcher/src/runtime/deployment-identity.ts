@@ -1,7 +1,8 @@
 import "node:crypto";
 import "@al-ft/midgard-core/deployment-manifest-identity";
 import "@al-ft/midgard-core/out-ref";
-import "@al-ft/midgard-fault-proofs";
+import "@al-ft/midgard-fault-proofs/workflow/release-economics-policy";
+import "@al-ft/midgard-fault-proofs/workflow/release-finality-policy";
 import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "./config.js";

@@ -1,7 +1,8 @@
 import "node:fs";
 import "node:fs/promises";
 import "node:path";
-import "@al-ft/midgard-fault-proofs";
+import "@al-ft/midgard-fault-proofs/validation-trace-dispute/actions";
+import "@al-ft/midgard-fault-proofs/workflow/pending-continuation";
 import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "effect";

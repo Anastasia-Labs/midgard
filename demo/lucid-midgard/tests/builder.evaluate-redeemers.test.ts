@@ -10,7 +10,7 @@ import {
   MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core/consensus-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import { evaluateMidgardTxRedeemers } from "@al-ft/midgard-validation";
+import { evaluateMidgardTxRedeemers } from "@al-ft/midgard-validation/phase-b";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";

@@ -10,7 +10,7 @@ import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import {
   scriptDecodeWalkRecord,
   startScriptDecodeWalk,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/script-decode.step-walk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import type { ResolvedProverSigner } from "../runtime.js";

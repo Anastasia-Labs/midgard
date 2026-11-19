@@ -7,7 +7,6 @@ import {
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { encodeTransitionStepCbor } from "@al-ft/midgard-fault-proofs/block-replay";
 import * as SDK from "@al-ft/midgard-sdk";
-import { validationMachineLedgerRoot } from "@al-ft/midgard-validation";
 import {
   encodeRecomputedNativeTx,
   FUNDED_OUTPUT_LOVELACE,
@@ -15,6 +14,7 @@ import {
   makeOutput,
   outRefFromByte,
 } from "@al-ft/midgard-validation/tests/validation-fixtures";
+import { validationMachineLedgerRoot } from "@al-ft/midgard-validation/validation-machine";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";

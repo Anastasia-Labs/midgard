@@ -1,5 +1,5 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { resolveRejectionReason } from "@al-ft/midgard-validation";
+import { resolveRejectionReason } from "@al-ft/midgard-validation/rejection-reason";
 import {
   type RejectCode,
   RejectCodes,

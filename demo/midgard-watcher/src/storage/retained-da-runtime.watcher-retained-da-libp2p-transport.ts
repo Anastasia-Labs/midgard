@@ -17,7 +17,7 @@ import {
   type RetainedDaLibp2pTransport,
   type RetainedDaPayloadFetchOptions,
   type RetainedDaPayloadSource,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
 
 import { type WatcherConfig } from "../runtime/config.js";
 import { assertVerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.verify-watcher-user-event-script-binding.js";

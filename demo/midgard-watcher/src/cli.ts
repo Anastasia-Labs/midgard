@@ -2,6 +2,7 @@
 
 import { loadRuntimeConfig } from "@al-ft/midgard-core/runtime-config";
 
+import { WATCHER_PACKAGE_NAME } from "./runtime/package-name.js";
 import {
   isWatcherPermanentRefusal,
   WATCHER_PERMANENT_REFUSAL_EXIT_CODE,
@@ -9,7 +10,6 @@ import {
 import {
   runWatcherCommand,
   WATCHER_COMMAND_FAILURE_EXIT_CODE,
-  WATCHER_PACKAGE_NAME,
   type WatcherCommand,
 } from "./runtime/scaffold.js";
 

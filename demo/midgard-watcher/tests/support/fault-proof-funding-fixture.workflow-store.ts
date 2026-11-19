@@ -3,7 +3,7 @@ import { DatabaseSync } from "node:sqlite";
 import type {
   FraudProofWorkflowJournalEntry,
   FraudProofWorkflowJournalStore,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/journal";
 
 import type { WatcherProofObjective } from "../../src/fault-proofs/fault-proof-objective-journal.js";
 import type { WatcherWorkflowJournal } from "../../src/fault-proofs/watcher-workflow-journal.js";

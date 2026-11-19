@@ -1,9 +1,7 @@
-import {
-  FAULT_PROOF_RESTART_WAIT,
-  FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED,
-} from "@al-ft/midgard-fault-proofs";
+import { FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED } from "@al-ft/midgard-fault-proofs/workflow/orchestrator";
+import { FAULT_PROOF_RESTART_WAIT } from "@al-ft/midgard-fault-proofs/workflow/wallet-only-send-gate";
 
-import { WATCHER_PACKAGE_NAME } from "../runtime/scaffold.js";
+import { WATCHER_PACKAGE_NAME } from "../runtime/package-name.js";
 import { holdWatcherFaultProofOnFunding } from "./fault-proof-funding-hold.js";
 import type { WatcherProofObjective } from "./fault-proof-objective-journal.js";
 import { holdWatcherFaultProofForResubmission } from "./fault-proof-resubmission-hold.js";

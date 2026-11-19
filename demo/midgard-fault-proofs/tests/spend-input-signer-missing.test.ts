@@ -16,7 +16,7 @@ import {
   forcedVerdictSubject,
   missingSignatureVkeyHash,
 } from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import {

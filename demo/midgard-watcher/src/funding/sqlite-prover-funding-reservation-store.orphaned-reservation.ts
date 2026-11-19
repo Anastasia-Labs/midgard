@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-import { parseSignedWorkflowTransactionRetirement } from "@al-ft/midgard-fault-proofs";
+import { parseSignedWorkflowTransactionRetirement } from "@al-ft/midgard-fault-proofs/workflow/signed-transaction-retirement";
 
 import { parseWatcherProverFundingReservationRecord } from "./prover-funding-reservation.parse-watcher-prover-funding-reservation-record.js";
 import type {

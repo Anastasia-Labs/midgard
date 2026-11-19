@@ -1,7 +1,7 @@
 import {
   assertWorkflowActuationPermitIdentity,
   type WorkflowActuationPermit,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
 
 import type { WatcherProofExecution } from "./fault-proof-objective-journal.js";
 import type {

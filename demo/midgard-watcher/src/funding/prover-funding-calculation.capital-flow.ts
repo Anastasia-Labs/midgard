@@ -1,4 +1,4 @@
-import { type WorkflowFundingScope } from "@al-ft/midgard-fault-proofs";
+import type { WorkflowFundingScope } from "@al-ft/midgard-fault-proofs/workflow/funding-requirements";
 
 export const WATCHER_PROVER_FUNDING_CALCULATION =
   "midgard-watcher-production-prover-funding-calculation-v1" as const;

@@ -4,15 +4,17 @@
  * verdict, and mints the record.
  */
 import {
-  nextScriptDecodeChainedWalk,
-  type ScriptDecodeChainedWalk,
   type ScriptDecodeRecord,
   scriptDecodeScriptHash,
   type ScriptDecodeStakerClass,
+} from "@al-ft/midgard-validation/script-decode.step";
+import {
+  nextScriptDecodeChainedWalk,
+  type ScriptDecodeChainedWalk,
   type ScriptDecodeWalkCursor,
   scriptDecodeWalkRecord,
   startScriptDecodeWalk,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/script-decode.step-walk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import type { OwnOutputJournal } from "../workflow/own-outputs.js";

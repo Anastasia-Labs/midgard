@@ -11,9 +11,9 @@
  * per transaction. */
 import { MIDGARD_VALIDATION_CASE_OPEN_WINDOW_MS } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
-import { DirectValidationTraceUnavailable } from "@al-ft/midgard-validation";
 import { ScriptEvaluationIndeterminateError } from "@al-ft/midgard-validation/phase-b";
 import { RejectCodes } from "@al-ft/midgard-validation/types";
+import { DirectValidationTraceUnavailable } from "@al-ft/midgard-validation/validation-machine";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { beforeAll, describe, expect, it, vi } from "vitest";

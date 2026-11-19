@@ -18,7 +18,7 @@ import {
   classifyValidationTraceThread,
   type ValidationTraceThread,
   validationTraceThreadExpiresAfterMs,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/validation-trace-dispute/defender";
 
 import type { OurThreadFacts } from "./discovery.js";
 import { VALIDATION_TRACE_DEFENSE_LATE_MARGIN_MS } from "./health.js";

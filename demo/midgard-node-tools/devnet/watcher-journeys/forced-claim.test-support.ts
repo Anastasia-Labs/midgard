@@ -8,12 +8,12 @@
  * observers or required signers.
  */
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core";
-import { type HeaderDecision } from "@al-ft/midgard-fault-proofs";
 import {
   buildCanonicalBlockFixture,
   outRefCbor,
 } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import { retainedTransactionFixture } from "@al-ft/midgard-fault-proofs/test-support/retained-transaction";
+import type { HeaderDecision } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
 import type * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,

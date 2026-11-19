@@ -3,7 +3,17 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import * as FP from "@al-ft/midgard-fault-proofs";
+import { prepareFieldItemWidthIllegalRecoveryMaterial } from "@al-ft/midgard-fault-proofs/field-item-width-illegal";
+import { prepareOutputReferenceScriptDecodingRecoveryMaterial } from "@al-ft/midgard-fault-proofs/output-reference-script-decoding";
+import { prepareProtectedOutputSignerMissingRecoveryMaterial } from "@al-ft/midgard-fault-proofs/protected-output-signer-missing";
+import { prepareResolvedOutputNonCanonicalRecoveryMaterial } from "@al-ft/midgard-fault-proofs/resolved-output-non-canonical";
+import { prepareSpendInputSignerMissingRecoveryMaterial } from "@al-ft/midgard-fault-proofs/spend-input-signer-missing";
+import { prepareTransactionOutputNonCanonicalRecoveryMaterial } from "@al-ft/midgard-fault-proofs/transaction-output-non-canonical";
+import { prepareWitnessScriptDecodingRecoveryMaterial } from "@al-ft/midgard-fault-proofs/witness-script-decoding";
+import {
+  encodeWorkflowArtifact,
+  requireWorkflowArtifactMatches,
+} from "@al-ft/midgard-fault-proofs/workflow/artifact-codec";
 import { readPublishedDepositHistory } from "midgard-watcher/tests/support/published-deposit-history";
 import type { PublishedDepositTraceCheckpoint } from "midgard-watcher/tests/support/published-deposit-trace";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -148,27 +158,27 @@ describe.skipIf(stagedPath === undefined || !existsSync(stagedPath))(
         const prepare = async () => {
           switch (category) {
             case "fieldItemWidthIllegal":
-              return await FP.prepareFieldItemWidthIllegalRecoveryMaterial(
+              return await prepareFieldItemWidthIllegalRecoveryMaterial(
                 evidence,
                 detectionId,
               );
             case "transactionOutputNonCanonical":
-              return await FP.prepareTransactionOutputNonCanonicalRecoveryMaterial(
+              return await prepareTransactionOutputNonCanonicalRecoveryMaterial(
                 evidence,
                 detectionId,
               );
             case "protectedOutputSignerMissing":
-              return await FP.prepareProtectedOutputSignerMissingRecoveryMaterial(
+              return await prepareProtectedOutputSignerMissingRecoveryMaterial(
                 evidence,
                 detectionId,
               );
             case "outputReferenceScriptDecoding":
-              return await FP.prepareOutputReferenceScriptDecodingRecoveryMaterial(
+              return await prepareOutputReferenceScriptDecodingRecoveryMaterial(
                 evidence,
                 detectionId,
               );
             case "witnessScriptDecoding":
-              return await FP.prepareWitnessScriptDecodingRecoveryMaterial(
+              return await prepareWitnessScriptDecodingRecoveryMaterial(
                 evidence,
                 detectionId,
               );
@@ -178,12 +188,12 @@ describe.skipIf(stagedPath === undefined || !existsSync(stagedPath))(
               if (admitted === undefined)
                 throw new Error("Exact admitted predecessor required");
               return category === "resolvedOutputNonCanonical"
-                ? await FP.prepareResolvedOutputNonCanonicalRecoveryMaterial(
+                ? await prepareResolvedOutputNonCanonicalRecoveryMaterial(
                     evidence,
                     detectionId,
                     admitted,
                   )
-                : await FP.prepareSpendInputSignerMissingRecoveryMaterial(
+                : await prepareSpendInputSignerMissingRecoveryMaterial(
                     evidence,
                     detectionId,
                     admitted,
@@ -198,12 +208,12 @@ describe.skipIf(stagedPath === undefined || !existsSync(stagedPath))(
           detectionId,
         });
         const recorded = JSON.parse(
-          JSON.stringify(FP.encodeWorkflowArtifact(material)),
+          JSON.stringify(encodeWorkflowArtifact(material)),
         );
         const fresh = await prepare();
-        expect(FP.requireWorkflowArtifactMatches(recorded, fresh)).toBe(fresh);
+        expect(requireWorkflowArtifactMatches(recorded, fresh)).toBe(fresh);
         expect(() =>
-          FP.requireWorkflowArtifactMatches(recorded, {
+          requireWorkflowArtifactMatches(recorded, {
             ...fresh,
             detectionId: "changed",
           }),

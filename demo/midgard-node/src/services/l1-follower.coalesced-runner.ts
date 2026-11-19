@@ -1,4 +1,4 @@
-import { LOCAL_FAULT_RUN_LIMIT } from "@al-ft/midgard-fault-proofs";
+import { LOCAL_FAULT_RUN_LIMIT } from "@al-ft/midgard-fault-proofs/local-fault-bound";
 
 import {
   type DriverHold,

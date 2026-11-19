@@ -2,7 +2,7 @@ import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-
 import type {
   FraudProofWorkflowJournalEntry,
   FraudProofWorkflowTerminal,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/journal";
 import { expect } from "vitest";
 
 import type { createEmulatorChainTransport } from "./emulator-chain-transport.js";

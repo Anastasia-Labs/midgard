@@ -24,7 +24,7 @@ import {
   h28 as byteHex28,
   h32 as byteHex32,
 } from "@al-ft/midgard-test-support/hex";
-import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { Data } from "@lucid-evolution/lucid";
 
 import { keyValuePhasRootWithCount } from "../src/transition-trace/phas.js";

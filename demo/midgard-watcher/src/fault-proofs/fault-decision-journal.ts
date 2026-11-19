@@ -1,4 +1,5 @@
-import "@al-ft/midgard-fault-proofs";
+import "@al-ft/midgard-fault-proofs/workflow/complete-replay";
+import "@al-ft/midgard-fault-proofs/workflow/header-classifier";
 import "./fault-decision-journal.exact-record.js";
 import "./fault-decision-journal.parse-decision.js";
 import "./fault-decision-journal.create-journal.js";

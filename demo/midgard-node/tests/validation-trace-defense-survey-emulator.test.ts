@@ -17,7 +17,6 @@
  * - a case on a block past the confirmed frontier is not answered.
  */
 import { MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS } from "@al-ft/midgard-core";
-import { buildValidationTraceDefenseMaterial } from "@al-ft/midgard-fault-proofs";
 import {
   completeCanonicalReplayPredecessorLedger,
   failingClaim,
@@ -32,6 +31,7 @@ import {
   setUpScene,
   verifySource,
 } from "@al-ft/midgard-fault-proofs/test-support/validation-trace-defender-scene";
+import { buildValidationTraceDefenseMaterial } from "@al-ft/midgard-fault-proofs/validation-trace-dispute/defender";
 import type { SqlClient } from "@effect/sql";
 import { generateEmulatorAccount, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";

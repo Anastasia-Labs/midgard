@@ -12,7 +12,6 @@ import "@al-ft/midgard-core/error-format";
 import "@al-ft/midgard-core/script-proof";
 import "@al-ft/midgard-core/validation-trace";
 import "@al-ft/midgard-sdk";
-import "@al-ft/midgard-validation";
 import "@lucid-evolution/lucid";
 import "@noble/hashes/blake2.js";
 import "@noble/hashes/sha2.js";

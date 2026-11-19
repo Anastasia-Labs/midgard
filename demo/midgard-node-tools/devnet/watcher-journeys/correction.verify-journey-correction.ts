@@ -1,11 +1,13 @@
 import { join } from "node:path";
 
+import type {
+  FraudProofWorkflowJournalEntry,
+  FraudProofWorkflowTerminal,
+} from "@al-ft/midgard-fault-proofs/workflow/journal";
 import {
-  type FraudProofWorkflowJournalEntry,
-  type FraudProofWorkflowTerminal,
   journaledProgress,
   WORKFLOW_CONTINUATION_QUIET_BOUND_MS,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/pending-continuation";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,

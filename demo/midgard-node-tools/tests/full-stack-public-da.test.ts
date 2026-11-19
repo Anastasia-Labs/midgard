@@ -4,7 +4,7 @@ import type {
   RetainedDaFetchAttempt,
   RetainedDaFetchAttemptStatus,
   RetainedDaPayloadSource,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
 import * as SDK from "@al-ft/midgard-sdk";
 import { h28 } from "@al-ft/midgard-test-support/hex";
 import { Effect } from "effect";

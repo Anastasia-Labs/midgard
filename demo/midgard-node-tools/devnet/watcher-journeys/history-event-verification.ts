@@ -1,17 +1,17 @@
+import { parseContractDeploymentL1SlotConfig } from "@al-ft/midgard-fault-proofs/inspect-contracts";
+import type { LedgerAt } from "@al-ft/midgard-fault-proofs/ledger-at";
+import { authenticatedHeaderObservation } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
+import { unsafeCreateTransitionTraceEventAuthorityFromRawForTest } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-l1-events";
+import type { RetainedDaPayloadSource } from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
+import { createCatalogueCompleteCanonicalReplay } from "@al-ft/midgard-fault-proofs/workflow/catalogue-replay";
+import type { CompleteCanonicalReplay } from "@al-ft/midgard-fault-proofs/workflow/complete-replay";
 import {
   authenticatedStateQueueObservationDigest,
   classifyHeader,
-  type CompleteCanonicalReplay,
-  createCatalogueCompleteCanonicalReplay,
   createHeaderClassifier,
-  FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   headerDecisionCanonicalEvidence,
-  type LedgerAt,
-  parseContractDeploymentL1SlotConfig,
-  type RetainedDaPayloadSource,
-} from "@al-ft/midgard-fault-proofs";
-import { authenticatedHeaderObservation } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
-import { unsafeCreateTransitionTraceEventAuthorityFromRawForTest } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-l1-events";
+} from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
+import { FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY } from "@al-ft/midgard-fault-proofs/workflow/release-finality-policy";
 
 import { bindJourneyEventAuthorities } from "./event-history-bindings.js";
 import type { VerifiableJourneyBlock } from "./fixture-verification.js";

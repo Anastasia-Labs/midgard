@@ -16,11 +16,7 @@
  *   or dies is pending, fails nothing, and lands once the reveal has.
  */
 import { MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS } from "@al-ft/midgard-core";
-import {
-  isPlainFundingOutput,
-  VALIDATION_TRACE_POCKET_COLLATERAL_LOVELACE,
-  VALIDATION_TRACE_THREAD_FLOOR_LOVELACE,
-} from "@al-ft/midgard-fault-proofs";
+import { isPlainFundingOutput } from "@al-ft/midgard-fault-proofs/funding/plain-funding-output";
 import {
   challengerReveal,
   falseClaimMaterial,
@@ -28,6 +24,10 @@ import {
   measureWithinTransactionLimits,
   openFalseClaim,
 } from "@al-ft/midgard-fault-proofs/test-support/validation-trace-defender-scene";
+import {
+  VALIDATION_TRACE_POCKET_COLLATERAL_LOVELACE,
+  VALIDATION_TRACE_THREAD_FLOOR_LOVELACE,
+} from "@al-ft/midgard-fault-proofs/validation-trace-dispute/defender";
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data, generateEmulatorAccount } from "@lucid-evolution/lucid";
 import { afterAll, afterEach, describe, expect, it } from "vitest";

@@ -2,18 +2,18 @@ import { mkdtemp, rm } from "node:fs/promises";
 
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import {
-  authenticatedStateQueueObservationDigest,
-  classifyHeader,
-  createHeaderClassifier,
-  createWorkflowActuationPermitController,
-  DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
-} from "@al-ft/midgard-fault-proofs";
-import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
   buildFixtureTransaction,
   outRefCbor,
 } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
+import { createWorkflowActuationPermitController } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
+import { DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY } from "@al-ft/midgard-fault-proofs/workflow/complete-replay";
+import {
+  authenticatedStateQueueObservationDigest,
+  classifyHeader,
+  createHeaderClassifier,
+} from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {

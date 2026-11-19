@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
-import { deriveCanonicalOriginalDepositTransitionEffect } from "@al-ft/midgard-validation";
+import { deriveCanonicalOriginalDepositTransitionEffect } from "@al-ft/midgard-validation/transition-effect";
 import { Data } from "@lucid-evolution/lucid";
 import { readPublishedDepositHistory } from "midgard-watcher/tests/support/published-deposit-history";
 import {

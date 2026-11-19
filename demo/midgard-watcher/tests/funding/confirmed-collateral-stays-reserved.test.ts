@@ -1,6 +1,6 @@
 import { join } from "node:path";
 
-import { beginWorkflowFundingReservationAction } from "@al-ft/midgard-fault-proofs";
+import { beginWorkflowFundingReservationAction } from "@al-ft/midgard-fault-proofs/workflow/funding-reservation-permit";
 import { CML } from "@lucid-evolution/lucid";
 import { afterEach, expect, it, vi } from "vitest";
 

@@ -1,5 +1,5 @@
 import { DEPLOYMENT_PROFILES } from "@al-ft/midgard-core/deployment-profile";
-import { WORKFLOW_CONTINUATION_QUIET_BOUND_MS } from "@al-ft/midgard-fault-proofs";
+import { WORKFLOW_CONTINUATION_QUIET_BOUND_MS } from "@al-ft/midgard-fault-proofs/workflow/pending-continuation";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,

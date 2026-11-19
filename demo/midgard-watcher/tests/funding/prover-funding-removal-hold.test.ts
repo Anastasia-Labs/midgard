@@ -7,10 +7,8 @@
  */
 import { rm } from "node:fs/promises";
 
-import {
-  createWorkflowRuntimeFundingPolicy,
-  WORKFLOW_RUNNER_FACTORIES,
-} from "@al-ft/midgard-fault-proofs";
+import { WORKFLOW_RUNNER_FACTORIES } from "@al-ft/midgard-fault-proofs/workflow/runtime";
+import { createWorkflowRuntimeFundingPolicy } from "@al-ft/midgard-fault-proofs/workflow/runtime-funding-policy";
 import { credentialToAddress } from "@lucid-evolution/lucid";
 import { afterEach, expect, it, vi } from "vitest";
 

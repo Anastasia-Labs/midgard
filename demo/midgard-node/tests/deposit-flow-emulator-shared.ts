@@ -18,7 +18,7 @@ import "@al-ft/midgard-core/da-payload-envelope";
 import "@al-ft/midgard-core/da-transport";
 import "@al-ft/midgard-core/deployment-manifest-identity";
 import "@al-ft/midgard-sdk";
-import "@al-ft/midgard-validation";
+import "@al-ft/midgard-validation/validation-candidate";
 import "@al-ft/midgard-validation/phase-a";
 import "@al-ft/midgard-validation/phase-b";
 import "@effect/sql";
@@ -101,10 +101,10 @@ import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import { type DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
-import { processedTxFromValidatedTx } from "@al-ft/midgard-validation";
 import { runPhaseAValidation } from "@al-ft/midgard-validation/phase-a";
 import { runPhaseBValidationWithPatch } from "@al-ft/midgard-validation/phase-b";
 import type { QueuedTx } from "@al-ft/midgard-validation/types";
+import { processedTxFromValidatedTx } from "@al-ft/midgard-validation/validation-candidate";
 import { SqlClient } from "@effect/sql";
 import {
   CML,

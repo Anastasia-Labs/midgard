@@ -5,7 +5,7 @@ import "@al-ft/midgard-core/da-transport";
 import "@al-ft/midgard-core/hex";
 import "@al-ft/midgard-core/plutus-data-cbor";
 import "@al-ft/midgard-sdk";
-import "@al-ft/midgard-validation";
+import "@al-ft/midgard-validation/ledger-output-descriptor";
 import "@lucid-evolution/lucid";
 import "effect";
 import "../evidence/retained-ledger-output.js";

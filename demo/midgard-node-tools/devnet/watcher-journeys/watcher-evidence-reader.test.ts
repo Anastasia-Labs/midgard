@@ -11,12 +11,12 @@ import {
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
+import { COMPLETE_CANONICAL_REPLAY } from "@al-ft/midgard-fault-proofs/workflow/complete-replay";
 import {
-  COMPLETE_CANONICAL_REPLAY,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   HEADER_CLASSIFIER,
   HEADER_DECISION,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
+import { FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION } from "@al-ft/midgard-fault-proofs/workflow/journal";
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "midgard-watcher";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 

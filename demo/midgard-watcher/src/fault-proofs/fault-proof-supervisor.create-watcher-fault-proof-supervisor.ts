@@ -5,7 +5,7 @@ import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-confi
 import {
   isWorkflowActuationRevokedError,
   type WorkflowActuationRevokedError,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
 
 import type { WatcherProofRetention } from "../l1-follower/proof-retention.js";
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "./fault-proof-application.js";

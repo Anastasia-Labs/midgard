@@ -5,7 +5,7 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { replacePlutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

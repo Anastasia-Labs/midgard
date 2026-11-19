@@ -1,4 +1,4 @@
-import { resolveProverSigner } from "@al-ft/midgard-fault-proofs";
+import { resolveProverSigner } from "@al-ft/midgard-fault-proofs/runtime";
 import {
   CML,
   Emulator,

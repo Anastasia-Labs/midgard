@@ -11,11 +11,9 @@ import { join } from "node:path";
 
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import type {
-  LedgerCheckpoint,
-  RetainedDaPayloadSource,
-} from "@al-ft/midgard-fault-proofs";
+import type { LedgerCheckpoint } from "@al-ft/midgard-fault-proofs/replayed-ledger";
 import { buildCanonicalBlockFixture } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
+import type { RetainedDaPayloadSource } from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { afterEach, describe, expect, it } from "vitest";

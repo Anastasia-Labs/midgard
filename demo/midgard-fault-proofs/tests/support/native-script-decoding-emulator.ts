@@ -38,7 +38,7 @@ import "@al-ft/midgard-core/codec/forced";
 import "@al-ft/midgard-core/da-payload-envelope";
 import "@al-ft/midgard-core/lucid-data";
 import "@al-ft/midgard-sdk";
-import "@al-ft/midgard-validation";
+import "@al-ft/midgard-validation/ledger-output-descriptor";
 import "@lucid-evolution/lucid";
 import "effect";
 import "../../src/native-script-decoding/evidence.js";

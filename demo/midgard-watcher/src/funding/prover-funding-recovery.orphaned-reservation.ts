@@ -1,11 +1,13 @@
 import {
-  createSupersededAttemptReadSchedule,
-  type FraudProofWorkflowTerminalVerifier,
   parseWorkflowFundingPreparedTransition,
   parseWorkflowFundingSupersededAttempt,
+} from "@al-ft/midgard-fault-proofs/workflow/funding-reservation-permit";
+import {
+  type FraudProofWorkflowTerminalVerifier,
   readSignedAttempt,
-  type SignedWorkflowTransactionRetirement,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/orchestrator";
+import type { SignedWorkflowTransactionRetirement } from "@al-ft/midgard-fault-proofs/workflow/signed-transaction-retirement";
+import { createSupersededAttemptReadSchedule } from "@al-ft/midgard-fault-proofs/workflow/superseded-attempt-read-schedule";
 
 import type { WatcherDecisionHold } from "../fault-proofs/watcher-decision-hold.js";
 import {

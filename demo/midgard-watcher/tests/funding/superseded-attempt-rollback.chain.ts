@@ -1,11 +1,11 @@
 import {
-  computeFraudProofRawL1PointId,
   createDoubleSpendConstrainedWorkflowAdapter,
   type DoubleSpendConstrainedWorkflowAdapterConfig,
-  type FraudProofWorkflowJournalStore,
-  type SignedTransactionRecoveryObservation,
-  supersededAttemptReadSchedule,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/double-spend-adapter";
+import type { FraudProofWorkflowJournalStore } from "@al-ft/midgard-fault-proofs/workflow/journal";
+import { computeFraudProofRawL1PointId } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
+import type { SignedTransactionRecoveryObservation } from "@al-ft/midgard-fault-proofs/workflow/signed-transaction-reconciliation";
+import { supersededAttemptReadSchedule } from "@al-ft/midgard-fault-proofs/workflow/superseded-attempt-read-schedule";
 import { expect, vi } from "vitest";
 
 import { walletAddress } from "../support/fault-proof-funding-fixture.sources-for.js";

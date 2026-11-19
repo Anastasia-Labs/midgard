@@ -1,10 +1,10 @@
 import { encodeMidgardAddressText } from "@al-ft/midgard-core/codec";
 import * as SDK from "@al-ft/midgard-sdk";
+import { decodeMidgardSubmittedTxFromCanonicalCbor } from "@al-ft/midgard-validation/ledger-tx/codec";
 import {
   ledgerOutputToCbor,
   midgardOutRefToCbor,
-} from "@al-ft/midgard-validation";
-import { decodeMidgardSubmittedTxFromCanonicalCbor } from "@al-ft/midgard-validation/ledger-tx/codec";
+} from "@al-ft/midgard-validation/validation-candidate";
 import * as chalk_ from "chalk";
 import { Data, Effect, pipe } from "effect";
 

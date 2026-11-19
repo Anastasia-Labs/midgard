@@ -1,4 +1,4 @@
-import { FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED } from "@al-ft/midgard-fault-proofs";
+import { FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED } from "@al-ft/midgard-fault-proofs/workflow/orchestrator";
 import { expect, it, vi } from "vitest";
 
 import { WATCHER_FAULT_PROOF_STARTED_LATE } from "../../src/fault-proofs/fault-proof-objective-alerts.js";

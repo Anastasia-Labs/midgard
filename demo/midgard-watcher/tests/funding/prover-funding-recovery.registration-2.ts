@@ -2,10 +2,10 @@ import "./prover-funding-recovery.funding-recovery-across-authenticated-observat
 
 import {
   beginWorkflowFundingReservationAction,
-  bindWorkflowPreflightTransaction,
   createStoredWorkflowJournalWriter,
   prepareWorkflowFundingReservationTransaction,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/funding-reservation-permit";
+import { bindWorkflowPreflightTransaction } from "@al-ft/midgard-fault-proofs/workflow/transaction-boundary";
 import {
   CML,
   credentialToAddress,

@@ -4,7 +4,7 @@
  * mint prover funding without the manifest-derived factory: each mint passes
  * the same gate the factory runs first.
  */
-import type { HeaderFaultDecision } from "@al-ft/midgard-fault-proofs";
+import type { HeaderFaultDecision } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
 
 import { openWatcherFaultDecisionJournal } from "../../src/fault-proofs/fault-decision-journal.create-journal.js";
 import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.production-dependencies.js";

@@ -1,5 +1,5 @@
 import "node:worker_threads";
-import "@al-ft/midgard-validation";
+import "@al-ft/midgard-validation/wire";
 import "effect";
 import "../fibers/resolve-worker-entry.js";
 import "../workers/utils/validation-pool.js";

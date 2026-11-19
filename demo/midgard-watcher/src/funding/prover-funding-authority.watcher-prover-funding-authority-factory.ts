@@ -1,9 +1,9 @@
-import {
-  type WorkflowActuationPermit,
-  type WorkflowAdapterRunner,
-  type WorkflowFundingReservationPermit,
-  type WorkflowFundingReservationPort,
-} from "@al-ft/midgard-fault-proofs";
+import type { WorkflowActuationPermit } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
+import type { WorkflowAdapterRunner } from "@al-ft/midgard-fault-proofs/workflow/adapters";
+import type {
+  WorkflowFundingReservationPermit,
+  WorkflowFundingReservationPort,
+} from "@al-ft/midgard-fault-proofs/workflow/funding-reservation-permit";
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import { type UTxO } from "@lucid-evolution/lucid";
 

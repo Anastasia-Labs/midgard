@@ -1,8 +1,8 @@
-import {
-  type FraudProofReleaseEconomicsAuthority,
-  type FraudProofReleaseFinalityAuthority,
-  type VerifiedFraudProofReleaseFinalityPolicy,
-} from "@al-ft/midgard-fault-proofs";
+import type { FraudProofReleaseEconomicsAuthority } from "@al-ft/midgard-fault-proofs/workflow/release-economics-policy";
+import type {
+  FraudProofReleaseFinalityAuthority,
+  VerifiedFraudProofReleaseFinalityPolicy,
+} from "@al-ft/midgard-fault-proofs/workflow/release-finality-policy";
 
 import { fail } from "./deployment-identity.catalogue-category-to-contract.js";
 import {

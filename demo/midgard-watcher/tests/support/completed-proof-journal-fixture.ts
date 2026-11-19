@@ -1,21 +1,23 @@
 import {
-  authenticatedStateQueueObservationDigest,
-  classifyHeader,
-  computeFraudProofWorkflowId,
-  createHeaderClassifier,
-  DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
-  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-  type FraudProofWorkflowJournalEvent,
-  journalJsonDigest,
-  normalizeJournalJson,
-} from "@al-ft/midgard-fault-proofs";
-import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
   buildFixtureTransaction,
   outRefCbor,
 } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
+import { DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY } from "@al-ft/midgard-fault-proofs/workflow/complete-replay";
+import {
+  authenticatedStateQueueObservationDigest,
+  classifyHeader,
+  createHeaderClassifier,
+} from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
+import {
+  computeFraudProofWorkflowId,
+  FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
+  type FraudProofWorkflowJournalEvent,
+  journalJsonDigest,
+  normalizeJournalJson,
+} from "@al-ft/midgard-fault-proofs/workflow/journal";
 
 import type { WatcherWorkflowJournal } from "../../src/fault-proofs/watcher-workflow-journal.js";
 import { watcherDeploymentReleaseFinalityAuthority } from "../../src/runtime/deployment-identity.watcher-deployment-availability-challenge-authority.js";

@@ -11,10 +11,6 @@ import {
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  buildValidationMachineLedgerInsertOp,
-  buildValidationMachineLedgerMutationSteps,
-} from "@al-ft/midgard-validation";
-import {
   encodeByteList,
   encodeRecomputedNativeTx,
   makeMinAdaFundedExactSizeOutputItem,
@@ -23,6 +19,10 @@ import {
   outRefFromTxId,
 } from "@al-ft/midgard-validation/tests/validation-fixtures";
 import { RejectCodes } from "@al-ft/midgard-validation/types";
+import {
+  buildValidationMachineLedgerInsertOp,
+  buildValidationMachineLedgerMutationSteps,
+} from "@al-ft/midgard-validation/validation-machine";
 import { CML, Data } from "@lucid-evolution/lucid";
 import {
   computeDaPayloadRoots,

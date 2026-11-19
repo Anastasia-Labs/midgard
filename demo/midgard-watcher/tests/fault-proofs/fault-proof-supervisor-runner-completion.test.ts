@@ -4,7 +4,7 @@ import {
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
   journalJsonDigest,
   normalizeJournalJson,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/journal";
 import { describe, expect, it, vi } from "vitest";
 
 import type { WatcherProofExecution } from "../../src/fault-proofs/fault-proof-objective-journal.js";

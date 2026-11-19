@@ -10,7 +10,7 @@ import {
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
   type FraudProofWorkflowJournalEntry,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/journal";
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "midgard-watcher";
 import { openWatcherWorkflowStoreForTest } from "midgard-watcher/tests/support/watcher-workflow-store";

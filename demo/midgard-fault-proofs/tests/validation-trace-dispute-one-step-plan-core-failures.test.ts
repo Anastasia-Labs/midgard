@@ -8,12 +8,12 @@
  * (validation-trace-dispute-one-step-plan-staged.test.ts). */
 import { MIDGARD_CEK_STAGED_CHUNK_BYTES } from "@al-ft/midgard-core";
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
+import type { MidgardCekCoreStepWitness } from "@al-ft/midgard-validation/cek-machine";
 import {
-  MIDGARD_CEK_WRITE_BITS_LOOP_INPUT_WORDS,
   midgardCekStagedBuiltinMaterialData,
   stageMidgardCekStagedBuiltinMaterial,
-} from "@al-ft/midgard-validation";
-import type { MidgardCekCoreStepWitness } from "@al-ft/midgard-validation/cek-machine";
+} from "@al-ft/midgard-validation/cek-staged-builtin";
+import { MIDGARD_CEK_WRITE_BITS_LOOP_INPUT_WORDS } from "@al-ft/midgard-validation/cek-write-bits";
 import { Constr, Data, type UTxO } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 

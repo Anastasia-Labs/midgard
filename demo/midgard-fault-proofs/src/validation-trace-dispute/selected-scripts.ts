@@ -12,7 +12,7 @@ import {
   decodeMidgardTxOutput,
   encodeMidgardVersionedScript,
 } from "@al-ft/midgard-core/codec";
-import type { ValidationMachineWorkWitness } from "@al-ft/midgard-validation";
+import type { ValidationMachineWorkWitness } from "@al-ft/midgard-validation/validation-machine";
 
 import type { CheckedLedger } from "../ledger-at.js";
 

@@ -1,12 +1,14 @@
 import {
   createAuthenticatedFieldCarriagePrerequisitePort,
-  createFraudProofAuthenticatedPublicationObserver,
-  createRawDatumPreimageRequirement,
   FIELD_CARRIAGE_RECOVERY,
+} from "@al-ft/midgard-fault-proofs/workflow/field-carriage-prerequisite";
+import {
   fraudProofSignedTransactionRecovery,
-  type FraudProofWorkflowAction,
   withFraudProofL1Recovery,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/l1-source";
+import type { FraudProofWorkflowAction } from "@al-ft/midgard-fault-proofs/workflow/orchestrator";
+import { createRawDatumPreimageRequirement } from "@al-ft/midgard-fault-proofs/workflow/raw-datum-preimage-prerequisite";
+import { createFraudProofAuthenticatedPublicationObserver } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-publication-observation";
 import { type SimTx, simTxHash } from "@al-ft/midgard-l1-follower/testing";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";

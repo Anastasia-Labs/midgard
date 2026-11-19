@@ -3,7 +3,7 @@ import { join } from "node:path";
 import {
   ConcurrentFraudProofWorkflowWriteError,
   FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/journal";
 import { afterEach, expect, it } from "vitest";
 
 import { parseWatcherProverFundingReservationRecord } from "../../src/funding/prover-funding-reservation.parse-watcher-prover-funding-reservation-record.js";

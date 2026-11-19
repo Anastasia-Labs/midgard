@@ -1,6 +1,9 @@
 import "node:crypto";
 import "@al-ft/midgard-core/da-transport";
-import "@al-ft/midgard-fault-proofs";
+import "@al-ft/midgard-fault-proofs/transition-trace/fetch";
+import "@al-ft/midgard-fault-proofs/workflow/release-economics-policy";
+import "@al-ft/midgard-fault-proofs/workflow/release-finality-policy";
+import "@al-ft/midgard-fault-proofs/workflow/runtime";
 import "../availability/published-payload.js";
 import "../runtime/config.js";
 import "../runtime/deployment-identity.js";

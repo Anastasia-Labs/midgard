@@ -1,4 +1,3 @@
-import "@al-ft/midgard-validation";
 import "@effect/sql";
 import "effect";
 import "../database/index.js";

@@ -1,9 +1,9 @@
 import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
 import {
   assertWorkflowActuationPermitIdentity,
-  type HeaderDecision,
   type WorkflowActuationPermitController,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
+import type { HeaderDecision } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
 import {
   type AuthenticatedStateQueueHeaderObservation,
   CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,

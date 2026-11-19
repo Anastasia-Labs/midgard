@@ -1,7 +1,7 @@
 import { decodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
 import { aikenSerialisedPlutusDataCborPreservingMapOrder as canonical } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
-import { deriveCanonicalOriginalDepositTransitionEffect } from "@al-ft/midgard-validation";
+import { deriveCanonicalOriginalDepositTransitionEffect } from "@al-ft/midgard-validation/transition-effect";
 import { Data, datumToHash, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";

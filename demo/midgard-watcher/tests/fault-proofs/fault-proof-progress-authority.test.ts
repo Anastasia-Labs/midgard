@@ -6,7 +6,7 @@ import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import {
   assertWorkflowActuationPermitIdentity,
   createWorkflowActuationPermitController,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import * as DecisionJournal from "../../src/fault-proofs/fault-decision-journal.js";

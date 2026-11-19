@@ -13,11 +13,11 @@ import {
   TransitionStep,
   ValidationTraceDescriptorSchema,
 } from "@al-ft/midgard-sdk";
+import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import {
-  buildCanonicalMidgardLedgerEntryOutputMaterial,
   placeholderValidationTraceDescriptorV1,
   validationTransactionCommitmentV1,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/validation-machine";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

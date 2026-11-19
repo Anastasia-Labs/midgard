@@ -6,13 +6,13 @@
  * alert for the header it failed on and logs the family, header and error at
  * error level; the alert stands until that header is decided.
  */
+import { ReplayLocalFault } from "@al-ft/midgard-fault-proofs/block-replay";
+import { RetainedDaPayloadUnavailableError } from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
+import { ValidationTraceReplayHeldError } from "@al-ft/midgard-fault-proofs/validation-trace-dispute/replay-hold";
 import {
   FraudProofL1RefusedError,
   FraudProofL1UnavailableError,
-  RetainedDaPayloadUnavailableError,
-  ValidationTraceReplayHeldError,
-} from "@al-ft/midgard-fault-proofs";
-import { ReplayLocalFault } from "@al-ft/midgard-fault-proofs/block-replay";
+} from "@al-ft/midgard-fault-proofs/workflow/l1-source";
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 

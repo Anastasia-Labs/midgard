@@ -275,6 +275,7 @@ export {
   type WatcherProofStepDiagnostic,
   type WatcherVerificationDiagnostic,
 } from "./runtime/operations-observability.js";
+export { WATCHER_PACKAGE_NAME } from "./runtime/package-name.js";
 export {
   decodeWatcherAuthenticationKey32,
   loadWatcherProcessConfigFile,
@@ -288,7 +289,6 @@ export {
   runWatcherCommand,
   unsafeRunWatcherCommandForTest,
   WATCHER_COMMAND_FAILURE_EXIT_CODE,
-  WATCHER_PACKAGE_NAME,
   type WatcherCommand,
   type WatcherCommandIo,
 } from "./runtime/scaffold.js";

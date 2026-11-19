@@ -5,7 +5,6 @@ import "@al-ft/midgard-core/codec";
 import "@al-ft/midgard-core/codec/forced";
 import "@al-ft/midgard-core/codec/native-tx-field-access";
 import "@al-ft/midgard-core/plutus-data-cbor";
-import "@al-ft/midgard-fault-proofs";
 import "@lucid-evolution/lucid";
 import "effect";
 import "vitest";

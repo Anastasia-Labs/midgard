@@ -12,7 +12,7 @@ import {
   type MidgardRedeemerItemProofMode,
   MidgardRedeemerItemProofModes,
 } from "@al-ft/midgard-core";
-import { summarizeMidgardCekLucidData } from "@al-ft/midgard-validation";
+import { summarizeMidgardCekLucidData } from "@al-ft/midgard-validation/cek-context";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

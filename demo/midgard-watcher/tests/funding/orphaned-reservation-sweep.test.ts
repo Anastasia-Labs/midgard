@@ -1,4 +1,4 @@
-import { supersededAttemptReadSchedule } from "@al-ft/midgard-fault-proofs";
+import { supersededAttemptReadSchedule } from "@al-ft/midgard-fault-proofs/workflow/superseded-attempt-read-schedule";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WATCHER_PROVER_FUNDING_ORPHANED_RESERVATION } from "../../src/funding/prover-funding-recovery.orphaned-reservation.js";

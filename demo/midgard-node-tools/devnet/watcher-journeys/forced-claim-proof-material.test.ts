@@ -3,7 +3,13 @@
  * transaction lacks is recorded as durable proof material through the owning
  * family's own preparer, and that material survives a JSON round trip.
  */
-import * as FP from "@al-ft/midgard-fault-proofs";
+import { prepareMintItemNonCanonicalRecoveryMaterial } from "@al-ft/midgard-fault-proofs/mint-item-non-canonical";
+import { prepareResolvedOutputNonCanonicalRecoveryMaterial } from "@al-ft/midgard-fault-proofs/resolved-output-non-canonical";
+import { prepareTransactionOutputNonCanonicalRecoveryMaterial } from "@al-ft/midgard-fault-proofs/transaction-output-non-canonical";
+import {
+  encodeWorkflowArtifact,
+  requireWorkflowArtifactMatches,
+} from "@al-ft/midgard-fault-proofs/workflow/artifact-codec";
 import type * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
@@ -30,27 +36,21 @@ const MATERIAL: readonly (readonly [
     reason("MintItemMalformed", { policy_index: BIG }),
     "mintItemNonCanonical",
     (full, id) =>
-      FP.prepareMintItemNonCanonicalRecoveryMaterial(full.evidence!, id),
+      prepareMintItemNonCanonicalRecoveryMaterial(full.evidence!, id),
   ],
   [
     "non-canonical output past 2^53",
     reason("OutputNonCanonical", { output_index: BIG }),
     "transactionOutputNonCanonical",
     (full, id) =>
-      FP.prepareTransactionOutputNonCanonicalRecoveryMaterial(
-        full.evidence!,
-        id,
-      ),
+      prepareTransactionOutputNonCanonicalRecoveryMaterial(full.evidence!, id),
   ],
   [
     "non-canonical output at a negative index",
     reason("OutputNonCanonical", { output_index: -1n }),
     "transactionOutputNonCanonical",
     (full, id) =>
-      FP.prepareTransactionOutputNonCanonicalRecoveryMaterial(
-        full.evidence!,
-        id,
-      ),
+      prepareTransactionOutputNonCanonicalRecoveryMaterial(full.evidence!, id),
   ],
   [
     "non-canonical spent output of a spend input past 2^53",
@@ -60,7 +60,7 @@ const MATERIAL: readonly (readonly [
     }),
     "resolvedOutputNonCanonical",
     (full, id) =>
-      FP.prepareResolvedOutputNonCanonicalRecoveryMaterial(
+      prepareResolvedOutputNonCanonicalRecoveryMaterial(
         full.evidence!,
         id,
         full.predecessor!,
@@ -74,7 +74,7 @@ const MATERIAL: readonly (readonly [
     }),
     "resolvedOutputNonCanonical",
     (full, id) =>
-      FP.prepareResolvedOutputNonCanonicalRecoveryMaterial(
+      prepareResolvedOutputNonCanonicalRecoveryMaterial(
         full.evidence!,
         id,
         full.predecessor!,
@@ -94,10 +94,10 @@ describe("recording proof material for a wrongful forced rejection whose reason 
       const material = await prepare(full, detectionId);
       expect(material).toMatchObject({ category, detectionId });
       const recorded = JSON.parse(
-        JSON.stringify(FP.encodeWorkflowArtifact(material)),
+        JSON.stringify(encodeWorkflowArtifact(material)),
       );
       const fresh = await prepare(full, detectionId);
-      expect(FP.requireWorkflowArtifactMatches(recorded, fresh)).toBe(fresh);
+      expect(requireWorkflowArtifactMatches(recorded, fresh)).toBe(fresh);
     },
     120_000,
   );

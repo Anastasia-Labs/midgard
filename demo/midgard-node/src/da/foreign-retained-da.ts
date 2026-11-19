@@ -3,7 +3,7 @@ import { daRequestResponseProtocolId } from "@al-ft/midgard-core/da-transport";
 import {
   DaLibp2pRetainedDaSource,
   fetchRetainedDaPayloadByHeaderHash,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Clock, Effect } from "effect";
 

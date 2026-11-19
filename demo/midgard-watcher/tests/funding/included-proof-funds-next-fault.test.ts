@@ -6,17 +6,17 @@
  * after a rollback still holds them.
  */
 import {
-  authenticatedStateQueueObservationDigest,
-  classifyHeader,
-  createHeaderClassifier,
-  DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
-} from "@al-ft/midgard-fault-proofs";
-import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
   buildFixtureTransaction,
   outRefCbor,
 } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
+import { DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY } from "@al-ft/midgard-fault-proofs/workflow/complete-replay";
+import {
+  authenticatedStateQueueObservationDigest,
+  classifyHeader,
+  createHeaderClassifier,
+} from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { openWatcherFaultDecisionJournal } from "../../src/fault-proofs/fault-decision-journal.create-journal.js";

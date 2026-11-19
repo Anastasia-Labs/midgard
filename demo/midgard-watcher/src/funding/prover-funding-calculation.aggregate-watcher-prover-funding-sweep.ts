@@ -2,7 +2,7 @@ import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deploym
 import {
   readWorkflowRuntimeFundingPolicy,
   type WorkflowRuntimeFundingPolicy,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/runtime-funding-policy";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueCategoryName,

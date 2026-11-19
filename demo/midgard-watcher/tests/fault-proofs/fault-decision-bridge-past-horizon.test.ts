@@ -3,7 +3,7 @@ import {
   l1SlotToPosixTimeMs,
   NAMED_NETWORK_L1_SLOT_CONFIGS,
 } from "@al-ft/midgard-core/l1-slot-config";
-import { RetainedDaPayloadUnavailableError } from "@al-ft/midgard-fault-proofs";
+import { RetainedDaPayloadUnavailableError } from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
 import type { Header as HeaderType } from "@al-ft/midgard-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 

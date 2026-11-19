@@ -1,11 +1,9 @@
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-import {
-  createWorkflowActuationPermitController,
-  type FraudProofWorkflowJournalEvent,
-  supersededAttemptReadSchedule,
-} from "@al-ft/midgard-fault-proofs";
+import { createWorkflowActuationPermitController } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
+import type { FraudProofWorkflowJournalEvent } from "@al-ft/midgard-fault-proofs/workflow/journal";
+import { supersededAttemptReadSchedule } from "@al-ft/midgard-fault-proofs/workflow/superseded-attempt-read-schedule";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { openWatcherFaultDecisionJournal } from "../../src/fault-proofs/fault-decision-journal.create-journal.js";

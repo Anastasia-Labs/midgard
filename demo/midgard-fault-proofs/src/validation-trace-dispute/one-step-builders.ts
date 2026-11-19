@@ -21,7 +21,7 @@
  * holder checks as an inline datum. */
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
-import type { ValidationTraceSteps } from "@al-ft/midgard-validation";
+import type { ValidationTraceSteps } from "@al-ft/midgard-validation/validation-machine";
 import {
   Data,
   type LucidEvolution,

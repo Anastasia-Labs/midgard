@@ -7,18 +7,9 @@ import {
   aikenSerialisedPlutusDataCborPreservingMapOrder as canonical,
   plutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
-import {
-  buildCountedRoot,
-  canonicalBlockEvidenceFromVerifiedPayload,
-  type CompleteCanonicalReplay,
-  DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY,
-  keyValuePhasProof,
-  prepareDoubleWithdrawFromCommittedLeaves,
-  resolveProverSigner,
-  WITHDRAWAL_MISTAG_COMPLETE_CANONICAL_REPLAY,
-  WITHDRAWN_INPUT_COMPLETE_CANONICAL_REPLAY,
-  WITHDRAWN_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
-} from "@al-ft/midgard-fault-proofs";
+import { canonicalBlockEvidenceFromVerifiedPayload } from "@al-ft/midgard-fault-proofs/evidence";
+import { prepareDoubleWithdrawFromCommittedLeaves } from "@al-ft/midgard-fault-proofs/prepare-double-withdraw";
+import { resolveProverSigner } from "@al-ft/midgard-fault-proofs/runtime";
 import { authenticatedHeaderObservation } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import { prepareInputExistence } from "@al-ft/midgard-fault-proofs/test-support/input-existence-prepare";
 import { prepareFabricatedDepositFromCommittedLeaves } from "@al-ft/midgard-fault-proofs/test-support/prepare-fabricated-deposit";
@@ -28,6 +19,17 @@ import {
   runRetiredFamilyProof,
 } from "@al-ft/midgard-fault-proofs/test-support/retired-family-proof";
 import { measureCompleteSignedTransaction } from "@al-ft/midgard-fault-proofs/testing/installed-workflow";
+import {
+  buildCountedRoot,
+  keyValuePhasProof,
+} from "@al-ft/midgard-fault-proofs/transition-trace/phas";
+import {
+  type CompleteCanonicalReplay,
+  DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY,
+  WITHDRAWAL_MISTAG_COMPLETE_CANONICAL_REPLAY,
+  WITHDRAWN_INPUT_COMPLETE_CANONICAL_REPLAY,
+  WITHDRAWN_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
+} from "@al-ft/midgard-fault-proofs/workflow/complete-replay";
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";

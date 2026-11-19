@@ -1,16 +1,16 @@
 import { computeHash28 } from "@al-ft/midgard-core/codec/hash";
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
+import type { WorkflowAdapterRunnerInput } from "@al-ft/midgard-fault-proofs/workflow/adapters";
+import type { CompleteCanonicalReplayContext } from "@al-ft/midgard-fault-proofs/workflow/complete-replay";
 import {
   applyFamilyApplicationRecord,
-  type CompleteCanonicalReplayContext,
-  FAMILY_APPLICATION_REGISTRY,
   type FamilyApplicationRecord,
   type FamilyApplicationWorkflowIdentity,
-  type FraudProofL1Source,
-  type HeaderDecision,
-  MemoryFraudProofWorkflowJournalStore,
-  type WorkflowAdapterRunnerInput,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/family-application";
+import { FAMILY_APPLICATION_REGISTRY } from "@al-ft/midgard-fault-proofs/workflow/family-application-registry";
+import type { HeaderDecision } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
+import { MemoryFraudProofWorkflowJournalStore } from "@al-ft/midgard-fault-proofs/workflow/journal";
+import type { FraudProofL1Source } from "@al-ft/midgard-fault-proofs/workflow/l1-source";
 import {
   type AuthenticatedStateQueueHeaderObservation,
   EMPTY_MERKLE_TREE_ROOT,

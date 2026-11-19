@@ -8,11 +8,11 @@ import { isDeepStrictEqual } from "node:util";
 import { hashMidgardValidationMachineState } from "@al-ft/midgard-core";
 import {
   buildDeterministicValidationMachineTrace,
-  buildValidationOneStepArgument,
   type DeterministicValidationMachineTrace,
   openValidationTraceV1,
   type ValidationTraceSteps,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/validation-machine";
+import { buildValidationOneStepArgument } from "@al-ft/midgard-validation/validation-machine-data";
 import { Effect } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
 

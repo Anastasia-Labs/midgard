@@ -1,11 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
+import { proofMaterialsAddress } from "@al-ft/midgard-fault-proofs/funding/proof-materials-address";
 import {
   createFileTimeoutCorrectionJournalStore,
-  proofMaterialsAddress,
   submitUnattestedTimeoutCorrection,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/remove-unattested-block";
 import * as SDK from "@al-ft/midgard-sdk";
 import { getAddressDetails } from "@lucid-evolution/lucid";
 import { Cause, Effect, Ref, Runtime } from "effect";

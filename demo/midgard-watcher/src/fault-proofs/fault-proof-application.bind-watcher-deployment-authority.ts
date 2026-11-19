@@ -3,7 +3,7 @@ import {
   l1SlotConfigMismatch,
   parseL1SlotConfig,
 } from "@al-ft/midgard-core/l1-slot-config";
-import { parseContractDeploymentInfo } from "@al-ft/midgard-fault-proofs";
+import { parseContractDeploymentInfo } from "@al-ft/midgard-fault-proofs/inspect-contracts";
 import { type LucidEvolution } from "@lucid-evolution/lucid";
 
 import type {

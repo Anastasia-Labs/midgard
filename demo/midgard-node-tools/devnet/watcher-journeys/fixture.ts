@@ -1,5 +1,8 @@
-import type { InstalledFraudProofCategory } from "@al-ft/midgard-fault-proofs";
-import type { CheckedLedger, LedgerAt } from "@al-ft/midgard-fault-proofs";
+import type {
+  CheckedLedger,
+  LedgerAt,
+} from "@al-ft/midgard-fault-proofs/ledger-at";
+import type { InstalledFraudProofCategory } from "@al-ft/midgard-fault-proofs/workflow/installed-categories";
 import type * as SDK from "@al-ft/midgard-sdk";
 import type { createPublishedWatcherBlockActor } from "midgard-watcher/tests/support/published-block-actor";
 

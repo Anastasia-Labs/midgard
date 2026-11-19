@@ -1,12 +1,12 @@
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import {
   bindWorkflowActuationJournal,
-  bindWorkflowFundingReservationJournal,
   createWorkflowActuationPermitController,
-  FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
-  verifyCompletedFraudProofWorkflow,
-  type WorkflowAdapterRunnerInput,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
+import type { WorkflowAdapterRunnerInput } from "@al-ft/midgard-fault-proofs/workflow/adapters";
+import { verifyCompletedFraudProofWorkflow } from "@al-ft/midgard-fault-proofs/workflow/completed-verification";
+import { bindWorkflowFundingReservationJournal } from "@al-ft/midgard-fault-proofs/workflow/funding-reservation-permit";
+import { FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createWatcherFaultProofExecution } from "../../src/fault-proofs/fault-proof-execution.js";

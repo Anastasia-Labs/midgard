@@ -3,22 +3,30 @@ import {
   encodeDaPayloadByHeaderResponseCbor,
 } from "@al-ft/midgard-core/da-transport";
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "@al-ft/midgard-fault-proofs/test-support/wallet-only-send-always-open";
 import {
-  createManifestBoundWorkflowRunner,
   DaLibp2pRetainedDaSource,
-  defineFamilyApplication,
-  type FamilyCommonInfrastructure,
-  type FraudProofFamilyWorkflowAdapter,
-  type FraudProofReleaseFinalityAuthority,
-  type FraudProofWorkflowTerminalVerifier,
-  MemoryFraudProofWorkflowJournalStore,
   type RetainedDaFetchAttempt,
   type RetainedDaPayloadSourceResult,
+} from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
+import type {
+  WorkflowAdapterReadinessInput,
+  WorkflowAdapterRunnerInput,
+} from "@al-ft/midgard-fault-proofs/workflow/adapters";
+import {
+  defineFamilyApplication,
+  type FamilyCommonInfrastructure,
+} from "@al-ft/midgard-fault-proofs/workflow/family-application";
+import { MemoryFraudProofWorkflowJournalStore } from "@al-ft/midgard-fault-proofs/workflow/journal";
+import type {
+  FraudProofFamilyWorkflowAdapter,
+  FraudProofWorkflowTerminalVerifier,
+} from "@al-ft/midgard-fault-proofs/workflow/orchestrator";
+import type { FraudProofReleaseFinalityAuthority } from "@al-ft/midgard-fault-proofs/workflow/release-finality-policy";
+import {
+  createManifestBoundWorkflowRunner,
   WORKFLOW_RUNTIME_CONFIG,
-  type WorkflowAdapterReadinessInput,
-  type WorkflowAdapterRunnerInput,
-} from "@al-ft/midgard-fault-proofs";
-import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "@al-ft/midgard-fault-proofs/test-support/wallet-only-send-always-open";
+} from "@al-ft/midgard-fault-proofs/workflow/runtime";
 import { describe, expect, it, vi } from "vitest";
 
 import type { WatcherFaultProofSupervisor } from "../../src/fault-proofs/fault-proof-supervisor.js";

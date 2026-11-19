@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import {
   driveProvenCorrectionRemoval,
   excludeReservedFunding,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/proven-correction-removal";
 
 import type { WatcherConfig } from "../runtime/config.js";
 import { type VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";

@@ -1,4 +1,4 @@
-import type { LedgerAt } from "@al-ft/midgard-fault-proofs";
+import type { LedgerAt } from "@al-ft/midgard-fault-proofs/ledger-at";
 import type { WatcherConfig } from "midgard-watcher";
 
 import {

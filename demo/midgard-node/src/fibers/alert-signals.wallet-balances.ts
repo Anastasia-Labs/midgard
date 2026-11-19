@@ -24,11 +24,11 @@
  *   and a Defend pays the pocket its collateral output when it holds none.
  *   Their balances are exported for the operator to read, with no rule.
  */
+import { isPlainFundingOutput } from "@al-ft/midgard-fault-proofs/funding/plain-funding-output";
 import {
-  isPlainFundingOutput,
   VALIDATION_TRACE_POCKET_COLLATERAL_LOVELACE,
   VALIDATION_TRACE_THREAD_FLOOR_LOVELACE,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/validation-trace-dispute/defender";
 import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect, Metric } from "effect";

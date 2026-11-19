@@ -1,4 +1,4 @@
-import type { FraudProofRawL1Snapshot } from "@al-ft/midgard-fault-proofs";
+import type { FraudProofRawL1Snapshot } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
 import { describe, expect, it } from "vitest";
 
 import {

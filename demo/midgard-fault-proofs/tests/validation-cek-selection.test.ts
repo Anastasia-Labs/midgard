@@ -10,13 +10,15 @@ import {
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  CekDecodeRecordRequiredError,
-  type DeterministicValidationMachineTrace,
   encodeMidgardCekValidationWitness,
-  encodeValidationTerminalWitnessCbor,
   initialMidgardCekContextControl,
+} from "@al-ft/midgard-validation/cek-context";
+import {
+  type DeterministicValidationMachineTrace,
+  encodeValidationTerminalWitnessCbor,
   type ValidationMachineWorkWitness,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/validation-machine";
+import { CekDecodeRecordRequiredError } from "@al-ft/midgard-validation/validation-machine-data";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

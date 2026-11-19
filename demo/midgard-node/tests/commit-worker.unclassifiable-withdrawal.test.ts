@@ -13,7 +13,7 @@
  * attempt and never counted.
  */
 import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
-import { LOCAL_FAULT_RUN_LIMIT } from "@al-ft/midgard-fault-proofs";
+import { LOCAL_FAULT_RUN_LIMIT } from "@al-ft/midgard-fault-proofs/local-fault-bound";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import {

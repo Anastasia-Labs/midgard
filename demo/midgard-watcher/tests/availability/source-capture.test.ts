@@ -1,8 +1,6 @@
 import type { AvailabilityOperationRecord } from "@al-ft/midgard-core/availability-operation-journal";
-import {
-  computeFraudProofRawL1PointId,
-  FraudProofL1CheckpointChangedError,
-} from "@al-ft/midgard-fault-proofs";
+import { FraudProofL1CheckpointChangedError } from "@al-ft/midgard-fault-proofs/workflow/l1-source";
+import { computeFraudProofRawL1PointId } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
 import type * as SDK from "@al-ft/midgard-sdk";
 import { CML, utxoToCore } from "@lucid-evolution/lucid";
 import { beforeEach, describe, expect, it, vi } from "vitest";

@@ -3,20 +3,26 @@ import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
+import { isReplayLocalFault } from "@al-ft/midgard-fault-proofs/block-replay";
+import type { LedgerAt } from "@al-ft/midgard-fault-proofs/ledger-at";
 import {
   createReplayedLedger,
-  fileLedgerCheckpointStore,
-  FraudProofL1CheckpointChangedError,
-  isFraudProofL1WaitError,
-  isRetainedDaPayloadUnavailableError,
-  type LedgerAt,
   type LedgerCheckpointStore,
   type ReplayedLedgerRefusal,
-  type RetainedDaPayloadSource,
+} from "@al-ft/midgard-fault-proofs/replayed-ledger";
+import { fileLedgerCheckpointStore } from "@al-ft/midgard-fault-proofs/replayed-ledger.checkpoint-file";
+import {
   type RetainedPayloadReleases,
   retainedPayloadReplaySource,
-} from "@al-ft/midgard-fault-proofs";
-import { isReplayLocalFault } from "@al-ft/midgard-fault-proofs/block-replay";
+} from "@al-ft/midgard-fault-proofs/retained-payload-replay-source";
+import {
+  isRetainedDaPayloadUnavailableError,
+  type RetainedDaPayloadSource,
+} from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
+import {
+  FraudProofL1CheckpointChangedError,
+  isFraudProofL1WaitError,
+} from "@al-ft/midgard-fault-proofs/workflow/l1-source";
 import * as SDK from "@al-ft/midgard-sdk";
 
 import type { WatcherAuthenticatedStateQueueObservation } from "../indexers/authenticated-state-queue-observation.js";

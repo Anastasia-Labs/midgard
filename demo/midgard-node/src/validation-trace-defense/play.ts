@@ -28,7 +28,7 @@ import {
   completeValidationTraceMove,
   validationTraceDefendersProof,
   validationTraceThreadExpiresAfterMs,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/validation-trace-dispute/defender";
 import * as SDK from "@al-ft/midgard-sdk";
 import type { TxSignBuilder, UTxO } from "@lucid-evolution/lucid";
 import { Duration, Effect } from "effect";

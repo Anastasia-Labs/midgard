@@ -5,7 +5,7 @@ import {
   type CheckedLedger,
   ledgerAfter,
   type LedgerAt,
-} from "@al-ft/midgard-fault-proofs";
+} from "@al-ft/midgard-fault-proofs/ledger-at";
 import * as SDK from "@al-ft/midgard-sdk";
 import type {
   PublishedDaTargetCorrection,

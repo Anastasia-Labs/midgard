@@ -5,10 +5,8 @@ import {
   replacePlutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  buildCanonicalMidgardLedgerEntryOutputMaterial,
-  deriveCanonicalOriginalDepositTransitionEffect,
-} from "@al-ft/midgard-validation";
+import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
+import { deriveCanonicalOriginalDepositTransitionEffect } from "@al-ft/midgard-validation/transition-effect";
 import { Data, datumToHash } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

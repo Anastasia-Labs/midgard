@@ -1,14 +1,16 @@
 import { retentionDeadlineForBlock } from "@al-ft/midgard-core";
+import { isReplayLocalFault } from "@al-ft/midgard-fault-proofs/block-replay";
+import { isRetainedDaPayloadUnavailableError } from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
 import {
-  isFraudProofL1WaitError,
-  isRetainedDaPayloadUnavailableError,
   isValidationTraceReplayHeldError,
   type VALIDATION_TRACE_REPLAY_HELD,
   type VALIDATION_TRACE_REPLAY_STUCK,
+} from "@al-ft/midgard-fault-proofs/validation-trace-dispute/replay-hold";
+import {
   validationTraceCaseOpenAtRisk,
   validationTraceCaseOpenWindowEndMs,
-} from "@al-ft/midgard-fault-proofs";
-import { isReplayLocalFault } from "@al-ft/midgard-fault-proofs/block-replay";
+} from "@al-ft/midgard-fault-proofs/validation-trace-dispute/stage-unbuilt";
+import { isFraudProofL1WaitError } from "@al-ft/midgard-fault-proofs/workflow/l1-source";
 import { StateQueueNode } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -18,7 +20,7 @@ import type {
   WatcherStateQueueHeaderObservation,
 } from "../indexers/authenticated-state-queue-observation.js";
 import { isWatcherL1TransientFailure } from "../l1/transient-failure.js";
-import { WATCHER_PACKAGE_NAME } from "../runtime/scaffold.js";
+import { WATCHER_PACKAGE_NAME } from "../runtime/package-name.js";
 import { isWatcherRetainedDaTransportUnavailable } from "../storage/retained-da-transport-unavailable.js";
 import {
   awaitsRetainedDaPayload,

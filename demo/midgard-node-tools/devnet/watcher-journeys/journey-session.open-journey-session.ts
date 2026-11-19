@@ -4,7 +4,7 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { resolveProverSigner } from "@al-ft/midgard-fault-proofs";
+import { resolveProverSigner } from "@al-ft/midgard-fault-proofs/runtime";
 import {
   loadWatcherVerifiedDeploymentAuthority,
   parseWatcherConfig,

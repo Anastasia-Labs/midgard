@@ -6,13 +6,13 @@
  * spend accepts it and only the staker can refuse.
  */
 import * as SDK from "@al-ft/midgard-sdk";
+import { scriptDecodeScriptHash } from "@al-ft/midgard-validation/script-decode.step";
 import {
   nextScriptDecodeChainedWalk,
   type ScriptDecodeChainedWalk,
-  scriptDecodeScriptHash,
   scriptDecodeWalkRecord,
   startScriptDecodeWalk,
-} from "@al-ft/midgard-validation";
+} from "@al-ft/midgard-validation/script-decode.step-walk";
 import {
   Emulator,
   generateEmulatorAccount,
