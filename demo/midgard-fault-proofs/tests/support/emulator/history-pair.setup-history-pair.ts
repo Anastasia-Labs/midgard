@@ -25,7 +25,7 @@ import {
 import { Effect } from "effect";
 import { expect } from "vitest";
 
-import { proofMaterialsAddressOfFundingAddress } from "../../../src/funding/proof-materials-address.js";
+import { proofMaterialsAddress } from "../../../src/funding/proof-materials-address.js";
 import type { ResolvedProverSigner } from "../../../src/runtime.js";
 import { inputAt, referenceAt, same } from "./history-pair.index.js";
 import { measureCompleteSignedTransaction } from "./measurement.js";
@@ -58,9 +58,7 @@ export const setupHistoryPair = async ({
   const signer: ResolvedProverSigner = {
     source: "emulator fixture",
     address: wallet.address,
-    proofMaterialsAddress: proofMaterialsAddressOfFundingAddress(
-      wallet.address,
-    ),
+    proofMaterialsAddress: proofMaterialsAddress("Custom", owner),
     paymentKeyHash: owner,
     selectWallet: (prover) => prover.selectWallet.fromSeed(wallet.seedPhrase),
   };

@@ -35,11 +35,9 @@ const collateralWalletOf = (utxos: readonly UTxO[]) =>
   }) as unknown as LucidEvolution;
 
 describe("plainWalletInputs", () => {
-  it("presets the plain coins alone when the wallet also holds an output with a datum, a datum hash, a reference script or a token", async () => {
+  it("presets the plain coins alone when the wallet also holds an output with a reference script or a token", async () => {
     const plain = [utxo(0), utxo(1)];
     const others = [
-      utxo(2, { datum: "d87980" }),
-      utxo(3, { datumHash: "cd".repeat(32) }),
       utxo(4, {
         scriptRef: { type: "PlutusV3", script: "4e4d01000033222220051" },
       }),
@@ -49,6 +47,16 @@ describe("plainWalletInputs", () => {
       expect(
         await plainWalletInputs(walletOf([plain[0]!, other, plain[1]!])),
       ).toStrictEqual({ presetWalletInputs: plain });
+  });
+
+  it("presets an ada-only coin with a datum or a datum hash, such as a tagged refund, as funding", async () => {
+    for (const tagged of [
+      utxo(2, { datum: "d87980" }),
+      utxo(3, { datumHash: "cd".repeat(32) }),
+    ])
+      expect(
+        await plainWalletInputs(walletOf([utxo(0), tagged, utxo(1)])),
+      ).toStrictEqual({ presetWalletInputs: [utxo(0), tagged, utxo(1)] });
   });
 
   it("presets every plain coin of a seed wallet, so completion cannot re-read the wallet", async () => {

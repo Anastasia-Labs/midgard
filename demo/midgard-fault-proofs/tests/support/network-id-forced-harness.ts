@@ -90,7 +90,7 @@ export const STATE_QUEUE_OUT_REF = `${h32(0x73)}#0`;
 export const utxo = ({
   txHash,
   outputIndex = 0,
-  address = SIGNER.address,
+  address = SIGNER.proofMaterialsAddress,
   datum,
   unit,
 }: {
@@ -361,8 +361,8 @@ export const forcedHarness = ({
                 ? (holders.proof ?? [])
                 : [],
     utxosAt: async (address: string) =>
-      address === SIGNER.address
-        ? walletUtxos
+      address === SIGNER.proofMaterialsAddress
+        ? walletUtxos.filter((utxo) => utxo.address === address)
         : address === CERTIFICATE_ADDRESS
           ? (certificateUtxos ?? [])
           : [],

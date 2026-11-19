@@ -3,6 +3,7 @@ import { CML, type UTxO } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
 import { fabricatedHistoryOpeningCbor } from "../src/fabricated-history-witness.js";
+import { proofMaterialsAddress } from "../src/funding/proof-materials-address.js";
 import { submitFabricatedDepositStep03 } from "../src/submit-fabricated-deposit-step-03.js";
 import { submitFabricatedWithdrawalStep03 } from "../src/submit-fabricated-withdrawal-step-03.js";
 import { productionContracts } from "./submit-init-emulator-event-history-capture.build-capture.js";
@@ -28,7 +29,15 @@ export const submitProductionClassification = async (
   return submit({
     lucid: h.lucid,
     contracts,
-    signer: h.signer,
+    // Built from the shared fields: a retirement journey's list harness
+    // carries no signer of its own.
+    signer: {
+      source: "emulator fixture",
+      address: h.wallet.address,
+      proofMaterialsAddress: proofMaterialsAddress("Custom", h.owner),
+      paymentKeyHash: h.owner,
+      selectWallet: (lucid) => lucid.selectWallet.fromSeed(h.wallet.seedPhrase),
+    },
     threadOutRef: `${thread.txHash}#${thread.outputIndex}`,
     openingCbor: captured ? fabricatedHistoryOpeningCbor(captured) : undefined,
     referenceScriptUtxo: p.refs[1]!,

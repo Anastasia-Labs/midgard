@@ -4,7 +4,7 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
 
-import { proofMaterialsAddressOfFundingAddress } from "../../src/funding/proof-materials-address.js";
+import { proofMaterialsAddress } from "../../src/funding/proof-materials-address.js";
 import { confirmedValidationTraceStages } from "../../src/validation-trace-dispute/actions.js";
 import { captureValidationTraceLostDefenseSlash } from "../../src/validation-trace-dispute/lost-defense-slash.js";
 import { VALIDATION_TRACE_DEFENDER_WON } from "../../src/validation-trace-dispute/threads.js";
@@ -136,7 +136,11 @@ export const landForeignSlash = async (
       source: "direct-seed-phrase",
       address,
       paymentKeyHash: getAddressDetails(address).paymentCredential!.hash,
-      proofMaterialsAddress: proofMaterialsAddressOfFundingAddress(address),
+      // Another party's wallet is a base address: derive from its key.
+      proofMaterialsAddress: proofMaterialsAddress(
+        "Custom",
+        getAddressDetails(address).paymentCredential!.hash,
+      ),
       selectWallet: () => undefined,
     },
     deployment: dispute.deployment,

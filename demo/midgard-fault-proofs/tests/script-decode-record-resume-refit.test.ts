@@ -8,12 +8,14 @@ import {
   CML,
   Emulator,
   generateEmulatorAccount,
+  getAddressDetails,
   Lucid,
   type LucidEvolution,
   type UTxO,
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { proofMaterialsAddress } from "../src/funding/proof-materials-address.js";
 import {
   recordScriptDecode,
   type ScriptDecodeDeployment,
@@ -119,8 +121,12 @@ describe("script-decode record resume and refit", () => {
     expect(await lucid.utxosByOutRef([open!])).toEqual([]);
     expect(await openRuns(lucid, deployment)).toEqual([]);
     // The staged bytes the first attempt published served the rerun.
-    const staged = (await lucid.utxosAt(await lucid.wallet().address())).filter(
-      ({ datum }) => scriptDecodeStagingDatums(script).includes(datum ?? ""),
+    const materials = proofMaterialsAddress(
+      "Custom",
+      getAddressDetails(await lucid.wallet().address()).paymentCredential!.hash,
+    );
+    const staged = (await lucid.utxosAt(materials)).filter(({ datum }) =>
+      scriptDecodeStagingDatums(script).includes(datum ?? ""),
     );
     expect(staged).toHaveLength(scriptDecodeStagingDatums(script).length);
   }, 600_000);

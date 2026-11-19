@@ -6,6 +6,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { afterEach, expect, it, vi } from "vitest";
 
+import { proofMaterialsAddress } from "../src/funding/proof-materials-address.js";
 import { MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
 import {
   CURSOR_FAMILY_TRANSACTION_PORT,
@@ -165,7 +166,11 @@ const fixture = () => {
     deploymentInfo: {},
     headerHash,
     lucid: {} as never,
-    signer: { address, paymentKeyHash: owner } as never,
+    signer: {
+      address,
+      proofMaterialsAddress: proofMaterialsAddress("Preprod", owner),
+      paymentKeyHash: owner,
+    } as never,
     l1Source: {} as never,
     referenceScripts: {
       steps: [references[0]!],

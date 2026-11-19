@@ -7,6 +7,7 @@ import {
 import { credentialToAddress, type UTxO } from "@lucid-evolution/lucid";
 import { vi } from "vitest";
 
+import { proofMaterialsAddress } from "../../src/funding/proof-materials-address.js";
 import { DaLibp2pRetainedDaSource } from "../../src/transition-trace/fetch.js";
 import * as deployment from "../../src/workflow/deployment-manifest-binding.js";
 import { FAMILY_APPLICATION_REGISTRY } from "../../src/workflow/family-application-registry.js";
@@ -34,7 +35,11 @@ type RecoveryFixture = Awaited<
 
 const owner = "aa".repeat(28);
 const address = credentialToAddress("Preprod", { type: "Key", hash: owner });
-const signer = { paymentKeyHash: owner, address };
+const signer = {
+  paymentKeyHash: owner,
+  address,
+  proofMaterialsAddress: proofMaterialsAddress("Preprod", owner),
+};
 const script = { type: "PlutusV3", script: "49480100002221200101" } as const;
 const reference: UTxO = {
   txHash: "22".repeat(32),
