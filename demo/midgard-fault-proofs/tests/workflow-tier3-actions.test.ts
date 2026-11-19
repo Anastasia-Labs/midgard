@@ -2,28 +2,18 @@ import {
   encodeMidgardTxOutput,
   type MidgardTxOutput,
 } from "@al-ft/midgard-core/codec";
-import {
-  deriveFieldPreimageCertification,
-  FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX,
-  fieldPreimagePublicationDatumCbor,
-  MIDGARD_FIELD_INDEX,
-} from "@al-ft/midgard-sdk";
+import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk";
 import {
   CML,
   Emulator,
   generateEmulatorAccount,
   Lucid,
   type LucidEvolution,
-  type MintingPolicy,
-  type OutRef,
   type UTxO,
 } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  fieldPreimageCertificateAddress,
-  planFaultProofFieldOpening,
-} from "../src/field-opening.js";
+import { planFaultProofFieldOpening } from "../src/field-opening.js";
 import {
   planNetworkIdOutputsOpening,
   type PreparedNetworkIdProof,
@@ -33,7 +23,6 @@ import {
   type NetworkIdWorkflowAdapterConfig,
 } from "../src/network-id/workflow-adapter.js";
 import { deriveL2TransactionSourceCbor } from "../src/prepare-double-spend.js";
-import type { ResolvedProverSigner } from "../src/runtime.js";
 import { submitInit } from "../src/submit-init.js";
 import {
   createDoubleSpendConstrainedWorkflowAdapter,
@@ -43,11 +32,8 @@ import {
 import {
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
   type FraudProofWorkflowIdentity,
-  type FraudProofWorkflowJournalEntry,
   type JournalJsonObject,
 } from "../src/workflow/journal.js";
-import type { FraudProofFamilyWorkflowAdapter } from "../src/workflow/orchestrator.js";
-import { computeFraudProofRawL1PointId } from "../src/workflow/raw-l1-snapshot.js";
 import type { SignedTransactionRecoveryObservation } from "../src/workflow/signed-transaction-reconciliation.js";
 import {
   type LocallyEvaluatedTransaction,
@@ -59,6 +45,23 @@ import {
   h32,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
+import {
+  certificateFor,
+  chainPoint,
+  confirmedEntry,
+  HEADER_HASH,
+  ledgerReads,
+  observe,
+  POLICY_ID,
+  publicationsFor,
+  SCRIPT,
+  SIGNER,
+  stageObservation,
+  STATE_QUEUE_OUT_REF,
+  THREAD_OUT_REF,
+  utxo,
+  workflowIdentity,
+} from "./support/tier3-workflow-fixtures.js";
 
 // The double-spend preflight must reach a real builder's pre-submit boundary:
 // only the init builder is replaced, so all the adapter does stays under test.
@@ -66,137 +69,6 @@ vi.mock("../src/submit-init.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/submit-init.js")>()),
   submitInit: vi.fn(),
 }));
-
-const POLICY_ID = "91".repeat(28);
-const HEADER_HASH = h28(0x71);
-const THREAD_OUT_REF = `${h32(0x72)}#0`;
-const STATE_QUEUE_OUT_REF = `${h32(0x73)}#0`;
-const SCRIPT: MintingPolicy = { type: "Native", script: "8200" };
-const SIGNER: ResolvedProverSigner = {
-  source: "tier3-test",
-  address: "addr_test1_tier3_funding",
-  proofMaterialsAddress: "addr_test1_tier3_test",
-  paymentKeyHash: "81".repeat(28),
-  selectWallet: () => undefined,
-};
-
-const chainPoint = (blockNo: number, slot: number, blockHash: string) => {
-  const value = { blockNo: String(blockNo), slot: String(slot), blockHash };
-  return { ...value, pointId: computeFraudProofRawL1PointId(value) };
-};
-
-const stageObservation = (stage: DoubleSpendWorkflowStage) => ({
-  provenance: {
-    trustClass: "authenticated_cardano_l1",
-    sourceId: "local-node-test",
-    grade: "security",
-  } as const,
-  stage,
-});
-
-const utxo = ({
-  txHash,
-  outputIndex,
-  address = SIGNER.proofMaterialsAddress,
-  datum,
-  assets = { lovelace: 5_000_000n },
-  scriptRef,
-}: {
-  readonly txHash: string;
-  readonly outputIndex: number;
-  readonly address?: string;
-  readonly datum?: string;
-  readonly assets?: Readonly<Record<string, bigint>>;
-  readonly scriptRef?: MintingPolicy;
-}): UTxO => ({
-  txHash,
-  outputIndex,
-  address,
-  assets,
-  ...(datum === undefined ? {} : { datum }),
-  ...(scriptRef === undefined ? {} : { scriptRef }),
-});
-
-const publicationsFor = (
-  plan: ReturnType<typeof planFaultProofFieldOpening>,
-): readonly UTxO[] =>
-  plan.plan.publications.map((publication, index) =>
-    utxo({
-      txHash: h32(0x20 + index),
-      outputIndex: 0,
-      datum: fieldPreimagePublicationDatumCbor(publication.bytes),
-    }),
-  );
-
-const certificateFor = ({
-  plan,
-  network,
-}: {
-  readonly plan: ReturnType<typeof planFaultProofFieldOpening>;
-  readonly network: "Preview";
-}): UTxO => {
-  const certification = deriveFieldPreimageCertification(plan.plan);
-  const unit = `${POLICY_ID}${FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX}`;
-  return utxo({
-    txHash: h32(0x61),
-    outputIndex: 0,
-    address: fieldPreimageCertificateAddress({
-      network,
-      certificatePolicyId: POLICY_ID,
-    }),
-    datum: certification.datumCbor,
-    assets: { lovelace: 5_000_000n, [unit]: 1n },
-  });
-};
-
-/** Ledger reads, by address and by out-ref, over the current outputs. */
-const ledgerReads = (
-  live: () => readonly [materials: readonly UTxO[], others: readonly UTxO[]],
-) => ({
-  utxosAt: async (address: string) =>
-    live()[address === SIGNER.proofMaterialsAddress ? 0 : 1],
-  utxosByOutRef: async (outRefs: readonly OutRef[]) =>
-    live()
-      .flat()
-      .filter(({ txHash, outputIndex }) =>
-        outRefs.some(
-          (ref) => ref.txHash === txHash && ref.outputIndex === outputIndex,
-        ),
-      ),
-});
-
-const confirmedEntry = (actionId: string): FraudProofWorkflowJournalEntry =>
-  ({
-    event: { kind: "confirmed", actionId, txHash: h32(0x41) },
-  }) as FraudProofWorkflowJournalEntry;
-
-const workflowIdentity = (
-  category: "doubleSpend" | "networkId",
-): FraudProofWorkflowIdentity => ({
-  schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  deploymentFingerprint: "d1".repeat(32),
-  category,
-  target: { kind: "state_queue_header", headerHash: HEADER_HASH },
-});
-
-const observe = async ({
-  adapter,
-  category,
-  artifact,
-  entries = [],
-}: {
-  readonly adapter: FraudProofFamilyWorkflowAdapter;
-  readonly category: "doubleSpend" | "networkId";
-  readonly artifact: JournalJsonObject;
-  readonly entries?: readonly FraudProofWorkflowJournalEntry[];
-}) => {
-  return await adapter.observe({
-    identity: workflowIdentity(category),
-    workflowId: h32(0x51),
-    artifact,
-    entries,
-  });
-};
 
 describe("Q38 tier-3 workflow action chains", () => {
   it("doubleSpend journals healing publications and certification before the proof step", async () => {
@@ -346,6 +218,7 @@ describe("Q38 tier-3 workflow action chains", () => {
       adapter,
       category: "doubleSpend",
       artifact,
+      published: [...walletUtxos, ...certificateUtxos],
     });
     expect(certification).toMatchObject({
       kind: "action_required",
@@ -356,6 +229,7 @@ describe("Q38 tier-3 workflow action chains", () => {
       adapter,
       category: "doubleSpend",
       artifact,
+      published: [...walletUtxos, ...certificateUtxos],
       entries: [confirmedEntry(certification.action.actionId)],
     });
     expect(healedCertification).toMatchObject({
@@ -366,7 +240,12 @@ describe("Q38 tier-3 workflow action chains", () => {
     const certificate = certificateFor({ plan, network: "Preview" });
     certificateUtxos = [certificate];
     await expect(
-      observe({ adapter, category: "doubleSpend", artifact }),
+      observe({
+        adapter,
+        category: "doubleSpend",
+        artifact,
+        published: [...walletUtxos, ...certificateUtxos],
+      }),
     ).resolves.toMatchObject({
       kind: "action_required",
       action: {
@@ -597,6 +476,7 @@ describe("Q38 tier-3 workflow action chains", () => {
       adapter,
       category: "networkId",
       artifact,
+      published: [...walletUtxos, ...certificateUtxos],
     });
     expect(certification).toMatchObject({
       kind: "action_required",
@@ -608,6 +488,7 @@ describe("Q38 tier-3 workflow action chains", () => {
         adapter,
         category: "networkId",
         artifact,
+        published: [...walletUtxos, ...certificateUtxos],
         entries: [confirmedEntry(certification.action.actionId)],
       }),
     ).resolves.toMatchObject({
@@ -618,7 +499,12 @@ describe("Q38 tier-3 workflow action chains", () => {
     const certificate = certificateFor({ plan, network: "Preview" });
     certificateUtxos = [certificate];
     await expect(
-      observe({ adapter, category: "networkId", artifact }),
+      observe({
+        adapter,
+        category: "networkId",
+        artifact,
+        published: [...walletUtxos, ...certificateUtxos],
+      }),
     ).resolves.toMatchObject({
       kind: "action_required",
       action: {
