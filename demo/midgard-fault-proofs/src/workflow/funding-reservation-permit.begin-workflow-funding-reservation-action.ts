@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { type TxSigned } from "@lucid-evolution/lucid";
 
+import { proofMaterialsAddressOfFundingAddress } from "../funding/proof-materials-address.js";
 import { workflowActuationPermitIsReconciliationOnly } from "./actuation-permit.js";
 import {
   actionKind,
@@ -98,7 +99,9 @@ export const assertFundingSubmissionAuthority = (state: PermitState): void => {
 
 /** Begins the spend back `action` under reconciliation-only authority: it
  * spends its staging output alone, so it reserves no wallet coin, for its
- * body or its collateral. */
+ * body or its collateral. The staging output sits at our proof-materials
+ * address, which the reservation tracks: reserved there, it leaves the
+ * reservation with the spend back. */
 const beginReconciliationReclaim = async (
   state: PermitState,
   action: FraudProofWorkflowAction,
@@ -108,7 +111,16 @@ const beginReconciliationReclaim = async (
     throw new Error("production funding reservation is not active");
   state.currentActionKind = actionKind(action);
   state.currentActionDigest = computeDeploymentManifestJsonDigest(action);
-  state.currentFundingOutRefs = Object.freeze([]);
+  const materials = proofMaterialsAddressOfFundingAddress(
+    state.snapshot.walletAddress,
+  );
+  state.currentFundingOutRefs = Object.freeze(
+    state.snapshot.activeInputs
+      .map(({ outRef }) => outRef)
+      .filter(
+        (outRef) => state.resolvedInputs.get(outRef)?.address === materials,
+      ),
+  );
   state.currentRequiredFundingOutRefs = Object.freeze([]);
   reconciliationReclaims.add(state);
 };
