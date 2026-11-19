@@ -91,5 +91,9 @@ export {
 export * from "./sqlite-busy.js";
 export * from "./superseded-attempt-read-schedule.js";
 export * from "./transaction-boundary.js";
+export {
+  FAULT_PROOF_RESTART_WAIT,
+  type WalletOnlySend,
+} from "./wallet-only-send-gate.js";
 export * from "./withdrawn-input.js";
 export * from "./withdrawn-reference-input.js";

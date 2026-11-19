@@ -42,6 +42,7 @@ import {
 } from "../workflow/orchestrator.js";
 import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
 import { scriptDecodeDeploymentFromReferences } from "../workflow/script-decode-prerequisite.deployment.js";
+import { type WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
 import { createValidationTraceDisputeWorkflowAdapter } from "./adapter.js";
 import { createValidationTraceCaseHistory } from "./case-history.js";
 import {
@@ -326,10 +327,12 @@ export const runOrResumeManifestBoundValidationTraceDisputeWorkflow = async ({
   workflow,
   sources,
   journal,
+  walletOnlySend,
 }: {
   readonly workflow: ManifestBoundValidationTraceDisputeWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly journal: FraudProofWorkflowJournalStore;
+  readonly walletOnlySend: WalletOnlySend;
 }): Promise<
   FraudProofWorkflowRunResult | ValidationTraceAwaitingCounterparty
 > =>
@@ -354,5 +357,6 @@ export const runOrResumeManifestBoundValidationTraceDisputeWorkflow = async ({
       journal,
       terminalVerifier: workflow.terminalVerifier,
       releaseFinalityAuthority: workflow.releaseFinalityAuthority,
+      walletOnlySend,
     }),
   );

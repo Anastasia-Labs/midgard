@@ -36,6 +36,7 @@ import {
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
 import { terminalVerifierOf } from "./support/terminal-verifier.js";
+import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
 
 export const DEPLOYMENT_FINGERPRINT = "d1".repeat(32);
 
@@ -312,6 +313,7 @@ export const run = async ({
   readonly now?: () => Date;
 }) =>
   await runFraudProofWorkflow({
+    walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
     deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
     evidence,
     detections: [detection(evidence)],

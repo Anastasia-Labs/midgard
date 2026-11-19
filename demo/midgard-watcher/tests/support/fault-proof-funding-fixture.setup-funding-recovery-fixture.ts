@@ -30,6 +30,7 @@ import {
   buildFixtureTransaction,
   outRefCbor,
 } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
+import { WALLET_ONLY_SEND_ALWAYS_OPEN_ON_PREVIEW } from "@al-ft/midgard-fault-proofs/test-support/wallet-only-send-always-open";
 import {
   CML,
   credentialToAddress,
@@ -397,6 +398,7 @@ export const setupFundingRecoveryFixture = async (
       journal,
       releaseFinalityAuthority: finality,
       terminalVerifier: chain.terminalVerifier,
+      walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN_ON_PREVIEW,
     });
   const journal = bind(old, original);
   const initial = await run(journal);

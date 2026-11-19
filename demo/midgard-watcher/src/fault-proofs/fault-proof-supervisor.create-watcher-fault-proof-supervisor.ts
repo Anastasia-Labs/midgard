@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   isWorkflowActuationRevokedError,
   type WorkflowActuationRevokedError,
@@ -8,7 +9,10 @@ import {
 
 import type { WatcherProofRetention } from "../l1-follower/proof-retention.js";
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "./fault-proof-application.js";
-import type { WatcherFaultProofExecution } from "./fault-proof-execution.js";
+import type {
+  WatcherFaultProofExecution,
+  WatcherFaultProofExecutionAdmission,
+} from "./fault-proof-execution.js";
 import { createSupervisor } from "./fault-proof-supervisor.create-supervisor.js";
 import {
   type SupervisorDependencies,
@@ -17,6 +21,7 @@ import {
   type WatcherFaultProofSupervisor,
   type WatcherJournalBusyRequeue,
 } from "./fault-proof-supervisor.validate-job.js";
+import type { WatcherL1Clock } from "./wallet-only-send-open.js";
 import type { WatcherDecisionHold } from "./watcher-decision-hold.js";
 import {
   createWatcherWorkflowJournal,
@@ -46,6 +51,8 @@ export const createWatcherFaultProofSupervisor = (input: {
   readonly deploymentFingerprint: string;
   readonly deadlineAlertHeadroomMs: number;
   readonly queueAuthenticationKey: Uint8Array;
+  /** The L1 chain the restart wait reads. */
+  readonly l1Clock: WatcherL1Clock;
   readonly execution: Pick<
     WatcherFaultProofExecution,
     "verifyCompleted" | "execute"
@@ -70,6 +77,7 @@ export const createWatcherFaultProofSupervisor = (input: {
     deadlineAlertHeadroomMs: input.deadlineAlertHeadroomMs,
     queueAuthenticationKey: input.queueAuthenticationKey,
     nowMs: Date.now,
+    l1Clock: input.l1Clock,
     exposeUnsafeRunnerForTest: false,
     proofRetention: input.proofRetention,
     reservationDecisionHolds: input.reservationDecisionHolds,
@@ -133,8 +141,13 @@ export const unsafeCreateWatcherFaultProofSupervisorForTest = (input: {
   readonly deploymentFingerprint: string;
   readonly deadlineAlertHeadroomMs?: number;
   readonly unsafeNowMsForTest?: () => number;
+  /** Defaults to no applied block, so the restart wait never opens. */
+  readonly unsafeL1ClockForTest?: WatcherL1Clock;
   readonly unsafeQueueAuthenticationKeyForTest?: Uint8Array;
-  readonly run: (job: WatcherFaultProofJob) => Promise<unknown>;
+  readonly run: (
+    job: WatcherFaultProofJob,
+    admission: WatcherFaultProofExecutionAdmission,
+  ) => Promise<unknown>;
   readonly unsafeIsActuationRevokedErrorForTest?: (
     error: unknown,
   ) => error is WorkflowActuationRevokedError;
@@ -157,10 +170,14 @@ export const unsafeCreateWatcherFaultProofSupervisorForTest = (input: {
       input.unsafeQueueAuthenticationKeyForTest ??
       Uint8Array.from({ length: 32 }, () => 0xa5),
     nowMs: input.unsafeNowMsForTest ?? (() => 0),
+    l1Clock: input.unsafeL1ClockForTest ?? {
+      slotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preview,
+      appliedSlot: () => null,
+    },
     exposeUnsafeRunnerForTest: true,
     dependencies: Object.freeze({
       categories: WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
-      run: async ({ job }) => await input.run(job),
+      run: async ({ job, admission }) => await input.run(job, admission),
       // Within rollback recovery by default, so nothing is marked.
       verifyCompleted:
         input.unsafeVerifyCompletedForTest ??

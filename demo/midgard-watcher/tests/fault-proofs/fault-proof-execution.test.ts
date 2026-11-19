@@ -272,7 +272,7 @@ describe("supervisor execution adapter with durable funding", () => {
     const outcome = await test.execution.execute({
       ...test.input,
       job: { ...test.input.job, mode: "run" },
-      admission: { mode: "run", funding: "create_or_resume" },
+      admission: test.runAdmission,
     });
     expect(outcome).toMatchObject({
       kind: "retryable",
@@ -292,7 +292,7 @@ describe("supervisor execution adapter with durable funding", () => {
     const outcome = await test.execution.execute({
       ...test.input,
       job: { ...test.input.job, mode: "run" },
-      admission: { mode: "run", funding: "create_or_resume" },
+      admission: test.runAdmission,
     });
     expect(outcome).toMatchObject({
       kind: "pending",
@@ -384,7 +384,7 @@ describe("supervisor execution adapter with durable funding", () => {
       const input = {
         ...test.input,
         job: { ...test.input.job, mode: "run" },
-        admission: { mode: "run", funding: "create_or_resume" },
+        admission: test.runAdmission,
       } as const;
       let before: unknown;
       for (let run = 1; run <= 3; run += 1) {

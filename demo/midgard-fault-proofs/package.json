@@ -63,6 +63,10 @@
       "midgard-source": "./tests/support/cross-block-raw-emulator.ts",
       "types": "./tests/support/cross-block-raw-emulator.ts"
     },
+    "./test-support/wallet-only-send-always-open": {
+      "midgard-source": "./tests/support/wallet-only-send-always-open.ts",
+      "types": "./tests/support/wallet-only-send-always-open.ts"
+    },
     "./test-support/transition-trace-retained": {
       "midgard-source": "./tests/support/transition-trace-retained.ts",
       "types": "./tests/support/transition-trace-retained.ts"

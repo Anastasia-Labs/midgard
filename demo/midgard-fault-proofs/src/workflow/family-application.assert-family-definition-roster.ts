@@ -20,6 +20,7 @@ import type {
   FraudProofWorkflowTerminalVerifier,
 } from "./orchestrator.js";
 import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy.js";
+import type { WalletOnlySend } from "./wallet-only-send-gate.js";
 
 export const FAMILY_APPLICATION_RECORD =
   "midgard-production-family-application-record-v1" as const;
@@ -107,6 +108,7 @@ export type FamilyApplicationRecord<
     readonly sources: readonly RetainedDaPayloadSource[];
     readonly journal: FraudProofWorkflowJournalStore;
     readonly mode: "run" | "resume";
+    readonly walletOnlySend: WalletOnlySend;
   }) => Promise<unknown>;
   /** Whether the constructed workflow must carry the invocation's digest. */
   bindsDecisionDigest: boolean;

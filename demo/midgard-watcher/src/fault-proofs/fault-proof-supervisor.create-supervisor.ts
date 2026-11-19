@@ -51,6 +51,10 @@ import {
   type WatcherJournalBusyRequeue,
 } from "./fault-proof-supervisor.validate-job.js";
 import {
+  createWatcherRestartWait,
+  type WatcherL1Clock,
+} from "./wallet-only-send-open.js";
+import {
   isWatcherProofDecisionMissingError,
   type WatcherDecisionHold,
 } from "./watcher-decision-hold.js";
@@ -73,6 +77,8 @@ export const createSupervisor = (input: {
   readonly deadlineAlertHeadroomMs: number;
   readonly queueAuthenticationKey: Uint8Array;
   readonly nowMs: () => number;
+  /** The L1 chain the restart wait reads. */
+  readonly l1Clock: WatcherL1Clock;
   readonly dependencies: SupervisorDependencies;
   readonly exposeUnsafeRunnerForTest: boolean;
   /** Holds each open objective's L1 history past k (E1 ruling). */
@@ -195,13 +201,11 @@ export const createSupervisor = (input: {
   // Objectives whose job is being registered, a handover included.
   const registering = new Set<string>();
   // Authority generations are context for one objective, never another owner.
-  const pendingUpdates = new Map<
-    string,
-    Readonly<{
-      job: WatcherFaultProofJob;
-      actuationPermit: WorkflowActuationPermit | null;
-    }>
-  >();
+  type Update = Readonly<{
+    job: WatcherFaultProofJob;
+    actuationPermit: WorkflowActuationPermit | null;
+  }>;
+  const pendingUpdates = new Map<string, Update>();
   const selectedExecutions = new Map<string, string>();
   const processedContexts = new Map<string, string>();
   // Objectives whose session stalled: each yields its place to other queued
@@ -243,10 +247,6 @@ export const createSupervisor = (input: {
       ? Object.freeze({ kind: "pending", reason: "completion_not_final" })
       : verification;
   };
-  type Update = Readonly<{
-    job: WatcherFaultProofJob;
-    actuationPermit: WorkflowActuationPermit | null;
-  }>;
   const transportRetries = new Map<
     string,
     {
@@ -351,6 +351,8 @@ export const createSupervisor = (input: {
   });
 
   const now = supervisorClock(input.nowMs);
+  // Built once: no requeue or later admission moves the instant it opens at.
+  const restartWait = createWatcherRestartWait(input.l1Clock, now);
   const remainingSafeStartMs = (job: WatcherFaultProofJob): bigint =>
     BigInt(job.deadline!.latestSafeStartAtMs) - BigInt(now());
 
@@ -363,14 +365,12 @@ export const createSupervisor = (input: {
       return left.deadline === right.deadline ? 0 : left.deadline ? -1 : 1;
     const leftDeadline = BigInt(left.deadline.latestSafeStartAtMs);
     const rightDeadline = BigInt(right.deadline.latestSafeStartAtMs);
-    if (leftDeadline !== rightDeadline) {
+    if (leftDeadline !== rightDeadline)
       return leftDeadline < rightDeadline ? -1 : 1;
-    }
     const leftMaturity = BigInt(left.deadline.maturityAtMs);
     const rightMaturity = BigInt(right.deadline.maturityAtMs);
-    if (leftMaturity !== rightMaturity) {
+    if (leftMaturity !== rightMaturity)
       return leftMaturity < rightMaturity ? -1 : 1;
-    }
     const leftCategory = categories.indexOf(left.category);
     const rightCategory = categories.indexOf(right.category);
     if (leftCategory !== rightCategory) return leftCategory - rightCategory;
@@ -526,6 +526,7 @@ export const createSupervisor = (input: {
               ? "resume_only"
               : "create_or_resume",
           ...(timing === "on_time" ? {} : { startedLate: job.deadline! }),
+          walletOnlySend: restartWait.walletOnlySend,
         };
         outcome = await input.dependencies.run({
           job: { ...invocationJob, mode: admission.mode },
@@ -631,6 +632,7 @@ export const createSupervisor = (input: {
         return;
       }
       processedContexts.set(key, contextKey(job));
+      restartWait.finished(key, outcome);
       openDeadlines.finished(job, runnerOutcomeKind(outcome));
       if (isWatcherFaultProofContinuationStall(outcome)) yielded.add(key);
       entry.resolve(outcome);
@@ -692,9 +694,8 @@ export const createSupervisor = (input: {
     rawJob: WatcherFaultProofJob | UnsafeWatcherFaultProofJobForTest,
     actuationPermit: WorkflowActuationPermit | null,
   ): Promise<Readonly<{ completion: Promise<unknown> }>> => {
-    if (phase !== "accepting" && phase !== "closing") {
+    if (phase !== "accepting" && phase !== "closing")
       throw new Error(`watcher fault-proof supervisor is ${phase}`);
-    }
     const job = validateJob(
       rawJob,
       categories,
@@ -728,6 +729,9 @@ export const createSupervisor = (input: {
       return Object.freeze({ completion: existing.completion });
     }
     if (processedContexts.get(key) === contextKey(job))
+      return { completion: Promise.resolve(undefined) };
+    // Held by the restart wait: the next observation after it is over admits it.
+    if (!(await restartWait.admits(key)))
       return { completion: Promise.resolve(undefined) };
     const retry = transportRetries.get(key);
     if (retry?.timer !== undefined) {
@@ -808,14 +812,12 @@ export const createSupervisor = (input: {
   const schedule = (
     rawJob: WatcherFaultProofJob | UnsafeWatcherFaultProofJobForTest,
     actuationPermit: WorkflowActuationPermit | null,
-  ): Promise<Readonly<{ completion: Promise<unknown> }>> => {
-    const operation = serializeSchedule(async () => {
+  ): Promise<Readonly<{ completion: Promise<unknown> }>> =>
+    serializeSchedule(async () => {
       if (phase !== "accepting")
         throw new Error(`watcher fault-proof supervisor is ${phase}`);
       return await scheduleImpl(rawJob, actuationPermit);
     });
-    return operation;
-  };
 
   const runOrResume = (
     rawJob: UnsafeWatcherFaultProofJobForTest,

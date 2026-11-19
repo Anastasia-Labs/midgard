@@ -35,6 +35,7 @@ import {
   detectOn,
   type Scene,
 } from "./validation-trace-dispute-open-scene.js";
+import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./wallet-only-send-always-open.js";
 
 /** The deployment the runner builds against, from the scene's contracts. */
 export const runnerDeployment = (
@@ -201,6 +202,7 @@ export const makeRunner = (
     journal,
     runOnce: async (block) => {
       const result = await runFraudProofWorkflow({
+        walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
         deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
         evidence: block.evidence,
         detections: await detectionsOf(block),

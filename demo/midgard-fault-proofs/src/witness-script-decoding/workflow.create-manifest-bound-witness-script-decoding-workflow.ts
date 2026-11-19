@@ -26,6 +26,7 @@ import {
   SCRIPT_DECODE_REFERENCE_SCRIPTS,
   scriptDecodeDeploymentFromReferences,
 } from "../workflow/script-decode-prerequisite.js";
+import { type WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
 import {
   type BoundContext,
   createWitnessScriptDecodingRecoveryPorts,
@@ -172,9 +173,16 @@ export const executeManifestBoundWitnessScriptDecodingWorkflow = async ({
   workflow,
   sources,
   journal,
+  walletOnlySend,
 }: {
   readonly workflow: ManifestBoundWitnessScriptDecodingWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly journal: FraudProofWorkflowJournalStore;
+  readonly walletOnlySend: WalletOnlySend;
 }) =>
-  await executeManifestBoundFamilyRecovery({ ...workflow, sources, journal });
+  await executeManifestBoundFamilyRecovery({
+    ...workflow,
+    sources,
+    journal,
+    walletOnlySend,
+  });

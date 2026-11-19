@@ -19,6 +19,7 @@ import {
   createFraudProofWorkflowRegistry,
   runFraudProofWorkflow,
 } from "../workflow/orchestrator.js";
+import { type WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
 import type { RetainedDaPayloadSource } from "./fetch.js";
 import {
   captureTransitionTraceL1Events,
@@ -152,10 +153,12 @@ export const runOrResumeManifestBoundTransitionTraceWorkflow = async ({
   workflow,
   sources,
   journal,
+  walletOnlySend,
 }: {
   workflow: ManifestBoundTransitionTraceWorkflow;
   sources: readonly RetainedDaPayloadSource[];
   journal: FraudProofWorkflowJournalStore;
+  readonly walletOnlySend: WalletOnlySend;
 }) => {
   const cell = cells.get(workflow);
   if (cell === undefined)
@@ -255,5 +258,6 @@ export const runOrResumeManifestBoundTransitionTraceWorkflow = async ({
     journal,
     terminalVerifier: workflow.terminalVerifier,
     releaseFinalityAuthority: workflow.releaseFinalityAuthority,
+    walletOnlySend,
   });
 };

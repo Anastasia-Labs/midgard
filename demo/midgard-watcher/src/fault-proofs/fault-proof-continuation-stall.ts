@@ -1,4 +1,7 @@
-import { FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED } from "@al-ft/midgard-fault-proofs";
+import {
+  FAULT_PROOF_RESTART_WAIT,
+  FRAUD_PROOF_WORKFLOW_CONTINUATION_STALLED,
+} from "@al-ft/midgard-fault-proofs";
 
 import { WATCHER_PACKAGE_NAME } from "../runtime/scaffold.js";
 import { holdWatcherFaultProofOnFunding } from "./fault-proof-funding-hold.js";
@@ -72,6 +75,31 @@ const namedStateOf = (
     typeof state.alarm === "boolean"
     ? { name: state.name, alarm: state.alarm }
     : undefined;
+};
+
+/** A run handed back pending, to resume on a later observation. It names
+ * the restart wait when that holds it (`FAULT_PROOF_RESTART_WAIT`), which
+ * keeps it from being admitted again before the wait is over. */
+export type WatcherFaultProofPendingOutcome = Readonly<{
+  kind: "pending";
+  resume: "await_observation";
+  reason: string;
+  namedState?: typeof FAULT_PROOF_RESTART_WAIT;
+}>;
+
+/** The pending outcome of a run's pending `result`. */
+export const watcherFaultProofPendingOutcome = (
+  result: Readonly<{ kind: unknown; reason: unknown }>,
+): WatcherFaultProofPendingOutcome => {
+  const named = namedStateOf(result);
+  return Object.freeze({
+    kind: "pending",
+    resume: "await_observation",
+    reason: String(result.reason),
+    ...(named?.name === FAULT_PROOF_RESTART_WAIT
+      ? { namedState: FAULT_PROOF_RESTART_WAIT }
+      : {}),
+  });
 };
 
 /** The reasons of the actions a run skipped as unbuilt, each an alarm. */

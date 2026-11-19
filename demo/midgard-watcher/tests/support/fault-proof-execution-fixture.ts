@@ -9,6 +9,7 @@ import {
   createWorkflowActuationPermitController,
   type WorkflowAdapterRunnerInput,
 } from "@al-ft/midgard-fault-proofs";
+import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "@al-ft/midgard-fault-proofs/test-support/wallet-only-send-always-open";
 import type { UTxO } from "@lucid-evolution/lucid";
 import { type Mock, vi } from "vitest";
 
@@ -119,13 +120,23 @@ export const setupFaultProofExecution = async (
       deadline: null,
     },
     actuationPermit: controller.permit,
-    admission: { mode: "resume", funding: "resume_only" },
+    admission: {
+      mode: "resume",
+      funding: "resume_only",
+      walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
+    },
   } as const;
   return {
     fixture,
     controller,
     execution,
     input,
+    /** The admission of a fresh run, with the restart wait over. */
+    runAdmission: {
+      mode: "run",
+      funding: "create_or_resume",
+      walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
+    } as const,
     getUtxos,
     getUtxosByOutRef,
     runOrResume,

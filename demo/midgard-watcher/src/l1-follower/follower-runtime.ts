@@ -95,6 +95,9 @@ export type WatcherFollowerRuntime = Readonly<{
   proofRetention: WatcherProofRetention;
   /** The latest follow status; null before the loop's first status. */
   status(): FollowStatus | null;
+  /** The slot of the last applied block (the cursor, not the node's tip);
+   * null before the first block is applied. */
+  appliedSlot(): number | null;
   /** Every reason the follower holds the watcher unready; empty when ready. */
   readiness(): Promise<readonly WatcherFollowerReadiness[]>;
   /** Named conditions for status and metrics that never fail readiness. */
@@ -395,6 +398,7 @@ export const openWatcherFollowerRuntime = (
     provider,
     proofRetention,
     status: () => latest,
+    appliedSlot: () => latest?.cursor?.slot ?? null,
     readiness,
     degradations: async () => {
       // A failed read is named (`l1_tx_inputs_unreadable`,

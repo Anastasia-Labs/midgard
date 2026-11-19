@@ -59,6 +59,7 @@ import {
 import { stageWorkflowRows } from "../support/fault-proof-funding-fixture.workflow-store.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
 import { waitForFaultProofSupervisorIdle } from "../support/fault-proof-supervisor-idle.js";
+import { NO_APPLIED_BLOCK_L1_CLOCK } from "../support/no-applied-block-l1-clock.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
 import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 import { registerDepartedRevokedTests } from "./fault-proof-objective-progress.departed-revoked.js";
@@ -283,6 +284,7 @@ export const setup = async (
       deadlineAlertHeadroomMs:
         MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
       queueAuthenticationKey: new Uint8Array(32).fill(0xa5),
+      l1Clock: NO_APPLIED_BLOCK_L1_CLOCK,
       execution,
     });
     supervisors.push(supervisor);

@@ -43,6 +43,7 @@ import {
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
 import { terminalVerifierOf } from "./support/terminal-verifier.js";
+import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
 
 const hash = (byte: string): string => byte.repeat(32);
 const headerHash = "ab".repeat(28);
@@ -435,6 +436,7 @@ describe("production da-hash-preimage workflow V1", () => {
     const journal = new MemoryFraudProofWorkflowJournalStore();
     const run = () =>
       runDaHashPreimageWorkflowFromRetainedDa({
+        walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
         deploymentFingerprint,
         observation: routed.observation,
         sources: [routed.source],

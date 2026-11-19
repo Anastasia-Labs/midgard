@@ -42,6 +42,7 @@ import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
 } from "./helpers/canonical-block-evidence-fixture.js";
+import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
 import {
   DEPLOYMENT_FINGERPRINT,
   makeAdapter,
@@ -354,6 +355,7 @@ describe("compiled production workflow boundary", () => {
     };
     await expect(
       runFraudProofWorkflowFromRetainedDa({
+        walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
         deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
         observation: authenticatedHeaderObservation(fixture),
         sources: [source],
@@ -479,6 +481,7 @@ describe("compiled production workflow boundary", () => {
     try {
       await expect(
         runFraudProofWorkflowCli({
+          walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
           mode: "run",
           category: "invalidRange",
           deploymentFingerprint: DEPLOYMENT_FINGERPRINT,

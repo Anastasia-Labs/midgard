@@ -4,6 +4,7 @@ import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import { WorkflowActionChangedError } from "./action-changed.js";
 import {
   assertWorkflowJournalActuation,
+  type WorkflowActuationCheckpoint,
   workflowActuationDecisionDigest,
   workflowJournalIsReconciliationOnly,
 } from "./actuation-permit.js";
@@ -101,6 +102,13 @@ import {
   isFraudProofResolvedByAnotherRecordError,
   journalCreatedRecord,
 } from "./resolved-by-another-record.js";
+import {
+  assertWalletOnlyValidityBound,
+  faultProofRestartWaitNamedState,
+  faultProofRestartWaitReason,
+  spendsOnlyWalletCoins,
+  type WalletOnlySend,
+} from "./wallet-only-send-gate.js";
 import { artifactPendingResult } from "./workflow-artifact-pending.js";
 /**
  * Q51/W-O4 single-command core. Preparation, every submission intent,
@@ -122,6 +130,7 @@ export const runAdmittedFraudProofWorkflow = async ({
   maxSubmissionAttempts = 3,
   maxActions = 64,
   now = () => new Date(),
+  walletOnlySend,
 }: {
   readonly deploymentFingerprint: string;
   readonly category: FraudProofCatalogueCategoryName;
@@ -141,6 +150,8 @@ export const runAdmittedFraudProofWorkflow = async ({
   readonly maxSubmissionAttempts?: number;
   readonly maxActions?: number;
   readonly now?: () => Date;
+  /** This process's restart wait and latest wallet-only bound (`wallet-only-send-gate.ts`). */
+  readonly walletOnlySend: WalletOnlySend;
 }): Promise<FraudProofWorkflowRunResult> => {
   if (
     !Number.isSafeInteger(maxSubmissionAttempts) ||
@@ -168,13 +179,15 @@ export const runAdmittedFraudProofWorkflow = async ({
     terminalVerifier,
     releaseFinality,
   });
-  assertWorkflowJournalActuation({
-    journal,
-    deploymentFingerprint,
-    category,
-    headerHash,
-    checkpoint: "workflow_resume",
-  });
+  const assertActuation = (checkpoint: WorkflowActuationCheckpoint): void =>
+    assertWorkflowJournalActuation({
+      journal,
+      deploymentFingerprint,
+      category,
+      headerHash,
+      checkpoint,
+    });
+  assertActuation("workflow_resume");
   const decisionDigest = workflowActuationDecisionDigest(journal);
   const identity = normalizeFraudProofWorkflowIdentity({
     schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
@@ -310,13 +323,7 @@ export const runAdmittedFraudProofWorkflow = async ({
     } catch (cause) {
       return artifactPendingResult(cause, resumeOnObservation);
     }
-    assertWorkflowJournalActuation({
-      journal,
-      deploymentFingerprint,
-      category,
-      headerHash,
-      checkpoint: "workflow_resume",
-    });
+    assertActuation("workflow_resume");
   }
 
   // Limits bound work in this invocation, not the lifetime of the objective.
@@ -371,13 +378,7 @@ export const runAdmittedFraudProofWorkflow = async ({
       !isFinalWorkflowCompletion(latestJournalEvent) &&
       entries.some(({ event }) => event.kind === "confirmed")
     ) {
-      assertWorkflowJournalActuation({
-        journal,
-        deploymentFingerprint,
-        category,
-        headerHash,
-        checkpoint: "before_observe",
-      });
+      assertActuation("before_observe");
       const observed = await observeOrStall(context);
       if ("stalled" in observed) return observed.stalled;
       // A resolution is acted on after this run's attempts are reconciled.
@@ -525,13 +526,7 @@ export const runAdmittedFraudProofWorkflow = async ({
                           journal,
                           transactionHash: intent.txHash,
                         });
-                        assertWorkflowJournalActuation({
-                          journal,
-                          deploymentFingerprint,
-                          category,
-                          headerHash,
-                          checkpoint: "before_submit",
-                        });
+                        assertActuation("before_submit");
                         await append({
                           kind: "rebroadcast_intent",
                           actionId: action.actionId,
@@ -540,13 +535,7 @@ export const runAdmittedFraudProofWorkflow = async ({
                         });
                         rebroadcastAttempted = true;
                         // Durability is asynchronous; revoke checks must follow it too.
-                        assertWorkflowJournalActuation({
-                          journal,
-                          deploymentFingerprint,
-                          category,
-                          headerHash,
-                          checkpoint: "before_submit",
-                        });
+                        assertActuation("before_submit");
                       },
                     }),
               }),
@@ -669,13 +658,7 @@ export const runAdmittedFraudProofWorkflow = async ({
 
     await releaseIdleWorkflowFundingReservation({ journal, workflowId });
 
-    assertWorkflowJournalActuation({
-      journal,
-      deploymentFingerprint,
-      category,
-      headerHash,
-      checkpoint: "before_observe",
-    });
+    assertActuation("before_observe");
     const observed =
       currentObservation === undefined
         ? await observeOrStall({
@@ -697,13 +680,7 @@ export const runAdmittedFraudProofWorkflow = async ({
         observation.terminal.observedAt.confirmationDepth <=
         releaseFinality.policy.automaticRecoveryMaxDepth + 1;
       try {
-        assertWorkflowJournalActuation({
-          journal,
-          deploymentFingerprint,
-          category,
-          headerHash,
-          checkpoint: "before_terminal_verify",
-        });
+        assertActuation("before_terminal_verify");
         const verified = await (
           inclusionOnly
             ? (terminalVerifier.verifyIncluded ?? terminalVerifier.verify)
@@ -732,13 +709,7 @@ export const runAdmittedFraudProofWorkflow = async ({
             releaseFinality,
             inclusionOnly,
           });
-        assertWorkflowJournalActuation({
-          journal,
-          deploymentFingerprint,
-          category,
-          headerHash,
-          checkpoint: "before_terminal_verify",
-        });
+        assertActuation("before_terminal_verify");
       } catch (cause) {
         if (isCallerOwnedWorkflowFailure(cause)) throw cause;
         return await stalled(
@@ -765,13 +736,7 @@ export const runAdmittedFraudProofWorkflow = async ({
         !(inclusionOnly && latestOutcome?.kind === "terminal_included") &&
         !isFinalWorkflowCompletion(latestJournalEvent)
       ) {
-        assertWorkflowJournalActuation({
-          journal,
-          deploymentFingerprint,
-          category,
-          headerHash,
-          checkpoint: "before_terminal_verify",
-        });
+        assertActuation("before_terminal_verify");
         await releaseWorkflowFundingReservation({
           writer,
           event: { kind, terminal, terminalDigest },
@@ -818,23 +783,12 @@ export const runAdmittedFraudProofWorkflow = async ({
       );
     }
     let preflight: FraudProofWorkflowPreflight;
+    let walletOnly = false;
     let adapterPreflightFailed = false;
     try {
-      assertWorkflowJournalActuation({
-        journal,
-        deploymentFingerprint,
-        category,
-        headerHash,
-        checkpoint: beforePreflight,
-      });
+      assertActuation(beforePreflight);
       await beginFundedWorkflowAction({ journal, action, adapter, context });
-      assertWorkflowJournalActuation({
-        journal,
-        deploymentFingerprint,
-        category,
-        headerHash,
-        checkpoint: beforePreflight,
-      });
+      assertActuation(beforePreflight);
       let captured: Awaited<ReturnType<typeof adapter.preflight>>;
       try {
         captured = await adapter.preflight({ ...context, action });
@@ -845,6 +799,13 @@ export const runAdmittedFraudProofWorkflow = async ({
         throw cause;
       }
       preflight = validatePreflight({ action, preflight: captured });
+      walletOnly = spendsOnlyWalletCoins({ journal, preflight });
+      if (walletOnly)
+        assertWalletOnlyValidityBound({
+          actionId: action.actionId,
+          preflight,
+          latestValidToSlot: walletOnlySend.latestValidToSlot,
+        });
     } catch (cause) {
       if (unbuilt.skip(cause)) continue;
       if (
@@ -858,6 +819,13 @@ export const runAdmittedFraudProofWorkflow = async ({
         adapterPreflightFailed ? "preflight" : undefined,
       );
     }
+    // Before anything durable is prepared for the action: a held action
+    // leaves no intent and no prepared reservation transaction behind.
+    if (walletOnly && !(await walletOnlySend.open()))
+      return resumeOnObservation(
+        faultProofRestartWaitReason(action.actionId),
+        faultProofRestartWaitNamedState,
+      );
     const preflightEvent: FraudProofWorkflowJournalEvent = {
       kind: "preflight_passed",
       actionId: action.actionId,
@@ -898,13 +866,7 @@ export const runAdmittedFraudProofWorkflow = async ({
       );
     }
     let submitted: FraudProofWorkflowSubmitResult;
-    assertWorkflowJournalActuation({
-      journal,
-      deploymentFingerprint,
-      category,
-      headerHash,
-      checkpoint: beforeSubmit,
-    });
+    assertActuation(beforeSubmit);
     try {
       await assertWorkflowFundingReservationReadyToSubmit({
         journal,
@@ -917,13 +879,7 @@ export const runAdmittedFraudProofWorkflow = async ({
         );
       throw cause;
     }
-    assertWorkflowJournalActuation({
-      journal,
-      deploymentFingerprint,
-      category,
-      headerHash,
-      checkpoint: beforeSubmit,
-    });
+    assertActuation(beforeSubmit);
     try {
       submitted = await adapter.submit({
         ...context,

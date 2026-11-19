@@ -28,6 +28,7 @@ import {
   fieldGrammarCertificateValidatorFixture,
   realFaultProofBlueprint,
 } from "./field-grammar-certificate-deployment-fixture.js";
+import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./wallet-only-send-always-open.js";
 
 type RecoveryFixture = Awaited<
   ReturnType<typeof customWorkflowRecoveryFixture>
@@ -295,6 +296,7 @@ export const prepareRegisteredFamilyReconciliation = (
         close: async () => undefined,
       }));
       return (await runner.runOrResume({
+        walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
         mode: "resume",
         category,
         deploymentFingerprint,

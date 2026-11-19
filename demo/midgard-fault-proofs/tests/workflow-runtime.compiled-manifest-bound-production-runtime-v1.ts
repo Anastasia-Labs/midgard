@@ -65,6 +65,7 @@ import * as runtime from "../src/workflow/runtime.js";
 import { readWorkflowRuntimeFundingPolicy } from "../src/workflow/runtime-funding-policy.js";
 import { bindWorkflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
 import { familyCommonInfrastructureForTest } from "./support/family-common-infrastructure.js";
+import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
 import {
   admittedActuation,
   DEPLOYMENT,
@@ -934,6 +935,7 @@ describe("compiled manifest-bound production runtime V1", () => {
       });
       expect(runner.runnerVersion).toBe(WORKFLOW_ADAPTER_RUNNER);
       const result = await runner.runOrResume({
+        walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
         mode: "resume",
         category: "doubleSpend",
         deploymentFingerprint: DEPLOYMENT,
@@ -1007,6 +1009,7 @@ describe("compiled manifest-bound production runtime V1", () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     try {
       const running = runner.runOrResume({
+        walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
         mode: "run",
         category: "doubleSpend",
         deploymentFingerprint: DEPLOYMENT,
@@ -1065,6 +1068,7 @@ describe("compiled manifest-bound production runtime V1", () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     try {
       const running = runner.runOrResume({
+        walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
         mode: "resume",
         category: "doubleSpend",
         deploymentFingerprint: DEPLOYMENT,
@@ -1243,6 +1247,7 @@ describe("compiled manifest-bound production runtime V1", () => {
     let rejected: unknown;
     try {
       await runner.runOrResume({
+        walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
         mode: "resume",
         category: "doubleSpend",
         deploymentFingerprint: DEPLOYMENT,
@@ -1397,6 +1402,7 @@ describe("compiled manifest-bound production runtime V1", () => {
       fundingReservationPermit: actuation.fundingReservationPermit,
       journal: new DirectoryFraudProofWorkflowJournalStore(journalDirectory),
       runtimeConfigPath: "/etc/midgard/fraud-proof-runtime-v1.json",
+      walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
     });
     const driveGenericRunOrResume = async ({
       loaded,
@@ -1619,6 +1625,7 @@ describe("compiled manifest-bound production runtime V1", () => {
           async () => loadedRuntime(actuation),
         );
         return await runner.runOrResume({
+          walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
           mode: "run",
           category: "doubleSpend",
           deploymentFingerprint: DEPLOYMENT,

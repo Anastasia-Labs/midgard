@@ -41,6 +41,7 @@ import {
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
 import { terminalVerifierOf } from "./support/terminal-verifier.js";
+import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
 
 const category = "fieldPreimageLengthMismatch";
 const deploymentFingerprint = "22".repeat(32);
@@ -137,6 +138,7 @@ const fixtureFor = async (directory: string) => {
     reconcile: forbidden,
   };
   const input = {
+    walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
     deploymentFingerprint,
     observation: authenticatedHeaderObservation(fixture),
     sources: [

@@ -45,6 +45,7 @@ import {
   type FraudProofReleaseFinalityAuthority,
   validateVerifiedFraudProofReleaseFinalityPolicy,
 } from "./release-finality-policy.js";
+import { type WalletOnlySend } from "./wallet-only-send-gate.js";
 
 /** Resume the existing adapter from its durable evidence only. This entrypoint
  * requires an opaque reconciliation permit and cannot prepare a new execution. */
@@ -56,6 +57,7 @@ export const resumeRecordedFraudProofWorkflow = async (input: {
   readonly adapter: FraudProofFamilyWorkflowAdapter;
   readonly terminalVerifier: FraudProofWorkflowTerminalVerifier;
   readonly releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
+  readonly walletOnlySend: WalletOnlySend;
 }): Promise<FraudProofWorkflowRunResult> => {
   if (!workflowJournalIsReconciliationOnly(input.journal))
     throw new Error(
@@ -112,6 +114,7 @@ export const runFraudProofWorkflow = async ({
   maxSubmissionAttempts,
   maxActions,
   now,
+  walletOnlySend,
 }: {
   readonly deploymentFingerprint: string;
   readonly evidence: CanonicalBlockEvidence;
@@ -124,6 +127,7 @@ export const runFraudProofWorkflow = async ({
   readonly maxSubmissionAttempts?: number;
   readonly maxActions?: number;
   readonly now?: () => Date;
+  readonly walletOnlySend: WalletOnlySend;
 }): Promise<FraudProofWorkflowRunResult> => {
   const verified = await verifiedReleaseFinality({
     deploymentFingerprint,
@@ -163,6 +167,7 @@ export const runFraudProofWorkflow = async ({
     ...(maxSubmissionAttempts === undefined ? {} : { maxSubmissionAttempts }),
     ...(maxActions === undefined ? {} : { maxActions }),
     ...(now === undefined ? {} : { now }),
+    walletOnlySend,
   });
 };
 
@@ -183,6 +188,7 @@ export const runDaHashPreimageWorkflowFromRetainedDa = async ({
   maxSubmissionAttempts,
   maxActions,
   now,
+  walletOnlySend,
 }: {
   readonly deploymentFingerprint: string;
   readonly observation: AuthenticatedStateQueueHeaderObservation;
@@ -195,6 +201,7 @@ export const runDaHashPreimageWorkflowFromRetainedDa = async ({
   readonly maxSubmissionAttempts?: number;
   readonly maxActions?: number;
   readonly now?: () => Date;
+  readonly walletOnlySend: WalletOnlySend;
 }): Promise<FraudProofWorkflowRunResult> => {
   const scope = [...registry.keys()];
   if (scope.length !== 1 || scope[0] !== "daHashPreimage") {
@@ -252,5 +259,6 @@ export const runDaHashPreimageWorkflowFromRetainedDa = async ({
     ...(maxSubmissionAttempts === undefined ? {} : { maxSubmissionAttempts }),
     ...(maxActions === undefined ? {} : { maxActions }),
     ...(now === undefined ? {} : { now }),
+    walletOnlySend,
   });
 };

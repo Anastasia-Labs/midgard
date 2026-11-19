@@ -47,6 +47,7 @@ import {
 import type { FraudProofWorkflowAction } from "../workflow/orchestrator.js";
 import { createStructuredDataPreimageRequirement } from "../workflow/raw-datum-preimage-prerequisite.js";
 import { journaledStepTransaction } from "../workflow/step-transaction.js";
+import { type WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
 import {
   admitWithdrawalMistagWorkflowArtifact,
   prepareWithdrawalMistagWorkflowArtifact,
@@ -337,4 +338,5 @@ export const runOrResumeManifestBoundWithdrawalMistagWorkflow = (input: {
   workflow: ManifestBoundWithdrawalMistagWorkflow;
   sources: readonly RetainedDaPayloadSource[];
   journal: FraudProofWorkflowJournalStore;
+  walletOnlySend: WalletOnlySend;
 }) => runOrResumeManifestBoundFamilyWorkflow(input);

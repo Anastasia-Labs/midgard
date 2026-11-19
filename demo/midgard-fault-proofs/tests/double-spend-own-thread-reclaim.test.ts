@@ -46,6 +46,7 @@ import {
   withPlaceholderDeposit,
 } from "./support/submit-init-emulator-shared.js";
 import { buildAndSubmitUnjournaled } from "./support/submit-unjournaled.js";
+import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
 import {
   DEPLOYMENT_FINGERPRINT,
   makeAdapter,
@@ -222,6 +223,7 @@ const scene = async () => {
   const journal = new MemoryFraudProofWorkflowJournalStore();
   const run = async (): Promise<FraudProofWorkflowRunResult> =>
     await runAdmittedFraudProofWorkflow({
+      walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       category: "doubleSpend",
       headerHash,

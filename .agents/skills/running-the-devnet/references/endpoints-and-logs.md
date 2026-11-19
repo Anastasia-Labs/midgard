@@ -992,6 +992,15 @@ fault-proof execution holds and the L1 follower's reasons are listed by hand
   (`block_time + M/2`) or less is left, or the block cannot be read, it is
   an alarm logged at error level, naming the window's end: the case must
   open by then. Report it with the detail.
+- `fault_proof_restart_wait`: an objective's next transaction spends only
+  wallet coins, and the watcher started less than one wallet-only validity
+  window (3 min) ago, on its clock or on the last block its follower
+  applied. A copy built before the restart may still land within that
+  window, so nothing is sent or journaled yet; the detail is
+  `<category>/<headerHash>: <reason>`. Not an alarm: the objective runs
+  again on each follower change and the hold clears once the window has
+  passed on both. If it lasts much longer, the follower is behind; check
+  `l1_follower_catching_up` and the node.
 - `fault_proof_counterparty_deadline_passed`: an objective still awaits its
   counterparty (a validation-trace case nobody has defended, or a thread
   whose defender has not moved) more than 10 min past the response deadline

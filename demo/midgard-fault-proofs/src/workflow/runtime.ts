@@ -195,9 +195,16 @@ const createManifestBoundWorkflowRunOrResume =
               adapter: workflow.adapter,
               terminalVerifier: workflow.terminalVerifier,
               releaseFinalityAuthority: workflow.releaseFinalityAuthority,
+              walletOnlySend: invocation.walletOnlySend,
             });
           }
-          return record.execute({ workflow, sources, journal, mode });
+          return record.execute({
+            workflow,
+            sources,
+            journal,
+            mode,
+            walletOnlySend: invocation.walletOnlySend,
+          });
         },
       });
     } finally {

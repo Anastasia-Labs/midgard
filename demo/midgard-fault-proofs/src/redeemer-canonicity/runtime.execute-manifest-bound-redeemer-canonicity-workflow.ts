@@ -9,6 +9,7 @@ import {
   type FraudProofWorkflowRunResult,
   runFraudProofWorkflowFromRetainedDa,
 } from "../workflow/orchestrator.js";
+import { type WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
 import {
   type ManifestBoundRedeemerCanonicityWorkflow,
   type ManifestBoundRedeemerCanonicityWorkflowConfig,
@@ -48,10 +49,12 @@ export const executeManifestBoundRedeemerCanonicityWorkflow = async ({
   workflow,
   sources,
   journal,
+  walletOnlySend,
 }: {
   readonly workflow: ManifestBoundRedeemerCanonicityWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly journal: FraudProofWorkflowJournalStore;
+  readonly walletOnlySend: WalletOnlySend;
 }): Promise<FraudProofWorkflowRunResult> => {
   if (
     workflowActuationAuthorizingDecisionDigest(journal) !==
@@ -73,5 +76,6 @@ export const executeManifestBoundRedeemerCanonicityWorkflow = async ({
     journal,
     terminalVerifier: workflow.terminalVerifier,
     releaseFinalityAuthority: workflow.releaseFinalityAuthority,
+    walletOnlySend,
   });
 };

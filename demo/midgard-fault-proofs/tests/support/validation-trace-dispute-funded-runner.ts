@@ -94,6 +94,7 @@ import {
   runnerDeployment,
   unobservedRemoval,
 } from "./validation-trace-dispute-runner.js";
+import { walletOnlySendAlwaysOpenOn } from "./wallet-only-send-always-open.js";
 
 const CATEGORY = "validationTraceDispute" as const;
 
@@ -376,6 +377,7 @@ export const openFundedDispute = async (
       now: () => h.emulator.now(),
     });
     const result = await runFraudProofWorkflow({
+      walletOnlySend: walletOnlySendAlwaysOpenOn(lucid),
       deploymentFingerprint: fingerprint,
       evidence: block.evidence,
       detections: await detectOn(block),

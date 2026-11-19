@@ -62,6 +62,7 @@ import {
 import { type FamilyCategory } from "./family-definition.js";
 import type { FraudProofWorkflowJournalStore } from "./journal.js";
 import type { FraudProofL1Source } from "./l1-source.js";
+import { type WalletOnlySend } from "./wallet-only-send-gate.js";
 
 /**
  * Derives the record of a cursor family that binds the admitted decision
@@ -84,6 +85,7 @@ const decisionDigestCursorFamilyApplicationRecord = <
       readonly workflow: Workflow;
       readonly sources: readonly RetainedDaPayloadSource[];
       readonly journal: FraudProofWorkflowJournalStore;
+      readonly walletOnlySend: WalletOnlySend;
     }) => Promise<unknown>;
   }>,
 ): FamilyApplicationRecord<Category, Config, Workflow> => {
@@ -116,8 +118,8 @@ const decisionDigestCursorFamilyApplicationRecord = <
       return bound as Config;
     },
     constructWorkflow: family.constructWorkflow,
-    execute: async ({ workflow, sources, journal }) =>
-      await family.execute({ workflow, sources, journal }),
+    execute: async ({ workflow, sources, journal, walletOnlySend }) =>
+      await family.execute({ workflow, sources, journal, walletOnlySend }),
     bindsDecisionDigest: true,
   });
 };

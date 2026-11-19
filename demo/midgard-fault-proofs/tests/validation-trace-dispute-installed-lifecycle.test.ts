@@ -81,6 +81,7 @@ import {
   scriptHashOf,
   setUpInstalledScene,
 } from "./support/validation-trace-dispute-installed-scene.js";
+import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
 
 /** A run polls once per emulator block; one turn of the dispute stays well
  * inside this, and a run that never returns stops here instead. */
@@ -171,6 +172,7 @@ describe("validation-trace dispute through the installed watcher application", (
     const scratch = await scratchDirectory("validation-trace-honest-");
     try {
       const result = (await app.record.execute({
+        walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
         workflow,
         sources: app.sources,
         journal: new DirectoryFraudProofWorkflowJournalStore(scratch.path),

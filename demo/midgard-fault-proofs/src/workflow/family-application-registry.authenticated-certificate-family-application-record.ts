@@ -86,6 +86,7 @@ import {
 } from "./family-definition.js";
 import type { FraudProofWorkflowJournalStore } from "./journal.js";
 import type { FraudProofL1Source } from "./l1-source.js";
+import { type WalletOnlySend } from "./wallet-only-send-gate.js";
 
 /**
  * The config key a family on the authenticated certificate shape reads each
@@ -153,6 +154,7 @@ export const authenticatedCertificateFamilyApplicationRecord = <
         readonly workflow: Workflow;
         readonly sources: readonly RetainedDaPayloadSource[];
         readonly journal: FraudProofWorkflowJournalStore;
+        readonly walletOnlySend: WalletOnlySend;
       }) => Promise<unknown>;
     }>,
 ): FamilyApplicationRecord<Category, Config, Workflow> => {
@@ -201,8 +203,8 @@ export const authenticatedCertificateFamilyApplicationRecord = <
         ...infrastructureFields(infrastructure),
       }) as Config,
     constructWorkflow: family.constructWorkflow,
-    execute: async ({ workflow, sources, journal }) =>
-      await family.execute({ workflow, sources, journal }),
+    execute: async ({ workflow, sources, journal, walletOnlySend }) =>
+      await family.execute({ workflow, sources, journal, walletOnlySend }),
     bindsDecisionDigest: true,
   });
 };
@@ -320,6 +322,7 @@ export const cursorFamilyApplicationRecord = <
         readonly workflow: Workflow;
         readonly sources: readonly RetainedDaPayloadSource[];
         readonly journal: FraudProofWorkflowJournalStore;
+        readonly walletOnlySend: WalletOnlySend;
       }) => Promise<unknown>;
     }>,
 ): FamilyApplicationRecord<Category, Config, Workflow> => {

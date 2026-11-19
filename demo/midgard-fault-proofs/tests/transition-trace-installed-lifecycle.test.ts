@@ -105,6 +105,7 @@ import {
   transitionTraceTimingRetainedFixture,
 } from "./support/transition-trace-retained.js";
 import { publishTransitionTraceYields } from "./support/transition-trace-yields.js";
+import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
 // Explicit experimental payload bound; Cardano production limits are unchanged.
 const HISTORY_BOUNDS = {
   inlineLimitBytes: 512n,
@@ -684,6 +685,7 @@ describe("transition trace installed retained-history workflow", () => {
         let restarts = 0;
         let pointerChurned = false;
         let result = await runOrResumeManifestBoundTransitionTraceWorkflow({
+          walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
           workflow,
           sources,
           journal,
@@ -823,6 +825,7 @@ describe("transition trace installed retained-history workflow", () => {
           await workflowClock.advance(result);
           workflow = await createManifestBoundTransitionTraceWorkflow(config);
           result = await runOrResumeManifestBoundTransitionTraceWorkflow({
+            walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
             workflow,
             sources,
             journal: new DirectoryFraudProofWorkflowJournalStore(

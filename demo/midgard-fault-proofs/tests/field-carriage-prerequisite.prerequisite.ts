@@ -156,6 +156,10 @@ export const prerequisite = ({
         },
   ),
   capture: vi.fn(async () => ({
+    kind:
+      phase === "certificate"
+        ? ("certificate" as const)
+        : ("publication" as const),
     transaction: transaction(),
     durableRecovery: {
       fieldCarriage: {

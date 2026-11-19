@@ -302,6 +302,10 @@ export const startWatcherRuntime = async (
         watcherConfig.deadlines,
       ),
       queueAuthenticationKey: rollbackAuthenticationKey,
+      l1Clock: {
+        slotConfig: deploymentAuthority.ruleBundle.ruleBundle.l1SlotConfig,
+        appliedSlot: activeFollower.appliedSlot,
+      },
       execution,
       proofRetention: activeFollower.proofRetention,
       reservationDecisionHolds: fundingRuntime.factory.decisionHolds,

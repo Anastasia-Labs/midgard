@@ -32,6 +32,7 @@ import {
   runFraudProofWorkflowFromRetainedDa,
 } from "../workflow/orchestrator.js";
 import type { FraudProofRawL1FamilyStage } from "../workflow/raw-l1-family-derivation.js";
+import { type WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
 import {
   createMintDeclaredAssetLimitActuator,
   type MintDeclaredAssetLimitActuatorAction,
@@ -435,10 +436,12 @@ export const executeManifestBoundMintDeclaredAssetLimitWorkflow = async ({
   workflow,
   sources,
   journal,
+  walletOnlySend,
 }: {
   readonly workflow: ManifestBoundMintDeclaredAssetLimitWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly journal: FraudProofWorkflowJournalStore;
+  readonly walletOnlySend: WalletOnlySend;
 }): Promise<FraudProofWorkflowRunResult> => {
   if (
     workflowActuationAuthorizingDecisionDigest(journal) !==
@@ -460,5 +463,6 @@ export const executeManifestBoundMintDeclaredAssetLimitWorkflow = async ({
     journal,
     terminalVerifier: workflow.terminalVerifier,
     releaseFinalityAuthority: workflow.releaseFinalityAuthority,
+    walletOnlySend,
   });
 };

@@ -13,6 +13,7 @@ import type {
 import type { FraudProofWorkflowObservation } from "./orchestrator.fraud-proof-family-workflow-adapter.js";
 import {
   type FraudProofWorkflowAlarm,
+  type FraudProofWorkflowNamedState,
   type FraudProofWorkflowRunResult,
   journalRepeatsStall,
 } from "./orchestrator.fraud-proof-workflow-run-result.js";
@@ -133,10 +134,14 @@ export const workflowRunOutcomes = ({
     },
     pending: (reason: string): FraudProofWorkflowRunResult =>
       named(reason) ?? result("pending", reason),
-    resumeOnObservation: (reason: string): FraudProofWorkflowRunResult =>
+    resumeOnObservation: (
+      reason: string,
+      namedState?: FraudProofWorkflowNamedState,
+    ): FraudProofWorkflowRunResult =>
       named(reason) ?? {
         ...result("pending", reason),
         resumeOnObservation: true,
+        ...(namedState === undefined ? {} : { namedState }),
       },
   });
 };

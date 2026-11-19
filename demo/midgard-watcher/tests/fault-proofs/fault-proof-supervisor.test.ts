@@ -14,6 +14,7 @@ import {
 import { WatcherProofDecisionMissingError } from "../../src/fault-proofs/watcher-decision-hold.js";
 import { createWatcherWorkflowJournal } from "../../src/fault-proofs/watcher-workflow-journal.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
+import { NO_APPLIED_BLOCK_L1_CLOCK } from "../support/no-applied-block-l1-clock.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
 import {
   emptyWorkflowJournal,
@@ -80,6 +81,7 @@ describe("production fault-proof supervisor", () => {
       deadlineAlertHeadroomMs:
         MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
       queueAuthenticationKey: Uint8Array.from({ length: 32 }, () => 0xa5),
+      l1Clock: NO_APPLIED_BLOCK_L1_CLOCK,
       execution: {
         verifyCompleted: async () => {
           throw new Error("unexpected completed execution");

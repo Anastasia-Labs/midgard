@@ -22,6 +22,7 @@ import {
 import { runAdmittedFraudProofWorkflow } from "../src/workflow/orchestrator.run-admitted-fraud-proof-workflow.js";
 import { bindWorkflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
 import { releaseFinality } from "./support/raw-l1-terminal-fixture.js";
+import { WALLET_ONLY_SEND_ALWAYS_OPEN_ON_PREVIEW } from "./support/wallet-only-send-always-open.js";
 import {
   makeAdapter,
   PROOF_TX_HASH,
@@ -77,6 +78,7 @@ const admittedRun = (
   adapter: FraudProofFamilyWorkflowAdapter,
 ) =>
   runAdmittedFraudProofWorkflow({
+    walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN_ON_PREVIEW,
     deploymentFingerprint: DEPLOYMENT,
     category: "doubleSpend",
     headerHash: actuation.headerHash,
@@ -157,6 +159,8 @@ describe("workflow: a permit revoked mid-run, past the main stages", () => {
           ).fundingOutRefs,
           outputLovelace: 14_800_000n,
           fee: 200_000n,
+          // A wallet-only transaction carries its validity window.
+          ttl: 1_000n,
         });
         // A transaction carrying a dispute's funding authority, which the
         // reservation binds to the run's permit before it reserves.

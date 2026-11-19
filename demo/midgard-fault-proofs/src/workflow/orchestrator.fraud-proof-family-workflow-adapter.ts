@@ -56,6 +56,13 @@ export type FraudProofWorkflowPreflight = {
    * any network submission.
    */
   readonly durableRecovery?: JournalJsonObject;
+  /**
+   * Set only by the field-carriage prerequisite, on the field-preimage
+   * carriage publication it builds: the one transaction spending only wallet
+   * coins that carries no upper validity bound (`wallet-only-validity.ts`).
+   * Every other such transaction must carry one.
+   */
+  readonly unboundedCarriagePublication?: true;
 };
 
 export type FraudProofWorkflowObservation =

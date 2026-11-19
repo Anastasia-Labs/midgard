@@ -70,6 +70,7 @@ import {
 } from "./validation-trace-dispute-installed-scene.js";
 import { oneStepDeployment } from "./validation-trace-dispute-one-step.js";
 import type { Block } from "./validation-trace-dispute-open-scene.js";
+import { walletOnlySendAlwaysOpenOn } from "./wallet-only-send-always-open.js";
 
 const CATEGORY = "validationTraceDispute" as const;
 const RUNTIME_CONFIG_PATH = "/installed/validation-trace-runtime.json";
@@ -368,9 +369,8 @@ export const installValidationTraceApplication = async ({
         headerHash,
       }),
       runtimeConfigPath: RUNTIME_CONFIG_PATH,
-    } as never)) as
-      | FraudProofWorkflowRunResult
-      | ValidationTraceAwaitingCounterparty;
+      walletOnlySend: walletOnlySendAlwaysOpenOn(h.proverLucid),
+    })) as FraudProofWorkflowRunResult | ValidationTraceAwaitingCounterparty;
   };
   /** The registry's installed record for the dispute. */
   const record = FAMILY_APPLICATION_REGISTRY[

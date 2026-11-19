@@ -34,6 +34,7 @@ import {
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
 import { terminalVerifierOf } from "./support/terminal-verifier.js";
+import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
 
 const categories = [
   "mintDeclaredAssetLimit",
@@ -245,6 +246,7 @@ it.each(categories)(
     };
     await expect(
       runFraudProofWorkflowFromRetainedDa({
+        walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
         deploymentFingerprint,
         observation: fixture.observation,
         sources: fixture.sources,

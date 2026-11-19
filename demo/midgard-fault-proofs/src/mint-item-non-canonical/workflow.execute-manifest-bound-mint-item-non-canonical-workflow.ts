@@ -14,6 +14,7 @@ import {
   type ManifestBoundFamilyWorkflowWithRecovery,
   withManifestBoundFamilyRecovery,
 } from "../workflow/manifest-bound-family-recovery.js";
+import { type WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
 import { prepareMintItemNonCanonicalRecoveryMaterial } from "./workflow.derive-mint-item-non-canonical-authenticated-source.js";
 import {
   createMintItemNonCanonicalBoundConfig,
@@ -118,9 +119,16 @@ export const executeManifestBoundMintItemNonCanonicalWorkflow = async ({
   workflow,
   sources,
   journal,
+  walletOnlySend,
 }: {
   readonly workflow: ManifestBoundMintItemNonCanonicalWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly journal: FraudProofWorkflowJournalStore;
+  readonly walletOnlySend: WalletOnlySend;
 }) =>
-  await executeManifestBoundFamilyRecovery({ ...workflow, sources, journal });
+  await executeManifestBoundFamilyRecovery({
+    ...workflow,
+    sources,
+    journal,
+    walletOnlySend,
+  });

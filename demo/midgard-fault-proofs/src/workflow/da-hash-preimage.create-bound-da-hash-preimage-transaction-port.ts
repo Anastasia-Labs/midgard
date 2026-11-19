@@ -43,6 +43,7 @@ import {
   workflowTransactionInputOutRefs,
   workflowTransactionReferenceInputOutRefs,
 } from "./transaction-boundary.js";
+import { type WalletOnlySend } from "./wallet-only-send-gate.js";
 
 const createBoundDaHashPreimageTransactionPort = ({
   config,
@@ -236,10 +237,12 @@ export const runOrResumeManifestBoundDaHashPreimageWorkflow = async ({
   workflow,
   sources,
   journal,
+  walletOnlySend,
 }: {
   readonly workflow: ManifestBoundDaHashPreimageWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly journal: FraudProofWorkflowJournalStore;
+  readonly walletOnlySend: WalletOnlySend;
 }): Promise<FraudProofWorkflowRunResult> => {
   const observation = await observeFraudProofWorkflowHeader(workflow.l1, {
     headerHash: workflow.binding.definition.headerHash,
@@ -255,6 +258,7 @@ export const runOrResumeManifestBoundDaHashPreimageWorkflow = async ({
     journal,
     terminalVerifier: workflow.terminalVerifier,
     releaseFinalityAuthority: workflow.releaseFinalityAuthority,
+    walletOnlySend,
   });
 };
 

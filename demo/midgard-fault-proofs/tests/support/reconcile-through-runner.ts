@@ -19,6 +19,7 @@ import {
   emptyRosterReferenceScriptResolver,
   familyCommonInfrastructureForTest,
 } from "./family-common-infrastructure.js";
+import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./wallet-only-send-always-open.js";
 
 /**
  * Resumes a saved workflow under its reconciliation permit through the
@@ -100,6 +101,7 @@ export const prepareReconcileThroughRunner = ({
   });
   return async () =>
     (await runner.runOrResume({
+      walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
       mode: "resume",
       category,
       deploymentFingerprint,

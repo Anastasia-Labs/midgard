@@ -28,6 +28,7 @@ import {
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
 import { waitForFaultProofSupervisorIdle } from "../support/fault-proof-supervisor-idle.js";
 import { completedTerminalWriter } from "../support/funding-recovery-completed-terminal.js";
+import { NO_APPLIED_BLOCK_L1_CLOCK } from "../support/no-applied-block-l1-clock.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
 import {
   recordObjectives,
@@ -178,6 +179,7 @@ const setup = async () => {
       deadlineAlertHeadroomMs:
         MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
       queueAuthenticationKey: TEST_JOURNAL_KEY,
+      l1Clock: NO_APPLIED_BLOCK_L1_CLOCK,
       journalBusyRequeue: {
         releaseUnusedFunding: async () => {
           await beforeSweep();

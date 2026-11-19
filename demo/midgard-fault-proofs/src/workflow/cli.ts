@@ -17,6 +17,7 @@ import {
 import type { WorkflowFundingReservationPermit } from "./funding-reservation-permit.js";
 import type { FraudProofWorkflowJournalStore } from "./journal.fraud-proof-workflow-journal-event.js";
 import { DirectoryFraudProofWorkflowJournalStore } from "./journal.js";
+import type { WalletOnlySend } from "./wallet-only-send-gate.js";
 
 /** The standalone command's journal: a directory store, whose construction
  * is side-effect free; the directory is created only by an actual append
@@ -78,6 +79,7 @@ export const runFraudProofWorkflowCli = async ({
   fundingReservationPermit,
   onProgress,
   applicationRegistry,
+  walletOnlySend,
 }: {
   readonly mode: "run" | "resume";
   readonly category: FraudProofCatalogueCategoryName;
@@ -93,6 +95,8 @@ export const runFraudProofWorkflowCli = async ({
   readonly onProgress?: () => void;
   /** Application-installed only after signed deployment identity admission. */
   readonly applicationRegistry?: WorkflowApplicationRegistry;
+  /** The caller's restart wait and latest wallet-only bound (`wallet-only-send-gate.ts`). */
+  readonly walletOnlySend: WalletOnlySend;
 }): Promise<unknown> => {
   normalizeDaDeploymentFingerprintHex(deploymentFingerprint);
   if (
@@ -131,6 +135,7 @@ export const runFraudProofWorkflowCli = async ({
       journal,
       runtimeConfigPath,
       ...(onProgress === undefined ? {} : { onProgress }),
+      walletOnlySend,
     },
   );
 };

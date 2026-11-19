@@ -18,6 +18,7 @@ import { FraudProofResolvedByAnotherRecordError } from "../src/workflow/resolved
 import { readWorkflowRuntimeFundingPolicy } from "../src/workflow/runtime-funding-policy.js";
 import { bindWorkflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
 import { releaseFinality } from "./support/raw-l1-terminal-fixture.js";
+import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
 import {
   makeAdapter,
   REFERENCE_OUT_REF,
@@ -137,6 +138,7 @@ const scene = async () => {
   const { headerHash } = runtime.actuation;
   const run = () =>
     runAdmittedFraudProofWorkflow({
+      walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
       deploymentFingerprint: DEPLOYMENT,
       category: "doubleSpend",
       headerHash,

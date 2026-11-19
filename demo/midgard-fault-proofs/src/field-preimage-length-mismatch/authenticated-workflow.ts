@@ -28,6 +28,7 @@ import type {
   FraudProofWorkflowTerminalVerifier,
 } from "../workflow/orchestrator.js";
 import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
+import { type WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
 import {
   fieldPreimageLengthConfigFromBinding,
   type LoadManifestBoundFieldPreimageLengthConfig,
@@ -172,15 +173,18 @@ export const executeManifestBoundFieldPreimageLengthWorkflow = async ({
   workflow,
   sources,
   journal,
+  walletOnlySend,
 }: {
   readonly workflow: ManifestBoundFieldPreimageLengthWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly journal: FraudProofWorkflowJournalStore;
+  readonly walletOnlySend: WalletOnlySend;
 }) =>
   await executeManifestBoundFamilyRecovery({
     ...workflow,
     sources,
     journal,
+    walletOnlySend,
     replayer: FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY,
   });
 

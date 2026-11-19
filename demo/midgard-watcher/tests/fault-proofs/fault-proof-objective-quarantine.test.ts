@@ -39,6 +39,7 @@ import {
 } from "../support/fault-proof-funding-fixture.sources-for.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
 import { completedTerminalWriter } from "../support/funding-recovery-completed-terminal.js";
+import { NO_APPLIED_BLOCK_L1_CLOCK } from "../support/no-applied-block-l1-clock.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
 import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
 
@@ -193,6 +194,7 @@ const setup = async (cause: () => unknown) => {
       deadlineAlertHeadroomMs:
         MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
       queueAuthenticationKey: TEST_JOURNAL_KEY,
+      l1Clock: NO_APPLIED_BLOCK_L1_CLOCK,
       execution,
     });
     closers.push(() => supervisor.close());

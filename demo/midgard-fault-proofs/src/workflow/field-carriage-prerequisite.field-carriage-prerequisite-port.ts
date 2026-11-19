@@ -175,6 +175,9 @@ export interface FieldCarriagePrerequisitePort<
     readonly artifact: JournalJsonObject;
     readonly entries: readonly FraudProofWorkflowJournalEntry[];
   }): Promise<{
+    /** A chunk publication, which carries no upper validity bound, or the
+     * certificate over the published chunks. */
+    readonly kind: "publication" | "certificate";
     readonly transaction: LocallyEvaluatedTransaction;
     readonly durableRecovery: JournalJsonObject;
   }>;

@@ -21,6 +21,7 @@ import { runAdmittedFraudProofWorkflow } from "../src/workflow/orchestrator.run-
 import { bindWorkflowPreflightTransaction } from "../src/workflow/transaction-boundary.js";
 import { releaseFinality } from "./support/raw-l1-terminal-fixture.js";
 import { terminalVerifierOf } from "./support/terminal-verifier.js";
+import { WALLET_ONLY_SEND_ALWAYS_OPEN_ON_PREVIEW } from "./support/wallet-only-send-always-open.js";
 import {
   makeAdapter,
   REFERENCE_OUT_REF,
@@ -88,6 +89,8 @@ const scene = async (stage: Stage) => {
         ).fundingOutRefs,
         outputLovelace: FUNDING_LOVELACE - FEE,
         fee: FEE,
+        // A wallet-only transaction carries its validity window.
+        ttl: 1_000n,
       });
       return bindWorkflowPreflightTransaction(
         Object.freeze({
@@ -122,6 +125,7 @@ const scene = async (stage: Stage) => {
   const { headerHash } = runtime.actuation;
   const run = () =>
     runAdmittedFraudProofWorkflow({
+      walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN_ON_PREVIEW,
       deploymentFingerprint: DEPLOYMENT,
       category: "doubleSpend",
       headerHash,

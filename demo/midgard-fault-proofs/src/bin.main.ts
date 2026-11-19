@@ -60,8 +60,11 @@ import {
   runFraudProofWorkflowCli,
   workflowReadinessReport,
 } from "./workflow/cli.js";
+import { clockOnlyWalletOnlySend } from "./workflow/wallet-only-send-gate.js";
 
 export const main = async (): Promise<void> => {
+  // Clock only, no bound clock: the CLI refuses before the runner.
+  const walletOnlySend = clockOnlyWalletOnlySend(Date.now());
   const args = parseArgs(process.argv);
 
   if (args.command === "workflow-readiness") {
@@ -74,18 +77,14 @@ export const main = async (): Promise<void> => {
   }
 
   if (args.command === "run-workflow" || args.command === "resume-workflow") {
-    if (args.fraudCategory === undefined) {
+    if (args.fraudCategory === undefined)
       throw new Error(`Missing required --fraud-category.\n${usage}`);
-    }
-    if (args.deploymentFingerprint === undefined) {
+    if (args.deploymentFingerprint === undefined)
       throw new Error(`Missing required --deployment-fingerprint.\n${usage}`);
-    }
-    if (args.headerHash === undefined) {
+    if (args.headerHash === undefined)
       throw new Error(`Missing required --header-hash.\n${usage}`);
-    }
-    if (args.workflowRuntimeConfigPath === undefined) {
+    if (args.workflowRuntimeConfigPath === undefined)
       throw new Error(`Missing required --workflow-runtime-config.\n${usage}`);
-    }
     await runFraudProofWorkflowCli({
       mode: args.command === "run-workflow" ? "run" : "resume",
       category: args.fraudCategory,
@@ -93,6 +92,7 @@ export const main = async (): Promise<void> => {
       headerHash: args.headerHash,
       journal: directoryWorkflowJournal(args.workflowJournalDir, usage),
       runtimeConfigPath: args.workflowRuntimeConfigPath,
+      walletOnlySend,
     });
     return;
   }

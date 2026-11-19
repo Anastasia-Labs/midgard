@@ -31,6 +31,7 @@ import {
   type FraudProofReleaseFinalityAuthority,
   validateVerifiedFraudProofReleaseFinalityPolicy,
 } from "./release-finality-policy.js";
+import { type WalletOnlySend } from "./wallet-only-send-gate.js";
 
 /**
  * W-O5 production entry point: fetch the payload only through public retained
@@ -53,6 +54,7 @@ export const runFraudProofWorkflowFromRetainedDa = async ({
   maxSubmissionAttempts,
   maxActions,
   now,
+  walletOnlySend,
 }: {
   readonly deploymentFingerprint: string;
   readonly observation: AuthenticatedStateQueueHeaderObservation;
@@ -72,6 +74,7 @@ export const runFraudProofWorkflowFromRetainedDa = async ({
   readonly maxSubmissionAttempts?: number;
   readonly maxActions?: number;
   readonly now?: () => Date;
+  readonly walletOnlySend: WalletOnlySend;
 }): Promise<FraudProofWorkflowRunResult> => {
   const registryScope = [...registry.keys()];
   if (
@@ -158,6 +161,7 @@ export const runFraudProofWorkflowFromRetainedDa = async ({
       ...(maxSubmissionAttempts === undefined ? {} : { maxSubmissionAttempts }),
       ...(maxActions === undefined ? {} : { maxActions }),
       ...(now === undefined ? {} : { now }),
+      walletOnlySend,
     });
   }
   if (routed.kind === "da_hash_preimage") {
@@ -220,6 +224,7 @@ export const runFraudProofWorkflowFromRetainedDa = async ({
       ...(maxSubmissionAttempts === undefined ? {} : { maxSubmissionAttempts }),
       ...(maxActions === undefined ? {} : { maxActions }),
       ...(now === undefined ? {} : { now }),
+      walletOnlySend,
     });
   }
   const evidence = routed.evidence;
@@ -257,5 +262,6 @@ export const runFraudProofWorkflowFromRetainedDa = async ({
     ...(maxSubmissionAttempts === undefined ? {} : { maxSubmissionAttempts }),
     ...(maxActions === undefined ? {} : { maxActions }),
     ...(now === undefined ? {} : { now }),
+    walletOnlySend,
   });
 };

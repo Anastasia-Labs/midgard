@@ -4,6 +4,7 @@ import type { WorkflowActuationPermit } from "./actuation-permit.js";
 import type { WorkflowFundingReservationPermit } from "./funding-reservation-permit.js";
 import type { FraudProofWorkflowJournalStore } from "./journal.fraud-proof-workflow-journal-event.js";
 import { WORKFLOW_ADAPTER_RUNNER } from "./runner-admission.js";
+import type { WalletOnlySend } from "./wallet-only-send-gate.js";
 
 export const WORKFLOW_ADAPTER_REGISTRY_SCHEMA_VERSION =
   "midgard-production-fraud-proof-workflow-adapters-v1" as const;
@@ -37,6 +38,10 @@ export type WorkflowAdapterRunnerInput = WorkflowAdapterReadinessInput & {
    * A throw is ignored and does not end the session.
    */
   readonly onProgress?: () => void;
+  /** The caller's restart wait, before which no transaction that spends only
+   * wallet coins is sent, and the latest upper bound such a transaction may
+   * carry, on the caller's clock (`wallet-only-send-gate.ts`). */
+  readonly walletOnlySend: WalletOnlySend;
 };
 
 export type WorkflowAdapterRunner = {

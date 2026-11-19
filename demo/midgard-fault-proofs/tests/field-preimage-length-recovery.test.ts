@@ -102,6 +102,7 @@ import {
   familyCommonInfrastructureForTest,
 } from "./support/family-common-infrastructure.js";
 import { terminalVerifierOf } from "./support/terminal-verifier.js";
+import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -507,6 +508,7 @@ it.each([
     });
     const resume = async () =>
       (await runner.runOrResume({
+        walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
         mode: "resume",
         category,
         deploymentFingerprint,

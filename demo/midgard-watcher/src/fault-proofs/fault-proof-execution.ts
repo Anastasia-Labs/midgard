@@ -6,6 +6,7 @@ import {
   type FraudProofWorkflowTerminal,
   isSqliteBusyError,
   isWorkflowActuationRevokedError,
+  type WalletOnlySend,
   type WorkflowActuationPermit,
   type WorkflowActuationRevokedError,
   type WorkflowAdapterRunner,
@@ -58,6 +59,7 @@ export type WatcherFaultProofExecutionAdmission = Readonly<{
   /** The deadline whose latest safe start the run is past, before or after
    * maturity (a reconciling run's job carries none). */
   startedLate?: WatcherFaultProofDeadline;
+  walletOnlySend: WalletOnlySend; // the restart wait and slot clock
 }>;
 
 export type WatcherFaultProofExecutionOutcome =
@@ -66,7 +68,7 @@ export type WatcherFaultProofExecutionOutcome =
    * create, with every signed attempt of the run settled: the objective is
    * done, but not as our conviction. */
   | Readonly<{ kind: "resolved_by_another_record"; result: unknown }>
-  | Readonly<{ kind: "pending"; resume: "await_observation"; reason: string }>
+  | stall.WatcherFaultProofPendingOutcome
   | Readonly<{
       kind: "authority_revoked";
       error: WorkflowActuationRevokedError;
@@ -147,9 +149,8 @@ const parseWatcherProverFundingOutRef = (
   outRef: string,
 ): Readonly<{ txHash: string; outputIndex: number }> => {
   const match = /^([0-9a-f]{64})#(0|[1-9][0-9]*)$/u.exec(outRef);
-  if (match === null) {
+  if (match === null)
     throw new Error("prover funding output reference is not canonical");
-  }
   return Object.freeze({ txHash: match[1]!, outputIndex: Number(match[2]!) });
 };
 
@@ -208,11 +209,10 @@ export const mintWatcherProverFundingReservationPermit = async (input: {
           parseWatcherProverFundingOutRef(outRef),
         ]),
       );
-      if (resolved.length !== 1) {
+      if (resolved.length !== 1)
         throw new Error(
           "prover funding protocol input is not a unique live local-node output",
         );
-      }
       return Object.freeze({
         deploymentFingerprint: deploymentIdentity.manifestId,
         outRef,
@@ -422,6 +422,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
             headerHash,
           }),
           runtimeConfigPath: dependencies.runtimeConfigPath,
+          walletOnlySend: admission.walletOnlySend,
           onProgress: stall.releaseWatcherFaultProofStallOnProgress(holds, job),
         });
         if (typeof result === "object" && result !== null && "kind" in result) {
@@ -451,11 +452,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
           ) {
             held = stall.holdWatcherFaultProofPending(holds, job, result);
             record("reconciling");
-            return {
-              kind: "pending",
-              resume: "await_observation",
-              reason: result.reason,
-            };
+            return stall.watcherFaultProofPendingOutcome(result);
           }
           if (
             result.kind === "stalled" &&

@@ -23,12 +23,14 @@ import {
   normalizeJournalJson,
   resumeRecordedFraudProofWorkflow,
 } from "@al-ft/midgard-fault-proofs";
+import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "@al-ft/midgard-fault-proofs/test-support/wallet-only-send-always-open";
 import { describe, expect, it, vi } from "vitest";
 
 import { unsafeOpenWatcherFaultDecisionJournalForTest } from "../../src/fault-proofs/fault-decision-journal.js";
 import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.js";
 import { createWatcherFaultProofSupervisor } from "../../src/fault-proofs/fault-proof-supervisor.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
+import { NO_APPLIED_BLOCK_L1_CLOCK } from "../support/no-applied-block-l1-clock.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
 import {
   emptyWorkflowJournal,
@@ -185,6 +187,7 @@ describe("existing signed workflow recovery authority", () => {
       deadlineAlertHeadroomMs:
         MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
       queueAuthenticationKey: new Uint8Array(32).fill(0xa5),
+      l1Clock: NO_APPLIED_BLOCK_L1_CLOCK,
       execution: {
         verifyCompleted: async () => {
           throw new Error("unexpected completed execution");
@@ -256,6 +259,7 @@ describe("existing signed workflow recovery authority", () => {
       category: "transitionTrace",
       headerHash: HEADER,
       journal,
+      walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
       adapter: {
         adapterVersion: FRAUD_PROOF_WORKFLOW_ADAPTER,
         category: "transitionTrace",

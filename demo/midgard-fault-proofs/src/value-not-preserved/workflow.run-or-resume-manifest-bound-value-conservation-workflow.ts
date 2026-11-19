@@ -6,6 +6,7 @@ import {
   createFraudProofWorkflowRegistry,
   runFraudProofWorkflowFromRetainedDa,
 } from "../workflow/orchestrator.js";
+import { type WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
 import { createManifestBoundValueConservationWorkflow } from "./workflow.create-manifest-bound-value-conservation-workflow.js";
 
 export type ManifestBoundValueConservationWorkflow = Awaited<
@@ -16,10 +17,12 @@ export const runOrResumeManifestBoundValueConservationWorkflow = async ({
   workflow,
   sources,
   journal,
+  walletOnlySend,
 }: {
   readonly workflow: ManifestBoundValueConservationWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly journal: FraudProofWorkflowJournalStore;
+  readonly walletOnlySend: WalletOnlySend;
 }) =>
   runFraudProofWorkflowFromRetainedDa({
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
@@ -38,4 +41,5 @@ export const runOrResumeManifestBoundValueConservationWorkflow = async ({
     journal,
     terminalVerifier: workflow.terminalVerifier,
     releaseFinalityAuthority: workflow.releaseFinalityAuthority,
+    walletOnlySend,
   });

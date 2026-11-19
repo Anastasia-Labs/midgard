@@ -16,6 +16,7 @@ import {
   createManifestBoundWorkflowRunner,
   WORKFLOW_RUNNER_FACTORIES,
 } from "../src/workflow/runtime.js";
+import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
 import {
   admittedActuation,
   DEPLOYMENT,
@@ -160,6 +161,7 @@ const runnerFor = async (
   const runOrResume = async (mode: "run" | "resume") => {
     if (sessions++ > 0) actuation = await admittedActuation();
     return await runner.runOrResume({
+      walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
       mode,
       category: "doubleSpend",
       deploymentFingerprint: DEPLOYMENT,
@@ -177,10 +179,7 @@ const runnerFor = async (
 
 const settledFlag = <T>(promise: Promise<T>) => {
   const state = { settled: false, value: undefined as T | undefined };
-  void promise.then((value) => {
-    state.settled = true;
-    state.value = value;
-  });
+  void promise.then((value) => Object.assign(state, { settled: true, value }));
   return state;
 };
 
@@ -481,6 +480,7 @@ describe("bounded pending continuation", () => {
     );
     await expect(
       runFraudProofWorkflowCli({
+        walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
         mode: "run",
         category: "doubleSpend",
         deploymentFingerprint: DEPLOYMENT,

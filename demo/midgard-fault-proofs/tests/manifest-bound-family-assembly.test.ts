@@ -12,6 +12,7 @@ import {
   fixture,
   HEADER,
 } from "./support/manifest-bound-family-assembly-fixture.js";
+import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -214,7 +215,12 @@ describe("manifest-bound family assembly", () => {
       const sources = [{ fake: "source" }] as never;
       const journal = { fake: "journal" } as never;
       await expect(
-        runOrResumeManifestBoundFamilyWorkflow({ workflow, sources, journal }),
+        runOrResumeManifestBoundFamilyWorkflow({
+          walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
+          workflow,
+          sources,
+          journal,
+        }),
       ).resolves.toBe(result);
       expect(f.l1.observeHeader).toHaveBeenCalledWith({ headerHash: HEADER });
       expect(run).toHaveBeenCalledTimes(1);
@@ -256,6 +262,7 @@ describe("manifest-bound family assembly", () => {
         .spyOn(orchestrator, "runFraudProofWorkflowFromRetainedDa")
         .mockResolvedValue({} as never);
       await runOrResumeManifestBoundFamilyWorkflow({
+        walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
         workflow,
         sources: [],
         journal: {} as never,

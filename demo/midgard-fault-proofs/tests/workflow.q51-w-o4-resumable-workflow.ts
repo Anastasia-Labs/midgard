@@ -66,6 +66,7 @@ import {
   noSignedRead,
   terminalVerifierOf,
 } from "./support/terminal-verifier.js";
+import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
 import {
   canonicalEvidence,
   DEPLOYMENT_FINGERPRINT,
@@ -82,6 +83,19 @@ import {
   terminal,
   terminalVerifier,
 } from "./workflow.make-adapter.js";
+
+/** A retained-DA run of `fixture`'s block, with the restart wait over. */
+const retainedDaRun = (
+  fixture: Awaited<ReturnType<typeof buildCanonicalBlockFixture>>,
+) => ({
+  walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
+  deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+  observation: authenticatedHeaderObservation(fixture),
+  sources: [retainedDaSource(fixture.payloadEnvelopeCbor)],
+  journal: new MemoryFraudProofWorkflowJournalStore(),
+  terminalVerifier,
+  releaseFinalityAuthority: releaseFinalityAuthority(),
+});
 
 describe("Q51/W-O4 resumable workflow", () => {
   it("revalidates recorded family material before any resumed live observation", async () => {
@@ -187,6 +201,7 @@ describe("Q51/W-O4 resumable workflow", () => {
         workflow,
         sources: [retainedDaSource(fixture.payloadEnvelopeCbor)],
         journal,
+        walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
       };
       const removalAction = {
         actionId: `remove:${terminal(observation.headerHash).correction.removedStateQueueOutRef}`,
@@ -249,6 +264,7 @@ describe("Q51/W-O4 resumable workflow", () => {
               workflow: networkWorkflow,
             });
       const pending = await runFraudProofWorkflowFromRetainedDa({
+        walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
         deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
         observation,
         sources: invocation.sources,
@@ -305,18 +321,13 @@ describe("Q51/W-O4 resumable workflow", () => {
       async (_evidence: CanonicalBlockEvidence) => replayContext,
     );
     const result = await runFraudProofWorkflowFromRetainedDa({
-      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-      observation: authenticatedHeaderObservation(fixture),
-      sources: [retainedDaSource(fixture.payloadEnvelopeCbor)],
+      ...retainedDaRun(fixture),
       replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
       resolveReplayContext,
       registry: createFraudProofWorkflowRegistry({
         adapters: [adapter],
         launchScope: ["doubleSpend"],
       }),
-      journal: new MemoryFraudProofWorkflowJournalStore(),
-      terminalVerifier,
-      releaseFinalityAuthority: releaseFinalityAuthority(),
       now: () => new Date("2026-08-29T00:00:00.000Z"),
     });
     expect(result.kind).toBe("completed");
@@ -346,17 +357,12 @@ describe("Q51/W-O4 resumable workflow", () => {
     } satisfies CompleteCanonicalReplay;
     await expect(
       runFraudProofWorkflowFromRetainedDa({
-        deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-        observation: authenticatedHeaderObservation(fixture),
-        sources: [retainedDaSource(fixture.payloadEnvelopeCbor)],
+        ...retainedDaRun(fixture),
         replayer: forgedReplayer,
         registry: createFraudProofWorkflowRegistry({
           adapters: [makeAdapter()],
           launchScope: ["doubleSpend"],
         }),
-        journal: new MemoryFraudProofWorkflowJournalStore(),
-        terminalVerifier,
-        releaseFinalityAuthority: releaseFinalityAuthority(),
       }),
     ).rejects.toThrow("closed canonical replay bundle");
   });
@@ -443,17 +449,12 @@ describe("Q51/W-O4 resumable workflow", () => {
   it("reports no_fault_detected, never verified, after a complete empty family replay", async () => {
     const fixture = await buildCanonicalBlockFixture({ transactions: [] });
     const result = await runFraudProofWorkflowFromRetainedDa({
-      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-      observation: authenticatedHeaderObservation(fixture),
-      sources: [retainedDaSource(fixture.payloadEnvelopeCbor)],
+      ...retainedDaRun(fixture),
       replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
       registry: createFraudProofWorkflowRegistry({
         adapters: [makeAdapter()],
         launchScope: ["doubleSpend"],
       }),
-      journal: new MemoryFraudProofWorkflowJournalStore(),
-      terminalVerifier,
-      releaseFinalityAuthority: releaseFinalityAuthority(),
     });
     expect(result).toMatchObject({ kind: "no_fault_detected" });
   });
@@ -470,14 +471,10 @@ describe("Q51/W-O4 resumable workflow", () => {
       registry: ReturnType<typeof createFraudProofWorkflowRegistry>,
     ) =>
       runFraudProofWorkflowFromRetainedDa({
-        deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
-        observation: authenticatedHeaderObservation(fixture),
+        ...retainedDaRun(fixture),
         sources: [],
         replayer,
         registry,
-        journal: new MemoryFraudProofWorkflowJournalStore(),
-        terminalVerifier,
-        releaseFinalityAuthority: releaseFinalityAuthority(),
       });
 
     const both = createFraudProofWorkflowRegistry({

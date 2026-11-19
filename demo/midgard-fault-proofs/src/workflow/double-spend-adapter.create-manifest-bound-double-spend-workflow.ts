@@ -36,6 +36,7 @@ import {
   runFraudProofWorkflowFromRetainedDa,
 } from "./orchestrator.js";
 import type { FraudProofReleaseFinalityAuthority } from "./release-finality-policy.js";
+import { type WalletOnlySend } from "./wallet-only-send-gate.js";
 
 /**
  * Strict production construction. Every contract, network, category,
@@ -159,6 +160,7 @@ export const runOrResumeConstrainedDoubleSpendWorkflow = async ({
   adapter: bound,
   maxSubmissionAttempts,
   maxActions,
+  walletOnlySend,
 }: {
   readonly deploymentFingerprint: string;
   readonly observation: AuthenticatedStateQueueHeaderObservation;
@@ -170,6 +172,7 @@ export const runOrResumeConstrainedDoubleSpendWorkflow = async ({
   readonly adapter?: FraudProofFamilyWorkflowAdapter;
   readonly maxSubmissionAttempts?: number;
   readonly maxActions?: number;
+  readonly walletOnlySend: WalletOnlySend;
 }): Promise<FraudProofWorkflowRunResult> => {
   const adapter =
     bound ?? createDoubleSpendConstrainedWorkflowAdapter(adapterConfig);
@@ -189,6 +192,7 @@ export const runOrResumeConstrainedDoubleSpendWorkflow = async ({
     ),
     ...(maxSubmissionAttempts === undefined ? {} : { maxSubmissionAttempts }),
     ...(maxActions === undefined ? {} : { maxActions }),
+    walletOnlySend,
   });
 };
 
@@ -199,12 +203,14 @@ export const runOrResumeManifestBoundDoubleSpendWorkflow = async ({
   journal,
   maxSubmissionAttempts,
   maxActions,
+  walletOnlySend,
 }: {
   readonly workflow: ManifestBoundDoubleSpendWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly journal: FraudProofWorkflowJournalStore;
   readonly maxSubmissionAttempts?: number;
   readonly maxActions?: number;
+  readonly walletOnlySend: WalletOnlySend;
 }): Promise<FraudProofWorkflowRunResult> => {
   const observeHeader = workflow.adapterConfig.l1.observeHeader;
   if (observeHeader === undefined) {
@@ -230,5 +236,6 @@ export const runOrResumeManifestBoundDoubleSpendWorkflow = async ({
     adapter: workflow.adapter,
     ...(maxSubmissionAttempts === undefined ? {} : { maxSubmissionAttempts }),
     ...(maxActions === undefined ? {} : { maxActions }),
+    walletOnlySend,
   });
 };

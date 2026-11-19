@@ -64,6 +64,7 @@ import {
   publishRemovalReferenceScripts,
   submitSetupTx,
 } from "./submit-init-emulator-shared.js";
+import { walletOnlySendAlwaysOpenOn } from "./wallet-only-send-always-open.js";
 
 type Harness = Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>;
 type Recorder = ReturnType<typeof recordCrossBlockRawEmulator>;
@@ -308,7 +309,6 @@ export const installScriptDecodeApplication = async ({
     releaseEconomics,
     definition: binding.definition as never,
   });
-
   // Classify the committed header as the watcher's classifier does.
   const sources = [
     new FixtureRetainedDaSource(
@@ -337,7 +337,6 @@ export const installScriptDecodeApplication = async ({
     decision,
     rollbackGeneration: "0",
   }).permit;
-
   const slotConfig = harness.proverLucid.config().slotConfig;
   const stateQueueMutationLeaseCoordinator = fixtureLeaseCoordinator();
   const signer = harness.proverSigner;
@@ -460,7 +459,8 @@ export const installScriptDecodeApplication = async ({
         headerHash,
       }),
       runtimeConfigPath: RUNTIME_CONFIG_PATH,
-    } as never)) as {
+      walletOnlySend: walletOnlySendAlwaysOpenOn(harness.proverLucid),
+    })) as {
       readonly kind: string;
       readonly reason?: string;
       readonly resumeOnObservation?: true;

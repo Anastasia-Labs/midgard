@@ -299,6 +299,8 @@ export const signedFundingTransaction = (input: {
   readonly nonCanonicalBody?: boolean;
   readonly mint?: CML.Mint;
   readonly nativeScripts?: readonly CML.NativeScript[];
+  /** The upper validity bound (slot). */
+  readonly ttl?: bigint;
 }): TxSigned => {
   const inputs = CML.TransactionInputList.new();
   for (const outRef of input.inputOutRefs) {
@@ -320,6 +322,7 @@ export const signedFundingTransaction = (input: {
   for (const output of input.additionalOutputs ?? []) outputs.add(output);
   let body = CML.TransactionBody.new(inputs, outputs, input.fee ?? 200_000n);
   if (input.mint !== undefined) body.set_mint(input.mint);
+  if (input.ttl !== undefined) body.set_ttl(input.ttl);
   if (input.collateral !== undefined) {
     const collateral = CML.TransactionInputList.new();
     for (const outRef of input.collateral.outRefs) {

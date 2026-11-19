@@ -88,6 +88,7 @@ import {
 } from "./family-application-registry.resolve-roster-parts.js";
 import { type FamilyCategory } from "./family-definition.js";
 import type { FraudProofWorkflowJournalStore } from "./journal.js";
+import { type WalletOnlySend } from "./wallet-only-send-gate.js";
 
 /**
  * Derives the record of a cursor family without a decision digest whose
@@ -113,6 +114,7 @@ export const bundleCursorFamilyApplicationRecord = <
         readonly workflow: Workflow;
         readonly sources: readonly RetainedDaPayloadSource[];
         readonly journal: FraudProofWorkflowJournalStore;
+        readonly walletOnlySend: WalletOnlySend;
       }) => Promise<unknown>;
     }>,
 ): FamilyApplicationRecord<Category, Config, Workflow> => {

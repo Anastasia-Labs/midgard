@@ -17,6 +17,7 @@ import { watcherObjectiveScope } from "../../src/fault-proofs/watcher-journal-sc
 import { handleWatcherOperationsHttpRequest } from "../../src/runtime/operations-observability.handle-http-request.js";
 import { createWatcherOperationsObservability } from "../../src/runtime/operations-observability.js";
 import { progressObservation } from "../support/fault-proof-progress-observation.js";
+import { NO_APPLIED_BLOCK_L1_CLOCK } from "../support/no-applied-block-l1-clock.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
 import {
   emptyWorkflowJournal,
@@ -47,6 +48,7 @@ const startSupervisor = (journalRoot: string) => {
     deploymentFingerprint: DEPLOYMENT,
     deadlineAlertHeadroomMs: MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
     queueAuthenticationKey: TEST_JOURNAL_KEY,
+    l1Clock: NO_APPLIED_BLOCK_L1_CLOCK,
     proofRetention: storelessProofRetention,
     execution: {
       verifyCompleted: async () => {

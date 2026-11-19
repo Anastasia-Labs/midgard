@@ -51,6 +51,7 @@ import {
 } from "./helpers/canonical-block-evidence-fixture.js";
 import { reconcileThroughRunner } from "./support/reconcile-through-runner.js";
 import { terminalVerifierOf } from "./support/terminal-verifier.js";
+import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
 
 const hash = (byte: string) => byte.repeat(32);
 const categories = [
@@ -481,6 +482,7 @@ it.each(categories)(
       redeemerCanonicity: "redeemer-malformed",
     }[category];
     const result = await runFraudProofWorkflow({
+      walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
       deploymentFingerprint,
       evidence,
       detections: [

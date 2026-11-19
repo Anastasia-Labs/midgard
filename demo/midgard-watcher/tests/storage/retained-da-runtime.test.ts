@@ -18,6 +18,7 @@ import {
   type WorkflowAdapterReadinessInput,
   type WorkflowAdapterRunnerInput,
 } from "@al-ft/midgard-fault-proofs";
+import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "@al-ft/midgard-fault-proofs/test-support/wallet-only-send-always-open";
 import { describe, expect, it, vi } from "vitest";
 
 import type { WatcherFaultProofSupervisor } from "../../src/fault-proofs/fault-proof-supervisor.js";
@@ -106,6 +107,7 @@ const invocation = (
   }),
   journal: new MemoryFraudProofWorkflowJournalStore(),
   runtimeConfigPath: "/etc/midgard/watcher-v1.json",
+  walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
   ...overrides,
 });
 

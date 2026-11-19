@@ -53,6 +53,7 @@ import {
   walletLovelace,
 } from "./support/own-thread-reclaim-expectations.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
+import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
 import {
   DEPLOYMENT_FINGERPRINT,
   terminalVerifier,
@@ -252,6 +253,7 @@ const scene = async (ours: "forcedStep" | "forcedScan") => {
   );
   const run = async (): Promise<FraudProofWorkflowRunResult> =>
     await runAdmittedFraudProofWorkflow({
+      walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       category: "networkId",
       headerHash,

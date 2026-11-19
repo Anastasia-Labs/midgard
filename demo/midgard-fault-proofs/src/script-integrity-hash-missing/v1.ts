@@ -25,6 +25,7 @@ import {
   type FraudProofWorkflowRunResult,
   runFraudProofWorkflowFromRetainedDa,
 } from "../workflow/orchestrator.js";
+import { type WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
 import {
   createScriptIntegrityHashMissingTransactionPort,
   scriptIntegrityHashMissingFieldRequirement,
@@ -219,10 +220,12 @@ export const executeManifestBoundScriptIntegrityHashMissingWorkflow = async ({
   workflow,
   sources,
   journal,
+  walletOnlySend,
 }: {
   readonly workflow: ManifestBoundScriptIntegrityHashMissingWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly journal: FraudProofWorkflowJournalStore;
+  readonly walletOnlySend: WalletOnlySend;
 }): Promise<FraudProofWorkflowRunResult> => {
   if (
     workflowActuationAuthorizingDecisionDigest(journal) !==
@@ -246,5 +249,6 @@ export const executeManifestBoundScriptIntegrityHashMissingWorkflow = async ({
     journal,
     terminalVerifier: workflow.terminalVerifier,
     releaseFinalityAuthority: workflow.releaseFinalityAuthority,
+    walletOnlySend,
   });
 };

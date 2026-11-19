@@ -190,6 +190,7 @@ it("resumes an included descendant intent twice after another caller completes c
   };
   const run = async (maxActions = 64, seedProof = false) =>
     runAdmittedFraudProofWorkflow({
+      walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
       deploymentFingerprint: value.binding.deploymentFingerprint,
       category: "doubleSpend",
       headerHash: value.definition.headerHash,
@@ -302,3 +303,5 @@ it("resumes an included descendant intent twice after another caller completes c
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";

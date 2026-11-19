@@ -27,6 +27,7 @@ import {
 import { FraudProofResolvedByAnotherRecordError } from "../../src/workflow/resolved-by-another-record.js";
 import { bindFamilyRecoveryFixture } from "./bound-family-recovery-fixture.js";
 import { noSignedRead } from "./terminal-verifier.js";
+import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./wallet-only-send-always-open.js";
 
 const policy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
 export const FINAL_DEPTH = policy.automaticRecoveryMaxDepth + 2;
@@ -246,6 +247,7 @@ export const fixture = ({ stepsTaken = 2 }: { stepsTaken?: 0 | 2 } = {}) => {
   const execute = async (reclaim: OwnThreadReclaimPort | undefined) => {
     const assembled = await assemble(reclaim);
     return await runAdmittedFraudProofWorkflow({
+      walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
       deploymentFingerprint: fingerprint,
       category,
       headerHash,

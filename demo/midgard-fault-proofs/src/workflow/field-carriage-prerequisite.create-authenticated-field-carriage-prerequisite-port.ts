@@ -454,6 +454,7 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
           referenceScripts: Object.freeze([]),
         });
         return {
+          kind: "publication" as const,
           transaction,
           durableRecovery: recovery({
             kind: "publication",
@@ -497,6 +498,7 @@ export const createAuthenticatedFieldCarriagePrerequisitePort = <
       ).transaction;
       const address = certificateAddress(parsed.requirement);
       return {
+        kind: "certificate" as const,
         transaction,
         durableRecovery: recovery({
           kind: "certificate",

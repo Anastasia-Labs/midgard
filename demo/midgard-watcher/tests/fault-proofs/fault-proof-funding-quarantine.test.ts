@@ -1,4 +1,5 @@
 import { type FraudProofWorkflowJournalEvent } from "@al-ft/midgard-fault-proofs";
+import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "@al-ft/midgard-fault-proofs/test-support/wallet-only-send-always-open";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WATCHER_FAULT_PROOF_QUARANTINED } from "../../src/fault-proofs/fault-proof-quarantine.js";
@@ -104,7 +105,11 @@ describe("an objective whose own funding is refused is quarantined alone", () =>
         await test.execution.execute({
           ...test.input,
           job: { ...test.input.job, mode: "run" },
-          admission: { mode: "run", funding: "create_or_resume" },
+          admission: {
+            mode: "run",
+            funding: "create_or_resume",
+            walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
+          },
         }),
       ).toMatchObject({
         reason: `${WATCHER_FAULT_PROOF_QUARANTINED}: provider says ECONNRESET`,

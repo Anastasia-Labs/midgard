@@ -32,6 +32,7 @@ import {
   runFraudProofWorkflowFromRetainedDa,
 } from "../workflow/orchestrator.js";
 import type { FraudProofRawL1FamilyStage } from "../workflow/raw-l1-family-derivation.js";
+import { type WalletOnlySend } from "../workflow/wallet-only-send-gate.js";
 import {
   createObserversForbiddenActuator,
   type ObserversForbiddenActuatorAction,
@@ -347,10 +348,12 @@ export const executeManifestBoundObserversForbiddenWorkflow = async ({
   workflow,
   sources,
   journal,
+  walletOnlySend,
 }: {
   readonly workflow: ManifestBoundObserversForbiddenWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly journal: FraudProofWorkflowJournalStore;
+  readonly walletOnlySend: WalletOnlySend;
 }): Promise<FraudProofWorkflowRunResult> => {
   if (
     workflowActuationAuthorizingDecisionDigest(journal) !==
@@ -372,5 +375,6 @@ export const executeManifestBoundObserversForbiddenWorkflow = async ({
     journal,
     terminalVerifier: workflow.terminalVerifier,
     releaseFinalityAuthority: workflow.releaseFinalityAuthority,
+    walletOnlySend,
   });
 };

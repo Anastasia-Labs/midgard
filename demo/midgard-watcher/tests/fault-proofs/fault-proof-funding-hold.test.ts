@@ -5,6 +5,7 @@
  * something else, as one does after a top-up.
  */
 import { WORKFLOW_FUNDING_SHORTFALL } from "@al-ft/midgard-fault-proofs";
+import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "@al-ft/midgard-fault-proofs/test-support/wallet-only-send-always-open";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { setupFaultProofExecution } from "../support/fault-proof-execution-fixture.js";
@@ -94,7 +95,11 @@ describe("a fault-proof objective paused on prover funding", () => {
     const run = {
       ...test.input,
       job: { ...test.input.job, mode: "run" },
-      admission: { mode: "run", funding: "create_or_resume" },
+      admission: {
+        mode: "run",
+        funding: "create_or_resume",
+        walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
+      },
     } as const;
     test.getUtxos.mockResolvedValueOnce([]);
     expect(await test.execution.execute(run)).toMatchObject({

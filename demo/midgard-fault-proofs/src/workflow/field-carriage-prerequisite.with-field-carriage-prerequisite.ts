@@ -182,6 +182,11 @@ export const withFieldCarriagePrerequisite = <
           },
           referenceScripts: captured.transaction.referenceScripts,
           durableRecovery: captured.durableRecovery,
+          // The one wallet-only transaction built without an upper validity
+          // bound (`wallet-only-validity.ts`).
+          ...(captured.kind === "publication"
+            ? { unboundedCarriagePublication: true as const }
+            : {}),
         } satisfies FraudProofWorkflowPreflight,
         captured.transaction.signed,
       );

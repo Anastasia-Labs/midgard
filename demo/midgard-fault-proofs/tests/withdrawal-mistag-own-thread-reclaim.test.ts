@@ -66,6 +66,7 @@ import {
 } from "./support/own-thread-reclaim-expectations.js";
 import { network } from "./support/submit-init-emulator-shared.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
+import { WALLET_ONLY_SEND_ALWAYS_OPEN } from "./support/wallet-only-send-always-open.js";
 import {
   makeWithdrawalMistagEmulatorHarness,
   publishWithdrawalMistagScripts,
@@ -317,6 +318,7 @@ const scene = async () => {
           })
         : base;
       return await runFraudProofWorkflow({
+        walletOnlySend: WALLET_ONLY_SEND_ALWAYS_OPEN,
         deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
         evidence: fixture.evidence,
         detections: decision.detections,
