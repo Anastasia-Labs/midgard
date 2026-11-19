@@ -14,7 +14,6 @@ import {
 
 import { faultProofFieldOpening } from "../field-opening.js";
 import {
-  getCompiledScript,
   phasMembershipRewardAddress,
   type ResolvedProverSigner,
 } from "../runtime.js";
@@ -41,7 +40,9 @@ import {
 export type DirectPurposeCustody = {
   readonly family: DirectPurposeCustodyFamily;
   readonly lucid: LucidEvolution;
-  readonly blueprint: unknown;
+  /** Parsed where the custody is assembled: every page-fit attempt is a
+   * build, and a raw blueprint would be parsed again on each one. */
+  readonly blueprint: SDK.ParsedFaultProofBlueprint;
   readonly network: Network;
   readonly contracts: DirectPurposeContracts;
   readonly signer: ResolvedProverSigner;
@@ -67,7 +68,7 @@ export type DirectPurposeTransitionOverride = {
 const phasMembership = (custody: DirectPurposeCustody) => {
   const script: Script = {
     type: "PlutusV3",
-    script: getCompiledScript(
+    script: SDK.getUnappliedScript(
       custody.blueprint,
       PHAS_MEMBERSHIP_WITHDRAW_TITLE,
     ),

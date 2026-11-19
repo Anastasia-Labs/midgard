@@ -12,6 +12,7 @@ export {
   makeMintingPolicy,
   makeSpendingValidator,
   makeWithdrawalValidator,
+  type ParsedFaultProofBlueprint,
   parseFaultProofBlueprint,
   THREAD_EXPIRY_PARAMETER_TITLE,
   verifyBlueprintDeploymentRegistry,

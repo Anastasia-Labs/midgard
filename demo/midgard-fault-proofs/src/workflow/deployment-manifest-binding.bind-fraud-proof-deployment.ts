@@ -61,9 +61,9 @@ const bindFraudProofDeployment = async <
       `blueprint SHA-256 does not match the finalized deployment manifest: expected=${manifest.artifacts.blueprintHash} actual=${blueprintHash}`,
     );
   }
-  let blueprint: unknown;
+  let blueprintDocument: unknown;
   try {
-    blueprint = JSON.parse(blueprintJson) as unknown;
+    blueprintDocument = JSON.parse(blueprintJson) as unknown;
   } catch {
     throw new Error("deployment-manifest blueprint is not valid JSON");
   }
@@ -103,7 +103,7 @@ const bindFraudProofDeployment = async <
   const deploymentDocument = manifest;
   const deploymentInfo = parseContractDeploymentInfo(deploymentDocument);
   const resolvedContracts = await resolveFaultProofDeploymentContracts({
-    blueprint,
+    blueprint: blueprintDocument,
     deploymentInfo: deploymentDocument,
     network: manifest.network,
     categoryName: category,
@@ -175,7 +175,9 @@ const bindFraudProofDeployment = async <
     deploymentFingerprint: manifest.manifestId,
     blueprintHash: manifest.artifacts.blueprintHash,
     network: manifest.network,
-    blueprint,
+    // Parsed once, by the contract resolution above, and passed down so no
+    // transaction build re-parses the blueprint.
+    blueprint: resolvedContracts.blueprint,
     deploymentInfo: deploymentDocument,
     contractEntries: deploymentInfo,
     ...policies,

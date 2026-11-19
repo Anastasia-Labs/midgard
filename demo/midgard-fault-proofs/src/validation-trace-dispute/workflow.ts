@@ -177,7 +177,7 @@ export const createManifestBoundValidationTraceDisputeWorkflow = async (
       reference: resolved.certificateReferenceScriptUtxo,
     });
   };
-  const deployment: ValidationTraceDisputeDeployment = Object.freeze({
+  const deployment = Object.freeze<ValidationTraceDisputeDeployment>({
     deploymentFingerprint: binding.deploymentFingerprint,
     network: binding.network,
     blueprint: binding.blueprint,

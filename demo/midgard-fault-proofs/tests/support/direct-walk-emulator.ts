@@ -332,7 +332,7 @@ export const driveDirectWalkThread = async <
   const custody: DirectPurposeCustody = {
     family,
     lucid: proverLucid,
-    blueprint: harness.realBlueprint,
+    blueprint: SDK.parseFaultProofBlueprint(harness.realBlueprint),
     network,
     contracts: direct,
     signer: proverSigner,

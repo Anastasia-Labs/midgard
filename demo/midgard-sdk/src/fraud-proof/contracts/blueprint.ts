@@ -212,6 +212,7 @@ export {
   type FaultProofBlueprintParameter,
   type FaultProofBlueprintValidator,
   getBlueprintValidator,
+  type ParsedFaultProofBlueprint,
   parseFaultProofBlueprint,
 } from "./blueprint.parse-fault-proof-blueprint.js";
 export {

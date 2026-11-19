@@ -60,19 +60,31 @@ export const deriveValidationTraceDeploymentId = (
   return deploymentId;
 };
 
+declare const parsedFaultProofBlueprint: unique symbol;
+
+/**
+ * A blueprint that went through {@link parseFaultProofBlueprint}. Only the
+ * parser produces one, so a value of this type is never a raw `plutus.json`
+ * document: code that builds transactions repeatedly takes this type and so
+ * never re-parses the whole blueprint on each build.
+ */
+export type ParsedFaultProofBlueprint = FaultProofBlueprint & {
+  readonly [parsedFaultProofBlueprint]: true;
+};
+
 // Parsing an already-parsed blueprint returns it unchanged, so the parameter
 // records of every application stay with the one blueprint a caller holds.
 const parsedBlueprints = new WeakSet<object>();
 
 export const parseFaultProofBlueprint = (
   value: unknown,
-): FaultProofBlueprint => {
+): ParsedFaultProofBlueprint => {
   if (
     typeof value === "object" &&
     value !== null &&
     parsedBlueprints.has(value)
   ) {
-    return value as FaultProofBlueprint;
+    return value as ParsedFaultProofBlueprint;
   }
   const parsed: FaultProofBlueprint = {
     validators: parseBlueprintAbi(value).validators.map(
@@ -88,7 +100,7 @@ export const parseFaultProofBlueprint = (
     ),
   };
   parsedBlueprints.add(parsed);
-  return parsed;
+  return parsed as ParsedFaultProofBlueprint;
 };
 
 export const getBlueprintValidator = (

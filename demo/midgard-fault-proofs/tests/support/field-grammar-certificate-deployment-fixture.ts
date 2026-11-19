@@ -98,7 +98,11 @@ export const deployFieldGrammarCertificate = async ({
     }),
   });
   const fieldGrammar = resolveFaultProofFieldGrammarDeployment({
-    binding: { blueprint, network, referenceScriptsByContract },
+    binding: {
+      blueprint: SDK.parseFaultProofBlueprint(blueprint),
+      network,
+      referenceScriptsByContract,
+    },
     fieldPreimageCertificatePolicyId,
     referenceScriptUtxo: utxo,
     label,

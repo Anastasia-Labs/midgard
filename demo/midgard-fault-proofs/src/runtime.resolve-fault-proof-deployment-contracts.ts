@@ -1,6 +1,7 @@
 import {
   type DoubleSpendFaultProofContracts,
   type FraudProofCatalogueCategoryDeploymentInfo,
+  type ParsedFaultProofBlueprint,
   parseFaultProofBlueprint,
 } from "@al-ft/midgard-sdk";
 import { type Network } from "@lucid-evolution/lucid";
@@ -47,6 +48,8 @@ export const resolveFaultProofDeploymentContracts = async ({
   readonly requireStateQueueMint?: boolean;
   readonly requireFraudProofSpend?: boolean;
 }): Promise<{
+  /** The blueprint parsed once here, for builders that run repeatedly. */
+  readonly blueprint: ParsedFaultProofBlueprint;
   readonly deploymentInfo: ContractDeploymentInfo;
   readonly category: FraudProofCatalogueCategoryDeploymentInfo;
   readonly stateQueuePolicyId: string | undefined;
@@ -302,6 +305,7 @@ export const resolveFaultProofDeploymentContracts = async ({
   });
 
   return {
+    blueprint: parsedBlueprint,
     deploymentInfo: parsedDeploymentInfo,
     category: readyCategory,
     stateQueuePolicyId,

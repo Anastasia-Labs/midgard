@@ -51,7 +51,7 @@ export const resolveFaultProofFieldGrammarDeployment = ({
     utxo: referenceScriptUtxo,
   });
   const validator = SDK.buildFieldGrammarCertificateValidator({
-    blueprint: SDK.parseFaultProofBlueprint(binding.blueprint),
+    blueprint: binding.blueprint,
     network: binding.network,
     fieldPreimageCertificatePolicyId,
   });

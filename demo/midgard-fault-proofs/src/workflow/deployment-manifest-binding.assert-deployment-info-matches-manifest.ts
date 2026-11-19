@@ -5,7 +5,10 @@ import {
   parseDeploymentManifestEconomics,
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
+import {
+  type FraudProofCatalogueCategoryName,
+  type ParsedFaultProofBlueprint,
+} from "@al-ft/midgard-sdk";
 import {
   credentialToAddress,
   type Network,
@@ -45,7 +48,7 @@ export type FraudProofWorkflowDeploymentBinding<
   readonly deploymentFingerprint: string;
   readonly blueprintHash: string;
   readonly network: Network;
-  readonly blueprint: unknown;
+  readonly blueprint: ParsedFaultProofBlueprint;
   /** Complete verified document consumed by transaction builders. */
   readonly deploymentInfo: unknown;
   readonly contractEntries: ContractDeploymentInfo;
