@@ -29,6 +29,7 @@ import {
 } from "../../src/workflow/double-spend-adapter.js";
 import {
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
   type FraudProofWorkflowJournalEntry,
   type JournalJsonObject,
 } from "../../src/workflow/journal.js";
@@ -131,7 +132,7 @@ export const certifiedOpening = (
 /**
  * The adapter over a chain that holds exactly `walletUtxos` and
  * `certificateUtxos`, each an output of a transaction the workflow's journal
- * confirmed. The authenticated observer finds an output only by its exact
+ * confirmed unless `foreignTxHashes` names it. The authenticated observer finds an output only by its exact
  * out-ref at the address and, like the production observer, refuses one
  * whose content differs from the expected datum and value shape.
  */
@@ -140,11 +141,14 @@ export const doubleSpendHarness = ({
   stage,
   walletUtxos,
   certificateUtxos,
+  foreignTxHashes = [],
 }: {
   readonly artifact: JournalJsonObject;
   readonly stage: DoubleSpendWorkflowStage;
   readonly walletUtxos: readonly UTxO[];
   readonly certificateUtxos: readonly UTxO[];
+  /** Transactions on the chain that another workflow made. */
+  readonly foreignTxHashes?: readonly string[];
 }) => {
   const at = (address: string) =>
     address === SIGNER.proofMaterialsAddress
@@ -153,15 +157,25 @@ export const doubleSpendHarness = ({
         ? certificateUtxos
         : [];
   const authenticated: string[] = [];
-  // Every transaction on this chain is one the journal confirmed.
+  const identity = {
+    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+    deploymentFingerprint: "d1".repeat(32),
+    category: "doubleSpend",
+    target: { kind: "state_queue_header", headerHash: HEADER_HASH },
+  } as const;
+  const workflowId = h32(0x51);
+  // Every other transaction on this chain is one the journal confirmed.
   const entries = (): FraudProofWorkflowJournalEntry[] =>
-    [
-      ...new Set([...walletUtxos, ...certificateUtxos].map((u) => u.txHash)),
-    ].map((txHash, sequence) => ({
-      recordedAt: new Date(0).toISOString(),
-      sequence,
-      event: { kind: "confirmed", actionId: `chain:${txHash}`, txHash },
-    }));
+    [...new Set([...walletUtxos, ...certificateUtxos].map((u) => u.txHash))]
+      .filter((txHash) => !foreignTxHashes.includes(txHash))
+      .map((txHash, sequence) => ({
+        schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
+        workflowId,
+        identity,
+        recordedAt: new Date(0).toISOString(),
+        sequence,
+        event: { kind: "confirmed", actionId: `chain:${txHash}`, txHash },
+      }));
   const config = {
     lucid: {
       utxosAt: async (address: string) => [...at(address)],
@@ -246,16 +260,10 @@ export const doubleSpendHarness = ({
     },
   } satisfies DoubleSpendConstrainedWorkflowAdapterConfig;
   const adapter = createDoubleSpendConstrainedWorkflowAdapter(config);
-  const identity = {
-    schemaVersion: FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-    deploymentFingerprint: "d1".repeat(32),
-    category: "doubleSpend",
-    target: { kind: "state_queue_header", headerHash: HEADER_HASH },
-  } as const;
   const next = async (): Promise<FraudProofWorkflowAction> => {
     const observed = await adapter.observe({
       identity,
-      workflowId: h32(0x51),
+      workflowId,
       artifact,
       entries: entries(),
     });
@@ -266,7 +274,7 @@ export const doubleSpendHarness = ({
   const reconcile = async (action: FraudProofWorkflowAction, txHash: string) =>
     await adapter.reconcile({
       identity,
-      workflowId: h32(0x51),
+      workflowId,
       artifact,
       entries: entries(),
       action,
@@ -275,7 +283,7 @@ export const doubleSpendHarness = ({
   const preflight = async (action: FraudProofWorkflowAction) =>
     await adapter.preflight({
       identity,
-      workflowId: h32(0x51),
+      workflowId,
       artifact,
       entries: entries(),
       action,
