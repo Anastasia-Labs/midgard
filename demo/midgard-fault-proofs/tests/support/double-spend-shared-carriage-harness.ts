@@ -29,8 +29,6 @@ import {
 } from "../../src/workflow/double-spend-adapter.js";
 import {
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
-  FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-  type FraudProofWorkflowJournalEntry,
   type JournalJsonObject,
 } from "../../src/workflow/journal.js";
 import type { FraudProofWorkflowAction } from "../../src/workflow/orchestrator.js";
@@ -40,6 +38,7 @@ import {
   h32,
   outRefCbor,
 } from "../helpers/canonical-block-evidence-fixture.js";
+import { confirmedCarriageEntries } from "./confirmed-carriage-entries.js";
 
 const POLICY_ID = "91".repeat(28);
 const HEADER_HASH = h28(0x71);
@@ -165,17 +164,13 @@ export const doubleSpendHarness = ({
   } as const;
   const workflowId = h32(0x51);
   // Every other transaction on this chain is one the journal confirmed.
-  const entries = (): FraudProofWorkflowJournalEntry[] =>
-    [...new Set([...walletUtxos, ...certificateUtxos].map((u) => u.txHash))]
-      .filter((txHash) => !foreignTxHashes.includes(txHash))
-      .map((txHash, sequence) => ({
-        schemaVersion: FRAUD_PROOF_WORKFLOW_JOURNAL_SCHEMA_VERSION,
-        workflowId,
-        identity,
-        recordedAt: new Date(0).toISOString(),
-        sequence,
-        event: { kind: "confirmed", actionId: `chain:${txHash}`, txHash },
-      }));
+  const entries = () =>
+    confirmedCarriageEntries({
+      utxos: [...walletUtxos, ...certificateUtxos],
+      foreignTxHashes,
+      workflowId,
+      identity,
+    });
   const config = {
     lucid: {
       utxosAt: async (address: string) => [...at(address)],

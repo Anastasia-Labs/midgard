@@ -345,7 +345,7 @@ describe("network-id forced (§5.2) production workflow", () => {
         identity: workflowIdentity(prepared.headerHash),
         workflowId: h32(0x51),
         artifact: harness.artifact,
-        entries: [],
+        entries: harness.entries(),
         action: selected.action,
       });
     const original = harness.scanUtxos[0]!;
@@ -549,7 +549,7 @@ describe("network-id forced (§5.2) production workflow", () => {
         identity: workflowIdentity(prepared.headerHash),
         workflowId: h32(0x51),
         artifact: harness.artifact,
-        entries: [],
+        entries: harness.entries(),
         action: selected.action,
       });
     carriage[0] = { ...carriage[0]!, txHash: h32(0x70) };
@@ -621,7 +621,7 @@ describe("network-id forced (§5.2) production workflow", () => {
       identity: workflowIdentity(prepared.headerHash),
       workflowId: h32(0x51),
       artifact: harness.artifact,
-      entries: [],
+      entries: harness.entries(),
       action: observation.action,
     });
     expect(workflowPreflightTransaction(preflight)).toBeDefined();
@@ -664,7 +664,7 @@ describe("network-id forced (§5.2) production workflow", () => {
         identity: workflowIdentity(prepared.headerHash),
         workflowId: h32(0x51),
         artifact: harness.artifact,
-        entries: [],
+        entries: harness.entries(),
         action: {
           actionId: `network-id:${kind}`,
           input: { kind, threadOutRef },
@@ -804,7 +804,7 @@ describe("network-id forced (§5.2) production workflow", () => {
         identity: workflowIdentity(prepared.headerHash),
         workflowId: h32(0x51),
         artifact: harness.artifact,
-        entries: [],
+        entries: harness.entries(),
         action: observed.action,
         txHash: transactionHash,
         ...overrides,

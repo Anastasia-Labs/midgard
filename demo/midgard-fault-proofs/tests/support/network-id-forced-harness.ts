@@ -59,6 +59,7 @@ import {
   h32,
   outRefCbor,
 } from "../helpers/canonical-block-evidence-fixture.js";
+import { confirmedCarriageEntries } from "./confirmed-carriage-entries.js";
 import { makeHeader } from "./emulator/header-fixtures.js";
 import { makeNativeTx } from "./emulator/native-tx.js";
 
@@ -290,6 +291,7 @@ export const forcedHarness = ({
   withoutRawL1 = false,
   walletUtxos = [],
   certificateUtxos,
+  foreignTxHashes = [],
   observeSignedTransaction,
 }: {
   /** The forced contradiction, or another direction's durable artifact. */
@@ -319,6 +321,8 @@ export const forcedHarness = ({
    * the expected datum and token; absent, every exact observation confirms.
    */
   readonly certificateUtxos?: readonly UTxO[];
+  /** Transactions served here that another workflow made. */
+  readonly foreignTxHashes?: readonly string[];
   /** Canonical signed-transaction recovery; absent in the bare raw-L1 stub. */
   readonly observeSignedTransaction?: (input: {
     readonly transactionHash: string;
@@ -464,9 +468,18 @@ export const forcedHarness = ({
       : (networkIdForcedArtifactFromPrepared(
           prepared,
         ) as unknown as JournalJsonObject);
+  // Every transaction served here but the foreign ones is our journal's.
+  const entries = () =>
+    confirmedCarriageEntries({
+      utxos: [...walletUtxos, ...(certificateUtxos ?? [])],
+      foreignTxHashes,
+      workflowId: h32(0x51),
+      identity: workflowIdentity(prepared.headerHash),
+    });
   return {
     artifact,
     scanUtxos,
+    entries,
     publicationObserver: rawL1.publications,
     adapter: createNetworkIdWorkflowAdapter(config),
     observe: async () =>
@@ -474,7 +487,7 @@ export const forcedHarness = ({
         identity: workflowIdentity(prepared.headerHash),
         workflowId: h32(0x51),
         artifact,
-        entries: [],
+        entries: entries(),
       }),
   };
 };

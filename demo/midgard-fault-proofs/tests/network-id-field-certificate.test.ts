@@ -85,7 +85,7 @@ describe("network-id Certified-tier field certificate", () => {
         identity: workflowIdentity(prepared.headerHash),
         workflowId: h32(0x51),
         artifact: harness.artifact,
-        entries: [],
+        entries: harness.entries(),
         action: selected.action,
         txHash: signed.transactionHash,
         signedTransactionCborHex: signed.signedTransactionCborHex,
@@ -155,7 +155,7 @@ describe("network-id Certified-tier field certificate", () => {
         identity: workflowIdentity(headerHash),
         workflowId: h32(0x51),
         artifact,
-        entries: [],
+        entries: harness.entries(),
         action: selected.action,
       });
     certificates.unshift(certificate("00".repeat(32)));
@@ -183,7 +183,7 @@ describe("network-id Certified-tier field certificate", () => {
         identity: workflowIdentity(prepared.headerHash),
         workflowId: h32(0x51),
         artifact: harness.artifact,
-        entries: [],
+        entries: harness.entries(),
         action: selected.action,
       });
     certificates.unshift(certificate("00".repeat(32)));
@@ -263,7 +263,7 @@ describe("network-id Certified-tier field certificate", () => {
         identity: workflowIdentity(headerHash),
         workflowId: h32(0x51),
         artifact,
-        entries: [],
+        entries: harness.entries(),
         action: selected.action,
       }),
     ).rejects.toBeInstanceOf(WorkflowActionChangedError);
@@ -312,7 +312,7 @@ describe("network-id Certified-tier field certificate", () => {
         identity: workflowIdentity(headerHash),
         workflowId: h32(0x51),
         artifact,
-        entries: [],
+        entries: harness.entries(),
         action: selected.action,
       }),
     ).rejects.toThrow("Failed to publish field-preimage carriage");
