@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
 
 import { encodeMidgardTxOutput, outRefLabel } from "@al-ft/midgard-core";
 import * as PlutusDataCbor from "@al-ft/midgard-core/plutus-data-cbor";
@@ -26,11 +25,13 @@ import {
   submitTransitionTraceFinal,
   submitTransitionTraceRoute,
 } from "../src/transition-trace/submit.js";
+import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { captureLocallyEvaluatedTransaction } from "../src/workflow/transaction-boundary.js";
 import {
   awaitHeaderCommitWindow,
   FAMILY_HISTORY_HEADER_LEAD_MS,
   prepareFamilyHistory,
+  writeFamilyHistoryEvidence,
 } from "./support/emulator/family-history.js";
 import { insertHistoryFillerAfter } from "./support/emulator/history-pair.js";
 import { measureCompleteSignedTransaction } from "./support/emulator/measurement.js";
@@ -49,31 +50,20 @@ import { buildDepositTransitionFixture } from "./support/transition-trace-final-
 import { publishTransitionTraceYields } from "./support/transition-trace-yields.js";
 
 const records: unknown[] = [];
-afterAll(() => {
-  const directory = process.env.MIDGARD_EVENT_HISTORY_EVIDENCE_DIR;
-  if (directory === undefined) return;
-  mkdirSync(directory, { recursive: true });
-  writeFileSync(
-    join(directory, "transition-history.json"),
-    JSON.stringify(
-      {
-        scope:
-          "Applied history admission and staged transition projection, pointer churn and serialized reopening; fixture catalogue governance, not live acceptance",
-        blueprintSha256: createHash("sha256")
-          .update(
-            readFileSync(
-              new URL("../../../onchain/aiken/plutus.json", import.meta.url),
-            ),
-          )
-          .digest("hex"),
-        records,
-      },
-      (_key, value: unknown) =>
-        typeof value === "bigint" ? value.toString() : value,
-      2,
-    ) + "\n",
-  );
-});
+afterAll(() =>
+  writeFamilyHistoryEvidence("transition-history.json", {
+    scope:
+      "Applied history admission and staged transition projection, pointer churn and serialized reopening; fixture catalogue governance, not live acceptance",
+    blueprintSha256: createHash("sha256")
+      .update(
+        readFileSync(
+          new URL("../../../onchain/aiken/plutus.json", import.meta.url),
+        ),
+      )
+      .digest("hex"),
+    records,
+  }),
+);
 
 describe("applied transition history", () => {
   it.each([
@@ -255,6 +245,8 @@ describe("applied transition history", () => {
         signer: h.proverSigner,
         witnessReferenceScripts: h.witnessReferenceScripts,
       };
+      // Our chunk publications, claimed as we make them.
+      const ownOutputs = createOwnOutputJournal();
       const init = await submitInit({
         ...common,
         fraudCategory: "transitionTrace",
@@ -264,10 +256,12 @@ describe("applied transition history", () => {
         ...common,
         threadOutRef: `${init.txHash}#${init.firstStepOutputIndex}`,
         proof: fixture.proof,
+        ownOutputs,
       });
       await resolveTransitionTraceByteCarriage({
         ...h.proverCarriage,
         chunks: transitionTraceByteChunks(outputCbor.toString("hex")),
+        ownOutputs,
         publish: true,
       });
       let checkpoint = (
@@ -296,6 +290,7 @@ describe("applied transition history", () => {
               proof: fixture.proof,
               depositOpening: persisted,
               preSubmitBoundary: boundary,
+              ownOutputs,
             }),
         );
         await h.proverLucid.awaitTx(await transaction.signed.submit());
@@ -357,6 +352,7 @@ describe("applied transition history", () => {
           threadOutRef: outRefLabel(checkpoint),
           proof: fixture.proof,
           depositOpening: persisted,
+          ownOutputs,
         });
       if (honest) {
         await expect(finish()).rejects.toThrow(/failed script execution/u);

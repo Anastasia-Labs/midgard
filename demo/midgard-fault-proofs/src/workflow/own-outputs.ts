@@ -23,6 +23,8 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import type { FraudProofWorkflowJournalEntry } from "./journal.js";
+
 const OUT_REF = /^([0-9a-f]{64})#(0|[1-9][0-9]*)$/u;
 
 /** `txHash#index`. */
@@ -219,3 +221,16 @@ export const createOwnOutputJournal = (): OwnOutputJournal => {
     },
   });
 };
+
+/**
+ * The transactions a workflow's journal confirmed: the workflow made them,
+ * so their outputs are its own. A read of an address keeps only these.
+ */
+export const workflowConfirmedTransactions = (
+  entries: readonly FraudProofWorkflowJournalEntry[],
+): ReadonlySet<string> =>
+  new Set(
+    entries.flatMap(({ event }) =>
+      event.kind === "confirmed" ? [event.txHash] : [],
+    ),
+  );

@@ -19,6 +19,7 @@ import {
 } from "../workflow/family-definition.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
+import { workflowConfirmedTransactions } from "../workflow/own-outputs.js";
 import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import { submitMinAdaInit } from "./submit-init.js";
 import { submitMinAdaTxStep01 } from "./submit-step-01.js";
@@ -88,6 +89,7 @@ export const transactionPort = (
             lucid: config.lucid,
             address: config.signer.proofMaterialsAddress,
             proofCbor: admitted.prepared.txInclusion.txMembershipProofCbor,
+            ownTransactions: workflowConfirmedTransactions(entries),
           })
         : [];
       if (chunks === undefined) {

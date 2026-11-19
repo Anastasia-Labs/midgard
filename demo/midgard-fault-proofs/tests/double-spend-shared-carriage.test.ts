@@ -59,6 +59,8 @@ const adapterCarriage = async (
       network: "Preview",
       publisherAddress: SIGNER.proofMaterialsAddress,
       planned: plan,
+      // Every output in `wallet` is one our journal confirmed.
+      ownTransactions: new Set(wallet.map(({ txHash }) => txHash)),
     }),
   };
 };

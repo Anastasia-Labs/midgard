@@ -260,6 +260,10 @@ const bindRun = (context: TransitionContext) => {
             if (input.stage === "step_01") {
               await submitTransitionTraceRoute({
                 ...common,
+                ownOutputs: workflowFieldCarriageOwnOutputs({
+                  category: "transitionTrace",
+                  entries,
+                }),
                 threadOutRef,
                 proof: prepared.proof,
               });

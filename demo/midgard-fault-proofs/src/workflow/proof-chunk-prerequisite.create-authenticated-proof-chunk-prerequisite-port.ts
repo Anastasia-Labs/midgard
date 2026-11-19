@@ -239,11 +239,14 @@ export const createAuthenticatedProofChunkPrerequisitePort = <
         baseAction,
         requirement: required,
       });
-      const confirmed = entries.some(
-        (entry) =>
-          entry.event.kind === "confirmed" &&
-          entry.event.actionId === routeAction.actionId,
-      );
+      const confirmation = [...entries]
+        .reverse()
+        .find(
+          (entry) =>
+            entry.event.kind === "confirmed" &&
+            entry.event.actionId === routeAction.actionId,
+        )?.event;
+      const confirmed = confirmation?.kind === "confirmed";
       const intent = [...entries]
         .reverse()
         .find(
@@ -252,6 +255,7 @@ export const createAuthenticatedProofChunkPrerequisitePort = <
             entry.event.actionId === routeAction.actionId,
         );
       let publicationAuthorized = false;
+      let publicationTxHash: string | undefined;
       if (
         confirmed &&
         intent !== undefined &&
@@ -264,14 +268,18 @@ export const createAuthenticatedProofChunkPrerequisitePort = <
         publicationAuthorized =
           recovery.route === "publication" &&
           sameJson(recovery.baseAction, baseAction);
+        // The publication that landed: its chunks alone are ours.
+        publicationTxHash =
+          confirmation?.kind === "confirmed" ? confirmation.txHash : undefined;
       }
-      if (!publicationAuthorized) {
+      if (!publicationAuthorized || publicationTxHash === undefined) {
         return { kind: "required", action: routeAction };
       }
       const chunks = await resolvePublishedProofChunks({
         lucid,
         address: signer.proofMaterialsAddress,
         proofCbor: required.proofCbor,
+        ownTransactions: new Set([publicationTxHash]),
       });
       if (chunks === undefined) {
         return { kind: "required", action: routeAction };

@@ -29,6 +29,7 @@ import {
 } from "../../src/workflow/double-spend-adapter.js";
 import {
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
+  type FraudProofWorkflowJournalEntry,
   type JournalJsonObject,
 } from "../../src/workflow/journal.js";
 import type { FraudProofWorkflowAction } from "../../src/workflow/orchestrator.js";
@@ -129,8 +130,9 @@ export const certifiedOpening = (
 
 /**
  * The adapter over a chain that holds exactly `walletUtxos` and
- * `certificateUtxos`. The authenticated observer finds an output only by its
- * exact out-ref at the address and, like the production observer, refuses one
+ * `certificateUtxos`, each an output of a transaction the workflow's journal
+ * confirmed. The authenticated observer finds an output only by its exact
+ * out-ref at the address and, like the production observer, refuses one
  * whose content differs from the expected datum and value shape.
  */
 export const doubleSpendHarness = ({
@@ -151,6 +153,15 @@ export const doubleSpendHarness = ({
         ? certificateUtxos
         : [];
   const authenticated: string[] = [];
+  // Every transaction on this chain is one the journal confirmed.
+  const entries = (): FraudProofWorkflowJournalEntry[] =>
+    [
+      ...new Set([...walletUtxos, ...certificateUtxos].map((u) => u.txHash)),
+    ].map((txHash, sequence) => ({
+      recordedAt: new Date(0).toISOString(),
+      sequence,
+      event: { kind: "confirmed", actionId: `chain:${txHash}`, txHash },
+    }));
   const config = {
     lucid: {
       utxosAt: async (address: string) => [...at(address)],
@@ -246,7 +257,7 @@ export const doubleSpendHarness = ({
       identity,
       workflowId: h32(0x51),
       artifact,
-      entries: [],
+      entries: entries(),
     });
     if (observed.kind !== "action_required")
       throw new Error(`expected an action, observed ${observed.kind}`);
@@ -257,7 +268,7 @@ export const doubleSpendHarness = ({
       identity,
       workflowId: h32(0x51),
       artifact,
-      entries: [],
+      entries: entries(),
       action,
       txHash,
     });
@@ -266,7 +277,7 @@ export const doubleSpendHarness = ({
       identity,
       workflowId: h32(0x51),
       artifact,
-      entries: [],
+      entries: entries(),
       action,
     });
   /** Runs preflight and returns the out-refs it authenticated. */

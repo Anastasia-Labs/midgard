@@ -1,10 +1,15 @@
 import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk";
 
 import { planFaultProofFieldOpening } from "../field-opening.js";
+import { resolvePublishedProofChunks } from "../publish-proof-chunks.js";
+import { addressFieldCarriageOwnOutputs } from "./bespoke-adapter-field-carriage.js";
 import type {
   DoubleSpendArtifact,
   DoubleSpendConstrainedWorkflowAdapterConfig,
 } from "./double-spend-adapter.preflight-of.js";
+import type { FraudProofWorkflowJournalEntry } from "./journal.js";
+import { workflowConfirmedTransactions } from "./own-outputs.js";
+
 export const createDoubleSpendFieldOpeningPlan = (
   config: DoubleSpendConstrainedWorkflowAdapterConfig,
 ) => {
@@ -26,3 +31,35 @@ export const createDoubleSpendFieldOpeningPlan = (
 
   return fieldPlan;
 };
+
+/**
+ * The double-spend proof chunks and field carriage of a workflow, read at
+ * the proof-materials and certificate addresses among the outputs of the
+ * transactions its journal `entries` confirmed only.
+ */
+export const createDoubleSpendOwnMaterials = (
+  config: DoubleSpendConstrainedWorkflowAdapterConfig,
+) => ({
+  proofChunks: async (
+    proofCbor: string,
+    entries: readonly FraudProofWorkflowJournalEntry[],
+  ) =>
+    await resolvePublishedProofChunks({
+      lucid: config.lucid,
+      address: config.signer.proofMaterialsAddress,
+      proofCbor,
+      ownTransactions: workflowConfirmedTransactions(entries),
+    }),
+  fieldCarriage: async (
+    planned: ReturnType<ReturnType<typeof createDoubleSpendFieldOpeningPlan>>,
+    entries: readonly FraudProofWorkflowJournalEntry[],
+  ) =>
+    await addressFieldCarriageOwnOutputs({
+      lucid: config.lucid,
+      network: config.network,
+      publisherAddress: config.signer.proofMaterialsAddress,
+      planned,
+      certificatePolicyId: config.fieldPreimageCertificate.policyId,
+      ownTransactions: workflowConfirmedTransactions(entries),
+    }),
+});

@@ -626,12 +626,14 @@ export const transitionTraceFinalCaseRunner = (
         signer: proverSigner,
         threadOutRef: outRefLabel(firstStepUtxo),
         proof: traceFixture.proof,
+        ownOutputs,
       });
       for (const bytes of outputCbors)
         await resolveTransitionTraceByteCarriage({
           lucid: proverLucid,
           address: proverSigner.proofMaterialsAddress,
           chunks: transitionTraceByteChunks(bytes.toString("hex")),
+          ownOutputs,
           publish: true,
         });
       await publishTransitionFieldCarriages({
@@ -643,12 +645,10 @@ export const transitionTraceFinalCaseRunner = (
         certificateReference: fieldCertificateReferenceScript,
         ownOutputs,
       });
+      const [routeHash, routeIndex] = route.routeOutRef.split("#");
       let checkpoint = (
         await proverLucid.utxosByOutRef([
-          {
-            txHash: route.routeOutRef.split("#")[0]!,
-            outputIndex: Number(route.routeOutRef.split("#")[1]),
-          },
+          { txHash: routeHash!, outputIndex: Number(routeIndex) },
         ])
       )[0]!;
       for (let hop = 0; hop < 6; hop++) {

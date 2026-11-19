@@ -2,9 +2,11 @@
  * Field carriage for the double-spend and network-id adapters, which do not
  * yet journal the out-refs of their own publish and certify transactions.
  * Until they do, their claims are read off the publisher and certificate
- * addresses by content, as before: each planned publication takes the first
- * unused ada-only output holding its datum, and the certificate the first
- * output (by out-ref) holding exactly its datum and token.
+ * addresses, among the outputs of the transactions their own journal
+ * confirmed only: each planned publication takes the first unused ada-only
+ * output of ours holding its datum, and the certificate the first output of
+ * ours (by out-ref) holding exactly its datum and token. Another workflow's
+ * carriage of the same content is never taken for ours.
  *
  * Every other caller claims carriage from its own signed transactions
  * (`field-opening.own-field-carriage.ts`); this module goes when these two
@@ -28,8 +30,9 @@ import {
 } from "./own-outputs.js";
 
 /**
- * The carriage of `planned` found at its addresses, as claims; a publication
- * made through the journal is claimed in memory.
+ * The carriage of `planned` found at its addresses among the outputs of
+ * `ownTransactions`, as claims; a publication made through the journal is
+ * claimed in memory.
  */
 export const addressFieldCarriageOwnOutputs = async ({
   lucid,
@@ -37,12 +40,15 @@ export const addressFieldCarriageOwnOutputs = async ({
   publisherAddress,
   planned,
   certificatePolicyId,
+  ownTransactions,
 }: {
   readonly lucid: Pick<LucidEvolution, "utxosAt">;
   readonly network: Network;
   readonly publisherAddress: string;
   readonly planned: Pick<FaultProofFieldOpeningPlan, "plan">;
   readonly certificatePolicyId?: string;
+  /** The transactions the workflow's journal confirmed. */
+  readonly ownTransactions: ReadonlySet<string>;
 }): Promise<OwnOutputJournal> => {
   const kept = new Map<string, OwnOutputClaimed[]>();
   const slots = fieldPublicationSlots({ plan: planned.plan, publisherAddress });
@@ -52,6 +58,7 @@ export const addressFieldCarriageOwnOutputs = async ({
     for (const { key, datumCbor } of slots) {
       const match = candidates.find(
         (candidate) =>
+          ownTransactions.has(candidate.txHash) &&
           !used.has(ownOutRefLabel(candidate)) &&
           candidate.datum === datumCbor &&
           isAdaOnlyInlineDatumOutput(candidate),
@@ -72,7 +79,10 @@ export const addressFieldCarriageOwnOutputs = async ({
       certificatePolicyId,
     });
     const [first] = (await lucid.utxosAt(certificateAddress))
-      .filter((candidate) => slot.matches(candidate))
+      .filter(
+        (candidate) =>
+          ownTransactions.has(candidate.txHash) && slot.matches(candidate),
+      )
       .sort((left, right) =>
         left.txHash === right.txHash
           ? left.outputIndex - right.outputIndex

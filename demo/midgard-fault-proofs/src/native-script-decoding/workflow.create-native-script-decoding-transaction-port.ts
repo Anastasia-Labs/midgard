@@ -29,6 +29,7 @@ import {
 import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
 import type { FraudProofL1Source } from "../workflow/l1-source.js";
+import { workflowConfirmedTransactions } from "../workflow/own-outputs.js";
 import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import {
   admitNativeScriptDecodingWorkflowArtifact,
@@ -201,6 +202,7 @@ export const createNativeScriptDecodingTransactionPort = (
                     lucid: config.lucid,
                     address: config.signer.proofMaterialsAddress,
                     proofCbor: inclusion.txMembershipProofCbor,
+                    ownTransactions: workflowConfirmedTransactions(entries),
                   }),
                   referenceScriptUtxo: config.references.steps[0],
                   witnessReferenceScripts: config.references.witnesses,

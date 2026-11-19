@@ -11,6 +11,7 @@ import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
 } from "./orchestrator.js";
+import { workflowConfirmedTransactions } from "./own-outputs.js";
 import { cacheKey } from "./proof-chunk-prerequisite.cache-key.js";
 import {
   parseProofCarriageRecovery,
@@ -144,7 +145,12 @@ export const withProofChunkPrerequisite = <
         }
         return await withDirectFirstProofCarriageRoute({
           action: context.action,
-          route: inspection.kind === "satisfied" ? "publication" : "direct",
+          route:
+            inspection.kind === "satisfied"
+              ? {
+                  publication: workflowConfirmedTransactions(context.entries),
+                }
+              : "direct",
           run: async () => await base.preflight(context),
         });
       }

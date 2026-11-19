@@ -27,12 +27,12 @@ import {
 import { parseSubmitStep01TxInclusion } from "../step-support.js";
 import { submitInit } from "../submit-init.js";
 import { WorkflowActionChangedError } from "./action-changed.js";
-import {
-  addressFieldCarriageOwnOutputs,
-  firstUnclaimedFieldPublication,
-} from "./bespoke-adapter-field-carriage.js";
+import { firstUnclaimedFieldPublication } from "./bespoke-adapter-field-carriage.js";
 import { admitSnapshot } from "./double-spend-adapter.create-double-spend-raw-l1-observation-port.js";
-import { createDoubleSpendFieldOpeningPlan } from "./double-spend-adapter.field-opening-plan.js";
+import {
+  createDoubleSpendFieldOpeningPlan,
+  createDoubleSpendOwnMaterials,
+} from "./double-spend-adapter.field-opening-plan.js";
 import {
   action,
   artifactFrom,
@@ -91,22 +91,8 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
     return admitSnapshot({ headerHash, ...observed });
   };
 
-  const proofChunks = async (proofCbor: string) =>
-    await resolvePublishedProofChunks({
-      lucid: config.lucid,
-      address: config.signer.proofMaterialsAddress,
-      proofCbor,
-    });
-
   const fieldPlan = createDoubleSpendFieldOpeningPlan(config);
-  const fieldCarriage = async (planned: ReturnType<typeof fieldPlan>) =>
-    await addressFieldCarriageOwnOutputs({
-      lucid: config.lucid,
-      network: config.network,
-      publisherAddress: config.signer.proofMaterialsAddress,
-      planned,
-      certificatePolicyId: config.fieldPreimageCertificate.policyId,
-    });
+  const { proofChunks, fieldCarriage } = createDoubleSpendOwnMaterials(config);
 
   const authenticatePublications = async ({
     headerHash,
@@ -198,6 +184,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
           tx.inclusion.txMembershipProofCbor,
           "tx.inclusion.txMembershipProofCbor",
         ),
+        entries,
       );
       if (chunks === undefined && !confirmed(entries, publicationId)) {
         return {
@@ -223,7 +210,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
     }
     if (stage.kind === "step_03" || stage.kind === "step_04") {
       const plan = fieldPlan(stage.kind, artifact);
-      const ownOutputs = await fieldCarriage(plan);
+      const ownOutputs = await fieldCarriage(plan, entries);
       const missing = firstUnclaimedFieldPublication({
         publisherAddress: config.signer.proofMaterialsAddress,
         planned: plan,
@@ -313,9 +300,11 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
   const capture = async ({
     action: requested,
     artifact,
+    entries,
   }: {
     readonly action: FraudProofWorkflowAction;
     readonly artifact: DoubleSpendArtifact;
+    readonly entries: readonly FraudProofWorkflowJournalEntry[];
   }): Promise<LocallyEvaluatedTransaction> => {
     const stage = requireJournalString(requested.input.stage, "action.stage");
     if (stage === "publish-proof") {
@@ -357,6 +346,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
           tx.inclusion.txMembershipProofCbor,
           "tx.inclusion.txMembershipProofCbor",
         ),
+        entries,
       );
       if (chunks === undefined) {
         throw new WorkflowActionChangedError(`${stage} chunks gone from L1`);
@@ -417,7 +407,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
           "field certification action does not match the tier-3 plan",
         );
       }
-      const ownOutputs = await fieldCarriage(plan);
+      const ownOutputs = await fieldCarriage(plan, entries);
       const publications = await resolveFaultProofFieldCarriagePublications({
         lucid: config.lucid,
         publisherAddress: config.signer.proofMaterialsAddress,
@@ -479,7 +469,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
       }
       const tx = proofStage === "step_03" ? artifact.tx1 : artifact.tx2;
       const plan = fieldPlan(proofStage, artifact);
-      const ownOutputs = await fieldCarriage(plan);
+      const ownOutputs = await fieldCarriage(plan, entries);
       if (stage === "publish-field") {
         const expectedMissing = firstUnclaimedFieldPublication({
           publisherAddress: config.signer.proofMaterialsAddress,
@@ -719,10 +709,11 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
           ? { kind: "conflict", reason: next.reason }
           : { kind: "action_required", action: next.action };
     },
-    preflight: async ({ action: requested, artifact }) => {
+    preflight: async ({ action: requested, artifact, entries }) => {
       const transaction = await capture({
         action: requested,
         artifact: artifactFrom(artifact),
+        entries,
       });
       if (!preparedByAction.has(requested.actionId)) {
         preparedByAction.set(requested.actionId, { transaction });
@@ -878,7 +869,7 @@ export const createDoubleSpendConstrainedWorkflowAdapter = (
               requested.input.proofCbor,
               "action.proofCbor",
             ),
-            fromTransaction: txHash,
+            ownTransactions: new Set([txHash]),
           });
           if (chunks === undefined) return await unconfirmed();
           for (const chunk of chunks) {

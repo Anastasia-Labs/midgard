@@ -31,6 +31,7 @@ import type {
   FieldPreimageCertificateBinding,
 } from "../workflow/family-definition.js";
 import { workflowFieldCarriageOwnOutputs } from "../workflow/field-carriage-prerequisite.own-carriage-claims.js";
+import { workflowConfirmedTransactions } from "../workflow/own-outputs.js";
 import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import {
   directPurposeSourceInclusion,
@@ -287,6 +288,7 @@ export const createDirectWalkTransactionPort = <
                 lucid: config.lucid,
                 address: config.signer.proofMaterialsAddress,
                 proofCbor: inclusion.txMembershipProofCbor,
+                ownTransactions: workflowConfirmedTransactions(entries),
               });
               await submitDirectPurposeStep01Accepted({
                 ...common,

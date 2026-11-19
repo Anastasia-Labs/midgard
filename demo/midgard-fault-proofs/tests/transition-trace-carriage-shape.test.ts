@@ -1,136 +1,142 @@
 /**
  * Which outputs at the prover's proof-materials address the transition-trace
- * carriage lookup takes as a chunk's carriage when other outputs there hold
- * the same datum.
+ * carriage lookup takes as a chunk's carriage: only the outputs of ours its
+ * claims name, never another workflow's output holding the same bytes.
  */
-import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
+import {
+  Data,
+  Emulator,
+  generateEmulatorAccount,
+  getAddressDetails,
+  Lucid,
+  type LucidEvolution,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import {
+  proofMaterialsAddress,
+  spendProofMaterials,
+} from "../src/funding/proof-materials-address.js";
 import { resolveTransitionTraceDataCarriage } from "../src/transition-trace/proof-carriage.js";
+import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
+import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
 
-const ADDRESS = "addr_test1prover_proof_materials";
-const FUNDING_ADDRESS = "addr_test1prover_funding";
-const FOREIGN_UNIT = `${"ab".repeat(28)}${"cd".repeat(4)}`;
 const DATUMS = [Data.to("aa".repeat(4096)), Data.to("bb".repeat(100))];
-
-const output = (
-  txHashByte: string,
-  outputIndex: number,
-  datum: string,
-  extra: Partial<UTxO> = {},
-): UTxO => ({
-  txHash: txHashByte.repeat(32),
-  outputIndex,
-  address: ADDRESS,
-  assets: { lovelace: 2_000_000n },
-  datum,
-  datumHash: undefined,
-  scriptRef: undefined,
-  ...extra,
-});
-
-/** Outputs holding `datum` that are not plain carriage. */
-const lookAlikes = (datum: string, txHashByte: string): UTxO[] => [
-  output(txHashByte, 0, datum, {
-    scriptRef: { type: "PlutusV3", script: "4e4d01000033222220051200120011" },
-  }),
-  output(txHashByte, 1, datum, {
-    assets: { lovelace: 2_000_000n, [FOREIGN_UNIT]: 1n },
-  }),
-];
-
-/**
- * A wallet funded at `FUNDING_ADDRESS` whose proof-materials address
- * `ADDRESS` holds `held`. A carriage publication it signs adds a plain output
- * with the paid datum there, listed after everything already held.
- */
-const walletHolding = (held: UTxO[]) => {
-  const published: string[] = [];
-  const lucid = {
-    wallet: () => ({ address: async () => FUNDING_ADDRESS }),
-    utxosAt: async (address: string) =>
-      address === ADDRESS ? held.map((utxo) => ({ ...utxo })) : [],
-    awaitTx: async () => true,
-    newTx: () => ({
-      pay: {
-        ToAddressWithData: (
-          address: string,
-          datum: { readonly value: string },
-        ) => ({
-          complete: async () => ({
-            sign: {
-              withWallet: () => ({
-                complete: async () => ({
-                  submit: async () => {
-                    expect(address).toBe(ADDRESS);
-                    published.push(datum.value);
-                    held.push(output("ee", published.length - 1, datum.value));
-                    return "ee".repeat(32);
-                  },
-                }),
-              }),
-            },
-          }),
-        }),
-      },
-    }),
-  } as unknown as LucidEvolution;
-  return { lucid, published };
-};
 
 const outRef = (utxo: UTxO) => `${utxo.txHash}#${utxo.outputIndex}`;
 
-describe("transition-trace carriage lookup", () => {
-  it("takes the plain carriage over look-alikes listed before it", async () => {
-    const real = DATUMS.map((datum, index) => output("ff", index, datum));
-    const { lucid, published } = walletHolding([
-      ...lookAlikes(DATUMS[0]!, "00"),
-      ...lookAlikes(DATUMS[1]!, "01"),
-      ...real,
-    ]);
+/** A prover wallet on a fresh emulator and its proof-materials address. */
+const prover = async () => {
+  const wallet = generateEmulatorAccount({ lovelace: 2_000_000_000n });
+  const emulator = new Emulator([wallet], EMULATOR_PROTOCOL_PARAMETERS);
+  const lucid = await Lucid(emulator, "Custom");
+  lucid.selectWallet.fromSeed(wallet.seedPhrase);
+  const keyHash = getAddressDetails(wallet.address).paymentCredential!.hash;
+  return { lucid, keyHash, address: proofMaterialsAddress("Custom", keyHash) };
+};
 
-    const carriage = await resolveTransitionTraceDataCarriage({
+/** The out-refs held at `address`, sorted. */
+const materials = async (lucid: LucidEvolution, address: string) =>
+  (await lucid.utxosAt(address)).map(outRef).sort();
+
+describe("transition-trace carriage lookup", () => {
+  it("publishes each chunk once, claims it, and reads it back by its claim", async () => {
+    const { lucid, address } = await prover();
+    const ownOutputs = createOwnOutputJournal();
+
+    const published = await resolveTransitionTraceDataCarriage({
       lucid,
-      address: ADDRESS,
+      address,
       datums: DATUMS,
+      ownOutputs,
+      publish: true,
+    });
+    const before = await materials(lucid, address);
+    const read = await resolveTransitionTraceDataCarriage({
+      lucid,
+      address,
+      datums: DATUMS,
+      ownOutputs,
     });
 
-    expect(carriage.map(outRef)).toEqual(real.map(outRef));
-    expect(published).toEqual([]);
-  });
+    expect(published.map((utxo) => utxo.datum)).toEqual(DATUMS);
+    expect(read.map(outRef)).toEqual(published.map(outRef));
+    expect(await materials(lucid, address)).toEqual(before);
+    expect(before).toHaveLength(2);
+  }, 120_000);
 
-  it("refuses to proceed when only look-alikes hold a chunk and publishing is off", async () => {
-    const { lucid } = walletHolding([
-      output("ff", 0, DATUMS[0]!),
-      ...lookAlikes(DATUMS[1]!, "00"),
-    ]);
+  it("never takes another workflow's chunk with the same bytes", async () => {
+    const { lucid, address } = await prover();
+    const ours = await resolveTransitionTraceDataCarriage({
+      lucid,
+      address,
+      datums: DATUMS,
+      ownOutputs: createOwnOutputJournal(),
+      publish: true,
+    });
+
+    // A second workflow of the same prover holds no claim on them.
+    const theirs = createOwnOutputJournal();
+    await expect(
+      resolveTransitionTraceDataCarriage({
+        lucid,
+        address,
+        datums: DATUMS,
+        ownOutputs: theirs,
+      }),
+    ).rejects.toThrow("requires a journaled chunk publication");
+    const own = await resolveTransitionTraceDataCarriage({
+      lucid,
+      address,
+      datums: DATUMS,
+      ownOutputs: theirs,
+      publish: true,
+    });
+
+    expect(own.map((utxo) => utxo.datum)).toEqual(DATUMS);
+    for (const utxo of own)
+      expect(ours.map(outRef)).not.toContain(outRef(utxo));
+  }, 120_000);
+
+  it("publishes a chunk again once the output its claim names is spent", async () => {
+    const { lucid, keyHash, address } = await prover();
+    const ownOutputs = createOwnOutputJournal();
+    const [first, second] = await resolveTransitionTraceDataCarriage({
+      lucid,
+      address,
+      datums: DATUMS,
+      ownOutputs,
+      publish: true,
+    });
+    const spend = await (
+      await spendProofMaterials(
+        lucid.newTx().collectFrom([first!]),
+        keyHash,
+      ).complete()
+    ).sign
+      .withWallet()
+      .complete();
+    await lucid.awaitTx(await spend.submit());
 
     await expect(
       resolveTransitionTraceDataCarriage({
         lucid,
-        address: ADDRESS,
+        address,
         datums: DATUMS,
+        ownOutputs,
       }),
     ).rejects.toThrow("requires a journaled chunk publication");
-  });
-
-  it("publishes a chunk only look-alikes hold and takes the published output", async () => {
-    const { lucid, published } = walletHolding([
-      output("ff", 0, DATUMS[0]!),
-      ...lookAlikes(DATUMS[1]!, "00"),
-    ]);
-
-    const carriage = await resolveTransitionTraceDataCarriage({
+    const again = await resolveTransitionTraceDataCarriage({
       lucid,
-      address: ADDRESS,
+      address,
       datums: DATUMS,
+      ownOutputs,
       publish: true,
     });
 
-    expect(published).toEqual([DATUMS[1]]);
-    expect(carriage.map(outRef)).toEqual([
-      `${"ff".repeat(32)}#0`,
-      `${"ee".repeat(32)}#0`,
-    ]);
-  });
+    expect(again[0]!.datum).toBe(DATUMS[0]);
+    expect(outRef(again[0]!)).not.toBe(outRef(first!));
+    expect(outRef(again[1]!)).toBe(outRef(second!));
+  }, 120_000);
 });

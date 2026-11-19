@@ -35,6 +35,7 @@ import {
   type PreimageCarriageRequirement,
 } from "./field-carriage-prerequisite.js";
 import type { FraudProofWorkflowAction } from "./orchestrator.js";
+import { workflowConfirmedTransactions } from "./own-outputs.js";
 import {
   captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
@@ -139,6 +140,7 @@ export const createTransactionPort = (
           lucid: config.lucid,
           address: config.signer.proofMaterialsAddress,
           proofCbor: admitted.artifact.txMembershipProofCbor,
+          ownTransactions: workflowConfirmedTransactions(entries),
         }),
         config.fieldCarriage.resolveAuthenticated({
           headerHash: config.headerHash,

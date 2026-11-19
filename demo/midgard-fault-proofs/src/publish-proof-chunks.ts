@@ -58,16 +58,18 @@ export const resolvePublishedProofChunks = async ({
   lucid,
   address,
   proofCbor,
-  fromTransaction,
+  ownTransactions,
 }: {
   readonly lucid: LucidEvolution;
   readonly address: string;
   readonly proofCbor: string;
   /**
-   * Resolve only this transaction's outputs, so reconciling a publication
-   * observes only the chunks that transaction paid.
+   * The transactions whose outputs are ours: those the workflow's journal
+   * confirmed, or the one publication being reconciled. A chunk of the same
+   * content that another workflow paid to the address is never ours, so
+   * neither workflow adopts or spends the other's.
    */
-  readonly fromTransaction?: string;
+  readonly ownTransactions: ReadonlySet<string>;
 }): Promise<readonly PublishedProofChunk[] | undefined> => {
   const datums = splitProofIntoChunkDatums(proofCbor);
   if (datums.length === 0) return [];
@@ -78,7 +80,7 @@ export const resolvePublishedProofChunks = async ({
     const match = candidates.find((utxo) => {
       const label = `${utxo.txHash}#${utxo.outputIndex.toString()}`;
       return (
-        (fromTransaction === undefined || utxo.txHash === fromTransaction) &&
+        ownTransactions.has(utxo.txHash) &&
         !claimed.has(label) &&
         isAdaOnlyInlineDatumOutput(utxo) &&
         canonicalPlutusDataCbor(utxo.datum) === datum

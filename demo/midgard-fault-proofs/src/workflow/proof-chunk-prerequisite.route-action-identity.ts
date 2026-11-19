@@ -106,7 +106,11 @@ export interface ProofChunkPrerequisitePort<
 export const sha256 = (value: string): string =>
   createHash("sha256").update(value).digest("hex");
 
-type DirectFirstProofCarriageRoute = "direct" | "publication";
+/** Direct, or through a publication among the transactions the workflow's
+ * journal confirmed, the only ones whose chunks are ours. */
+type DirectFirstProofCarriageRoute =
+  | "direct"
+  | Readonly<{ publication: ReadonlySet<string> }>;
 
 const directFirstProofCarriageRouteByAction = new WeakMap<
   object,
@@ -161,6 +165,7 @@ export const resolveDirectFirstProofChunks = async ({
     lucid,
     address,
     proofCbor,
+    ownTransactions: route.publication,
   });
   if (chunks === undefined) {
     throw new Error(

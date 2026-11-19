@@ -21,6 +21,27 @@ import { EMULATOR_PROTOCOL_PARAMETERS } from "./protocol-parameters.js";
 import { headerCommitValidFrom } from "./setup-tx.js";
 
 /**
+ * Writes `fields` as the evidence file `fileName` of an applied-history
+ * test, when `MIDGARD_EVENT_HISTORY_EVIDENCE_DIR` names a directory.
+ */
+export const writeFamilyHistoryEvidence = (
+  fileName: string,
+  fields: Record<string, unknown>,
+): void => {
+  const directory = process.env.MIDGARD_EVENT_HISTORY_EVIDENCE_DIR;
+  if (directory === undefined) return;
+  mkdirSync(directory, { recursive: true });
+  writeFileSync(
+    join(directory, fileName),
+    JSON.stringify(
+      fields,
+      (_, v: unknown) => (typeof v === "bigint" ? v.toString() : v),
+      2,
+    ) + "\n",
+  );
+};
+
+/**
  * The history records a complete fabricated-family fixture collects. When
  * `MIDGARD_EVENT_HISTORY_EVIDENCE_DIR` is set, they are written there as
  * `fileName`, with the blueprint's digest, once the fixture's tests finish.
@@ -30,25 +51,15 @@ export const fabricatedFamilyHistoryEvidence = (
 ): unknown[] => {
   const records: unknown[] = [];
   afterAll(() => {
-    const directory = process.env.MIDGARD_EVENT_HISTORY_EVIDENCE_DIR;
-    if (directory === undefined) return;
-    mkdirSync(directory, { recursive: true });
     const blueprint = readFileSync(
       new URL("../../../../../onchain/aiken/plutus.json", import.meta.url),
     );
-    writeFileSync(
-      join(directory, fileName),
-      JSON.stringify(
-        {
-          scope:
-            "Real history admission, catalogue-member CT initialization adapter, production stages 01-04 and fraud removal; fixture catalogue governance, not live acceptance",
-          blueprintSha256: createHash("sha256").update(blueprint).digest("hex"),
-          records,
-        },
-        (_, v: unknown) => (typeof v === "bigint" ? v.toString() : v),
-        2,
-      ) + "\n",
-    );
+    writeFamilyHistoryEvidence(fileName, {
+      scope:
+        "Real history admission, catalogue-member CT initialization adapter, production stages 01-04 and fraud removal; fixture catalogue governance, not live acceptance",
+      blueprintSha256: createHash("sha256").update(blueprint).digest("hex"),
+      records,
+    });
   });
   return records;
 };

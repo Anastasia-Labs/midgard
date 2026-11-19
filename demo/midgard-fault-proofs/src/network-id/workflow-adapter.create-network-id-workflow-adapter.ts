@@ -27,7 +27,10 @@ import {
   firstUnclaimedFieldPublication,
 } from "../workflow/bespoke-adapter-field-carriage.js";
 import type { CanonicalBlockClassification } from "../workflow/classification.js";
-import type { JournalJsonObject } from "../workflow/journal.js";
+import type {
+  FraudProofWorkflowJournalEntry,
+  JournalJsonObject,
+} from "../workflow/journal.js";
 import {
   FRAUD_PROOF_WORKFLOW_ADAPTER,
   FRAUD_PROOF_WORKFLOW_SAFETY,
@@ -36,7 +39,10 @@ import {
   type FraudProofWorkflowPreflight,
   type FraudProofWorkflowReconcileResult,
 } from "../workflow/orchestrator.js";
-import { createOwnOutputJournal } from "../workflow/own-outputs.js";
+import {
+  createOwnOutputJournal,
+  workflowConfirmedTransactions,
+} from "../workflow/own-outputs.js";
 import { reconcileSignedWorkflowTransaction } from "../workflow/signed-transaction-reconciliation.js";
 import {
   bindWorkflowPreflightTransaction,
@@ -208,9 +214,14 @@ export const createNetworkIdWorkflowAdapter = (
       ? undefined
       : outputsOpeningPlanFor(admitted);
 
-  /** The carriage of `opening` found at the signer and certificate addresses. */
-  const fieldCarriage = async (opening: FaultProofFieldOpeningPlan) =>
+  /** The carriage of `opening` found at the signer and certificate addresses
+   * among the outputs of the transactions our journal `entries` confirmed. */
+  const fieldCarriage = async (
+    opening: FaultProofFieldOpeningPlan,
+    entries: readonly FraudProofWorkflowJournalEntry[],
+  ) =>
     await addressFieldCarriageOwnOutputs({
+      ownTransactions: workflowConfirmedTransactions(entries),
       lucid: config.lucid,
       network: config.network,
       publisherAddress: config.signer.proofMaterialsAddress,
@@ -467,7 +478,7 @@ export const createNetworkIdWorkflowAdapter = (
     if (step02OutRef !== undefined) {
       const opening = finalStepOutputsOpeningPlanFor(admitted);
       if (opening !== undefined) {
-        const ownOutputs = await fieldCarriage(opening);
+        const ownOutputs = await fieldCarriage(opening, context.entries);
         const missing = firstUnclaimedFieldPublication({
           publisherAddress: config.signer.proofMaterialsAddress,
           planned: opening,
@@ -548,7 +559,7 @@ export const createNetworkIdWorkflowAdapter = (
       if (scanUtxo !== undefined) {
         const scanOutRef = outRefLabel(scanUtxo);
         const { opening, plan } = forcedScanPlanFor(admitted);
-        const ownOutputs = await fieldCarriage(opening);
+        const ownOutputs = await fieldCarriage(opening, context.entries);
         const missing = firstUnclaimedFieldPublication({
           publisherAddress: config.signer.proofMaterialsAddress,
           planned: opening,
@@ -795,7 +806,7 @@ export const createNetworkIdWorkflowAdapter = (
             "forced-scan thread out-ref",
           );
           const { opening, plan } = forcedScanPlanFor(admitted);
-          const ownOutputs = await fieldCarriage(opening);
+          const ownOutputs = await fieldCarriage(opening, context.entries);
           const scanUtxo = await forcedScanThread(prepared.headerHash);
           if (
             scanUtxo === undefined ||
@@ -887,7 +898,7 @@ export const createNetworkIdWorkflowAdapter = (
               "network-id field action does not match the prepared opening",
             );
           }
-          const ownOutputs = await fieldCarriage(opening);
+          const ownOutputs = await fieldCarriage(opening, context.entries);
           if (kind === "publish_field") {
             const missing = firstUnclaimedFieldPublication({
               publisherAddress: config.signer.proofMaterialsAddress,
@@ -964,7 +975,7 @@ export const createNetworkIdWorkflowAdapter = (
           const ownOutputs =
             opening === undefined
               ? createOwnOutputJournal()
-              : await fieldCarriage(opening);
+              : await fieldCarriage(opening, context.entries);
           const publications =
             opening === undefined
               ? []

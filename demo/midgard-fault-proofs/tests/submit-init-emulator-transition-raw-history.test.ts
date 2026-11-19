@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
 
 import { decodeMidgardTxOutput, outRefLabel } from "@al-ft/midgard-core";
 import {
@@ -34,12 +33,14 @@ import {
   buildValidDepositTransitionWitness,
 } from "../src/transition-trace/witnesses.js";
 import { transitionTraceYieldData } from "../src/transition-trace/yield-data.js";
+import { createOwnOutputJournal } from "../src/workflow/own-outputs.js";
 import { captureLocallyEvaluatedTransaction } from "../src/workflow/transaction-boundary.js";
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
 import {
   awaitHeaderCommitWindow,
   FAMILY_HISTORY_HEADER_LEAD_MS,
   prepareFamilyHistory,
+  writeFamilyHistoryEvidence,
 } from "./support/emulator/family-history.js";
 import { measureCompleteSignedTransaction } from "./support/emulator/measurement.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
@@ -63,30 +64,19 @@ import { publishTransitionTraceYields } from "./support/transition-trace-yields.
 
 const records: unknown[] = [];
 const originalAssets = { lovelace: 20_000_000n };
-afterAll(() => {
-  const directory = process.env.MIDGARD_EVENT_HISTORY_EVIDENCE_DIR;
-  if (directory === undefined) return;
-  mkdirSync(directory, { recursive: true });
-  writeFileSync(
-    join(directory, "transition-raw-history.json"),
-    JSON.stringify(
-      {
-        scope:
-          "Applied public raw Deposit admission and transition proof consumers; fixture catalogue governance and retained header construction, not node-produced settlement or live acceptance.",
-        blueprintSha256: createHash("sha256")
-          .update(readFileSync(realBlueprintPath))
-          .digest("hex"),
-        protocolParameters: EMULATOR_PROTOCOL_PARAMETERS,
-        rawDatum,
-        originalAssets,
-        records,
-      },
-      (_key, value: unknown) =>
-        typeof value === "bigint" ? value.toString() : value,
-      2,
-    ) + "\n",
-  );
-});
+afterAll(() =>
+  writeFamilyHistoryEvidence("transition-raw-history.json", {
+    scope:
+      "Applied public raw Deposit admission and transition proof consumers; fixture catalogue governance and retained header construction, not node-produced settlement or live acceptance.",
+    blueprintSha256: createHash("sha256")
+      .update(readFileSync(realBlueprintPath))
+      .digest("hex"),
+    protocolParameters: EMULATOR_PROTOCOL_PARAMETERS,
+    rawDatum,
+    originalAssets,
+    records,
+  }),
+);
 
 it.each(RAW_HISTORY_ROWS)(
   "proves a raw Deposit datum through applied transition stages: $name; honest=$honest",
@@ -348,6 +338,8 @@ it.each(RAW_HISTORY_ROWS)(
       signer: h.proverSigner,
       witnessReferenceScripts: h.witnessReferenceScripts,
     };
+    // Our chunk publications, claimed as we make them.
+    const ownOutputs = createOwnOutputJournal();
     const init = await submitInit({
       ...common,
       fraudCategory: "transitionTrace",
@@ -357,6 +349,7 @@ it.each(RAW_HISTORY_ROWS)(
       ...common,
       threadOutRef: `${init.txHash}#${init.firstStepOutputIndex}`,
       proof,
+      ownOutputs,
     });
     const outputCbors = transitionTraceYieldData({
       proof,
@@ -375,6 +368,7 @@ it.each(RAW_HISTORY_ROWS)(
       await resolveTransitionTraceByteCarriage({
         ...h.proverCarriage,
         chunks: transitionTraceByteChunks(outputCbor),
+        ownOutputs,
         publish: true,
       });
     const [routeHash, routeIndex] = route.routeOutRef.split("#");
@@ -403,6 +397,7 @@ it.each(RAW_HISTORY_ROWS)(
           proof,
           depositOpening: opening,
           preSubmitBoundary: boundary,
+          ownOutputs,
         }),
       );
       await h.proverLucid.awaitTx(await tx.signed.submit());
@@ -446,6 +441,7 @@ it.each(RAW_HISTORY_ROWS)(
         threadOutRef: outRefLabel(checkpoint),
         proof,
         depositOpening: opening,
+        ownOutputs,
       });
     if (honest) {
       const queueBefore = await h.proverLucid.utxosByOutRef([

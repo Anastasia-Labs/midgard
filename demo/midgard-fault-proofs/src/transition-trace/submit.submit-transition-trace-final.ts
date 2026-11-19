@@ -221,6 +221,7 @@ const submitTransitionTraceFinalStep = async ({
           lucid,
           address: signer.proofMaterialsAddress,
           proof: proofInput,
+          ownOutputs: ownOutputs ?? createOwnOutputJournal(),
           publish: false,
         })
       : [];
@@ -410,6 +411,7 @@ const submitTransitionTraceFinalStep = async ({
           lucid,
           address: signer.proofMaterialsAddress,
           chunks: transitionTraceByteChunks(selectedOutput),
+          ownOutputs: ownOutputs ?? createOwnOutputJournal(),
           publish: preSubmitBoundary === undefined,
         });
   const selected =

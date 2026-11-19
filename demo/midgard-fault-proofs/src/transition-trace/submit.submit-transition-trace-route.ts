@@ -15,6 +15,7 @@ import {
   requireComputationThreadToken,
   requireInitialStepDatum,
 } from "../step-support.js";
+import { createOwnOutputJournal } from "../workflow/own-outputs.js";
 import {
   type FraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
@@ -51,6 +52,7 @@ export const submitTransitionTraceRoute = async ({
   proof: proofInput,
   preSubmitBoundary,
   awaitConfirmation = true,
+  ownOutputs = createOwnOutputJournal(),
 }: Omit<
   SubmitTransitionTraceProofConfig,
   "additionalReferenceInputs" | "witnessReferenceScripts"
@@ -122,6 +124,7 @@ export const submitTransitionTraceRoute = async ({
           lucid,
           address: signer.proofMaterialsAddress,
           proof: proofInput,
+          ownOutputs,
           publish: preSubmitBoundary === undefined,
         })
       : [];

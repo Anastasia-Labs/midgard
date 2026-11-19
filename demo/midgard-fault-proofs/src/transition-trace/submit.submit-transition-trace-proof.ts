@@ -27,6 +27,7 @@ import {
   requireInitialStepDatum,
 } from "../step-support.js";
 import { witnessMintingPolicyCarriage } from "../witness-reference-scripts.js";
+import { createOwnOutputJournal } from "../workflow/own-outputs.js";
 import { transitionTraceError } from "./errors.js";
 import {
   resolveTransitionTraceProofCarriage,
@@ -66,7 +67,7 @@ export const submitTransitionTraceProof = async ({
   witnessReferenceScripts,
   fieldCertificateReferenceScript,
   awaitConfirmation = true,
-  ownOutputs,
+  ownOutputs = createOwnOutputJournal(),
 }: SubmitTransitionTraceProofConfig): Promise<SubmitTransitionTraceProofResult> => {
   const proof = readTransitionProof(proofInput);
   const {
@@ -157,6 +158,7 @@ export const submitTransitionTraceProof = async ({
           lucid,
           address: signer.proofMaterialsAddress,
           proof: proofInput,
+          ownOutputs,
           publish: true,
         })
       : [];
@@ -233,7 +235,7 @@ export const submitTransitionTraceProof = async ({
       witnessReferenceScripts,
       fieldCertificateReferenceScript,
       awaitConfirmation,
-      ...(ownOutputs === undefined ? {} : { ownOutputs }),
+      ownOutputs,
     });
     return {
       ...result,
