@@ -49,7 +49,9 @@ exactly the files run. The runner derives the
 package's declared build prerequisites, makes its declared blueprint ready
 (copied from a checkout with identical inputs and profile, else built with
 `deployment:build`), requires the local test Postgres and native outputs declared by the package, and assigns an invocation-specific disposable database family,
-dropped when the run ends. File order uses the recorded seed; tests within a
+dropped when the run ends. It names the native outputs it prepared in
+`MIDGARD_CONTRIB_PREPARED_NATIVE` (a JSON list of paths), so a suite's own
+setup skips rebuilding them. File order uses the recorded seed; tests within a
 file run in their declared order, as in CI.
 A name selector records filtered assertions separately from skipped selected
 assertions.

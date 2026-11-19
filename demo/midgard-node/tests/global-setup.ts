@@ -134,6 +134,22 @@ const provisionShard = (shard: string) =>
  * FAILING build throws: that is a compile regression in the crate, and letting
  * it degrade seven real assertions into skips would hide it.
  */
+/**
+ * Whether the contrib run that started this suite has just found the binary
+ * fresh or built it (`MIDGARD_CONTRIB_PREPARED_NATIVE`, a JSON list of the
+ * binaries it prepared). Its receipt rechecks the binary after the run, so
+ * rebuilding here would only repeat that work.
+ */
+const preparedByContrib = (): boolean => {
+  const prepared = process.env.MIDGARD_CONTRIB_PREPARED_NATIVE;
+  if (prepared === undefined || prepared === "") return false;
+  const paths: unknown = JSON.parse(prepared);
+  return (
+    Array.isArray(paths) &&
+    paths.some((path) => resolve(String(path)) === nativeOwnerBinaryPath)
+  );
+};
+
 const buildNativeOwnerBinary = (): void => {
   if (process.env.MIDGARD_SKIP_NATIVE_BUILD === "1") {
     process.stderr.write(
@@ -141,6 +157,7 @@ const buildNativeOwnerBinary = (): void => {
     );
     return;
   }
+  if (preparedByContrib() && nativeOwnerBinaryPresent()) return;
   const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
   const cargoProbe = spawnSync("cargo", ["--version"], { stdio: "ignore" });
   if (cargoProbe.error !== undefined || cargoProbe.status !== 0) {
@@ -212,11 +229,11 @@ const provisionOnce = async (poolIds: number): Promise<void> => {
 };
 
 /**
- * Vitest runs a root-config global setup once for the root and once more for
- * every workspace project that extends it (vitest.config.ts splits the suite
- * into a workspace-bundle and a source project), each through its own module
- * runner. The provisioning is per run, so later calls in the same Vitest
- * process join the first one, failures included.
+ * Every project in vitest.config.ts lists this setup (the workspace-bundle,
+ * source and interactive-emulator projects), and Vitest runs it once for each
+ * project the run reaches, each through its own module runner. The
+ * provisioning is per run, so later calls in the same Vitest process join the
+ * first one, failures included.
  */
 const ONCE = Symbol.for("midgard-node/tests/global-setup");
 const JOURNAL_DIRECTORY = Symbol.for(

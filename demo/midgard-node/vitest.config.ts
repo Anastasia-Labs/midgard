@@ -47,6 +47,16 @@ const durationTablePath = fileURLToPath(
   new URL("./tests/support/ci-file-durations.json", import.meta.url),
 );
 
+/** Every project's global setup: creates and migrates one database per worker
+ * shard before any file runs, after refusing a stale onchain/aiken/plutus.json,
+ * and gives the run its shared fixture directory. Each project lists it, and
+ * `tests/global-setup.ts` runs its work once per run. */
+const runSetup = [
+  blueprintStampGlobalSetup,
+  runSharedFixturesGlobalSetup,
+  "./tests/global-setup.ts",
+];
+
 const config = defineConfig({
   plugins: [rawSqlLoaderPlugin()],
   test: {
@@ -59,14 +69,6 @@ const config = defineConfig({
     // Pins each file to its worker's shard before the file loads, in every
     // project (tests/test-env.ts states the invariant).
     setupFiles: ["./tests/pin-database-shard.ts"],
-    // Creates and migrates one database per worker shard before any file runs,
-    // after refusing a stale onchain/aiken/plutus.json, and gives the run its
-    // shared fixture directory.
-    globalSetup: [
-      blueprintStampGlobalSetup,
-      runSharedFixturesGlobalSetup,
-      "./tests/global-setup.ts",
-    ],
     // Packs Node CI's `--shard=i/3` by the CI seconds each file took and starts
     // the longest files first: a few database and emulator files run two to
     // three minutes each while most files take seconds, so a giant that starts
@@ -89,6 +91,9 @@ const config = defineConfig({
           extends: true,
           test: {
             name: "midgard-node",
+            // Declared here, not on the root, so the bundle serves the setup's
+            // workspace imports too; the source project inherits it.
+            globalSetup: [...runSetup],
             // Vitest 3's filter resolution does not reliably match the
             // eight-way extension brace used here previously, so keep the
             // overwhelmingly common TypeScript lane explicit. Otherwise a
@@ -115,7 +120,7 @@ const config = defineConfig({
         test: {
           name: "interactive-emulator",
           include: interactiveTests,
-          globalSetup: [interactiveEmulatorSetup],
+          globalSetup: [...runSetup, interactiveEmulatorSetup],
           env: {
             // The suite's env defaults name the testing profile; this project
             // compiles the emulator profile instead.

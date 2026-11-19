@@ -296,6 +296,7 @@ if (mode === 'list') {
 }
 const lease = listResources().some((entry) => entry.resource === 'workspace:' + process.env.FAKE_ROOT);
 appendFileSync(process.env.FAKE_LOG, JSON.stringify({vitest: rest, NODE_ENV: process.env.NODE_ENV, tier: process.env.MIDGARD_TEST_TIER, lease}) + '\\n');
+if (process.env.FAKE_NATIVE_LOG) writeFileSync(process.env.FAKE_NATIVE_LOG, process.env.MIDGARD_CONTRIB_PREPARED_NATIVE ?? 'unset');
 for (const file of collected) if (readFileSync(file, 'utf8').includes('RUN_CLI')) {
   const result = spawnSync(process.execPath, [join(process.cwd(), 'dist', 'cli.js')], {encoding:'utf8'});
   if (result.status !== 0) throw new Error(result.stderr || 'compiled CLI failed');
@@ -534,6 +535,66 @@ test("a gate refuses a registered file its package's run does not collect, and f
     [[2, 3], 1],
   ])
     assert.equal(gateExitCode(codes), gate, codes.join(","));
+});
+
+test("a run names the native binaries it prepared to the suite, and none when it prepared none", async (t) => {
+  const { root, env } = workspace(
+    t,
+    {
+      command: ["vitest", "run"],
+      prerequisites: [{ kind: "native", package: "midgard-node" }],
+    },
+    { "a.test.ts": "" },
+  );
+  const manifest = resolve(root, "demo/example/package.json");
+  const pkg = JSON.parse(readFileSync(manifest, "utf8"));
+  atomicJson(manifest, {
+    ...pkg,
+    name: "midgard-node",
+    scripts: { ...pkg.scripts, "native:mpf-owner:build:contrib-raw": "true" },
+  });
+  const output =
+    "native/mpf-event-flat-wasm/target/release/architecture-g-owner";
+  // The crate ignores its build output, as the real one does.
+  mkdirSync(resolve(root, "demo/example/native/mpf-event-flat-wasm"), {
+    recursive: true,
+  });
+  writeFileSync(
+    resolve(root, "demo/example/native/mpf-event-flat-wasm/.gitignore"),
+    "/target/\n",
+  );
+  const tools = resolve(root, "tools");
+  // The recipe's toolchain, and a build that writes the declared binary.
+  for (const tool of ["cargo", "rustc"])
+    writeFileSync(resolve(tools, tool), `#!/bin/sh\necho "${tool} 1.0.0"\n`, {
+      mode: 0o755,
+    });
+  writeFileSync(
+    resolve(tools, "corepack"),
+    `#!/bin/sh\nif [ "$*" = "pnpm --version" ]; then printf "9.15.4\\n"; exit 0; fi\nmkdir -p ${JSON.stringify(output.replace(/\/[^/]+$/u, ""))} && printf binary > ${JSON.stringify(output)}\n`,
+    { mode: 0o755 },
+  );
+  const seen = resolve(root, "native.txt");
+  const run = (extra) =>
+    runTests(root, "midgard-node", {
+      sourceOnly: true,
+      env: { ...env, FAKE_NATIVE_LOG: seen, ...extra },
+    });
+  const receipt = await run({});
+  assert.equal(receipt.status, "passed");
+  assert.deepEqual(JSON.parse(readFileSync(seen, "utf8")), [
+    resolve(root, "demo/example", output),
+  ]);
+  assert.equal(
+    (
+      await run({
+        MIDGARD_SKIP_NATIVE_BUILD: "1",
+        MIDGARD_CONTRIB_PREPARED_NATIVE: JSON.stringify(["/elsewhere"]),
+      })
+    ).status,
+    "passed",
+  );
+  assert.deepEqual(JSON.parse(readFileSync(seen, "utf8")), []);
 });
 
 test("a related run runs what the change reaches, with the preludes, and nothing when it reaches nothing", async (t) => {

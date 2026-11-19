@@ -14,7 +14,7 @@ import {
   mkdirSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, relative, resolve, sep } from "node:path";
+import { basename, dirname, relative, resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 import { NATIVE_RECIPES } from "./native-recipes.mjs";
 
@@ -51,10 +51,21 @@ export const atomicJson = (path, value) => {
   renameSync(temporary, path);
 };
 
+// A directory's real path, once per identity scope: hashing a closure checks
+// thousands of files in a few hundred directories.
+const realDirectory = (directory) =>
+  scoped(`realpath\0${directory}`, () => realpathSync(directory));
+// The real path of an existing path: its directory's real path joined with
+// its own name, unless the name itself is a link.
+const realPath = (path) =>
+  path === dirname(path) || lstatSync(path).isSymbolicLink()
+    ? realpathSync(path)
+    : resolve(realDirectory(dirname(path)), basename(path));
+
 // Verify every existing ancestor as well as the lexical path. A path through
 // a symlink must never escape the declared checkout, including new outputs.
 export const inside = (root, path) => {
-  const base = realpathSync(root);
+  const base = realDirectory(root);
   const target = resolve(base, path);
   const contained = (value) =>
     value === base || value.startsWith(`${base}${sep}`);
@@ -62,7 +73,7 @@ export const inside = (root, path) => {
     throw new Error(`expected a file inside ${base}: ${path}`);
   let ancestor = target;
   while (!existsSync(ancestor)) ancestor = dirname(ancestor);
-  if (!contained(realpathSync(ancestor)))
+  if (!contained(realPath(ancestor)))
     throw new Error(`symlink escapes checkout: ${path}`);
   return target;
 };
@@ -467,8 +478,12 @@ export const SHARED_INPUT_FILES = [
 // Conservative closure includes native sources, SQL, generators and fixtures,
 // not merely src/. Test edits can cause an unnecessary rebuild, never a false
 // fresh result. Missing optional inputs are represented in the digest.
+// One synchronous computation, so it is its own identity scope when no
+// caller's scope is open.
 export const inputIdentity = (root, name) =>
-  scoped(`input\0${root}\0${name}`, () => uncachedInputIdentity(root, name));
+  withIdentityScope(() =>
+    scoped(`input\0${root}\0${name}`, () => uncachedInputIdentity(root, name)),
+  );
 const uncachedInputIdentity = (root, name) => {
   if (name === "@repository") {
     // Builds create ignored LaTeX/site outputs outside dist/. They are not

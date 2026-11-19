@@ -1,10 +1,23 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
 
-import { packageByName, runtimeBuildClosure } from "./files.mjs";
+import {
+  hashFiles,
+  inside,
+  packageByName,
+  runtimeBuildClosure,
+  withIdentityScope,
+} from "./files.mjs";
 
 // One scoped and one unscoped package, as the demo workspace mixes them.
 const workspace = (t) => {
@@ -82,4 +95,37 @@ test("a workspace package a build keeps external must be a runtime dependency", 
     ).map(({ name }) => name),
     ["tools"],
   );
+});
+
+test("a link out of the checkout is refused inside an identity scope as outside one", (t) => {
+  const root = mkdtempSync(resolve(tmpdir(), "contrib-inside-"));
+  const outside = mkdtempSync(resolve(tmpdir(), "contrib-outside-"));
+  t.after(() => {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
+  });
+  mkdirSync(resolve(root, "src"));
+  writeFileSync(resolve(root, "src/plain.ts"), "export {};\n");
+  writeFileSync(resolve(outside, "secret.ts"), "export {};\n");
+  symlinkSync(resolve(outside, "secret.ts"), resolve(root, "src/file-link.ts"));
+  symlinkSync(outside, resolve(root, "src/directory-link"));
+  // Each check runs alone and after its directory's real path was
+  // memoized by an earlier check in the same scope.
+  for (const scope of [(action) => action(), withIdentityScope])
+    scope(() => {
+      assert.equal(
+        inside(root, "src/plain.ts"),
+        resolve(realpathSync(root), "src/plain.ts"),
+      );
+      for (const path of [
+        "src/file-link.ts",
+        "src/directory-link/secret.ts",
+        "src/directory-link/new.ts",
+      ])
+        assert.throws(() => inside(root, path), /symlink escapes/u, path);
+      assert.throws(
+        () => hashFiles(root, ["src/plain.ts", "src/file-link.ts"]),
+        /symlink escapes/u,
+      );
+    });
 });

@@ -26,6 +26,7 @@ import {
   sha256,
   buildOutputIdentity,
   hashFiles,
+  withIdentityScope,
 } from "./files.mjs";
 import { runProcess } from "./process.mjs";
 import { writeReceipt } from "./receipts.mjs";
@@ -54,7 +55,8 @@ const VITEST_CONFIG = /^vitest\.[\w-]+\.config\.[cm]?[jt]s$/u;
 // Its run writes evidence the receipt binds, so it never reuses a pass.
 const PUBLICATION_DRIVER = "tests/published-workflow-deployment.test.ts";
 
-export const preparationPlan = (root, name, { sourceOnly = false } = {}) => {
+// What a package's test task declares it needs, without checking any of it.
+const declaredPreparation = (root, name, { sourceOnly = false } = {}) => {
   const pkg = packageByName(root, name);
   const task = packageTestTask(pkg);
   const declared = task?.prerequisites ?? [];
@@ -86,10 +88,25 @@ export const preparationPlan = (root, name, { sourceOnly = false } = {}) => {
     native: declared
       .filter((entry) => entry.kind === "native")
       .map((entry) => entry.package),
-    prerequisites: ordered.map((name) => ({ name, ...checkBuild(root, name) })),
-    inputSha256: inputIdentity(root, pkg.name).sha256,
+    ordered,
   };
 };
+
+// The plan with every prerequisite's verdict and the package's input
+// digest. Nothing builds or edits while it is computed, so one identity scope
+// hashes the shared closure once for all of them.
+export const preparationPlan = (root, name, options = {}) =>
+  withIdentityScope(() => {
+    const { ordered, ...plan } = declaredPreparation(root, name, options);
+    return {
+      ...plan,
+      prerequisites: ordered.map((name) => ({
+        name,
+        ...checkBuild(root, name),
+      })),
+      inputSha256: inputIdentity(root, plan.package).sha256,
+    };
+  });
 
 /**
  * Build what the named packages' suites need before they start: a ready
@@ -103,24 +120,31 @@ export const prepareArtifacts = async (
   { signal, env = process.env, sourceOnly = false } = {},
 ) => {
   const plans = names.map((name) =>
-    preparationPlan(root, name, { sourceOnly }),
+    declaredPreparation(root, name, { sourceOnly }),
   );
   const blueprintAction = plans.some((plan) => plan.blueprint)
     ? await ensureBlueprint(root, { signal, env })
     : undefined;
-  const prerequisites = [
-    ...new Set(
-      plans.flatMap((plan) => plan.prerequisites.map(({ name }) => name)),
-    ),
-  ];
+  const prerequisites = [...new Set(plans.flatMap((plan) => plan.ordered))];
   const built = [];
-  for (const prerequisite of prerequisites) {
-    if (checkBuild(root, prerequisite).status !== "fresh") {
-      const result = await buildPackage(root, prerequisite, { signal, env });
-      if (result.exitCode !== 0)
-        throw new Error(`prerequisite build failed: ${result.path}`);
-      built.push(prerequisite);
-    }
+  // The verdicts up to the next stale prerequisite share one identity scope;
+  // a build ends it, so what follows a build is checked afresh.
+  for (let next = 0; next < prerequisites.length; next += 1) {
+    const stale = withIdentityScope(() =>
+      prerequisites.findIndex(
+        (prerequisite, index) =>
+          index >= next && checkBuild(root, prerequisite).status !== "fresh",
+      ),
+    );
+    if (stale === -1) break;
+    const result = await buildPackage(root, prerequisites[stale], {
+      signal,
+      env,
+    });
+    if (result.exitCode !== 0)
+      throw new Error(`prerequisite build failed: ${result.path}`);
+    built.push(prerequisites[stale]);
+    next = stale;
   }
   return { blueprintAction, built };
 };
@@ -133,7 +157,7 @@ export const prepareNativeArtifacts = async (
 ) => {
   const artifacts = [];
   if (env.MIDGARD_SKIP_NATIVE_BUILD !== "1")
-    for (const name of preparationPlan(root, packageName).native) {
+    for (const name of declaredPreparation(root, packageName).native) {
       if (checkNative(root, name).status !== "fresh") {
         const built = await buildNative(root, name, { signal, env });
         if (built.exitCode)
@@ -165,7 +189,7 @@ export const prepare = async (
   name,
   { signal, env = process.env, sourceOnly = false } = {},
 ) => {
-  const plan = preparationPlan(root, name, { sourceOnly });
+  const plan = declaredPreparation(root, name, { sourceOnly });
   if (plan.postgres && env.MIDGARD_SKIP_DB_TESTS !== "1") {
     if (
       env.POSTGRES_HOST &&
@@ -408,6 +432,13 @@ export const runTests = async (
     },
     { signal, env },
   );
+  // The native binaries this run just found fresh or built, so the suite's own
+  // setup need not rebuild them; the receipt rechecks them after the run.
+  runEnv.MIDGARD_CONTRIB_PREPARED_NATIVE = JSON.stringify(
+    native.flatMap(({ outputs }) =>
+      Object.keys(outputs.files).map((file) => resolve(root, file)),
+    ),
+  );
   const require = createRequire(resolve(cwd, "package.json"));
   const runner = resolve(
     require.resolve("vitest/package.json"),
@@ -583,11 +614,13 @@ export const runTests = async (
     integrity.push(reason);
   };
   // Stamp validation catches dist replacement even with identical sources.
-  const changedArtifacts = prepared.prerequisites.filter(
-    ({ name, stamp }) =>
-      checkBuild(root, name).status !== "fresh" ||
-      stamp.outputs.sha256 !==
-        buildOutputIdentity(root, packageByName(root, name)).sha256,
+  const changedArtifacts = withIdentityScope(() =>
+    prepared.prerequisites.filter(
+      ({ name, stamp }) =>
+        checkBuild(root, name).status !== "fresh" ||
+        stamp.outputs.sha256 !==
+          buildOutputIdentity(root, packageByName(root, name)).sha256,
+    ),
   );
   if (changedArtifacts.length)
     fail(
