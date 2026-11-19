@@ -2,12 +2,17 @@ import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   type FraudProofL1Source,
-  proofMaterialsAddressOfFundingAddress,
+  proofMaterialsAddress,
   type ResolvedProverSigner,
   type StateQueueMutationLeaseCoordinator,
   type WorkflowAdapterRunnerInput,
 } from "@al-ft/midgard-fault-proofs";
-import type { LucidEvolution, Provider, UTxO } from "@lucid-evolution/lucid";
+import {
+  credentialToAddress,
+  type LucidEvolution,
+  type Provider,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 import { vi } from "vitest";
 
 import {
@@ -190,10 +195,11 @@ export const transportFactory = () => {
 export const dependencies = (): WatcherFaultProofApplicationDependencies => {
   const signer: ResolvedProverSigner = {
     source: "test",
-    address: "addr_test1vqpzry9x8gf2tvdw0s3jn54khce6mua7l0yp4rx3z9g4zpq0j52c7",
-    proofMaterialsAddress: proofMaterialsAddressOfFundingAddress(
-      "addr_test1vqpzry9x8gf2tvdw0s3jn54khce6mua7l0yp4rx3z9g4zpq0j52c7",
-    ),
+    address: credentialToAddress("Preprod", {
+      type: "Key",
+      hash: "01".repeat(28),
+    }),
+    proofMaterialsAddress: proofMaterialsAddress("Preprod", "01".repeat(28)),
     paymentKeyHash: "01".repeat(28),
     selectWallet: vi.fn(),
   };

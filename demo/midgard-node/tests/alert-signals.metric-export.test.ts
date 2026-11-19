@@ -394,17 +394,18 @@ describe("wallet balance metrics", () => {
   it("exports each role wallet's plain-ADA balance and requirement, and the low-balance condition holds only below it", async () => {
     const operator = addressOf("operator");
     const settlement = addressOf("settlement");
-    // The operator is one lovelace short in plain ADA; its token-bearing,
-    // datum-carrying and script-carrying outputs do not count.
+    // The operator is one lovelace short in plain ADA; its datum-carrying
+    // pure-ADA output (a tagged refund) counts, while its token-bearing and
+    // script-carrying outputs do not.
     views.set(operator, [
       output(operator, 0, {
-        lovelace: OPERATOR_WALLET_REQUIRED_LOVELACE - 1n,
+        lovelace: OPERATOR_WALLET_REQUIRED_LOVELACE - 1n - 2_000_000n,
       }),
       output(operator, 1, {
         lovelace: 500_000_000n,
         ["cd".repeat(28) + "01"]: 1n,
       }),
-      output(operator, 2, { lovelace: 500_000_000n }, { datum: "d87980" }),
+      output(operator, 2, { lovelace: 2_000_000n }, { datum: "d87980" }),
       output(
         operator,
         3,
