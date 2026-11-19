@@ -1,6 +1,7 @@
 import { alignUnixTimeToSlotBoundary } from "@al-ft/midgard-core/ogmios-slot";
 import * as SDK from "@al-ft/midgard-sdk";
 import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
+import { loadOrCreateRunSharedFixture } from "@al-ft/midgard-test-support/run-shared-fixtures";
 import {
   Emulator,
   generateEmulatorAccount,
@@ -29,6 +30,7 @@ import {
 } from "./emulator-chain-capture.js";
 import { emulatorGenesisLucid } from "./emulator-genesis-lucid.js";
 import { bindNodeFollower } from "./follower-emulator.host.js";
+import { followerEmulatorInstalled } from "./follower-emulator.js";
 import { runWithoutFollower } from "./intent-journal.js";
 import { loadRealMidgardContractsForTest } from "./real-midgard-contracts.js";
 
@@ -252,10 +254,45 @@ const buildDeploymentSnapshot = async (
   };
 };
 
+/** This file's deployments, by where they come from and operator count. */
 export const deploymentSnapshots = new Map<
-  number,
+  string,
   Promise<DeploymentSnapshot>
 >();
+
+/**
+ * The deployment for `operatorCount` operators, read or built once in this
+ * file. Under the follower provider (`follower-emulator-installed.ts`) the
+ * run builds it once, through that provider, and every file reads that one
+ * (`@al-ft/midgard-test-support/run-shared-fixtures`): the first file to
+ * need it builds and shares it while files that start at the same time wait
+ * for it. A file that asks for its `own` deployment builds it itself, so its
+ * own end-of-file follower check covers the deployment's transactions.
+ * Without the follower provider each file builds its own, so a shared
+ * deployment is always one the follower provider served. A deployment is
+ * plain data, and each fixture restores a fresh copy of it.
+ */
+const deploymentSnapshot = (
+  operatorCount: number,
+  own: boolean,
+): Promise<DeploymentSnapshot> => {
+  const shared = !own && followerEmulatorInstalled();
+  const key = `${shared ? "run" : "own"}:${operatorCount.toString()}`;
+  let pending = deploymentSnapshots.get(key);
+  if (pending === undefined) {
+    pending = shared
+      ? loadOrCreateRunSharedFixture(
+          `operator-inactivity-deployment-follower-${operatorCount.toString()}`,
+          async () => ({
+            shared: await buildDeploymentSnapshot(operatorCount),
+            created: undefined,
+          }),
+        ).then(({ shared: snapshot }) => snapshot)
+      : buildDeploymentSnapshot(operatorCount);
+    deploymentSnapshots.set(key, pending);
+  }
+  return pending;
+};
 
 export type OperatorInactivityFixture = {
   readonly emulator: Emulator;
@@ -271,17 +308,14 @@ export type OperatorInactivityFixture = {
 };
 
 /**
- * Clones the cached deployment for `operatorCount` activated operators.
+ * Clones the cached deployment for `operatorCount` activated operators
+ * (`deploymentSnapshot`); with `ownDeployment` this file builds it itself.
  */
 export const initOperatorInactivityFixture = async (
   operatorCount = 1,
+  { ownDeployment = false }: { readonly ownDeployment?: boolean } = {},
 ): Promise<OperatorInactivityFixture> => {
-  let pending = deploymentSnapshots.get(operatorCount);
-  if (pending === undefined) {
-    pending = buildDeploymentSnapshot(operatorCount);
-    deploymentSnapshots.set(operatorCount, pending);
-  }
-  const snapshot = await pending;
+  const snapshot = await deploymentSnapshot(operatorCount, ownDeployment);
   const emulator = cloneEmulator(snapshot.emulatorState);
   // The node's follower over this deployment.
   bindNodeFollower(emulator, {

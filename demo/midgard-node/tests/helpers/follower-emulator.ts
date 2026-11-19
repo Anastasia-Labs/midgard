@@ -104,6 +104,13 @@ export type FollowerEmulatorInstallation = Readonly<{
   restore: () => Promise<void>;
 }>;
 
+/** The installations not yet restored. */
+let installations = 0;
+
+/** Whether this process's emulators' provider calls go through the follower
+ * provider (`installFollowerEmulator`). */
+export const followerEmulatorInstalled = (): boolean => installations > 0;
+
 /**
  * Routes every `Emulator`'s provider calls through a follower provider over
  * the host's store, synchronized to that emulator's chain, until `restore`.
@@ -189,6 +196,7 @@ export const installFollowerEmulator = (): FollowerEmulatorInstallation => {
     const provider = await providerOf(this);
     return await provider.awaitTx(txHash, AWAIT_TX_CHECK_MS);
   };
+  installations += 1;
   const use =
     (emulator: Emulator) => async (): Promise<FollowerEmulatorUse> => {
       const entry = servedOf(emulator);
@@ -215,6 +223,7 @@ export const installFollowerEmulator = (): FollowerEmulatorInstallation => {
     restore: async () => {
       unregisterCheck();
       for (const [name, method] of saved) prototype[name] = method;
+      installations -= 1;
       await releaseFollowerHost();
     },
   };

@@ -46,7 +46,12 @@ import { resetApplicationTables } from "./utils.js";
 
 describe("operator watchdog wallet selection", () => {
   it("leaves a merge's wallet selected while the merge holds the control plane, then strikes with the operator wallet", async () => {
-    const fixture = await initOperatorInactivityFixture(2);
+    // The other follower-provider files restore the run's shared deployment;
+    // this one builds its own, so its end-of-file follower check covers the
+    // deployment's transactions in every run.
+    const fixture = await initOperatorInactivityFixture(2, {
+      ownDeployment: true,
+    });
     const appointed = await appointFirstSchedulerOperator(fixture);
     const successor = fixture.operators.find(
       ({ keyHash }) => keyHash !== appointed.operatorKeyHash,
