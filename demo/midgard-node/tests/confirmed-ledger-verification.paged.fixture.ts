@@ -41,10 +41,13 @@ export const seedPaged = async (count: number) => {
     ...confirmed.filter((each) => !spent.includes(each)),
     produced,
   ]);
+  // The reset runs first, outside the gated write: a file run earlier on this
+  // worker's database may have left the gate at an applied view, which refuses
+  // a fixture's write until the reset restores the gate's seed row.
+  await run(resetApplicationTables);
   await run(
     withFollowerWrite(
       Effect.gen(function* () {
-        yield* resetApplicationTables;
         for (let from = 0; from < count; from += 5_000)
           yield* ConfirmedLedgerDB.insertMultiple([
             ...(yield* ledgerRows(
