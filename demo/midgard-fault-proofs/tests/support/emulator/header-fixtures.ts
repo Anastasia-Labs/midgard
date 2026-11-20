@@ -13,7 +13,7 @@ import {
   GENESIS_HEADER_HASH,
   Header,
   OutputReference,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 
 import { encodeData } from "../../../src/transition-trace/reconstruct.transition-trace-reconstruction.js";

@@ -4,7 +4,8 @@ import {
   DaLibp2pRetainedDaSource,
   fetchRetainedDaPayloadByHeaderHash,
 } from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Clock, Effect } from "effect";
 
 import { DaPayloadsDB } from "../database/index.js";
@@ -35,7 +36,7 @@ export const foreignRetainedDaInsert = (
   blockTime: bigint,
   payloadBytes: Buffer,
   roots: Pick<PayloadRootSet, "validationTracesRoot">,
-  counts: Pick<SDK.DaPayloadCounts, "validationTraceCount">,
+  counts: Pick<SDKDa.DaPayloadCounts, "validationTraceCount">,
 ): DaPayloadsDB.InsertInput => ({
   header_hash: Buffer.from(headerHash, "hex"),
   consensus_profile_id: MIDGARD_CONSENSUS_PROFILE_ID,
@@ -68,7 +69,7 @@ export const foreignRetainedDaInsert = (
  */
 export type ForeignDaBinding = Readonly<{
   status: SDK.DaAvailabilityStateQueueStatus;
-  authority: () => SDK.DaPayloadAvailabilityAuthority;
+  authority: () => SDKDa.DaPayloadAvailabilityAuthority;
 }>;
 
 /** Acquire untrusted public bytes through the existing authenticated libp2p
@@ -121,7 +122,7 @@ export const fetchForeignRetainedDa = (
     const { binding } = options;
     const status = binding?.status ?? "Unattested";
     const authority =
-      binding !== undefined && SDK.daAvailabilityStatusBinds(status)
+      binding !== undefined && SDKDa.daAvailabilityStatusBinds(status)
         ? yield* Effect.try({
             try: () => binding.authority(),
             catch: (cause) =>
@@ -179,7 +180,7 @@ export const fetchForeignRetainedDa = (
               const payload = yield* Effect.tryPromise(() =>
                 decodeStoredPayload({
                   payloadCbor: payloadBytes,
-                  schemaVersion: Number(SDK.DA_PAYLOAD_VERSION),
+                  schemaVersion: Number(SDKDa.DA_PAYLOAD_VERSION),
                 }),
               );
               if (
@@ -201,7 +202,7 @@ export const fetchForeignRetainedDa = (
                   ),
                 );
               const body = payload.block_body;
-              const counts: SDK.DaPayloadCounts = {
+              const counts: SDKDa.DaPayloadCounts = {
                 depositCount: BigInt(body.deposits.length),
                 withdrawalCount: BigInt(body.withdrawals.length),
                 forcedTransactionCount: BigInt(body.forced_transactions.length),
@@ -217,7 +218,7 @@ export const fetchForeignRetainedDa = (
               };
               for (const key of Object.keys(
                 counts,
-              ) as (keyof SDK.DaPayloadCounts)[]) {
+              ) as (keyof SDKDa.DaPayloadCounts)[]) {
                 if (
                   headerCommittedCounts(counts)[key] !==
                     headerCounts(header)[key] ||
@@ -231,7 +232,7 @@ export const fetchForeignRetainedDa = (
               }
               if (
                 authority !== undefined &&
-                SDK.daPayloadAvailabilityBinding({
+                SDKDa.daPayloadAvailabilityBinding({
                   status,
                   authority,
                   headerHash,

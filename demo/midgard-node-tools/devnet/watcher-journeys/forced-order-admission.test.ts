@@ -65,7 +65,8 @@ import {
   WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
 } from "@al-ft/midgard-fault-proofs/workflow/complete-replay";
 import { headerDecisionReplayContext } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDK from "@al-ft/midgard-sdk/users";
 import {
   CML,
   generateEmulatorAccount,
@@ -216,7 +217,7 @@ const prepareScriptProof = async (
   const forced = evidence.reconstruction.forcedTransactions[0];
   if (forced === undefined || forced.value.verdict === "ForcedTxValid")
     throw new Error("Missing retained forced rejection");
-  const subject = SDK.forcedVerdictSubject({
+  const subject = SDKFraudProof.forcedVerdictSubject({
     transactionId: forced.value.tx_id,
     sourceKey: forced.key,
     rejectionReason: forced.value.verdict.ForcedTxInvalid.reason,

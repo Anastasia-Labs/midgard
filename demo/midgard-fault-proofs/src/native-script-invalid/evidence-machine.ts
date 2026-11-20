@@ -1,5 +1,5 @@
 import "@al-ft/midgard-core";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "./evidence-machine.native-script-invalid-signer-set.js";
 import "./evidence-machine.read-node.js";
 import "./evidence-machine.native-script-invalid-pushdown-step.js";

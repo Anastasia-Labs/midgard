@@ -11,7 +11,8 @@
  * `submit-init-emulator-missing-redeemer-purpose-routes.test.ts`.
  */
 import { screenMidgardForcedTxAdmission } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
@@ -66,7 +67,7 @@ const daProvenance = {
 } as const;
 
 /** Installed replay of the block committing SHAPE under `verdict`. */
-const replayUnder = async (verdict: SDK.OperatorVerdict) => {
+const replayUnder = async (verdict: SDKCore.OperatorVerdict) => {
   const built = await buildMissingRedeemerBlock({
     shape: SHAPE,
     source: { kind: "forced", verdict },

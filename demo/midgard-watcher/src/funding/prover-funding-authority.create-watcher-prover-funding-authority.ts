@@ -8,7 +8,7 @@ import {
   WorkflowFundingReservationShortfallError,
   type WorkflowRuntimeFundingPolicy,
 } from "@al-ft/midgard-fault-proofs";
-import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
+import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 import { type UTxO } from "@lucid-evolution/lucid";
 
 import { type VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";

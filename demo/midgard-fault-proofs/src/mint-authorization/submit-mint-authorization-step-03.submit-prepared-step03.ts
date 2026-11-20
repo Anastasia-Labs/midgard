@@ -1,13 +1,15 @@
 import {
-  type MintAuthorizationStep03Args,
-  MintAuthorizationStep03Datum,
-  MintAuthorizationStep03SpendRedeemer,
-  type MintAuthorizationStep03State,
   type NativeTxWitnessSetCompact,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  type MintAuthorizationStep03Args,
+  MintAuthorizationStep03Datum,
+  MintAuthorizationStep03SpendRedeemer,
+  type MintAuthorizationStep03State,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

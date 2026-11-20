@@ -1,6 +1,6 @@
 import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

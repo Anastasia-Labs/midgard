@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 
 import type { Header } from "../domain.js";
@@ -22,7 +23,7 @@ import {
 } from "./proof-artifacts.da-proof-artifact-reason-code.js";
 
 export const reconstructTraceProofs = async (
-  payload: SDK.DaPayload,
+  payload: SDKDa.DaPayload,
   context: {
     readonly headerHash: Buffer;
     readonly payloadHash: Buffer;

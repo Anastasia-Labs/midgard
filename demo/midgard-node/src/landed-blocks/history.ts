@@ -10,7 +10,8 @@
  * on the same lineage.
  */
 import type { FactStore, View } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Effect } from "effect";
 
 import type { StateQueueProjectionConfig } from "../l1-state-queue/config.js";
@@ -140,7 +141,7 @@ export const decodeHistory = (
     blockTimes.set(element.headerHash, node.right.block_time);
     if (
       !statuses.has(element.headerHash) ||
-      SDK.daAvailabilityStatusBinds(node.right.da_attestation)
+      SDKDa.daAvailabilityStatusBinds(node.right.da_attestation)
     )
       statuses.set(element.headerHash, node.right.da_attestation);
     endTimes.set(element.headerHash, node.right.header.endTime);

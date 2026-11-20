@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { SqlClient } from "@effect/sql";
 import { fromHex } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -30,7 +31,7 @@ import {
 } from "./state-queue.js";
 
 const baseRootsFromStateQueueTail = (
-  latestBlock: SDK.StateQueueUTxO,
+  latestBlock: SDKStateQueue.StateQueueUTxO,
   _consensusProfile: ContractDeploymentIdentityValue["consensusProfile"],
 ): Effect.Effect<
   PendingBlockFinalizationsDB.PendingBlockFinalizationMetadata["baseRoots"],
@@ -175,7 +176,7 @@ export const buildPendingJournalMetadata = ({
   consensusProfile,
   deploymentMarker,
 }: {
-  readonly latestBlock: SDK.StateQueueUTxO;
+  readonly latestBlock: SDKStateQueue.StateQueueUTxO;
   readonly workerInput: WorkerInput;
   readonly blockEndTimeMs: number;
   readonly expectedRoots: PendingBlockFinalizationsDB.PendingBlockFinalizationMetadata["expectedRoots"];
@@ -240,8 +241,8 @@ const requireStateQueueLeaseToken = (
 
 export const assertLiveTailCommitBase = (
   contracts: SDK.MidgardValidators,
-  expectedTail: SDK.StateQueueUTxO,
-): Effect.Effect<void, SDK.StateQueueError, SqlClient.SqlClient> =>
+  expectedTail: SDKStateQueue.StateQueueUTxO,
+): Effect.Effect<void, SDKStateQueue.StateQueueError, SqlClient.SqlClient> =>
   Effect.gen(function* () {
     const liveTail = yield* fetchExpectedStateQueueTailLocal(
       {
@@ -254,7 +255,7 @@ export const assertLiveTailCommitBase = (
     const liveOutRef = stateQueueOutRef(liveTail);
     if (expectedOutRef !== liveOutRef) {
       return yield* Effect.fail(
-        new SDK.StateQueueError({
+        new SDKStateQueue.StateQueueError({
           message:
             "Commit base is stale; aborting block build before creating a pending journal",
           cause: `expected_tail=${expectedOutRef},live_tail=${liveOutRef}`,
@@ -265,12 +266,12 @@ export const assertLiveTailCommitBase = (
 
 export const resolveLiveTailCommitBase = (
   contracts: SDK.MidgardValidators,
-  expectedTail: SDK.StateQueueUTxO,
+  expectedTail: SDKStateQueue.StateQueueUTxO,
   _consensusProfile: ContractDeploymentIdentityValue["consensusProfile"],
 ): Effect.Effect<
-  SDK.StateQueueUTxO,
+  SDKStateQueue.StateQueueUTxO,
   | SDK.LucidError
-  | SDK.StateQueueError
+  | SDKStateQueue.StateQueueError
   | SDK.DataCoercionError
   | SDK.HashingError,
   SqlClient.SqlClient
@@ -299,7 +300,7 @@ export const resolveLiveTailCommitBase = (
     }
 
     return yield* Effect.fail(
-      new SDK.StateQueueError({
+      new SDKStateQueue.StateQueueError({
         message:
           "Commit base is stale; aborting block build before creating a pending journal",
         cause: `expected_tail=${expectedOutRef},live_tail=${liveOutRef},expected_header=${expectedHeaderHash},live_header=${liveHeaderHash}`,

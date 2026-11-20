@@ -12,7 +12,7 @@ import {
   normalizeDeploymentManifestJsonValue,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { deriveDeploymentManifestCardanoProtocolParametersFromLedger } from "@al-ft/midgard-l1-follower/protocol-parameters";
-import { GENESIS_HEADER_HASH } from "@al-ft/midgard-sdk";
+import { GENESIS_HEADER_HASH } from "@al-ft/midgard-sdk/core";
 import { type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

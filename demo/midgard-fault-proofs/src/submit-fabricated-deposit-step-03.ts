@@ -6,6 +6,12 @@ import {
  * Pointer churn cannot change the retained facts. No operator archive supplies
  * authority: every opening must match the commitment in the authentic thread. */
 import {
+  OutputReference,
+  requireInputIndex,
+  requireOwnSpendPurpose,
+  requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
   depositInfoCommitmentCbor,
   FabricatedDepositAuthenticContentOpening,
   type FabricatedDepositFault,
@@ -16,12 +22,8 @@ import {
   type FabricatedDepositStep04State,
   fabricatedDepositStep04State,
   isFabricatedDepositFault,
-  opensEventHistoryCommitmentCbor,
-  OutputReference,
-  requireInputIndex,
-  requireOwnSpendPurpose,
-  requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
+import { opensEventHistoryCommitmentCbor } from "@al-ft/midgard-sdk/users";
 import {
   type BuildTxWithRedeemer,
   Data,

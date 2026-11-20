@@ -11,7 +11,9 @@ import {
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core";
 import type { MidgardFieldCarriage } from "@al-ft/midgard-core/codec/native-tx-field-access";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -107,8 +109,8 @@ const spendOnlyTransactionCbor = (): Buffer =>
     }),
   );
 
-const payloadFor = (submittedTxCbor: Buffer): SDK.TxOrderPayload => {
-  const material = SDK.deriveTxOrderMaterial({
+const payloadFor = (submittedTxCbor: Buffer): SDKCore.TxOrderPayload => {
+  const material = SDKUsers.deriveTxOrderMaterial({
     submittedTxCbor,
     owner: Buffer.alloc(28, 0x66),
   });
@@ -126,7 +128,7 @@ const payloadFor = (submittedTxCbor: Buffer): SDK.TxOrderPayload => {
  * `i` holds `referenceDatums[i]` (raw carriage as its publication datum).
  */
 const reconstruct = (
-  payload: SDK.TxOrderPayload,
+  payload: SDKCore.TxOrderPayload,
   carriage: readonly MidgardFieldCarriage[] = [],
   referenceDatums: readonly (Uint8Array | null)[] = [],
 ): Buffer =>
@@ -157,7 +159,7 @@ const reconstruct = (
  * the on-chain walk reads the nine commitments in.
  */
 const inlineCarriageFor = (
-  material: SDK.TxOrderMaterial,
+  material: SDKUsers.TxOrderMaterial,
 ): readonly MidgardFieldCarriage[] =>
   material.carriage.map((field) => ({
     carriage: "Inline",
@@ -170,7 +172,7 @@ const FIELD_HASH_REFUSAL =
 describe("V1 tx-order §8 field carriage", () => {
   it("reconstructs an order whose only non-empty field is its spend inputs", () => {
     const submittedTxCbor = spendOnlyTransactionCbor();
-    const material = SDK.deriveTxOrderMaterial({
+    const material = SDKUsers.deriveTxOrderMaterial({
       submittedTxCbor,
       owner: Buffer.alloc(28, 0x66),
     });
@@ -188,7 +190,7 @@ describe("V1 tx-order §8 field carriage", () => {
     // outputs in field 2: each preimage authenticated once against the flat
     // commitment the payload's compact body carries.
     const submittedTxCbor = transactionCbor();
-    const material = SDK.deriveTxOrderMaterial({
+    const material = SDKUsers.deriveTxOrderMaterial({
       submittedTxCbor,
       owner: Buffer.alloc(28, 0x66),
     });
@@ -202,7 +204,7 @@ describe("V1 tx-order §8 field carriage", () => {
     // The tier is an encoding detail: the same bytes reached from a reference
     // input's nothing-but-bytes inline datum authenticate identically (§8.11).
     const submittedTxCbor = transactionCbor();
-    const material = SDK.deriveTxOrderMaterial({
+    const material = SDKUsers.deriveTxOrderMaterial({
       submittedTxCbor,
       owner: Buffer.alloc(28, 0x66),
     });
@@ -240,7 +242,7 @@ describe("V1 tx-order §8 field carriage", () => {
     const submittedTxCbor = transactionCbor({
       outputFills: [0x11, 0x22, 0x33, 0x44],
     });
-    const material = SDK.deriveTxOrderMaterial({
+    const material = SDKUsers.deriveTxOrderMaterial({
       submittedTxCbor,
       owner: Buffer.alloc(28, 0x66),
     });
@@ -288,7 +290,7 @@ describe("V1 tx-order §8 field carriage", () => {
 
   it("fails closed on carriage whose bytes are not the committed preimage", () => {
     const submittedTxCbor = transactionCbor();
-    const material = SDK.deriveTxOrderMaterial({
+    const material = SDKUsers.deriveTxOrderMaterial({
       submittedTxCbor,
       owner: Buffer.alloc(28, 0x66),
     });
@@ -309,7 +311,7 @@ describe("V1 tx-order §8 field carriage", () => {
     // The mint's exhaustion rule, re-derived: a spare entry means the vector being
     // read is not the one the mint authenticated.
     const submittedTxCbor = transactionCbor();
-    const material = SDK.deriveTxOrderMaterial({
+    const material = SDKUsers.deriveTxOrderMaterial({
       submittedTxCbor,
       owner: Buffer.alloc(28, 0x66),
     });

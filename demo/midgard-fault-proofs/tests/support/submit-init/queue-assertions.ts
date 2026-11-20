@@ -1,11 +1,13 @@
 import {
-  headerHashFromStateQueueUTxO,
   type MidgardValidators,
-  sortStateQueueUTxOs,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
+} from "@al-ft/midgard-sdk/core";
+import {
+  headerHashFromStateQueueUTxO,
+  sortStateQueueUTxOs,
   STATE_QUEUE_ROOT_ASSET_NAME,
   utxosToStateQueueUTxOs,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import { Lucid } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";

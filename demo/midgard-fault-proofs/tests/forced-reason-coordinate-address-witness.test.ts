@@ -11,7 +11,8 @@ import {
   deriveMidgardForcedTxProofSource,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, getAddressDetails } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -64,7 +65,8 @@ const withWitnesses = (addrTxWits: readonly SDK.MidgardAddressWitness[]) =>
       }),
     ],
     fee: 13n,
-    addrTxWitsPreimageCbor: SDK.encodeAddressWitnessPreimage(addrTxWits),
+    addrTxWitsPreimageCbor:
+      SDKFraudProof.encodeAddressWitnessPreimage(addrTxWits),
   });
 const signedSubject = await (async (): Promise<InvalidSignatureSubject> => {
   const txId = computeMidgardNativeTxId(withWitnesses([])).toString("hex");
@@ -236,7 +238,7 @@ const setupScenario = async (witnessIndex: bigint) => {
       signer: harness.proverSigner,
       threadOutRef: `${init.txHash}#${init.firstStepOutputIndex}`,
       evidence: {
-        subject: SDK.forcedVerdictSubject({
+        subject: SDKFraudProof.forcedVerdictSubject({
           transactionId: nativeTxId,
           sourceKey: key,
           rejectionReason: reason,

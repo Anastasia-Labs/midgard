@@ -5,7 +5,7 @@ import {
   readCborInteger,
   readCborMapHeader,
 } from "@al-ft/midgard-core/codec/cbor";
-import type { MintAuthorizationMintScanControl } from "@al-ft/midgard-sdk";
+import type { MintAuthorizationMintScanControl } from "@al-ft/midgard-sdk/fraud-proof";
 
 export const initialMintScan = (
   bytes: Buffer,

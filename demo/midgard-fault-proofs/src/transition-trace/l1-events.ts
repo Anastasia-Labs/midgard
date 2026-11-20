@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   CML,
   coreToTxOutput,
@@ -225,14 +226,14 @@ export const captureTransitionTraceL1Events = async ({
           .find((scope) => scope.role === definition.role)!
           .utxos.map(utxo);
         if (definition.kind !== "forcedTransaction") {
-          const deployment: SDK.EventHistoryDeployment = {
+          const deployment: SDKUsers.EventHistoryDeployment = {
             policyId: definition.policy,
             address: eventAddress(binding.network, definition.address),
             retentionAddress:
               historyDeployment.retentionAddresses[definition.kind],
             inlineLimitBytes: historyDeployment.inlineLimitBytes,
           };
-          for (const anchor of SDK.authenticateHistoryNodes(
+          for (const anchor of SDKUsers.authenticateHistoryNodes(
             outputs,
             deployment,
           )) {
@@ -244,14 +245,14 @@ export const captureTransitionTraceL1Events = async ({
               !("Order" in anchor.node.payload)
             )
               continue;
-            const witness = await SDK.fetchEventHistoryWitness(
+            const witness = await SDKUsers.fetchEventHistoryWitness(
               provider,
               deployment,
               anchor.node.payload.Order.facts.event_id,
             );
             if (witness.kind !== "Present")
               throw new Error("Transition Order has no authenticated presence");
-            const captured = SDK.captureEventHistoryWitness(
+            const captured = SDKUsers.captureEventHistoryWitness(
               witness,
               definition.policy,
               definition.kind === "deposit" ? "Deposit" : "Withdrawal",
@@ -263,7 +264,7 @@ export const captureTransitionTraceL1Events = async ({
               history: {
                 commitmentCbor: Data.to(
                   captured.commitment,
-                  SDK.EventHistoryCommitment,
+                  SDKUsers.EventHistoryCommitment,
                 ),
                 openingCbor: captured.openingCbor,
               },
@@ -287,7 +288,7 @@ export const captureTransitionTraceL1Events = async ({
             throw new Error(
               "Transition replay event NFT coverage is ambiguous",
             );
-          Data.from(event.datum, SDK.TxOrderDatum);
+          Data.from(event.datum, SDKUsers.TxOrderDatum);
           if (!units.has(tokens[0]![0])) newUnits.add(tokens[0]![0]);
           events.push({
             kind: definition.kind,

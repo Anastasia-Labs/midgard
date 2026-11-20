@@ -14,7 +14,7 @@ import {
   type MidgardFieldCarriagePlan,
 } from "@al-ft/midgard-core";
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import {

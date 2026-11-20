@@ -1,8 +1,6 @@
 import type { L1Origin } from "@al-ft/midgard-core/l1-origin";
-import {
-  buildComputationThreadValidator,
-  parseFaultProofBlueprint,
-} from "@al-ft/midgard-sdk";
+import { parseFaultProofBlueprint } from "@al-ft/midgard-sdk/core";
+import { buildComputationThreadValidator } from "@al-ft/midgard-sdk/deployment";
 
 import type { WatcherFaultProofL1 } from "../fault-proofs/fault-proof-application.production-dependencies.js";
 import type { WatcherOrphanedReservationObserver } from "../funding/prover-funding-recovery.orphaned-reservation.js";

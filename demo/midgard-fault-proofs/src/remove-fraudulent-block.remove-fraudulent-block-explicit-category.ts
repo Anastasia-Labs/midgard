@@ -1,10 +1,12 @@
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
-  incompleteRemoveLastFraudulentBlockHeaderTxProgram,
   type LinkedListNodeView,
   requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
+  incompleteRemoveLastFraudulentBlockHeaderTxProgram,
   type StateQueueUTxO,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import {
   type Script,
   type TxOutput,

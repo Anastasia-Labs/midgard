@@ -1,7 +1,7 @@
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueCategoryName,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 
 /**
  * Catalogue categories with no installed off-chain workflow. Each category's

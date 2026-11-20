@@ -9,7 +9,7 @@ import {
 } from "@al-ft/midgard-core/availability-operation-journal";
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { encodeTxBody, type SimTx } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { CML } from "@lucid-evolution/lucid";
 
 import { reconcileWatcherAvailabilityJournal } from "../../src/availability/journal-pins.js";

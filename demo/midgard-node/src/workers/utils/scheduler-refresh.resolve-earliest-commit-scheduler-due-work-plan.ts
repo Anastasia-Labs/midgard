@@ -1,5 +1,6 @@
 import type { SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { type LucidEvolution, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -95,7 +96,7 @@ export const resolveEarliestCommitSchedulerDueWorkPlan = ({
   readonly stateQueueEvidence: CommitSchedulerStateQueueEvidence;
   readonly callerLabel: string;
   readonly discoveryStage: CommitSchedulerDiscoveryStage;
-}): Effect.Effect<EarliestCommitSchedulerPlan, SDK.StateQueueError> =>
+}): Effect.Effect<EarliestCommitSchedulerPlan, SDKStateQueue.StateQueueError> =>
   Effect.gen(function* () {
     const operatorKeyHash = yield* getOperatorKeyHash(lucid);
     const schedulerWitnessUnit = toUnit(
@@ -109,7 +110,7 @@ export const resolveEarliestCommitSchedulerDueWorkPlan = ({
     ).pipe(
       Effect.mapError(
         (cause) =>
-          new SDK.StateQueueError({
+          new SDKStateQueue.StateQueueError({
             message:
               "Failed to fetch scheduler UTxOs for earliest commit scheduler due-work planning",
             cause,

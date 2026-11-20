@@ -1,5 +1,6 @@
 import { readCborBytes, readCborInteger } from "@al-ft/midgard-core/codec/cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import { blake2b } from "@noble/hashes/blake2.js";
 
 import type { PayloadCountSet } from "../domain.js";
@@ -161,7 +162,7 @@ export const eventPhase = (eventKey: SDK.EventKey): SDK.TransitionPhase => {
 };
 
 export const sourceEventFingerprints = (
-  body: SDK.DaPayloadBody,
+  body: SDKDa.DaPayloadBody,
 ): Set<string> => {
   const fingerprints = new Set<string>();
   const add = (fingerprint: string, fieldName: string) => {

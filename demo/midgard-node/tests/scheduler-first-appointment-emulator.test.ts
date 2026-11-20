@@ -16,7 +16,7 @@
  * deployed scheduler script while the transaction is completed, so a refusal
  * surfaces as a `failed script execution Spend[n]` build error.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import type { UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";

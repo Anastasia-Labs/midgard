@@ -1,5 +1,5 @@
 import type { DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { requireManifestString } from "@al-ft/midgard-sdk";
+import { requireManifestString } from "@al-ft/midgard-sdk/core";
 
 import { resolveHousekeepingRetentionDays } from "../database/retention-policy.js";
 import { type NodeConfigDep } from "./config.js";

@@ -9,7 +9,7 @@ import {
   encodeMidgardNativeTxCompact,
   encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core/codec";
-import { type MidgardTxInput, Proof } from "@al-ft/midgard-sdk";
+import { type MidgardTxInput, Proof } from "@al-ft/midgard-sdk/core";
 import {
   Data,
   type EmulatorAccount,

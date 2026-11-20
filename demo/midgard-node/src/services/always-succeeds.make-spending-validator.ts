@@ -1,5 +1,6 @@
 import { deploymentFamilyStepNames } from "@al-ft/midgard-core/deployment-manifest-identity";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   applyDoubleCborEncoding,
   MintingPolicy,
@@ -188,18 +189,20 @@ export const repeatedFaultProofChain = <
 >(
   validator: SDK.SpendingValidator,
   category: Category,
-): SDK.FaultProofContractChains[Category] =>
+): SDKFraudProof.FaultProofContractChains[Category] =>
   ({
     firstStep: validator,
     steps: deploymentFamilyStepNames(category).map(() => validator),
-  }) as unknown as SDK.FaultProofContractChains[Category];
+  }) as unknown as SDKFraudProof.FaultProofContractChains[Category];
 
 /** `repeatedFaultProofChain` for each category, keyed and ordered as given. */
 export const repeatedFaultProofChains = <
   Category extends SDK.FraudProofCatalogueCategoryName,
 >(
   validators: Readonly<Record<Category, SDK.SpendingValidator>>,
-): { readonly [Name in Category]: SDK.FaultProofContractChains[Name] } =>
+): {
+  readonly [Name in Category]: SDKFraudProof.FaultProofContractChains[Name];
+} =>
   Object.fromEntries(
     (Object.entries(validators) as [Category, SDK.SpendingValidator][]).map(
       ([category, validator]) => [
@@ -207,4 +210,6 @@ export const repeatedFaultProofChains = <
         repeatedFaultProofChain(validator, category),
       ],
     ),
-  ) as { readonly [Name in Category]: SDK.FaultProofContractChains[Name] };
+  ) as {
+    readonly [Name in Category]: SDKFraudProof.FaultProofContractChains[Name];
+  };

@@ -1,4 +1,6 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import type * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import {
   type Assets,
@@ -28,8 +30,8 @@ const RACE_PATTERNS = [
   /\bspent\b/i,
 ];
 
-const AVAILABILITY_PARAMETERS: SDK.DaAvailabilityParameters = {
-  response_geometry: SDK.availabilityResponseGeometry({
+const AVAILABILITY_PARAMETERS: SDKDa.DaAvailabilityParameters = {
+  response_geometry: SDKDa.availabilityResponseGeometry({
     chunkByteLength: 4096,
     trancheByteLength: 4 * 1024 * 1024,
     maxTrancheCount: 16,
@@ -153,7 +155,7 @@ const makeFixture = () => {
     contracts.stateQueue.policyId +
     SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX +
     headerHash;
-  const stateQueueUtxo: SDK.StateQueueUTxO = {
+  const stateQueueUtxo: SDKStateQueue.StateQueueUTxO = {
     utxo: makeUtxo(
       1,
       { lovelace: 3_000_000n, [stateQueueUnit]: 1n },
@@ -163,22 +165,22 @@ const makeFixture = () => {
     datum: linkedListNode,
     assetName: SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + headerHash,
   };
-  const daParamsDatum: SDK.DaParamsDatum = {
+  const daParamsDatum: SDKDa.DaParamsDatum = {
     committee: h32(0x11) + h32(0x22),
     committee_signers_hash: h32(0x33),
     da_threshold: 2n,
     owners: [h28(0x44), h28(0x55)],
     update_threshold: 2n,
   };
-  const attestationUnit = SDK.daAttestationUnit(
+  const attestationUnit = SDKDa.daAttestationUnit(
     contracts.daAttestation,
     headerHash,
   );
   // A threshold-reached attestation, so the pool is the only thing that can
   // stop the build.
-  const attestationDatum: SDK.DaAttestationDatum = {
+  const attestationDatum: SDKDa.DaAttestationDatum = {
     header_hash: headerHash,
-    availability_commitment: SDK.buildDaAvailabilityCommitment({
+    availability_commitment: SDKDa.buildDaAvailabilityCommitment({
       deploymentIdentity: h28(0x71),
       headerHash,
       payload: Uint8Array.of(1),
@@ -194,7 +196,7 @@ const makeFixture = () => {
     attestation_count: 2n,
   };
   const pool = (
-    datum: SDK.DaBondPoolDatum,
+    datum: SDKDa.DaBondPoolDatum,
     lovelace: bigint,
     txHash = "00".repeat(32),
   ): UTxO =>
@@ -202,9 +204,9 @@ const makeFixture = () => {
       0,
       {
         lovelace,
-        [SDK.daBondPoolUnit(contracts.daBondPool.policyId)]: 1n,
+        [SDKDa.daBondPoolUnit(contracts.daBondPool.policyId)]: 1n,
       },
-      SDK.encodeDaBondPoolDatum(datum),
+      SDKDa.encodeDaBondPoolDatum(datum),
       contracts.daBondPool.spendingScriptAddress,
       txHash,
     );
@@ -216,7 +218,7 @@ const makeFixture = () => {
       attestationUtxo: makeUtxo(
         3,
         { lovelace: 5_000_000n, [attestationUnit]: 1n },
-        Data.to(attestationDatum as never, SDK.DaAttestationDatum as never),
+        Data.to(attestationDatum as never, SDKDa.DaAttestationDatum as never),
         contracts.daAttestation.spendingScriptAddress,
       ),
       attestationDatum,
@@ -360,7 +362,7 @@ describe("apply against the pooled DA bond", () => {
       ...args,
       attestationDatum: {
         ...args.attestationDatum,
-        attested_signers: SDK.EMPTY_ATTESTED_SIGNER_BITMAP,
+        attested_signers: SDKDa.EMPTY_ATTESTED_SIGNER_BITMAP,
         attestation_count: 0n,
       },
     }).then(

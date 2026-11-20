@@ -20,7 +20,9 @@ import type {
   SimTx,
   SimUtxo,
 } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { WatcherProjectionDeployment } from "../../src/l1-follower/projection.js";
@@ -82,11 +84,11 @@ export const datum = (cborHex: string): Buffer => Buffer.from(cborHex, "hex");
 
 const ZERO_ROOT = "00".repeat(32);
 
-export const redeemer = (value: SDK.StateQueueRedeemer) => [
+export const redeemer = (value: SDKStateQueue.StateQueueRedeemer) => [
   {
     purpose: "mint" as const,
     index: 0,
-    data: datum(Data.to(value, SDK.StateQueueRedeemer)),
+    data: datum(Data.to(value, SDKStateQueue.StateQueueRedeemer)),
   },
 ];
 
@@ -117,7 +119,7 @@ export const initTx = (
       {
         address: rootAddress,
         lovelace: 2_000_000n,
-        assets: asset([[sq, SDK.STATE_QUEUE_ROOT_ASSET_NAME]]),
+        assets: asset([[sq, SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME]]),
         datum: datum(
           Data.to(
             SDK.nodeViewToLinkedListDatum({
@@ -131,7 +133,7 @@ export const initTx = (
       },
     ],
     mint: asset([
-      [sq, SDK.STATE_QUEUE_ROOT_ASSET_NAME],
+      [sq, SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME],
       [hub, SDK.HUB_ORACLE_ASSET_NAME],
       [hub, SDK.CORRECTION_LOCK_ASSET_NAME],
     ]),
@@ -167,7 +169,7 @@ export const headerOf = (
   deployment: WatcherProjectionDeployment = SIM_WATCHER_DEPLOYMENT,
 ): string | null => {
   const unit = unitOf(utxo, deployment.stateQueueMint) as string;
-  return unit === SDK.STATE_QUEUE_ROOT_ASSET_NAME
+  return unit === SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME
     ? null
     : unit.slice(SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX.length);
 };
@@ -215,7 +217,7 @@ export const queueState = (
     const name = unitOf(utxo, deployment.daAttestationMint);
     if (name !== null)
       attestations.set(
-        name.slice(SDK.DA_ATTESTATION_ASSET_NAME_PREFIX.length),
+        name.slice(SDKDa.DA_ATTESTATION_ASSET_NAME_PREFIX.length),
         utxo,
       );
   }
@@ -303,7 +305,7 @@ export const commitTx = (
 };
 
 const daatName = (headerHash: string): string =>
-  `${SDK.DA_ATTESTATION_ASSET_NAME_PREFIX}${headerHash}`;
+  `${SDKDa.DA_ATTESTATION_ASSET_NAME_PREFIX}${headerHash}`;
 
 export const nonceOf = (outRef: OutRef): number =>
   960_000 + outRef.txHash.readUInt16BE(0) * 8 + outRef.index;

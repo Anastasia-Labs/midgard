@@ -6,7 +6,7 @@ import {
   faultProofStepRedeemerSchema,
   MidgardTxInputSchema,
   ProofSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 
 import { TransactionOutputScanControlSchema } from "../transaction-output-non-canonical/schemas.js";

@@ -8,7 +8,7 @@ import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
 } from "@al-ft/midgard-core";
 import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 
 import { directPurposeArtifactFamily } from "../direct-purpose-family/artifact-family.js";
 import {

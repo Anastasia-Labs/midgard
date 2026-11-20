@@ -11,7 +11,7 @@ import { join } from "node:path";
 import {
   eventHistoryProtectionWaitBoundMs,
   outputReferenceToPlutusDataCbor,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/users";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {

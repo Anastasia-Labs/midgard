@@ -18,7 +18,7 @@
  * closes it Convicted with our bond back. */
 import { hashMidgardValidationMachineState } from "@al-ft/midgard-core";
 import type { MidgardVersionedScript } from "@al-ft/midgard-core/codec/versioned-script";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES } from "@al-ft/midgard-validation/cek-constant";
 import { credentialToAddress, Data } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, expect } from "vitest";

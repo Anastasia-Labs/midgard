@@ -1,5 +1,5 @@
 import { RetainedDaPayloadUnavailableError } from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
-import type { DaAvailabilityStateQueueStatus } from "@al-ft/midgard-sdk";
+import type { DaAvailabilityStateQueueStatus } from "@al-ft/midgard-sdk/core";
 
 import type { WatcherFaultProofSupervisor } from "../../src/fault-proofs/fault-proof-supervisor.js";
 import type {

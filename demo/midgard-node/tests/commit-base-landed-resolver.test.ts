@@ -12,7 +12,7 @@
  * that does not derive its root, are refused as a local ledger divergence
  * naming its check, never built on.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import { Effect, Either } from "effect";
 import { beforeEach, describe, expect, it } from "vitest";
 

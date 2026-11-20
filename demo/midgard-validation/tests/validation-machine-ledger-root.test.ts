@@ -1,5 +1,5 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
-import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
+import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk/core";
 import { describe, expect, it } from "vitest";
 
 import {

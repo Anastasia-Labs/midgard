@@ -19,7 +19,7 @@ import {
   PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
   type VerdictSubject,
   verdictSubjectIsCanonical,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { verdictDetectionSubject } from "../workflow/detection-subject.js";

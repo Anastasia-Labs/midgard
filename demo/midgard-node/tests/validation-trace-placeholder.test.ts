@@ -1,4 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 

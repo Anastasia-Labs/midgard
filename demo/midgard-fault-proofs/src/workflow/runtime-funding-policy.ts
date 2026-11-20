@@ -4,10 +4,8 @@ import {
   parseDeploymentManifestCardanoProtocolParameters,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
-import {
-  type FraudProofCatalogueCategoryName,
-  VALIDATION_CASE_FLOOR_LOVELACE,
-} from "@al-ft/midgard-sdk";
+import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
+import { VALIDATION_CASE_FLOOR_LOVELACE } from "@al-ft/midgard-sdk/da";
 import { CML, getAddressDetails } from "@lucid-evolution/lucid";
 
 import type { WorkflowAdapterRunner } from "./adapters.js";

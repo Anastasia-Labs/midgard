@@ -2,10 +2,8 @@ import { createHash } from "node:crypto";
 
 import { canonicalJson } from "@al-ft/midgard-core/canonical-json";
 import { depth, isFinal } from "@al-ft/midgard-l1-follower";
-import {
-  type DaAvailabilityReadScope,
-  stateQueueHeaderHash,
-} from "@al-ft/midgard-sdk";
+import { type DaAvailabilityReadScope } from "@al-ft/midgard-sdk/da";
+import { stateQueueHeaderHash } from "@al-ft/midgard-sdk/state-queue";
 
 import type { PromiseCapacityPoint } from "../availability/promise-capacity-evidence.js";
 import type { StateQueueHeaderRecord } from "../domain.js";

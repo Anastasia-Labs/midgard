@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
+import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 
 export const WORKFLOW_FUNDING_REQUIREMENTS =
   "midgard-production-workflow-funding-requirements-v1" as const;

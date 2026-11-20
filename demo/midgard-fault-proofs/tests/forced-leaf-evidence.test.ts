@@ -1,4 +1,4 @@
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import { describe, expect, it } from "vitest";
 
 import {

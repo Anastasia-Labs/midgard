@@ -5,7 +5,8 @@
  */
 import { type FactStore } from "@al-ft/midgard-l1-follower";
 import { type ForkStep } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 
 import { readWatcherTransactionCheckpoint } from "../../src/l1-follower/checkpoints.read.js";
 import { WATCHER_QUEUE_CHECKPOINTS_TABLE } from "../../src/l1-follower/projection.js";
@@ -24,7 +25,7 @@ import { SIM_WATCHER_DEPLOYMENT } from "./l1-follower-state-queue-traffic.js";
 
 const D = SIM_WATCHER_DEPLOYMENT;
 const NODE_UNIT = `${D.stateQueueMint}${SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX}`;
-const DAAT_UNIT = `${D.daAttestationMint}${SDK.DA_ATTESTATION_ASSET_NAME_PREFIX}`;
+const DAAT_UNIT = `${D.daAttestationMint}${SDKDa.DA_ATTESTATION_ASSET_NAME_PREFIX}`;
 
 /** What the independent checks saw over runs (so a pass is not vacuous). */
 export type Coverage = {
@@ -214,7 +215,7 @@ export const watcherCheck = (seen: Coverage) => {
         tx.outputs.some((output) =>
           output.assets
             .get(D.daAttestationMint)
-            ?.has(`${SDK.DA_ATTESTATION_ASSET_NAME_PREFIX}${header}`),
+            ?.has(`${SDKDa.DA_ATTESTATION_ASSET_NAME_PREFIX}${header}`),
         ),
       );
       for (const entry of daat) {

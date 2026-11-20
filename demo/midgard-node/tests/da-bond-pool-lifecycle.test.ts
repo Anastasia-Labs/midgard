@@ -1,6 +1,8 @@
 import "./helpers/follower-emulator-installed.js";
 import "@al-ft/midgard-core/deployment-profile";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/da";
 import "@lucid-evolution/lucid";
 import "effect";
 import "vitest";
@@ -8,7 +10,7 @@ import "./helpers/availability-challenge.js";
 import "./helpers/availability-challenge-emulator.js";
 import "./da-bond-pool-lifecycle.threshold-attestation.js";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import {
   CML,
   generateEmulatorAccountFromPrivateKey,

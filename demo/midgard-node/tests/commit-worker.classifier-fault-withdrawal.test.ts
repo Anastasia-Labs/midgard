@@ -46,8 +46,9 @@ const UNDECODABLE = "the row or the ledger output it names does not decode";
 /** The classifier's throw, while set. */
 const fault = vi.hoisted(() => ({ error: undefined as Error | undefined }));
 
-vi.mock("@al-ft/midgard-sdk", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@al-ft/midgard-sdk")>();
+vi.mock("@al-ft/midgard-sdk/core", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@al-ft/midgard-sdk/core")>();
   const { Effect: E } = await import("effect");
   return {
     ...actual,

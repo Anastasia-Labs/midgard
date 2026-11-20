@@ -7,7 +7,7 @@
  */
 import type { FactStore, OriginConfig } from "@al-ft/midgard-l1-follower";
 import type { EventProjectionConfig } from "@al-ft/midgard-l1-follower/events";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/da";
 import { Effect } from "effect";
 
 import { followerViewValid } from "../database/follower-schema.js";

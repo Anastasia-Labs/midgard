@@ -1,5 +1,5 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { type LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

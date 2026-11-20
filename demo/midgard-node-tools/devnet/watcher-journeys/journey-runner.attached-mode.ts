@@ -1,4 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 
 import { nodeLedger } from "../../src/full-stack/journey.js";
 import { pauseUnlessAborted } from "./abortable-pause.js";

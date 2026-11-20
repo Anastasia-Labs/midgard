@@ -8,7 +8,6 @@ export * from "./history-data.js";
 export * from "./history-deployment.js";
 export type { EventHistoryFetchConfig } from "./history-events.js";
 export * from "./history-funding.js";
-export * from "./history-initialization.js";
 export * from "./history-payload.js";
 export * from "./history-proof.js";
 export * from "./history-query.js";

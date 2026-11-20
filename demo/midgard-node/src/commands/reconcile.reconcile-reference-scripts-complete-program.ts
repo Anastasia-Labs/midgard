@@ -1,5 +1,5 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import { Effect, Option } from "effect";
 
 import {

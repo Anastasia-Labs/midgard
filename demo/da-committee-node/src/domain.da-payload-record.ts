@@ -1,4 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 
 export type ChainPoint = {
   readonly slot?: number;

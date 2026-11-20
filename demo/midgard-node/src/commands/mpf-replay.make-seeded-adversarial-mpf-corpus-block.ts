@@ -3,7 +3,7 @@ import * as FS from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

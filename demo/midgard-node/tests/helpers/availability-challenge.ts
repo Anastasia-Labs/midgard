@@ -3,7 +3,7 @@ import {
   daBondManifestAmounts,
   SELECTED_DEPLOYMENT_PROFILE,
 } from "@al-ft/midgard-core/deployment-profile";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 
 /** Explicit bounded-acceptance Q58 release candidate used by node tests. */
 export const TEST_AVAILABILITY_CHALLENGE = Object.freeze({

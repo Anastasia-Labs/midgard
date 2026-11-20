@@ -7,13 +7,13 @@ import {
   deriveMidgardNativeTxProofSource,
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
 } from "@al-ft/midgard-core";
+import { type FieldCarriage } from "@al-ft/midgard-sdk/core";
 import {
-  type FieldCarriage,
   NativeScriptDecodingStep03AdvanceOrCloseSpendRedeemer,
   NativeScriptDecodingStep03BindDescriptorSpendRedeemer,
   NativeScriptDecodingStep03OpenSubjectSpendRedeemer,
   NativeScriptDecodingStep04SpendRedeemer,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

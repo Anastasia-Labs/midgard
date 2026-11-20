@@ -3,11 +3,8 @@ import {
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
-import {
-  type DaPayloadEntry,
-  EMPTY_MERKLE_TREE_ROOT,
-  EventKey,
-} from "@al-ft/midgard-sdk";
+import { EMPTY_MERKLE_TREE_ROOT, EventKey } from "@al-ft/midgard-sdk/core";
+import { type DaPayloadEntry } from "@al-ft/midgard-sdk/da";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

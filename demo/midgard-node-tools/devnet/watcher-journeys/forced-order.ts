@@ -6,7 +6,8 @@ import {
   encodeMidgardForcedTxCanonical,
   submittedForcedTransactionFromNative,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -25,7 +26,7 @@ type ForcedOrderCheckpoint = {
   submittedTxCbor: string;
   signedCbor: string;
   txHash: string;
-  metadata: SDK.TxOrderBuildMetadata;
+  metadata: SDKUsers.TxOrderBuildMetadata;
   confirmed: boolean;
 };
 
@@ -68,11 +69,12 @@ export const publishJourneyForcedOrder = async (
     if (nonceInput === undefined)
       throw new Error("No ordinary funding input for forced order");
     const mintingReference = deployment.references.get("txOrderMint");
-    const refundAddress: SDK.TxOrderRefundAddress = await Effect.runPromise(
-      SDK.addressDataFromBech32(await lucid.wallet().address()),
-    );
+    const refundAddress: SDKUsers.TxOrderRefundAddress =
+      await Effect.runPromise(
+        SDK.addressDataFromBech32(await lucid.wallet().address()),
+      );
     const order = await Effect.runPromise(
-      SDK.buildUnsignedTxOrderTxWithMetadataProgram(lucid, contracts, {
+      SDKUsers.buildUnsignedTxOrderTxWithMetadataProgram(lucid, contracts, {
         submittedTxCbor: submittedTxCbor.toString("hex"),
         nonceInput,
         refundAddress,

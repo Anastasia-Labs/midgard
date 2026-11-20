@@ -5,7 +5,7 @@
  * that certificate, so each turn after certification builds the scan
  * itself and the opening keeps a single certificate.
  */
-import { acceptedVerdictSubject } from "@al-ft/midgard-sdk";
+import { acceptedVerdictSubject } from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import { PROTECTED_OUTPUT_SIGNER_MAX_WITNESSES } from "../src/protected-output-signer-missing/protected-output-signer-missing.js";

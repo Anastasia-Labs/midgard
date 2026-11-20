@@ -1,16 +1,18 @@
 import {
   type ForcedInclusionTxV1,
   forcedLeafMembershipV1,
-  forcedVerdictSubject,
   type Header,
-  InputSetUniquenessStep01SpendRedeemerSchema,
-  InputSetUniquenessStep03DatumSchema,
   type OutputReference,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
   type RootMembershipProof,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  forcedVerdictSubject,
+  InputSetUniquenessStep01SpendRedeemerSchema,
+  InputSetUniquenessStep03DatumSchema,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

@@ -1,5 +1,5 @@
-import type { MintAuthorizationStep04State } from "@al-ft/midgard-sdk";
-import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk";
+import type { MintAuthorizationStep04State } from "@al-ft/midgard-sdk/fraud-proof";
+import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk/fraud-proof";
 
 import {
   type LocallyEvaluatedTransaction,

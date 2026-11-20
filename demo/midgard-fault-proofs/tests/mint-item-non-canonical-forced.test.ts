@@ -3,12 +3,14 @@ import { computeMidgardNativeTxId } from "@al-ft/midgard-core";
 import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
 import {
   ForcedInclusionTxV1Schema,
-  forcedVerdictSubject,
   OutputReference,
   Proof,
   ROOT_DOMAINS,
+} from "@al-ft/midgard-sdk/core";
+import {
+  forcedVerdictSubject,
   verdictSubjectIsCanonical,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, getAddressDetails } from "@lucid-evolution/lucid";
 import { expect, it } from "vitest";
 

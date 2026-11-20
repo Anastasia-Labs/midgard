@@ -1,4 +1,4 @@
-import { DOUBLE_WITHDRAW_VIOLATION_ID } from "@al-ft/midgard-sdk";
+import { DOUBLE_WITHDRAW_VIOLATION_ID } from "@al-ft/midgard-sdk/fraud-proof";
 
 import { parseSubmitDoubleWithdrawInclusion } from "../double-withdraw/submit-double-withdraw-step-01.js";
 import { prepareDoubleWithdrawFromCommittedLeaves } from "../prepare-double-withdraw.prepare-double-withdraw-from-committed-leaves.js";

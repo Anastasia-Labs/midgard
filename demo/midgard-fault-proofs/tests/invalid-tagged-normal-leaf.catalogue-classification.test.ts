@@ -10,7 +10,7 @@ import {
   encodeMidgardVersionedScript,
   hashMidgardVersionedScript,
 } from "@al-ft/midgard-core";
-import { GENESIS_HEADER_HASH } from "@al-ft/midgard-sdk";
+import { GENESIS_HEADER_HASH } from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 import { afterEach, describe, expect, it } from "vitest";
 

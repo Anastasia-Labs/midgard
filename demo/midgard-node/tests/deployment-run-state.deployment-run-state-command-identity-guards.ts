@@ -6,7 +6,7 @@ import { join } from "node:path";
 import {
   createReferenceScriptAuthPolicy,
   referenceScriptAuthPolicyDeploymentInfo,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 

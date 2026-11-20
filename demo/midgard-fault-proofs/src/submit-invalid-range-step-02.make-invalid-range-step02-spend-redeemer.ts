@@ -1,16 +1,18 @@
 import {
+  requireInputIndex,
+  requireMintRedeemerIndex,
+  requireOwnMintPurpose,
+  requireOwnSpendPurpose,
+  requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
   FraudProofComputationThreadRedeemer,
   FraudProofTokenMintRedeemer,
   InvalidRangeStep02Datum,
   InvalidRangeStep02SpendRedeemer,
   invalidRangeViolationReason,
   type NormalizedTimeRange,
-  requireInputIndex,
-  requireMintRedeemerIndex,
-  requireOwnMintPurpose,
-  requireOwnSpendPurpose,
-  requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

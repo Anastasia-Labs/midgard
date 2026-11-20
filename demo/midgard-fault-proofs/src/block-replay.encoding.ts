@@ -21,7 +21,7 @@ import {
 import { validateMidgardConsensusTxCbor } from "@al-ft/midgard-core/consensus-validation";
 import { normalizeHex } from "@al-ft/midgard-core/hex";
 import { aikenSerialisedPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 
 const encodeUnsignedBigEndian = (value: bigint): Buffer => {

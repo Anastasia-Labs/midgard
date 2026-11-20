@@ -10,7 +10,7 @@
  * reach the family entry's contradiction and the receive route's lookup.
  */
 import { screenMidgardForcedTxAdmission } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { afterAll, describe, expect, it } from "vitest";
 
 import type { DirectPurposeRole } from "../src/direct-purpose-family/index.js";

@@ -13,7 +13,8 @@ import {
   MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { h32 } from "@al-ft/midgard-test-support/hex";
 import { Effect } from "effect";
 
@@ -165,7 +166,7 @@ export const rejectionCode = async (
   } catch (error) {
     if (
       error instanceof InputNoIdxRejection ||
-      error instanceof SDK.CanonicalEvidenceRejection
+      error instanceof SDKFraudProof.CanonicalEvidenceRejection
     ) {
       return error.code;
     }

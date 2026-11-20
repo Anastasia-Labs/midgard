@@ -13,7 +13,8 @@ import {
 } from "@al-ft/midgard-core/codec/cbor";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { MidgardRedeemerTag } from "@al-ft/midgard-validation/midgard-redeemers";
 import { validatePhaseASingle } from "@al-ft/midgard-validation/phase-a";
 import { runPhaseBValidationWithPatch } from "@al-ft/midgard-validation/phase-b";
@@ -265,7 +266,7 @@ describe("direct source order is the shared T224 lookup order", () => {
       field_index: bigint,
       item_index: bigint,
       source_key: Buffer,
-    ): { descriptor: SDK.DirectScriptSource; item: Buffer } => ({
+    ): { descriptor: SDKFraudProof.DirectScriptSource; item: Buffer } => ({
       item: Buffer.alloc(0),
       descriptor: {
         field_index,

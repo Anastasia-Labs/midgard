@@ -1,7 +1,5 @@
-import {
-  type FraudProofCatalogueCategoryName,
-  FraudProofComputationThreadStepDatum,
-} from "@al-ft/midgard-sdk";
+import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
+import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { planSignerWitnessOpening } from "../signer-witness-scan/field-plans.js";

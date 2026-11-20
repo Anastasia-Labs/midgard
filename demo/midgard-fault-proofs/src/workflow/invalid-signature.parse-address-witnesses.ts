@@ -2,7 +2,7 @@ import { encodeMidgardNativeTxWitnessSetCompact } from "@al-ft/midgard-core";
 import {
   type MidgardAddressWitness,
   type NativeTxWitnessSetCompact,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 
 import { type FaultProofFieldOpeningPlan } from "../field-opening.js";
 import { parseSubmitStep01TxInclusion } from "../step-support.js";

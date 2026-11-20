@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { FraudProofTokenDatum } from "@al-ft/midgard-sdk";
+import { FraudProofTokenDatum } from "@al-ft/midgard-sdk/fraud-proof";
 import {
   CML,
   credentialToAddress,

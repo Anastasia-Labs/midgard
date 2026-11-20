@@ -2,7 +2,7 @@ import {
   encodeMidgardTxOutput,
   type MidgardTxOutput,
 } from "@al-ft/midgard-core/codec";
-import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk";
+import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk/fraud-proof";
 import {
   CML,
   Emulator,

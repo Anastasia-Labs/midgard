@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   calculateMinLovelaceFromUTxO,
   credentialToAddress,
@@ -74,7 +75,7 @@ export const setup = async (
     outputData: NonNullable<EmulatorAccount["outputData"]>,
   ): EmulatorAccount => ({ ...account, address, assets, outputData });
   const rootUnit =
-    contracts.stateQueuePolicyId + SDK.STATE_QUEUE_ROOT_ASSET_NAME;
+    contracts.stateQueuePolicyId + SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME;
   const rootDatum = SDK.encodeLinkedListNodeView({
     key: "Empty",
     next: key(hashes[0]!),
@@ -171,7 +172,7 @@ export const setup = async (
         },
       )
     : rent;
-  const yieldUnit = SDK.referenceScriptAuthUnit(
+  const yieldUnit = SDKStateQueue.referenceScriptAuthUnit(
     referencePolicy,
     "state-queue unattested-timeout withdrawal",
   );
@@ -232,7 +233,7 @@ export const setup = async (
   };
   const node = async (hash: string) =>
     await Effect.runPromise(
-      SDK.utxoToStateQueueUTxO(
+      SDKStateQueue.utxoToStateQueueUTxO(
         await one(nodeUnit(contracts.stateQueuePolicyId, hash)),
         contracts.stateQueuePolicyId,
       ),
@@ -281,7 +282,7 @@ export const setup = async (
     },
   });
   const terminal = async (validFrom?: bigint, validTo?: bigint) =>
-    SDK.incompleteRemoveLastUnattestedBlockTxProgram(lucid, config, {
+    SDKStateQueue.incompleteRemoveLastUnattestedBlockTxProgram(lucid, config, {
       ...(await common(validFrom, validTo)),
       predecessorUTxO: await node(hashes[0]!),
     });

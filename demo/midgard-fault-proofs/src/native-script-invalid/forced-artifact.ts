@@ -1,7 +1,8 @@
 import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
 import { computeHash28 } from "@al-ft/midgard-core";
-import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
@@ -59,7 +60,7 @@ export const admitNativeScriptInvalidForcedArtifact = async (
     throw new Error("nativeScriptInvalid: invalid forced index");
   const source = Data.from(
     artifact.forcedSourceCbor as string,
-    SDK.NativeScriptInvalidForcedSourcePayloadSchema as never,
+    SDKFraudProof.NativeScriptInvalidForcedSourcePayloadSchema as never,
   ) as {
     header: SDK.Header;
     membership: SDK.ForcedTransactionSourceMembershipProof;
@@ -67,7 +68,7 @@ export const admitNativeScriptInvalidForcedArtifact = async (
   if (
     Data.to(
       source as never,
-      SDK.NativeScriptInvalidForcedSourcePayloadSchema as never,
+      SDKFraudProof.NativeScriptInvalidForcedSourcePayloadSchema as never,
     ) !== artifact.forcedSourceCbor
   )
     throw new Error("nativeScriptInvalid: noncanonical forced source");
@@ -181,7 +182,7 @@ export const prepareNativeScriptInvalidForcedArtifact = async ({
     headerHash: prepared.headerHash,
     forcedSourceCbor: Data.to(
       prepared.forcedSource as never,
-      SDK.NativeScriptInvalidForcedSourcePayloadSchema as never,
+      SDKFraudProof.NativeScriptInvalidForcedSourcePayloadSchema as never,
     ),
     fullTransactionCbor: Buffer.from(forced.fullTransactionCbor).toString(
       "hex",

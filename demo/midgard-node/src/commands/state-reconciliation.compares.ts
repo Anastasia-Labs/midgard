@@ -1,4 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import { type Assets } from "@lucid-evolution/lucid";
 
 // ---------------------------------------------------------------------------

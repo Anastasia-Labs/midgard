@@ -9,7 +9,7 @@
  * only for faults it cannot classify; the hook holds on those too.
  */
 import type { View } from "@al-ft/midgard-l1-follower";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 
 import type { NamedEvents } from "../database/follower-events.named.js";
 import type * as Ledger from "../database/utils/ledger.js";

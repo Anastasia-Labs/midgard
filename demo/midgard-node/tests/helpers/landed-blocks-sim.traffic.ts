@@ -17,7 +17,8 @@ import {
   type SimOutput,
   type SimTx,
 } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
@@ -242,7 +243,7 @@ export const landedBlocksTraffic = (
       const lateDa = !bad && rng.chance(0.15);
       const mine = !bad && !lateDa && !hasDeposit(h) && rng.chance(0.3);
       const header = linkedHeader(universe, nonce, parent, h, bad ? 1 - b : b);
-      const hash = SDK.stateQueueHeaderHash(header);
+      const hash = SDKStateQueue.stateQueueHeaderHash(header);
       if (mine) stats.ownAppends += 1;
       registry.set(hash, {
         h,

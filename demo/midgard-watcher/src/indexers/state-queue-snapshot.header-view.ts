@@ -1,4 +1,4 @@
-import { Header } from "@al-ft/midgard-sdk";
+import { Header } from "@al-ft/midgard-sdk/core";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 

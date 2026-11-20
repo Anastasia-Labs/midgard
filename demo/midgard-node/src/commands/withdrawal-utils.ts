@@ -1,5 +1,5 @@
 import { replacePlutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import {
   type Credential,
   credentialToAddress,

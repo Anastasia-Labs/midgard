@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKOperators from "@al-ft/midgard-sdk/operators";
 import {
   type LucidEvolution,
   paymentCredentialOf,
@@ -36,14 +37,14 @@ import {
  * inputs to be disjoint from its inputs, so there is nothing to slash.
  */
 export const selectDuplicateRegistration = (
-  view: SDK.OperatorDirectoryView &
-    Pick<SDK.OperatorDirectorySnapshot, "hubOracle">,
+  view: SDKOperators.OperatorDirectoryView &
+    Pick<SDKOperators.OperatorDirectorySnapshot, "hubOracle">,
   operatorKeyHash: string,
 ): {
-  readonly removed: SDK.NodeWithDatum;
-  readonly proof: SDK.DuplicateProof;
+  readonly removed: SDKOperators.NodeWithDatum;
+  readonly proof: SDKOperators.DuplicateProof;
 } | null => {
-  const occupancies = SDK.findOperatorDirectoryOccupancies(
+  const occupancies = SDKOperators.findOperatorDirectoryOccupancies(
     view,
     operatorKeyHash,
   );
@@ -54,8 +55,8 @@ export const selectDuplicateRegistration = (
   const active = occupancies.find(({ kind }) => kind === "active");
   const retired = occupancies.find(({ kind }) => kind === "retired");
   const byKeyDescending = [...registered].sort((left, right) => {
-    const l = SDK.nodeKeyHex(left.node.datum.key) ?? "";
-    const r = SDK.nodeKeyHex(right.node.datum.key) ?? "";
+    const l = SDKOperators.nodeKeyHex(left.node.datum.key) ?? "";
+    const r = SDKOperators.nodeKeyHex(right.node.datum.key) ?? "";
     return l < r ? 1 : l > r ? -1 : 0;
   });
   const removed = byKeyDescending[0]!.node;
@@ -108,7 +109,7 @@ export const slashDuplicateOperatorProgram = (
       input.operatorKeyHash,
     );
     if (selection === null) {
-      const occupancies = SDK.findOperatorDirectoryOccupancies(
+      const occupancies = SDKOperators.findOperatorDirectoryOccupancies(
         snapshot,
         input.operatorKeyHash,
       ).map(({ kind }) => kind);
@@ -120,7 +121,7 @@ export const slashDuplicateOperatorProgram = (
         ),
       );
     }
-    const removedKey = SDK.nodeKeyHex(selection.removed.datum.key);
+    const removedKey = SDKOperators.nodeKeyHex(selection.removed.datum.key);
     if (removedKey === null) {
       return yield* Effect.fail(
         new OperatorExitRefusal(
@@ -129,7 +130,7 @@ export const slashDuplicateOperatorProgram = (
         ),
       );
     }
-    const registeredAnchor = SDK.findAnchorNodeForKey(
+    const registeredAnchor = SDKOperators.findAnchorNodeForKey(
       snapshot.registered,
       removedKey,
     );
@@ -175,25 +176,26 @@ export const slashDuplicateOperatorProgram = (
       ["registered-operators"],
     );
     const { validFrom, validTo } = yield* exitValidityWindow(lucid);
-    const { tx } = yield* SDK.buildUnsignedSlashDuplicateOperatorTxProgram({
-      lucid,
-      contracts,
-      operatorKeyHash: input.operatorKeyHash,
-      registeredOperatorScriptRefs: scriptRefs.family("registered-operators"),
-      duplicateRegisteredNode: selection.removed,
-      registeredAnchor,
-      duplicateRegisteredNodeUnit: toUnit(
-        contracts.registeredOperators.policyId,
-        SDK.REGISTERED_OPERATOR_NODE_ASSET_NAME_PREFIX + removedKey,
-      ),
-      duplicateProof: selection.proof,
-      slashingPenaltyLovelace: input.economics.slashingPenaltyLovelace,
-      bountyClaimantKeyHash,
-      fraudProverRewardLovelace: input.economics.fraudProverRewardLovelace,
-      validFrom,
-      validTo,
-      walletInputs: yield* operatorWalletInputsProgram(lucid, label),
-    });
+    const { tx } =
+      yield* SDKOperators.buildUnsignedSlashDuplicateOperatorTxProgram({
+        lucid,
+        contracts,
+        operatorKeyHash: input.operatorKeyHash,
+        registeredOperatorScriptRefs: scriptRefs.family("registered-operators"),
+        duplicateRegisteredNode: selection.removed,
+        registeredAnchor,
+        duplicateRegisteredNodeUnit: toUnit(
+          contracts.registeredOperators.policyId,
+          SDK.REGISTERED_OPERATOR_NODE_ASSET_NAME_PREFIX + removedKey,
+        ),
+        duplicateProof: selection.proof,
+        slashingPenaltyLovelace: input.economics.slashingPenaltyLovelace,
+        bountyClaimantKeyHash,
+        fraudProverRewardLovelace: input.economics.fraudProverRewardLovelace,
+        validFrom,
+        validTo,
+        walletInputs: yield* operatorWalletInputsProgram(lucid, label),
+      });
     const feeLovelace = tx.toTransaction().body().fee();
     const txHash = yield* handleSignSubmit(
       lucid,

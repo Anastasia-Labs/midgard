@@ -12,8 +12,8 @@
  */
 import "./helpers/follower-emulator-installed.js";
 
-import * as SDK from "@al-ft/midgard-sdk";
-import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
+import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk/state-queue";
+import * as SDK from "@al-ft/midgard-sdk/users";
 import {
   Emulator,
   generateEmulatorAccount,

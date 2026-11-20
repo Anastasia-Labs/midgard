@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import type { SqlClient } from "@effect/sql";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -95,7 +96,7 @@ const isCommitTimingDueWork = (
 
 export const buildUnsignedCommitTx = (
   contracts: SDK.MidgardValidators,
-  latestBlock: SDK.StateQueueUTxO,
+  latestBlock: SDKStateQueue.StateQueueUTxO,
   utxosRoot: string,
   txsRoot: string,
   depositsRoot: string,
@@ -107,7 +108,7 @@ export const buildUnsignedCommitTx = (
   fixedBlockTimeMs?: number,
 ): Effect.Effect<
   CommitBuildResult,
-  | SDK.StateQueueError
+  | SDKStateQueue.StateQueueError
   | SDK.DataCoercionError
   | SDK.HeaderTransitionCommitmentsError
   | SDK.HashingError
@@ -154,7 +155,7 @@ export const buildUnsignedCommitTx = (
       candidateEndTimeMs <= latestEndTime
     ) {
       return yield* Effect.fail(
-        new SDK.StateQueueError({
+        new SDKStateQueue.StateQueueError({
           message:
             "Refusing to build a block with a non-monotonic semantic end-time",
           cause: `candidate_end_time_ms=${String(candidateEndTimeMs)},latest_end_time_ms=${latestEndTime.toString()}`,
@@ -170,7 +171,7 @@ export const buildUnsignedCommitTx = (
           candidateEndTimeMs !== fixedBlockTimeMs))
     )
       return yield* Effect.fail(
-        new SDK.StateQueueError({
+        new SDKStateQueue.StateQueueError({
           message:
             "Selected coverage or normal transactions disagree with the fixed commit clock",
           cause: {
@@ -208,7 +209,7 @@ export const buildUnsignedCommitTx = (
       finalEndTimeCap !== undefined &&
       commitValidityWindow.resolvedEndTime - 1 > finalEndTimeCap
         ? Effect.fail(
-            new SDK.StateQueueError({
+            new SDKStateQueue.StateQueueError({
               message:
                 "Resolved commit transaction validity exceeds the selected scheduler window cap",
               cause: `stage=${stage},resolved_valid_to_ms=${commitValidityWindow.resolvedEndTime.toString()},resolved_header_end_time_ms=${(commitValidityWindow.resolvedEndTime - 1).toString()},maximum_end_time_ms=${finalEndTimeCap.toString()},candidate_end_time_ms=${candidateEndTimeMs.toString()},aligned_candidate_valid_to_ms=${commitValidityWindow.alignedCandidateEndTime.toString()},minimum_monotonic_valid_to_ms=${commitValidityWindow.minimumMonotonicEndTime.toString()},minimum_current_time_valid_to_ms=${commitValidityWindow.minimumCurrentTimeEndTime.toString()}`,
@@ -342,17 +343,18 @@ export const buildUnsignedCommitTx = (
       );
       yield* Effect.logInfo("🔹 Building block commitment transaction...");
 
-      const { tx: txBuilder } = yield* SDK.buildCommitBlockHeaderTxProgram({
-        lucid: lucid.api,
-        contracts,
-        latestBlock,
-        updatedNodeDatum,
-        newHeader,
-        validFrom: txValidFromMs,
-        validTo: txValidToMs,
-        witness: witnessContext,
-        headerNodeLovelace: SDK.STATE_QUEUE_NODE_MIN_LOVELACE,
-      });
+      const { tx: txBuilder } =
+        yield* SDKStateQueue.buildCommitBlockHeaderTxProgram({
+          lucid: lucid.api,
+          contracts,
+          latestBlock,
+          updatedNodeDatum,
+          newHeader,
+          validFrom: txValidFromMs,
+          validTo: txValidToMs,
+          witness: witnessContext,
+          headerNodeLovelace: SDKStateQueue.STATE_QUEUE_NODE_MIN_LOVELACE,
+        });
 
       const txSize = txBuilder.toCBOR().length / 2;
       yield* Effect.logInfo(
@@ -443,7 +445,7 @@ export const buildUnsignedCommitTx = (
     }
 
     return yield* Effect.fail(
-      new SDK.StateQueueError({
+      new SDKStateQueue.StateQueueError({
         message:
           "Failed to stabilize the commit timing budget before building the block commitment transaction",
         cause: `attempts=${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS},candidate_end_time_ms=${candidateEndTimeMs.toString()},last_failed_checkpoint=${lastFailedBudget?.checkpoint ?? "none"},last_selected_valid_to_ms=${commitValidityWindow.resolvedEndTime},last_budget=${lastFailedBudget === undefined ? "none" : formatCommitTimingBudget(lastFailedBudget)},witness_context=${witnessContext === undefined ? "missing" : "present"},clock_anchor_observed_at_ms=${initialSubmitSlotSnapshot.observedAtMs},clock_now_ms=${anchoredNowMs()}`,

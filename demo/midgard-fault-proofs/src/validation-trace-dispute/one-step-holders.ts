@@ -17,7 +17,7 @@
  * Each holder is a deployment contract, found by its spending address; the
  * thread token, minted once for its defender, is what makes an output there
  * ours. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import type { UTxO } from "@lucid-evolution/lucid";
 
 import {

@@ -17,12 +17,12 @@ import {
   encodeMidgardNativeTxCompact,
   MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
 } from "@al-ft/midgard-core";
+import { type MidgardTxInput } from "@al-ft/midgard-sdk/core";
 import {
   encodeMidgardTxInputCanonical,
-  fieldPreimagePublicationDatumCbor,
   MIDGARD_FIELD_INDEX,
-  type MidgardTxInput,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
+import { fieldPreimagePublicationDatumCbor } from "@al-ft/midgard-sdk/state-queue";
 import { describe, expect, it } from "vitest";
 
 import { planFaultProofFieldOpening } from "../src/field-opening.plan-fault-proof-field-opening.js";

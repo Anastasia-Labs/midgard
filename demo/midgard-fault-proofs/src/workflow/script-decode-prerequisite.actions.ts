@@ -5,7 +5,7 @@
  * by the chain state it consumes, so a chain state requires one action, and
  * its durable recovery names the exact output it leaves.
  */
-import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
+import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 import { CML, type TxOutput } from "@lucid-evolution/lucid";
 
 import {

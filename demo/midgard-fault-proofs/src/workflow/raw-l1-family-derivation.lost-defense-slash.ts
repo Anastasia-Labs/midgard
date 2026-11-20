@@ -6,7 +6,8 @@
  * own. That slash stands for the removal's only when it spends the receipt
  * this case's award minted for this operator: the receipt's name binds the
  * case and the defender (validation-case-v1.ak `receipt_token_name`). */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { CML, coreToTxOutput, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -91,7 +92,7 @@ const caseIdOf = ({
       if (unit.startsWith(casePolicyId) && unit !== casePolicyId)
         names.add(unit.slice(56));
   const cases = [...names].filter((name) =>
-    names.has(SDK.validationCaseBondMarkerName(name)),
+    names.has(SDKDa.validationCaseBondMarkerName(name)),
   );
   return cases.length === 1 ? cases[0] : undefined;
 };

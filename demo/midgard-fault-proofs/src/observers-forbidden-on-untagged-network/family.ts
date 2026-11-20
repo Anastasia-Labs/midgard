@@ -10,7 +10,7 @@ import {
   type VerdictSubject,
   verdictSubjectIsCanonical,
   VerdictSubjectSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 export const OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY =

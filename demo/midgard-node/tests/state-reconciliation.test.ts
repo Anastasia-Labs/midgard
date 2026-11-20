@@ -1,4 +1,5 @@
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
 import "@lucid-evolution/lucid";
 import "vitest";
 import "../src/commands/state-reconciliation.check-ledger-cache.js";

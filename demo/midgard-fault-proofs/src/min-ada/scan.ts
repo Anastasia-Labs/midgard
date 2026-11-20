@@ -2,7 +2,7 @@ import {
   encodeMidgardFieldPreimage,
   midgardFieldCommitment,
 } from "@al-ft/midgard-core";
-import { acceptedVerdictSubject } from "@al-ft/midgard-sdk";
+import { acceptedVerdictSubject } from "@al-ft/midgard-sdk/fraud-proof";
 
 import {
   deriveTransactionOutputScan,

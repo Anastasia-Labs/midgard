@@ -8,7 +8,7 @@ import {
   encodeAddressWitnessPreimage,
   forcedVerdictSubject,
   missingSignatureVkeyHash,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { CML, getAddressDetails } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 

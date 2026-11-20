@@ -1,6 +1,8 @@
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
@@ -46,8 +48,8 @@ export const attestStateQueueOnceProgram = (
   | SDK.HashingError
   | SDK.LinkedListError
   | SDK.LucidError
-  | SDK.DaAttestationBuildError
-  | SDK.StateQueueError
+  | SDKDa.DaAttestationBuildError
+  | SDKStateQueue.StateQueueError
   | DatabaseError
   | TxConfirmError
   | TxExpiredError
@@ -95,7 +97,7 @@ export const attestStateQueueOnceProgram = (
       );
       if (Option.isNone(payloadRow)) {
         return yield* Effect.fail(
-          new SDK.StateQueueError({
+          new SDKStateQueue.StateQueueError({
             message:
               "Refusing to attest a state-queue header without its canonical retained DA payload",
             cause: `header=${target.headerHash}`,
@@ -103,13 +105,13 @@ export const attestStateQueueOnceProgram = (
         );
       }
       const payloadCbor = payloadRow.value[DaPayloadsDB.Columns.PAYLOAD_CBOR];
-      const payloadHash = SDK.daPayloadHashHex(payloadCbor);
+      const payloadHash = SDKDa.daPayloadHashHex(payloadCbor);
       const storedPayloadHash =
         payloadRow.value[DaPayloadsDB.Columns.PAYLOAD_SHA256].toString("hex");
       const payload = yield* Effect.tryPromise({
         try: () =>
           payloadRow.value[DaPayloadsDB.Columns.VERSION] !==
-          Number(SDK.DA_PAYLOAD_VERSION)
+          Number(SDKDa.DA_PAYLOAD_VERSION)
             ? Promise.reject(
                 new Error(
                   "Stored DA payload schema version must equal canonical V1",
@@ -117,9 +119,11 @@ export const attestStateQueueOnceProgram = (
               )
             : unwrapDaPayload(payloadCbor, {
                 maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
-              }).then((unwrapped) => SDK.decodeDaPayload(unwrapped.innerBytes)),
+              }).then((unwrapped) =>
+                SDKDa.decodeDaPayload(unwrapped.innerBytes),
+              ),
         catch: (cause) =>
-          new SDK.StateQueueError({
+          new SDKStateQueue.StateQueueError({
             message: "Retained DA payload is not canonical V1 CBOR",
             cause,
           }),
@@ -135,14 +139,14 @@ export const attestStateQueueOnceProgram = (
           Data.to(target.stateQueueNode.header, SDK.Header)
       ) {
         return yield* Effect.fail(
-          new SDK.StateQueueError({
+          new SDKStateQueue.StateQueueError({
             message:
               "Refusing to attest stale or mismatched retained DA payload bytes",
             cause: `header=${target.headerHash},stored_payload_hash=${storedPayloadHash},computed_payload_hash=${payloadHash},payload_header_hash=${payloadHeaderHash}`,
           }),
         );
       }
-      const availabilityCommitment = SDK.buildDaAvailabilityCommitment({
+      const availabilityCommitment = SDKDa.buildDaAvailabilityCommitment({
         deploymentIdentity: contracts.hubOracle.policyId,
         headerHash: target.headerHash,
         payload: payloadCbor,

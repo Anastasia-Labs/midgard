@@ -4,7 +4,8 @@ import {
   decodeMidgardVersionedScript,
   hashMidgardVersionedScript,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import { eventLedgerBeforeStep } from "../event-ledger.js";
@@ -28,7 +29,7 @@ export type MintAuthorizationCoordinate = Readonly<{
   policyIndex: string;
 }>;
 export const mintAuthorizationDetectionId = (c: MintAuthorizationCoordinate) =>
-  `${SDK.MINT_AUTHORIZATION_VIOLATION_ID}:${c.sourceIndex}:${c.policyIndex}`;
+  `${SDKFraudProof.MINT_AUTHORIZATION_VIOLATION_ID}:${c.sourceIndex}:${c.policyIndex}`;
 
 /** Reconstruct every claim input from committed source and retained output bytes. */
 export const prepareMintAuthorizationReplay = async ({
@@ -179,7 +180,7 @@ export const detectMintAuthorizationReplay = async ({
         ...acceptedTransactionSubject(source.txId),
         detectionId: mintAuthorizationDetectionId(item.coordinate),
         headerHash: block.headerHash,
-        violationId: SDK.MINT_AUTHORIZATION_VIOLATION_ID,
+        violationId: SDKFraudProof.MINT_AUTHORIZATION_VIOLATION_ID,
         position: BigInt(sourceIndex),
         diagnostic: `accepted transaction ${item.txInclusion.nativeTxId} has unauthorized mint policy ${item.finding.policyIdHex}`,
         prepared: item,

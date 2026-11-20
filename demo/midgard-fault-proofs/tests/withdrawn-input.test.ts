@@ -1,4 +1,6 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -77,11 +79,11 @@ const evidenceWithWithdrawnInput = async (
     signature: [h32(35), "24".repeat(64)],
     validity: "WithdrawalIsValid",
   };
-  const withdrawalEntry: SDK.DaPayloadEntry = [
-    SDK.committedWithdrawalKeyBytes(withdrawalId),
-    SDK.committedWithdrawalValueBytes(withdrawal),
+  const withdrawalEntry: SDKDa.DaPayloadEntry = [
+    SDKFraudProof.committedWithdrawalKeyBytes(withdrawalId),
+    SDKFraudProof.committedWithdrawalValueBytes(withdrawal),
   ];
-  const withdrawalEvent: SDK.DaPayloadEntry = [
+  const withdrawalEvent: SDKDa.DaPayloadEntry = [
     encodeData(
       { WithdrawalEventKey: { withdrawal_id: withdrawalId } },
       SDK.EventKeySchema,
@@ -121,7 +123,7 @@ const evidenceWithWithdrawnInput = async (
     totalEventCount: 2n,
   };
   const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
-  const payload: SDK.DaPayload = {
+  const payload: SDKDa.DaPayload = {
     ...base.payload,
     block_body: {
       ...base.payload.block_body,
@@ -170,7 +172,7 @@ describe("production withdrawn-input workflow V1", () => {
     const fixture = await evidenceWithWithdrawnInput();
     expect(fixture.replay.detections).toHaveLength(1);
     expect(fixture.replay.detections[0]).toMatchObject({
-      violationId: SDK.WITHDRAWN_INPUT_VIOLATION_ID,
+      violationId: SDKFraudProof.WITHDRAWN_INPUT_VIOLATION_ID,
       position: 0n,
     });
     const artifact = await prepareWithdrawnInputArtifact({
@@ -233,7 +235,7 @@ describe("production withdrawn-reference-input workflow V1", () => {
     const fixture = await evidenceWithWithdrawnInput("reference");
     expect(fixture.replay.detections).toHaveLength(1);
     expect(fixture.replay.detections[0]).toMatchObject({
-      violationId: SDK.WITHDRAWN_REFERENCE_INPUT_VIOLATION_ID,
+      violationId: SDKFraudProof.WITHDRAWN_REFERENCE_INPUT_VIOLATION_ID,
       position: 0n,
     });
     const artifact = await prepareWithdrawnReferenceInputArtifact({

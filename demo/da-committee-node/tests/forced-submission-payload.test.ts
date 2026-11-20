@@ -9,7 +9,10 @@ import {
   encodeMidgardForcedTxCanonical,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -61,7 +64,7 @@ const fixture = async (verdict: SDK.OperatorVerdict = "ForcedTxValid") => {
     verdict === "ForcedTxValid" ? "accepted" : "rejected",
     verdict === "ForcedTxValid" ? null : verdict.ForcedTxInvalid.reason,
   );
-  const payload: SDK.DaPayload = {
+  const payload: SDKDa.DaPayload = {
     ...base.payload,
     block_body: {
       ...base.payload.block_body,
@@ -100,7 +103,7 @@ const fixture = async (verdict: SDK.OperatorVerdict = "ForcedTxValid") => {
   const roots = await computeDaPayloadRoots(payload);
   const header = { ...payload.block_body.header, ...counts, ...roots };
   payload.block_body.header = header;
-  payload.block_body.header_hash = SDK.stateQueueHeaderHash(header);
+  payload.block_body.header_hash = SDKStateQueue.stateQueueHeaderHash(header);
   return {
     payload,
     bytes,
@@ -113,8 +116,8 @@ const fixture = async (verdict: SDK.OperatorVerdict = "ForcedTxValid") => {
     base,
   };
 };
-const decode = (payload: SDK.DaPayload) =>
-  decodeDaPayloadStrict(SDK.encodeDaPayload(payload));
+const decode = (payload: SDKDa.DaPayload) =>
+  decodeDaPayloadStrict(SDKDa.encodeDaPayload(payload));
 
 describe("forced public payload encoding", () => {
   it.each([
@@ -144,14 +147,14 @@ describe("forced public payload encoding", () => {
     );
     expect(f.bytes.length + 1).toBe(f.normalBytes.length);
     expect(
-      SDK.minimumFeeFromProofSource({
+      SDKFraudProof.minimumFeeFromProofSource({
         source: f.source,
         sourceKind: "forced",
         minFeeA: 1n,
         minFeeB: 0n,
       }).canonicalTxSize,
     ).toBe(
-      SDK.minimumFeeFromProofSource({
+      SDKFraudProof.minimumFeeFromProofSource({
         source: deriveMidgardNativeTxProofSource(f.normal),
         sourceKind: "normal",
         minFeeA: 1n,

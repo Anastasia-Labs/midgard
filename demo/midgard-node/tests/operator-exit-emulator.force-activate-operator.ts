@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKOperators from "@al-ft/midgard-sdk/operators";
 import {
   type LucidEvolution,
   toUnit,
@@ -41,12 +42,12 @@ export const forceRegisterOperator = async ({
 }): Promise<{ readonly nodeKey: string; readonly txHash: string }> => {
   const { contracts, emulator, scriptRefs } = fixture;
   const snapshot = await fetchDirectorySnapshot(operatorLucid, contracts);
-  const registeredRootNode = SDK.findRootNode(snapshot.registered);
+  const registeredRootNode = SDKOperators.findRootNode(snapshot.registered);
   const activeNotMemberWitness = snapshot.active.find(({ datum }) =>
-    SDK.orderedNotMemberWitness(datum, operatorKeyHash),
+    SDKOperators.orderedNotMemberWitness(datum, operatorKeyHash),
   );
   const retiredNotMemberWitness = snapshot.retired.find(({ datum }) =>
-    SDK.orderedNotMemberWitness(datum, operatorKeyHash),
+    SDKOperators.orderedNotMemberWitness(datum, operatorKeyHash),
   );
   if (
     registeredRootNode === undefined ||
@@ -60,7 +61,7 @@ export const forceRegisterOperator = async ({
     BigInt(emulator.now()) + 120_000n,
   );
   const registrationTime = registerValidTo - 1n + REGISTRATION_DURATION_MS;
-  const nodeKey = SDK.posixTimeToRegisteredNodeKey(registrationTime);
+  const nodeKey = SDKOperators.posixTimeToRegisteredNodeKey(registrationTime);
   const registeredNodeUnit = toUnit(
     contracts.registeredOperators.policyId,
     SDK.REGISTERED_OPERATOR_NODE_ASSET_NAME_PREFIX + nodeKey,
@@ -79,7 +80,7 @@ export const forceRegisterOperator = async ({
     prependedNodeDatum: {
       key: { Key: { key: nodeKey } },
       next: registeredRootNode.datum.next,
-      data: SDK.encodeRegisteredOperatorDatumValue(
+      data: SDKOperators.encodeRegisteredOperatorDatumValue(
         operatorKeyHash,
       ) as SDK.LinkedListNodeView["data"],
     },
@@ -92,10 +93,10 @@ export const forceRegisterOperator = async ({
       next: { Key: { key: nodeKey } },
     },
     registerValidTo,
-  } satisfies SDK.RegisterOperatorTxConfig;
-  let layout: SDK.RegisterRedeemerLayout | undefined;
+  } satisfies SDKOperators.RegisterOperatorTxConfig;
+  let layout: SDKOperators.RegisterRedeemerLayout | undefined;
   await completeTx(
-    SDK.buildRegisterOperatorTx({
+    SDKOperators.buildRegisterOperatorTx({
       ...baseConfig,
       onLayout: (resolved) => {
         layout = resolved;
@@ -106,7 +107,7 @@ export const forceRegisterOperator = async ({
     throw new Error("Forced registration did not resolve a redeemer layout");
   }
   const completed = await completeTx(
-    SDK.buildRegisterOperatorTx({ ...baseConfig, layout }),
+    SDKOperators.buildRegisterOperatorTx({ ...baseConfig, layout }),
   );
   return {
     nodeKey,
@@ -132,19 +133,19 @@ export const forceActivateOperator = async ({
 }): Promise<string> => {
   const { contracts, emulator, scriptRefs } = fixture;
   const snapshot = await fetchDirectorySnapshot(operatorLucid, contracts);
-  const registeredNode = SDK.findNodeByKey(
+  const registeredNode = SDKOperators.findNodeByKey(
     snapshot.registered,
     registeredNodeKey,
   );
-  const registeredAnchor = SDK.findAnchorNodeForKey(
+  const registeredAnchor = SDKOperators.findAnchorNodeForKey(
     snapshot.registered,
     registeredNodeKey,
   );
   const retiredNotMemberWitness = snapshot.retired.find(({ datum }) =>
-    SDK.orderedNotMemberWitness(datum, operatorKeyHash),
+    SDKOperators.orderedNotMemberWitness(datum, operatorKeyHash),
   );
   const activeInsertionAnchor = snapshot.active.find(({ datum }) =>
-    SDK.orderedNotMemberWitness(datum, operatorKeyHash),
+    SDKOperators.orderedNotMemberWitness(datum, operatorKeyHash),
   );
   if (
     registeredNode === undefined ||
@@ -154,13 +155,13 @@ export const forceActivateOperator = async ({
   ) {
     throw new Error("Missing witnesses for a forced activation");
   }
-  const activationTime = SDK.registeredNodeKeyToPosixTime(
+  const activationTime = SDKOperators.registeredNodeKeyToPosixTime(
     registeredNode.datum.key,
   );
   if (activationTime === undefined) {
     throw new Error("Expected a registered node, not the root");
   }
-  const activeNodeUnit = SDK.activeOperatorNodeUnit(
+  const activeNodeUnit = SDKOperators.activeOperatorNodeUnit(
     contracts.activeOperators.policyId,
     operatorKeyHash,
   );
@@ -190,11 +191,11 @@ export const forceActivateOperator = async ({
       ...registeredAnchor.datum,
       next: registeredNode.datum.next,
     },
-  } satisfies SDK.ActivateOperatorTxConfig;
+  } satisfies SDKOperators.ActivateOperatorTxConfig;
   emulator.awaitSlot(5);
-  let layout: SDK.ActivateRedeemerLayout | undefined;
+  let layout: SDKOperators.ActivateRedeemerLayout | undefined;
   await completeTx(
-    SDK.buildActivateOperatorTx({
+    SDKOperators.buildActivateOperatorTx({
       ...baseConfig,
       onLayout: (resolved) => {
         layout = resolved;
@@ -205,7 +206,7 @@ export const forceActivateOperator = async ({
     throw new Error("Forced activation did not resolve a redeemer layout");
   }
   const completed = await completeTx(
-    SDK.buildActivateOperatorTx({ ...baseConfig, layout }),
+    SDKOperators.buildActivateOperatorTx({ ...baseConfig, layout }),
   );
   return submitSigned(operatorLucid, completed);
 };
@@ -215,8 +216,8 @@ type DuplicateSlashInput = {
   readonly submitterLucid: LucidEvolution;
   readonly operatorKeyHash: string;
   readonly removedRegisteredNodeKey: string;
-  readonly duplicateProof: SDK.DuplicateProof;
-  readonly overrides?: Partial<SDK.SlashDuplicateOperatorTxConfig>;
+  readonly duplicateProof: SDKOperators.DuplicateProof;
+  readonly overrides?: Partial<SDKOperators.SlashDuplicateOperatorTxConfig>;
 };
 
 /** The honest duplicate-registration slash, claimed by the submitter. */
@@ -227,14 +228,14 @@ export const duplicateSlashConfig = async ({
   removedRegisteredNodeKey,
   duplicateProof,
   overrides = {},
-}: DuplicateSlashInput): Promise<SDK.SlashDuplicateOperatorTxConfig> => {
+}: DuplicateSlashInput): Promise<SDKOperators.SlashDuplicateOperatorTxConfig> => {
   const { contracts, scriptRefs } = fixture;
   const snapshot = await fetchDirectorySnapshot(submitterLucid, contracts);
-  const duplicateRegisteredNode = SDK.findNodeByKey(
+  const duplicateRegisteredNode = SDKOperators.findNodeByKey(
     snapshot.registered,
     removedRegisteredNodeKey,
   );
-  const registeredAnchor = SDK.findAnchorNodeForKey(
+  const registeredAnchor = SDKOperators.findAnchorNodeForKey(
     snapshot.registered,
     removedRegisteredNodeKey,
   );
@@ -264,7 +265,7 @@ export const slashDuplicateOperator = async (
   input: DuplicateSlashInput,
 ): Promise<{ readonly txHash: string; readonly fee: bigint }> => {
   const { tx } = await runProgram(
-    SDK.buildUnsignedSlashDuplicateOperatorTxProgram(
+    SDKOperators.buildUnsignedSlashDuplicateOperatorTxProgram(
       await duplicateSlashConfig(input),
     ),
   );
@@ -273,7 +274,7 @@ export const slashDuplicateOperator = async (
 };
 
 type ExactFeePlan = NonNullable<
-  SDK.SlashDuplicateOperatorTxConfig["exactFeePlan"]
+  SDKOperators.SlashDuplicateOperatorTxConfig["exactFeePlan"]
 >;
 
 /**
@@ -384,5 +385,5 @@ export const expectOnChainRefusal = async (
 export const fetchRetiredNodes = async (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
-): Promise<readonly SDK.RetiredOperatorNode[]> =>
+): Promise<readonly SDKOperators.RetiredOperatorNode[]> =>
   (await fetchDirectorySnapshot(lucid, contracts)).retired;

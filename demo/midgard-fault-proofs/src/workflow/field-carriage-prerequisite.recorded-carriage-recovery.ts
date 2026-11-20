@@ -1,7 +1,7 @@
 import {
   FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX,
   type FraudProofCatalogueCategoryName,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import { CML, coreToTxOutput } from "@lucid-evolution/lucid";
 
 import {

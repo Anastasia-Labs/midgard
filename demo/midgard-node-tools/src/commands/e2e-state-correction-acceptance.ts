@@ -1,4 +1,4 @@
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
 import "./e2e-state-correction-acceptance.required-state-correction-recovery-drill-ids.js";
 import "./e2e-state-correction-acceptance.parse-family.js";
 import "./e2e-state-correction-acceptance.parse-e2-estate-correction-acceptance.js";

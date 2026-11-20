@@ -7,7 +7,8 @@ import {
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { type Script, type UTxO } from "@lucid-evolution/lucid";
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 
@@ -296,7 +297,7 @@ export const publishRawFieldPreimageCarriage = async ({
   readonly bytes: Buffer;
 }): Promise<UTxO> => {
   signer.selectWallet(lucid);
-  const datum = SDK.fieldPreimagePublicationDatumCbor(bytes);
+  const datum = SDKStateQueue.fieldPreimagePublicationDatumCbor(bytes);
   const { coinsPerUtxoByte } = await resolveProtocolParameters(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
   const unsigned = await lucid

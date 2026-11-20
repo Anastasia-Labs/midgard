@@ -8,7 +8,7 @@ import {
   FabricatedWithdrawalStep03Datum,
   FabricatedWithdrawalStep04Datum,
   FraudProofComputationThreadStepDatum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 /** Bind every event reader to the same signed deployment and applied scripts. */
 export const bindJourneyEventAuthorities = async (

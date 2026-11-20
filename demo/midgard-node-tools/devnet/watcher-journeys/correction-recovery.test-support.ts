@@ -1,5 +1,5 @@
 import type { FraudProofWorkflowJournalEntry } from "@al-ft/midgard-fault-proofs/workflow/journal";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 
 /**
  * A watcher store whose workflow rows each test sets, read through the same

@@ -1,8 +1,8 @@
+import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 import {
   assertSecurityGradeEvidence,
   type EvidenceProvenance,
-  type FraudProofCatalogueCategoryName,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import {
   computationThreadStage,

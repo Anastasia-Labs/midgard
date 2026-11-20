@@ -9,12 +9,14 @@ import {
 } from "@al-ft/midgard-core";
 import {
   type FrontierPeak,
-  missingSignatureFieldWalkCheckpoint,
-  missingSignatureVkeyHash,
   type NativeScriptPushdownFrame,
   type SignerSetProof,
+} from "@al-ft/midgard-sdk/da";
+import {
+  missingSignatureFieldWalkCheckpoint,
+  missingSignatureVkeyHash,
   verifyAddressWitness,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 export const NATIVE_SCRIPT_INVALID_DIRECT_SIGNER_LIMIT = 28;
 

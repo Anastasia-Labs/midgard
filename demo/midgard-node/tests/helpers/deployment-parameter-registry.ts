@@ -8,7 +8,8 @@ import {
   type DeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDeployment from "@al-ft/midgard-sdk/deployment";
 import {
   applyDoubleCborEncoding,
   validatorToScriptHash,
@@ -77,7 +78,7 @@ export const makeGenuineDeploymentRegistryForTest = async (published?: {
   const blueprint = await Effect.runPromise(loadRealBlueprint());
   // The members alone: a public profile's deployment tooling also checks them
   // against the census below, which this probe has not built yet.
-  const scripts = SDK.manifestDeploymentScripts(contracts, {
+  const scripts = SDKDeployment.manifestDeploymentScripts(contracts, {
     phasMembership: loadPhasMembershipWithdrawalScript,
   }).map((entry) => {
     if (entry.script.type !== "PlutusV3" && entry.script.type !== "Native")

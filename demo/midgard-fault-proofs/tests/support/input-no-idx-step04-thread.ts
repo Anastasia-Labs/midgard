@@ -3,7 +3,7 @@
  * the conviction step 04 leaves, shared by the step-04 journeys.
  */
 import { outRefLabel } from "@al-ft/midgard-core";
-import { FraudProofTokenDatum } from "@al-ft/midgard-sdk";
+import { FraudProofTokenDatum } from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 

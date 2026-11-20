@@ -1,11 +1,11 @@
 import { EMPTY_NULL_ROOT } from "@al-ft/midgard-core";
+import { type RejectionReason } from "@al-ft/midgard-sdk/core";
 import {
   bindExactVerdictSubjectReason,
   encodeVerdictSubject,
-  type RejectionReason,
   terminalVerdictContradiction,
   type VerdictSubject,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import { cborDefiniteBytes } from "../cbor-serialise.js";

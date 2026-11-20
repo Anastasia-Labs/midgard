@@ -1,7 +1,7 @@
 /** The plan a thread of ours resolves, read from the thread where its
  * holder keeps our successor's hash, and planned from our trace. */
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/da";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 
 import type { ValidationTraceClaimMaterial } from "./claim-material.js";

@@ -1,4 +1,4 @@
-import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk";
+import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk/fraud-proof";
 
 import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
 import { resolvePublishedProofChunks } from "../publish-proof-chunks.js";

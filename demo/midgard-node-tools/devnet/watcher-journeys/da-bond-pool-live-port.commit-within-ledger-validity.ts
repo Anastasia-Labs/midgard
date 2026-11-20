@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import type { DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import type { L1Origin } from "@al-ft/midgard-core/l1-origin";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import { generateSeedPhrase } from "@lucid-evolution/lucid";
 import {
   PublishedTransactionExpiredError,

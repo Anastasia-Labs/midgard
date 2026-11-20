@@ -1,4 +1,4 @@
-import { type CommittedFieldClaim } from "@al-ft/midgard-sdk";
+import { type CommittedFieldClaim } from "@al-ft/midgard-sdk/fraud-proof";
 
 import { type PreparedFieldPreimageLengthWorkflow } from "../src/field-preimage-length-mismatch/workflow.js";
 import { WORKFLOW } from "./field-preimage-length-mismatch-lifecycle.registered-contracts.js";

@@ -10,7 +10,7 @@ import {
   kupoCheckpointSlotOf,
 } from "@al-ft/midgard-core/l1-provider-tip";
 import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
-import { type UserL1View } from "@al-ft/midgard-sdk";
+import { type UserL1View } from "@al-ft/midgard-sdk/users";
 import {
   Blockfrost,
   Kupmios,

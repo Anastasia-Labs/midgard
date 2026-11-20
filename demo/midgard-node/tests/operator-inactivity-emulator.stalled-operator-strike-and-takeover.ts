@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKOperators from "@al-ft/midgard-sdk/operators";
 import type { UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -32,7 +33,7 @@ describe("stalled-operator strike and takeover", () => {
     const neglectedEvent = await submitNeglectedDeposit(fixture);
 
     const snapshot = await fetchInactivityDirectorySnapshot(fixture);
-    const threshold = SDK.computeInactivityThreshold({
+    const threshold = SDKOperators.computeInactivityThreshold({
       shiftStartMs: appointed.startTime,
       stateQueueTailEndTimeMs: snapshot.stateQueueTail.endTime,
       neglectedEvent,
@@ -41,7 +42,7 @@ describe("stalled-operator strike and takeover", () => {
 
     // Still before the threshold: the planner says so, and the validator says
     // so too when the range is dated anyway.
-    const earlyPlan = SDK.planInactivityTakeover({
+    const earlyPlan = SDKOperators.planInactivityTakeover({
       snapshot,
       nowMs: BigInt(fixture.emulator.now()),
       neglectedEvent,
@@ -72,7 +73,7 @@ describe("stalled-operator strike and takeover", () => {
   it("never strikes an idle network, however long the shift has been quiet", async () => {
     const fixture = await initOperatorInactivityFixture(3);
     const appointed = await appointFirstSchedulerOperator(fixture);
-    const params = SDK.DEFAULT_INACTIVITY_TIMING_PARAMETERS;
+    const params = SDKOperators.DEFAULT_INACTIVITY_TIMING_PARAMETERS;
     // Late in the shift: past its grace period and far past the tail's end
     // time, with no deposit, withdrawal or tx order anywhere on the ledger.
     const lateMs =
@@ -86,7 +87,7 @@ describe("stalled-operator strike and takeover", () => {
     );
     expect(await fetchNeglectedUserEvent(fixture, snapshot)).toBeNull();
     expect(
-      SDK.planInactivityTakeover({
+      SDKOperators.planInactivityTakeover({
         snapshot,
         nowMs: BigInt(fixture.emulator.now()),
         neglectedEvent: null,
@@ -99,7 +100,7 @@ describe("stalled-operator strike and takeover", () => {
     // A strike citing something that is not a user event, here the
     // registered-operators root claimed as a deposit, is refused by the
     // scheduler's authentication of the cited Order node.
-    const registeredRoot = SDK.findRootNode(snapshot.registered);
+    const registeredRoot = SDKOperators.findRootNode(snapshot.registered);
     if (registeredRoot === undefined) {
       throw new Error("The registered-operators list has no root");
     }
@@ -176,7 +177,7 @@ describe("stalled-operator strike and takeover", () => {
     const appointed = await appointFirstSchedulerOperator(fixture);
     const neglectedEvent = await submitNeglectedDeposit(fixture);
     const snapshot = await fetchInactivityDirectorySnapshot(fixture);
-    const threshold = SDK.computeInactivityThreshold({
+    const threshold = SDKOperators.computeInactivityThreshold({
       shiftStartMs: appointed.startTime,
       stateQueueTailEndTimeMs: snapshot.stateQueueTail.endTime,
       neglectedEvent,
@@ -299,7 +300,7 @@ describe("stalled-operator strike and takeover", () => {
     if (neglectedEvent === null) {
       throw new Error("The strikes cite an undelivered deposit");
     }
-    const threshold = SDK.computeInactivityThreshold({
+    const threshold = SDKOperators.computeInactivityThreshold({
       shiftStartMs: shift.startTime,
       stateQueueTailEndTimeMs: snapshot.stateQueueTail.endTime,
       neglectedEvent,
@@ -308,7 +309,7 @@ describe("stalled-operator strike and takeover", () => {
       throw new Error("The threshold should be satisfiable");
     }
     advanceEmulatorPastUnixTime(fixture.emulator, threshold.thresholdMs);
-    const exhausted = SDK.planInactivityTakeover({
+    const exhausted = SDKOperators.planInactivityTakeover({
       snapshot,
       nowMs: BigInt(fixture.emulator.now()),
       neglectedEvent,
@@ -323,7 +324,7 @@ describe("stalled-operator strike and takeover", () => {
     // deliberately wrong strike cap to build it anyway.
     const message = await expectInactivityStrikeRefusal(fixture, {
       params: {
-        ...SDK.DEFAULT_INACTIVITY_TIMING_PARAMETERS,
+        ...SDKOperators.DEFAULT_INACTIVITY_TIMING_PARAMETERS,
         maxInactivityStrikes: SDK.MAX_INACTIVITY_STRIKES + 1n,
       },
     });

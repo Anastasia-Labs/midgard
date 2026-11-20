@@ -7,7 +7,7 @@ import {
   buildDaAvailabilityFundingPreparationTx,
   type DaAvailabilityOperationObservation,
   inspectDaAvailabilitySignedIntent,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/da";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createWatcherAvailabilityRuntime } from "../../src/availability/runtime.create-watcher-availability-runtime.js";
@@ -25,8 +25,8 @@ const io = vi.hoisted(() => ({
   operation: vi.fn(),
   submit: vi.fn(),
 }));
-vi.mock("@al-ft/midgard-sdk", async (original) => ({
-  ...(await original<typeof import("@al-ft/midgard-sdk")>()),
+vi.mock("@al-ft/midgard-sdk/da", async (original) => ({
+  ...(await original<typeof import("@al-ft/midgard-sdk/da")>()),
   daAvailabilityOperationLimits: () => ({
     maxTxSize: 16384,
     maxTxExMem: 16500000n,

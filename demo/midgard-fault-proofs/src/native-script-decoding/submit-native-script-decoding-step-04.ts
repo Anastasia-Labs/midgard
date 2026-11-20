@@ -9,7 +9,14 @@
  * forced source, the class-0 contradiction marker, and an accused class in
  * the family's domain.
  */
-import type { NativeScriptDecodingScanThreadState } from "@al-ft/midgard-sdk";
+import {
+  requireInputIndex,
+  requireMintRedeemerIndex,
+  requireOwnMintPurpose,
+  requireOwnSpendPurpose,
+  requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import type { NativeScriptDecodingScanThreadState } from "@al-ft/midgard-sdk/fraud-proof";
 import {
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
@@ -22,12 +29,7 @@ import {
   NATIVE_SCRIPT_DECODING_SOURCE_KIND_FORCED,
   NativeScriptDecodingStep04Datum,
   NativeScriptDecodingStep04SpendRedeemer,
-  requireInputIndex,
-  requireMintRedeemerIndex,
-  requireOwnMintPurpose,
-  requireOwnSpendPurpose,
-  requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

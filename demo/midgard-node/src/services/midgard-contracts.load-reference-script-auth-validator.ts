@@ -25,7 +25,9 @@ import {
   NAMED_NETWORK_L1_SLOT_CONFIGS,
   parseL1SlotConfig,
 } from "@al-ft/midgard-core/l1-slot-config";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import type * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   type LucidEvolution,
   MintingPolicy,
@@ -77,10 +79,12 @@ export type MidgardContractRuntimeValue = {
 
 export const availabilityParametersFromManifest = (
   value: unknown,
-): SDK.DaAvailabilityParameters => {
+): SDKDa.DaAvailabilityParameters => {
   const parsed = parseDeploymentManifestAvailabilityChallenge(value);
-  return SDK.daAvailabilityParameters({
-    responseGeometry: SDK.availabilityResponseGeometry(parsed.responseGeometry),
+  return SDKDa.daAvailabilityParameters({
+    responseGeometry: SDKDa.availabilityResponseGeometry(
+      parsed.responseGeometry,
+    ),
     daBondLovelace: BigInt(parsed.daBondLovelace),
     daSlashPenaltyLovelace: BigInt(parsed.daSlashPenaltyLovelace),
     daBondMinTopUpLovelace: BigInt(parsed.daBondMinTopUpLovelace),
@@ -96,7 +100,7 @@ export const availabilityParametersFromManifest = (
 };
 
 export const availabilityParametersFromExplicitEnvironment =
-  (): SDK.DaAvailabilityParameters =>
+  (): SDKDa.DaAvailabilityParameters =>
     availabilityParametersFromManifest(
       daAvailabilityChallengeEnvironmentInput(
         (name) =>
@@ -106,7 +110,7 @@ export const availabilityParametersFromExplicitEnvironment =
 
 /** No implicit payload-bound profile when deriving a fresh deployment. */
 export const eventHistoryBoundsFromExplicitEnvironment =
-  (): SDK.EventHistoryPayloadBounds => {
+  (): SDKUsers.EventHistoryPayloadBounds => {
     const bounds = parseDeploymentManifestEventHistoryBounds({
       inlineLimitBytes: process.env.MIDGARD_EVENT_HISTORY_INLINE_LIMIT_BYTES,
       maxPayloadBytes: process.env.MIDGARD_EVENT_HISTORY_MAX_PAYLOAD_BYTES,

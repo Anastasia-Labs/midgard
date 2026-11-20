@@ -4,7 +4,7 @@
  * builds and submits from that view, and reads the nonce back by exact
  * outref. The node's ledger is a double over an emulator's.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import {
   Constr,
   Data,

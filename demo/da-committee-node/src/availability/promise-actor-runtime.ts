@@ -1,4 +1,4 @@
-import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk";
+import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk/da";
 
 /** Owns unsigned callbacks beyond a refusal race. Successful resource duration
  * remains conditional; expiry disables the adopted capability immediately. */

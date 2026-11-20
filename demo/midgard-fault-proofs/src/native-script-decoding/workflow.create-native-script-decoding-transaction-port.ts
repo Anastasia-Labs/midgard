@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import { resolveFaultProofFieldPreimageCertificate } from "../field-opening.certify-fault-proof-field-carriage.js";
@@ -95,7 +96,9 @@ export const subjectPlan = (a: Prepared, owner: string) =>
     fieldIndex: Number(a.coordinate.outpointSourceKind),
     anchorTxId: a.txId,
     nativeTxCompactCbor: a.material.proofSource.compactCbor.toString("hex"),
-    itemCbors: a.subjectFieldInputs.map(SDK.encodeMidgardTxInputCanonical),
+    itemCbors: a.subjectFieldInputs.map(
+      SDKFraudProof.encodeMidgardTxInputCanonical,
+    ),
     owner,
     publish: true,
     label: "native-script-decoding subject",
@@ -263,7 +266,7 @@ export const createNativeScriptDecodingTransactionPort = (
                 return await buildNativeScriptDecodingStep03BindDescriptor({
                   ...common,
                   outpointKeyCbor: Buffer.from(
-                    SDK.encodeMidgardTxInputCanonical(outpoint),
+                    SDKFraudProof.encodeMidgardTxInputCanonical(outpoint),
                   ).toString("hex"),
                   descriptorCbor: a.descriptorCbor.toString("hex"),
                   ledgerTrie: a.ledgerTrie,
@@ -283,7 +286,7 @@ export const createNativeScriptDecodingTransactionPort = (
                   throw new Error("nativeScriptDecoding scan thread absent");
                 const datum = Data.from(
                   utxos[0]!.datum,
-                  SDK.NativeScriptDecodingStep03AdvanceOrCloseDatum,
+                  SDKFraudProof.NativeScriptDecodingStep03AdvanceOrCloseDatum,
                 );
                 if (datum.data === null)
                   throw new Error("nativeScriptDecoding absent scan datum");

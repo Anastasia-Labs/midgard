@@ -11,7 +11,7 @@ import {
   MIDGARD_POSIX_TIME_NONE,
   type MidgardTxValidity,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { describe, expect, it } from "vitest";
 
 import {

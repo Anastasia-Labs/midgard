@@ -1,4 +1,6 @@
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/da";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "@lucid-evolution/lucid";
 import "./errors.js";
 import "./phas.js";

@@ -1,4 +1,4 @@
-import { type NativeScriptDecodingBindState } from "@al-ft/midgard-sdk";
+import { type NativeScriptDecodingBindState } from "@al-ft/midgard-sdk/fraud-proof";
 import { type UTxO } from "@lucid-evolution/lucid";
 
 import {

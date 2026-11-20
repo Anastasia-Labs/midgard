@@ -1,4 +1,4 @@
-import type { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
+import type { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk/state-queue";
 import {
   type LucidEvolution,
   type UTxO,

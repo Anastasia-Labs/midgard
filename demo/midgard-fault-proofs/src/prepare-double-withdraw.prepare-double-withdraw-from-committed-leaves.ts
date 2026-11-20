@@ -6,7 +6,9 @@ import {
   computeDaSha256Hash,
   DA_TRANSPORT_LIMITS,
 } from "@al-ft/midgard-core/da-transport";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Effect } from "effect";
 
 import { stringifyJson } from "./json-file.js";
@@ -95,7 +97,7 @@ export const prepareDoubleWithdrawFromCommittedLeaves = async ({
   });
   const output: PreparedDoubleWithdrawOutput = {
     schemaVersion: DOUBLE_WITHDRAW_EVIDENCE_SCHEMA_VERSION,
-    violationId: SDK.DOUBLE_WITHDRAW_VIOLATION_ID,
+    violationId: SDKFraudProof.DOUBLE_WITHDRAW_VIOLATION_ID,
     headerHash: normalizedHeaderHash,
     withdrawalCount: Number(withdrawalCount),
     withdrawalsPhasRoot: phas.root,
@@ -105,7 +107,7 @@ export const prepareDoubleWithdrawFromCommittedLeaves = async ({
     secondLeaf,
     firstInclusion: inclusion(firstLeaf),
     secondInclusion: inclusion(secondLeaf),
-    step02State: SDK.doubleWithdrawStep02State({
+    step02State: SDKFraudProof.doubleWithdrawStep02State({
       challengedHeaderHash: normalizedHeaderHash,
       committedWithdrawal: {
         domain: SDK.ROOT_DOMAINS.withdrawals,
@@ -145,10 +147,10 @@ export const prepareDoubleWithdrawFromCommittedLeaves = async ({
 };
 
 export type DoubleWithdrawBlockEvidence = {
-  readonly grade: SDK.EvidenceGrade;
+  readonly grade: SDKFraudProof.EvidenceGrade;
   readonly provenance: {
-    readonly l1: SDK.EvidenceProvenance;
-    readonly da: SDK.EvidenceProvenance;
+    readonly l1: SDKFraudProof.EvidenceProvenance;
+    readonly da: SDKFraudProof.EvidenceProvenance;
   };
   readonly headerHash: string;
   readonly payloadEnvelopeSha256: string;
@@ -165,21 +167,21 @@ export const doubleWithdrawBlockEvidenceFromVerifiedPayload = async ({
   daProvenance,
   minimumConfirmationDepth,
 }: {
-  readonly observation: SDK.AuthenticatedStateQueueHeaderObservation;
+  readonly observation: SDKFraudProof.AuthenticatedStateQueueHeaderObservation;
   readonly payloadEnvelopeCbor: Uint8Array;
-  readonly daProvenance: SDK.EvidenceProvenance;
+  readonly daProvenance: SDKFraudProof.EvidenceProvenance;
   readonly minimumConfirmationDepth?: number;
 }): Promise<DoubleWithdrawBlockEvidence> => {
   const admittedObservation =
-    await SDK.admitAuthenticatedStateQueueHeaderObservation({
+    await SDKFraudProof.admitAuthenticatedStateQueueHeaderObservation({
       observation,
       ...(minimumConfirmationDepth === undefined
         ? {}
         : { minimumConfirmationDepth }),
     });
-  const admittedDa = SDK.assertSecurityGradeEvidence(daProvenance);
+  const admittedDa = SDKFraudProof.assertSecurityGradeEvidence(daProvenance);
   if (admittedDa.trustClass !== "public_or_permissionless_da") {
-    throw new SDK.CanonicalEvidenceRejection(
+    throw new SDKFraudProof.CanonicalEvidenceRejection(
       "da_evidence_wrong_trust_class",
       `expected=public_or_permissionless_da actual=${admittedDa.trustClass}`,
     );
@@ -199,25 +201,25 @@ export const doubleWithdrawBlockEvidenceFromVerifiedPayload = async ({
       `failed to decode DaPayloadEnvelopeV1: ${String(cause)}`,
     );
   }
-  let payload: SDK.DaPayload;
+  let payload: SDKDa.DaPayload;
   try {
-    payload = SDK.decodeDaPayload(payloadCbor);
+    payload = SDKDa.decodeDaPayload(payloadCbor);
   } catch (cause) {
     throw new DoubleWithdrawRejection(
       "malformed_da_payload",
       `failed to decode DaPayloadV1: ${String(cause)}`,
     );
   }
-  if (!SDK.encodeDaPayload(payload).equals(payloadCbor)) {
+  if (!SDKDa.encodeDaPayload(payload).equals(payloadCbor)) {
     throw new DoubleWithdrawRejection(
       "non_canonical_da_payload",
       "payload CBOR is not canonical DaPayloadV1",
     );
   }
-  if (payload.version !== SDK.DA_PAYLOAD_VERSION) {
+  if (payload.version !== SDKDa.DA_PAYLOAD_VERSION) {
     throw new DoubleWithdrawRejection(
       "wrong_da_payload_version",
-      `expected=${SDK.DA_PAYLOAD_VERSION.toString()} actual=${payload.version.toString()}`,
+      `expected=${SDKDa.DA_PAYLOAD_VERSION.toString()} actual=${payload.version.toString()}`,
     );
   }
   const body = payload.block_body;
@@ -234,7 +236,7 @@ export const doubleWithdrawBlockEvidenceFromVerifiedPayload = async ({
     );
   }
   return {
-    grade: SDK.combineEvidenceGrade([
+    grade: SDKFraudProof.combineEvidenceGrade([
       admittedObservation.provenance,
       admittedDa,
     ]),
@@ -260,7 +262,7 @@ export const prepareDoubleWithdrawFromRetainedDa = async ({
   secondWithdrawalIdCbor,
   outputDir,
 }: {
-  readonly observation: SDK.AuthenticatedStateQueueHeaderObservation;
+  readonly observation: SDKFraudProof.AuthenticatedStateQueueHeaderObservation;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly retries?: number;
   readonly minimumConfirmationDepth?: number;
@@ -269,17 +271,18 @@ export const prepareDoubleWithdrawFromRetainedDa = async ({
   readonly outputDir?: string;
 }): Promise<PreparedDoubleWithdrawOutput> => {
   if (sources.length === 0) {
-    throw new SDK.CanonicalEvidenceRejection(
+    throw new SDKFraudProof.CanonicalEvidenceRejection(
       "da_evidence_wrong_trust_class",
       "no public DA source was configured",
     );
   }
-  const admitted = await SDK.admitAuthenticatedStateQueueHeaderObservation({
-    observation,
-    ...(minimumConfirmationDepth === undefined
-      ? {}
-      : { minimumConfirmationDepth }),
-  });
+  const admitted =
+    await SDKFraudProof.admitAuthenticatedStateQueueHeaderObservation({
+      observation,
+      ...(minimumConfirmationDepth === undefined
+        ? {}
+        : { minimumConfirmationDepth }),
+    });
   const fetched = await fetchRetainedDaPayloadByHeaderHash({
     headerHash: admitted.headerHash,
     sources,
@@ -288,8 +291,8 @@ export const prepareDoubleWithdrawFromRetainedDa = async ({
   const evidence = await doubleWithdrawBlockEvidenceFromVerifiedPayload({
     observation: admitted,
     payloadEnvelopeCbor: fetched.payloadEnvelopeCbor,
-    daProvenance: SDK.assertSecurityGradeEvidence(
-      SDK.admitEvidenceProvenance({ provenance: fetched.provenance }),
+    daProvenance: SDKFraudProof.assertSecurityGradeEvidence(
+      SDKFraudProof.admitEvidenceProvenance({ provenance: fetched.provenance }),
     ),
     ...(minimumConfirmationDepth === undefined
       ? {}

@@ -6,7 +6,7 @@
  * reference by its manifest member.
  */
 import { DEPLOYMENT_MEMBERS } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { type UTxO, validatorToScriptHash } from "@lucid-evolution/lucid";
 
 import { FIELD_GRAMMAR_CERTIFICATE_MINT } from "../../src/field-grammar-certificate.resolve-fault-proof-field-grammar-deployment.js";

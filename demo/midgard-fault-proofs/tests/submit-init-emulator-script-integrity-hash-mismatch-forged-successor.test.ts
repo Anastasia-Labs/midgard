@@ -9,7 +9,8 @@
  * terminal convicts.
  */
 import { screenMidgardForcedTxAdmission } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,
@@ -76,7 +77,8 @@ const forgedStep01 = async (
       stateQueueBlockOutRef: scenario.setup.fraudulentBlockOutRef,
       txInclusion: scenario.block.txInclusion,
       nextDatum: forged,
-      spendRedeemerSchema: SDK.ScriptIntegrityHashMismatchStep01Redeemer,
+      spendRedeemerSchema:
+        SDKFraudProof.ScriptIntegrityHashMismatchStep01Redeemer,
       wrapInclusionCarriage: (inclusion) => ({
         source: { AcceptedSource: { inclusion } },
       }),
@@ -114,7 +116,7 @@ const forgedStep01 = async (
           },
         ],
       },
-      SDK.ScriptIntegrityHashMismatchStep01Redeemer,
+      SDKFraudProof.ScriptIntegrityHashMismatchStep01Redeemer,
     )) satisfies BuildTxWithRedeemer;
   signer.selectWallet(harness.proverLucid);
   return await harness.proverLucid
@@ -145,10 +147,13 @@ const forgedTerminal = async (
   const fraudProofUnit = toUnit(contracts.fraudProof.policyId, assetName);
   const forged = Data.to(
     { fraud_prover: "ee".repeat(28) },
-    SDK.FraudProofTokenDatum,
+    SDKFraudProof.FraudProofTokenDatum,
   );
   expect(forged).not.toBe(
-    Data.to({ fraud_prover: signer.paymentKeyHash }, SDK.FraudProofTokenDatum),
+    Data.to(
+      { fraud_prover: signer.paymentKeyHash },
+      SDKFraudProof.FraudProofTokenDatum,
+    ),
   );
   const label = "forged terminal";
   const spend = ((ctx) =>
@@ -175,12 +180,12 @@ const forgedTerminal = async (
           },
         ],
       },
-      SDK.ScriptIntegrityHashMismatchFinalizeRedeemer,
+      SDKFraudProof.ScriptIntegrityHashMismatchFinalizeRedeemer,
     )) satisfies BuildTxWithRedeemer;
   const burn = (() =>
     Data.to(
       { Success: { burning_token_asset_name: assetName } },
-      SDK.FraudProofComputationThreadRedeemer,
+      SDKFraudProof.FraudProofComputationThreadRedeemer,
     )) satisfies BuildTxWithRedeemer;
   const mint = ((ctx) =>
     Data.to(
@@ -192,7 +197,7 @@ const forgedTerminal = async (
           label,
         ),
       },
-      SDK.FraudProofTokenMintRedeemer,
+      SDKFraudProof.FraudProofTokenMintRedeemer,
     )) satisfies BuildTxWithRedeemer;
   const burnCarriage = witnessMintingPolicyCarriage({
     script: contracts.computationThread.mintingScript,
@@ -313,7 +318,7 @@ const forgeEveryRole = async (
 };
 
 const EVERY_ROLE = new Set<DirectPurposeRole>(
-  SDK.SCRIPT_INTEGRITY_HASH_MISMATCH_ROLE_ORDER,
+  SDKFraudProof.SCRIPT_INTEGRITY_HASH_MISMATCH_ROLE_ORDER,
 );
 
 describe("script-integrity-hash-mismatch forged successor refusal", () => {

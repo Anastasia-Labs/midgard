@@ -1,4 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 export const INPUT_NO_IDX_EVIDENCE_SCHEMA_VERSION =
   "midgard-input-no-idx-evidence-v1" as const;

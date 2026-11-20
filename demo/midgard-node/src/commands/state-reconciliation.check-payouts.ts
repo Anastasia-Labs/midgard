@@ -1,5 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
-import { assetsEqual, valueToAssets } from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import { assetsEqual, valueToAssets } from "@al-ft/midgard-sdk/users";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 
 import { DepositsDB, WithdrawalsDB } from "../database/index.js";

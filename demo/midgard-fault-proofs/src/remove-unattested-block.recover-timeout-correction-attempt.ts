@@ -1,8 +1,8 @@
 import {
   slotAlignedLowerBoundAtOrAfter,
   type SlotClock,
-  type StateQueueUTxO,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { type StateQueueUTxO } from "@al-ft/midgard-sdk/state-queue";
 import {
   type LucidEvolution,
   type Network,

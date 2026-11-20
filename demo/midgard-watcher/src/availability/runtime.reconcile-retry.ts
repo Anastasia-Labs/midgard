@@ -1,4 +1,4 @@
-import { DaAvailabilityReadScopeExpiredError } from "@al-ft/midgard-sdk";
+import { DaAvailabilityReadScopeExpiredError } from "@al-ft/midgard-sdk/da";
 
 import { isWatcherL1TransientFailure } from "../l1/transient-failure.js";
 import type { WatcherAvailabilityStatus } from "./runtime.release-watcher-availability-workflows.js";

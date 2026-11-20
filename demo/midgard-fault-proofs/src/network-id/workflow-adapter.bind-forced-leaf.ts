@@ -2,7 +2,7 @@ import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
 import {
   ForcedInclusionTxV1Schema,
   OutputReferenceSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 
 import {

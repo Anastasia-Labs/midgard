@@ -6,7 +6,7 @@ import {
   applyBlueprintParams,
   getUnappliedScript,
   parseFaultProofBlueprint,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import { type Data } from "@lucid-evolution/lucid";
 
 export const moduleDir = dirname(fileURLToPath(import.meta.url));

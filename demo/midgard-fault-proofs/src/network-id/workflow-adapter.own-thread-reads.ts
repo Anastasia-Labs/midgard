@@ -10,13 +10,13 @@
  * against this workflow alone.
  */
 import { outRefLabel } from "@al-ft/midgard-core";
+import { STATE_QUEUE_NODE_ASSET_NAME_PREFIX } from "@al-ft/midgard-sdk/core";
 import {
   FraudProofComputationThreadStepDatum,
   NetworkIdForcedScanDatum,
   NetworkIdForcedStepDatum,
   NetworkIdStep02Datum,
-  STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { type Data, toUnit, type UTxO } from "@lucid-evolution/lucid";
 
 import {

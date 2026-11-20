@@ -6,7 +6,7 @@ import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueCategoryName,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { type CheckedLedger } from "../ledger-at.js";

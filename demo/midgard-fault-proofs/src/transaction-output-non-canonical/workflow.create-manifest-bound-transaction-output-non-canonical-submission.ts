@@ -1,8 +1,8 @@
+import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 import {
-  type FraudProofCatalogueCategoryName,
   PROOF_THREAD_SOURCE_KIND_ACCEPTED,
   PROOF_THREAD_SOURCE_KIND_FORCED,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import { buildCommittedFieldShapeInit } from "../committed-field-shape/submit-committed-field-shape-init.js";
 import { isPrerequisiteTurn } from "../fault-proof-turn.js";

@@ -9,8 +9,8 @@ import {
   MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
-import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
-import * as SDK from "@al-ft/midgard-sdk";
+import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { Effect } from "effect";

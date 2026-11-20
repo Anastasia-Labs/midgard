@@ -4,7 +4,7 @@ import {
   encodeMidgardSpendInputItem,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
-import { forcedVerdictSubject } from "@al-ft/midgard-sdk";
+import { forcedVerdictSubject } from "@al-ft/midgard-sdk/fraud-proof";
 import { expect } from "vitest";
 
 import {

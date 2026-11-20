@@ -1,6 +1,6 @@
 import { rmSync } from "node:fs";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import type { TxSignBuilder } from "@lucid-evolution/lucid";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

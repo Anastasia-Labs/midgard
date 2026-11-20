@@ -1,7 +1,7 @@
 /** Current source/event/ledger fixture shared by retained stage journeys.
  * Published references and economic/removal assertions stay in their callers. */
 import type { MidgardNativeTxFull } from "@al-ft/midgard-core/codec";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { toUnit, type UTxO } from "@lucid-evolution/lucid";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../../src/evidence/canonical-block-evidence.js";

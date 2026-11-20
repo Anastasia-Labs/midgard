@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKOperators from "@al-ft/midgard-sdk/operators";
 import { type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -32,7 +33,7 @@ const syntheticNode = ({
   readonly data: unknown;
   readonly lovelace?: bigint;
   readonly assetName?: string;
-}): SDK.NodeWithDatum => ({
+}): SDKOperators.NodeWithDatum => ({
   utxo: syntheticUtxo(txHash, lovelace),
   datum: {
     key: key === null ? "Empty" : { Key: { key } },
@@ -49,10 +50,10 @@ const emptyData = SDK.castRegisteredOperatorDatumToData({
 export const registeredNodeFor = (
   operator: string,
   activationTime: bigint,
-): SDK.NodeWithDatum =>
+): SDKOperators.NodeWithDatum =>
   syntheticNode({
     txHash: "11".repeat(32),
-    key: SDK.posixTimeToRegisteredNodeKey(activationTime),
+    key: SDKOperators.posixTimeToRegisteredNodeKey(activationTime),
     next: null,
     data: SDK.castRegisteredOperatorDatumToData({ operator }),
   });
@@ -60,7 +61,7 @@ export const registeredNodeFor = (
 export const activeNodeFor = (
   operator: string,
   inactivityStrikes: bigint,
-): SDK.NodeWithDatum =>
+): SDKOperators.NodeWithDatum =>
   syntheticNode({
     txHash: "22".repeat(32),
     key: operator,
@@ -74,7 +75,7 @@ export const activeNodeFor = (
 export const retiredNodeFor = (
   operator: string,
   bondUnlockTime: bigint | null,
-): SDK.NodeWithDatum =>
+): SDKOperators.NodeWithDatum =>
   syntheticNode({
     txHash: "33".repeat(32),
     key: operator,
@@ -87,7 +88,7 @@ export const retiredNodeFor = (
 export const rootNode = (
   txHash: string,
   next: string | null,
-): SDK.NodeWithDatum =>
+): SDKOperators.NodeWithDatum =>
   syntheticNode({
     txHash,
     key: null,
@@ -114,13 +115,13 @@ export const emptyDirectory = {
 describe("assertOperatorNotInDirectory", () => {
   it("accepts a key that occupies none of the three lists", () => {
     expect(() =>
-      SDK.assertOperatorNotInDirectory(emptyDirectory, OPERATOR_A),
+      SDKOperators.assertOperatorNotInDirectory(emptyDirectory, OPERATOR_A),
     ).not.toThrow();
   });
 
   it("refuses an active key and names the membership", () => {
     try {
-      SDK.assertOperatorNotInDirectory(
+      SDKOperators.assertOperatorNotInDirectory(
         {
           ...emptyDirectory,
           active: [
@@ -132,8 +133,10 @@ describe("assertOperatorNotInDirectory", () => {
       );
       throw new Error("Expected the active membership to be refused");
     } catch (cause) {
-      expect(cause).toBeInstanceOf(SDK.OperatorAlreadyInDirectoryError);
-      const error = cause as SDK.OperatorAlreadyInDirectoryError;
+      expect(cause).toBeInstanceOf(
+        SDKOperators.OperatorAlreadyInDirectoryError,
+      );
+      const error = cause as SDKOperators.OperatorAlreadyInDirectoryError;
       expect(error.operatorKeyHash).toEqual(OPERATOR_A);
       expect(error.occupancies.map(({ kind }) => kind)).toEqual(["active"]);
       expect(error.message).toContain("active");
@@ -143,7 +146,7 @@ describe("assertOperatorNotInDirectory", () => {
 
   it("refuses a retired key, which the registration skip checks never look at", () => {
     expect(() =>
-      SDK.assertOperatorNotInDirectory(
+      SDKOperators.assertOperatorNotInDirectory(
         {
           ...emptyDirectory,
           retired: [
@@ -158,7 +161,7 @@ describe("assertOperatorNotInDirectory", () => {
 
   it("refuses a key that already holds a registration", () => {
     expect(() =>
-      SDK.assertOperatorNotInDirectory(
+      SDKOperators.assertOperatorNotInDirectory(
         {
           ...emptyDirectory,
           registered: [
@@ -173,7 +176,7 @@ describe("assertOperatorNotInDirectory", () => {
 
   it("ignores memberships of other operators", () => {
     expect(() =>
-      SDK.assertOperatorNotInDirectory(
+      SDKOperators.assertOperatorNotInDirectory(
         {
           registered: [
             rootNode("aa".repeat(32), null),

@@ -4,7 +4,7 @@ import type {
   WorkflowFundingReservationPermit,
   WorkflowFundingReservationPort,
 } from "@al-ft/midgard-fault-proofs/workflow/funding-reservation-permit";
-import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
+import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 import { type UTxO } from "@lucid-evolution/lucid";
 
 import type { WatcherDecisionHold } from "../fault-proofs/watcher-decision-hold.js";

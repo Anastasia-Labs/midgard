@@ -2,7 +2,7 @@ import {
   forcedVerdictSubject,
   InputSetUniquenessVerdictSubjectSchema,
   MIDGARD_FIELD_INDEX,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";

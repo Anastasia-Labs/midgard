@@ -1,5 +1,5 @@
 import { encodeMidgardAddressText } from "@al-ft/midgard-core/codec";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { decodeMidgardSubmittedTxFromCanonicalCbor } from "@al-ft/midgard-validation/ledger-tx/codec";
 import {
   ledgerOutputToCbor,

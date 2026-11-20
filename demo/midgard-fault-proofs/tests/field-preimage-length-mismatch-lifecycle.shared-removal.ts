@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { afterEach, expect, vi } from "vitest";
 
 import { createFieldPreimageLengthRecoveryPorts } from "../src/field-preimage-length-mismatch/recovery.js";
@@ -171,10 +172,10 @@ export const removeThroughSharedFieldRecovery = async (
           )[index]!,
           address: step.spendingScriptAddress,
           datumSchema: [
-            SDK.FieldPreimageLengthStep01DatumSchema,
-            SDK.FieldPreimageLengthStep02DatumSchema,
-            SDK.FieldPreimageLengthStep02DatumSchema,
-            SDK.FieldPreimageLengthStep03DatumSchema,
+            SDKFraudProof.FieldPreimageLengthStep01DatumSchema,
+            SDKFraudProof.FieldPreimageLengthStep02DatumSchema,
+            SDKFraudProof.FieldPreimageLengthStep02DatumSchema,
+            SDKFraudProof.FieldPreimageLengthStep03DatumSchema,
           ][index]!,
         })),
       },

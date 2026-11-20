@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs";
 import { inspect } from "node:util";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import {
   CML,
   Data,

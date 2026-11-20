@@ -5,6 +5,14 @@ import {
 } from "@al-ft/midgard-core";
 import {
   type FieldCarriage,
+  type NativeTxWitnessSetCompact,
+  requireInputIndex,
+  requireMintRedeemerIndex,
+  requireOwnMintPurpose,
+  requireOwnSpendPurpose,
+  requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
@@ -15,13 +23,7 @@ import {
   type MinFeeStep02State,
   minFeeTerminalContradiction,
   minimumFeeFromProofSource,
-  type NativeTxWitnessSetCompact,
-  requireInputIndex,
-  requireMintRedeemerIndex,
-  requireOwnMintPurpose,
-  requireOwnSpendPurpose,
-  requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

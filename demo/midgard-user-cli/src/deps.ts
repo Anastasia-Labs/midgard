@@ -8,7 +8,7 @@ import {
   MidgardNodeProvider,
   type MidgardProvider,
 } from "@al-ft/lucid-midgard";
-import { type UserL1View } from "@al-ft/midgard-sdk";
+import { type UserL1View } from "@al-ft/midgard-sdk/users";
 
 import { type OpenL1ViewRequest, openProviderL1View } from "./l1-view.js";
 import { connectMidgardNode, type UserNode } from "./node.js";

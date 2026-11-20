@@ -1,4 +1,4 @@
-import { createDaAvailabilityReadScope } from "@al-ft/midgard-sdk";
+import { createDaAvailabilityReadScope } from "@al-ft/midgard-sdk/da";
 import { CML } from "@lucid-evolution/lucid";
 import JSONBig from "json-bigint";
 

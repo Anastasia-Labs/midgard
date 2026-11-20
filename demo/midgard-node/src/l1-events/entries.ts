@@ -15,7 +15,8 @@ import {
   plutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
 import type { ProjectedEvent } from "@al-ft/midgard-l1-follower/events";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { deriveCanonicalOriginalDepositTransitionEffect } from "@al-ft/midgard-validation/transition-effect";
 import { Data, type Network } from "@lucid-evolution/lucid";
 
@@ -98,7 +99,7 @@ const depositEntry = (
     l2NetworkId,
     l2Address: Data.from(addressCbor, SDK.AddressData),
     l2DatumCbor: optionalFieldCbor(datumCbor),
-    originalAssets: SDK.valueToAssets(
+    originalAssets: SDKUsers.valueToAssets(
       Data.from(event.originalAssetsCbor, SDK.Value),
     ),
   });

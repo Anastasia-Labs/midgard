@@ -1,6 +1,8 @@
 import "@al-ft/midgard-core/da-transport";
 import "@al-ft/midgard-core/hex";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/da";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "./errors.js";
 import "./fetch.admit-retained-da-provenance.js";
 import "./fetch.retained-da-response-errors.js";

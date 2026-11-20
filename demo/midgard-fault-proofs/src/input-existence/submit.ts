@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   credentialToAddress,
@@ -113,28 +114,28 @@ export const buildInputExistenceStep = async ({
   const datumSchemas =
     prepared.field === 0
       ? ([
-          SDK.NonExistentInputStep02ThreadDatum,
-          SDK.NonExistentInputStep03ThreadDatum,
-          SDK.NonExistentInputStep04ThreadDatum,
+          SDKFraudProof.NonExistentInputStep02ThreadDatum,
+          SDKFraudProof.NonExistentInputStep03ThreadDatum,
+          SDKFraudProof.NonExistentInputStep04ThreadDatum,
         ] as const)
       : ([
-          SDK.NoReferenceInputStep02ThreadDatum,
-          SDK.NoReferenceInputStep03ThreadDatum,
-          SDK.NoReferenceInputStep04ThreadDatum,
+          SDKFraudProof.NoReferenceInputStep02ThreadDatum,
+          SDKFraudProof.NoReferenceInputStep03ThreadDatum,
+          SDKFraudProof.NoReferenceInputStep04ThreadDatum,
         ] as const);
   const redeemerSchemas =
     prepared.field === 0
       ? ([
-          SDK.NonExistentInputStep01SpendRedeemer,
-          SDK.NonExistentInputStep02ThreadSpendRedeemer,
-          SDK.NonExistentInputStep03ThreadSpendRedeemer,
-          SDK.NonExistentInputStep04ThreadSpendRedeemer,
+          SDKFraudProof.NonExistentInputStep01SpendRedeemer,
+          SDKFraudProof.NonExistentInputStep02ThreadSpendRedeemer,
+          SDKFraudProof.NonExistentInputStep03ThreadSpendRedeemer,
+          SDKFraudProof.NonExistentInputStep04ThreadSpendRedeemer,
         ] as const)
       : ([
-          SDK.NoReferenceInputStep01SpendRedeemer,
-          SDK.NoReferenceInputStep02ThreadSpendRedeemer,
-          SDK.NoReferenceInputStep03ThreadSpendRedeemer,
-          SDK.NoReferenceInputStep04ThreadSpendRedeemer,
+          SDKFraudProof.NoReferenceInputStep01SpendRedeemer,
+          SDKFraudProof.NoReferenceInputStep02ThreadSpendRedeemer,
+          SDKFraudProof.NoReferenceInputStep03ThreadSpendRedeemer,
+          SDKFraudProof.NoReferenceInputStep04ThreadSpendRedeemer,
         ] as const);
   if (stepIndex === 0) requireInitialStepDatum({ threadUtxo, signer });
   else {
@@ -278,7 +279,10 @@ export const buildInputExistenceStep = async ({
     ? contracts.fraudProof.spendingScriptAddress
     : contracts.steps[stepIndex + 1]!.spendingScriptAddress;
   const datum = final
-    ? Data.to({ fraud_prover: signer.paymentKeyHash }, SDK.FraudProofTokenDatum)
+    ? Data.to(
+        { fraud_prover: signer.paymentKeyHash },
+        SDKFraudProof.FraudProofTokenDatum,
+      )
     : Data.to(
         {
           fraud_prover: signer.paymentKeyHash,
@@ -357,7 +361,7 @@ export const buildInputExistenceStep = async ({
       };
     } else {
       const evidence = prepared.ledgerEvidence;
-      let ledger_evidence: SDK.InputExistenceLedgerEvidence;
+      let ledger_evidence: SDKFraudProof.InputExistenceLedgerEvidence;
       if (evidence === "OutOfDomain") ledger_evidence = evidence;
       else if ("Present" in evidence)
         ledger_evidence = {
@@ -422,7 +426,7 @@ export const buildInputExistenceStep = async ({
         { [threadToken.unit]: -1n },
         Data.to(
           { Success: { burning_token_asset_name: threadToken.assetName } },
-          SDK.FraudProofComputationThreadRedeemer,
+          SDKFraudProof.FraudProofComputationThreadRedeemer,
         ),
       )
       .mintAssets({ [proofUnit]: 1n }, ((ctx) => {
@@ -437,7 +441,7 @@ export const buildInputExistenceStep = async ({
                 family,
               ),
           },
-          SDK.FraudProofTokenMintRedeemer,
+          SDKFraudProof.FraudProofTokenMintRedeemer,
         );
       }) satisfies BuildTxWithRedeemer);
   }

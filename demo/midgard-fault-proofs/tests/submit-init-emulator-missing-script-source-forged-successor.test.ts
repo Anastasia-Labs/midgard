@@ -10,7 +10,7 @@
  * receive reach each claim domain; and a RedeemerMissing behind a missing
  * source reaches the claimed-redeemer scan.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { afterAll, describe, expect, it } from "vitest";
 
 import type { DirectPurposeRole } from "../src/direct-purpose-family/index.js";

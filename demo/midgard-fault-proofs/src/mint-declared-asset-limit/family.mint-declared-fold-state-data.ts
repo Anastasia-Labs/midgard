@@ -1,4 +1,4 @@
-import { type VerdictSubject } from "@al-ft/midgard-sdk";
+import { type VerdictSubject } from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import {

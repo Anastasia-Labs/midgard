@@ -6,7 +6,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { inspect } from "node:util";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   type BuildTxWithRedeemer,
   Data,
@@ -103,7 +104,7 @@ const setup = async (previouslyMarked = false) => {
             m_fraud_proof_ref_input_index: null,
           },
         },
-        SDK.StateQueueSpendRedeemer,
+        SDKStateQueue.StateQueueSpendRedeemer,
       )) satisfies BuildTxWithRedeemer;
     let tx = lucid
       .newTx()

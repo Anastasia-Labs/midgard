@@ -1,18 +1,20 @@
 import {
-  acceptedVerdictSubject,
   type ForcedInclusionTxV1,
   forcedLeafMembershipV1,
-  forcedVerdictSubject,
   type Header,
   type OutputReference,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
   type RootMembershipProof,
+} from "@al-ft/midgard-sdk/core";
+import {
+  acceptedVerdictSubject,
+  forcedVerdictSubject,
   type WitnessScriptDecodingBound,
   WitnessScriptDecodingStep01RedeemerSchema,
   WitnessScriptDecodingStep02DatumSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

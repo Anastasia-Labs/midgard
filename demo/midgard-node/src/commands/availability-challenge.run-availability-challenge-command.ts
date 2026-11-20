@@ -1,7 +1,8 @@
 import { isAbsolute, normalize } from "node:path";
 
 import { openAvailabilityOperationJournal } from "@al-ft/midgard-core/availability-operation-journal";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
   Data,
   type Network,
@@ -111,13 +112,13 @@ const runAvailabilityOnAccess = async (
   const journal = openAvailabilityOperationJournal(options.journal);
   try {
     const canonicalAnchor = await source.readBoundary();
-    const context: SDK.DaAvailabilityOperationContext = {
+    const context: SDKDa.DaAvailabilityOperationContext = {
       deploymentIdentity: manifest.manifestId,
       actor: actor.hash,
       journal,
       stateQueuePolicyId: deployment.contracts.stateQueue.policyId,
       minimumConfirmationDepth: manifest.l1Finality.confirmationDepth,
-      transactionLimits: SDK.daAvailabilityOperationLimits(
+      transactionLimits: SDKDa.daAvailabilityOperationLimits(
         lucid,
         deployment.parameters,
       ),
@@ -131,11 +132,11 @@ const runAvailabilityOnAccess = async (
       return {
         action,
         headerHash: options.headerHash,
-        operations: await SDK.reconcileDaAvailabilityOperations(context),
+        operations: await SDKDa.reconcileDaAvailabilityOperations(context),
       };
     }
     if (action !== "status") {
-      const operations = await SDK.reconcileDaAvailabilityOperations(context);
+      const operations = await SDKDa.reconcileDaAvailabilityOperations(context);
       if (
         operations.some(
           (operation) =>
@@ -153,7 +154,7 @@ const runAvailabilityOnAccess = async (
       }
     }
     const before = await source.readBoundary();
-    const snapshot = await SDK.fetchDaAvailabilityChallengeSnapshot(
+    const snapshot = await SDKDa.fetchDaAvailabilityChallengeSnapshot(
       lucid,
       deployment,
       options.headerHash,
@@ -201,7 +202,7 @@ const runAvailabilityOnAccess = async (
                 state:
                   snapshot.poolDatum === "Bonded" ? "bonded" : "withdrawing",
                 lovelace: (snapshot.pool.assets.lovelace ?? 0n).toString(),
-                backing: SDK.daBondPoolBacking({
+                backing: SDKDa.daBondPoolBacking({
                   lovelace: snapshot.pool.assets.lovelace ?? 0n,
                   parameters: deployment.parameters,
                 }).toString(),
@@ -245,7 +246,7 @@ const runAvailabilityOnAccess = async (
       snapshot,
       Date.now(),
     );
-    const result = await SDK.runDaAvailabilityOperation(context, {
+    const result = await SDKDa.runDaAvailabilityOperation(context, {
       headerHash: options.headerHash,
       action: operation,
       completesWorkflow:

@@ -1,9 +1,6 @@
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
-import {
-  H32Schema,
-  NativeTxBodyCompactSchema,
-  VerdictSubjectSchema,
-} from "@al-ft/midgard-sdk";
+import { H32Schema, NativeTxBodyCompactSchema } from "@al-ft/midgard-sdk/core";
+import { VerdictSubjectSchema } from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import {

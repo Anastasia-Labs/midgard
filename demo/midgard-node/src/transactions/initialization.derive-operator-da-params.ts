@@ -1,4 +1,6 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import type * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { LucidEvolution, type Network } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -69,7 +71,7 @@ export const deriveOperatorDaParams = (nodeConfig: {
   readonly DA_THRESHOLD?: bigint | null;
   readonly DA_COSIGNER_SEED_PHRASE?: string;
   readonly DA_OWNERS_HEX?: string;
-}): Effect.Effect<SDK.DaParamsDatum, SDK.HashingError> =>
+}): Effect.Effect<SDKDa.DaParamsDatum, SDK.HashingError> =>
   Effect.gen(function* () {
     // Seed decoding is the one step here that can throw on caller-supplied
     // input, so it is surfaced as this function's declared error rather than as
@@ -93,7 +95,7 @@ export const deriveOperatorDaParams = (nodeConfig: {
         `Single-key DA configuration: this deployment initialises a ${committeeLength.toString()}-member DA committee, ` +
           `so every block's data availability is attested by one key with no independent corroboration and no liveness redundancy. ` +
           `F04 §4 (amended 2026-08-11) permits it — the governed floor is ceil(2*${committeeLength.toString()}/3) = ` +
-          `${SDK.governedThresholdFloor(committeeLength).toString()} — but two-key committees are the standing configuration. ` +
+          `${SDKDa.governedThresholdFloor(committeeLength).toString()} — but two-key committees are the standing configuration. ` +
           `Set DA_COMMITTEE_HEX to the packed peer committee, or DA_COSIGNER_SEED_PHRASE to a second locally held key.`,
       );
     }
@@ -106,16 +108,16 @@ export const deriveOperatorDaParams = (nodeConfig: {
         `Single-key DA governance: this deployment initialises a ${owners.length.toString()}-member DA owner set, ` +
           `so one key can rotate the DA committee and both governed thresholds with no second approval. ` +
           `F04 §4 (amended 2026-08-13) permits it — the governed floor is ceil(2*${owners.length.toString()}/3) = ` +
-          `${SDK.governedThresholdFloor(owners.length).toString()} — but multi-owner governance is the standing configuration. ` +
+          `${SDKDa.governedThresholdFloor(owners.length).toString()} — but multi-owner governance is the standing configuration. ` +
           `Set DA_OWNERS_HEX to the packed owner key hashes, or DA_COSIGNER_SEED_PHRASE to a second locally held key.`,
       );
     }
     const daThreshold =
       nodeConfig.DA_THRESHOLD ??
-      BigInt(SDK.governedThresholdFloor(committeeLength));
-    const updateThreshold = BigInt(SDK.governedThresholdFloor(owners.length));
+      BigInt(SDKDa.governedThresholdFloor(committeeLength));
+    const updateThreshold = BigInt(SDKDa.governedThresholdFloor(owners.length));
 
-    const violations = SDK.daParamsFloorViolations({
+    const violations = SDKDa.daParamsFloorViolations({
       committeeLength,
       daThreshold: Number(daThreshold),
       ownerCount: owners.length,
@@ -179,7 +181,7 @@ export const ensureAtomicProtocolInitReferenceScriptsProgram = (
   referenceScriptsAddress?: string,
 ): Effect.Effect<
   AtomicProtocolInitReferenceScripts,
-  | SDK.StateQueueError
+  | SDKStateQueue.StateQueueError
   | SDK.LucidError
   | TxConfirmError
   | TxExpiredError

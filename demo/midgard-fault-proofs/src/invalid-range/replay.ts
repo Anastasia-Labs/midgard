@@ -1,5 +1,5 @@
 import { decodeMidgardForcedTxCompact } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { forcedTxFromCoreCompact } from "../step-support.js";

@@ -1,5 +1,7 @@
 import { outRefLabel } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Data, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -126,7 +128,7 @@ describe("withdrawn-reference-input emulator lifecycle", () => {
     );
     expect(outRefLabel(fraudProof)).toBe(step03.fraudProofOutRef);
     expect(
-      Data.from(fraudProof.datum!, SDK.FraudProofTokenDatum),
+      Data.from(fraudProof.datum!, SDKFraudProof.FraudProofTokenDatum),
     ).toStrictEqual({ fraud_prover: harness.proverSigner.paymentKeyHash });
 
     const removalReferences = await publishRemovalReferenceScripts({
@@ -171,7 +173,7 @@ describe("withdrawn-reference-input emulator lifecycle", () => {
     );
     expect(rootUtxo).toBeDefined();
     const root = await Effect.runPromise(
-      SDK.utxoToStateQueueUTxO(
+      SDKStateQueue.utxoToStateQueueUTxO(
         rootUtxo!,
         harness.contracts.stateQueue.policyId,
       ),

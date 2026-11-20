@@ -1,4 +1,4 @@
-import type { EvidenceProvenance } from "@al-ft/midgard-sdk";
+import type { EvidenceProvenance } from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import type { FraudProofWorkflowTerminal } from "../src/workflow/journal.js";

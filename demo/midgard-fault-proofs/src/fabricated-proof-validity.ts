@@ -1,4 +1,4 @@
-import { MATURITY_DURATION_MS } from "@al-ft/midgard-sdk";
+import { MATURITY_DURATION_MS } from "@al-ft/midgard-sdk/core";
 
 /** Finite stage validity, strictly after the committed node's `block_time` and
  * before its merge deadline `block_time + maturity`, the window the capture and

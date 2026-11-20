@@ -8,11 +8,11 @@ import {
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   buildCekRedeemerItemStages,
-  buildValidationTraceDisputeFaultProofContracts,
   deriveValidationTraceDeploymentId,
   parseFaultProofBlueprint,
   requireInputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { buildValidationTraceDisputeFaultProofContracts } from "@al-ft/midgard-sdk/fraud-proof";
 import {
   redeemerItemControlData,
   redeemerItemProofWitnessData,

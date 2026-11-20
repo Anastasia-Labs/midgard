@@ -5,7 +5,8 @@
  * `Init` can finish at once: the real `Success` burn plus the real fraud-proof
  * mint. The token is the authentic permanent record under the deployed
  * fraud-proof policy; only the dispute game before it is skipped. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,
@@ -91,7 +92,7 @@ export const mintValidationTraceProof = async (
           "validation-trace scaffold success",
         ),
       },
-      SDK.FraudProofTokenMintRedeemer,
+      SDKFraudProof.FraudProofTokenMintRedeemer,
     )) satisfies BuildTxWithRedeemer;
   const tx = await proverLucid
     .newTx()
@@ -105,7 +106,7 @@ export const mintValidationTraceProof = async (
       { [init.computationThreadUnit]: -1n },
       Data.to(
         { Success: { burning_token_asset_name: assetName } },
-        SDK.FraudProofComputationThreadRedeemer,
+        SDKFraudProof.FraudProofComputationThreadRedeemer,
       ),
     )
     .mintAssets({ [proofUnit]: 1n }, proofMintRedeemer)
@@ -115,7 +116,7 @@ export const mintValidationTraceProof = async (
         kind: "inline",
         value: Data.to(
           { fraud_prover: init.fraudProver },
-          SDK.FraudProofTokenDatum,
+          SDKFraudProof.FraudProofTokenDatum,
         ),
       },
       { [proofUnit]: 1n },
@@ -154,7 +155,7 @@ export const mintForeignValidationTraceToken = async (
         kind: "inline",
         value: Data.to(
           { fraud_prover: fixture.proverPaymentKeyHash },
-          SDK.FraudProofTokenDatum,
+          SDKFraudProof.FraudProofTokenDatum,
         ),
       },
       { [unit]: 1n },

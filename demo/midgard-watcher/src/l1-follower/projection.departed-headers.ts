@@ -6,7 +6,8 @@ import type {
   SqlValue,
   TemporalTableSpec,
 } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
@@ -101,7 +102,7 @@ const outRefLabel = (outRef: Readonly<{ txHash: Buffer; index: number }>) =>
 const stateQueueMintRedeemer = (
   entry: QualifiedEntry,
   stateQueuePolicyId: string,
-): SDK.StateQueueRedeemer | null => {
+): SDKStateQueue.StateQueueRedeemer | null => {
   const policies = [...entry.tx.mint.keys()].sort();
   const index = policies.indexOf(stateQueuePolicyId);
   if (index < 0) return null;
@@ -112,7 +113,7 @@ const stateQueueMintRedeemer = (
   try {
     return Data.from(
       redeemers[0]!.data.toString("hex"),
-      SDK.StateQueueRedeemer,
+      SDKStateQueue.StateQueueRedeemer,
     );
   } catch {
     return null;
@@ -154,7 +155,7 @@ export const departureKind = (
     const output = entry.tx.outputs[Number(merge.confirmed_state_output_index)];
     const rootUnit = output?.assets
       .get(stateQueuePolicyId)
-      ?.get(SDK.STATE_QUEUE_ROOT_ASSET_NAME);
+      ?.get(SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME);
     return merge.header_node_key === header &&
       spentRoots.has(consumed) &&
       burned.length === 1 &&

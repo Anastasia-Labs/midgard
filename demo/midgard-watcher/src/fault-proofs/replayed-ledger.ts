@@ -23,7 +23,7 @@ import {
   FraudProofL1CheckpointChangedError,
   isFraudProofL1WaitError,
 } from "@al-ft/midgard-fault-proofs/workflow/l1-source";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 
 import type { WatcherAuthenticatedStateQueueObservation } from "../indexers/authenticated-state-queue-observation.js";
 import { isWatcherL1TransientFailure } from "../l1/transient-failure.js";

@@ -3,7 +3,7 @@
  * the terminal step is refused by its one withdrawal, the replay yield, whose
  * remaining check is that the replayed root differs from the claimed one.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 

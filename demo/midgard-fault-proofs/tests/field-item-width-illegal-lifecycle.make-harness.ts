@@ -1,8 +1,5 @@
-import {
-  AddressData,
-  addressDataFromBech32,
-  type FieldOpening,
-} from "@al-ft/midgard-sdk";
+import { AddressData, addressDataFromBech32 } from "@al-ft/midgard-sdk/core";
+import { type FieldOpening } from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";

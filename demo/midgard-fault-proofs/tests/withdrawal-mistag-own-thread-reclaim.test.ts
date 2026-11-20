@@ -10,7 +10,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   CML,
   generateEmulatorAccount,
@@ -92,7 +93,7 @@ const ROLES = [
   "computation_thread_step_05",
 ] as const;
 const DATUM_SCHEMAS = [
-  SDK.FraudProofComputationThreadStepDatum,
+  SDKFraudProof.FraudProofComputationThreadStepDatum,
   SDK.WithdrawalMistagStep02Datum,
   SDK.WithdrawalMistagStep03Datum,
   SDK.WithdrawalMistagStep04Datum,

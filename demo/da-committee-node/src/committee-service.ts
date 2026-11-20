@@ -1,6 +1,8 @@
 import "@al-ft/midgard-core/da-transport";
 import "@al-ft/midgard-core/deployment-manifest-identity";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/da";
 import "./config.js";
 import "./coordinator/pool-monitor.js";
 import "./da/payload.js";

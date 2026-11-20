@@ -3,7 +3,9 @@ import type {
   AvailabilityOperationJournal,
 } from "@al-ft/midgard-core/availability-operation-journal";
 import { depth, isFinal } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -44,28 +46,28 @@ export type RetirementPointProof = Readonly<{
 }>;
 export type CommitteeRetirementSourceDependencies = Readonly<{
   binding: CommitteeRetirementBinding;
-  deployment: SDK.DaAvailabilityDeployment;
+  deployment: SDKDa.DaAvailabilityDeployment;
   store: CommitteeStore;
   journal: AvailabilityOperationJournal;
   readBoundary: (
-    scope: SDK.DaAvailabilityReadScope,
+    scope: SDKDa.DaAvailabilityReadScope,
   ) => Promise<PromiseCapacityPoint>;
   /** Verified native genesis/era-history conversion, never a host clock. */
   slotTimeMs: (slot: number) => number;
   /** Complete script-address reads from the follower's facts at the current boundary. */
   readRawSnapshot: (
-    scope: SDK.DaAvailabilityReadScope,
-  ) => Promise<SDK.DaAvailabilitySnapshotUtxos>;
+    scope: SDKDa.DaAvailabilityReadScope,
+  ) => Promise<SDKDa.DaAvailabilitySnapshotUtxos>;
   readCanonicalPoint: (
     point: RetirementPointRequest,
     boundary: PromiseCapacityPoint,
-    scope: SDK.DaAvailabilityReadScope,
+    scope: SDKDa.DaAvailabilityReadScope,
   ) => Promise<RetirementPointProof | null>;
   /** The block a valid stored transaction `txHash` landed in, on the follower's chain. */
   readSubmissionPoint: (
     txHash: string,
     boundary: PromiseCapacityPoint,
-    scope: SDK.DaAvailabilityReadScope,
+    scope: SDKDa.DaAvailabilityReadScope,
   ) => Promise<RetirementPointProof | null>;
   /**
    * The block on the follower's chain carrying the transaction that put
@@ -75,18 +77,18 @@ export type CommitteeRetirementSourceDependencies = Readonly<{
   readLandingPoint: (
     headerHash: string,
     boundary: PromiseCapacityPoint,
-    scope: SDK.DaAvailabilityReadScope,
+    scope: SDKDa.DaAvailabilityReadScope,
   ) => Promise<RetirementPointProof | null>;
   /** Includes deferred/non-final scan work and callbacks not represented by rows. */
   readOperationalPins: (
-    scope: SDK.DaAvailabilityReadScope,
+    scope: SDKDa.DaAvailabilityReadScope,
   ) => Promise<readonly string[]>;
   assertClaimsCurrent: (
     boundary: PromiseCapacityPoint,
-    scope: SDK.DaAvailabilityReadScope,
+    scope: SDKDa.DaAvailabilityReadScope,
     actor: AvailabilityOperationActorSnapshot,
   ) => Promise<void>;
-  assertCurrent: (scope: SDK.DaAvailabilityReadScope) => Promise<void>;
+  assertCurrent: (scope: SDKDa.DaAvailabilityReadScope) => Promise<void>;
 }>;
 const nativeTime = (
   args: CommitteeRetirementSourceDependencies,
@@ -116,17 +118,19 @@ const verifiedProof = (
   return parseRetirementPoint(proof.point);
 };
 const rawPins = async (
-  deployment: SDK.DaAvailabilityDeployment,
-  raw: SDK.DaAvailabilitySnapshotUtxos,
+  deployment: SDKDa.DaAvailabilityDeployment,
+  raw: SDKDa.DaAvailabilitySnapshotUtxos,
   headers: readonly StateQueueHeaderRecord[],
 ): Promise<ReadonlySet<string>> => {
-  const root = await SDK.daAvailabilityChallengeSnapshotFromUtxos(
+  const root = await SDKDa.daAvailabilityChallengeSnapshotFromUtxos(
     deployment,
     SDK.makeGenesisConfirmedState(0n).headerHash,
     raw,
   );
   const confirmed = await Effect.runPromise(
-    SDK.getConfirmedStateFromStateQueueDatum(root.confirmedState.datum),
+    SDKStateQueue.getConfirmedStateFromStateQueueDatum(
+      root.confirmedState.datum,
+    ),
   );
   if (
     !root.correctionLock.datum ||
@@ -138,7 +142,7 @@ const rawPins = async (
   // challenge list cannot prove absence, including stranded record tokens.
   const prefix =
     deployment.contracts.availabilityChallenge.policyId +
-    SDK.DA_AVAILABILITY_CHALLENGE_ASSET_NAME_PREFIX;
+    SDKDa.DA_AVAILABILITY_CHALLENGE_ASSET_NAME_PREFIX;
   for (const u of raw.availabilityUtxos)
     for (const [unit, amount] of Object.entries(u.assets))
       if (unit.startsWith(prefix) && unit.length === prefix.length + 56) {
@@ -149,7 +153,7 @@ const rawPins = async (
           !u.datum
         )
           throw new Error("Retirement raw challenge identity is malformed");
-        const record = SDK.parseDaAvailabilityChallengeRecordCbor(
+        const record = SDKDa.parseDaAvailabilityChallengeRecordCbor(
           u.datum,
           deployment.parameters,
         );
@@ -163,7 +167,7 @@ const rawPins = async (
         pins.add(record.commitment.header_hash);
       }
   for (const header of headers) {
-    const snapshot = await SDK.daAvailabilityChallengeSnapshotFromUtxos(
+    const snapshot = await SDKDa.daAvailabilityChallengeSnapshotFromUtxos(
       deployment,
       header.headerHash,
       raw,
@@ -232,7 +236,9 @@ export const committeeRetirementSource = (
   args: CommitteeRetirementSourceDependencies,
 ): CommitteeRetirementPort &
   Readonly<{
-    compact: (scope: SDK.DaAvailabilityReadScope) => Promise<readonly string[]>;
+    compact: (
+      scope: SDKDa.DaAvailabilityReadScope,
+    ) => Promise<readonly string[]>;
     /**
      * The hold the last compaction stopped at, as its named retention
      * reason (empty when none): the held header and its cause.
@@ -248,11 +254,11 @@ export const committeeRetirementSource = (
       boundary: PromiseCapacityPoint;
     }>
   >();
-  const boundary = async (scope: SDK.DaAvailabilityReadScope) =>
+  const boundary = async (scope: SDKDa.DaAvailabilityReadScope) =>
     parseRetirementPoint(await args.readBoundary(scope));
   const current = async (
     c: PromiseCapacityPoint,
-    scope: SDK.DaAvailabilityReadScope,
+    scope: SDKDa.DaAvailabilityReadScope,
   ) => {
     await args.assertCurrent(scope);
     const after = await boundary(scope);
@@ -263,7 +269,7 @@ export const committeeRetirementSource = (
   const proveFloor = async (
     floor: CommitteeRetirementFloor,
     c: PromiseCapacityPoint,
-    scope: SDK.DaAvailabilityReadScope,
+    scope: SDKDa.DaAvailabilityReadScope,
   ) => {
     if (
       retirementDigest(floor.binding) !== retirementDigest(binding) ||
@@ -284,7 +290,7 @@ export const committeeRetirementSource = (
     await current(c, scope);
   };
   const capture = async (
-    scope: SDK.DaAvailabilityReadScope,
+    scope: SDKDa.DaAvailabilityReadScope,
   ): Promise<CommitteeRetirementGuard> => {
     const token = args.store.captureRetirementGuard();
     const floor = await args.store.getRetirementFloor();

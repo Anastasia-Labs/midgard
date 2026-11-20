@@ -1,4 +1,5 @@
 import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
+import { parseFaultProofBlueprint } from "@al-ft/midgard-sdk/core";
 import {
   buildCanonicalDecodabilityFaultProofContracts,
   buildCommittedFieldShapeFaultProofContracts,
@@ -52,8 +53,7 @@ import {
   buildWithdrawnReferenceInputFaultProofContracts,
   buildWitnessScriptDecodingFaultProofContracts,
   buildZeroInputFaultProofContracts,
-  parseFaultProofBlueprint,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { type Network } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

@@ -1,5 +1,5 @@
 import { type MidgardNativeTxFull } from "@al-ft/midgard-core/codec";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { expect } from "vitest";
 
 import {

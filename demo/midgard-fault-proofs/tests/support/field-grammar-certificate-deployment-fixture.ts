@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type Network,
   type UTxO,
@@ -20,7 +21,7 @@ import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.js
 let blueprint: Blueprint | undefined;
 const validators = new Map<
   string,
-  ReturnType<typeof SDK.buildFieldGrammarCertificateValidator>
+  ReturnType<typeof SDKFraudProof.buildFieldGrammarCertificateValidator>
 >();
 
 /** The compiled blueprint, read once per test worker. */
@@ -43,7 +44,7 @@ export const fieldGrammarCertificateValidatorFixture = ({
   const key = `${network}:${fieldPreimageCertificatePolicyId}`;
   const cached = validators.get(key);
   if (cached !== undefined) return cached;
-  const validator = SDK.buildFieldGrammarCertificateValidator({
+  const validator = SDKFraudProof.buildFieldGrammarCertificateValidator({
     blueprint: SDK.parseFaultProofBlueprint(realFaultProofBlueprint()),
     network,
     fieldPreimageCertificatePolicyId,
@@ -74,7 +75,7 @@ export const deployFieldGrammarCertificate = async ({
   readonly fieldPreimageCertificatePolicyId: string;
   readonly label: string;
 }) => {
-  const validator = SDK.buildFieldGrammarCertificateValidator({
+  const validator = SDKFraudProof.buildFieldGrammarCertificateValidator({
     blueprint: SDK.parseFaultProofBlueprint(blueprint),
     network,
     fieldPreimageCertificatePolicyId,

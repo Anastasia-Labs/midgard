@@ -1,9 +1,9 @@
+import { type MidgardTxInput } from "@al-ft/midgard-sdk/core";
 import {
-  type MidgardTxInput,
   NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE,
   type NativeScriptDecodingScanThreadState,
   NativeScriptDecodingStep03OpenSubjectDatum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   Data,
   type LucidEvolution,

@@ -1,5 +1,6 @@
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
@@ -39,7 +40,7 @@ export const TRANSITION_OUTPUTS_GRAMMAR_BATCH = 32;
 
 export const initialTransitionTraceState = (
   proofInput: TransitionProofInput,
-): SDK.TransitionTraceFinalState => {
+): SDKFraudProof.TransitionTraceFinalState => {
   const proof = readTransitionProof(proofInput);
   return {
     kind:
@@ -74,7 +75,7 @@ export const initialTransitionTraceState = (
   };
 };
 export const transitionTracePhaseIsTerminal = (
-  state: SDK.TransitionTraceFinalState,
+  state: SDKFraudProof.TransitionTraceFinalState,
 ) => state.phase === 5n;
 
 const ACCEPTED_PHASE_YIELDS: Readonly<
@@ -106,7 +107,7 @@ const DEPOSIT_PHASE_YIELDS: Readonly<
 };
 
 export const transitionTracePhaseYield = (
-  state: SDK.TransitionTraceFinalState,
+  state: SDKFraudProof.TransitionTraceFinalState,
 ): keyof typeof TRANSITION_TRACE_YIELD_REFERENCES | null => {
   if (state.phase === 6n) return null;
   const key = (
@@ -122,7 +123,7 @@ export const transitionTracePhaseYield = (
  * any. Kind 2 (an accepted forced transaction) takes kind 0's phases.
  */
 export const transitionTracePhaseField = (
-  state: SDK.TransitionTraceFinalState,
+  state: SDKFraudProof.TransitionTraceFinalState,
 ): TransitionTraceField | null =>
   state.kind === 1n
     ? null
@@ -134,7 +135,7 @@ export const transitionTracePhaseField = (
 
 /** Whether a kind-0 or kind-2 phase-11 step replays its output whole. */
 export const transitionTraceOutputStepIsWhole = (
-  state: SDK.TransitionTraceFinalState,
+  state: SDKFraudProof.TransitionTraceFinalState,
   outputCbors: readonly string[] | undefined,
 ): boolean => {
   if (state.kind === 1n || state.phase !== 11n) return false;
@@ -167,7 +168,7 @@ const fieldLayout = (
 };
 
 export type TransitionTracePhaseStep = {
-  readonly state: SDK.TransitionTraceFinalState;
+  readonly state: SDKFraudProof.TransitionTraceFinalState;
   readonly redeemer: string;
   /** The two output-step verifiers' redeemers of a whole phase-11 replay. */
   readonly verifiers?: {
@@ -183,11 +184,11 @@ export const nextTransitionTracePhase = ({
   fieldOpening,
   fieldCarriage,
 }: {
-  state: SDK.TransitionTraceFinalState;
+  state: SDKFraudProof.TransitionTraceFinalState;
   proof: TransitionProofInput;
   yields: ReturnType<typeof transitionTraceYieldData>;
   /** The opening of `field` against this step's reference inputs. */
-  fieldOpening?: (field: TransitionTraceField) => SDK.FieldOpening;
+  fieldOpening?: (field: TransitionTraceField) => SDKFraudProof.FieldOpening;
   /** The carriage of `field` against this step's reference inputs. */
   fieldCarriage?: (field: TransitionTraceField) => SDK.FieldCarriage;
 }): TransitionTracePhaseStep => {
@@ -231,7 +232,7 @@ export const nextTransitionTracePhase = ({
   if (trace === undefined)
     throw new Error("transition-trace proof has no ledger replay");
   const replay = (
-    item: SDK.LedgerInsertWitness | SDK.LedgerDeleteWitness,
+    item: SDKFraudProof.LedgerInsertWitness | SDKFraudProof.LedgerDeleteWitness,
     insert: boolean,
   ) => {
     const proof = mpfProofFromWitness({
@@ -302,7 +303,7 @@ export const nextTransitionTracePhase = ({
               ).toString("hex"),
               witnesses: [spent],
             },
-            SDK.TransitionTraceDeleteStep,
+            SDKFraudProof.TransitionTraceDeleteStep,
           ),
         };
       }
@@ -341,7 +342,7 @@ export const nextTransitionTracePhase = ({
                       "hex",
                     ),
             },
-            SDK.TransitionTraceWalkStep,
+            SDKFraudProof.TransitionTraceWalkStep,
           ),
         };
       }
@@ -363,7 +364,7 @@ export const nextTransitionTracePhase = ({
             },
             insert,
           },
-          SDK.TransitionTraceOutputStep,
+          SDKFraudProof.TransitionTraceOutputStep,
         );
         const outputs_walk = hashTransitionWalkCheckpoint(layout, index + 1);
         if (!transitionTraceOutputStepIsWhole(state, opened?.outputCbors))
@@ -475,7 +476,9 @@ export const nextTransitionTracePhase = ({
           descriptor_cbor: "",
         },
         redeemer:
-          state.kind === 1n ? redeemer : Data.to(item, SDK.LedgerInsertWitness),
+          state.kind === 1n
+            ? redeemer
+            : Data.to(item, SDKFraudProof.LedgerInsertWitness),
       };
     }
     default:

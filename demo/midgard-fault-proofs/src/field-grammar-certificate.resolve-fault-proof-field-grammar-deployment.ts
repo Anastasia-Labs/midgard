@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { type UTxO, validatorToScriptHash } from "@lucid-evolution/lucid";
 
 import type { FaultProofFieldGrammarDeployment } from "./field-grammar-certificate.route-fault-proof-field-grammar.js";
@@ -24,7 +25,7 @@ export const resolveFaultProofFieldGrammarDeployment = ({
   label,
 }: {
   readonly binding: Pick<
-    FraudProofWorkflowDeploymentBinding<SDK.FraudProofCatalogueCategoryName>,
+    FraudProofWorkflowDeploymentBinding<SDKCore.FraudProofCatalogueCategoryName>,
     "blueprint" | "network" | "referenceScriptsByContract"
   >;
   readonly fieldPreimageCertificatePolicyId: string;

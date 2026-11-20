@@ -13,7 +13,7 @@ import {
   type MidgardVersionedScript,
   screenMidgardForcedTxAdmission,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import type { ExecutionNativeScriptInvalidEntry } from "../src/execution-native-script-invalid/index.js";

@@ -3,7 +3,9 @@ import {
   plutusConstrFieldCbor,
   replacePlutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { credentialToAddress, Data, datumToHash } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -37,7 +39,9 @@ const originalAssets: SDK.Value = new Map([
   ["", new Map([["", 20_000_000n]])],
   ["78".repeat(28), new Map([["ab", 3n]])],
 ]);
-const payloadFor = (kind: "Deposit" | "Withdrawal"): SDK.EventHistoryPayload =>
+const payloadFor = (
+  kind: "Deposit" | "Withdrawal",
+): SDKUsers.EventHistoryPayload =>
   kind === "Deposit"
     ? {
         DepositPayload: {
@@ -71,10 +75,13 @@ const payloadFor = (kind: "Deposit" | "Withdrawal"): SDK.EventHistoryPayload =>
           refund_datum: "NoDatum",
         },
       };
-const opening = (payload: SDK.EventHistoryPayload, assets = originalAssets) =>
+const opening = (
+  payload: SDKUsers.EventHistoryPayload,
+  assets = originalAssets,
+) =>
   Data.to(
     { RetainedEventData: { payload, original_assets: assets } },
-    SDK.FabricatedDepositAuthenticContentOpening,
+    SDKFraudProof.FabricatedDepositAuthenticContentOpening,
   );
 
 for (const kind of ["Deposit", "Withdrawal"] as const)
@@ -82,8 +89,10 @@ for (const kind of ["Deposit", "Withdrawal"] as const)
     const payload = payloadFor(kind);
     const authenticHash = Effect.runSync(
       "DepositPayload" in payload
-        ? SDK.depositInfoCommitment(payload.DepositPayload.event.info)
-        : SDK.withdrawalContentCommitment(payload.WithdrawalPayload.event.info),
+        ? SDKFraudProof.depositInfoCommitment(payload.DepositPayload.event.info)
+        : SDKFraudProof.withdrawalContentCommitment(
+            payload.WithdrawalPayload.event.info,
+          ),
     );
     const run = async ({
       inclusionTime = 150n,
@@ -107,7 +116,7 @@ for (const kind of ["Deposit", "Withdrawal"] as const)
         header_end_time: 200n,
         header_block_time: 200n,
       };
-      const commitment = SDK.eventHistoryCommitment(
+      const commitment = SDKUsers.eventHistoryCommitment(
         policy,
         kind,
         { event_id: id, inclusion_time: inclusionTime },
@@ -143,7 +152,7 @@ for (const kind of ["Deposit", "Withdrawal"] as const)
           });
     };
     it("binds raw duplicate-pair content through the retained handoff", async () => {
-      let raw = Data.to(payload, SDK.EventHistoryPayload);
+      let raw = Data.to(payload, SDKUsers.EventHistoryPayload);
       const datum = "a302c2410101d86682008002c2420001";
       raw = replacePlutusConstrFieldCbor(
         raw,
@@ -154,13 +163,15 @@ for (const kind of ["Deposit", "Withdrawal"] as const)
       const info = plutusConstrFieldCbor(raw, [0, 1]);
       const rawHash = Effect.runSync(
         kind === "Deposit"
-          ? SDK.depositInfoCommitmentCbor(info)
-          : SDK.withdrawalContentCommitmentCbor(info),
+          ? SDKFraudProof.depositInfoCommitmentCbor(info)
+          : SDKFraudProof.withdrawalContentCommitmentCbor(info),
       );
       const typedHash = Effect.runSync(
         kind === "Deposit"
-          ? SDK.depositInfoCommitment(Data.from(info, SDK.DepositInfo))
-          : SDK.withdrawalContentCommitment(
+          ? SDKFraudProof.depositInfoCommitment(
+              Data.from(info, SDK.DepositInfo),
+            )
+          : SDKFraudProof.withdrawalContentCommitment(
               Data.from(info, SDK.WithdrawalInfo),
             ),
       );
@@ -185,8 +196,11 @@ for (const kind of ["Deposit", "Withdrawal"] as const)
         run({
           rawPayload: raw,
           supplied: Data.to(
-            Data.from(supplied, SDK.FabricatedDepositAuthenticContentOpening),
-            SDK.FabricatedDepositAuthenticContentOpening,
+            Data.from(
+              supplied,
+              SDKFraudProof.FabricatedDepositAuthenticContentOpening,
+            ),
+            SDKFraudProof.FabricatedDepositAuthenticContentOpening,
           ),
           committedHash: typedHash,
         }),
@@ -198,7 +212,9 @@ for (const kind of ["Deposit", "Withdrawal"] as const)
           Data.to("NonExistentWithdrawalUtxo", SDK.WithdrawalValidity),
         );
         expect(
-          Effect.runSync(SDK.withdrawalContentCommitmentCbor(relabelled)),
+          Effect.runSync(
+            SDKFraudProof.withdrawalContentCommitmentCbor(relabelled),
+          ),
         ).toBe(rawHash);
       }
     });
@@ -261,7 +277,7 @@ for (const kind of ["Deposit", "Withdrawal"] as const)
       expect(result.opening).toEqual(
         Data.from(
           opening(payload),
-          SDK.FabricatedDepositAuthenticContentOpening,
+          SDKFraudProof.FabricatedDepositAuthenticContentOpening,
         ),
       );
     });
@@ -273,12 +289,12 @@ it("uses the operator's withdrawal validity separately from body/signature fidel
   const info = payload.WithdrawalPayload.event.info;
   expect(
     Effect.runSync(
-      SDK.withdrawalContentCommitment({
+      SDKFraudProof.withdrawalContentCommitment({
         ...info,
         validity: "NonExistentWithdrawalUtxo",
       }),
     ),
-  ).toBe(Effect.runSync(SDK.withdrawalContentCommitment(info)));
+  ).toBe(Effect.runSync(SDKFraudProof.withdrawalContentCommitment(info)));
 });
 
 it("parses complete opening artifacts and refuses the obsolete datum-only shape", () => {
@@ -331,11 +347,11 @@ for (const kind of ["Deposit", "Withdrawal"] as const)
         endTime: 200n,
       });
       const payload = payloadFor(kind);
-      const keyCbor = SDK.committedWithdrawalKeyBytes(id);
+      const keyCbor = SDKFraudProof.committedWithdrawalKeyBytes(id);
       let valueCbor =
         "DepositPayload" in payload
           ? Data.to(payload.DepositPayload.event.info, SDK.DepositInfo)
-          : SDK.committedWithdrawalValueBytes(
+          : SDKFraudProof.committedWithdrawalValueBytes(
               payload.WithdrawalPayload.event.info,
             );
       if (rawDatum)
@@ -402,8 +418,8 @@ for (const kind of ["Deposit", "Withdrawal"] as const)
       expect(result.step02State.header_end_time).toBe(200n);
       const expectedHash = Effect.runSync(
         kind === "Deposit"
-          ? SDK.depositInfoCommitmentCbor(valueCbor)
-          : SDK.withdrawalContentCommitmentCbor(valueCbor),
+          ? SDKFraudProof.depositInfoCommitmentCbor(valueCbor)
+          : SDKFraudProof.withdrawalContentCommitmentCbor(valueCbor),
       );
       expect(result.step02State).toMatchObject({
         [kind === "Deposit"

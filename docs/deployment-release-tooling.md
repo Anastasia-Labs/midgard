@@ -169,9 +169,11 @@ release candidate; these steps are prepared and have not been run.
    dependency specifiers, dependencies on unpublished workspace packages, tests,
    fixtures, key material and hidden files (such as the local build stamps in
    `dist/`) in a tarball, and exports that do not resolve. It
-   installs the tarballs together, imports and requires every export by package
-   name, and type-checks both module modes. It exits nonzero and lists each
-   problem until the set is publishable. Each run writes `receipt.json` with
+   installs the tarballs together, imports every export by package name,
+   requires every export with a `require` condition (the SDK's layer subpaths
+   are ESM only), and type-checks each export in the module modes it has. It
+   exits nonzero and lists each problem until the set is publishable. Each
+   run writes `receipt.json` with
    the tarball SHA-256 digests; publish only from a receipt whose status is
    `passed`.
 

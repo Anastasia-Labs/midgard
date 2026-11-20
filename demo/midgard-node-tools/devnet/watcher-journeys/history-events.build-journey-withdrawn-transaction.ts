@@ -8,7 +8,9 @@ import {
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { replacePlutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import { buildCountedRoot } from "@al-ft/midgard-fault-proofs/transition-trace/phas";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { type CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -61,8 +63,8 @@ export const buildJourneyWithdrawalEvent = async (
     if (
       events.length !== 2 ||
       second === undefined ||
-      SDK.committedWithdrawalKeyBytes(first.id) ===
-        SDK.committedWithdrawalKeyBytes(second.id)
+      SDKFraudProof.committedWithdrawalKeyBytes(first.id) ===
+        SDKFraudProof.committedWithdrawalKeyBytes(second.id)
     )
       throw new Error(
         "Double-withdraw journey needs two distinct real event identities",
@@ -75,8 +77,8 @@ export const buildJourneyWithdrawalEvent = async (
         "Double-withdraw staged events must name the same L2 output",
       );
     const ordered = [...events].sort((left, right) =>
-      SDK.committedWithdrawalKeyBytes(left.id).localeCompare(
-        SDK.committedWithdrawalKeyBytes(right.id),
+      SDKFraudProof.committedWithdrawalKeyBytes(left.id).localeCompare(
+        SDKFraudProof.committedWithdrawalKeyBytes(right.id),
       ),
     );
     const claims = ordered.map((event, index) => ({
@@ -349,10 +351,10 @@ export const buildJourneyWithdrawnTransaction = async (
     },
     transactions: [transaction],
   });
-  const mappings: SDK.DaPayloadEntry[] = [
+  const mappings: SDKDa.DaPayloadEntry[] = [
     ...withdrawalBlock.payload.block_body.event_to_step,
     ...transactions.payload.block_body.event_to_step.map(
-      ([key, value]): SDK.DaPayloadEntry => [
+      ([key, value]): SDKDa.DaPayloadEntry => [
         key,
         Data.to(
           { ...Data.from(value, SDK.EventToStepValue), step_index: 1n },
@@ -361,10 +363,10 @@ export const buildJourneyWithdrawnTransaction = async (
       ],
     ),
   ];
-  const transitions: SDK.DaPayloadEntry[] = [
+  const transitions: SDKDa.DaPayloadEntry[] = [
     ...withdrawalBlock.payload.block_body.transition_trace,
     ...transactions.payload.block_body.transition_trace.map(
-      ([, value]): SDK.DaPayloadEntry => [
+      ([, value]): SDKDa.DaPayloadEntry => [
         Data.to(1n),
         Data.to(
           { ...Data.from(value, SDK.TransitionStep), step_index: 1n },
@@ -373,7 +375,7 @@ export const buildJourneyWithdrawnTransaction = async (
       ],
     ),
   ];
-  const root = (domain: SDK.RootDomain, entries: SDK.DaPayloadEntry[]) =>
+  const root = (domain: SDK.RootDomain, entries: SDKDa.DaPayloadEntry[]) =>
     buildCountedRoot(
       domain,
       entries.map(([key, value]) => ({
@@ -403,9 +405,9 @@ export const buildJourneyWithdrawnTransaction = async (
     transitionTraceRoot: traceRoot.root,
   };
   const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
-  const sort = (entries: SDK.DaPayloadEntry[]) =>
+  const sort = (entries: SDKDa.DaPayloadEntry[]) =>
     entries.sort(([left], [right]) => left.localeCompare(right));
-  const payload: SDK.DaPayload = {
+  const payload: SDKDa.DaPayload = {
     ...transactions.payload,
     block_body: {
       ...transactions.payload.block_body,
@@ -423,7 +425,7 @@ export const buildJourneyWithdrawnTransaction = async (
       header,
       headerHash,
       payload,
-      payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(payload), {
+      payloadEnvelopeCbor: await wrapDaPayload(SDKDa.encodeDaPayload(payload), {
         mode: "identity",
       }),
       actualWithdrawal: input.withdrawal,

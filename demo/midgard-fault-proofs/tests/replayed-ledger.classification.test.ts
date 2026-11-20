@@ -1,6 +1,7 @@
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Effect } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -48,9 +49,12 @@ describe(
         ...fixture.block,
         header,
         headerHash,
-        payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(payload), {
-          mode: "identity",
-        }),
+        payloadEnvelopeCbor: await wrapDaPayload(
+          SDKDa.encodeDaPayload(payload),
+          {
+            mode: "identity",
+          },
+        ),
       };
       const { classifyInput } = await setup(fixture, "normal");
       // The watcher's checkpoint holds the predecessor's ledger; the challenged

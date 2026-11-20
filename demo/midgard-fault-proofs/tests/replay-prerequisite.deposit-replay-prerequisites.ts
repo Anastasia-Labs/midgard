@@ -1,11 +1,11 @@
+import { EventKey } from "@al-ft/midgard-sdk/core";
 import {
   DOUBLE_WITHDRAW_VIOLATION_ID,
-  EventKey,
   FABRICATED_DEPOSIT_VIOLATION_ID,
   FABRICATED_WITHDRAWAL_VIOLATION_ID,
   outOfWindowSourceEventFault,
   type TransitionFault,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

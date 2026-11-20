@@ -13,7 +13,10 @@ import {
   MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
-import { commitCountedRootProgram, ROOT_DOMAINS } from "@al-ft/midgard-sdk";
+import {
+  commitCountedRootProgram,
+  ROOT_DOMAINS,
+} from "@al-ft/midgard-sdk/core";
 import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";

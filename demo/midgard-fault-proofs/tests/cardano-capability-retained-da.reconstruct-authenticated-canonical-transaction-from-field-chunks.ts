@@ -14,7 +14,7 @@ import {
   decodeMidgardForcedTxFullFromCanonicalCbor,
   deriveMidgardForcedTxProofSourceFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec/forced";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/da";
 import { countedMachineTransactionChunkSteps } from "@al-ft/midgard-validation/validation-machine";
 
 type BoundaryCorpusEntry = {

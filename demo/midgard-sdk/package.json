@@ -17,6 +17,41 @@
       "import": "./dist/blueprint-abi/index.js",
       "require": "./dist/blueprint-abi/index.cjs"
     },
+    "./core": {
+      "midgard-source": "./src/layers/core.ts",
+      "types": "./dist/layers/core.d.ts",
+      "import": "./dist/layers/core.js"
+    },
+    "./state-queue": {
+      "midgard-source": "./src/layers/state-queue.ts",
+      "types": "./dist/layers/state-queue.d.ts",
+      "import": "./dist/layers/state-queue.js"
+    },
+    "./da": {
+      "midgard-source": "./src/layers/da.ts",
+      "types": "./dist/layers/da.d.ts",
+      "import": "./dist/layers/da.js"
+    },
+    "./operators": {
+      "midgard-source": "./src/layers/operators.ts",
+      "types": "./dist/layers/operators.d.ts",
+      "import": "./dist/layers/operators.js"
+    },
+    "./users": {
+      "midgard-source": "./src/layers/users.ts",
+      "types": "./dist/layers/users.d.ts",
+      "import": "./dist/layers/users.js"
+    },
+    "./deployment": {
+      "midgard-source": "./src/layers/deployment.ts",
+      "types": "./dist/layers/deployment.d.ts",
+      "import": "./dist/layers/deployment.js"
+    },
+    "./fraud-proof": {
+      "midgard-source": "./src/fraud-proof/index.ts",
+      "types": "./dist/fraud-proof/index.d.ts",
+      "import": "./dist/fraud-proof/index.js"
+    },
     "./test-support/user-history": {
       "midgard-source": "./tests/support/user-history.ts",
       "types": "./tests/support/user-history.ts"
@@ -42,6 +77,48 @@
         "require": {
           "types": "./dist/blueprint-abi/index.d.cts",
           "default": "./dist/blueprint-abi/index.cjs"
+        }
+      },
+      "./core": {
+        "import": {
+          "types": "./dist/layers/core.d.ts",
+          "default": "./dist/layers/core.js"
+        }
+      },
+      "./state-queue": {
+        "import": {
+          "types": "./dist/layers/state-queue.d.ts",
+          "default": "./dist/layers/state-queue.js"
+        }
+      },
+      "./da": {
+        "import": {
+          "types": "./dist/layers/da.d.ts",
+          "default": "./dist/layers/da.js"
+        }
+      },
+      "./operators": {
+        "import": {
+          "types": "./dist/layers/operators.d.ts",
+          "default": "./dist/layers/operators.js"
+        }
+      },
+      "./users": {
+        "import": {
+          "types": "./dist/layers/users.d.ts",
+          "default": "./dist/layers/users.js"
+        }
+      },
+      "./deployment": {
+        "import": {
+          "types": "./dist/layers/deployment.d.ts",
+          "default": "./dist/layers/deployment.js"
+        }
+      },
+      "./fraud-proof": {
+        "import": {
+          "types": "./dist/fraud-proof/index.d.ts",
+          "default": "./dist/fraud-proof/index.js"
         }
       }
     }
@@ -130,11 +207,34 @@
             "tsup",
             "src/index.ts",
             "src/blueprint-abi/index.ts",
+            "src/layers/core.ts",
+            "src/layers/state-queue.ts",
+            "src/layers/da.ts",
+            "src/layers/operators.ts",
+            "src/layers/users.ts",
+            "src/layers/deployment.ts",
+            "src/fraud-proof/index.ts",
             "--minify",
             "--format",
-            "esm,cjs",
+            "esm",
             "--dts",
             "--clean"
+          ]
+        },
+        {
+          "command": [
+            "tsup",
+            "src/index.ts",
+            "src/blueprint-abi/index.ts",
+            "--minify",
+            "--format",
+            "cjs"
+          ]
+        },
+        {
+          "command": [
+            "node",
+            "scripts/write-cjs-declarations.mjs"
           ]
         }
       ],

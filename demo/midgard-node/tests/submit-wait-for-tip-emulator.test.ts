@@ -7,7 +7,8 @@
  */
 import { SUBMIT_SLOT_VALIDITY_BUFFER } from "@al-ft/midgard-core/ogmios-slot";
 import { L1ProviderTransientError } from "@al-ft/midgard-l1-follower/provider";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKOperators from "@al-ft/midgard-sdk/operators";
 import { Data, Emulator, Lucid } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -114,7 +115,9 @@ describe("time-gated operator transactions against a block-sized ledger tip", ()
 
     expect(retirement.txHash).toHaveLength(64);
     const snapshot = await fetchInactivityDirectorySnapshot(fixture);
-    expect(SDK.findNodeByKey(snapshot.retired, idle.keyHash)).toBeDefined();
+    expect(
+      SDKOperators.findNodeByKey(snapshot.retired, idle.keyHash),
+    ).toBeDefined();
     expect(submissions).toHaveLength(1);
     expect(submissions[0]!.invalidBeforeSlot).toBeLessThanOrEqual(
       stalledTip - SUBMIT_SLOT_VALIDITY_BUFFER,
@@ -141,7 +144,7 @@ describe("time-gated operator transactions against a block-sized ledger tip", ()
     // retired node's datum on the ledger is given one.
     const wallSlot = idleLucid.unixTimeToSlot(fixture.emulator.now());
     const unlockSlot = wallSlot - 10;
-    const retiredNode = SDK.findNodeByKey(
+    const retiredNode = SDKOperators.findNodeByKey(
       (await fetchInactivityDirectorySnapshot(fixture)).retired,
       idle.keyHash,
     )!;
@@ -188,7 +191,9 @@ describe("time-gated operator transactions against a block-sized ledger tip", ()
 
     expect(recovery.txHash).toHaveLength(64);
     const snapshot = await fetchInactivityDirectorySnapshot(fixture);
-    expect(SDK.findNodeByKey(snapshot.retired, idle.keyHash)).toBeUndefined();
+    expect(
+      SDKOperators.findNodeByKey(snapshot.retired, idle.keyHash),
+    ).toBeUndefined();
     expect(submissions).toHaveLength(1);
     expect(submissions[0]!.invalidBeforeSlot).toBeGreaterThan(unlockSlot);
     expect(submissions[0]!.observedTipSlot).toBeGreaterThanOrEqual(

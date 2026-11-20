@@ -9,7 +9,7 @@ import { join } from "node:path";
 import {
   createReferenceScriptAuthPolicy,
   referenceScriptAuthPolicyDeploymentInfo,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import { createTrackedTempDirFactory } from "@al-ft/midgard-test-support/temp-files";
 import {
   Emulator,

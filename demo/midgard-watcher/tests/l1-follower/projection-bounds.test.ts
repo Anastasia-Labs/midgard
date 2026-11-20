@@ -18,7 +18,9 @@ import {
   runForkScenario,
   type SimOutput,
 } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -43,7 +45,7 @@ import {
 const K = 6;
 const D = SIM_WATCHER_DEPLOYMENT;
 const NODE_UNIT = `${D.stateQueueMint}${SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX}`;
-const DAAT_UNIT = `${D.daAttestationMint}${SDK.DA_ATTESTATION_ASSET_NAME_PREFIX}`;
+const DAAT_UNIT = `${D.daAttestationMint}${SDKDa.DA_ATTESTATION_ASSET_NAME_PREFIX}`;
 const QUEUE_ADDRESS = Buffer.concat([
   Buffer.of(0x70),
   Buffer.from(D.stateQueueSpend, "hex"),
@@ -178,7 +180,7 @@ describe("a DA attestation for a header that was never queued", () => {
                             [
                               Buffer.from(
                                 name.slice(
-                                  SDK.DA_ATTESTATION_ASSET_NAME_PREFIX.length,
+                                  SDKDa.DA_ATTESTATION_ASSET_NAME_PREFIX.length,
                                 ),
                                 "hex",
                               ),
@@ -220,7 +222,7 @@ describe("a protocol-init root away from the state-queue address", () => {
             (output) =>
               output.assets
                 .get(D.stateQueueMint)
-                ?.has(SDK.STATE_QUEUE_ROOT_ASSET_NAME) === true &&
+                ?.has(SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME) === true &&
               !output.address.equals(QUEUE_ADDRESS),
           ),
         ),

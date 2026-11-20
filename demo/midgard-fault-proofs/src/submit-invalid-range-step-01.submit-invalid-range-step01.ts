@@ -1,19 +1,21 @@
 import {
-  acceptedVerdictSubject,
   getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
   HUB_ORACLE_ASSET_NAME,
-  InvalidRangeStep01SpendRedeemer,
-  InvalidRangeStep02Datum,
-  invalidRangeViolationReason,
   type NativeTxInclusionCarriage,
-  normalizeNativeTxValidityRange,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
   requireWithdrawalRedeemerIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  acceptedVerdictSubject,
+  InvalidRangeStep01SpendRedeemer,
+  InvalidRangeStep02Datum,
+  invalidRangeViolationReason,
+  normalizeNativeTxValidityRange,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   credentialToAddress,

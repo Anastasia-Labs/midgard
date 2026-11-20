@@ -5,7 +5,7 @@
  * descriptor here sits between the two floors, so the rate the local
  * pre-check reads decides whether a real fault is submitted or refused.
  */
-import { MinAdaStep03DatumSchema } from "@al-ft/midgard-sdk";
+import { MinAdaStep03DatumSchema } from "@al-ft/midgard-sdk/fraud-proof";
 import {
   MIDGARD_COINS_PER_UTXO_BYTE,
   minAdaLovelace,

@@ -15,7 +15,7 @@
  * `sibling`, another run on our key has Inited a thread of its own on the
  * block and stopped short of its Open, so a thread of ours stands at the
  * opener when the block is removed. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import {
   CML,
   coreToTxOutput,

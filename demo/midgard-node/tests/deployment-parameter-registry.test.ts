@@ -1,5 +1,5 @@
 import { DEPLOYMENT_MANIFEST_CONTRACT_NAMES } from "@al-ft/midgard-core/deployment-manifest-identity";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { expect, it } from "vitest";
 
 import { makeGenuineDeploymentRegistryForTest } from "./helpers/deployment-parameter-registry.js";

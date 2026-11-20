@@ -19,12 +19,12 @@ import {
 import { midgardValueToCmlValue } from "@al-ft/midgard-core/codec";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import {
   type EventKey,
   EventKeySchema,
   GENESIS_HEADER_HASH,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import { replayValidationMachineEvent } from "@al-ft/midgard-validation/tests/validation-machine-event-replay.trace";
 import {
   MIDGARD_COINS_PER_UTXO_BYTE,

@@ -4,7 +4,8 @@
  * the one the queue spend is parameterized with). The front-run scenario runs
  * the real double-spend proof chain, whose last step finalizes token-only,
  * and the real merge yield. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   CML,
   Data,
@@ -86,7 +87,10 @@ const mintToken = async (
         home,
         {
           kind: "inline",
-          value: Data.to({ fraud_prover: h.owner }, SDK.FraudProofTokenDatum),
+          value: Data.to(
+            { fraud_prover: h.owner },
+            SDKFraudProof.FraudProofTokenDatum,
+          ),
         },
         { lovelace: 2_000_000n, [unit]: 1n },
       )

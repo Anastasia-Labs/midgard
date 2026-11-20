@@ -1,4 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 
 /** The raw observation fixes the exact thread outRef. Reopening it for action

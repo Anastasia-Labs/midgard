@@ -1,4 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -10,8 +10,8 @@ import {
 // Wrapped, not replaced: the live-state authentication is the SDK's own and is
 // exercised there. These tests pin how the responder finds challenge records
 // and what it requires of the authenticated snapshot.
-vi.mock("@al-ft/midgard-sdk", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@al-ft/midgard-sdk")>();
+vi.mock("@al-ft/midgard-sdk/da", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@al-ft/midgard-sdk/da")>();
   return {
     ...actual,
     daAvailabilityChallengeSnapshotFromUtxos: vi.fn(

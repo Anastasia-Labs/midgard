@@ -2,7 +2,8 @@ import { appendFileSync } from "node:fs";
 import { isAbsolute } from "node:path";
 
 import { aikenSerialisedPlutusDataCbor } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data } from "@lucid-evolution/lucid";
 
 const ZERO_HASH_28 = "00".repeat(28);
@@ -28,7 +29,7 @@ export const appendBoundaryCorpusEntry = ({
   readonly transactionCommitmentHex: string;
   readonly canonicalTransactionCbor: Buffer;
   readonly sourceScriptHash: string | undefined;
-  readonly resolvedReferenceUtxos: readonly SDK.DaPayloadEntry[] | undefined;
+  readonly resolvedReferenceUtxos: readonly SDKDa.DaPayloadEntry[] | undefined;
 }): void => {
   const corpusPath = process.env.MIDGARD_BOUNDARY_CORPUS_JSONL;
   if (corpusPath === undefined || corpusLabel === undefined) {
@@ -116,8 +117,8 @@ export const makeRetainedPairPayload = ({
   readonly forcedTransactionCborHex: string;
   readonly forcedSource: SDK.ForcedInclusionTxV1;
   readonly source: SDK.L2TransactionSource;
-}): SDK.DaPayload => {
-  const counts: SDK.DaPayloadCounts = {
+}): SDKDa.DaPayload => {
+  const counts: SDKDa.DaPayloadCounts = {
     withdrawalCount: 0n,
     forcedTransactionCount: 1n,
     l2TransactionCount: 1n,
@@ -154,7 +155,7 @@ export const makeRetainedPairPayload = ({
     protocolVersion: 1n,
   };
   return {
-    version: SDK.DA_PAYLOAD_VERSION,
+    version: SDKDa.DA_PAYLOAD_VERSION,
     block_body: {
       header_hash: ZERO_HASH_28,
       header,
@@ -178,10 +179,10 @@ export const makeRetainedPairPayload = ({
 };
 
 export const requireEntry = (
-  entries: readonly SDK.DaPayloadEntry[],
+  entries: readonly SDKDa.DaPayloadEntry[],
   keyHex: string,
   fieldName: string,
-): SDK.DaPayloadEntry => {
+): SDKDa.DaPayloadEntry => {
   const matches = entries.filter(([entryKeyHex]) => entryKeyHex === keyHex);
   if (matches.length !== 1) {
     throw new Error(`${fieldName} must retain exactly one entry for ${keyHex}`);

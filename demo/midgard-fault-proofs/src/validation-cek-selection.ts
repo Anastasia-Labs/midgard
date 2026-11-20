@@ -1,5 +1,6 @@
 import { compareOutRefs, findOutRefIndex } from "@al-ft/midgard-core/out-ref";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import type { ValidationTraceSteps } from "@al-ft/midgard-validation/validation-machine";
 import {
   buildValidationOneStepArgument,
@@ -34,7 +35,7 @@ export const buildValidationCekExecutionSelectionAction = ({
   readonly decodeRecordReference?: UTxO;
   readonly scriptDecodePolicyId: string;
   readonly resolveFieldCarriage?: ValidationMachineFieldCarriageResolver;
-}): SDK.ValidationCekExecutionSelectionAction => {
+}): SDKDa.ValidationCekExecutionSelectionAction => {
   const references = [...context.referenceInputs].sort(compareOutRefs);
   for (let index = 1; index < references.length; index += 1) {
     if (compareOutRefs(references[index - 1]!, references[index]!) === 0)
@@ -113,11 +114,11 @@ export const buildValidationCekExecutionSelectionAction = ({
     output_index: outputIndex,
     transition: Data.from(
       argument.transitionCbor.toString("hex"),
-      SDK.ValidationOneStepWitness,
+      SDKDa.ValidationOneStepWitness,
     ),
     auxiliary: Data.from(
       argument.auxiliaryCbor.toString("hex"),
-      SDK.ValidationAuxiliaryWitness,
+      SDKDa.ValidationAuxiliaryWitness,
     ),
     yield_ref_input_indices: yieldReferences.map((utxo) =>
       BigInt(referenceIndex(utxo)),

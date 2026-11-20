@@ -1,4 +1,4 @@
-import { deriveValidationProofItemPublication } from "@al-ft/midgard-sdk";
+import { deriveValidationProofItemPublication } from "@al-ft/midgard-sdk/fraud-proof";
 import {
   credentialToAddress,
   Data,

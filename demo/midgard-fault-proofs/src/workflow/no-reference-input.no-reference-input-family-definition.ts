@@ -3,7 +3,7 @@ import {
   NoReferenceInputStep02ThreadDatum,
   NoReferenceInputStep03ThreadDatum,
   NoReferenceInputStep04ThreadDatum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import { NO_REFERENCE_INPUT_KIND } from "../no-reference-input/wrongful-rejection.js";
 import { NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.detect-double-withdraws.js";

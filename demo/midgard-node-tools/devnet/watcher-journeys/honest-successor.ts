@@ -3,7 +3,8 @@ import { join } from "node:path";
 
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data, type Network } from "@lucid-evolution/lucid";
 
 import { type JourneyLedger } from "../../src/full-stack/journey.js";
@@ -289,7 +290,7 @@ export const stackSuccessorPort = (
       const payloadEnvelopeCbor = Buffer.from(
         await input.fetchPayloadEnvelope(committed),
       );
-      const payload = SDK.decodeDaPayload(
+      const payload = SDKDa.decodeDaPayload(
         Buffer.from(
           (
             await unwrapDaPayload(payloadEnvelopeCbor, {

@@ -5,7 +5,7 @@
  * a rollback between a caller's L1 view and its write cannot release a row
  * the rollback put back.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { SqlClient } from "@effect/sql";
 import type { PgClient } from "@effect/sql-pg/PgClient";
 import { Effect } from "effect";

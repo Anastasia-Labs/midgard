@@ -9,7 +9,7 @@ import {
   encodeMidgardVersionedScript,
   hashMidgardVersionedScript,
 } from "@al-ft/midgard-core";
-import { missingSignatureVkeyHash } from "@al-ft/midgard-sdk";
+import { missingSignatureVkeyHash } from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { PreparedNativeScriptInvalid } from "../../src/native-script-invalid/prepare.js";
 import { nativeTxFromCoreCompact } from "../../src/step-support.js";

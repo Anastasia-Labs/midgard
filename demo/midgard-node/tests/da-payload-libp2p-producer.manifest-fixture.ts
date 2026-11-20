@@ -11,7 +11,7 @@ import {
   DaRequestResponseProtocol,
   daRequestResponseProtocolId,
 } from "@al-ft/midgard-core/da-transport";
-import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
+import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk/core";
 
 import { createDaLibp2pRetainedPayloadRequestHandlers } from "../src/da/libp2p-producer.create-da-libp2p-retained-payload-request-handlers.js";
 import type { DaProducerStream } from "../src/da/libp2p-producer.parse-committee-peers.js";

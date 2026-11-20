@@ -13,7 +13,7 @@ import {
   journalJsonDigest,
 } from "@al-ft/midgard-fault-proofs/workflow/journal";
 import { WORKFLOW_CONTINUATION_QUIET_BOUND_MS } from "@al-ft/midgard-fault-proofs/workflow/pending-continuation";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { expect, it, vi } from "vitest";
 
 import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";

@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 
 import { proof } from "./sdk-abi-fixtures.header-fixture.js";
 
@@ -23,6 +24,6 @@ export const sourceKeyOpeningFixtures = (
         proof,
       },
     },
-  } satisfies Record<string, SDK.SourceKeyOpening>;
+  } satisfies Record<string, SDKFraudProof.SourceKeyOpening>;
   return sourceMemberships;
 };

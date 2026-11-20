@@ -5,7 +5,7 @@ import type { LedgerAt } from "@al-ft/midgard-fault-proofs/ledger-at";
 import {
   EVENT_WAIT_DURATION_MS,
   MAX_EVENT_VALIDITY_RANGE_LENGTH_MS,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import {
   createWatcherRetainedDaRuntime,
   openWatcherDeploymentFollower,

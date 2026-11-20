@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKOperators from "@al-ft/midgard-sdk/operators";
 import {
   generateEmulatorAccount,
   Lucid,
@@ -53,7 +54,7 @@ describe("operator exit emulator", () => {
     const beforeRetire = await fetchDirectorySnapshot(lucid, contracts);
     expect(beforeRetire.scheduler.datum).toEqual("NoActiveOperators");
     expect(
-      SDK.findNodeByKey(beforeRetire.active, operatorKeyHash),
+      SDKOperators.findNodeByKey(beforeRetire.active, operatorKeyHash),
     ).toBeDefined();
 
     const { layout } = await buildRetireTx({
@@ -74,9 +75,12 @@ describe("operator exit emulator", () => {
 
     const afterRetire = await fetchDirectorySnapshot(lucid, contracts);
     expect(
-      SDK.findNodeByKey(afterRetire.active, operatorKeyHash),
+      SDKOperators.findNodeByKey(afterRetire.active, operatorKeyHash),
     ).toBeUndefined();
-    const retiredNode = SDK.findNodeByKey(afterRetire.retired, operatorKeyHash);
+    const retiredNode = SDKOperators.findNodeByKey(
+      afterRetire.retired,
+      operatorKeyHash,
+    );
     if (retiredNode === undefined) {
       throw new Error("Expected a retired-operators node for the operator");
     }
@@ -86,7 +90,7 @@ describe("operator exit emulator", () => {
     expect(retiredNode.retired?.bond_unlock_time ?? null).toBeNull();
     expect(afterRetire.scheduler.datum).toEqual("NoActiveOperators");
 
-    const status = SDK.deriveOperatorStatus(
+    const status = SDKOperators.deriveOperatorStatus(
       afterRetire,
       operatorKeyHash,
       BigInt(emulator.now()),
@@ -168,7 +172,9 @@ describe("operator exit emulator", () => {
 
     // The operator is still active: neither refusal changed the directory.
     const snapshot = await fetchDirectorySnapshot(lucid, contracts);
-    expect(SDK.findNodeByKey(snapshot.active, operatorKeyHash)).toBeDefined();
+    expect(
+      SDKOperators.findNodeByKey(snapshot.active, operatorKeyHash),
+    ).toBeDefined();
     expect(snapshot.retired).toHaveLength(1);
   }, 240_000);
 
@@ -220,7 +226,10 @@ describe("operator exit emulator", () => {
     strangerLucid.selectWallet.fromSeed(stranger.seedPhrase);
 
     const beforeRetire = await fetchDirectorySnapshot(strangerLucid, contracts);
-    const activeNode = SDK.findNodeByKey(beforeRetire.active, operatorKeyHash);
+    const activeNode = SDKOperators.findNodeByKey(
+      beforeRetire.active,
+      operatorKeyHash,
+    );
     if (activeNode?.active === undefined || activeNode.active === null) {
       throw new Error("Expected the struck operator to still be active");
     }
@@ -241,9 +250,12 @@ describe("operator exit emulator", () => {
 
     const afterRetire = await fetchDirectorySnapshot(strangerLucid, contracts);
     expect(
-      SDK.findNodeByKey(afterRetire.active, operatorKeyHash),
+      SDKOperators.findNodeByKey(afterRetire.active, operatorKeyHash),
     ).toBeUndefined();
-    const retiredNode = SDK.findNodeByKey(afterRetire.retired, operatorKeyHash);
+    const retiredNode = SDKOperators.findNodeByKey(
+      afterRetire.retired,
+      operatorKeyHash,
+    );
     if (retiredNode?.retired === undefined || retiredNode.retired === null) {
       throw new Error("Expected the struck operator to be retired");
     }
@@ -300,7 +312,9 @@ describe("operator exit emulator", () => {
     expect(refusal).toContain("operator bond recovery tx");
 
     const snapshot = await fetchDirectorySnapshot(lucid, contracts);
-    expect(SDK.findNodeByKey(snapshot.retired, operatorKeyHash)).toBeDefined();
+    expect(
+      SDKOperators.findNodeByKey(snapshot.retired, operatorKeyHash),
+    ).toBeDefined();
   }, 240_000);
 });
 

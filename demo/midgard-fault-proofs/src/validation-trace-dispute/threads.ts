@@ -24,7 +24,7 @@
  * timeout and close), and the run stops under its own state once no thread
  * of ours has a move left. */
 import { MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 
 import { validationTraceActionId } from "./actions.js";

@@ -1,7 +1,7 @@
 import {
   makeSpendingValidator as makeSdkSpendingValidator,
   parseFaultProofBlueprint,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import { applyDoubleCborEncoding } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

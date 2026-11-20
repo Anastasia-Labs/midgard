@@ -1,7 +1,7 @@
 /** The `receivePurposeLanguage` direct purpose family the submitters and
  * prover read. Its terminal decides with its own verdict over the shared
  * claim final state. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 import type {
   DirectPurposeContracts,

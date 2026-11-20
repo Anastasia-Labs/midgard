@@ -6,7 +6,7 @@ import {
   type MidgardValidationTraceProof,
   validationTraceDepthForStepCount,
 } from "@al-ft/midgard-core";
-import { hashHexWithBlake2b } from "@al-ft/midgard-sdk";
+import { hashHexWithBlake2b } from "@al-ft/midgard-sdk/core";
 import { Effect } from "effect";
 
 import {

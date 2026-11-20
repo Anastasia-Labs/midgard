@@ -1,5 +1,5 @@
 import type { AvailabilityOperationJournal } from "@al-ft/midgard-core/availability-operation-journal";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 import type { AvailabilityResponseLoopEnforcement } from "../availability-response-loop.js";

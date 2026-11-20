@@ -13,8 +13,8 @@
  * state, which raises the operator's alarm while our deadline runs. */
 import { hashMidgardValidationMachineState } from "@al-ft/midgard-core";
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
-import type * as SDK from "@al-ft/midgard-sdk";
-import { cekCoreGroup } from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/da";
+import { cekCoreGroup } from "@al-ft/midgard-sdk/fraud-proof";
 import type { ValidationTraceSteps } from "@al-ft/midgard-validation/validation-machine";
 import {
   buildValidationOneStepArgument,

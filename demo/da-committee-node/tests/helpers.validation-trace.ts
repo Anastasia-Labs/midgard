@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { placeholderValidationTraceDescriptorV1 } from "@al-ft/midgard-validation/validation-machine";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -12,9 +13,9 @@ export const fixtureValidationTrace = (
   transactionId: string,
   verdict: "accepted" | "rejected" = "accepted",
   rejectionReason: SDK.RejectionReason | null = null,
-): { readonly entry: SDK.DaPayloadEntry } => {
+): { readonly entry: SDKDa.DaPayloadEntry } => {
   const key = Data.to(eventKey, SDK.EventKey);
-  const descriptor = SDK.validationTraceDescriptorDataFromCore(
+  const descriptor = SDKDa.validationTraceDescriptorDataFromCore(
     placeholderValidationTraceDescriptorV1(
       {
         eventKeyCbor: Buffer.from(key, "hex"),

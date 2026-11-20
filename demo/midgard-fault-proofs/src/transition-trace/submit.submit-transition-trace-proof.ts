@@ -1,9 +1,9 @@
 import {
-  FraudProofTokenDatum,
   hashBlockHeader,
   HUB_ORACLE_ASSET_NAME,
   HubOracleDatum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { FraudProofTokenDatum } from "@al-ft/midgard-sdk/fraud-proof";
 import {
   credentialToAddress,
   Data,

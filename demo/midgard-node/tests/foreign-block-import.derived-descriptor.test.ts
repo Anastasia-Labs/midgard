@@ -7,7 +7,8 @@ import {
   type ReplayedLedgerRefusal,
   type ReplayedLedgerSource,
 } from "@al-ft/midgard-fault-proofs/replayed-ledger";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { placeholderValidationTraceDescriptorV1 } from "@al-ft/midgard-validation/validation-machine";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -43,7 +44,7 @@ const committeeDescriptor = (
   verdictName: "accepted" | "rejected",
   rejection: SDK.RejectionReason | null,
 ): Descriptor =>
-  SDK.validationTraceDescriptorDataFromCore(
+  SDKDa.validationTraceDescriptorDataFromCore(
     placeholderValidationTraceDescriptorV1(
       {
         eventKeyCbor: Buffer.from(eventKeyHex, "hex"),
@@ -63,8 +64,10 @@ const arbitraryAccepted = (eventKeyHex: string): Descriptor => ({
   terminal_state_hash: "c3".repeat(32),
 });
 
-const withTrace = (payload: SDK.DaPayload, valueHex: string) => {
-  const [[key]] = payload.block_body.validation_traces as [SDK.DaPayloadEntry];
+const withTrace = (payload: SDKDa.DaPayload, valueHex: string) => {
+  const [[key]] = payload.block_body.validation_traces as [
+    SDKDa.DaPayloadEntry,
+  ];
   return rebind({
     ...payload,
     block_body: { ...payload.block_body, validation_traces: [[key, valueHex]] },
@@ -76,7 +79,7 @@ const normalWith = async (
 ) => {
   const f = await normalFixture();
   const [[key]] = f.payload.block_body.validation_traces as [
-    SDK.DaPayloadEntry,
+    SDKDa.DaPayloadEntry,
   ];
   const value = descriptor(key, f.transactionId);
   const payload = await withTrace(
@@ -129,7 +132,7 @@ describe("foreign import of derived validation descriptors", () => {
   it("imports a rejected forced transaction under a descriptor whose commitment is its order id", async () => {
     const payload = await fixture();
     const [[key]] = payload.block_body.validation_traces as [
-      SDK.DaPayloadEntry,
+      SDKDa.DaPayloadEntry,
     ];
     const result = await verdict(
       await withTrace(
@@ -144,7 +147,7 @@ describe("foreign import of derived validation descriptors", () => {
   it("imports a rejected forced transaction whose descriptor names another rejection", async () => {
     const payload = await fixture();
     const [[key]] = payload.block_body.validation_traces as [
-      SDK.DaPayloadEntry,
+      SDKDa.DaPayloadEntry,
     ];
     const result = await verdict(
       await withTrace(
@@ -188,7 +191,7 @@ describe("foreign import of derived validation descriptors", () => {
   it("imports a rejected forced transaction whose descriptor's step count is the bound", async () => {
     const payload = await fixture();
     const [[key]] = payload.block_body.validation_traces as [
-      SDK.DaPayloadEntry,
+      SDKDa.DaPayloadEntry,
     ];
     const descriptor = {
       ...committeeDescriptor(key, "5a".repeat(32), "rejected", "EmptyInputs"),
@@ -227,7 +230,7 @@ describe("foreign import of derived validation descriptors", () => {
   it("refuses an accepted descriptor for a rejected forced transaction", async () => {
     const payload = await fixture();
     const [[key]] = payload.block_body.validation_traces as [
-      SDK.DaPayloadEntry,
+      SDKDa.DaPayloadEntry,
     ];
     refusedOverDescriptor(
       await verdict(
@@ -297,11 +300,11 @@ const parentEntries = () => {
 };
 
 /** An empty block on top of `parent`. */
-const emptyChild = (parent: SDK.DaPayload) => {
+const emptyChild = (parent: SDKDa.DaPayload) => {
   const header = parent.block_body.header;
   const counts = countsFromLengths({});
   return rebind({
-    version: SDK.DA_PAYLOAD_VERSION,
+    version: SDKDa.DA_PAYLOAD_VERSION,
     block_body: {
       header: {
         ...header,
@@ -325,7 +328,7 @@ const emptyChild = (parent: SDK.DaPayload) => {
   });
 };
 
-const watcherLedger = async (block: SDK.DaPayload) => {
+const watcherLedger = async (block: SDKDa.DaPayload) => {
   const header = block.block_body.header;
   let checkpoint: LedgerCheckpoint | undefined = {
     headerHash: header.prevHeaderHash,
@@ -363,7 +366,7 @@ const watcherLedger = async (block: SDK.DaPayload) => {
   return {
     refusals,
     child,
-    at: (payload: SDK.DaPayload) =>
+    at: (payload: SDKDa.DaPayload) =>
       ledger.ledgerAt(source)(payload.block_body.header_hash),
   };
 };

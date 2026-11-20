@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -321,7 +322,7 @@ describe("onChainCoordinatorFromConfig", () => {
     const config = l1ReadyConfig();
     const parameters = availabilityParametersFromConfig(config);
     const pool = config.midgardNodeDeployment.daBondPool;
-    const poolUnit = SDK.daBondPoolUnit(pool.policyId);
+    const poolUnit = SDKDa.daBondPoolUnit(pool.policyId);
     const chain: { utxos: UTxO[] } = {
       utxos: [
         {
@@ -332,7 +333,7 @@ describe("onChainCoordinatorFromConfig", () => {
             lovelace: parameters.da_bond_pool_floor_lovelace,
             [poolUnit]: 1n,
           },
-          datum: SDK.encodeDaBondPoolDatum("Bonded"),
+          datum: SDKDa.encodeDaBondPoolDatum("Bonded"),
         } as UTxO,
       ],
     };

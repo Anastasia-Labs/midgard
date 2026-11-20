@@ -1,4 +1,6 @@
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "../workflow/deployment-manifest-binding.js";
 import "./submit-lucid.js";
 import "./workflow.js";

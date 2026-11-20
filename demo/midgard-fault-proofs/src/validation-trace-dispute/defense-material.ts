@@ -12,7 +12,7 @@ import {
   type MidgardValidationTraceProof,
 } from "@al-ft/midgard-core";
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import type { RejectedTx } from "@al-ft/midgard-validation/types";
 import {
   buildTraceAtStepCountV1,

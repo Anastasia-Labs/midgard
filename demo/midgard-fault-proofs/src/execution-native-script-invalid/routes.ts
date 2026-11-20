@@ -2,7 +2,7 @@
  * source walk: the family entry, the shared purpose route to the source
  * lookup, the lookup, and either the paged evaluation of a native source or
  * a final state with no native execution at the coordinate. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import {

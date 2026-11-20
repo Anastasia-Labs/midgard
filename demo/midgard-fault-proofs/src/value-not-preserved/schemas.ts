@@ -22,11 +22,11 @@ import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
   FieldCarriageSchema,
-  FieldOpeningSchema,
   H32Schema,
   NativeTxInclusionArgsSchema,
   ProofSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { FieldOpeningSchema } from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDK from "@al-ft/midgard-sdk/users";
 import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { deriveCanonicalOriginalDepositTransitionEffect } from "@al-ft/midgard-validation/transition-effect";
 import { Data, type Network } from "@lucid-evolution/lucid";
@@ -40,7 +41,7 @@ const deriveTransitionTraceYieldData = ({
   depositSourceCbor?: string;
   depositAssetCount?: number;
   depositAssetIndexes?: Readonly<Record<string, number>>;
-  outputSummaries?: SDK.TransitionTraceOutputSummaries["summaries"];
+  outputSummaries?: SDKFraudProof.TransitionTraceOutputSummaries["summaries"];
 }[] => {
   const proof = readTransitionProof(proofInput);
   if ("OmittedDueL1Event" in proof.fault)

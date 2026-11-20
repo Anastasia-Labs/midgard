@@ -13,7 +13,9 @@ import {
   type MidgardBoundedItem,
   type MidgardNativeScriptScanFrame,
 } from "@al-ft/midgard-core";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
+import type * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 
 import { nativeSignerQuery, type NativeSignerSet } from "./signers.js";
 
@@ -175,7 +177,7 @@ export const nativeEvaluationPage = (
   budget: number,
 ): {
   readonly page: Omit<
-    SDK.ExecutionNativeScriptInvalidEvaluatePage,
+    SDKFraudProof.ExecutionNativeScriptInvalidEvaluatePage,
     "input_index" | "output_index"
   >;
   readonly next: NativeEvaluationPosition;
@@ -198,8 +200,8 @@ export const nativeEvaluationPage = (
   const frames = [...position.frames];
   const roots = [...position.roots];
   let carried = frames.length;
-  const carriedFrames: SDK.NativeScriptFrame[] = [];
-  const signers: SDK.ExecutionNativeScriptInvalidSignerQuery[] = [];
+  const carriedFrames: SDKDa.NativeScriptFrame[] = [];
+  const signers: SDKFraudProof.ExecutionNativeScriptInvalidSignerQuery[] = [];
   const push = (frame: Frame) => {
     roots[frames.length + 1] = frameHash(frame, roots[frames.length]!);
     frames.push(frame);
@@ -360,7 +362,7 @@ export const nativeEvaluationResult = (
 export const nativeEvaluationPositionOf = (
   context: NativeEvaluationContext,
   state: Pick<
-    SDK.ExecutionNativeScriptInvalidEvalState,
+    SDKFraudProof.ExecutionNativeScriptInvalidEvalState,
     "cursor" | "stack_root" | "stack_depth" | "pending" | "total_length"
   >,
 ): NativeEvaluationPosition => {

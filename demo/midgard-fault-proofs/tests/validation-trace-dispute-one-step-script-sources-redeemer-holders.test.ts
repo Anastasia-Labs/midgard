@@ -3,7 +3,7 @@
  * invalid header, tail, data and scalar data executors and the settlement
  * the runner pays a thread into hold the very scripts the manifest
  * publishes under their names. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/deployment";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import {

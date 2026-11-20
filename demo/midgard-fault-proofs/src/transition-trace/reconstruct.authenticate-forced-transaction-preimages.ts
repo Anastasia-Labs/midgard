@@ -1,5 +1,6 @@
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data } from "@lucid-evolution/lucid";
 
 import { transitionTraceError } from "./errors.js";
@@ -20,7 +21,7 @@ export const authenticateForcedTransactionPreimages = (
     SDK.OutputReference,
     SDK.ForcedInclusionTxV1
   >[],
-  preimages: readonly SDK.DaPayloadEntry[],
+  preimages: readonly SDKDa.DaPayloadEntry[],
 ): readonly DecodedForcedTransactionEntry[] => {
   const preimagesByKey = new Map(
     preimages.map(([key, value], index) => [

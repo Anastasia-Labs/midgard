@@ -1,5 +1,5 @@
 import { deploymentFamilyStepNames } from "@al-ft/midgard-core/deployment-manifest-identity";
-import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
+import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 
 export const LINEAR_FAMILY_SPEC =
   "midgard-production-linear-family-spec-v1" as const;

@@ -1,5 +1,5 @@
 import { outRefToCbor } from "@al-ft/lucid-midgard";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { SqlClient } from "@effect/sql";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";

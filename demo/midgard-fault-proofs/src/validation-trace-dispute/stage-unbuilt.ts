@@ -14,7 +14,7 @@
  * before Init (claim-material.ts) is held without an alarm until the case
  * open window it must open our case in is at risk. */
 import { MIDGARD_VALIDATION_CASE_OPEN_WINDOW_MS } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

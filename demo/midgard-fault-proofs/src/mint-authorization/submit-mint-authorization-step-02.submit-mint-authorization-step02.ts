@@ -3,6 +3,12 @@ import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-
 import {
   hashHexWithBlake2b,
   Header,
+  requireInputIndex,
+  requireOwnSpendPurpose,
+  requireReferenceInputIndex,
+  requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
   MIDGARD_FIELD_INDEX,
   MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT,
   MINT_AUTHORIZATION_DIRECTION_SCRIPT_UNSATISFIED,
@@ -14,11 +20,7 @@ import {
   MintAuthorizationStep02ThreadDatum,
   MintAuthorizationStep03Datum,
   type MintAuthorizationStep03State,
-  requireInputIndex,
-  requireOwnSpendPurpose,
-  requireReferenceInputIndex,
-  requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Constr,

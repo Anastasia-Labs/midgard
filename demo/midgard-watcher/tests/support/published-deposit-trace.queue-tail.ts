@@ -1,5 +1,7 @@
 import type { LedgerAt } from "@al-ft/midgard-fault-proofs/ledger-at";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { type LucidEvolution, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -40,7 +42,7 @@ export const appendPointAfter = async (
   }
   const root = await ends.root();
   const { data, link } = await Effect.runPromise(
-    SDK.getConfirmedStateFromStateQueueDatum(
+    SDKStateQueue.getConfirmedStateFromStateQueueDatum(
       await Effect.runPromise(SDK.getLinkedListNodeViewFromUTxO(root)),
     ),
   );
@@ -72,7 +74,7 @@ export const publishedDepositTraceQueue = ({
   /** The queue's last output (the root when it is empty) and first header. */
   const readQueueEnds = async () => {
     const queue = await Effect.runPromise(
-      SDK.fetchSortedStateQueueUTxOsProgram(lucid(), {
+      SDKStateQueue.fetchSortedStateQueueUTxOsProgram(lucid(), {
         stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
         stateQueuePolicyId: contracts.stateQueue.policyId,
       }),
@@ -84,7 +86,7 @@ export const publishedDepositTraceQueue = ({
   /** The ledger after `headerHash`: empty for the confirmed state. */
   const ledgerPairs = async (
     headerHash: string,
-  ): Promise<readonly SDK.DaPayloadEntry[]> => {
+  ): Promise<readonly SDKDa.DaPayloadEntry[]> => {
     if (liveTail === undefined) return [];
     const entries = await liveTail.ledgerAt(headerHash);
     if (entries === undefined)
@@ -101,7 +103,7 @@ export const publishedDepositTraceQueue = ({
     const { datum } = liveTail === undefined ? root : last;
     if (datum.key === "Empty") {
       const { data } = await Effect.runPromise(
-        SDK.getConfirmedStateFromStateQueueDatum(datum),
+        SDKStateQueue.getConfirmedStateFromStateQueueDatum(datum),
       );
       return {
         headerHash: data.headerHash,

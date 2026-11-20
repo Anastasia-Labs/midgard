@@ -4,7 +4,7 @@
  * left live on the ledger, and a watcher process stopped at VerifySource's
  * submit.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { expect } from "vitest";
 
 import { confirmedValidationTraceStages } from "../../src/validation-trace-dispute/actions.js";

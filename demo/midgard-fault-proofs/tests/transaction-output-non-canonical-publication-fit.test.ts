@@ -1,7 +1,5 @@
-import {
-  buildTransactionOutputNonCanonicalFaultProofContracts,
-  parseFaultProofBlueprint,
-} from "@al-ft/midgard-sdk";
+import { parseFaultProofBlueprint } from "@al-ft/midgard-sdk/core";
+import { buildTransactionOutputNonCanonicalFaultProofContracts } from "@al-ft/midgard-sdk/fraud-proof";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 

@@ -4,11 +4,8 @@
  * it to the challenger on a conviction and forfeiting it to the treasury
  * otherwise.
  */
-import {
-  DisputeBond,
-  DisputeBondSpendRedeemer,
-  requireInputIndex,
-} from "@al-ft/midgard-sdk";
+import { requireInputIndex } from "@al-ft/midgard-sdk/core";
+import { DisputeBond, DisputeBondSpendRedeemer } from "@al-ft/midgard-sdk/da";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

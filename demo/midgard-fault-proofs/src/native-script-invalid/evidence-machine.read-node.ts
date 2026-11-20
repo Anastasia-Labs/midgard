@@ -3,7 +3,7 @@ import {
   readCborBytes,
   readCborUnsigned,
 } from "@al-ft/midgard-core";
-import { type NativeScriptPushdownFrame } from "@al-ft/midgard-sdk";
+import { type NativeScriptPushdownFrame } from "@al-ft/midgard-sdk/da";
 
 import {
   chainFrame,

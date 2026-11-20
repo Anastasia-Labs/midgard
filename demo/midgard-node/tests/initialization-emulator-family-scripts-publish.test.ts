@@ -9,7 +9,7 @@ import {
   scriptDecodeWalkStakes,
   stageScriptDecodeBytes,
 } from "@al-ft/midgard-fault-proofs/script-decode";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import { scriptDecodeScriptHash } from "@al-ft/midgard-validation/script-decode.step";
 import {
   nextScriptDecodeChainedWalk,

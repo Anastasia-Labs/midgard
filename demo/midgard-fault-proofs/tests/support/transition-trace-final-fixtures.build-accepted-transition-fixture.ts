@@ -10,7 +10,8 @@ import {
   deriveMidgardForcedTxProofSource,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -173,7 +174,7 @@ export const buildAcceptedTransitionFixture = async ({
     ledger.hash === null
       ? SDK.EMPTY_MERKLE_TREE_ROOT
       : ledger.hash.toString("hex");
-  const spent: SDK.LedgerDeleteWitness[] = [];
+  const spent: SDKFraudProof.LedgerDeleteWitness[] = [];
   if (drainedEntry !== null) {
     spent.push({
       key: drainedEntry.outRef.toString("hex"),
@@ -201,7 +202,7 @@ export const buildAcceptedTransitionFixture = async ({
     });
     await ledger.delete(outRef);
   }
-  const produced: SDK.LedgerInsertWitness[] = [];
+  const produced: SDKFraudProof.LedgerInsertWitness[] = [];
   for (const [index, bytes] of txOutputCbors.entries()) {
     const key = encodeMidgardSpendInputItem({
       txId: Buffer.from(txId, "hex"),
@@ -334,7 +335,7 @@ export const buildAcceptedTransitionFixture = async ({
       proof: deep === null ? [] : Data.from(deep.proofCbor, SDK.Proof),
     },
   };
-  const proof: SDK.TransitionFaultProof = {
+  const proof: SDKFraudProof.TransitionFaultProof = {
     challenged_header_hash: headerHash,
     header,
     fault: {
@@ -347,7 +348,7 @@ export const buildAcceptedTransitionFixture = async ({
     },
   };
   const material: TransitionProofMaterial = {
-    proofCbor: Data.to(proof, SDK.TransitionFaultProof),
+    proofCbor: Data.to(proof, SDKFraudProof.TransitionFaultProof),
     l2Replay: {
       spendInputCbors: spendInputCbors.map((item) => item.toString("hex")),
       outputCbors: txOutputCbors.map((item) => item.toString("hex")),
@@ -457,7 +458,7 @@ export const buildDepositTransitionFixture = async ({
     count: root.count,
     proof: [],
   });
-  const proof: SDK.TransitionFaultProof = {
+  const proof: SDKFraudProof.TransitionFaultProof = {
     challenged_header_hash: headerHash,
     header,
     fault: {

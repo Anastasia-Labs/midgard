@@ -16,7 +16,8 @@ import {
   midgardNativeTxProofFieldPreimageLengths,
 } from "@al-ft/midgard-core";
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   Data,
   generateEmulatorAccount,
@@ -150,7 +151,7 @@ const emptyItems = (count: number): Buffer[] =>
  * can be handed.
  */
 const worstBatchItems = (): Buffer[] => {
-  const batch = SDK.MIDGARD_ENVELOPE_BATCH_ITEMS;
+  const batch = SDKFraudProof.MIDGARD_ENVELOPE_BATCH_ITEMS;
   const threeByteCount = Math.floor(
     (MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES - 3 - 26 * batch) / 233,
   );
@@ -330,7 +331,7 @@ export const committedFieldShapeScenarioMaterial = (
       : kind === "honest"
         ? [Buffer.alloc(38, 0xa5)]
         : kind === "two-batch-wrong-stride"
-          ? emptyItems(SDK.MIDGARD_ENVELOPE_BATCH_ITEMS + 1)
+          ? emptyItems(SDKFraudProof.MIDGARD_ENVELOPE_BATCH_ITEMS + 1)
           : kind === "largest-wrong-stride"
             ? emptyItems(LARGEST_ITEM_COUNT)
             : kind === "worst-batch-wrong-stride"

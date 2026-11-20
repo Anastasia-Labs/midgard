@@ -4,7 +4,7 @@ import {
   midgardAddressFromText,
 } from "@al-ft/midgard-core/codec";
 import { isReplayLocalFault } from "@al-ft/midgard-fault-proofs/block-replay";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { CML, Data, walletFromSeed } from "@lucid-evolution/lucid";
 import { Cause, Effect, Exit } from "effect";
 import { describe, expect, it, vi } from "vitest";
@@ -19,8 +19,9 @@ import type { WatcherUserEvent } from "../../src/verification/user-event.js";
  */
 
 const fault = vi.hoisted(() => ({ on: false }));
-vi.mock("@al-ft/midgard-sdk", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@al-ft/midgard-sdk")>();
+vi.mock("@al-ft/midgard-sdk/core", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@al-ft/midgard-sdk/core")>();
   const { Effect: E } = await import("effect");
   return {
     ...actual,

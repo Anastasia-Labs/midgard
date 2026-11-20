@@ -1,5 +1,12 @@
 /** Finalize a proven non-grammatical committed field. */
 import {
+  requireInputIndex,
+  requireMintRedeemerIndex,
+  requireOwnMintPurpose,
+  requireOwnSpendPurpose,
+  requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
   CanonicalDecodabilityStep02Datum,
   CanonicalDecodabilityStep02SpendRedeemer,
   type CanonicalDecodabilityStep02State,
@@ -7,12 +14,7 @@ import {
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
   isCanonicalDecodabilityViolation,
-  requireInputIndex,
-  requireMintRedeemerIndex,
-  requireOwnMintPurpose,
-  requireOwnSpendPurpose,
-  requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

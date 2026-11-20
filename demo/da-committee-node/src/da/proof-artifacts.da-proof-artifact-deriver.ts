@@ -11,7 +11,9 @@ import {
   type DaTraceStepByIndexResponse,
   normalizeDaDeploymentFingerprintHex,
 } from "@al-ft/midgard-core/da-transport";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 
 import type { DaPayloadRecord, StateQueueHeaderRecord } from "../domain.js";
 import { hexToBytes, normalizeHex } from "../utils/hex.js";
@@ -314,7 +316,7 @@ export class DaProofArtifactDeriver {
     if (record.payloadSchemaVersion !== 1) {
       return { kind: "rejected", reasonCode: "stored_payload_malformed" };
     }
-    let payload: SDK.DaPayload;
+    let payload: SDKDa.DaPayload;
     try {
       const unwrapped = await unwrapDaPayload(payloadBytes, {
         maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
@@ -449,7 +451,7 @@ export class DaProofArtifactDeriver {
           fieldName: "computed header hash",
           byteLength: 28,
         }) !== headerHashHex ||
-        SDK.stateQueueHeaderHash(record.header) !== headerHashHex
+        SDKStateQueue.stateQueueHeaderHash(record.header) !== headerHashHex
       ) {
         return "record_header_hash_mismatch";
       }

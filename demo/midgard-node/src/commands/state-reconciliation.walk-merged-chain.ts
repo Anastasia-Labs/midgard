@@ -1,4 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { type Assets } from "@lucid-evolution/lucid";
 
 import { PendingBlockFinalizationsDB } from "../database/index.js";

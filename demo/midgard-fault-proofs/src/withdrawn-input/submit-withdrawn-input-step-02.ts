@@ -1,16 +1,18 @@
 import {
-  encodeMidgardTxInputCanonical,
-  type FieldOpening,
-  MIDGARD_FIELD_INDEX,
   type MidgardTxInput,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
+  encodeMidgardTxInputCanonical,
+  type FieldOpening,
+  MIDGARD_FIELD_INDEX,
   WithdrawnInputStep02Datum,
   WithdrawnInputStep02SpendRedeemer,
   WithdrawnInputStep03Datum,
   withdrawnInputStep03State,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

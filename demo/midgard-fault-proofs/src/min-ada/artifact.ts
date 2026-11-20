@@ -1,5 +1,5 @@
 import "@al-ft/midgard-core";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "@al-ft/midgard-validation/value-accounting";
 import "@lucid-evolution/lucid";
 import "../workflow/native-index-artifact.js";

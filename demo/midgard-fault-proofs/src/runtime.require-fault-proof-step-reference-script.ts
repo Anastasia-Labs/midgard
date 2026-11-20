@@ -1,9 +1,11 @@
 import { outRefLabel } from "@al-ft/midgard-core/out-ref";
 import {
-  type DaHashPreimageFaultProofContracts,
-  type DoubleSpendFaultProofContracts,
   type FraudProofCatalogueCategoryDeploymentInfo,
   type FraudProofCatalogueCategoryName,
+} from "@al-ft/midgard-sdk/core";
+import {
+  type DaHashPreimageFaultProofContracts,
+  type DoubleSpendFaultProofContracts,
   type InputNoIdxFaultProofContracts,
   type InvalidRangeFaultProofContracts,
   type InvalidSignatureFaultProofContracts,
@@ -12,7 +14,7 @@ import {
   type ReferenceInputNoIdxFaultProofContracts,
   type TransitionTraceFaultProofContracts,
   type ZeroInputFaultProofContracts,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type LucidEvolution,
   type OutRef,

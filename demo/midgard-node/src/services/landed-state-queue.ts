@@ -13,7 +13,8 @@
  *   report keep serving.
  */
 import { postgresDialect } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { SqlClient } from "@effect/sql";
 import { Duration, Effect, Ref, Schedule } from "effect";
 
@@ -43,14 +44,14 @@ export type StateQueueContract = Pick<
 
 /** The state queue a fetch config names. */
 export const stateQueueContractOf = (
-  fetchConfig: SDK.StateQueueFetchConfig,
+  fetchConfig: SDKStateQueue.StateQueueFetchConfig,
 ): StateQueueContract => ({
   spendingScriptAddress: fetchConfig.stateQueueAddress,
   policyId: fetchConfig.stateQueuePolicyId,
 });
 
 const queueError = (message: string, cause: unknown) =>
-  new SDK.StateQueueError({ message, cause });
+  new SDKStateQueue.StateQueueError({ message, cause });
 
 /**
  * P1 at the follower's current view, read from the node database in one
@@ -61,7 +62,7 @@ export const readLandedStateQueue = (
   stateQueue: StateQueueContract,
 ): Effect.Effect<
   LandedStateQueueRead,
-  SDK.StateQueueError,
+  SDKStateQueue.StateQueueError,
   SqlClient.SqlClient
 > =>
   Effect.gen(function* () {
@@ -84,7 +85,7 @@ export const readLandedStateQueue = (
 export const unhealthyQueueError = (
   read: LandedStateQueueRead,
   purpose: string,
-): SDK.StateQueueError | null => {
+): SDKStateQueue.StateQueueError | null => {
   if (read.kind !== "ok")
     return queueError(
       `The landed state queue is unavailable for ${purpose}`,
@@ -102,7 +103,11 @@ export const unhealthyQueueError = (
 export const requireLandedStateQueue = (
   stateQueue: StateQueueContract,
   purpose: string,
-): Effect.Effect<LandedStateQueue, SDK.StateQueueError, SqlClient.SqlClient> =>
+): Effect.Effect<
+  LandedStateQueue,
+  SDKStateQueue.StateQueueError,
+  SqlClient.SqlClient
+> =>
   Effect.flatMap(readLandedStateQueue(stateQueue), (read) => {
     const error = unhealthyQueueError(read, purpose);
     return error === null && read.kind === "ok"
@@ -117,8 +122,8 @@ export const landedStateQueueUTxOs = (
   stateQueue: StateQueueContract,
   purpose: string,
 ): Effect.Effect<
-  readonly SDK.StateQueueUTxO[],
-  SDK.StateQueueError,
+  readonly SDKStateQueue.StateQueueUTxO[],
+  SDKStateQueue.StateQueueError,
   SqlClient.SqlClient
 > =>
   Effect.map(requireLandedStateQueue(stateQueue, purpose), (queue) =>
@@ -130,8 +135,8 @@ export const landedStateQueueTail = (
   stateQueue: StateQueueContract,
   purpose: string,
 ): Effect.Effect<
-  SDK.StateQueueUTxO,
-  SDK.StateQueueError,
+  SDKStateQueue.StateQueueUTxO,
+  SDKStateQueue.StateQueueError,
   SqlClient.SqlClient
 > =>
   Effect.flatMap(requireLandedStateQueue(stateQueue, purpose), (queue) => {
@@ -185,7 +190,7 @@ export type StateQueueSnapshot = {
 };
 
 const tailRoots = (
-  tail: SDK.StateQueueUTxO,
+  tail: SDKStateQueue.StateQueueUTxO,
 ): Effect.Effect<
   StateQueueSnapshot["tailCommitBase"]["roots"] & {
     readonly blockEndTimeMs: number;
@@ -194,9 +199,8 @@ const tailRoots = (
 > =>
   Effect.gen(function* () {
     if (tail.datum.key === "Empty") {
-      const { data } = yield* SDK.getConfirmedStateFromStateQueueDatum(
-        tail.datum,
-      );
+      const { data } =
+        yield* SDKStateQueue.getConfirmedStateFromStateQueueDatum(tail.datum);
       return {
         blockEndTimeMs: Number(data.endTime),
         utxosRoot: data.utxoRoot,
@@ -221,7 +225,7 @@ export const snapshotOfLandedQueue = (
   reason: StateQueueSnapshotReason,
 ): Effect.Effect<
   StateQueueSnapshot,
-  | SDK.StateQueueError
+  | SDKStateQueue.StateQueueError
   | SDK.DataCoercionError
   | SDK.CmlUnexpectedError
   | SDK.CborSerializationError
@@ -277,7 +281,7 @@ export const landedStateQueueSnapshot = (
   reason: StateQueueSnapshotReason,
 ): Effect.Effect<
   StateQueueSnapshot,
-  | SDK.StateQueueError
+  | SDKStateQueue.StateQueueError
   | SDK.DataCoercionError
   | SDK.CmlUnexpectedError
   | SDK.CborSerializationError,
@@ -298,7 +302,9 @@ export const LANDED_QUEUE_VISIBILITY_BUDGET_MS =
 /** The waits `awaitLandedStateQueueSnapshot` re-reads P1 on. */
 const VISIBILITY_WAITS = new WeakSet<object>();
 
-const visibilityWait = (error: SDK.StateQueueError): SDK.StateQueueError => {
+const visibilityWait = (
+  error: SDKStateQueue.StateQueueError,
+): SDKStateQueue.StateQueueError => {
   VISIBILITY_WAITS.add(error);
   return error;
 };
@@ -328,7 +334,7 @@ export const awaitLandedStateQueueSnapshot = (
   },
 ): Effect.Effect<
   StateQueueSnapshot,
-  | SDK.StateQueueError
+  | SDKStateQueue.StateQueueError
   | SDK.DataCoercionError
   | SDK.CmlUnexpectedError
   | SDK.CborSerializationError,

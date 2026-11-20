@@ -9,9 +9,6 @@
  */
 
 import {
-  DoubleSpendStep02Datum,
-  DoubleSpendStep02SpendRedeemer,
-  DoubleSpendStep03Datum,
   HUB_ORACLE_ASSET_NAME,
   type NativeTxInclusionCarriage,
   requireInputIndex,
@@ -19,7 +16,12 @@ import {
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
   requireWithdrawalRedeemerIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  DoubleSpendStep02Datum,
+  DoubleSpendStep02SpendRedeemer,
+  DoubleSpendStep03Datum,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   credentialToAddress,

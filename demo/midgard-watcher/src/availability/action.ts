@@ -1,10 +1,11 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data } from "@lucid-evolution/lucid";
 
 export type WatcherAvailabilityAction = Readonly<{
   action: "open" | "settle" | "close" | "timeout" | "prune" | "remove";
   challengeAssetName?: string;
-  tranche?: SDK.DaAvailabilityChallengeSnapshot["tranches"][number];
+  tranche?: SDKDa.DaAvailabilityChallengeSnapshot["tranches"][number];
 }>;
 
 /**
@@ -19,7 +20,7 @@ export type WatcherAvailabilityOpenWindow = Readonly<{
 
 /** The DA status the queue node carries, decoded from its authenticated datum. */
 export const watcherAvailabilityQueueStatus = (
-  snapshot: SDK.DaAvailabilityChallengeSnapshot,
+  snapshot: SDKDa.DaAvailabilityChallengeSnapshot,
 ): SDK.DaAvailabilityStateQueueStatus | undefined =>
   snapshot.queue === undefined
     ? undefined
@@ -31,7 +32,7 @@ export const watcherAvailabilityQueueStatus = (
  * deadline; the header can then no longer be challenged.
  */
 export const watcherAvailabilityOpenDeadlinePassed = (
-  snapshot: SDK.DaAvailabilityChallengeSnapshot,
+  snapshot: SDKDa.DaAvailabilityChallengeSnapshot,
   window: WatcherAvailabilityOpenWindow,
 ): boolean => {
   if (snapshot.queue === undefined) return false;
@@ -44,7 +45,7 @@ export const watcherAvailabilityOpenDeadlinePassed = (
 
 /** A fresh authenticated snapshot determines every next step, including restart. */
 export const selectWatcherAvailabilityAction = (
-  snapshot: SDK.DaAvailabilityChallengeSnapshot,
+  snapshot: SDKDa.DaAvailabilityChallengeSnapshot,
   publiclyAvailable: boolean,
   inclusiveValidityLower: bigint,
   openWindow: WatcherAvailabilityOpenWindow,
@@ -93,7 +94,7 @@ export const selectWatcherAvailabilityAction = (
     throw new Error("Challenged availability header has no challenge record");
   if (
     record.challenge_asset_name !== status.Challenged.challenge_asset_name ||
-    SDK.daAvailabilityCommitmentHash(record.commitment) !==
+    SDKDa.daAvailabilityCommitmentHash(record.commitment) !==
       status.Challenged.commitment_hash
   )
     throw new Error(
@@ -148,13 +149,13 @@ export const selectWatcherAvailabilityAction = (
  */
 export const selectWatcherAvailabilityActions = (
   candidates: readonly Readonly<{
-    snapshot: SDK.DaAvailabilityChallengeSnapshot;
+    snapshot: SDKDa.DaAvailabilityChallengeSnapshot;
     publiclyAvailable: boolean;
   }>[],
   inclusiveValidityLower: bigint,
   openWindow: WatcherAvailabilityOpenWindow,
 ): readonly Readonly<{
-  snapshot: SDK.DaAvailabilityChallengeSnapshot;
+  snapshot: SDKDa.DaAvailabilityChallengeSnapshot;
   action: WatcherAvailabilityAction;
 }>[] =>
   candidates.flatMap(({ snapshot, publiclyAvailable }) => {
@@ -172,7 +173,7 @@ export const selectWatcherAvailabilityActions = (
  * passed under an Idle lock: it merges unchallenged. Reported, never actuated.
  */
 export const watcherAvailabilityOpenDeadlineMissed = (
-  snapshot: SDK.DaAvailabilityChallengeSnapshot,
+  snapshot: SDKDa.DaAvailabilityChallengeSnapshot,
   publiclyAvailable: boolean,
   openWindow: WatcherAvailabilityOpenWindow,
 ): boolean => {
@@ -193,13 +194,13 @@ export const watcherAvailabilityOpenDeadlineMissed = (
  */
 export const orderWatcherAvailabilityActions = <
   T extends Readonly<{
-    snapshot: SDK.DaAvailabilityChallengeSnapshot;
+    snapshot: SDKDa.DaAvailabilityChallengeSnapshot;
     action: WatcherAvailabilityAction;
   }>,
 >(
   selected: readonly T[],
 ): readonly T[] => {
-  const endTime = (snapshot: SDK.DaAvailabilityChallengeSnapshot): bigint =>
+  const endTime = (snapshot: SDKDa.DaAvailabilityChallengeSnapshot): bigint =>
     Data.castFrom(snapshot.queue!.datum.data, SDK.StateQueueNode).block_time;
   const opens = selected
     .map((entry, index) => ({ entry, index }))

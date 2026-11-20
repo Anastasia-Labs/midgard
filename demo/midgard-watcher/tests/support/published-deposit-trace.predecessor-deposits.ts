@@ -1,6 +1,7 @@
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import { depositEventsRetainedBlock } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-retained";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDK from "@al-ft/midgard-sdk/users";
 import {
   credentialToAddress,
   type LucidEvolution,
@@ -104,8 +105,8 @@ export const publishedPredecessorLedger = async (
   predecessor: PublishedDepositTraceCheckpoint["predecessor"],
   priorDeposits: PublishedDepositTraceCheckpoint["priorDeposits"],
   /** The ledger the predecessor extends; its own header root checks it. */
-  priorLedger: readonly SDK.DaPayloadEntry[] = [],
-): Promise<readonly SDK.DaPayloadEntry[]> => {
+  priorLedger: readonly SDKDa.DaPayloadEntry[] = [],
+): Promise<readonly SDKDa.DaPayloadEntry[]> => {
   if (priorDeposits === undefined || priorDeposits.length === 0)
     throw new Error(
       "A nonempty predecessor's authenticated admissions are required",
@@ -141,7 +142,7 @@ export const buildPublishedDepositBlock = async (input: {
   l1SlotConfig: L1SlotConfig;
   predecessor: PublishedDepositTraceCheckpoint["predecessor"];
   /** The ledger the predecessor extends; empty for the confirmed genesis. */
-  predecessorPriorLedger?: readonly SDK.DaPayloadEntry[];
+  predecessorPriorLedger?: readonly SDKDa.DaPayloadEntry[];
   priorDeposits: PublishedDepositTraceCheckpoint["priorDeposits"];
   event: SDK.DepositUTxO;
   operatorVkey: string;

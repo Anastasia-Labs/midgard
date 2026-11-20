@@ -1,4 +1,4 @@
-import { SCHEDULER_ASSET_NAME, SchedulerDatum } from "@al-ft/midgard-sdk";
+import { SCHEDULER_ASSET_NAME, SchedulerDatum } from "@al-ft/midgard-sdk/core";
 import {
   Data,
   generateEmulatorAccount,

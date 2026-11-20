@@ -1,7 +1,5 @@
-import {
-  fraudProofContractsToFirstSteps,
-  type MidgardValidators,
-} from "@al-ft/midgard-sdk";
+import { type MidgardValidators } from "@al-ft/midgard-sdk/core";
+import { fraudProofContractsToFirstSteps } from "@al-ft/midgard-sdk/fraud-proof";
 
 import { type Blueprint } from "./blueprints.js";
 import { makeAlwaysSucceedsFaultProofContracts } from "./validators.make-always-succeeds-fault-proof-contracts.js";

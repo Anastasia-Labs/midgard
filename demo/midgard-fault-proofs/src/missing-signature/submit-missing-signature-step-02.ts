@@ -15,15 +15,17 @@
  * family's step-03.
  */
 import {
+  requireInputIndex,
+  requireOwnSpendPurpose,
+  requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
   MissingSignatureStep02Datum,
   MissingSignatureStep02SpendRedeemer,
   type MissingSignatureStep02State,
   MissingSignatureStep03Datum,
   type MissingSignatureStep03State,
-  requireInputIndex,
-  requireOwnSpendPurpose,
-  requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

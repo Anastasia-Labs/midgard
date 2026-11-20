@@ -6,7 +6,7 @@
  */
 import { createHash } from "node:crypto";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 

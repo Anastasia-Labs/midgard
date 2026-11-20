@@ -5,11 +5,13 @@ import {
 } from "@al-ft/midgard-core";
 import {
   type BoundedItemChunkProof,
-  buildNativeScriptDecodingFaultProofContracts,
-  NativeScriptDecodingStep01SpendRedeemer,
   parseFaultProofBlueprint,
   Proof,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  buildNativeScriptDecodingFaultProofContracts,
+  NativeScriptDecodingStep01SpendRedeemer,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";

@@ -8,7 +8,7 @@ import {
   WithdrawalMistagStep02PayloadSchema,
   WithdrawalMistagStep03PayloadSchema,
   WithdrawalMistagStep04PayloadSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import {
   requireReferenceInputIndex,
   withdrawalClaimsValid,
@@ -22,7 +22,7 @@ import {
   WithdrawalMistagStep04Datum,
   WithdrawalMistagStep04SpendRedeemer,
   WithdrawalMistagStep05Datum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import {
   type BuildTxWithRedeemer,
   Data,

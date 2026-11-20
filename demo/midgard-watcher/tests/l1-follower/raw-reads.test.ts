@@ -9,7 +9,8 @@ import {
   simStoreOptions,
   type SimTx,
 } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { describe, expect, it } from "vitest";
 
 import { watcherProjection } from "../../src/l1-follower/projection.js";
@@ -170,7 +171,7 @@ describe("follower raw reads on the simulator chain", () => {
         .transactions,
     ).toEqual([]);
     for (const other of [
-      `${D.stateQueueMint}${SDK.STATE_QUEUE_ROOT_ASSET_NAME}`,
+      `${D.stateQueueMint}${SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME}`,
       // A policy no projection follows (the hub-oracle policy now is one).
       `${"7f".repeat(28)}${SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX}${fx.header}`,
     ])

@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { screenMidgardForcedTxAdmission } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

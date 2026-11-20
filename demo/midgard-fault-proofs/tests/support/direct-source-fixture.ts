@@ -4,7 +4,8 @@ import {
   encodeMidgardTxOutput,
   encodeMidgardVersionedScript,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import { prepareDirectScriptMaterial } from "../../src/direct-script-derivation/material.js";
@@ -73,7 +74,7 @@ export const directSourceBatchFixture = async (
     scriptWitnesses,
     fee: 0n,
   });
-  const eventKey: SDK.EventKey = {
+  const eventKey: SDKCore.EventKey = {
     L2TransactionEventKey: { tx_id: transaction.txId },
   };
   const fixture = await buildCanonicalBlockFixture({

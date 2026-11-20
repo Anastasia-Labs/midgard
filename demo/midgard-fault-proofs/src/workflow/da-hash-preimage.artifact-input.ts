@@ -1,4 +1,4 @@
-import { DA_HASH_PREIMAGE_VIOLATION_ID } from "@al-ft/midgard-sdk";
+import { DA_HASH_PREIMAGE_VIOLATION_ID } from "@al-ft/midgard-sdk/fraud-proof";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 import {

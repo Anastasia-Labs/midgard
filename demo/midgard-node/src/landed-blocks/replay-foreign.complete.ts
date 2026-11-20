@@ -49,7 +49,8 @@ import {
   eventKeyOfId,
   retentionUnseenRefusalsIn,
 } from "@al-ft/midgard-l1-follower/events";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 
 import {
   invalid,
@@ -309,7 +310,7 @@ export const userAbsentWhere =
 export const exact = (
   known: ReadonlySet<string>,
   seen: ReadonlySet<string>,
-  named: readonly SDK.DaPayloadEntry[],
+  named: readonly SDKDa.DaPayloadEntry[],
   kind: string,
   absent: Absent = unknownAt,
   undecodable: ReadonlyMap<string, string> = new Map(),

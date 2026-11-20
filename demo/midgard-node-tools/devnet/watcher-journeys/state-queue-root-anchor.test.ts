@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import type { UTxO } from "@lucid-evolution/lucid";
 import {
   header,
@@ -178,7 +179,7 @@ describe("the output a staged block is committed on after its parent", () => {
 
 /** How often a tail wait polls the fake queue, and its attestation timeout. */
 const POLL_MS = 10_000;
-const TIMEOUT_MS = SDK.DA_ATTESTATION_TIMEOUT_MS;
+const TIMEOUT_MS = SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS;
 
 const failure = (wait: Promise<unknown>) =>
   wait.then(

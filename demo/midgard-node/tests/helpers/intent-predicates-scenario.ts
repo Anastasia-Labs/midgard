@@ -25,7 +25,7 @@ import {
   SIM_ORIGIN,
   type SimTx,
 } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 
 import { operatorSetTrackedSet } from "../../src/l1-operator-set/config.js";
 import { operatorSetProjection } from "../../src/l1-operator-set/projection.js";

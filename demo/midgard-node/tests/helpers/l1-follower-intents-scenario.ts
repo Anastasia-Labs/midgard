@@ -15,7 +15,8 @@ import {
   recordIntentIn,
 } from "@al-ft/midgard-l1-follower";
 import { encodeSimTx, type SimTx } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { expect } from "vitest";
 
 import { stateQueueTrackedSet } from "../../src/l1-state-queue/config.js";
@@ -38,7 +39,7 @@ import {
 
 export const K = 6;
 export const GENESIS = "00".repeat(28);
-const ROOT = SDK.STATE_QUEUE_ROOT_ASSET_NAME;
+const ROOT = SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME;
 export const PREFIX = SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX;
 const SPARES = 6;
 
@@ -105,7 +106,7 @@ export const intentStageScenarios =
       },
     ]);
     const first = simHeader(1, GENESIS);
-    const firstHash = SDK.stateQueueHeaderHash(first);
+    const firstHash = SDKStateQueue.stateQueueHeaderHash(first);
     await chain.forward([
       {
         inputs: [{ txHash: rootTx!, index: 0 }],

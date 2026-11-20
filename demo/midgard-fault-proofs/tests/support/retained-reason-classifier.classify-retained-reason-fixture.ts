@@ -1,7 +1,5 @@
-import {
-  type AuthenticatedStateQueueHeaderObservation,
-  EMPTY_MERKLE_TREE_ROOT,
-} from "@al-ft/midgard-sdk";
+import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk/core";
+import { type AuthenticatedStateQueueHeaderObservation } from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { LedgerAt } from "../../src/ledger-at.js";
 import { retainedPayloadReplaySource } from "../../src/retained-payload-replay-source.js";

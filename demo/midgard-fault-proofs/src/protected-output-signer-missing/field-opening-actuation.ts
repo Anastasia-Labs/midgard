@@ -1,4 +1,4 @@
-import type { FieldOpening } from "@al-ft/midgard-sdk";
+import type { FieldOpening } from "@al-ft/midgard-sdk/fraud-proof";
 import type {
   LucidEvolution,
   RedeemerContext,

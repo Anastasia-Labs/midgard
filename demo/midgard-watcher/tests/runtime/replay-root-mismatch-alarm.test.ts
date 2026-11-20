@@ -14,7 +14,8 @@ import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-confi
 import type { LedgerCheckpoint } from "@al-ft/midgard-fault-proofs/replayed-ledger";
 import { buildCanonicalBlockFixture } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import type { RetainedDaPayloadSource } from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Effect } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -32,7 +33,7 @@ const MANIFEST = "11".repeat(32);
 
 const availabilityAuthority = () => ({
   deploymentIdentity: "c7".repeat(28),
-  responseGeometry: SDK.availabilityResponseGeometry({
+  responseGeometry: SDKDa.availabilityResponseGeometry({
     chunkByteLength: 4096,
     trancheByteLength: 64 * 1024,
     maxTrancheCount: 1024,
@@ -229,7 +230,7 @@ describe("the replayed ledger's root mismatch alarm", () => {
     const block = {
       headerHash,
       payloadEnvelopeCbor: await wrapDaPayload(
-        SDK.encodeDaPayload({
+        SDKDa.encodeDaPayload({
           ...honest.payload,
           block_body: {
             ...honest.payload.block_body,
@@ -240,7 +241,7 @@ describe("the replayed ledger's root mismatch alarm", () => {
         { mode: "identity" },
       ),
     };
-    const commitment = SDK.buildDaAvailabilityCommitment({
+    const commitment = SDKDa.buildDaAvailabilityCommitment({
       ...availabilityAuthority(),
       headerHash: block.headerHash,
       payload: block.payloadEnvelopeCbor,
@@ -258,7 +259,7 @@ describe("the replayed ledger's root mismatch alarm", () => {
       }),
       availabilityStatus: async () => ({
         Attested: {
-          commitment_hash: SDK.daAvailabilityCommitmentHash(commitment),
+          commitment_hash: SDKDa.daAvailabilityCommitmentHash(commitment),
         },
       }),
       checkpointDurable: () => undefined,

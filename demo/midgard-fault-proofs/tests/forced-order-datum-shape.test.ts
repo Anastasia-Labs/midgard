@@ -9,7 +9,8 @@ import {
   plutusConstrFieldCbor,
   replacePlutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   Constr,
   Data,
@@ -238,7 +239,7 @@ describe("order datum shape at the real tx-order mint", () => {
       .spyOn(Date, "now")
       .mockImplementation(() => h.emulator.now());
     const built = await Effect.runPromise(
-      SDK.buildUnsignedTxOrderTxWithMetadataProgram(
+      SDKUsers.buildUnsignedTxOrderTxWithMetadataProgram(
         rewrite === undefined
           ? lucid
           : withOrderDatumRewrite(

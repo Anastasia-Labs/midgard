@@ -20,10 +20,10 @@ import {
 } from "@al-ft/midgard-core";
 import {
   type EventToStepMembershipProof,
-  fieldOpeningForField,
   type IndexedTraceProof,
   Proof,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { fieldOpeningForField } from "@al-ft/midgard-sdk/fraud-proof";
 import { Constr, Data } from "@lucid-evolution/lucid";
 
 import { transactionOutputScanControlData } from "../transaction-output-non-canonical/transaction-output-non-canonical.js";

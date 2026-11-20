@@ -1,15 +1,17 @@
 import {
-  FieldPreimageLengthStep01DatumSchema,
-  FieldPreimageLengthStep03RedeemerSchema,
-  FraudProofComputationThreadRedeemer,
-  FraudProofTokenDatum,
-  FraudProofTokenMintRedeemer,
   requireInputIndex,
   requireMintRedeemerIndex,
   requireOwnMintPurpose,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  FieldPreimageLengthStep01DatumSchema,
+  FieldPreimageLengthStep03RedeemerSchema,
+  FraudProofComputationThreadRedeemer,
+  FraudProofTokenDatum,
+  FraudProofTokenMintRedeemer,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { type BuildTxWithRedeemer, Data, toUnit } from "@lucid-evolution/lucid";
 
 import { completeStep, fundStep } from "../step-completion.js";

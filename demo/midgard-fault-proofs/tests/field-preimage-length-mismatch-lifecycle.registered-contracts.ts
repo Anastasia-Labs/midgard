@@ -1,11 +1,10 @@
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
+import { type Header, parseFaultProofBlueprint } from "@al-ft/midgard-sdk/core";
+import { type DaPayload } from "@al-ft/midgard-sdk/da";
 import {
   buildFaultProofContracts,
   buildFieldPreimageLengthMismatchFaultProofContracts,
-  type DaPayload,
-  type Header,
-  parseFaultProofBlueprint,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Effect } from "effect";
 import { expect } from "vitest";
 

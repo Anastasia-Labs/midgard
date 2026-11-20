@@ -21,7 +21,7 @@ import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-confi
 import {
   REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
   type ReferenceScriptAuthPolicyDeploymentInfo,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import { h32ForOrdinal } from "@al-ft/midgard-test-support/hex";
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
 import { Effect } from "effect";

@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { type UTxO } from "@lucid-evolution/lucid";
 import { expect, it, vi } from "vitest";
 
@@ -212,7 +213,9 @@ it.each([
         txHash: "67".repeat(32),
         outputIndex: index,
         assets: { lovelace: 2_000_000n },
-        datum: SDK.fieldPreimagePublicationDatumCbor(publication.bytes),
+        datum: SDKStateQueue.fieldPreimagePublicationDatumCbor(
+          publication.bytes,
+        ),
       }),
     );
     const certificate: UTxO[] =
@@ -231,8 +234,9 @@ it.each([
                 [workflow.config.contracts.fieldPreimageCertificate.policyId +
                 SDK.FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX]: 1n,
               },
-              datum: SDK.deriveFieldPreimageCertification(planned.plan)
-                .datumCbor,
+              datum: SDKStateQueue.deriveFieldPreimageCertification(
+                planned.plan,
+              ).datumCbor,
             },
           ]
         : [];

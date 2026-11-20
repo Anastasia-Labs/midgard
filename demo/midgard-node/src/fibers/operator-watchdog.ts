@@ -40,7 +40,8 @@
  * (`operator-watchdog.takeover-retry.ts`).
  */
 import { COMMIT_TTL_FUTURE_BUFFER_MS } from "@al-ft/midgard-core/deployment-profile";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKOperators from "@al-ft/midgard-sdk/operators";
 import { Effect, Ref, type Schedule } from "effect";
 
 import { errorMessage } from "../commands/cli-options.js";
@@ -117,7 +118,9 @@ export const resetWatchdogCitationFailuresForTests = (): void => {
   citationFailures = emptyCitationFailures;
 };
 
-const schedulerRefOf = (snapshot: SDK.OperatorDirectorySnapshot): string =>
+const schedulerRefOf = (
+  snapshot: SDKOperators.OperatorDirectorySnapshot,
+): string =>
   `${snapshot.scheduler.utxo.txHash}#${snapshot.scheduler.utxo.outputIndex.toString()}`;
 
 /**
@@ -251,7 +254,7 @@ export const makeOperatorWatchdogTick = <R = never>(
       patienceMs: nodeConfig.OPERATOR_WATCHDOG_PATIENCE_MS,
       ownOperatorKey,
       ownOperatorIsActive:
-        SDK.findNodeByKey(planning.snapshot.active, ownOperatorKey) !==
+        SDKOperators.findNodeByKey(planning.snapshot.active, ownOperatorKey) !==
         undefined,
       plan: toWatchdogPlan(planning.plan),
       stateQueue,
@@ -395,7 +398,7 @@ export const makeOperatorWatchdogTick = <R = never>(
           } else if (plan.kind === "ready") {
             // The failure counts against the citation, never against the
             // funds: a later event is no cheaper to cite.
-            const citationId = SDK.neglectedUserEventCitationId(
+            const citationId = SDKOperators.neglectedUserEventCitationId(
               plan.neglectedEvent,
             );
             const recorded = recordCitationFailure(citationFailures, {

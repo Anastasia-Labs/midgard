@@ -3,7 +3,7 @@ import {
   WitnessScriptDecodingStep02DatumSchema,
   WitnessScriptDecodingStep03DatumSchema,
   WitnessScriptDecodingStep04DatumSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import { WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";

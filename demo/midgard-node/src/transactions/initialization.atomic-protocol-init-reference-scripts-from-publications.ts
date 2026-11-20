@@ -1,6 +1,7 @@
 import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
 import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDeployment from "@al-ft/midgard-sdk/deployment";
 import { Data as LucidData, UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -152,7 +153,7 @@ export const DEPLOYMENT_VISIBILITY_REFRESH_MAX_RETRIES = 12;
 export const DEPLOYMENT_VISIBILITY_REFRESH_DELAY = "2 seconds";
 
 export type AtomicProtocolInitReferenceScripts =
-  SDK.AtomicProtocolInitReferenceScripts;
+  SDKDeployment.AtomicProtocolInitReferenceScripts;
 
 type ReferenceScriptPublicationLike = {
   readonly name: string;

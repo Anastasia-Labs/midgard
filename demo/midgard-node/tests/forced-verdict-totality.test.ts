@@ -15,7 +15,7 @@ import { encodeCbor, readCborBytes } from "@al-ft/midgard-core/codec/cbor";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { screenMidgardForcedTxAdmission } from "@al-ft/midgard-core/consensus-validation";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 import { Cause, Effect, Exit } from "effect";
 import { describe, expect, it } from "vitest";

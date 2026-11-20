@@ -14,10 +14,10 @@ import {
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   type FraudProofCatalogueDeploymentInfo,
   parseFaultProofBlueprint,
-  REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
   ScriptHashSchema,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { REFERENCE_SCRIPT_AUTH_TOKEN_NAMES } from "@al-ft/midgard-sdk/state-queue";
 import {
   CML,
   Data,

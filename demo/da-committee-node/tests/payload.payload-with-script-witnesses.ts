@@ -7,14 +7,15 @@ import {
   materializeMidgardNativeTxFromCanonical,
   type MidgardVersionedScript,
 } from "@al-ft/midgard-core/codec";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 
 import { makePayloadFixture } from "./helpers.js";
 
 const sortedEntries = (
-  entries: readonly SDK.DaPayloadEntry[],
-): SDK.DaPayloadEntry[] =>
+  entries: readonly SDKDa.DaPayloadEntry[],
+): SDKDa.DaPayloadEntry[] =>
   [...entries].sort(([left], [right]) =>
     left < right ? -1 : left > right ? 1 : 0,
   );
@@ -34,7 +35,7 @@ const rewriteL2EventTxId = (
 
 export const payloadWithScriptWitnesses = async (
   scripts: readonly MidgardVersionedScript[],
-): Promise<SDK.DaPayload> => {
+): Promise<SDKDa.DaPayload> => {
   const fixture = await makePayloadFixture();
   const scriptWitnesses = encodeMidgardVersionedScriptListPreimage(scripts);
   const rewrittenTransactions = fixture.payload.block_body.transaction_preimages
@@ -95,7 +96,7 @@ export const payloadWithScriptWitnesses = async (
           } satisfies SDK.TransitionStep as never,
           SDK.TransitionStepSchema as never,
         ),
-      ] satisfies SDK.DaPayloadEntry;
+      ] satisfies SDKDa.DaPayloadEntry;
     },
   );
   return {

@@ -1,4 +1,4 @@
-import { Header, StateQueueNode } from "@al-ft/midgard-sdk";
+import { Header, StateQueueNode } from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 
 import { unsafeAdmitWatcherStateQueueObservationForReplayTest } from "../../src/indexers/authenticated-state-queue-observation.parse-persisted-observation.js";

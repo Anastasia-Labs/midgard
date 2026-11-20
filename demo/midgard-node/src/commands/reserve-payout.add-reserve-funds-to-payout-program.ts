@@ -1,11 +1,12 @@
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   assetsEqual,
   removeAssetUnit,
   subtractAssets,
   valueToAssets,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/users";
 import { Data as LucidData, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
@@ -63,7 +64,7 @@ export const initializePayoutProgram = (
       );
     }
     const withdrawal = yield* fetchWithdrawalUtxoByEventId(eventId);
-    const history = SDK.requireEventHistoryContracts(contracts);
+    const history = SDKUsers.requireEventHistoryContracts(contracts);
     const refs = yield* fetchReferenceScripts([
       {
         name: "withdrawal spending",
@@ -195,7 +196,7 @@ export const addReserveFundsToPayoutProgram = (
     }
     let reserve: UTxO | undefined;
     if (config.reserveOutRef === undefined) {
-      reserve = SDK.selectReserveFundingInput(
+      reserve = SDKUsers.selectReserveFundingInput(
         reserveUtxos,
         remaining,
         coinsPerUtxoByte,
@@ -222,7 +223,7 @@ export const addReserveFundsToPayoutProgram = (
           new Error(`Reserve UTxO ${requested} is not at the reserve address.`),
         );
       }
-      const rejection = SDK.reserveFundingRejection(
+      const rejection = SDKUsers.reserveFundingRejection(
         reserve,
         remaining,
         coinsPerUtxoByte,

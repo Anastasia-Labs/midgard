@@ -1,4 +1,4 @@
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 
 /** The linear L2 fee schedule a header commits. */
 export type JourneyFeeSchedule = Pick<SDK.Header, "minFeeA" | "minFeeB">;

@@ -1,4 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import { type UTxO } from "@lucid-evolution/lucid";
 
 import type { DaAttestationValidatorSet } from "../src/l1/deployment.js";

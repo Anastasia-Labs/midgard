@@ -1,6 +1,6 @@
 import { decodeMidgardNativeTxCompact } from "@al-ft/midgard-core";
 import { decodeMidgardForcedTxCompact } from "@al-ft/midgard-core/codec/forced";
-import type { FieldOpening } from "@al-ft/midgard-sdk";
+import type { FieldOpening } from "@al-ft/midgard-sdk/fraud-proof";
 import {
   Data,
   type LucidEvolution,

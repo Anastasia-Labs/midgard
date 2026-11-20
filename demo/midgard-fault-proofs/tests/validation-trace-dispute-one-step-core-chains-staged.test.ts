@@ -1,7 +1,7 @@
 /** The arm chain a staged builtin step (arm 31, semantics groups 7 and 8)
  * settles through, and the decode of an arm-31 step's material by the
  * semantic group its tag selects. */
-import { StagedMaterialV1 } from "@al-ft/midgard-sdk";
+import { StagedMaterialV1 } from "@al-ft/midgard-sdk/da";
 import type { MidgardCekCoreStepWitness } from "@al-ft/midgard-validation/cek-machine";
 import {
   midgardCekStagedBuiltinMaterialData,

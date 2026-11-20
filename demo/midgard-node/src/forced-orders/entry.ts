@@ -4,7 +4,8 @@
  * every row the node writes goes through (`screenForcedAdmissions`).
  */
 import type { MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { Effect, Metric } from "effect";
 
 import { ForcedTransactionsDB } from "../database/index.js";
@@ -30,7 +31,7 @@ const lucidError = (message: string, cause: unknown) =>
  * items do not decode still gets its row; classification gives its verdict.
  */
 export const forcedOrderEntry = (input: {
-  readonly order: SDK.TxOrderUTxOV1;
+  readonly order: SDKUsers.TxOrderUTxOV1;
   readonly fieldPreimages: readonly Uint8Array[];
   readonly consensusProfile: MidgardConsensusProfile;
 }): Effect.Effect<ForcedTransactionsDB.Entry, SDK.LucidError | DatabaseError> =>

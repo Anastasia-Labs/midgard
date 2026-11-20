@@ -1,7 +1,7 @@
 import type { AvailabilityOperationRecord } from "@al-ft/midgard-core/availability-operation-journal";
 import { FraudProofL1CheckpointChangedError } from "@al-ft/midgard-fault-proofs/workflow/l1-source";
 import { computeFraudProofRawL1PointId } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/da";
 import { CML, utxoToCore } from "@lucid-evolution/lucid";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -27,8 +27,8 @@ import {
 
 const sdk = vi.hoisted(() => ({ release: vi.fn() }));
 const io = availabilityFollowerIo();
-vi.mock("@al-ft/midgard-sdk", async (original) => ({
-  ...(await original<typeof import("@al-ft/midgard-sdk")>()),
+vi.mock("@al-ft/midgard-sdk/da", async (original) => ({
+  ...(await original<typeof import("@al-ft/midgard-sdk/da")>()),
   daAvailabilityChallengeSnapshotFromUtxos: async (
     _deployment: unknown,
     headerHash: string,

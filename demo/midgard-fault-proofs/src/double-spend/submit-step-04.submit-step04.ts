@@ -2,7 +2,7 @@ import {
   type FieldOpening,
   FraudProofTokenDatum,
   MIDGARD_FIELD_INDEX,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   Data,
   type LucidEvolution,

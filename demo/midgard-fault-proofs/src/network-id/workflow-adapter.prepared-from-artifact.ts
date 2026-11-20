@@ -2,7 +2,7 @@ import { decodeMidgardNativeTxCompact } from "@al-ft/midgard-core";
 import {
   type NetworkIdFault,
   ProofThreadForcedSourcePayloadSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import { nativeTxFromCoreCompact } from "../step-support.js";

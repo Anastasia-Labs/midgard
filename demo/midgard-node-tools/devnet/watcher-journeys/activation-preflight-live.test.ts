@@ -1,6 +1,6 @@
 import { join } from "node:path";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { CML, coreToTxOutput, Lucid } from "@lucid-evolution/lucid";
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 import { Effect } from "effect";

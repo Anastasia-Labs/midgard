@@ -8,7 +8,8 @@ import {
   type MidgardValidationMachineState,
   type MidgardValidationTraceProof,
 } from "@al-ft/midgard-core/validation-trace";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data } from "@lucid-evolution/lucid";
 
 import { exact } from "../workflow/field-carriage-prerequisite.field-carriage-prerequisite-port.js";
@@ -30,7 +31,7 @@ export type ValidationTraceDisputeArtifact = Readonly<{
   headerHash: string;
   /** The detected event's key, as the claim witness binds it. */
   eventKeyCbor: string;
-  claim: SDK.ValidationDisputeClaim;
+  claim: SDKDa.ValidationDisputeClaim;
   terminal: MidgardValidationMachineState;
   terminalProof: MidgardValidationTraceProof;
   initialState: MidgardValidationMachineState;
@@ -54,7 +55,7 @@ export const encodeValidationTraceDisputeArtifact = ({
     ),
     claimWitnessCbor: Data.to(
       material.claimWitness,
-      SDK.ValidationClaimWitness,
+      SDKDa.ValidationClaimWitness,
     ),
     challengerRoot: material.challengerRoot,
     stepCount: material.stepCount.toString(),
@@ -114,7 +115,7 @@ export const parseValidationTraceDisputeArtifact = (
   const eventKeyCbor = requireHex(fields.eventKeyCbor, HEX, "event key");
   const claimWitness = Data.from(
     requireHex(fields.claimWitnessCbor, HEX, "claim witness"),
-    SDK.ValidationClaimWitness,
+    SDKDa.ValidationClaimWitness,
   );
   if (
     Data.to(claimWitness.event_to_step_membership.key, SDK.EventKey) !==

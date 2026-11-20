@@ -1,4 +1,5 @@
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "@lucid-evolution/lucid";
 import "./blueprints.js";
 import "./validators.make-isolated-always-succeeds-authenticated-validator.js";

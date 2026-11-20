@@ -27,7 +27,9 @@ import {
   type TxContentSource,
 } from "@al-ft/midgard-l1-follower";
 import { SIM_ORIGIN } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   Data,
   Emulator,
@@ -143,11 +145,11 @@ const signedTxSource = (txs: readonly Buffer[]): TxContentSource => {
  */
 const publishAndOrder = async (h: Harness, tamper: boolean) => {
   const submitted = spendingTransactionCbor([0x11, 0x22]);
-  const material = SDK.deriveTxOrderMaterial({
+  const material = SDKUsers.deriveTxOrderMaterial({
     submittedTxCbor: submitted,
     owner: h.creatorKeyHash,
   });
-  const plan = SDK.planTxOrderMaterialCarriage({
+  const plan = SDKUsers.planTxOrderMaterialCarriage({
     material,
     owner: h.creatorKeyHash,
     inlineReserveBytes: 0,
@@ -155,17 +157,17 @@ const publishAndOrder = async (h: Harness, tamper: boolean) => {
   const [field] = plan.referenced;
   if (plan.referenced.length !== 1 || field?.plan.tier !== "RawUtxo")
     throw new Error("the fixture must publish exactly one tier-2 field");
-  const [output] = SDK.fieldPreimagePublicationOutputs(field.plan);
+  const [output] = SDKStateQueue.fieldPreimagePublicationOutputs(field.plan);
   const bytes = Buffer.from(field.preimage);
   // Same length, last byte changed: only the field commitment can refuse it.
   if (tamper) bytes[bytes.length - 1] ^= 0xff;
   const publication = await submit(
     h,
     await Effect.runPromise(
-      SDK.buildUnsignedFieldPreimagePublicationProgram(h.lucid, {
+      SDKStateQueue.buildUnsignedFieldPreimagePublicationProgram(h.lucid, {
         publication: {
           ...output!,
-          datumCbor: SDK.fieldPreimagePublicationDatumCbor(bytes),
+          datumCbor: SDKStateQueue.fieldPreimagePublicationDatumCbor(bytes),
         },
         publisherAddress: h.creatorAddress,
       }),
@@ -191,10 +193,10 @@ const publishAndOrder = async (h: Harness, tamper: boolean) => {
   // The carriage's position among the final transaction's reference inputs.
   // The SDK finds it by the publication's digest, so for tampered bytes the
   // adversary names the carriage directly; for honest bytes both agree.
-  let written: SDK.TxOrderMintRedeemer["material_carriage"] | undefined;
-  let derived: SDK.TxOrderMintRedeemer["material_carriage"] | undefined;
+  let written: SDKUsers.TxOrderMintRedeemer["material_carriage"] | undefined;
+  let derived: SDKUsers.TxOrderMintRedeemer["material_carriage"] | undefined;
   const unit = `${h.contracts.txOrder.policyId}${Buffer.from("order").toString("hex")}`;
-  const datum: SDK.TxOrderDatum = {
+  const datum: SDKUsers.TxOrderDatum = {
     event: {
       id: SDK.outputReferenceFromUTxO(nonce),
       tx: {
@@ -213,7 +215,7 @@ const publishAndOrder = async (h: Harness, tamper: boolean) => {
     },
     refund_datum: "NoDatum",
   };
-  const redeemer = (ctx: RedeemerContext): SDK.TxOrderMintRedeemer => {
+  const redeemer = (ctx: RedeemerContext): SDKUsers.TxOrderMintRedeemer => {
     written = [
       {
         RawUtxo: {
@@ -227,7 +229,7 @@ const publishAndOrder = async (h: Harness, tamper: boolean) => {
     ];
     if (!tamper)
       derived = [
-        ...SDK.txOrderMaterialCarriageVector({
+        ...SDKUsers.txOrderMaterialCarriageVector({
           plan,
           certificatePolicyId: h.contracts.fieldPreimageCertificate.policyId,
           referenceInputs: ctx.referenceInputs,
@@ -257,12 +259,12 @@ const publishAndOrder = async (h: Harness, tamper: boolean) => {
       .collectFrom([nonce])
       .readFrom(referenceInputs)
       .mintAssets({ [unit]: 1n }, (ctx) =>
-        Data.to(redeemer(ctx), SDK.TxOrderMintRedeemer),
+        Data.to(redeemer(ctx), SDKUsers.TxOrderMintRedeemer),
       )
       .attach.MintingPolicy(h.contracts.txOrder.mintingScript)
       .pay.ToAddressWithData(
         h.contracts.txOrder.spendingScriptAddress,
-        { kind: "inline", value: Data.to(datum, SDK.TxOrderDatum) },
+        { kind: "inline", value: Data.to(datum, SDKUsers.TxOrderDatum) },
         { lovelace: 3_000_000n, [unit]: 1n },
       )
       .complete({ localUPLCEval: true }),

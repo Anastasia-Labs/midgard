@@ -1,5 +1,6 @@
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -13,7 +14,7 @@ import { buildStrictRetainedDaPairFixture } from "./helpers/cardano-capability-r
 import { buildL2ReplayBlock } from "./transition-trace-challenger.build-l2-replay-fixture.js";
 
 type Block = {
-  readonly payload: SDK.DaPayload;
+  readonly payload: SDKDa.DaPayload;
   readonly payloadEnvelopeCbor: Buffer;
   readonly header: SDK.Header;
   readonly headerHash: string;
@@ -36,12 +37,12 @@ const recommit = async (
     body = {},
   }: {
     readonly fields?: Partial<SDK.Header>;
-    readonly body?: Partial<SDK.DaPayload["block_body"]>;
+    readonly body?: Partial<SDKDa.DaPayload["block_body"]>;
   },
 ): Promise<Block> => {
   const header: SDK.Header = { ...block.header, ...fields };
   const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
-  const payload: SDK.DaPayload = {
+  const payload: SDKDa.DaPayload = {
     ...block.payload,
     block_body: {
       ...block.payload.block_body,
@@ -52,7 +53,7 @@ const recommit = async (
   };
   return {
     payload,
-    payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(payload), {
+    payloadEnvelopeCbor: await wrapDaPayload(SDKDa.encodeDaPayload(payload), {
       mode: "identity",
     }),
     header,

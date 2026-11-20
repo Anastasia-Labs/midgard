@@ -7,7 +7,7 @@ import { MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES } from "@al-ft/midgard-co
 import {
   MIDGARD_ENVELOPE_BATCH_ITEMS,
   miscountedMidgardFieldPreimage,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 const B = MIDGARD_ENVELOPE_BATCH_ITEMS;
 

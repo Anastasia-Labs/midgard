@@ -4,7 +4,7 @@ import {
   type Header,
   type OutputReference,
   type RootMembershipProof,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import type { ResolvedProverSigner } from "../runtime.js";

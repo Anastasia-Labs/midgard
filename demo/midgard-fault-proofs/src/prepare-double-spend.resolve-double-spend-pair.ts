@@ -19,7 +19,7 @@ import {
 import {
   EMPTY_MERKLE_TREE_ROOT,
   type OutputReference as OutputReferenceData,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 
 import { parseHex } from "./json-file.js";
 import {

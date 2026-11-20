@@ -4,6 +4,7 @@ import {
   midgardFieldCarriageBounds,
   planMidgardFieldCarriage,
 } from "@al-ft/midgard-core";
+import { parseFaultProofBlueprint, Proof } from "@al-ft/midgard-sdk/core";
 import {
   buildMissingSignatureFaultProofContracts,
   MissingSignatureStep01SpendRedeemer,
@@ -12,9 +13,7 @@ import {
   type MissingSignatureStep02SpendRedeemer as MissingSignatureStep02SpendRedeemerType,
   MissingSignatureStep04SpendRedeemer,
   type MissingSignatureStep04SpendRedeemer as MissingSignatureStep04SpendRedeemerType,
-  parseFaultProofBlueprint,
-  Proof,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";

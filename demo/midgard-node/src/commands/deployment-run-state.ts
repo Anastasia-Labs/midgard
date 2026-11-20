@@ -1,6 +1,11 @@
 import "node:fs";
 import "node:path";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/da";
+import "@al-ft/midgard-sdk/users";
+import "@al-ft/midgard-sdk/deployment";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "effect";
 import "../e2e/run-state.js";
 import "./contract-deployment-info.js";

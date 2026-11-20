@@ -3,7 +3,7 @@ import { access, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as pause } from "node:timers/promises";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { CML, Kupmios, Lucid } from "@lucid-evolution/lucid";
 import { expect, it } from "vitest";
 

@@ -8,12 +8,14 @@ import {
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   getHeaderFromStateQueueDatum,
   HUB_ORACLE_ASSET_NAME,
-  incompleteRemoveFraudulentBlocksLinkTxProgram,
-  incompleteRemoveLastFraudulentBlockHeaderTxProgram,
   RETIRED_OPERATORS_ROOT_ASSET_NAME,
   SCHEDULER_ASSET_NAME,
+} from "@al-ft/midgard-sdk/core";
+import {
+  incompleteRemoveFraudulentBlocksLinkTxProgram,
+  incompleteRemoveLastFraudulentBlockHeaderTxProgram,
   type StateQueueUTxO,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import {
   credentialToAddress,
   type LucidEvolution,

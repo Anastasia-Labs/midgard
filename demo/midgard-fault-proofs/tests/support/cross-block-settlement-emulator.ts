@@ -1,4 +1,6 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   type BuildTxWithRedeemer,
   Data,
@@ -31,7 +33,7 @@ const queueFetchConfig = (h: QueueSettlementSubject) => ({
  * other node field (including any completed-fraud marker). */
 export const publishOldestQueueHeaderDa = async (h: QueueSettlementSubject) => {
   const pair = await Effect.runPromise(
-    SDK.fetchConfirmedStateAndItsLinkProgram(
+    SDKStateQueue.fetchConfirmedStateAndItsLinkProgram(
       h.funderLucid,
       queueFetchConfig(h),
     ),
@@ -64,7 +66,7 @@ export const publishOldestQueueHeaderDa = async (h: QueueSettlementSubject) => {
           refund_output_index: 0n,
         },
       },
-      SDK.DaAttestationMintRedeemer,
+      SDKDa.DaAttestationMintRedeemer,
     )) satisfies BuildTxWithRedeemer;
   // The shared harness's DA policy remains a test transport boundary. The
   // state-queue spend, merge yield and settlement mint below are real scripts.
@@ -86,7 +88,7 @@ export const publishOldestQueueHeaderDa = async (h: QueueSettlementSubject) => {
             ),
           },
         },
-        SDK.StateQueueSpendRedeemer,
+        SDKStateQueue.StateQueueSpendRedeemer,
       )) satisfies BuildTxWithRedeemer)
     .pay.ToContract(
       pair.link.utxo.address,
@@ -160,7 +162,7 @@ export const buildOldestQueueHeaderMerge = async (
   );
   h.emulator.awaitSlot(604_900);
   const pair = await Effect.runPromise(
-    SDK.fetchConfirmedStateAndItsLinkProgram(h.funderLucid, config),
+    SDKStateQueue.fetchConfirmedStateAndItsLinkProgram(h.funderLucid, config),
   );
   const firstBlockUTxO =
     presentedNode === undefined
@@ -180,7 +182,7 @@ export const buildOldestQueueHeaderMerge = async (
         };
   const merged = await Effect.runPromise(
     Effect.either(
-      SDK.buildMergeToConfirmedStateTxProgram({
+      SDKStateQueue.buildMergeToConfirmedStateTxProgram({
         lucid: h.funderLucid,
         fetchConfig: config,
         contracts: h.contracts,

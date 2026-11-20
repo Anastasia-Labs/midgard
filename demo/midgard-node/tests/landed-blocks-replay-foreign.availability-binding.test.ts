@@ -10,7 +10,8 @@
  * later; the block's verdict stays as it was.
  */
 import type { FactStore } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data } from "@lucid-evolution/lucid";
 import { Clock, Effect, Option } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -98,7 +99,7 @@ const setup = async (options: { forcedOrder?: boolean } = {}) => {
     availability: () => AVAILABILITY,
   });
   const run = async (
-    block: SDK.DaPayload,
+    block: SDKDa.DaPayload,
     status: SDK.DaAvailabilityStateQueueStatus,
   ) =>
     inNode(
@@ -113,24 +114,24 @@ const setup = async (options: { forcedOrder?: boolean } = {}) => {
 
 /** `block`'s body with `alter` applied, under the block's own header. */
 const tampered = (
-  block: SDK.DaPayload,
-  alter: Partial<SDK.DaPayload["block_body"]>,
-): SDK.DaPayload => ({
+  block: SDKDa.DaPayload,
+  alter: Partial<SDKDa.DaPayload["block_body"]>,
+): SDKDa.DaPayload => ({
   ...block,
   block_body: { ...block.block_body, ...alter },
 });
 
 /** The forced block without its validation descriptor (counted 0). */
-const undescribed = (block: SDK.DaPayload) =>
+const undescribed = (block: SDKDa.DaPayload) =>
   tampered(block, {
     validation_traces: [],
     counts: { ...block.block_body.counts, validationTraceCount: 0n },
   });
 
 /** The forced block's committed entry over another transaction's preimage. */
-const otherPreimage = (block: SDK.DaPayload) => {
+const otherPreimage = (block: SDKDa.DaPayload) => {
   const [[key]] = block.block_body.forced_transaction_preimages as [
-    SDK.DaPayloadEntry,
+    SDKDa.DaPayloadEntry,
   ];
   return tampered(block, {
     forced_transaction_preimages: [
@@ -139,14 +140,14 @@ const otherPreimage = (block: SDK.DaPayload) => {
   });
 };
 
-const retainedBytes = async (block: SDK.DaPayload) => {
+const retainedBytes = async (block: SDKDa.DaPayload) => {
   const row = await retained(block);
   return Option.isSome(row) ? row.value.payload_cbor : undefined;
 };
 
 /** The landed queue at one node: `block`'s, carrying `status`. */
 const queueOf = (
-  block: SDK.DaPayload,
+  block: SDKDa.DaPayload,
   status: SDK.DaAvailabilityStateQueueStatus,
 ) => {
   const { header, header_hash: headerHash } = block.block_body;
@@ -172,7 +173,7 @@ const queueOf = (
 };
 
 /** Records `block` as a processed foreign landed block. */
-const landed = (block: SDK.DaPayload) => {
+const landed = (block: SDKDa.DaPayload) => {
   const { header, header_hash: headerHash } = block.block_body;
   return inNode(
     insertRow({

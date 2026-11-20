@@ -1,15 +1,17 @@
 import { encodeMidgardFieldPreimage } from "@al-ft/midgard-core";
 import {
-  fieldOpeningForField,
-  FraudProofComputationThreadRedeemer,
-  FraudProofTokenDatum,
-  FraudProofTokenMintRedeemer,
   requireInputIndex,
   requireMintRedeemerIndex,
   requireOwnMintPurpose,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  fieldOpeningForField,
+  FraudProofComputationThreadRedeemer,
+  FraudProofTokenDatum,
+  FraudProofTokenMintRedeemer,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { type BuildTxWithRedeemer, Data, toUnit } from "@lucid-evolution/lucid";
 
 import { requireLinearFaultThreadUtxo } from "../../src/linear-fault-family.js";

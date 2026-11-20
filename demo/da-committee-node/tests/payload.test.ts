@@ -2,7 +2,9 @@ import "@al-ft/midgard-core/cek-proof";
 import "@al-ft/midgard-core/cek-semantic";
 import "@al-ft/midgard-core/codec";
 import "@al-ft/midgard-core/da-payload-envelope";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/da";
 import "@lucid-evolution/lucid";
 import "vitest";
 import "../src/da/payload.js";
@@ -11,7 +13,9 @@ import "./payload.payload-with-script-witnesses.js";
 
 import { encodeCbor } from "@al-ft/midgard-core/codec";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -42,8 +46,8 @@ describe("canonical V1 DA payload verification", () => {
       validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
       validationTraceCount: 0n,
     };
-    const headerHash = SDK.stateQueueHeaderHash(header);
-    const payload: SDK.DaPayload = {
+    const headerHash = SDKStateQueue.stateQueueHeaderHash(header);
+    const payload: SDKDa.DaPayload = {
       ...unhashed,
       block_body: {
         ...unhashed.block_body,
@@ -52,7 +56,7 @@ describe("canonical V1 DA payload verification", () => {
       },
     };
     const verified = await verifyDaPayloadAgainstHeader(
-      await wrapDaPayload(SDK.encodeDaPayload(payload), { mode: "identity" }),
+      await wrapDaPayload(SDKDa.encodeDaPayload(payload), { mode: "identity" }),
       headerHash,
       header,
       {
@@ -70,7 +74,7 @@ describe("canonical V1 DA payload verification", () => {
     const fixture = await makePayloadFixture();
     expect(() =>
       decodeDaPayloadStrict(
-        SDK.encodeDaPayload({
+        SDKDa.encodeDaPayload({
           ...fixture.payload,
           block_body: {
             ...fixture.payload.block_body,
@@ -157,7 +161,7 @@ describe("canonical V1 DA payload verification", () => {
       },
     });
     expect(verified.payloadSha256).toBe(
-      SDK.daPayloadHashHex(fixture.payloadCbor),
+      SDKDa.daPayloadHashHex(fixture.payloadCbor),
     );
   });
 
@@ -287,7 +291,7 @@ describe("canonical V1 DA payload verification", () => {
 
   it("rejects transaction preimage coverage gaps before attestation", () => {
     return makePayloadFixture().then((fixture) => {
-      const malformed = SDK.encodeDaPayload({
+      const malformed = SDKDa.encodeDaPayload({
         ...fixture.payload,
         block_body: {
           ...fixture.payload.block_body,
@@ -310,8 +314,8 @@ describe("canonical V1 DA payload verification", () => {
       ...fixture.header,
       transactionsRoot: "ab".repeat(32),
     };
-    const headerHash = SDK.stateQueueHeaderHash(header);
-    const inner = SDK.encodeDaPayload({
+    const headerHash = SDKStateQueue.stateQueueHeaderHash(header);
+    const inner = SDKDa.encodeDaPayload({
       ...fixture.payload,
       block_body: {
         ...fixture.payload.block_body,
@@ -357,7 +361,7 @@ describe("canonical V1 DA payload verification", () => {
     if (firstTransaction === undefined) {
       throw new Error("canonical fixture must contain a transaction");
     }
-    const inner = SDK.encodeDaPayload({
+    const inner = SDKDa.encodeDaPayload({
       ...fixture.payload,
       block_body: {
         ...fixture.payload.block_body,
@@ -382,7 +386,7 @@ describe("canonical V1 DA payload verification", () => {
 
   it("rejects missing transition and validation trace evidence", () => {
     return makePayloadFixture().then((fixture) => {
-      const missingTransition = SDK.encodeDaPayload({
+      const missingTransition = SDKDa.encodeDaPayload({
         ...fixture.payload,
         block_body: {
           ...fixture.payload.block_body,
@@ -390,7 +394,7 @@ describe("canonical V1 DA payload verification", () => {
             fixture.payload.block_body.transition_trace.slice(1),
         },
       });
-      const missingValidation = SDK.encodeDaPayload({
+      const missingValidation = SDKDa.encodeDaPayload({
         ...fixture.payload,
         block_body: {
           ...fixture.payload.block_body,

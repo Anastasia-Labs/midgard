@@ -3,7 +3,7 @@ import {
   deriveMidgardNativeTxWitnessSetCompact,
   encodeMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core";
-import { COMMITTED_FIELD_SHAPE_VIOLATION_ID } from "@al-ft/midgard-sdk";
+import { COMMITTED_FIELD_SHAPE_VIOLATION_ID } from "@al-ft/midgard-sdk/fraud-proof";
 
 import {
   prepareCommittedFieldShapeFromCanonicalTx,

@@ -2,7 +2,7 @@ import {
   encodeMidgardNativeTxCanonical,
   outRefLabel,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { describe, expect, it } from "vitest";
 
 import { prepareMinFeeFromTransactions } from "../src/prepare-min-fee.js";

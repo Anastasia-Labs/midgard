@@ -1,4 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { type Assets, Data as LucidData, toUnit } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 

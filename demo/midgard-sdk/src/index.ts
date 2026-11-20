@@ -1,54 +1,26 @@
-export * from "./active-operators.js";
-export * from "./availability-challenge.js";
-export * from "./availability-challenge-operation.js";
-export * from "./availability-challenge-transactions.js";
-export * from "./bounty-routing.js";
-export * from "./canonical-plutus-data-stream.js";
-export * from "./cardano-addresses.js";
-export * from "./cbor.js";
-export * from "./common.js";
-export * from "./correction-lock.js";
-export * from "./da-attestation.js";
-export * from "./da-availability-payload-binding.js";
-export * from "./da-availability-state.js";
-export * from "./da-bond-pool.js";
-export * from "./da-bond-pool-quorum.js";
-export * from "./da-bond-pool-transactions.js";
-export * from "./da-payload.js";
-export * from "./deployment-manifest-validators.js";
-export * from "./deployment-members.js";
-export * from "./escape-hatch.js";
+/**
+ * `@al-ft/midgard-sdk`: every layer of the SDK. Workspace code imports the
+ * layer it needs (`@al-ft/midgard-sdk/core`, `/state-queue`, `/da`,
+ * `/operators`, `/users`, `/deployment`, `/fraud-proof`); each layer imports
+ * only the layers below it, and this root re-exports all of them.
+ *
+ * The layers are listed lowest first, one per comment so the export sort
+ * keeps that order: `core` also carries the fault-proof contract-identity
+ * modules that `/fraud-proof` re-exports, and a test that stubs one of those
+ * names on `core` must see its stub through this root as well, which the
+ * test runner's `export *` gives only to the first layer listing the name.
+ */
+// Layer 0.
+export * from "./layers/core.js";
+// Layer 1, over core.
+export * from "./layers/state-queue.js";
+// Layer 2, over state-queue.
+export * from "./layers/da.js";
+// Layer 2, over state-queue.
+export * from "./layers/operators.js";
+// Layer 2, over state-queue.
+export * from "./layers/users.js";
+// Layer 3, over da.
+export * from "./layers/deployment.js";
+// Layer 4, over deployment.
 export * from "./fraud-proof/index.js";
-export * from "./hub-oracle.js";
-export * from "./initialization.js";
-export * from "./ledger-constants.js";
-export * from "./ledger-state.js";
-export * from "./linked-list.js";
-export * from "./native-tx-field-access.js";
-export * from "./operator-lifecycle.js";
-export * from "./payout.js";
-export * from "./phas-membership.js";
-export * from "./protocol-contracts.js";
-export * from "./protocol-parameters.js";
-export * from "./reference-scripts.js";
-export * from "./registered-operators.js";
-export * from "./rejection-reason.js";
-export * from "./reserve.js";
-export * from "./reserve-payout.js";
-export * from "./retired-operators.js";
-export * from "./scheduler.js";
-export * from "./scheduler-refresh.js";
-export * from "./script-decode.js";
-export * from "./settlement.js";
-export * from "./state-queue.js";
-export * from "./state-queue-authenticated-replay-checkpoint.js";
-export * from "./state-queue-contracts.js";
-export * from "./state-queue-correction-transition.js";
-export * from "./state-queue-transactions.js";
-export * from "./transition-trace.js";
-export * from "./tx-context-redeemer.js";
-export * from "./user-events/index.js";
-export * from "./validity-range.js";
-export * from "./withdrawal-signature.js";
-export * from "./withdrawal-validation.js";
-export * from "./withdrawal-value.js";

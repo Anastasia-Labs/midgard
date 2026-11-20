@@ -1,4 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { describe, expect, it, vi } from "vitest";
 
 import { availabilityParametersFromConfig } from "../src/availability/factory.availability-responder-operations.js";

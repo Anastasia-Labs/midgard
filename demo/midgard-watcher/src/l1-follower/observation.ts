@@ -1,6 +1,6 @@
 import { computeFraudProofRawL1PointId } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
 import type { FactStore, SqlRow, SqlTx } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 
 import {

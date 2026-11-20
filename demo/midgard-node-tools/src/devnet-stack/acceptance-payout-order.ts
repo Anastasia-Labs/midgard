@@ -1,6 +1,6 @@
 import { assetsEqual } from "@al-ft/midgard-core/assets";
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/users";
 import { Data } from "@lucid-evolution/lucid";
 
 import { decodeAcceptanceCanonicalTransaction } from "./acceptance-payout-transaction.js";

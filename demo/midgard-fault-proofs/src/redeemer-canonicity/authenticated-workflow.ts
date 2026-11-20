@@ -8,7 +8,7 @@ import {
   acceptedVerdictSubject,
   forcedVerdictSubject,
   type VerdictSubject,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { claimedFieldItems } from "../evidence/claimed-coordinate.js";

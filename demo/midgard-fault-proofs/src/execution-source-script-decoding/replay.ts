@@ -2,7 +2,8 @@
  * rejection recorded with a native script decoding arm is planned through the
  * prover's verdict. A leaf whose bytes the replay cannot open, or whose
  * inputs have no predecessor descriptor, yields no finding. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 
 import { directPurposeArtifactFamily } from "../direct-purpose-family/artifact-family.js";
 import {
@@ -34,7 +35,9 @@ export type ExecutionSourceScriptDecodingCoordinate =
 const recordedArm = (verdict: SDK.OperatorVerdict | undefined) => {
   if (verdict === undefined || verdict === "ForcedTxValid") return null;
   const arm = SDK.rejectionReasonArmOf(verdict.ForcedTxInvalid.reason);
-  return SDK.EXECUTION_SOURCE_SCRIPT_DECODING_ARMS.includes(arm) ? arm : null;
+  return SDKFraudProof.EXECUTION_SOURCE_SCRIPT_DECODING_ARMS.includes(arm)
+    ? arm
+    : null;
 };
 
 /** `<violation id>:<source kind>:<source index>`. */

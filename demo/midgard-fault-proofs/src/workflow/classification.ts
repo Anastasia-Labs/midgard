@@ -1,4 +1,5 @@
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "../evidence/canonical-block-evidence.js";
 import "../invalid-signature/wrongful-rejection.js";
 import "./detection-subject.js";

@@ -8,7 +8,8 @@
  * yield that verifies the item by its kind invoked beside it) and awards
  * the step. */
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { Constr, Data } from "@lucid-evolution/lucid";
 
 import { NO_AUXILIARY_WITNESS_CBOR } from "./one-step-canonical-decode.js";
@@ -62,9 +63,9 @@ type Chain = Pick<
 /** The validator of each phase holder on `chain`. */
 export const phaseValidators = (
   chain: Chain,
-): Readonly<Record<ValidationTracePhaseHolder, SDK.SpendingValidator>> => {
+): Readonly<Record<ValidationTracePhaseHolder, SDKCore.SpendingValidator>> => {
   const validators: Partial<
-    Record<ValidationTracePhaseHolder, SDK.SpendingValidator>
+    Record<ValidationTracePhaseHolder, SDKCore.SpendingValidator>
   > = {};
   for (const [phase, { resolverIndex, prepare, semantics }] of Object.entries(
     PHASE_RESOLUTIONS,
@@ -86,7 +87,7 @@ export const phaseValidators = (
     });
   }
   return Object.freeze(
-    validators as Record<ValidationTracePhaseHolder, SDK.SpendingValidator>,
+    validators as Record<ValidationTracePhaseHolder, SDKCore.SpendingValidator>,
   );
 };
 

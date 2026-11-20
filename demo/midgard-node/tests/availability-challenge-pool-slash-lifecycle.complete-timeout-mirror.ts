@@ -1,4 +1,6 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   type BuildTxWithRedeemer,
   Data,
@@ -67,7 +69,7 @@ const removeHead =
           },
         },
       },
-      SDK.StateQueueRedeemer,
+      SDKStateQueue.StateQueueRedeemer,
     );
 
 /** The pool's `Slash` beside the head removal: the pool continues at 3. */
@@ -86,7 +88,7 @@ const slash =
           output_index: 3n,
         },
       },
-      SDK.DaBondPoolSpendRedeemer,
+      SDKDa.DaBondPoolSpendRedeemer,
     );
 
 /**
@@ -100,7 +102,7 @@ const slash =
  */
 export const buildTimeoutMirror = (
   f: AvailabilityFixture,
-  s: SDK.DaAvailabilityChallengeSnapshot,
+  s: SDKDa.DaAvailabilityChallengeSnapshot,
   terminal: UTxO,
   arithmetic: MirrorArithmetic,
 ): TxBuilder => {
@@ -127,7 +129,7 @@ export const buildTimeoutMirror = (
   const coordinate = (ctx: RedeemerContext) =>
     Data.to(
       { Coordinate: { mint_redeemer_index: mintAt(ctx, ap) } },
-      SDK.DaAvailabilitySpendRedeemer,
+      SDKDa.DaAvailabilitySpendRedeemer,
     );
   let tx = f.lucid
     .newTx()
@@ -136,7 +138,7 @@ export const buildTimeoutMirror = (
     .collectFrom([record, terminal], coordinate)
     .collectFrom(
       [queue, root],
-      Data.to("LinkedListMutation", SDK.StateQueueSpendRedeemer),
+      Data.to("LinkedListMutation", SDKStateQueue.StateQueueSpendRedeemer),
     )
     .collectFrom([lock], correct(f))
     .readFrom(references)
@@ -144,7 +146,7 @@ export const buildTimeoutMirror = (
       {
         [ap + challengeAssetName]: -1n,
         [ap +
-        SDK.daAvailabilityTerminalAccumulatorAssetName(challengeAssetName)]:
+        SDKDa.daAvailabilityTerminalAccumulatorAssetName(challengeAssetName)]:
           -1n,
       },
       (ctx) =>
@@ -165,7 +167,7 @@ export const buildTimeoutMirror = (
               challenger_refund_output_index: 2n,
             },
           },
-          SDK.DaAvailabilityMintRedeemer,
+          SDKDa.DaAvailabilityMintRedeemer,
         ),
     )
     .mintAssets({ [f.queueUnit]: -1n }, removeHead(f, challengeAssetName, root))
@@ -207,7 +209,7 @@ export const buildTimeoutMirror = (
  */
 export const completeTimeoutMirror = (
   f: AvailabilityFixture,
-  s: SDK.DaAvailabilityChallengeSnapshot,
+  s: SDKDa.DaAvailabilityChallengeSnapshot,
   terminal: UTxO,
   arithmetic: MirrorArithmetic & { readonly feeLovelace: bigint },
 ): ReturnType<TxBuilder["complete"]> =>
@@ -224,7 +226,7 @@ export const completeTimeoutMirror = (
  */
 export const buildLockedHeadResume = (
   f: AvailabilityFixture,
-  s: SDK.DaAvailabilityChallengeSnapshot,
+  s: SDKDa.DaAvailabilityChallengeSnapshot,
   challengeAssetName: string,
   feeFunding: UTxO,
   pool?: UTxO,
@@ -248,7 +250,7 @@ export const buildLockedHeadResume = (
     .collectFrom([feeFunding])
     .collectFrom(
       [queue, root],
-      Data.to("LinkedListMutation", SDK.StateQueueSpendRedeemer),
+      Data.to("LinkedListMutation", SDKStateQueue.StateQueueSpendRedeemer),
     )
     .collectFrom([lock], correct(f))
     .readFrom(references)
@@ -270,7 +272,7 @@ export const buildLockedHeadResume = (
     )
     .pay.ToAddress(f.responder.address, { lovelace: queue.assets.lovelace });
   if (pool) {
-    const { poolOutputLovelace } = SDK.planDaBondPoolSlash({
+    const { poolOutputLovelace } = SDKDa.planDaBondPoolSlash({
       poolLovelace: pool.assets.lovelace,
       parameters,
     });

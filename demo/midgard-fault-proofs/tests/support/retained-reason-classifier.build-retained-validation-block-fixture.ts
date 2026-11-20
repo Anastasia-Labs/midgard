@@ -1,10 +1,7 @@
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import {
-  type DaPayload,
-  type DaPayloadEntry,
-  encodeDaPayload,
   type EventKey,
   EventKeySchema,
   hashBlockHeader,
@@ -12,7 +9,13 @@ import {
   ROOT_DOMAINS,
   TransitionStep,
   ValidationTraceDescriptorSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import {
+  type DaPayload,
+  type DaPayloadEntry,
+  encodeDaPayload,
+} from "@al-ft/midgard-sdk/da";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import {
   placeholderValidationTraceDescriptorV1,
@@ -69,7 +72,7 @@ export const placeholderValidationTraceEntries = ({
         key: eventKeyCbor,
         value: Buffer.from(
           Data.to(
-            SDK.validationTraceDescriptorDataFromCore(descriptor),
+            SDKDa.validationTraceDescriptorDataFromCore(descriptor),
             asLucidSchema(ValidationTraceDescriptorSchema),
           ),
           "hex",

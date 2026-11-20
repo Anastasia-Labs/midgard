@@ -13,7 +13,7 @@ import {
   decodeMidgardForcedTxFullFromCanonicalCbor,
   decodeMidgardNativeTxFullFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
-import { decodeTxOrderDatumCbor } from "@al-ft/midgard-sdk";
+import { decodeTxOrderDatumCbor } from "@al-ft/midgard-sdk/users";
 import { Constr, Data, getAddressDetails } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 

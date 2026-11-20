@@ -6,7 +6,7 @@ import {
   MissingSignatureStep02Datum,
   MissingSignatureStep03Datum,
   MissingSignatureStep04Datum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { MissingSignatureContracts } from "../missing-signature/contracts.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";

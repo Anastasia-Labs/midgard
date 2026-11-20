@@ -1,4 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Effect } from "effect";
 
 import { PendingBlockFinalizationsDB } from "../src/database/index.js";

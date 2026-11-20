@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 export const DOUBLE_WITHDRAW_EVIDENCE_SCHEMA_VERSION =
@@ -78,8 +79,10 @@ export const decodeLeaf = (
     );
   }
   if (
-    SDK.committedWithdrawalKeyBytes(withdrawalId) !== withdrawalIdCbor ||
-    SDK.committedWithdrawalValueBytes(withdrawalInfo) !== withdrawalInfoCbor
+    SDKFraudProof.committedWithdrawalKeyBytes(withdrawalId) !==
+      withdrawalIdCbor ||
+    SDKFraudProof.committedWithdrawalValueBytes(withdrawalInfo) !==
+      withdrawalInfoCbor
   ) {
     throw new DoubleWithdrawRejection(
       "non_canonical_withdrawal_leaf",
@@ -104,7 +107,7 @@ export type PreparedDoubleWithdrawInclusion = {
 
 export type PreparedDoubleWithdrawOutput = {
   readonly schemaVersion: typeof DOUBLE_WITHDRAW_EVIDENCE_SCHEMA_VERSION;
-  readonly violationId: typeof SDK.DOUBLE_WITHDRAW_VIOLATION_ID;
+  readonly violationId: typeof SDKFraudProof.DOUBLE_WITHDRAW_VIOLATION_ID;
   readonly headerHash: string;
   readonly withdrawalCount: number;
   readonly withdrawalsPhasRoot: string;
@@ -114,7 +117,7 @@ export type PreparedDoubleWithdrawOutput = {
   readonly secondLeaf: DoubleWithdrawCommittedLeaf;
   readonly firstInclusion: PreparedDoubleWithdrawInclusion;
   readonly secondInclusion: PreparedDoubleWithdrawInclusion;
-  readonly step02State: SDK.DoubleWithdrawStep02State;
+  readonly step02State: SDKFraudProof.DoubleWithdrawStep02State;
   readonly files?: {
     readonly firstInclusionPath: string;
     readonly secondInclusionPath: string;
@@ -160,13 +163,13 @@ export const requireSelectedPair = ({
         "the selected withdrawal identities are equal",
       );
     }
-    if (!SDK.isPayableWithdrawalLeaf(first.withdrawalInfo)) {
+    if (!SDKFraudProof.isPayableWithdrawalLeaf(first.withdrawalInfo)) {
       throw new DoubleWithdrawRejection(
         "first_leaf_not_payable",
         "the selected first leaf is not WithdrawalIsValid",
       );
     }
-    if (!SDK.isPayableWithdrawalLeaf(second.withdrawalInfo)) {
+    if (!SDKFraudProof.isPayableWithdrawalLeaf(second.withdrawalInfo)) {
       throw new DoubleWithdrawRejection(
         "second_leaf_not_payable",
         "the selected second leaf is not WithdrawalIsValid",
@@ -188,11 +191,11 @@ export const requireSelectedPair = ({
 
   for (let left = 0; left < leaves.length; left += 1) {
     const first = leaves[left]!;
-    if (!SDK.isPayableWithdrawalLeaf(first.withdrawalInfo)) continue;
+    if (!SDKFraudProof.isPayableWithdrawalLeaf(first.withdrawalInfo)) continue;
     for (let right = left + 1; right < leaves.length; right += 1) {
       const second = leaves[right]!;
       if (
-        SDK.isPayableWithdrawalLeaf(second.withdrawalInfo) &&
+        SDKFraudProof.isPayableWithdrawalLeaf(second.withdrawalInfo) &&
         !sameOutRef(first.withdrawalId, second.withdrawalId) &&
         sameOutRef(
           first.withdrawalInfo.body.l2_outref,

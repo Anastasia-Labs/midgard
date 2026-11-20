@@ -19,7 +19,7 @@ import {
   MIDGARD_FIELD_SHAPE_VERDICT_NOT_AN_ENVELOPE,
   MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE,
   midgardCommittedFieldShapeVerdict,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

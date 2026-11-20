@@ -1,6 +1,7 @@
 import { outRefToCbor } from "@al-ft/lucid-midgard";
 import { ledgerTipBackdatedValidFromMs } from "@al-ft/midgard-core/ogmios-slot";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { TxSubmitError, UTxO, utxoToCore } from "@lucid-evolution/lucid";
 import { Data, Effect } from "effect";
 
@@ -147,7 +148,7 @@ export const submitGenesisDeposits: Effect.Effect<
         cause,
       }),
   );
-  const validTo = SDK.resolveUserEventValidTo(lucid.api);
+  const validTo = SDKUsers.resolveUserEventValidTo(lucid.api);
   const validity = {
     validFrom: ledgerTipBackdatedValidFromMs({
       lucid: lucid.api,
@@ -158,35 +159,36 @@ export const submitGenesisDeposits: Effect.Effect<
     validTo,
   };
   // Hard-coded 10 ADA deposit.
-  const { tx, metadata } = yield* SDK.buildUnsignedDepositTxWithMetadataProgram(
-    lucid.api,
-    contracts,
-    {
-      l2Address: config.GENESIS_UTXOS[0].address,
-      l2Datum: null,
-      lovelace: 10_000_000n,
-      additionalAssets: {},
-      walletInputs,
-      validity,
-    },
-  ).pipe(
-    Effect.catchTags({
-      UserEventBuildError: (error) =>
-        Effect.fail(
-          new GenesisDepositError({
-            message: error.message,
-            cause: error.cause,
-          }),
-        ),
-      InvalidUtxoError: (error) =>
-        Effect.fail(
-          new GenesisDepositError({
-            message: error.message,
-            cause: error,
-          }),
-        ),
-    }),
-  );
+  const { tx, metadata } =
+    yield* SDKUsers.buildUnsignedDepositTxWithMetadataProgram(
+      lucid.api,
+      contracts,
+      {
+        l2Address: config.GENESIS_UTXOS[0].address,
+        l2Datum: null,
+        lovelace: 10_000_000n,
+        additionalAssets: {},
+        walletInputs,
+        validity,
+      },
+    ).pipe(
+      Effect.catchTags({
+        UserEventBuildError: (error) =>
+          Effect.fail(
+            new GenesisDepositError({
+              message: error.message,
+              cause: error.cause,
+            }),
+          ),
+        InvalidUtxoError: (error) =>
+          Effect.fail(
+            new GenesisDepositError({
+              message: error.message,
+              cause: error,
+            }),
+          ),
+      }),
+    );
   yield* handleSignSubmit(
     lucid.api,
     tx,

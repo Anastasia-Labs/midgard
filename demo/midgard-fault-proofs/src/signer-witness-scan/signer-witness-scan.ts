@@ -3,7 +3,7 @@ import {
   missingSignatureFieldWalkCheckpoint,
   missingSignatureVkeyHash,
   verifyAddressWitness,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 /** Witnesses one scan transaction visits at most; mirrors the shared scan
  * validator's `witness_scan_batch_size`. */

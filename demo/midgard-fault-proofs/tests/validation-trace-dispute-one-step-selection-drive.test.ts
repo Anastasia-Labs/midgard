@@ -11,7 +11,8 @@
  * names an output that only looks like the record. */
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
   CML,
   Constr,
@@ -300,7 +301,7 @@ describe("validation-trace dispute runner: driving a thread at a CEK script sele
       redeemer: (inputIndex, outputIndex, context) => {
         const redeemer = Data.from(
           honest.redeemer(inputIndex, outputIndex, context),
-          SDK.ValidationCekExecutionSelectionSpendRedeemer,
+          SDKDa.ValidationCekExecutionSelectionSpendRedeemer,
         );
         if (!("Continue" in redeemer)) throw new Error("not a Continue");
         const [action] = redeemer.Continue;
@@ -317,7 +318,7 @@ describe("validation-trace dispute runner: driving a thread at a CEK script sele
               },
             ],
           },
-          SDK.ValidationCekExecutionSelectionSpendRedeemer,
+          SDKDa.ValidationCekExecutionSelectionSpendRedeemer,
         );
       },
     };

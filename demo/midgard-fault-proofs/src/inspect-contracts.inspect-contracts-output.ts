@@ -7,7 +7,7 @@ import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueCategoryName,
   type FraudProofCatalogueDeploymentInfo,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import { Network, type Script } from "@lucid-evolution/lucid";
 
 export type ContractDeploymentInfoEntry = {

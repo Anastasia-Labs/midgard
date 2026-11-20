@@ -3,7 +3,7 @@ import {
   encodeMidgardTxOutputCanonical,
   INPUT_NO_IDX_VIOLATION_ID,
   MIDGARD_FIELD_INDEX,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 import type { FaultProofFieldGrammarDeployment } from "../field-grammar-certificate.js";

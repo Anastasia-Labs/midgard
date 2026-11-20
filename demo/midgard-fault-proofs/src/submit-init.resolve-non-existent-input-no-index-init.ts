@@ -1,5 +1,5 @@
 import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
-import { type FraudProofCatalogueCategoryDeploymentInfo } from "@al-ft/midgard-sdk";
+import { type FraudProofCatalogueCategoryDeploymentInfo } from "@al-ft/midgard-sdk/core";
 import {
   Data,
   type LucidEvolution,

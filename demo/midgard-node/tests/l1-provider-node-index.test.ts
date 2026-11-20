@@ -21,7 +21,7 @@ import {
   SimChain,
   simUniverse,
 } from "@al-ft/midgard-l1-follower/testing";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import {
   CML,
   generateSeedPhrase,

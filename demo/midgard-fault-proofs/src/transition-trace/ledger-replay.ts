@@ -4,7 +4,8 @@ import {
   decodeMidgardSpendInputItem,
   parseMidgardMpfProofJson,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -44,7 +45,7 @@ export const createTransitionTraceLedgerReplay = async ({
   return Object.freeze({
     root,
     has: (key: Buffer): boolean => values.has(key.toString("hex")),
-    async delete(key: Buffer): Promise<SDK.LedgerDeleteWitness> {
+    async delete(key: Buffer): Promise<SDKFraudProof.LedgerDeleteWitness> {
       decodeMidgardSpendInputItem(key);
       const value = values.get(key.toString("hex"));
       if (value === undefined)
@@ -67,7 +68,7 @@ export const createTransitionTraceLedgerReplay = async ({
     async insert(
       key: Buffer,
       output: Buffer,
-    ): Promise<SDK.LedgerInsertWitness> {
+    ): Promise<SDKFraudProof.LedgerInsertWitness> {
       decodeMidgardSpendInputItem(key);
       if (values.has(key.toString("hex")))
         throw new Error("Transition replay cannot replace an existing output");

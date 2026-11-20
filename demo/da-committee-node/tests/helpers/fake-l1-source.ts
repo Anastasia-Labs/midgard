@@ -1,5 +1,5 @@
 import { type DepthParameters, isFinal } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 
 import type { ObservedStateQueueNode } from "../../src/domain.js";
 import type {

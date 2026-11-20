@@ -1,5 +1,7 @@
 import { encodeMidgardNativeTxWitnessSetCompact } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   type BuildTxWithRedeemer,
   Data,
@@ -79,23 +81,26 @@ export const publishMissingSignatureField07Certificate = async ({
     ),
   }).toString("hex");
   const unsigned = await Effect.runPromise(
-    SDK.buildUnsignedFieldPreimageCertificationProgram(harness.proverLucid, {
-      sourceKind: 0n,
-      plan: planned.plan,
-      certificatePolicyId: certificate.policyId,
-      certificateAddress: certificate.spendingScriptAddress,
-      certificatePolicyReferenceUtxo: (
-        await publishPlainReferenceScriptUtxo({
-          lucid: harness.funderLucid,
-          script: certificate.mintingScript,
-          label: "missing-signature field certificate",
-        })
-      ).utxo,
-      chunkUtxos,
-      compactCbor: scenario.block.nativeTxCompactCbor,
-      witnessSetCompactCbor,
-      validTo: walletOnlyValidTo(harness.proverLucid),
-    }),
+    SDKStateQueue.buildUnsignedFieldPreimageCertificationProgram(
+      harness.proverLucid,
+      {
+        sourceKind: 0n,
+        plan: planned.plan,
+        certificatePolicyId: certificate.policyId,
+        certificateAddress: certificate.spendingScriptAddress,
+        certificatePolicyReferenceUtxo: (
+          await publishPlainReferenceScriptUtxo({
+            lucid: harness.funderLucid,
+            script: certificate.mintingScript,
+            label: "missing-signature field certificate",
+          })
+        ).utxo,
+        chunkUtxos,
+        compactCbor: scenario.block.nativeTxCompactCbor,
+        witnessSetCompactCbor,
+        validTo: walletOnlyValidTo(harness.proverLucid),
+      },
+    ),
   );
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();
@@ -138,7 +143,7 @@ export const submitRawMissingSignatureStep04 = async ({
   const state = requireMissingSignatureStepState({
     threadUtxo,
     signer: harness.proverSigner,
-    schema: SDK.MissingSignatureStep04Datum,
+    schema: SDKFraudProof.MissingSignatureStep04Datum,
     stepIndex: 3,
   });
   const planned = planMissingSignatureAddressWitnessesOpening({
@@ -185,7 +190,7 @@ export const submitRawMissingSignatureStep04 = async ({
   );
   const proofDatum = Data.to(
     { fraud_prover: harness.proverSigner.paymentKeyHash },
-    SDK.FraudProofTokenDatum,
+    SDKFraudProof.FraudProofTokenDatum,
   );
   const outputMatches = outputWithDatumAndUnitPredicate({
     address: harness.missingSignature.fraudProof.spendingScriptAddress,
@@ -225,7 +230,7 @@ export const submitRawMissingSignatureStep04 = async ({
           },
         ],
       },
-      SDK.MissingSignatureStep04SpendRedeemer,
+      SDKFraudProof.MissingSignatureStep04SpendRedeemer,
     )) satisfies BuildTxWithRedeemer;
   const burn = ((ctx) => {
     SDK.requireOwnMintPurpose(
@@ -235,7 +240,7 @@ export const submitRawMissingSignatureStep04 = async ({
     );
     return Data.to(
       { Success: { burning_token_asset_name: threadToken.assetName } },
-      SDK.FraudProofComputationThreadRedeemer,
+      SDKFraudProof.FraudProofComputationThreadRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
   const mint = ((ctx) =>
@@ -248,7 +253,7 @@ export const submitRawMissingSignatureStep04 = async ({
           "raw missing-signature thread burn",
         ),
       },
-      SDK.FraudProofTokenMintRedeemer,
+      SDKFraudProof.FraudProofTokenMintRedeemer,
     )) satisfies BuildTxWithRedeemer;
   const base = harness.proverLucid
     .newTx()

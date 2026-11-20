@@ -1,6 +1,8 @@
 import { assetsEqual } from "@al-ft/midgard-core/assets";
 import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import type * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   calculateMinLovelaceFromUTxO,
   Data,
@@ -30,7 +32,7 @@ type RedeemerContextLike = {
 };
 
 export type DaAttestationTarget = {
-  readonly stateQueueUtxo: SDK.StateQueueUTxO;
+  readonly stateQueueUtxo: SDKStateQueue.StateQueueUTxO;
   readonly stateQueueNode: SDK.StateQueueNode;
   readonly headerHash: string;
 };
@@ -58,7 +60,7 @@ export const daAttestationInitOutputLovelace = ({
 }: {
   readonly attestationAddress: string;
   readonly attestationUnit: string;
-  readonly attestationDatum: SDK.DaAttestationDatum;
+  readonly attestationDatum: SDKDa.DaAttestationDatum;
   readonly coinsPerUtxoByte: bigint;
 }): bigint =>
   calculateMinLovelaceFromUTxO(coinsPerUtxoByte, {
@@ -71,7 +73,7 @@ export const daAttestationInitOutputLovelace = ({
         ...attestationDatum,
         attestation_count: DA_ATTESTATION_WIDEST_COUNT,
       } as never,
-      SDK.DaAttestationDatum as never,
+      SDKDa.DaAttestationDatum as never,
     ),
   });
 
@@ -93,14 +95,14 @@ export const buildInitDaAttestationTx = async ({
   readonly lucid: LucidEvolution;
   readonly contracts: Pick<DaAttestationValidatorSet, "daAttestation">;
   readonly daParamsUtxo: UTxO;
-  readonly daParamsDatum: SDK.DaParamsDatum;
+  readonly daParamsDatum: SDKDa.DaParamsDatum;
   readonly target: DaAttestationTarget;
   readonly referenceScripts: Pick<
     DaAttestationReferenceScripts,
     "daAttestationMinting" | "stateQueueMinting"
   >;
   readonly rescueBeneficiary: SDK.AddressData;
-  readonly availabilityCommitment: SDK.DaAvailabilityCommitment;
+  readonly availabilityCommitment: SDKDa.DaAvailabilityCommitment;
 }): Promise<TxSignBuilder> => {
   const coinsPerUtxoByte = lucid.config().protocolParameters?.coinsPerUtxoByte;
   if (coinsPerUtxoByte === undefined) {
@@ -110,7 +112,7 @@ export const buildInitDaAttestationTx = async ({
   }
   const attestationOutputLovelace = daAttestationInitOutputLovelace({
     attestationAddress: contracts.daAttestation.spendingScriptAddress,
-    attestationUnit: SDK.daAttestationUnit(
+    attestationUnit: SDKDa.daAttestationUnit(
       contracts.daAttestation,
       target.headerHash,
     ),
@@ -120,14 +122,14 @@ export const buildInitDaAttestationTx = async ({
       da_threshold: daParamsDatum.da_threshold,
       committee_signers_hash: daParamsDatum.committee_signers_hash,
       rescue_beneficiary: rescueBeneficiary,
-      attested_signers: SDK.EMPTY_ATTESTED_SIGNER_BITMAP,
+      attested_signers: SDKDa.EMPTY_ATTESTED_SIGNER_BITMAP,
       attestation_count: 0n,
     },
     coinsPerUtxoByte: BigInt(coinsPerUtxoByte),
   });
   return completeWithLocalUplc(
     await runBuild(
-      SDK.incompleteInitDaAttestationTxProgram(lucid, contracts, {
+      SDKDa.incompleteInitDaAttestationTxProgram(lucid, contracts, {
         daParamsUtxo,
         daParamsDatum,
         target,
@@ -155,7 +157,7 @@ export const buildAddSignaturesTx = async ({
   readonly contracts: DaAttestationValidatorSet;
   readonly daParamsUtxo: UTxO;
   readonly attestationUtxo: UTxO;
-  readonly attestationDatum: SDK.DaAttestationDatum;
+  readonly attestationDatum: SDKDa.DaAttestationDatum;
   readonly packedWitnessesHex: string;
   readonly signerIndexes: readonly number[];
   readonly referenceScripts: DaAttestationReferenceScripts;
@@ -166,7 +168,7 @@ export const buildAddSignaturesTx = async ({
   );
   const encodedUpdatedDatum = Data.to(
     updatedDatum as never,
-    SDK.DaAttestationDatum as never,
+    SDKDa.DaAttestationDatum as never,
   );
   const addSignaturesRedeemer = ((ctx: RedeemerContextLike) =>
     Data.to(
@@ -188,8 +190,8 @@ export const buildAddSignaturesTx = async ({
           ),
           signatures: packedWitnessesHex,
         },
-      } satisfies SDK.DaAttestationSpendRedeemer as never,
-      SDK.DaAttestationSpendRedeemer as never,
+      } satisfies SDKDa.DaAttestationSpendRedeemer as never,
+      SDKDa.DaAttestationSpendRedeemer as never,
     )) as never;
 
   return completeWithLocalUplc(
@@ -234,17 +236,17 @@ export const buildApplyAttestationTx = async ({
   >;
   readonly target: DaAttestationTarget;
   readonly attestationUtxo: UTxO;
-  readonly attestationDatum: SDK.DaAttestationDatum;
+  readonly attestationDatum: SDKDa.DaAttestationDatum;
   readonly daParamsUtxo: UTxO;
-  readonly daParamsDatum: SDK.DaParamsDatum;
+  readonly daParamsDatum: SDKDa.DaParamsDatum;
   readonly referenceScripts: DaAttestationReferenceScripts;
   /** From {@link daAttestationApplyValidityRange}. */
   readonly validityRange: DaAttestationApplyValidityRange;
   /** The deployment's parameters; the pool check reads the bond and floor. */
-  readonly availabilityParameters: SDK.DaAvailabilityParameters;
+  readonly availabilityParameters: SDKDa.DaAvailabilityParameters;
 }): Promise<TxSignBuilder> => {
   const result = await Effect.runPromise(
-    SDK.incompleteApplyDaAttestationToStateQueueTxProgram(lucid, contracts, {
+    SDKDa.incompleteApplyDaAttestationToStateQueueTxProgram(lucid, contracts, {
       daParamsUtxo,
       daParamsDatum,
       target,
@@ -291,7 +293,7 @@ export const daAttestationApplyValidityRange = async ({
   readonly currentTime: bigint;
 }): Promise<DaAttestationApplyValidityRange> => {
   const result = await Effect.runPromise(
-    SDK.daAttestationApplyValidityRangeProgram({
+    SDKDa.daAttestationApplyValidityRangeProgram({
       currentTime,
       blockTime: target.stateQueueNode.block_time,
     }).pipe(Effect.either),
@@ -303,9 +305,9 @@ export const daAttestationApplyValidityRange = async ({
 };
 
 export const addSignaturesToDaAttestationDatum = (
-  attestationDatum: SDK.DaAttestationDatum,
+  attestationDatum: SDKDa.DaAttestationDatum,
   signerIndexes: readonly number[],
-): SDK.DaAttestationDatum => {
+): SDKDa.DaAttestationDatum => {
   if (signerIndexes.length === 0) {
     throw new Error("at least one signer index is required");
   }

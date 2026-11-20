@@ -11,7 +11,8 @@
  * `l1-state-queue-hook.test.ts`.)
  */
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { SqlClient } from "@effect/sql";
 import { credentialToAddress, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { Effect, Either, Fiber, Option, Ref, Schedule } from "effect";
@@ -61,10 +62,14 @@ const utxo = (nonce: number, assetName: string, datum: Buffer): UTxO => ({
 });
 
 const first = simHeader(1, GENESIS);
-const firstHash = SDK.stateQueueHeaderHash(first);
+const firstHash = SDKStateQueue.stateQueueHeaderHash(first);
 const orphan = simHeader(2, GENESIS);
 const healthyQueue = [
-  utxo(1, SDK.STATE_QUEUE_ROOT_ASSET_NAME, rootDatum(GENESIS, firstHash)),
+  utxo(
+    1,
+    SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME,
+    rootDatum(GENESIS, firstHash),
+  ),
   utxo(
     2,
     SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + firstHash,
@@ -75,7 +80,8 @@ const withOrphan = [
   ...healthyQueue,
   utxo(
     3,
-    SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + SDK.stateQueueHeaderHash(orphan),
+    SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX +
+      SDKStateQueue.stateQueueHeaderHash(orphan),
     nodeDatum(orphan, "Unattested", null),
   ),
 ];

@@ -1,6 +1,7 @@
 import "./fabricated-deposit.q39-fabricated-deposit-production-evidence-authority.js";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { credentialToAddress, Data, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -154,9 +155,9 @@ describe("Q39 fabricated-deposit submit-side re-derivation", () => {
     });
     expect(absent.opening).toBe("NoAuthenticContent");
     expect(absent.fault).toBe("NonexistentDepositIdentity");
-    expect(Data.to(absent.step04State, SDK.FabricatedDepositStep04State)).toBe(
-      FI_STEP_04_STATE_CBOR,
-    );
+    expect(
+      Data.to(absent.step04State, SDKFraudProof.FabricatedDepositStep04State),
+    ).toBe(FI_STEP_04_STATE_CBOR);
 
     const present = await deriveFabricatedDepositStep03Handoff({
       state: mmStep03State,
@@ -169,9 +170,9 @@ describe("Q39 fabricated-deposit submit-side re-derivation", () => {
         event_inclusion_time: AUTHENTIC_INCLUSION_TIME,
       },
     });
-    expect(Data.to(present.step04State, SDK.FabricatedDepositStep04State)).toBe(
-      MM_STEP_04_STATE_CBOR,
-    );
+    expect(
+      Data.to(present.step04State, SDKFraudProof.FabricatedDepositStep04State),
+    ).toBe(MM_STEP_04_STATE_CBOR);
   });
 
   it("refuses step-03 openings that do not pair with the verdict or are not the authenticated bytes", async () => {
@@ -198,8 +199,8 @@ describe("Q39 fabricated-deposit submit-side re-derivation", () => {
   });
 
   it("refuses to finalize a misfiled conviction or an unestablished fault", async () => {
-    const established: SDK.FabricatedDepositStep04State =
-      SDK.fabricatedDepositStep04State(mmStep03State, {
+    const established: SDKFraudProof.FabricatedDepositStep04State =
+      SDKFraudProof.fabricatedDepositStep04State(mmStep03State, {
         MismatchedDepositContent: {
           committed_deposit_info_hash: HASH_DIVERTED_DEPOSIT_INFO,
           authentic_deposit_info_hash: HASH_AUTHENTIC_DEPOSIT_INFO,

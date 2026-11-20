@@ -1,5 +1,8 @@
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDeployment from "@al-ft/midgard-sdk/deployment";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { Network } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -60,7 +63,11 @@ export const buildRealRegisteredOperatorsValidator = (
     const blueprint = yield* loadRealBlueprint();
     return yield* Effect.try({
       try: () =>
-        SDK.buildRegisteredOperatorsValidator(blueprint, network, contracts),
+        SDKDeployment.buildRegisteredOperatorsValidator(
+          blueprint,
+          network,
+          contracts,
+        ),
       catch: (cause) =>
         new Error("Failed to build RegisteredOperatorsValidator", { cause }),
     });
@@ -77,7 +84,11 @@ export const buildRealActiveOperatorsValidator = (
     const blueprint = yield* loadRealBlueprint();
     return yield* Effect.try({
       try: () =>
-        SDK.buildActiveOperatorsValidator(blueprint, network, contracts),
+        SDKDeployment.buildActiveOperatorsValidator(
+          blueprint,
+          network,
+          contracts,
+        ),
       catch: (cause) =>
         new Error("Failed to build ActiveOperatorsValidator", { cause }),
     });
@@ -94,7 +105,11 @@ export const buildRealRetiredOperatorsValidator = (
     const blueprint = yield* loadRealBlueprint();
     return yield* Effect.try({
       try: () =>
-        SDK.buildRetiredOperatorsValidator(blueprint, network, contracts),
+        SDKDeployment.buildRetiredOperatorsValidator(
+          blueprint,
+          network,
+          contracts,
+        ),
       catch: (cause) =>
         new Error("Failed to build RetiredOperatorsValidator", { cause }),
     });
@@ -110,7 +125,8 @@ export const buildRealSchedulerValidator = (
   Effect.gen(function* () {
     const blueprint = yield* loadRealBlueprint();
     return yield* Effect.try({
-      try: () => SDK.buildSchedulerValidator(blueprint, network, contracts),
+      try: () =>
+        SDKDeployment.buildSchedulerValidator(blueprint, network, contracts),
       catch: (cause) =>
         new Error("Failed to build SchedulerValidator", { cause }),
     });
@@ -131,7 +147,11 @@ export const buildRealTxOrderContracts = (
     const blueprint = yield* loadRealBlueprint();
     return yield* Effect.try({
       try: () =>
-        SDK.buildTxOrderValidators({ blueprint, network, hubOraclePolicyId }),
+        SDKUsers.buildTxOrderValidators({
+          blueprint,
+          network,
+          hubOraclePolicyId,
+        }),
       catch: (cause) =>
         new Error("Failed to derive tx-order validators", { cause }),
     });
@@ -146,7 +166,7 @@ export const buildRealFieldGrammarCertificateValidator = (
     const blueprint = yield* loadRealBlueprint();
     return yield* Effect.try({
       try: () =>
-        SDK.buildFieldGrammarCertificateValidator({
+        SDKFraudProof.buildFieldGrammarCertificateValidator({
           blueprint,
           network,
           fieldPreimageCertificatePolicyId,
@@ -163,7 +183,8 @@ export const buildRealSettlementValidator = (
   Effect.gen(function* () {
     const blueprint = yield* loadRealBlueprint();
     return yield* Effect.try({
-      try: () => SDK.buildSettlementValidator(blueprint, network, contracts),
+      try: () =>
+        SDKDeployment.buildSettlementValidator(blueprint, network, contracts),
       catch: (cause) =>
         new Error("Failed to build SettlementValidator", { cause }),
     });
@@ -176,7 +197,8 @@ export const buildRealReserveValidator = (
   Effect.gen(function* () {
     const blueprint = yield* loadRealBlueprint();
     return yield* Effect.try({
-      try: () => SDK.buildReserveValidator(blueprint, network, contracts),
+      try: () =>
+        SDKDeployment.buildReserveValidator(blueprint, network, contracts),
       catch: (cause) =>
         new Error("Failed to build ReserveValidator", { cause }),
     });
@@ -189,7 +211,8 @@ export const buildRealPayoutValidator = (
   Effect.gen(function* () {
     const blueprint = yield* loadRealBlueprint();
     return yield* Effect.try({
-      try: () => SDK.buildPayoutValidator(blueprint, network, contracts),
+      try: () =>
+        SDKDeployment.buildPayoutValidator(blueprint, network, contracts),
       catch: (cause) => new Error("Failed to build PayoutValidator", { cause }),
     });
   });

@@ -1,5 +1,6 @@
-import * as SDK from "@al-ft/midgard-sdk";
 import { parseBlueprintAbi } from "@al-ft/midgard-sdk/blueprint-abi";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
@@ -186,14 +187,14 @@ export const renderData = (value: unknown): string => {
  * directly rather than inferred from a hex prefix.
  */
 export const encodedFault = (
-  fault: SDK.TransitionFault,
+  fault: SDKFraudProof.TransitionFault,
 ): {
   readonly cbor: string;
   readonly outerIndex: number;
   readonly witnessIndex: number;
   readonly witnessFields: readonly unknown[];
 } => {
-  const cbor = Data.to(fault, SDK.TransitionFault);
+  const cbor = Data.to(fault, SDKFraudProof.TransitionFault);
   const outer = Data.from(cbor);
   if (!(outer instanceof Constr) || outer.fields.length !== 1) {
     throw new Error(
@@ -229,7 +230,7 @@ export const expectArmMatchesBlueprint = ({
   expectedScalars,
   proof,
 }: {
-  readonly fault: SDK.TransitionFault;
+  readonly fault: SDKFraudProof.TransitionFault;
   readonly outerTitle: string;
   readonly witnessDefinition: string;
   readonly witnessTitle: string;
@@ -305,7 +306,10 @@ export const expectArmMatchesBlueprint = ({
   // The schema must also read back exactly what it wrote; this is a secondary
   // check, not the compatibility oracle above.
   expect(
-    Data.to(Data.from(encoded.cbor, SDK.TransitionFault), SDK.TransitionFault),
+    Data.to(
+      Data.from(encoded.cbor, SDKFraudProof.TransitionFault),
+      SDKFraudProof.TransitionFault,
+    ),
   ).toBe(encoded.cbor);
 };
 
@@ -313,12 +317,12 @@ export const REF_INDEX = `I${EVENT_REF_INPUT_INDEX.toString()}`;
 
 export const ASSET_NAME = `B${EVENT_ASSET_NAME}`;
 
-export const omittedDepositFault = (): SDK.TransitionFault =>
-  SDK.omittedDueL1EventFault({
+export const omittedDepositFault = (): SDKFraudProof.TransitionFault =>
+  SDKFraudProof.omittedDueL1EventFault({
     OmittedDueDeposit: {
       source_non_membership: nonMembership({
         domain: SDK.ROOT_DOMAINS.deposits,
         key: outRef(0n),
-      }) as SDK.DepositSourceNonMembershipProof,
+      }) as SDKFraudProof.DepositSourceNonMembershipProof,
     },
   });

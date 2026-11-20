@@ -14,7 +14,9 @@ import { resolveProverSigner } from "@al-ft/midgard-fault-proofs/runtime";
 import { recordCrossBlockRawEmulator } from "@al-ft/midgard-fault-proofs/test-support/cross-block-raw-emulator";
 import type { FraudProofWorkflowJournalEntry } from "@al-ft/midgard-fault-proofs/workflow/journal";
 import { L1FollowerProvider } from "@al-ft/midgard-l1-follower/provider";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   Data,
   generateEmulatorAccount,
@@ -175,10 +177,10 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
     );
     vi.spyOn(Date, "now").mockImplementation(() => deployment.emulator.now());
     await stage("deposit history admission readiness", async () => {
-      const history = SDK.eventHistoryDeploymentFromContracts(
-        SDK.requireEventHistoryContracts(deployment.contracts).deposit,
+      const history = SDKUsers.eventHistoryDeploymentFromContracts(
+        SDKUsers.requireEventHistoryContracts(deployment.contracts).deposit,
       );
-      const nodes = SDK.authenticateHistoryNodes(
+      const nodes = SDKUsers.authenticateHistoryNodes(
         await deployment.operatorLucid.utxosAt(history.address),
         history,
       );
@@ -675,7 +677,8 @@ it("detects an invalid commitment, confirms correction, and classifies the hones
         completion.proofToken.outRef,
       );
       expect(
-        Data.from(proofs[0]!.datum!, SDK.FraudProofTokenDatum).fraud_prover,
+        Data.from(proofs[0]!.datum!, SDKFraudProof.FraudProofTokenDatum)
+          .fraud_prover,
       ).toBe(prover!.paymentKeyHash);
       expect(
         Object.values(emulator.ledger).filter(

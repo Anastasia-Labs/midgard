@@ -1,6 +1,6 @@
 /** Witness-side reachability through witness_set_hash re-derivation. */
 import { outRefLabel } from "@al-ft/midgard-core";
-import { MIDGARD_ENVELOPE_VERDICT_MISSING_ITEM_HEADER } from "@al-ft/midgard-sdk";
+import { MIDGARD_ENVELOPE_VERDICT_MISSING_ITEM_HEADER } from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import { buildCanonicalDecodabilityInit } from "../src/canonical-decodability/submit-canonical-decodability-init.js";

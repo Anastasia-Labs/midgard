@@ -4,7 +4,8 @@ import {
   midgardAddressFromText,
 } from "@al-ft/midgard-core/codec";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { SqlClient } from "@effect/sql";
 import { CML, Data, walletFromSeed } from "@lucid-evolution/lucid";
 import { Effect, Logger } from "effect";
@@ -151,9 +152,9 @@ export type Produced = Effect.Effect.Success<
 export const payloadOf = async (produced: Produced, baseRoot: string) => {
   const entry = <K extends { readonly keyCbor: Buffer }>(
     member: K & { readonly valueCbor: Buffer },
-  ): SDK.DaPayloadEntry => [hex(member.keyCbor), hex(member.valueCbor)];
+  ): SDKDa.DaPayloadEntry => [hex(member.keyCbor), hex(member.valueCbor)];
   const withdrawals = produced.includedWithdrawalEntries.map(
-    (row): SDK.DaPayloadEntry => [
+    (row): SDKDa.DaPayloadEntry => [
       hex(row[WithdrawalsDB.Columns.ID]),
       hex(row[WithdrawalsDB.Columns.SETTLEMENT_EVENT_INFO]!),
     ],
@@ -167,7 +168,7 @@ export const payloadOf = async (produced: Produced, baseRoot: string) => {
     utxosRoot: produced.utxoRoot,
   };
   return rebind({
-    version: SDK.DA_PAYLOAD_VERSION,
+    version: SDKDa.DA_PAYLOAD_VERSION,
     block_body: {
       header_hash: "00".repeat(28),
       header,
@@ -188,7 +189,7 @@ export const payloadOf = async (produced: Produced, baseRoot: string) => {
 
 /** Replays `payload` with the foreign replayer's own withdrawal checks. */
 export const replay = (
-  payload: SDK.DaPayload,
+  payload: SDKDa.DaPayload,
   orders: readonly WithdrawalsDB.Entry[],
   baseRoot: string,
 ) => {

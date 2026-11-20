@@ -5,7 +5,7 @@
  * observed missing source; a reason before the purpose phase reaches the
  * terminal and is refused.
  */
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import { describe, expect, it } from "vitest";
 
 import {

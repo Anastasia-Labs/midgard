@@ -9,7 +9,7 @@
  * mid-way spending none twice, and takes the case's ending only once every
  * spend back is final at release depth and no staging output the provider
  * does not show may still be live. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { CML, coreToTxOutput, Data, type UTxO } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 

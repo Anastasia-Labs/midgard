@@ -9,16 +9,18 @@ import {
   hashBlockHeader,
   type Header,
   HUB_ORACLE_ASSET_NAME,
-  incompleteEmulatorCommitBlockHeaderTxProgram,
   requireInputIndex,
   requireMintRedeemerIndex,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
   SCHEDULER_ASSET_NAME,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
+} from "@al-ft/midgard-sdk/core";
+import {
+  incompleteEmulatorCommitBlockHeaderTxProgram,
   STATE_QUEUE_ROOT_ASSET_NAME,
   utxoToStateQueueUTxO,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import {
   type BuildTxWithRedeemer,
   credentialToAddress,

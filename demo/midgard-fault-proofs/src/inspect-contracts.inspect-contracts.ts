@@ -1,9 +1,9 @@
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import {
-  buildFaultProofContracts,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   parseFaultProofBlueprint,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { buildFaultProofContracts } from "@al-ft/midgard-sdk/fraud-proof";
 import { Effect } from "effect";
 
 import {

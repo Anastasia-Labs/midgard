@@ -1,4 +1,6 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   type Assets,
   type BuildTxWithRedeemer,
@@ -76,7 +78,7 @@ export const queueUpdate =
           availability_mint_redeemer_index: mintAt(ctx, policy),
         },
       },
-      SDK.StateQueueSpendRedeemer,
+      SDKStateQueue.StateQueueSpendRedeemer,
     );
 
 export const yieldTx = (
@@ -105,7 +107,7 @@ export const openAvailability = async (
   f: AvailabilityFixture,
   attested: {
     readonly queue: UTxO;
-    readonly commitment: SDK.DaAvailabilityCommitment;
+    readonly commitment: SDKDa.DaAvailabilityCommitment;
   },
   validity: { validFrom?: bigint; validTo?: bigint } = {},
   funds: { readonly funding?: UTxO } = {},
@@ -139,9 +141,9 @@ export const openAvailability = async (
   const queueNode = Data.castFrom(queueView.data, SDK.StateQueueNode);
   const planAt = (
     openedAt: bigint,
-    commitment: SDK.DaAvailabilityCommitment = attested.commitment,
+    commitment: SDKDa.DaAvailabilityCommitment = attested.commitment,
   ) =>
-    SDK.buildDaAvailabilityChallengeDatumPlan({
+    SDKDa.buildDaAvailabilityChallengeDatumPlan({
       commitment,
       challengerFundingOutRef: outRef(funding),
       challenger: f.challengerKey,
@@ -155,7 +157,7 @@ export const openAvailability = async (
   const address = contracts.availabilityChallenge.spendingScriptAddress;
   const terminalUnit =
     policy +
-    SDK.daAvailabilityTerminalAccumulatorAssetName(plan.challengeAssetName);
+    SDKDa.daAvailabilityTerminalAccumulatorAssetName(plan.challengeAssetName);
   const build = (
     options: {
       omitSigner?: boolean;
@@ -167,7 +169,7 @@ export const openAvailability = async (
        * Records (and marks the node Challenged with) this commitment instead
        * of the preimage of the node's `Attested{commitment_hash}`.
        */
-      commitment?: SDK.DaAvailabilityCommitment;
+      commitment?: SDKDa.DaAvailabilityCommitment;
       /** A further wallet coin spent beside the funding, returned whole last. */
       extraInput?: UTxO;
     } = {},
@@ -182,7 +184,7 @@ export const openAvailability = async (
         ...queueNode,
         da_attestation: {
           Challenged: {
-            commitment_hash: SDK.daAvailabilityCommitmentHash(
+            commitment_hash: SDKDa.daAvailabilityCommitmentHash(
               outputs.record.commitment,
             ),
             challenge_asset_name: plan.challengeAssetName,
@@ -208,7 +210,7 @@ export const openAvailability = async (
     for (let i = 0; i < plan.trancheThreads.length; i += 1)
       mint[
         policy +
-          SDK.daAvailabilityTrancheAssetName({
+          SDKDa.daAvailabilityTrancheAssetName({
             challengeAssetName: plan.challengeAssetName,
             trancheIndex: i,
           })
@@ -238,13 +240,13 @@ export const openAvailability = async (
               challenger: f.challengerKey,
             },
           },
-          SDK.DaAvailabilityMintRedeemer,
+          SDKDa.DaAvailabilityMintRedeemer,
         ),
       )
       .pay.ToContract(
         address,
         inline(
-          SDK.encodeDaAvailabilityChallengeRecord(outputs.record, parameters),
+          SDKDa.encodeDaAvailabilityChallengeRecord(outputs.record, parameters),
         ),
         {
           lovelace: outputs.recordLovelace,
@@ -256,12 +258,12 @@ export const openAvailability = async (
       tx = tx.pay.ToContract(
         address,
         inline(
-          SDK.encodeDaAvailabilityTrancheDatum(outputs.trancheThreads[i]!),
+          SDKDa.encodeDaAvailabilityTrancheDatum(outputs.trancheThreads[i]!),
         ),
         {
           lovelace: plan.trancheFunding[i]!.initialLovelace,
           [policy +
-          SDK.daAvailabilityTrancheAssetName({
+          SDKDa.daAvailabilityTrancheAssetName({
             challengeAssetName: plan.challengeAssetName,
             trancheIndex: i,
           })]: 1n,
@@ -270,7 +272,7 @@ export const openAvailability = async (
     tx = tx.pay.ToContract(
       address,
       inline(
-        SDK.encodeDaAvailabilityTerminalAccumulatorDatum(
+        SDKDa.encodeDaAvailabilityTerminalAccumulatorDatum(
           outputs.terminalAccumulator,
         ),
       ),

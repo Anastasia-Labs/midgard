@@ -19,16 +19,21 @@
  *   caller's chosen pair is refused there, because the validator ignores it;
  * - direction A's prover-chosen pair must be in `{spend, reference} × ℕ`.
  */
-import type {
-  EventKey,
-  NativeScriptDecodingBindState,
-  NativeScriptDecodingScanThreadState,
-  OutputReference,
-} from "@al-ft/midgard-sdk";
+import type { EventKey, OutputReference } from "@al-ft/midgard-sdk/core";
 import {
   forcedLeafMembershipV1,
   hashHexWithBlake2b,
   Header,
+  OutputReference as OutputReferenceSchema,
+  requireInputIndex,
+  requireOwnSpendPurpose,
+  requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import type {
+  NativeScriptDecodingBindState,
+  NativeScriptDecodingScanThreadState,
+} from "@al-ft/midgard-sdk/fraud-proof";
+import {
   NATIVE_SCRIPT_DECODING_CLASS_PENDING,
   NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE,
   NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION,
@@ -40,11 +45,7 @@ import {
   NativeScriptDecodingStep02Datum,
   NativeScriptDecodingStep02SpendRedeemer,
   NativeScriptDecodingStep03OpenSubjectDatum,
-  OutputReference as OutputReferenceSchema,
-  requireInputIndex,
-  requireOwnSpendPurpose,
-  requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

@@ -5,7 +5,7 @@
  * step the producer's compact witness set from `--witness-set-compact`. A
  * deployment info without the certificate members fails, naming them.
  */
-import { encodeMidgardTxOutputCanonical } from "@al-ft/midgard-sdk";
+import { encodeMidgardTxOutputCanonical } from "@al-ft/midgard-sdk/fraud-proof";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { submitReferenceInputNoIdxStep04FromFiles } from "../src/submit-reference-input-no-idx-step-04.submit-reference-input-no-idx-step04-from-files.js";

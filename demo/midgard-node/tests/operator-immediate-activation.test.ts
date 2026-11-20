@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKOperators from "@al-ft/midgard-sdk/operators";
 import { Data, toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -9,7 +10,7 @@ const contracts = {
   spendingScriptAddress: "active-script-address",
 };
 const unit = toUnit(contracts.policyId, SDK.ACTIVE_OPERATORS_ROOT_ASSET_NAME);
-const root: Pick<SDK.NodeWithDatum, "utxo" | "datum"> = {
+const root: Pick<SDKOperators.NodeWithDatum, "utxo" | "datum"> = {
   utxo: {
     txHash: "cd".repeat(32),
     outputIndex: 0,

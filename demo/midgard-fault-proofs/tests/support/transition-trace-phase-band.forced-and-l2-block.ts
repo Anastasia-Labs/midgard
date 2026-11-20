@@ -1,5 +1,5 @@
 import { decodeMidgardNativeTxFullFromCanonicalCbor } from "@al-ft/midgard-core";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 
 import { keyValuePhasRootWithCount } from "../../src/transition-trace/phas.js";
 import {

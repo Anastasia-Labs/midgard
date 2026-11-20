@@ -5,7 +5,7 @@
  * and the classification refusals that keep another family's typed rejection
  * reason out of this thread.
  */
-import { fieldPreimagePublicationDatumCbor } from "@al-ft/midgard-sdk";
+import { fieldPreimagePublicationDatumCbor } from "@al-ft/midgard-sdk/state-queue";
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 

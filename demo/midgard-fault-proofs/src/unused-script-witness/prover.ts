@@ -14,7 +14,7 @@ import {
   decodeMidgardMintPolicyItem,
   decodeMidgardVersionedScriptEnvelope,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { DirectPurposeTransition } from "../direct-purpose-family/custody.js";
 import type {

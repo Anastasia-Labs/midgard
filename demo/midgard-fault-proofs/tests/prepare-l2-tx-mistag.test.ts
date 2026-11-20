@@ -8,7 +8,10 @@ import {
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core";
-import { commitCountedRootProgram, ROOT_DOMAINS } from "@al-ft/midgard-sdk";
+import {
+  commitCountedRootProgram,
+  ROOT_DOMAINS,
+} from "@al-ft/midgard-sdk/core";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 

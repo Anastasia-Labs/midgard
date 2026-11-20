@@ -15,7 +15,8 @@ import {
   MidgardNativeScriptDecodingDirections,
   type MidgardNativeScriptScanFrame,
 } from "@al-ft/midgard-core";
-import { BoundedItemChunkProof, MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk";
+import { BoundedItemChunkProof } from "@al-ft/midgard-sdk/core";
+import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

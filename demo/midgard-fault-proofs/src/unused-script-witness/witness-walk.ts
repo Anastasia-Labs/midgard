@@ -3,7 +3,7 @@
  * opens field 6, its grammar is certified, and the walk steps to the audited
  * witness, reads its script hash and stops, or exhausts the field before
  * it. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import {

@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,
@@ -83,16 +84,21 @@ export const submitRawInvalidSignatureStep02 = async ({
   if (threadUtxo.datum == null) {
     throw new Error("Raw step-02 thread UTxO carries no datum");
   }
-  const datum = Data.from(threadUtxo.datum, SDK.InvalidSignatureStep02Datum);
+  const datum = Data.from(
+    threadUtxo.datum,
+    SDKFraudProof.InvalidSignatureStep02Datum,
+  );
   if (datum.data === null) {
     throw new Error("Raw step-02 thread UTxO carries no step state");
   }
   const planned = planFaultProofFieldOpening({
     anchorSourceKind: datum.data.subject.source_kind === 1n ? 1n : 0n,
-    fieldIndex: SDK.MIDGARD_FIELD_INDEX.addressWitnesses,
+    fieldIndex: SDKFraudProof.MIDGARD_FIELD_INDEX.addressWitnesses,
     anchorTxId: datum.data.subject.transaction_id,
     nativeTxCompactCbor: subject.nativeTxCompactCbor,
-    itemCbors: subject.addrTxWits.map(SDK.encodeMidgardAddressWitnessCanonical),
+    itemCbors: subject.addrTxWits.map(
+      SDKFraudProof.encodeMidgardAddressWitnessCanonical,
+    ),
     owner: signer.paymentKeyHash,
     witnessSet: subject.witnessSetCompact,
     anchorWitnessSetHash: datum.data.bad_tx_witness_set_hash,
@@ -124,7 +130,7 @@ export const submitRawInvalidSignatureStep02 = async ({
   );
   const fraudProofDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash },
-    SDK.FraudProofTokenDatum,
+    SDKFraudProof.FraudProofTokenDatum,
   );
   const outputMatches = outputWithDatumAndUnitPredicate({
     address: contracts.fraudProof.spendingScriptAddress,
@@ -161,7 +167,7 @@ export const submitRawInvalidSignatureStep02 = async ({
           },
         ],
       },
-      SDK.InvalidSignatureStep02SpendRedeemer,
+      SDKFraudProof.InvalidSignatureStep02SpendRedeemer,
     )) satisfies BuildTxWithRedeemer;
   const burn = ((ctx) => {
     SDK.requireOwnMintPurpose(
@@ -171,7 +177,7 @@ export const submitRawInvalidSignatureStep02 = async ({
     );
     return Data.to(
       { Success: { burning_token_asset_name: threadToken.assetName } },
-      SDK.FraudProofComputationThreadRedeemer,
+      SDKFraudProof.FraudProofComputationThreadRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
   const mint = ((ctx) =>
@@ -184,7 +190,7 @@ export const submitRawInvalidSignatureStep02 = async ({
           "raw invalid-signature step 02 thread burn",
         ),
       },
-      SDK.FraudProofTokenMintRedeemer,
+      SDKFraudProof.FraudProofTokenMintRedeemer,
     )) satisfies BuildTxWithRedeemer;
 
   const computationThreadCarriage = witnessMintingPolicyCarriage({

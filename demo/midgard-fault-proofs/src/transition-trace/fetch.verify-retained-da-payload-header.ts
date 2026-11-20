@@ -1,6 +1,7 @@
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Effect } from "effect";
 
 import {
@@ -24,7 +25,7 @@ export const retainedDaPayloadHeaderVerifier = (
   const expected = normalizeHeaderHash(headerHash);
   return async (payloadEnvelopeCbor) => {
     let payloadCbor: Buffer;
-    let payload: SDK.DaPayload;
+    let payload: SDKDa.DaPayload;
     let embedded: string;
     // Every step below is a pure function of the served bytes, so any throw
     // is a defect of this copy rather than of the fetch.
@@ -36,18 +37,18 @@ export const retainedDaPayloadHeaderVerifier = (
           })
         ).innerBytes,
       );
-      payload = SDK.decodeDaPayload(payloadCbor);
+      payload = SDKDa.decodeDaPayload(payloadCbor);
       embedded = await Effect.runPromise(
         SDK.hashBlockHeader(payload.block_body.header),
       );
     } catch (cause) {
       return refuse(`malformed payload: ${String(cause)}`);
     }
-    if (!SDK.encodeDaPayload(payload).equals(payloadCbor))
+    if (!SDKDa.encodeDaPayload(payload).equals(payloadCbor))
       return refuse("payload CBOR is not canonical DaPayloadV1");
-    if (payload.version !== SDK.DA_PAYLOAD_VERSION)
+    if (payload.version !== SDKDa.DA_PAYLOAD_VERSION)
       return refuse(
-        `payload version ${payload.version.toString()} is not ${SDK.DA_PAYLOAD_VERSION.toString()}`,
+        `payload version ${payload.version.toString()} is not ${SDKDa.DA_PAYLOAD_VERSION.toString()}`,
       );
     const declared = payload.block_body.header_hash.toLowerCase();
     if (embedded !== declared || embedded !== expected)
@@ -83,10 +84,10 @@ export const rememberingRetainedDaPayloadVerifier = (
  * free, which it must: a source may ignore the verifier it was handed.
  */
 export const retainedDaPayloadCommitmentVerifier = (
-  commitment: SDK.DaAvailabilityCommitment,
+  commitment: SDKDa.DaAvailabilityCommitment,
 ): RetainedDaPayloadVerifier =>
   rememberingRetainedDaPayloadVerifier(async (payload) =>
-    SDK.verifyDaAvailabilityPayloadCommitment({ commitment, payload })
+    SDKDa.verifyDaAvailabilityPayloadCommitment({ commitment, payload })
       ? { ok: true }
       : refuse("payload does not match the attested commitment"),
   );

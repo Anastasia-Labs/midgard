@@ -19,7 +19,7 @@ import {
   encodeMidgardVersionedScriptListPreimage,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 
 import {
   LONG_ASSET_NAME_LOVELACE,

@@ -1,7 +1,9 @@
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
-import * as SDK from "@al-ft/midgard-sdk";
-import { type EvidenceProvenance, ROOT_DOMAINS } from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import { ROOT_DOMAINS } from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import { type EvidenceProvenance } from "@al-ft/midgard-sdk/fraud-proof";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
@@ -93,7 +95,7 @@ const routedQ44Fixture = async () => {
   const observedHeaderHash = await Effect.runPromise(
     SDK.hashBlockHeader(header),
   );
-  const payload: SDK.DaPayload = {
+  const payload: SDKDa.DaPayload = {
     ...fixture.payload,
     block_body: {
       ...fixture.payload.block_body,
@@ -103,7 +105,7 @@ const routedQ44Fixture = async () => {
     },
   };
   const payloadEnvelopeCbor = await wrapDaPayload(
-    SDK.encodeDaPayload(payload),
+    SDKDa.encodeDaPayload(payload),
     { mode: "identity" },
   );
   const source: RetainedDaPayloadSource = {

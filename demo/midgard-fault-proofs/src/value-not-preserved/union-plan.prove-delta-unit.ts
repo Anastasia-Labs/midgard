@@ -3,7 +3,7 @@ import {
   buildMidgardMpfDeletionOpening,
   parseMidgardMpfProofJson,
 } from "@al-ft/midgard-core";
-import { Proof } from "@al-ft/midgard-sdk";
+import { Proof } from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 
 /** The proof of `key` in the delta map `trie`, and, when the contribution

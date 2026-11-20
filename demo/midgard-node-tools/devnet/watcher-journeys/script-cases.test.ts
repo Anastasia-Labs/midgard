@@ -61,7 +61,7 @@ import {
   WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY,
 } from "@al-ft/midgard-fault-proofs/workflow/complete-replay";
 import { headerDecisionReplayContext } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import {
   CML,
   generateEmulatorAccount,

@@ -3,7 +3,9 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   CML,
   credentialToAddress,
@@ -285,7 +287,7 @@ describe("transition trace installed retained-history workflow", () => {
             h.funderLucid,
             h.emulator.now() + FAMILY_HISTORY_HEADER_LEAD_MS,
           ) - 1;
-        const eventId = (eventKind: SDK.EventHistoryKind) => {
+        const eventId = (eventKind: SDKUsers.EventHistoryKind) => {
           const nonce = history.nonce(eventKind);
           return {
             transactionId: nonce.txHash,
@@ -303,8 +305,8 @@ describe("transition trace installed retained-history workflow", () => {
         };
         const event = { id, info };
         const eventPayload = (
-          eventKind: SDK.EventHistoryKind,
-        ): SDK.EventHistoryPayload =>
+          eventKind: SDKUsers.EventHistoryKind,
+        ): SDKUsers.EventHistoryPayload =>
           eventKind === "Deposit"
             ? { DepositPayload: { event: { id: eventId(eventKind), info } } }
             : {
@@ -475,15 +477,15 @@ describe("transition trace installed retained-history workflow", () => {
         referenceScripts.phasMembershipWithdraw =
           h.witnessReferenceScripts.phasMembershipWithdraw!;
         const schemas = [
-          SDK.FraudProofComputationThreadStepDatum,
-          SDK.TransitionTraceStepDatum,
-          SDK.TransitionTraceStepDatum,
-          SDK.TransitionTraceStepDatum,
-          SDK.TransitionTraceStepDatum,
-          SDK.TransitionTraceProofCommitmentDatum,
-          SDK.TransitionTraceProofCommitmentDatum,
-          SDK.TransitionTraceStepDatum,
-          SDK.TransitionTraceStepDatum,
+          SDKFraudProof.FraudProofComputationThreadStepDatum,
+          SDKFraudProof.TransitionTraceStepDatum,
+          SDKFraudProof.TransitionTraceStepDatum,
+          SDKFraudProof.TransitionTraceStepDatum,
+          SDKFraudProof.TransitionTraceStepDatum,
+          SDKFraudProof.TransitionTraceProofCommitmentDatum,
+          SDKFraudProof.TransitionTraceProofCommitmentDatum,
+          SDKFraudProof.TransitionTraceStepDatum,
+          SDKFraudProof.TransitionTraceStepDatum,
         ];
         const definition = {
           category: "transitionTrace" as const,
@@ -735,7 +737,7 @@ describe("transition trace installed retained-history workflow", () => {
                 timing === null
                   ? Data.from(
                       thread.datum!,
-                      SDK.TransitionTraceProofCommitmentDatum,
+                      SDKFraudProof.TransitionTraceProofCommitmentDatum,
                     ).data
                   : undefined;
               if (
@@ -744,7 +746,7 @@ describe("transition trace installed retained-history workflow", () => {
                   state !== undefined &&
                   state.deposit_source_cbor !== "")
               ) {
-                const witness = await SDK.fetchEventHistoryWitness(
+                const witness = await SDKUsers.fetchEventHistoryWitness(
                   { utxosAt: (address) => lucid.utxosAt(address) },
                   {
                     policyId:

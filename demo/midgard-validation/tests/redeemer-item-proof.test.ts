@@ -14,7 +14,7 @@ import {
   MidgardRedeemerItemProofStages,
   nextMidgardRedeemerItemProofSpan,
 } from "@al-ft/midgard-core";
-import { ValidationAuxiliaryWitnessSchema } from "@al-ft/midgard-sdk";
+import { ValidationAuxiliaryWitnessSchema } from "@al-ft/midgard-sdk/da";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

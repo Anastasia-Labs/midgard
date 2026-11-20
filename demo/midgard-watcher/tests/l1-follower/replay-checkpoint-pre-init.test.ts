@@ -11,7 +11,7 @@ import {
   type SimTx,
   simUniverse,
 } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createWatcherReplayedLedger } from "../../src/fault-proofs/replayed-ledger.js";

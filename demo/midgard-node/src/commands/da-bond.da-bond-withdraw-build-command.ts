@@ -1,5 +1,6 @@
 import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { type Network, type TxBuilder } from "@lucid-evolution/lucid";
 import { type Effect } from "effect";
 
@@ -77,7 +78,7 @@ export const daBondWithdrawBuildCommand = async (
     daParams: daParams.datum,
     signers,
   };
-  let program: Effect.Effect<TxBuilder, SDK.DaBondPoolBuildError>;
+  let program: Effect.Effect<TxBuilder, SDKDa.DaBondPoolBuildError>;
   let amount: bigint | undefined;
   let destination: string | undefined;
   if (step === "begin") {
@@ -90,20 +91,20 @@ export const daBondWithdrawBuildCommand = async (
         `--valid-for-ms must be at most ${SDK.MAX_VALIDITY_RANGE_LENGTH_MS.toString()} (the maximum validity range)`,
       );
     }
-    program = SDK.buildBeginDaBondPoolWithdrawTxProgram(ctx.lucid, {
+    program = SDKDa.buildBeginDaBondPoolWithdrawTxProgram(ctx.lucid, {
       ...quorum,
       withdrawDelayMs: ctx.withdrawDelayMs,
       validity: { validFrom: now, validTo: now + validForMs },
     });
   } else if (step === "cancel") {
-    program = SDK.buildCancelDaBondPoolWithdrawTxProgram(ctx.lucid, quorum);
+    program = SDKDa.buildCancelDaBondPoolWithdrawTxProgram(ctx.lucid, quorum);
   } else {
     if (options.amount === undefined || options.to === undefined) {
       throw new Error("withdraw complete needs both --amount and --to");
     }
     amount = parseLovelace(options.amount, "--amount");
     destination = requireAddress(options.to, "--to");
-    program = SDK.buildCompleteDaBondPoolWithdrawTxProgram(ctx.lucid, {
+    program = SDKDa.buildCompleteDaBondPoolWithdrawTxProgram(ctx.lucid, {
       ...quorum,
       amount,
       destination,
@@ -125,8 +126,8 @@ export const daBondWithdrawBuildCommand = async (
     manifestId: ctx.manifestId,
     action,
     txCbor,
-    txBodyHash: SDK.daBondPoolTxBodyHash(txCbor),
-    requiredSigners: SDK.daBondPoolTxRequiredSigners(txCbor),
+    txBodyHash: SDKDa.daBondPoolTxBodyHash(txCbor),
+    requiredSigners: SDKDa.daBondPoolTxRequiredSigners(txCbor),
     feePayerKeyHash,
     poolOutRef: outRefLabel(pool.utxo),
     daParamsOutRef: outRefLabel(daParams.utxo),
@@ -140,7 +141,7 @@ export const daBondWithdrawBuildCommand = async (
   writeNewJsonFile(options.buildUnsigned, unsigned);
   const unlockAt =
     step === "begin" && validity.validTo !== undefined
-      ? SDK.daBondPoolUnlockAt({
+      ? SDKDa.daBondPoolUnlockAt({
           validToMs: validity.validTo,
           withdrawDelayMs: ctx.withdrawDelayMs,
         })
@@ -238,7 +239,7 @@ export const daBondAssembleCommand = async (
         `Refusing to assemble: witness ${path} is for transaction ${witness.txBodyHash}, not ${unsigned.txBodyHash}`,
       );
     }
-    const keys = SDK.verifiedDaBondPoolWitnessKeyHashes(
+    const keys = SDKDa.verifiedDaBondPoolWitnessKeyHashes(
       unsigned.txCbor,
       witness.witnessSetCbor,
     );
@@ -258,7 +259,7 @@ export const daBondAssembleCommand = async (
   const daParams = await referencedDaParams(ctx, unsigned, referenceInputs);
   let owners: readonly string[];
   try {
-    owners = SDK.assertDaBondPoolWitnessQuorum({
+    owners = SDKDa.assertDaBondPoolWitnessQuorum({
       txCbor: unsigned.txCbor,
       witnessSetCbors,
       daParams: daParams.datum,
@@ -266,7 +267,7 @@ export const daBondAssembleCommand = async (
     }).ownerKeyHashes;
   } catch (error) {
     // insufficient_signers carries exactly daBondPoolQuorumShortfallMessage.
-    if (error instanceof SDK.DaBondPoolBuildError) {
+    if (error instanceof SDKDa.DaBondPoolBuildError) {
       throw new Error(error.message, { cause: error });
     }
     throw error;
@@ -281,7 +282,7 @@ export const daBondAssembleCommand = async (
   }
   if (
     livePool.address !== ctx.poolValidator.spendingScriptAddress ||
-    livePool.assets[SDK.daBondPoolUnit(ctx.poolValidator.policyId)] !== 1n
+    livePool.assets[SDKDa.daBondPoolUnit(ctx.poolValidator.policyId)] !== 1n
   ) {
     throw new Error(
       `Refusing to assemble: ${unsigned.poolOutRef} is not this deployment's DA bond pool`,
@@ -299,7 +300,10 @@ export const daBondAssembleCommand = async (
       `Refusing to assemble: the transaction is valid only from ${validity.validFrom.toString()} (${isoOf(validity.validFrom)}); retry then`,
     );
   }
-  const assembled = SDK.assembleDaBondPoolTx(unsigned.txCbor, witnessSetCbors);
+  const assembled = SDKDa.assembleDaBondPoolTx(
+    unsigned.txCbor,
+    witnessSetCbors,
+  );
   const txHash = await ctx.submit(assembled);
   return {
     action: unsigned.action,

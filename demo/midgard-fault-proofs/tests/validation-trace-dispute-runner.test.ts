@@ -4,7 +4,7 @@
  * and VerifySources it, and the case and its bond are live at the out-refs
  * the journal claimed from its own signed bodies. A block with no detection
  * starts no workflow. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { Data } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 

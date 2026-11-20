@@ -12,9 +12,9 @@ import {
   SCHEDULER_ASSET_NAME,
   scriptRewardAddress,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
-  STATE_QUEUE_ROOT_ASSET_NAME,
-  type ValidationCaseConfigSource,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { type ValidationCaseConfigSource } from "@al-ft/midgard-sdk/da";
+import { STATE_QUEUE_ROOT_ASSET_NAME } from "@al-ft/midgard-sdk/state-queue";
 import { Lucid, toUnit, type UTxO } from "@lucid-evolution/lucid";
 
 import { network } from "./blueprints.js";

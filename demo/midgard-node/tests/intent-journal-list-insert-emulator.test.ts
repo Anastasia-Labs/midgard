@@ -15,8 +15,8 @@
  * resends it, and the landing block lands it. The flows run where no
  * follower runs, so both went out unjournaled (`no_follower`).
  */
-import * as SDK from "@al-ft/midgard-sdk";
-import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
+import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk/state-queue";
+import * as SDK from "@al-ft/midgard-sdk/users";
 import {
   Emulator,
   generateEmulatorAccount,

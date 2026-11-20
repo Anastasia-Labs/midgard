@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
   calculateMinLovelaceFromUTxO,
   credentialToAddress,
@@ -46,7 +47,7 @@ export const parseAvailabilityOutRef = (
 export const planAvailabilityCommandAction = (
   action: Exclude<AvailabilityCommandAction, "prepare" | "status" | "recover">,
   snapshot: Pick<
-    SDK.DaAvailabilityChallengeSnapshot,
+    SDKDa.DaAvailabilityChallengeSnapshot,
     | "recordDatum"
     | "terminalDatum"
     | "correctionLock"
@@ -54,7 +55,7 @@ export const planAvailabilityCommandAction = (
     | "descendant"
   >,
   nowMs: number,
-): SDK.DaAvailabilityTransactionAction => {
+): SDKDa.DaAvailabilityTransactionAction => {
   if (action === "respond") return "publish";
   if (action !== "timeout") return action;
   if (snapshot.recordDatum) {
@@ -114,7 +115,7 @@ export const liveOutRef = async (
 
 export const assertAvailabilityCommandRemovalCapital = (input: {
   readonly action: "open" | "timeout" | "prune" | "remove";
-  readonly parameters: SDK.DaAvailabilityParameters;
+  readonly parameters: SDKDa.DaAvailabilityParameters;
   readonly remainingRemovalSteps: number;
   readonly minimumChangeLovelace: bigint;
   readonly walletAddress: string;
@@ -180,7 +181,7 @@ export const availabilityCommandMinimumChangeLovelace = (
  * preparation's own fee is the maximum opening fee.
  */
 export const availabilityPreparationAmounts = (input: {
-  readonly parameters: SDK.DaAvailabilityParameters;
+  readonly parameters: SDKDa.DaAvailabilityParameters;
   readonly collateralPercentage: number;
   readonly coinsPerUtxoByte: bigint;
   readonly walletAddress: string;
@@ -199,7 +200,7 @@ export const availabilityPreparationAmounts = (input: {
       p.challenger_bond_lovelace +
       p.challenge_record_lovelace +
       p.max_open_fee_lovelace,
-    collateralLovelace: SDK.daAvailabilityWorkflowCollateralLovelace({
+    collateralLovelace: SDKDa.daAvailabilityWorkflowCollateralLovelace({
       parameters: p,
       challengerAddress: input.walletAddress,
       collateralPercentage: input.collateralPercentage,
@@ -223,7 +224,7 @@ export const availabilityPreparationAmounts = (input: {
  * `1.5 × (penalty + max_timeout_fee)`.
  */
 export const availabilityTimeoutCollateralLovelace = (input: {
-  readonly parameters: SDK.DaAvailabilityParameters;
+  readonly parameters: SDKDa.DaAvailabilityParameters;
   readonly collateralPercentage: number;
 }): bigint => {
   if (
@@ -241,7 +242,7 @@ export const availabilityTimeoutCollateralLovelace = (input: {
 
 /** Refuses a Timeout collateral coin that cannot cover the worst-case fee. */
 export const assertAvailabilityTimeoutCollateral = (input: {
-  readonly parameters: SDK.DaAvailabilityParameters;
+  readonly parameters: SDKDa.DaAvailabilityParameters;
   readonly collateralPercentage: number;
   readonly collateral: UTxO;
 }): void => {
@@ -290,18 +291,18 @@ export const recoverAvailabilityOpenCommitment = async (input: {
   readonly daAttestationPolicyId: string;
   readonly headerHash: string;
   readonly commitmentHash: string;
-}): Promise<SDK.DaAvailabilityCommitment> => {
+}): Promise<SDKDa.DaAvailabilityCommitment> => {
   const datums = await input.unitHistory({
     policyId: input.daAttestationPolicyId,
-    assetName: SDK.daAttestationAssetName(input.headerHash),
+    assetName: SDKDa.daAttestationAssetName(input.headerHash),
   });
   for (const datum of datums) {
     if (datum === null) continue;
     try {
-      const attestation = Data.from(datum, SDK.DaAttestationDatum);
+      const attestation = Data.from(datum, SDKDa.DaAttestationDatum);
       if (
         attestation.header_hash === input.headerHash &&
-        SDK.daAvailabilityCommitmentHash(
+        SDKDa.daAvailabilityCommitmentHash(
           attestation.availability_commitment,
         ) === input.commitmentHash
       )

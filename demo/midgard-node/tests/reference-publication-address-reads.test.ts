@@ -5,7 +5,7 @@
  * with no request deadline, however many transactions it chains, and reads
  * its references back by outref.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import {
   Emulator,
   type EmulatorAccount,

@@ -39,7 +39,7 @@ import "./field-item-width-illegal-lifecycle.forced-block.js";
 import {
   acceptedVerdictSubject,
   forcedVerdictSubject,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import {

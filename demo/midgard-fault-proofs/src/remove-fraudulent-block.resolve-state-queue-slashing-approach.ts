@@ -1,14 +1,16 @@
 import {
   encodeLinkedListNodeView,
-  type FraudProverRewardPlan,
-  requireFraudProverRewardRouting,
   requireMintRedeemerIndex,
   requireOwnMintPurpose,
   requireReferenceInputIndex,
   RETIRED_OPERATOR_NODE_ASSET_NAME_PREFIX,
   RetiredOperatorMintRedeemer,
+} from "@al-ft/midgard-sdk/core";
+import {
+  type FraudProverRewardPlan,
+  requireFraudProverRewardRouting,
   type SlashingApproach as SlashingApproachData,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import {
   type BuildTxWithRedeemer,
   toUnit,

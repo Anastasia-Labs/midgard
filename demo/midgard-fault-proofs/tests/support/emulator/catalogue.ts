@@ -10,7 +10,7 @@ import {
   type FraudProofCatalogueDeploymentInfo,
   type FraudProofs,
   ScriptHashSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 
 import { encodePhasMembershipProofRedeemer } from "../../../src/runtime.resolve-fraudulent-header-hash.js";

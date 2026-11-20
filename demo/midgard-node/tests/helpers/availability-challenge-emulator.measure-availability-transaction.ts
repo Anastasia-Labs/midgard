@@ -1,5 +1,5 @@
 import { DEPLOYMENT_PROFILES } from "@al-ft/midgard-core/deployment-profile";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import {
   CML,
   Emulator,

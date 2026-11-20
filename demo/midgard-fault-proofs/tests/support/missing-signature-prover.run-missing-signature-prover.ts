@@ -2,7 +2,7 @@ import {
   FraudProofComputationThreadStepDatum,
   MISSING_SIGNATURE_WITNESS_SCAN_BATCH_SIZE,
   missingSignatureThreadTokenAssetName,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, toUnit } from "@lucid-evolution/lucid";
 
 import {

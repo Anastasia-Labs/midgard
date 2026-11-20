@@ -14,7 +14,7 @@ import {
   encodeMidgardNativeTxProofFieldLengths,
   planMidgardFieldCarriage,
 } from "@al-ft/midgard-core";
-import { L2TransactionSourceSchema } from "@al-ft/midgard-sdk";
+import { L2TransactionSourceSchema } from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

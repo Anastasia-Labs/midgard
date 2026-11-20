@@ -3,7 +3,8 @@ import {
   FraudProofL1CheckpointChangedError,
   FraudProofL1UnavailableError,
 } from "@al-ft/midgard-fault-proofs/workflow/l1-source";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { expect, it } from "vitest";
 
@@ -117,7 +118,7 @@ const setup = async () => {
     transactions: [],
     utxos: [],
   });
-  const payload: SDK.DaPayload = {
+  const payload: SDKDa.DaPayload = {
     ...empty.payload,
     block_body: {
       ...empty.payload.block_body,

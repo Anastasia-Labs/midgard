@@ -8,12 +8,12 @@ import {
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import { computeFraudProofRawL1PointId } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
+import { parseFaultProofBlueprint } from "@al-ft/midgard-sdk/core";
 import {
   buildEventHistoryDeployments,
   buildHubOracleMintingValidator,
   buildTxOrderValidators,
-  parseFaultProofBlueprint,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/users";
 import { type Script, validatorToScriptHash } from "@lucid-evolution/lucid";
 import { deriveWatcherInitializationFrame } from "midgard-node/tests/helpers/derived-watcher-initialization-frame";
 

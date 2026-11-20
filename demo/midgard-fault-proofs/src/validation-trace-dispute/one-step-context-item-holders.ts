@@ -5,7 +5,7 @@
  * item settlement; then the item return, which routes the verified step by
  * its context and item stages, a hash or finalize where the route needs
  * one, and the continue or finish that writes the context's successor. */
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 
 /** The shared item chain's executors, in its authenticated roster order. */
 export const CONTEXT_ITEM_EXECUTOR_HOLDERS = [

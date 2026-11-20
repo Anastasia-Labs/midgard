@@ -1,13 +1,15 @@
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   faultProofStepRedeemerSchema,
-  FraudProofComputationThreadRedeemer,
-  FraudProofComputationThreadStepDatum,
   requireInputIndex,
   requireMintRedeemerIndex,
   requireOwnMintPurpose,
   requireOwnSpendPurpose,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  FraudProofComputationThreadRedeemer,
+  FraudProofComputationThreadStepDatum,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

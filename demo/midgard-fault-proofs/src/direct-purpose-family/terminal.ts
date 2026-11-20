@@ -1,6 +1,7 @@
 /** Direct purpose terminal: the final state convicts, the computation thread
  * burns and the permanent fraud-proof token mints. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,
@@ -30,8 +31,10 @@ import {
 } from "./family.js";
 
 /** The shared claim terminal's spend redeemer. */
-const directClaimFinalize = (indices: SDK.DirectClaimFinalizeArgs): string =>
-  Data.to({ Continue: [indices] }, SDK.DirectClaimFinalizeRedeemer);
+const directClaimFinalize = (
+  indices: SDKFraudProof.DirectClaimFinalizeArgs,
+): string =>
+  Data.to({ Continue: [indices] }, SDKFraudProof.DirectClaimFinalizeRedeemer);
 
 export const buildDirectPurposeTerminal = async <State>({
   family,
@@ -90,7 +93,7 @@ export const buildDirectPurposeTerminal = async <State>({
   );
   const fraudProofDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash },
-    SDK.FraudProofTokenDatum,
+    SDKFraudProof.FraudProofTokenDatum,
   );
   const finalize = family.verdict.finalize ?? directClaimFinalize;
   let outputIndex: bigint | undefined;
@@ -123,7 +126,7 @@ export const buildDirectPurposeTerminal = async <State>({
     );
     return Data.to(
       { Success: { burning_token_asset_name: threadToken.assetName } },
-      SDK.FraudProofComputationThreadRedeemer,
+      SDKFraudProof.FraudProofComputationThreadRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
   const mint = ((ctx) => {
@@ -141,7 +144,7 @@ export const buildDirectPurposeTerminal = async <State>({
           `${label} computation-thread burn`,
         ),
       },
-      SDK.FraudProofTokenMintRedeemer,
+      SDKFraudProof.FraudProofTokenMintRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
   const burnCarriage = witnessMintingPolicyCarriage({

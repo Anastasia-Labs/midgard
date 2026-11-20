@@ -1,4 +1,4 @@
-import { createDaAvailabilityReadScope } from "@al-ft/midgard-sdk";
+import { createDaAvailabilityReadScope } from "@al-ft/midgard-sdk/da";
 import { expect, it } from "vitest";
 
 import { captureAcceptanceNativeRead } from "../src/devnet-stack/acceptance-native-boundary.js";

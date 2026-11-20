@@ -20,7 +20,8 @@ import {
   unwrapDaPayload,
   wrapDaPayload,
 } from "@al-ft/midgard-core/da-payload-envelope";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data } from "@lucid-evolution/lucid";
 
 import { countedMachineTransactionChunkSteps } from "../../src/validation-machine/index.js";
@@ -42,8 +43,8 @@ const reconstructRetainedClassification = ({
   transactionCommitmentHex,
 }: {
   readonly sourceKind: "normal" | "forced";
-  readonly sourceEntry: SDK.DaPayloadEntry;
-  readonly preimageEntry: SDK.DaPayloadEntry;
+  readonly sourceEntry: SDKDa.DaPayloadEntry;
+  readonly preimageEntry: SDKDa.DaPayloadEntry;
   readonly transactionIdHex: string;
   readonly transactionCommitmentHex: string;
 }): RetainedClassificationMeasurement => {
@@ -162,7 +163,7 @@ export const exerciseMidgardRetainedDaCanonicalBoundary = async ({
   readonly corpusLabel?: string;
   readonly productionAdmission?: RetainedDaAdmission;
   readonly sourceScriptHash?: string;
-  readonly resolvedReferenceUtxos?: readonly SDK.DaPayloadEntry[];
+  readonly resolvedReferenceUtxos?: readonly SDKDa.DaPayloadEntry[];
 }): Promise<RetainedDaBoundaryMeasurement> => {
   if (
     admission === "diagnostic-synthetic-script-witnesses" &&
@@ -238,7 +239,7 @@ export const exerciseMidgardRetainedDaCanonicalBoundary = async ({
       verdict: "ForcedTxValid",
     },
   });
-  const innerPayloadCbor = SDK.encodeDaPayload(payload);
+  const innerPayloadCbor = SDKDa.encodeDaPayload(payload);
   const storedPayloadCbor = await wrapDaPayload(innerPayloadCbor, {
     mode: "identity",
   });
@@ -248,7 +249,7 @@ export const exerciseMidgardRetainedDaCanonicalBoundary = async ({
   if (!unwrapped.innerBytes.equals(innerPayloadCbor)) {
     throw new Error("retained DA envelope changed the canonical inner payload");
   }
-  const decoded = SDK.decodeDaPayload(unwrapped.innerBytes);
+  const decoded = SDKDa.decodeDaPayload(unwrapped.innerBytes);
   const normalSourceEntry = requireEntry(
     decoded.block_body.transactions,
     transactionIdHex,
@@ -305,7 +306,7 @@ export const exerciseMidgardRetainedDaBoundary = ({
 }: {
   readonly signedCardanoCborHex: string;
   readonly corpusLabel?: string;
-  readonly resolvedReferenceUtxos?: readonly SDK.DaPayloadEntry[];
+  readonly resolvedReferenceUtxos?: readonly SDKDa.DaPayloadEntry[];
 }): Promise<RetainedDaBoundaryMeasurement> =>
   exerciseMidgardRetainedDaCanonicalBoundary({
     canonicalTransactionCbor: cardanoTxBytesToMidgardNativeTxCanonicalCbor(

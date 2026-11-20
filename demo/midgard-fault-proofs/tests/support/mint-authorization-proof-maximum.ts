@@ -5,7 +5,8 @@ import {
   deriveMidgardNativeTxProofSource,
 } from "@al-ft/midgard-core";
 import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
@@ -250,7 +251,7 @@ export const runMintAuthorizationProofMaximum = async (
   );
   const planned = planFaultProofFieldOpening({
     anchorSourceKind: 0n,
-    fieldIndex: SDK.MIDGARD_FIELD_INDEX.mint,
+    fieldIndex: SDKFraudProof.MIDGARD_FIELD_INDEX.mint,
     anchorTxId: block.nativeTxId,
     nativeTxCompactCbor: block.nativeTxCompactCbor,
     itemCbors: subject.mintItemCbors.map((item) => Buffer.from(item, "hex")),
@@ -295,7 +296,7 @@ export const runMintAuthorizationProofMaximum = async (
         policy_index: policyIndex,
         direction: 0n,
       },
-      SDK.MintAuthorizationClaimEvidence,
+      SDKFraudProof.MintAuthorizationClaimEvidence,
     ),
   );
   const requirement = createStructuredDataPreimageRequirement({ preimageHex });

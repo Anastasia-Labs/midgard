@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   credentialToAddress,
   type LucidEvolution,
@@ -178,7 +179,7 @@ export const assertPermissionlessSlashRemovedHeader = async ({
     }),
   );
   const parsed = await Effect.runPromise(
-    SDK.utxoToStateQueueUTxO(removed[0]!, policyId),
+    SDKStateQueue.utxoToStateQueueUTxO(removed[0]!, policyId),
   );
   const actualHeader = await Effect.runPromise(
     SDK.getHeaderFromStateQueueDatum(parsed.datum),

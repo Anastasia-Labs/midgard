@@ -1,6 +1,6 @@
 import { encodeMidgardVersionedScript } from "@al-ft/midgard-core";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
-import type { EvidenceProvenance } from "@al-ft/midgard-sdk";
+import type { EvidenceProvenance } from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import {

@@ -11,7 +11,7 @@
  * `authenticated-state-queue-observation.ts`.
  */
 
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
 import "@lucid-evolution/lucid";
 import "@noble/hashes/blake2.js";
 import "../storage/durable-store.js";

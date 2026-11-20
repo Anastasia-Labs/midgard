@@ -1,11 +1,13 @@
 import {
+  type MidgardAddressWitness,
+  type NativeTxWitnessSetCompact,
+} from "@al-ft/midgard-sdk/core";
+import {
   encodeMidgardAddressWitnessCanonical,
   FraudProofTokenDatum,
   invalidSignatureTerminalContradiction,
   MIDGARD_FIELD_INDEX,
-  type MidgardAddressWitness,
-  type NativeTxWitnessSetCompact,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   Data,
   type LucidEvolution,

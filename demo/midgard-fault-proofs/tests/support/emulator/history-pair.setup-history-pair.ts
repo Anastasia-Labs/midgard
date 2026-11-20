@@ -1,13 +1,15 @@
 import {
   addressDataFromBech32,
+  type FaultProofBlueprint,
+  HubOracleDatum,
+} from "@al-ft/midgard-sdk/core";
+import {
   applyEventHistoryValidators,
   eventHistoryKey,
   EventHistoryNode,
   EventHistoryObserve,
   type EventHistoryPayloadBounds,
-  type FaultProofBlueprint,
-  HubOracleDatum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/users";
 import {
   CML,
   Data,

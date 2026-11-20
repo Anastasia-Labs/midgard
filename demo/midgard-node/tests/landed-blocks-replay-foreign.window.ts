@@ -6,7 +6,8 @@
  */
 import type { FactStore, OutRef } from "@al-ft/midgard-l1-follower";
 import type { SimTx } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 
 import type { ReplayInput } from "../src/landed-blocks/replay.js";
 import { unixTimeToSlotForConfig } from "../src/lucid-time.js";
@@ -49,7 +50,7 @@ export const startFor = (slot: number) =>
 
 /** `payload` over the window `(start, start + span]`, committed at its end. */
 export const windowed = (
-  payload: SDK.DaPayload,
+  payload: SDKDa.DaPayload,
   start: bigint,
   span = SLOT_MS,
 ) =>
@@ -69,7 +70,7 @@ export const windowed = (
 /** Sets the view's clock so its horizon is `by` ms past the block's end. */
 export const reach = async (
   store: FactStore,
-  payload: SDK.DaPayload,
+  payload: SDKDa.DaPayload,
   by = 0,
 ) => {
   const view = (await store.currentView())!;
@@ -87,7 +88,7 @@ export const originSlot = async (store: FactStore) =>
 /** Retains `payload` and replays it at the view, its node output entered at `enteredSlot` (default: the view's slot). */
 export const replayAt = async (
   store: FactStore,
-  payload: SDK.DaPayload,
+  payload: SDKDa.DaPayload,
   enteredSlot?: number | null,
 ) => {
   await retain(await retainedRow(payload));

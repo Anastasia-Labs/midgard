@@ -5,7 +5,7 @@
  * root, when it is not the predecessor's.
  */
 import { decodeMidgardNativeTxFullFromCanonicalCbor } from "@al-ft/midgard-core";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../../src/evidence/canonical-block-evidence.js";
 import { ledgerEntriesRoot, type LedgerEntry } from "../../src/ledger-at.js";

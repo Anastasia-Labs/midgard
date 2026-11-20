@@ -1,7 +1,5 @@
-import {
-  type AuthenticatedStateQueueHeaderObservation,
-  type FraudProofCatalogueCategoryName,
-} from "@al-ft/midgard-sdk";
+import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
+import { type AuthenticatedStateQueueHeaderObservation } from "@al-ft/midgard-sdk/fraud-proof";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import {

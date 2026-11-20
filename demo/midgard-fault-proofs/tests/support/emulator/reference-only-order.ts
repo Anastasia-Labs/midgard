@@ -8,7 +8,8 @@ import {
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   CML,
   coreToTxOutput,
@@ -111,7 +112,7 @@ export const mintReferenceOnlyOrder = async (
     .spyOn(Date, "now")
     .mockImplementation(() => h.emulator.now());
   const built = await Effect.runPromise(
-    SDK.buildUnsignedTxOrderTxWithMetadataProgram(lucid, h.contracts, {
+    SDKUsers.buildUnsignedTxOrderTxWithMetadataProgram(lucid, h.contracts, {
       nonceInput: nonce,
       submittedTxCbor: bytes.toString("hex"),
       carriageReferenceInputs: carriage.referenceInputs,
@@ -127,8 +128,8 @@ export const mintReferenceOnlyOrder = async (
   // computed from Lucid's final context and local UPLC evaluation remains on.
   const original = CML.Transaction.from_cbor_hex(built.tx.toCBOR());
   const eventOutput = coreToTxOutput(original.body().outputs().get(0));
-  const datum = Data.from(eventOutput.datum!, SDK.TxOrderDatum);
-  const witnessScript = SDK.buildUserEventWitnessCertificateValidator(
+  const datum = Data.from(eventOutput.datum!, SDKUsers.TxOrderDatum);
+  const witnessScript = SDKUsers.buildUserEventWitnessCertificateValidator(
     built.metadata.txOrderAuthUnit.slice(56),
   );
   const witnessReference = (
@@ -150,10 +151,10 @@ export const mintReferenceOnlyOrder = async (
     SDK.hashHexWithBlake2b(Data.to(fakeId, SDK.OutputReference), 32),
   );
   const fakeUnit = h.contracts.txOrder.policyId + fakeName;
-  const fakeDatum: SDK.TxOrderDatum = {
+  const fakeDatum: SDKUsers.TxOrderDatum = {
     ...datum,
     event: { ...datum.event, id: fakeId },
-    witness: SDK.userEventWitnessScriptHash(fakeName),
+    witness: SDKUsers.userEventWitnessScriptHash(fakeName),
   };
   const minted = {
     [built.metadata.txOrderAuthUnit]: 1n,
@@ -192,7 +193,7 @@ export const mintReferenceOnlyOrder = async (
             },
           },
           material_carriage: [
-            ...SDK.txOrderMaterialCarriageVector({
+            ...SDKUsers.txOrderMaterialCarriageVector({
               plan: carriage.plan,
               referenceInputs: ctx.referenceInputs,
               certificatePolicyId:
@@ -200,7 +201,7 @@ export const mintReferenceOnlyOrder = async (
             }),
           ],
         },
-        SDK.TxOrderMintRedeemer,
+        SDKUsers.TxOrderMintRedeemer,
       ),
     )
     .pay.ToAddressWithData(
@@ -218,7 +219,7 @@ export const mintReferenceOnlyOrder = async (
         SELECTED_DEPLOYMENT_PROFILE.network,
         witnessScript,
       ),
-      SDK.encodeUserEventWitnessMintOrBurnRedeemer(
+      SDKUsers.encodeUserEventWitnessMintOrBurnRedeemer(
         h.contracts.txOrder.policyId,
       ),
     );
@@ -235,7 +236,7 @@ export const mintReferenceOnlyOrder = async (
   if (extra)
     builder = builder.pay.ToAddressWithData(
       eventOutput.address,
-      { kind: "inline", value: Data.to(fakeDatum, SDK.TxOrderDatum) },
+      { kind: "inline", value: Data.to(fakeDatum, SDKUsers.TxOrderDatum) },
       { lovelace: 3_000_000n, [fakeUnit]: 1n },
     );
   const fullReference = await builder.complete({ localUPLCEval: true });
@@ -247,7 +248,7 @@ export const mintReferenceOnlyOrder = async (
   ).filter((u) => u.txHash === txHash);
   expect(outputs).toHaveLength(extra ? 2 : 1);
   const authenticated = await Effect.runPromise(
-    SDK.utxosToTxOrderUTxOs(outputs, h.contracts.txOrder.policyId),
+    SDKUsers.utxosToTxOrderUTxOs(outputs, h.contracts.txOrder.policyId),
   );
   expect(authenticated).toHaveLength(extra ? 2 : 1);
   capture(

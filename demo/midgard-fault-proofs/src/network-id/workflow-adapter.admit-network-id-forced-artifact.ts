@@ -1,12 +1,12 @@
 import { computeHash28, decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
 import { decodeMidgardForcedTxCompact } from "@al-ft/midgard-core/codec/forced";
+import { encodeHeaderCbor } from "@al-ft/midgard-sdk/core";
 import {
   type AuthenticatedStateQueueHeaderObservation,
   bindExactVerdictSubjectReason,
-  encodeHeaderCbor,
   forcedVerdictSubject,
   type NetworkIdFault,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import type {

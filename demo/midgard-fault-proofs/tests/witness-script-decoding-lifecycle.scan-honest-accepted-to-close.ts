@@ -3,7 +3,8 @@ import {
   encodeMidgardNativeTxCanonical,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core/codec";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { expect } from "vitest";
 
 import { planWitnessScriptDecodingStep03Transition } from "../src/witness-script-decoding/submit-step-03.js";
@@ -137,8 +138,8 @@ export const deepShape = () =>
 export const reasonOf = (
   arm: ReasonArm,
   scriptIndex: bigint,
-): SDK.RejectionReason =>
-  ({ [arm]: { script_index: scriptIndex } }) as SDK.RejectionReason;
+): SDKCore.RejectionReason =>
+  ({ [arm]: { script_index: scriptIndex } }) as SDKCore.RejectionReason;
 
 export const acceptedEvidence = (shape: Shape, scriptIndex = 0n) =>
   prepareWitnessScriptDecodingEvidence({
@@ -153,8 +154,8 @@ export const acceptedEvidence = (shape: Shape, scriptIndex = 0n) =>
 
 export const forcedEvidence = (
   shape: Shape,
-  orderKey: SDK.OutputReference,
-  reason: SDK.RejectionReason,
+  orderKey: SDKCore.OutputReference,
+  reason: SDKCore.RejectionReason,
   scriptIndex = 0n,
 ) =>
   prepareWitnessScriptDecodingEvidence({

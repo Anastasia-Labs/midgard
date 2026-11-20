@@ -18,7 +18,8 @@
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
   replayValidationVerdictEvent,
   type ValidationMachineLedgerEntry,
@@ -72,7 +73,7 @@ export {
  * decoder both run).
  */
 const descriptorVerdict = (valueHex: string) =>
-  SDK.decodeCanonicalValidationTraceDescriptorData(valueHex).verdict;
+  SDKDa.decodeCanonicalValidationTraceDescriptorData(valueHex).verdict;
 
 /** One ledger entry: the out-ref key bytes and the full output CBOR. */
 export type BlockReplayLedgerEntry = {
@@ -116,7 +117,7 @@ export type BlockReplayContext = {
   /** Authenticated L1 event material; never take projection authority from DA. */
   readonly replayUserEvent: (input: {
     readonly step: SDK.TransitionStep;
-    readonly source: SDK.DaPayloadEntry;
+    readonly source: SDKDa.DaPayloadEntry;
     readonly ledger: ReadonlyMap<string, Buffer>;
   }) => Effect.Effect<
     readonly { readonly key: string; readonly output: Buffer | null }[],
@@ -137,7 +138,7 @@ export type BlockReplayContext = {
     onTransaction: (transaction: CommittedTransaction) => void;
   }>;
   readonly verifyForcedSource: (input: {
-    readonly source: SDK.DaPayloadEntry;
+    readonly source: SDKDa.DaPayloadEntry;
     readonly canonicalTransactionCbor: Buffer;
     readonly rejection?: RejectedTx;
   }) => Effect.Effect<void, unknown>;
@@ -145,7 +146,7 @@ export type BlockReplayContext = {
 
 export const replayBlockEvents = (
   input: BlockReplayContext & {
-    readonly payload: SDK.DaPayload;
+    readonly payload: SDKDa.DaPayload;
   },
 ) =>
   Effect.gen(function* () {
@@ -186,10 +187,10 @@ export const replayBlockEvents = (
     }
     const expectedSources = new Map<
       string,
-      { phase: SDK.TransitionPhase; source: SDK.DaPayloadEntry }
+      { phase: SDK.TransitionPhase; source: SDKDa.DaPayloadEntry }
     >();
     const add = (
-      entries: readonly SDK.DaPayloadEntry[],
+      entries: readonly SDKDa.DaPayloadEntry[],
       phase: SDK.TransitionPhase,
       keyFor: (key: string) => SDK.EventKey,
     ) => {

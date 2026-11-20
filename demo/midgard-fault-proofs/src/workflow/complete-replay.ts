@@ -1,6 +1,9 @@
 import "node:crypto";
 import "@al-ft/midgard-core";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/da";
+import "@al-ft/midgard-sdk/users";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "@al-ft/midgard-validation";
 import "../committed-field-shape/prepare-committed-field-shape.js";
 import "../evidence/canonical-block-evidence.js";

@@ -6,7 +6,9 @@
  * retained-DA payload bytes. There is no operator REST/DB/file input.
  */
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import type * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -31,7 +33,7 @@ import {
 const FOREIGN_COMMITTED_KEY =
   "9999999999999999999999999999999999999999999999999999999999999999";
 
-const DA_PROVENANCE: SDK.EvidenceProvenance = {
+const DA_PROVENANCE: SDKFraudProof.EvidenceProvenance = {
   trustClass: "public_or_permissionless_da",
   sourceId: "retained-da-peer",
   grade: "security",
@@ -81,7 +83,7 @@ const recommitLeaf = async ({
   readonly leafValue: Buffer;
 }): Promise<{
   readonly payloadEnvelopeCbor: Buffer;
-  readonly observation: SDK.AuthenticatedStateQueueHeaderObservation;
+  readonly observation: SDKFraudProof.AuthenticatedStateQueueHeaderObservation;
   readonly transactionsRoot: string;
 }> => {
   const counted = await buildCountedRoot(SDK.ROOT_DOMAINS.transactionsV1, [
@@ -92,7 +94,7 @@ const recommitLeaf = async ({
     transactionsRoot: counted.root,
   };
   const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
-  const payload: SDK.DaPayload = {
+  const payload: SDKDa.DaPayload = {
     ...fixture.payload,
     block_body: {
       ...fixture.payload.block_body,
@@ -102,7 +104,7 @@ const recommitLeaf = async ({
     },
   };
   return {
-    payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(payload), {
+    payloadEnvelopeCbor: await wrapDaPayload(SDKDa.encodeDaPayload(payload), {
       mode: "identity",
     }),
     observation: authenticatedHeaderObservation({
@@ -367,7 +369,7 @@ describe("Q44 exact production evidence route", () => {
   it("does not turn a forged raw root/key/value substitution into Q44", async () => {
     const fixture = await buildBlock();
     const [tx] = fixture.transactions;
-    const forgedPayload: SDK.DaPayload = {
+    const forgedPayload: SDKDa.DaPayload = {
       ...fixture.payload,
       block_body: {
         ...fixture.payload.block_body,
@@ -377,7 +379,7 @@ describe("Q44 exact production evidence route", () => {
       },
     };
     const forgedEnvelope = await wrapDaPayload(
-      SDK.encodeDaPayload(forgedPayload),
+      SDKDa.encodeDaPayload(forgedPayload),
       { mode: "identity" },
     );
     await expect(

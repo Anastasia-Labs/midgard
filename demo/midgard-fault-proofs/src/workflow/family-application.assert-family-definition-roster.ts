@@ -1,4 +1,4 @@
-import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
+import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";

@@ -4,7 +4,7 @@
  * outref the first order drained: `NonExistentWithdrawalUtxo` is the honest
  * tag, and `WithdrawalIsValid` is a mistag.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { describe, expect, it, vi } from "vitest";
 
 import { prepareWithdrawalMistag } from "../src/withdrawal-mistag/prepare-withdrawal-mistag.js";
@@ -31,8 +31,9 @@ import {
 // it, the honest case lets the preparer label it instead of throwing; every
 // authentication the preparer performs still runs.
 const preparer = vi.hoisted(() => ({ labelHonest: false }));
-vi.mock("@al-ft/midgard-sdk", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@al-ft/midgard-sdk")>();
+vi.mock("@al-ft/midgard-sdk/core", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@al-ft/midgard-sdk/core")>();
   return {
     ...actual,
     withdrawalMistagDirection: (

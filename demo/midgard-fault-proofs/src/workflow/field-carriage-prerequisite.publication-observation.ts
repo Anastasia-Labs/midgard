@@ -1,4 +1,4 @@
-import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
+import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 import type { LucidEvolution, Network, UTxO } from "@lucid-evolution/lucid";
 
 import { fieldPreimageCertificateAddress } from "../field-opening.js";

@@ -48,7 +48,7 @@ import {
   type TxContentSource,
   type View,
 } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/users";
 import { SqlClient } from "@effect/sql";
 import { Cause, Effect, Exit } from "effect";
 

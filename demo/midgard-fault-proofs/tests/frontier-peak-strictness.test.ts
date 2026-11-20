@@ -1,8 +1,6 @@
-import {
-  BoundedBlobFrontierPeakSchema,
-  FrontierPeakSchema,
-  MinAdaOutputScanControlSchema,
-} from "@al-ft/midgard-sdk";
+import { BoundedBlobFrontierPeakSchema } from "@al-ft/midgard-sdk/core";
+import { FrontierPeakSchema } from "@al-ft/midgard-sdk/da";
+import { MinAdaOutputScanControlSchema } from "@al-ft/midgard-sdk/fraud-proof";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

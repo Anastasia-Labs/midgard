@@ -15,11 +15,9 @@ import {
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core/codec";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import {
-  REFERENCE_SCRIPT_AUTH_TIMELOCK_MS,
-  type RejectionReason,
-  rejectionReasonPhase,
-} from "@al-ft/midgard-sdk";
+import { type RejectionReason } from "@al-ft/midgard-sdk/core";
+import { rejectionReasonPhase } from "@al-ft/midgard-sdk/fraud-proof";
+import { REFERENCE_SCRIPT_AUTH_TIMELOCK_MS } from "@al-ft/midgard-sdk/state-queue";
 import { MidgardRedeemerTag } from "@al-ft/midgard-validation/midgard-redeemers";
 import { validatePhaseASingle } from "@al-ft/midgard-validation/phase-a";
 import { runPhaseBValidationWithPatch } from "@al-ft/midgard-validation/phase-b";

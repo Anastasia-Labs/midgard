@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKOperators from "@al-ft/midgard-sdk/operators";
 import {
   Emulator,
   Lucid,
@@ -188,7 +189,7 @@ const directoryNode = (
   key: string | null,
   nextActivationTime: bigint | null,
   operator: string,
-): SDK.NodeWithDatum => ({
+): SDKOperators.NodeWithDatum => ({
   utxo: utxo(key === null ? "aa" : "11"),
   datum: {
     key: key === null ? "Empty" : { Key: { key } },
@@ -197,7 +198,9 @@ const directoryNode = (
         ? "Empty"
         : {
             Key: {
-              key: SDK.posixTimeToRegisteredNodeKey(nextActivationTime),
+              key: SDKOperators.posixTimeToRegisteredNodeKey(
+                nextActivationTime,
+              ),
             },
           },
     data: SDK.castRegisteredOperatorDatumToData({
@@ -224,7 +227,7 @@ describe("operator decisions read L1 now", () => {
       registered: [
         directoryNode(null, activationTime, OPERATOR),
         directoryNode(
-          SDK.posixTimeToRegisteredNodeKey(activationTime),
+          SDKOperators.posixTimeToRegisteredNodeKey(activationTime),
           null,
           OPERATOR,
         ),
@@ -236,7 +239,7 @@ describe("operator decisions read L1 now", () => {
         datum: "NoActiveOperators",
         assetName: "scheduler",
       },
-    } as unknown as SDK.OperatorDirectorySnapshot;
+    } as unknown as SDKOperators.OperatorDirectorySnapshot;
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(Date.now() + TEN_MINUTES_MS);
     const report = await Effect.runPromise(

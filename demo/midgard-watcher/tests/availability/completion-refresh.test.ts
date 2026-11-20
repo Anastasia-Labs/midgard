@@ -1,5 +1,5 @@
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { Effect } from "effect";
 import { afterEach, expect, it, vi } from "vitest";
 

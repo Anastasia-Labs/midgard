@@ -4,7 +4,9 @@
  * goes to the protocol treasury and the case's lovelace to its claimant.
  * Anyone may send it; the src builds only the convicting close. */
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   Constr,
   credentialToAddress,
@@ -23,7 +25,7 @@ import type { Scene } from "./validation-trace-dispute-open-scene.js";
 
 /** The protocol treasury a forfeited bond goes to. */
 export const protocolTreasury = (): string =>
-  SDK.protocolTreasuryAddress(
+  SDKDa.protocolTreasuryAddress(
     network,
     SELECTED_DEPLOYMENT_PROFILE.protocol_treasury_native_script,
   );
@@ -58,7 +60,7 @@ export const defenderWonCaseClose = async ({
   readonly bondTo?: string;
 }): Promise<TxSignBuilder> => {
   const { h, chain, references } = scene;
-  const caseDatum = Data.from(caseUtxo.datum!, SDK.Case);
+  const caseDatum = Data.from(caseUtxo.datum!, SDKDa.Case);
   const computationThread = h.contracts.computationThread;
   const threadBurn = burnOf(caseUtxo, computationThread.policyId);
   const [threadUnit] = Object.keys(threadBurn);
@@ -78,7 +80,7 @@ export const defenderWonCaseClose = async ({
           remainder_output_index: 1n,
         },
       },
-      SDK.CaseRedeemer,
+      SDKDa.CaseRedeemer,
     );
   const window = validationTraceMoveWindow(lucid);
   return await lucid
@@ -87,14 +89,14 @@ export const defenderWonCaseClose = async ({
     .collectFrom([bond], (ctx) =>
       Data.to(
         { case_input_index: SDK.requireInputIndex(ctx, caseUtxo, "case") },
-        SDK.DisputeBondSpendRedeemer,
+        SDKDa.DisputeBondSpendRedeemer,
       ),
     )
     .mintAssets(
       threadBurn,
       Data.to(
         { Success: { burning_token_asset_name: fromUnit(threadUnit).name! } },
-        SDK.FraudProofComputationThreadRedeemer,
+        SDKFraudProof.FraudProofComputationThreadRedeemer,
       ),
     )
     .mintAssets(

@@ -3,7 +3,7 @@
  * a purpose, and its finish pays the source lookup a selection with no
  * purpose, which the lookup resolves to no native execution. The present
  * kinds use the kit's own observed selection. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import {

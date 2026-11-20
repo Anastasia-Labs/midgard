@@ -7,7 +7,7 @@ import {
   invalidSignatureWitnessSetCommitment,
   MIDGARD_FIELD_INDEX,
   verifyAddressWitness,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 import { prepareInvalidSignatureFromCanonicalEvidence } from "../evidence/prepare-from-evidence.js";

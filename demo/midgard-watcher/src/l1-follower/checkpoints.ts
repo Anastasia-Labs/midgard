@@ -10,7 +10,7 @@ import type {
   SqlTx,
   TemporalTableSpec,
 } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/state-queue";
 import {
   CML,
   credentialToAddress,

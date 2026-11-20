@@ -6,7 +6,7 @@ import {
   ledgerAfter,
   type LedgerAt,
 } from "@al-ft/midgard-fault-proofs/ledger-at";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import type {
   PublishedDaTargetCorrection,
   PublishedDaTransactionRecord,

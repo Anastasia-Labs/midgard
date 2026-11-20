@@ -1,9 +1,9 @@
+import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk/core";
 import {
   type AuthenticatedStateQueueHeaderObservation,
   CANONICAL_DECODABILITY_VIOLATION_ID,
   DA_HASH_PREIMAGE_VIOLATION_ID,
-  EMPTY_MERKLE_TREE_ROOT,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import {
   fetchFraudProofEvidence,

@@ -4,7 +4,8 @@ import {
   parseMidgardMpfProofJson,
 } from "@al-ft/midgard-core";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import { h32 } from "@al-ft/midgard-test-support/hex";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -95,7 +96,7 @@ export const buildL2ReplayBlock = async ({
     prevUtxosRoot: preRoot,
     utxos: [
       ...survivors.map(
-        ({ key, outputCbor: survivorOutputCbor }): SDK.DaPayloadEntry => [
+        ({ key, outputCbor: survivorOutputCbor }): SDKDa.DaPayloadEntry => [
           key.toString("hex"),
           survivorOutputCbor.toString("hex"),
         ],
@@ -103,7 +104,7 @@ export const buildL2ReplayBlock = async ({
       ...(includeProducedPayloadUtxo
         ? ([
             [producedKey.toString("hex"), producedOutput.toString("hex")],
-          ] satisfies SDK.DaPayloadEntry[])
+          ] satisfies SDKDa.DaPayloadEntry[])
         : []),
     ],
     transactions: [

@@ -9,7 +9,9 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "@al-ft/midgard-core/deployment-manifest-identity";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   Emulator,
   generateEmulatorAccount,
@@ -339,11 +341,11 @@ const buildCanonicalDeploymentContext = async () => {
   const initializedRoot = await requireUtxoWithUnit(
     funderLucid,
     contracts.stateQueue.spendingScriptAddress,
-    contracts.stateQueue.policyId + SDK.STATE_QUEUE_ROOT_ASSET_NAME,
+    contracts.stateQueue.policyId + SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME,
     "canonical initialized state queue",
   );
   const genesis = await Effect.runPromise(
-    SDK.getConfirmedStateFromStateQueueDatum(
+    SDKStateQueue.getConfirmedStateFromStateQueueDatum(
       await Effect.runPromise(
         SDK.getLinkedListNodeViewFromUTxO(initializedRoot),
       ),
@@ -413,7 +415,7 @@ export const bindCanonicalFixtureHeader = async (
     header,
     headerHash,
     payload,
-    payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(payload), {
+    payloadEnvelopeCbor: await wrapDaPayload(SDKDa.encodeDaPayload(payload), {
       mode: "identity",
     }),
   };

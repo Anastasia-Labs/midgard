@@ -10,7 +10,7 @@ import {
   encodeMidgardFieldPreimage,
   encodeMidgardVersionedScript,
 } from "@al-ft/midgard-core";
-import { MintAuthorizationStep02ThreadDatum } from "@al-ft/midgard-sdk";
+import { MintAuthorizationStep02ThreadDatum } from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, getAddressDetails, toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

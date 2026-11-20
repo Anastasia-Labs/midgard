@@ -2,7 +2,7 @@ import {
   DA_AVAILABILITY_MAX_VALIDITY_RANGE_MS,
   DA_AVAILABILITY_VALIDITY_BACKDATE_MS,
   DA_AVAILABILITY_VALIDITY_LOOKAHEAD_MS,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/da";
 import { describe, expect, it } from "vitest";
 
 import {

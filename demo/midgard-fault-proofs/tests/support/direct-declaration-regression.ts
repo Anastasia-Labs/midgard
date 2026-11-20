@@ -1,5 +1,6 @@
 import { computeHash28, encodeMidgardTxOutput } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   credentialToAddress,
   Data,
@@ -77,15 +78,18 @@ export const driveDirectDeclarationRegression = async (
   } = await directHandoffContext(readBlueprint(realBlueprintPath));
   expect(strangerHash).not.toBe(prover);
   const plan = createDirectFieldPlan(material, 2, prover);
-  let state: SDK.DirectReceiveOutputState = {
+  let state: SDKFraudProof.DirectReceiveOutputState = {
     cursor: plan.position("Certifying", 0).cursor,
     source_index: { root: SDK.EMPTY_MERKLE_TREE_ROOT, count: 0n },
     credential_root: SDK.EMPTY_MERKLE_TREE_ROOT,
     credential_count: 0n,
     complete: false,
   };
-  const outputDatum = (data: SDK.DirectReceiveOutputState) =>
-    Data.to({ fraud_prover: prover, data }, SDK.DirectReceiveOutputDatum);
+  const outputDatum = (data: SDKFraudProof.DirectReceiveOutputState) =>
+    Data.to(
+      { fraud_prover: prover, data },
+      SDKFraudProof.DirectReceiveOutputDatum,
+    );
   const unit =
     policy +
     "0000002b" +
@@ -106,7 +110,7 @@ export const driveDirectDeclarationRegression = async (
               fraud_prover: prover,
               data: { bound: material.bound, source_index: state.source_index },
             },
-            SDK.DirectReceiveStartDatum,
+            SDKFraudProof.DirectReceiveStartDatum,
           ),
         },
       },
@@ -153,7 +157,7 @@ export const driveDirectDeclarationRegression = async (
       redeemer: (indices, open) =>
         Data.to(
           { Continue: [{ ...indices, outputs_opening: open(2) }] },
-          SDK.DirectReceiveStartRedeemer,
+          SDKFraudProof.DirectReceiveStartRedeemer,
         ),
     },
     ownerLucid,
@@ -178,7 +182,7 @@ export const driveDirectDeclarationRegression = async (
               },
             ],
           },
-          SDK.DirectReceiveGrammarRedeemer,
+          SDKFraudProof.DirectReceiveGrammarRedeemer,
         ),
     },
     ownerLucid,
@@ -210,7 +214,7 @@ export const driveDirectDeclarationRegression = async (
               },
             ],
           },
-          SDK.DirectReceiveOutputRedeemer,
+          SDKFraudProof.DirectReceiveOutputRedeemer,
         ),
     },
     ownerLucid,
@@ -224,12 +228,12 @@ export const driveDirectDeclarationRegression = async (
       redeemer: (indices) =>
         Data.to(
           { Continue: [{ Finish: indices }] },
-          SDK.DirectReceiveOutputRedeemer,
+          SDKFraudProof.DirectReceiveOutputRedeemer,
         ),
     },
     ownerLucid,
   );
-  const declaration: SDK.DirectReceiveDeclarationState = {
+  const declaration: SDKFraudProof.DirectReceiveDeclarationState = {
     bound: material.bound,
     source_index: state.source_index,
     output_root: evidence.outputRoot,
@@ -240,8 +244,13 @@ export const driveDirectDeclarationRegression = async (
     target_ordinal: 0n,
     selected: null,
   };
-  const declarationDatum = (data: SDK.DirectReceiveDeclarationState) =>
-    Data.to({ fraud_prover: prover, data }, SDK.DirectReceiveDeclarationDatum);
+  const declarationDatum = (
+    data: SDKFraudProof.DirectReceiveDeclarationState,
+  ) =>
+    Data.to(
+      { fraud_prover: prover, data },
+      SDKFraudProof.DirectReceiveDeclarationDatum,
+    );
   await run.accept(
     {
       label: "owner selects actual receive target",
@@ -260,12 +269,14 @@ export const driveDirectDeclarationRegression = async (
               },
             ],
           },
-          SDK.DirectReceiveFinishRedeemer,
+          SDKFraudProof.DirectReceiveFinishRedeemer,
         ),
     },
     ownerLucid,
   );
-  const advanced = (poison: boolean): SDK.DirectReceiveDeclarationState => ({
+  const advanced = (
+    poison: boolean,
+  ): SDKFraudProof.DirectReceiveDeclarationState => ({
     ...declaration,
     declared_root: poison ? wrong.outputRoot : evidence.outputRoot,
     declared_count: 1n,
@@ -298,7 +309,7 @@ export const driveDirectDeclarationRegression = async (
             },
           ],
         },
-        SDK.DirectReceiveDeclarationRedeemer,
+        SDKFraudProof.DirectReceiveDeclarationRedeemer,
       ),
   });
   await run.refuse(scan(attack === "wrong-index"), strangerLucid);
@@ -320,12 +331,12 @@ export const driveDirectDeclarationRegression = async (
           purpose: advanced(false).selected!.purpose,
         },
       },
-      SDK.DirectPurposeSelectionDatum,
+      SDKFraudProof.DirectPurposeSelectionDatum,
     ),
     redeemer: (indices: { input_index: bigint; output_index: bigint }) =>
       Data.to(
         { Continue: [{ Finish: indices }] },
-        SDK.DirectReceiveDeclarationRedeemer,
+        SDKFraudProof.DirectReceiveDeclarationRedeemer,
       ),
   });
   await run.refuse(

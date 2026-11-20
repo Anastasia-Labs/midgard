@@ -2,7 +2,8 @@
  * The landed-queue facts the operator watchdog holds a takeover on (B7): the
  * tail's commit time and when the queue stops accepting appends.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { describe, expect, it } from "vitest";
 
 import { stateQueueStrikeFactsOf } from "../src/l1-operator-set/strike-facts.js";
@@ -11,7 +12,7 @@ import type {
   LandedStateQueueElement,
 } from "../src/l1-state-queue/index.js";
 
-const TIMEOUT = SDK.DA_ATTESTATION_TIMEOUT_MS;
+const TIMEOUT = SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS;
 
 const header: SDK.Header = {
   ...SDK.EMPTY_HEADER_TRANSITION_COMMITMENTS,
@@ -58,7 +59,7 @@ const element = (
               proven_fraud: provenFraud,
             }),
     },
-  } as unknown as SDK.StateQueueUTxO,
+  } as unknown as SDKStateQueue.StateQueueUTxO,
   headerHash: "cd".repeat(28),
   endTimeMs: 1_000n,
   blockTimeMs,

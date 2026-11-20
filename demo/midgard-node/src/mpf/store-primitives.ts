@@ -4,7 +4,7 @@
 
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { normalizeHex } from "@al-ft/midgard-core/hex";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 
 import { type MpfReadableValue, type MpfStoredValue } from "./types.js";
 

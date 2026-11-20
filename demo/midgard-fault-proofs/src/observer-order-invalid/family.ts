@@ -3,15 +3,15 @@ import {
   midgardFieldCommitment,
   selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core";
+import { type RejectionReason } from "@al-ft/midgard-sdk/core";
 import {
   PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE,
   PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
-  type RejectionReason,
   terminalVerdictContradiction,
   type VerdictSubject,
   verdictSubjectIsCanonical,
   VerdictSubjectSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 export const OBSERVER_ORDER_INVALID_CATEGORY = "observerOrderInvalid" as const;

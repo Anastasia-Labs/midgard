@@ -1,4 +1,4 @@
-import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk";
+import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk/fraud-proof";
 import type { Script, UTxO } from "@lucid-evolution/lucid";
 import { Data, validatorToScriptHash } from "@lucid-evolution/lucid";
 

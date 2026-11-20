@@ -1,4 +1,4 @@
-import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk";
+import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk/fraud-proof";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 import type { L2TxMistagContracts } from "../l2-tx-mistag/contracts.js";

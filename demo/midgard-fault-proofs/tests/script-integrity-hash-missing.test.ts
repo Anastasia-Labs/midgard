@@ -1,5 +1,5 @@
 import { EMPTY_NULL_ROOT } from "@al-ft/midgard-core";
-import { acceptedVerdictSubject } from "@al-ft/midgard-sdk";
+import { acceptedVerdictSubject } from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import {

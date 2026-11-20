@@ -3,7 +3,7 @@
  * its reserved plain coins alone, so every step must spend and post as
  * collateral reserved coins only. */
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";

@@ -21,6 +21,7 @@
  * `./diagnostic-evidence.ts` and cannot be admitted as security evidence.
  */
 import { computeDaSha256Hash } from "@al-ft/midgard-core/da-transport";
+import { type Header } from "@al-ft/midgard-sdk/core";
 import {
   admitAuthenticatedStateQueueHeaderObservation,
   admitEvidenceProvenance,
@@ -30,9 +31,8 @@ import {
   combineEvidenceGrade,
   type EvidenceGrade,
   type EvidenceProvenance,
-  type Header,
   type TransactionsInclusionRootAuthentication,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { NodeTransactionPayload } from "../prepare-double-spend.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.admit-retained-da-provenance.js";

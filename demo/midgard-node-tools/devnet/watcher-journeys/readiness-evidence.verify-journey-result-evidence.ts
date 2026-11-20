@@ -8,7 +8,8 @@ import {
   type FraudProofWorkflowTerminal,
   validateFraudProofWorkflowJournal,
 } from "@al-ft/midgard-fault-proofs";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   credentialToAddress,
   Data,
@@ -57,9 +58,12 @@ export const verifyJourneyProverPayout = (
     "Result does not name the prover the run used",
   );
   const prover = paymentCredentialOf(result.proverAddress).hash;
-  assert.deepEqual(Data.from(proofDatumCbor, SDK.FraudProofTokenDatum), {
-    fraud_prover: prover,
-  });
+  assert.deepEqual(
+    Data.from(proofDatumCbor, SDKFraudProof.FraudProofTokenDatum),
+    {
+      fraud_prover: prover,
+    },
+  );
   assert.equal(
     rewardAddress,
     credentialToAddress("Preprod", { type: "Key", hash: prover }),

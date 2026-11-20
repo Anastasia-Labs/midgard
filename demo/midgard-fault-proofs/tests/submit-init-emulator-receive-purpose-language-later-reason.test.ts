@@ -9,7 +9,8 @@
  * and the arm recorded at the forbidden execution itself, reach the terminal
  * and are refused.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -45,7 +46,9 @@ const forbidden = (count: number): MissingRedeemerSubjectShape => ({
   })),
 });
 
-const rejected = (reason: SDK.RejectionReason): SDK.OperatorVerdict => ({
+const rejected = (
+  reason: SDKCore.RejectionReason,
+): SDKCore.OperatorVerdict => ({
   ForcedTxInvalid: { reason },
 });
 

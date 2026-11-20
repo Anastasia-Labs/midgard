@@ -11,7 +11,7 @@
  * that release deletes them, and an unfold before it loses none of them.
  */
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { SqlClient } from "@effect/sql";
 import { Effect, Metric } from "effect";
 import { describe, expect, it } from "vitest";

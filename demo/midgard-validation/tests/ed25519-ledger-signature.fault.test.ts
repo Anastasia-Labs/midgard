@@ -2,7 +2,7 @@ import {
   ledgerEd25519SignatureReady,
   verifyLedgerEd25519Signature,
 } from "@al-ft/midgard-core";
-import { verifyAddressWitness } from "@al-ft/midgard-sdk";
+import { verifyAddressWitness } from "@al-ft/midgard-sdk/fraud-proof";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { RejectCodes } from "../src/index.js";

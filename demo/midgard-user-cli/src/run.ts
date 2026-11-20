@@ -8,7 +8,7 @@
 import {
   type UserSubmissionOutcome,
   UserSubmissionPending,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/users";
 import { Command, CommanderError, Option } from "commander";
 
 import { type DepositOptions, runDeposit } from "./deposit.js";

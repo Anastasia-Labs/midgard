@@ -4,9 +4,9 @@ import {
 } from "@al-ft/midgard-core";
 import {
   type MidgardAddressWitness,
-  missingSignatureVkeyHash,
   type NativeTxWitnessSetCompact,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { missingSignatureVkeyHash } from "@al-ft/midgard-sdk/fraud-proof";
 
 import { type SubmitStep01TxInclusion } from "../step-support.js";
 import { type JournalJsonObject } from "./journal.js";

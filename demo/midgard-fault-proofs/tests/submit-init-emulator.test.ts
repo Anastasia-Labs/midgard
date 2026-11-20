@@ -14,17 +14,18 @@
  */
 
 import { outRefLabel } from "@al-ft/midgard-core";
+import { SCHEDULER_ASSET_NAME, SchedulerDatum } from "@al-ft/midgard-sdk/core";
 import {
   DoubleSpendStep02Datum,
   DoubleSpendStep03Datum,
   DoubleSpendStep04Datum,
   FraudProofComputationThreadStepDatum,
   FraudProofTokenDatum,
+} from "@al-ft/midgard-sdk/fraud-proof";
+import {
   referenceScriptAuthPolicyDeploymentInfo,
-  SCHEDULER_ASSET_NAME,
-  SchedulerDatum,
   utxoToStateQueueUTxO,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import {
   Data,
   getAddressDetails,

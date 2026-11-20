@@ -13,11 +13,8 @@ import {
   encodeMidgardForcedTxCanonical,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
-import {
-  acceptedVerdictSubject,
-  Proof,
-  type RejectionReason,
-} from "@al-ft/midgard-sdk";
+import { Proof, type RejectionReason } from "@al-ft/midgard-sdk/core";
+import { acceptedVerdictSubject } from "@al-ft/midgard-sdk/fraud-proof";
 import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";

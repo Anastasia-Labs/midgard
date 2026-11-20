@@ -2,7 +2,8 @@ import "./helpers/follower-emulator-installed.js";
 // Loaded before the fixture's first submission, so its capture is complete.
 import "./helpers/emulator-chain-capture.js";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import {
   type Assets,
   calculateMinLovelaceFromUTxO,
@@ -174,7 +175,7 @@ const setUp = async (): Promise<Fixture> => {
 };
 
 /** A deployment whose initialization nonce is in neither wallet. */
-let otherDeployment: Promise<SDK.MidgardValidators> | undefined;
+let otherDeployment: Promise<SDKCore.MidgardValidators> | undefined;
 const deploymentElsewhere = () =>
   (otherDeployment ??= loadRealMidgardContractsForTest({
     txHash: "00".repeat(32),
@@ -192,7 +193,7 @@ const strip = async (
     readonly execute: boolean;
     readonly wallet?: Wallet;
     readonly maxReferenceScriptBytesPerBatch?: number;
-    readonly contracts?: SDK.MidgardValidators;
+    readonly contracts?: SDKCore.MidgardValidators;
   },
 ): Promise<Either.Either<OperatorWalletScriptRefStripResult, unknown>> =>
   runWithoutFollower(

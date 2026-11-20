@@ -1,6 +1,7 @@
 /** One durable per-event input artifact for both transaction source roots and
  * both verdict polarities. Block-initial and creator-transaction proofs are retired. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
@@ -48,7 +49,7 @@ const identity = (
       : "no-reference-input";
   if (
     prepared.source.subject.direction ===
-    SDK.PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION
+    SDKFraudProof.PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION
   ) {
     return `${violation}-wrongful-rejection:${position}`;
   }
@@ -146,7 +147,7 @@ export const prepareLedgerAbsenceArtifact = async ({
   });
   const wrongfulAcceptance =
     prepared.source.subject.direction ===
-    SDK.PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE;
+    SDKFraudProof.PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE;
   if (
     wrongfulAcceptance
       ? !(

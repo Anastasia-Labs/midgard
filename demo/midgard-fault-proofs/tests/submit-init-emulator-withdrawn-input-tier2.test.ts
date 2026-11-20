@@ -23,10 +23,8 @@ import {
   MIDGARD_CHUNK_BYTES_K,
   MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
 } from "@al-ft/midgard-core";
-import {
-  encodeMidgardTxInputCanonical,
-  fieldPreimagePublicationDatumCbor,
-} from "@al-ft/midgard-sdk";
+import { encodeMidgardTxInputCanonical } from "@al-ft/midgard-sdk/fraud-proof";
+import { fieldPreimagePublicationDatumCbor } from "@al-ft/midgard-sdk/state-queue";
 import { describe, expect, it } from "vitest";
 
 import { buildWithdrawnInputStep03 } from "../src/withdrawn-input/submit-withdrawn-input-step-03.js";

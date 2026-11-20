@@ -1,10 +1,12 @@
 import {
   type CorrectionLockDatum,
-  DA_ATTESTATION_TIMEOUT_MS,
   getStateQueueNodeFromStateQueueDatum,
   NO_DA_ATTESTATION,
+} from "@al-ft/midgard-sdk/core";
+import {
+  DA_ATTESTATION_TIMEOUT_MS,
   type StateQueueUTxO,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import { type Script, validatorToScriptHash } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

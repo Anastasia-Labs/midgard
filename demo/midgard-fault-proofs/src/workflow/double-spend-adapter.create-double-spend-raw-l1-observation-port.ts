@@ -2,7 +2,7 @@ import {
   assertSecurityGradeEvidence,
   type AuthenticatedStateQueueHeaderObservation,
   type EvidenceProvenance,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { FraudProofWorkflowTerminal } from "./journal.js";
 import {

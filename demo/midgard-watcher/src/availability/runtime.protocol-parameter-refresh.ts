@@ -1,5 +1,5 @@
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
-import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk";
+import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk/da";
 import {
   calculateMinLovelaceFromUTxO,
   type LucidEvolution,

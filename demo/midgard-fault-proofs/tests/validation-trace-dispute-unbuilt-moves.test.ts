@@ -9,7 +9,7 @@
  * thread; once the move builds and is funded, the runner makes it. A move
  * that does not build gives way, in the same run, to the move ranked after
  * it, and the run still raises its alarm. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 

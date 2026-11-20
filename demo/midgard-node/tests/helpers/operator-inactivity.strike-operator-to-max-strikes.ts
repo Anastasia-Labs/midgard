@@ -1,4 +1,6 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKOperators from "@al-ft/midgard-sdk/operators";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   CML,
   toUnit,
@@ -39,7 +41,7 @@ export const expectInactivityStrikeRefusal = async (
   let message: string | undefined;
   try {
     await Effect.runPromise(
-      SDK.buildStrikeInactiveOperatorTxProgram(prepared.config),
+      SDKOperators.buildStrikeInactiveOperatorTxProgram(prepared.config),
     );
   } catch (cause) {
     message = String(
@@ -99,7 +101,7 @@ export const strikeOperatorToMaxStrikes = async (
   const maxAttempts = 8 * Math.max(1, fixture.operators.length);
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const snapshot = await fetchInactivityDirectorySnapshot(fixture);
-    const node = SDK.findNodeByKey(snapshot.active, operatorKeyHash);
+    const node = SDKOperators.findNodeByKey(snapshot.active, operatorKeyHash);
     if (node === undefined || node.active === null) {
       throw new Error(
         `Operator ${operatorKeyHash} has no active-operators node`,
@@ -111,11 +113,14 @@ export const strikeOperatorToMaxStrikes = async (
         inactivityStrikes: node.active.inactivity_strikes,
       };
     }
-    const current = SDK.schedulerCurrentOperator(snapshot.scheduler);
+    const current = SDKOperators.schedulerCurrentOperator(snapshot.scheduler);
     if (current === null) {
       throw new Error("The scheduler holds no active operator");
     }
-    const currentNode = SDK.findNodeByKey(snapshot.active, current.operator);
+    const currentNode = SDKOperators.findNodeByKey(
+      snapshot.active,
+      current.operator,
+    );
     if (currentNode?.active === undefined || currentNode.active === null) {
       throw new Error(
         `The scheduled operator ${current.operator} has no active-operators node`,
@@ -156,7 +161,7 @@ const neglectedEventValidity = (
     validFrom: Number(
       alignedUnixTimeAtOrBefore(fixture.lucid, BigInt(emulatorNow)),
     ),
-    validTo: SDK.resolveUserEventValidTo(
+    validTo: SDKUsers.resolveUserEventValidTo(
       fixture.lucid,
       undefined,
       () => emulatorNow,
@@ -196,7 +201,7 @@ const submitNeglectedEvent = async (
     readonly authUnit: string;
     readonly inclusionTime: number;
   },
-): Promise<SDK.NeglectedUserEventClaim> => {
+): Promise<SDKOperators.NeglectedUserEventClaim> => {
   const signed = await built.tx.sign.withWallet().complete();
   const txHash = await signed.submit();
   await fixture.lucid.awaitTx(txHash);
@@ -218,9 +223,9 @@ const submitNeglectedEvent = async (
 export const submitNeglectedDeposit = async (
   fixture: OperatorInactivityFixture,
   lovelace = 20_000_000n,
-): Promise<SDK.NeglectedUserEventClaim> => {
+): Promise<SDKOperators.NeglectedUserEventClaim> => {
   const built = await buildPastPredecessorProtection(fixture, () =>
-    SDK.buildUnsignedDepositTxWithMetadataProgram(
+    SDKUsers.buildUnsignedDepositTxWithMetadataProgram(
       fixture.lucid,
       fixture.contracts,
       {
@@ -249,7 +254,7 @@ export const submitNeglectedDeposit = async (
 export const submitNeglectedWithdrawal = async (
   fixture: OperatorInactivityFixture,
   lovelace = 20_000_000n,
-): Promise<SDK.NeglectedUserEventClaim> => {
+): Promise<SDKOperators.NeglectedUserEventClaim> => {
   const primary = requirePrimaryOperator(fixture);
   const ownerKey = CML.PrivateKey.from_bech32(
     walletFromSeed(primary.seedPhrase, { network: "Custom" }).paymentKey,
@@ -260,12 +265,12 @@ export const submitNeglectedWithdrawal = async (
   const body: SDK.WithdrawalBody = {
     l2_outref: { transactionId: "ab".repeat(32), outputIndex: 0n },
     l2_owner: primary.keyHash,
-    l2_value: SDK.assetsToValue({ lovelace }),
+    l2_value: SDKUsers.assetsToValue({ lovelace }),
     l1_address: ownerAddress,
     l1_datum: "NoDatum",
   };
   const built = await buildPastPredecessorProtection(fixture, () =>
-    SDK.buildUnsignedWithdrawalTxWithMetadataProgram(
+    SDKUsers.buildUnsignedWithdrawalTxWithMetadataProgram(
       fixture.lucid,
       fixture.contracts,
       {
@@ -291,8 +296,8 @@ export const submitNeglectedWithdrawal = async (
  */
 export const submitUnauthenticatedHistoryNodeCopy = async (
   fixture: OperatorInactivityFixture,
-  claim: SDK.NeglectedUserEventClaim,
-): Promise<SDK.NeglectedUserEventClaim> => {
+  claim: SDKOperators.NeglectedUserEventClaim,
+): Promise<SDKOperators.NeglectedUserEventClaim> => {
   const datum = claim.utxo.datum;
   if (datum === undefined || datum === null) {
     throw new Error("The history node carries no inline datum to copy");

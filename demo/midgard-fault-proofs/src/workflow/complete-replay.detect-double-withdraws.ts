@@ -1,11 +1,11 @@
+import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 import {
   committedWithdrawalKeyBytes,
   DOUBLE_WITHDRAW_VIOLATION_ID,
-  type FraudProofCatalogueCategoryName,
   isPayableWithdrawalLeaf,
   REFERENCE_INPUT_NO_IDX_VIOLATION_ID,
   WITHDRAWN_REFERENCE_INPUT_VIOLATION_ID,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { detectMissingSignatureWrongfulRejections } from "../missing-signature/wrongful-rejection.js";

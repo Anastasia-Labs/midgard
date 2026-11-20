@@ -7,7 +7,7 @@ import {
 } from "@al-ft/midgard-core";
 import { MidgardTxCodecError } from "@al-ft/midgard-core/codec";
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
-import { forcedVerdictSubject } from "@al-ft/midgard-sdk";
+import { forcedVerdictSubject } from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import {

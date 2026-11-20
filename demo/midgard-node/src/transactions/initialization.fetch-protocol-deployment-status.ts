@@ -1,7 +1,9 @@
 import { existsSync } from "node:fs";
 
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDeployment from "@al-ft/midgard-sdk/deployment";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   LucidEvolution,
   type Network,
@@ -112,7 +114,7 @@ export const hubOraclePolicyOfNonce = (
     const blueprint = yield* loadRealBlueprint();
     return yield* Effect.try({
       try: () =>
-        SDK.buildHubOracleMintingValidator({
+        SDKUsers.buildHubOracleMintingValidator({
           blueprint,
           oneShotOutRef: nonce,
         }).policyId,
@@ -336,7 +338,7 @@ export const buildAtomicProtocolInitTxProgram = (
     );
     const nonceUtxo = yield* fetchConfiguredNonceUtxo(lucid, nodeConfig);
     const daParams = yield* deriveOperatorDaParams(nodeConfig);
-    return yield* SDK.incompleteInitializationTxProgram(lucid, {
+    return yield* SDKDeployment.incompleteInitializationTxProgram(lucid, {
       midgardValidators: contracts,
       consensusProfile,
       fraudProofCatalogueMerkleRoot,

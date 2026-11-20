@@ -15,7 +15,7 @@ import {
   validateMidgardConsensusTxCbor,
 } from "@al-ft/midgard-core/consensus-validation";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import { deriveTxOrderMaterial } from "@al-ft/midgard-sdk";
+import { deriveTxOrderMaterial } from "@al-ft/midgard-sdk/users";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";

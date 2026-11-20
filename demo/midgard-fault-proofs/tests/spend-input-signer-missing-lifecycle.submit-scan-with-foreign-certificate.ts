@@ -1,10 +1,12 @@
 import {
-  type FieldOpening,
-  missingSignatureFieldWalkCheckpoint,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  type FieldOpening,
+  missingSignatureFieldWalkCheckpoint,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

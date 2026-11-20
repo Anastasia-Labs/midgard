@@ -33,7 +33,7 @@ import {
   openFalseClaim,
   protocolTreasury,
 } from "@al-ft/midgard-fault-proofs/test-support/validation-trace-defender-scene";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import {
   CML,
   credentialToAddress,

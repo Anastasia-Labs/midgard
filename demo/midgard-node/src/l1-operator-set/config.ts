@@ -4,7 +4,7 @@
  * oracle, each by its address and its authentication policy.
  */
 import type { TrackedSet } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { getAddressDetails } from "@lucid-evolution/lucid";
 
 /** The most nodes (root excluded) a healthy active or registered list holds. */

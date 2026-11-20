@@ -5,7 +5,7 @@
  * signature or ledger validity is claimed.
  */
 import type { SimTx, SimUtxo } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { WatcherProjectionDeployment } from "../../src/l1-follower/projection.js";

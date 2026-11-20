@@ -2,7 +2,7 @@
  * The MPF error channel.
  */
 
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import { Data } from "effect";
 
 export class MpfError extends Data.TaggedError(

@@ -6,8 +6,8 @@
  * state, so the same record drives the watcher's autonomous path and an
  * operator's manual CLI invocation alike.
  */
-import type { EventKey } from "@al-ft/midgard-sdk";
-import { missingSignatureVkeyHash } from "@al-ft/midgard-sdk";
+import type { EventKey } from "@al-ft/midgard-sdk/core";
+import { missingSignatureVkeyHash } from "@al-ft/midgard-sdk/fraud-proof";
 
 import { missingSignatureSubmitError } from "./submit-common.js";
 

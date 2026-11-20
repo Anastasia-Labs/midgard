@@ -4,11 +4,11 @@ import {
 } from "@al-ft/midgard-core";
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import {
-  type FieldOpening,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { type FieldOpening } from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

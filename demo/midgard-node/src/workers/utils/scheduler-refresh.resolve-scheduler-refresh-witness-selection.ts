@@ -1,6 +1,7 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { alignUnixTimeToSlotBoundary } from "@al-ft/midgard-core/ogmios-slot";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -188,7 +189,7 @@ export const toSdkSchedulerRefreshWitnessSelection = (
 export const parseNodeSetUtxos = (
   utxos: readonly UTxO[],
   label: string,
-): Effect.Effect<readonly NodeUtxoWithDatum[], SDK.StateQueueError> =>
+): Effect.Effect<readonly NodeUtxoWithDatum[], SDKStateQueue.StateQueueError> =>
   Effect.forEach(utxos, (utxo) =>
     SDK.getLinkedListNodeViewFromUTxO(utxo).pipe(
       Effect.map((datum) => ({
@@ -197,7 +198,7 @@ export const parseNodeSetUtxos = (
       })),
       Effect.mapError(
         (cause) =>
-          new SDK.StateQueueError({
+          new SDKStateQueue.StateQueueError({
             message: `Failed to decode ${label} node datum`,
             cause: `${outRefLabel(utxo)}: ${formatUnknownError(cause)}`,
           }),
@@ -339,7 +340,7 @@ export const awaitSubmittedSchedulerTx = (
   lucid: LucidEvolution,
   txHash: string,
   purpose: "refresh",
-): Effect.Effect<void, SDK.StateQueueError> =>
+): Effect.Effect<void, SDKStateQueue.StateQueueError> =>
   Effect.gen(function* () {
     yield* Effect.tryPromise({
       try: (signal) =>
@@ -349,7 +350,7 @@ export const awaitSubmittedSchedulerTx = (
           signal,
         }),
       catch: (cause) =>
-        new SDK.StateQueueError({
+        new SDKStateQueue.StateQueueError({
           message: `Failed waiting for scheduler ${purpose} tx confirmation`,
           cause,
         }),

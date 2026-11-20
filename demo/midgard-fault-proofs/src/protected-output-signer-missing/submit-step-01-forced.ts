@@ -4,7 +4,7 @@ import {
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import {
   type BuildTxWithRedeemer,
   Data,

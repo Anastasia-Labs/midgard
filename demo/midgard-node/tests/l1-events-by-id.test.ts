@@ -12,7 +12,8 @@ import {
   eventTrackedSet,
 } from "@al-ft/midgard-l1-follower/events";
 import { addressText } from "@al-ft/midgard-l1-follower/provider";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
@@ -125,7 +126,7 @@ describe.each(["sqlite", "postgres"] as const)(
       expect(found.order.txHash).toBe(depositTx!.toString("hex"));
       expect(found.retained).toEqual([]);
       const utxo = await Effect.runPromise(
-        SDK.orderToDepositUTxO(
+        SDKUsers.orderToDepositUTxO(
           found.order,
           found.retained,
           deploymentOf("deposit"),
@@ -143,7 +144,7 @@ describe.each(["sqlite", "postgres"] as const)(
         retentionHash!.toString("hex"),
       ]);
       const withdrawalUtxo = await Effect.runPromise(
-        SDK.orderToWithdrawalUTxO(
+        SDKUsers.orderToWithdrawalUTxO(
           external.order,
           external.retained,
           deploymentOf("withdrawal"),
@@ -155,7 +156,7 @@ describe.each(["sqlite", "postgres"] as const)(
       // Without its retained payload the SDK refuses the external Order.
       await expect(
         Effect.runPromise(
-          SDK.orderToWithdrawalUTxO(
+          SDKUsers.orderToWithdrawalUTxO(
             external.order,
             [],
             deploymentOf("withdrawal"),

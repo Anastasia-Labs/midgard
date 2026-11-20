@@ -13,12 +13,11 @@ import {
   midgardFieldCarriageBounds,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
+import { type MidgardTxInput, Proof } from "@al-ft/midgard-sdk/core";
 import {
   encodeMidgardTxInputCanonical,
-  type MidgardTxInput,
   type MidgardTxOutput,
-  Proof,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import { midgardTxOutputFromCanonicalCbor } from "../../src/prepare-input-no-idx.midgard-tx-output-from-canonical-cbor.js";

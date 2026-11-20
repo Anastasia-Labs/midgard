@@ -10,7 +10,7 @@
  * precede the execution, with a receive purpose whose PlutusV3 source a
  * redeemer reaches. */
 import { decodeMidgardVersionedScriptEnvelope } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 import {
   directPurposeFieldPlans,

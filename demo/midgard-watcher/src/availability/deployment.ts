@@ -1,4 +1,6 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   type LucidEvolution,
   type Script,
@@ -16,7 +18,7 @@ import { watcherDeploymentAvailabilityChallengeAuthority } from "../runtime/depl
 export const createWatcherAvailabilityDeployment = async (
   lucid: LucidEvolution,
   identity: VerifiedWatcherDeploymentIdentity,
-): Promise<SDK.DaAvailabilityDeployment> => {
+): Promise<SDKDa.DaAvailabilityDeployment> => {
   const authority = watcherDeploymentProtocolScriptAuthority(identity);
   const parameters =
     watcherDeploymentAvailabilityChallengeAuthority(identity).parameters;
@@ -38,7 +40,7 @@ export const createWatcherAvailabilityDeployment = async (
       validatorToScriptHash(output.scriptRef) !== signed.scriptHash ||
       (expectedHash !== undefined && signed.scriptHash !== expectedHash) ||
       output.assets[
-        SDK.referenceScriptAuthUnit(
+        SDKStateQueue.referenceScriptAuthUnit(
           authority.protocolScriptHashes.referenceScriptAuthMint,
           role,
         )
@@ -158,7 +160,7 @@ export const createWatcherAvailabilityDeployment = async (
     referenceScriptAuthPolicyId: hashes.referenceScriptAuthMint,
     referenceScripts: Object.freeze(references),
     hubOracleRefInput,
-    parameters: SDK.daAvailabilityParameters({
+    parameters: SDKDa.daAvailabilityParameters({
       responseGeometry: {
         chunk_byte_length: BigInt(parameters.responseGeometry.chunkByteLength),
         tranche_byte_length: BigInt(

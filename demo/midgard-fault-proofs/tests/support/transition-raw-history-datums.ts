@@ -1,5 +1,5 @@
 /** The raw Deposit datums the transition-trace raw-history emulator proves. */
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/users";
 
 export const rawDatum = "a3020a010b020c";
 /** Deposit datums a typed Data codec cannot carry. */

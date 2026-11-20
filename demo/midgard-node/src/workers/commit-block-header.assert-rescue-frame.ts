@@ -1,6 +1,7 @@
 import type { MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Effect, Option } from "effect";
 
 import { unixTimeToSlotForConfig } from "../lucid-time.js";
@@ -29,7 +30,7 @@ import { selectCommitRoots } from "./utils/commit-block-planner.plan-scheduler-a
  * This constructs no transaction and signs/publishes nothing. */
 export const assertExactCommitRescueDaFrame = (input: {
   readonly processed: Effect.Effect.Success<ReturnType<typeof processMpfs>>;
-  readonly parent: SDK.StateQueueUTxO | undefined;
+  readonly parent: SDKStateQueue.StateQueueUTxO | undefined;
   readonly lucid: Lucid;
   readonly profile: MidgardConsensusProfile;
   readonly endTimeMs: number;

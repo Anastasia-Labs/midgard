@@ -8,7 +8,7 @@ import {
   type RecordedWorkflowFundingActionMeasurement,
   workflowFundingMeasurementArtifactBytes,
 } from "@al-ft/midgard-fault-proofs";
-import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
+import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 import { type LucidEvolution } from "@lucid-evolution/lucid";
 
 /**

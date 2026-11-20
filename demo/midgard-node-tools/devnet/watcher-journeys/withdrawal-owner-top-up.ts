@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
 import { midgardAddressFromText } from "@al-ft/midgard-core/codec";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/users";
 import { credentialToAddress } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import {

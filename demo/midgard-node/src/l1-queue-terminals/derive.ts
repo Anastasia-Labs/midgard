@@ -20,7 +20,7 @@ import {
   type DerivationHook,
   type OutputSummary,
 } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 
 import type { StateQueueProjectionConfig } from "../l1-state-queue/config.js";
 import { QUEUE_TERMINALS_TABLE } from "./schema.js";

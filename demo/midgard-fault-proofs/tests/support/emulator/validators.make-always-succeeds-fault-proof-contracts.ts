@@ -1,7 +1,5 @@
-import type {
-  FaultProofContractChains,
-  MidgardValidators,
-} from "@al-ft/midgard-sdk";
+import type { MidgardValidators } from "@al-ft/midgard-sdk/core";
+import type { FaultProofContractChains } from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { Blueprint } from "./blueprints.js";
 import {

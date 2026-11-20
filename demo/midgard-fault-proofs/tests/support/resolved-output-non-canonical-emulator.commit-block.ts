@@ -24,7 +24,7 @@ import {
   ROOT_DOMAINS,
   type RootMembershipProof,
   TransitionStepSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 
 import { buildResolvedOutputNonCanonicalStep01Accepted } from "../../src/resolved-output-non-canonical/submit-step-01-accepted.js";

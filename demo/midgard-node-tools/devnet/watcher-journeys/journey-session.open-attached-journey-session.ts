@@ -1,5 +1,5 @@
-import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
-import * as SDK from "@al-ft/midgard-sdk";
+import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { OPERATOR_COMMAND_FEE_HEADROOM_LOVELACE } from "midgard-node/transactions/operators/funding-preflight";
 import {
   WATCHER_INSTALLED_WORKFLOW_CATEGORIES,

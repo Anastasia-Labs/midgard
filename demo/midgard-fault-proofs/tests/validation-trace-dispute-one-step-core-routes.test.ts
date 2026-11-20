@@ -20,6 +20,9 @@
  * `cek-core-routing-v1` golden holds to the Aiken routing. */
 import {
   blueprintApplicationRecords,
+  parseFaultProofBlueprint,
+} from "@al-ft/midgard-sdk/core";
+import {
   buildCekCoreStages,
   CEK_CORE_ARM_HOP_COUNTS,
   type CekCoreChoice,
@@ -27,8 +30,7 @@ import {
   cekCoreFailureRoute,
   cekCoreGroup,
   cekCoreRoute,
-  parseFaultProofBlueprint,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import type { MidgardCekDirectValueWitness } from "@al-ft/midgard-validation/cek-builtin";
 import type {
   MidgardCekCoreStepWitness,

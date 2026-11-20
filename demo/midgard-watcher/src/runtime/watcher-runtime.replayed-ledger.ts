@@ -3,7 +3,7 @@ import { join } from "node:path";
 import {
   EVENT_WAIT_DURATION_MS,
   MAX_EVENT_VALIDITY_RANGE_LENGTH_MS,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 
 import { createWatcherReplayRefusals } from "../fault-proofs/replay-refusals.js";
 import {

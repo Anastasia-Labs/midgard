@@ -1,6 +1,6 @@
 import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
 import { decodeMidgardNativeTxCompact } from "@al-ft/midgard-core";
-import { type NativeTxWitnessSetCompact } from "@al-ft/midgard-sdk";
+import { type NativeTxWitnessSetCompact } from "@al-ft/midgard-sdk/core";
 
 import { type FaultProofFieldOpeningPlan } from "../field-opening.js";
 import {

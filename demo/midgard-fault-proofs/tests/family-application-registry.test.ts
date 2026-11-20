@@ -1,5 +1,4 @@
 import "@al-ft/midgard-core/deployment-manifest-identity";
-import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "vitest";
 import "../src/remove-fraudulent-block.assert-exact-fraud-slash-lovelace-conservation.js";

@@ -5,7 +5,8 @@
  * validation-machine state.
  */
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
   placeholderValidationTraceDescriptorV1,
   validationTransactionCommitmentV1,
@@ -49,7 +50,7 @@ export const buildPlaceholderValidationTraceMembers = (
       const keyCbor = yield* eventKeyCbor(transaction.eventKey);
       const value = yield* Effect.try({
         try: () =>
-          SDK.validationTraceDescriptorDataFromCore(
+          SDKDa.validationTraceDescriptorDataFromCore(
             placeholderValidationTraceDescriptorV1(
               {
                 eventKeyCbor: keyCbor,

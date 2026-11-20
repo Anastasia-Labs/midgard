@@ -1,12 +1,14 @@
 import { createHash } from "node:crypto";
 
 import {
-  admitAuthenticatedStateQueueHeaderObservation,
-  type AuthenticatedStateQueueHeaderObservation,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueCategoryName,
   Header,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  admitAuthenticatedStateQueueHeaderObservation,
+  type AuthenticatedStateQueueHeaderObservation,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";

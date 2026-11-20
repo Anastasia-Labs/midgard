@@ -1,4 +1,4 @@
-import { type CommittedFieldClaim } from "@al-ft/midgard-sdk";
+import { type CommittedFieldClaim } from "@al-ft/midgard-sdk/fraud-proof";
 import { type UTxO, validatorToScriptHash } from "@lucid-evolution/lucid";
 
 import { buildCommittedFieldShapeInit } from "../committed-field-shape/submit-committed-field-shape-init.js";

@@ -3,7 +3,8 @@
  * and producing `E1`, the queue tail and confirmed-state tips the commit
  * worker receives, and the outcomes the resolver's tests expect.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { getAddressDetails, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { Effect, Either } from "effect";
 import { expect } from "vitest";
@@ -266,12 +267,13 @@ export const confirmedTipOf = (state: SDK.ConfirmedState) => {
         address,
         assets: {
           lovelace: 3_000_000n,
-          [toUnit(credential.hash, SDK.STATE_QUEUE_ROOT_ASSET_NAME)]: 1n,
+          [toUnit(credential.hash, SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME)]:
+            1n,
         },
         datum: SDK.encodeLinkedListNodeView(datum),
       },
       datum,
-      assetName: SDK.STATE_QUEUE_ROOT_ASSET_NAME,
+      assetName: SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME,
     }),
   );
 };

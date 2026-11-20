@@ -4,12 +4,12 @@ import {
   deriveMidgardNativeTxProofSource,
 } from "@al-ft/midgard-core";
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
+import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk/core";
 import {
   CANONICAL_DECODABILITY_VIOLATION_ID,
   canonicalDecodabilityEvidenceFromCommittedField,
   COMMITTED_FIELD_SHAPE_VIOLATION_ID,
   decodeAddressWitnessPreimage,
-  EMPTY_MERKLE_TREE_ROOT,
   invalidRangeViolationReason,
   MIN_FEE_VIOLATION_ID,
   minimumFeeFromProofSource,
@@ -17,7 +17,7 @@ import {
   missingSignatureVkeyHash,
   nativeTxBodyHasZeroInputViolation,
   normalizeNativeTxValidityRange,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import { classifyCommittedFieldShapeFields } from "../committed-field-shape/prepare-committed-field-shape.js";
 import {

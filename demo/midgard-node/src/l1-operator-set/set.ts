@@ -34,7 +34,8 @@ import {
   walkLinkedQueue,
 } from "@al-ft/midgard-l1-follower";
 import { toLucidUtxo } from "@al-ft/midgard-l1-follower/provider";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKOperators from "@al-ft/midgard-sdk/operators";
 import type { UTxO } from "@lucid-evolution/lucid";
 import { Effect, Either } from "effect";
 
@@ -59,12 +60,12 @@ export type OperatorSet = Readonly<{
   view: View;
   ownKey: string;
   /** The registered list, root first, in list order. */
-  registered: readonly SDK.RegisteredOperatorNode[];
+  registered: readonly SDKOperators.RegisteredOperatorNode[];
   /** The active list, root first, in list order. */
-  active: readonly SDK.ActiveOperatorNode[];
+  active: readonly SDKOperators.ActiveOperatorNode[];
   /** This operator's retired node, and the slot it was created at. */
   ownRetired: Readonly<{
-    node: SDK.RetiredOperatorNode;
+    node: SDKOperators.RetiredOperatorNode;
     createdSlot: number | null;
   }> | null;
   scheduler: SDK.SchedulerUTxO | null;
@@ -91,11 +92,11 @@ export type OperatorSetRead =
   | Readonly<{ kind: "not_initialized"; detail: string }>;
 
 type Entry =
-  | Readonly<{ kind: "registered"; node: SDK.RegisteredOperatorNode }>
-  | Readonly<{ kind: "active"; node: SDK.ActiveOperatorNode }>
+  | Readonly<{ kind: "registered"; node: SDKOperators.RegisteredOperatorNode }>
+  | Readonly<{ kind: "active"; node: SDKOperators.ActiveOperatorNode }>
   | Readonly<{
       kind: "retired";
-      node: SDK.RetiredOperatorNode;
+      node: SDKOperators.RetiredOperatorNode;
       createdSlot: number | null;
     }>
   | Readonly<{ kind: "scheduler"; utxo: SDK.SchedulerUTxO }>
@@ -152,17 +153,17 @@ const entryOf = (
     switch (source) {
       case "registered":
         return Either.map(
-          decoded(SDK.registeredOperatorNodeFromUTxO(utxo, name)),
+          decoded(SDKOperators.registeredOperatorNodeFromUTxO(utxo, name)),
           (node): Entry => ({ kind: "registered", node }),
         );
       case "active":
         return Either.map(
-          decoded(SDK.activeOperatorNodeFromUTxO(utxo, name)),
+          decoded(SDKOperators.activeOperatorNodeFromUTxO(utxo, name)),
           (node): Entry => ({ kind: "active", node }),
         );
       case "retired":
         return Either.map(
-          decoded(SDK.retiredOperatorNodeFromUTxO(utxo, name)),
+          decoded(SDKOperators.retiredOperatorNodeFromUTxO(utxo, name)),
           (node): Entry => ({
             kind: "retired",
             node,
@@ -185,14 +186,14 @@ const entryOf = (
 };
 
 /** A node's linked-list key (null for the root). */
-const keyOf = (node: SDK.NodeWithDatum): string | null =>
+const keyOf = (node: SDKOperators.NodeWithDatum): string | null =>
   node.datum.key === "Empty" ? null : node.datum.key.Key.key;
 
 /**
  * One list in list order, or why its live nodes are not one list: a node
  * whose asset name does not match its key is malformed.
  */
-const walkList = <N extends SDK.NodeWithDatum>(
+const walkList = <N extends SDKOperators.NodeWithDatum>(
   name: string,
   contract: OperatorListContract,
   nodes: readonly N[],

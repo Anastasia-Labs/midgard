@@ -1,4 +1,6 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { paymentCredentialOf } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { publishWorkflowDeployment } from "midgard-node/tests/helpers/published-workflow-deployment.publish-workflow-deployment";
@@ -16,11 +18,14 @@ const queueOrder = async (
 ) =>
   (
     await Effect.runPromise(
-      SDK.fetchSortedStateQueueUTxOsProgram(deployment.operatorLucid, {
-        stateQueueAddress:
-          deployment.contracts.stateQueue.spendingScriptAddress,
-        stateQueuePolicyId: deployment.contracts.stateQueue.policyId,
-      }),
+      SDKStateQueue.fetchSortedStateQueueUTxOsProgram(
+        deployment.operatorLucid,
+        {
+          stateQueueAddress:
+            deployment.contracts.stateQueue.spendingScriptAddress,
+          stateQueuePolicyId: deployment.contracts.stateQueue.policyId,
+        },
+      ),
     )
   ).map(({ datum }) => (datum.key === "Empty" ? "root" : datum.key.Key.key));
 
@@ -29,10 +34,10 @@ const liveQueue = async () => {
   const accounts = createPublishedWorkflowDeploymentAccounts();
   const deployment = await publishWorkflowDeployment({ accounts });
   vi.spyOn(Date, "now").mockImplementation(() => deployment.emulator.now());
-  const history = SDK.eventHistoryDeploymentFromContracts(
-    SDK.requireEventHistoryContracts(deployment.contracts).deposit,
+  const history = SDKUsers.eventHistoryDeploymentFromContracts(
+    SDKUsers.requireEventHistoryContracts(deployment.contracts).deposit,
   );
-  const protectedUntil = SDK.authenticateHistoryNodes(
+  const protectedUntil = SDKUsers.authenticateHistoryNodes(
     await deployment.operatorLucid.utxosAt(history.address),
     history,
   ).reduce(

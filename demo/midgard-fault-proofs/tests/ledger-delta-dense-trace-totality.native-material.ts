@@ -19,7 +19,8 @@ import {
   encodeMidgardForcedTxCanonical,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
   h28 as byteHex28,
   h32 as byteHex32,
@@ -178,14 +179,14 @@ export const forcedTx = (
   };
 };
 
-export const entry = (key: Buffer, value: Buffer): SDK.DaPayloadEntry => [
+export const entry = (key: Buffer, value: Buffer): SDKDa.DaPayloadEntry => [
   key.toString("hex"),
   value.toString("hex"),
 ];
 
 export const sorted = (
-  entries: readonly SDK.DaPayloadEntry[],
-): SDK.DaPayloadEntry[] =>
+  entries: readonly SDKDa.DaPayloadEntry[],
+): SDKDa.DaPayloadEntry[] =>
   [...entries].sort(([left], [right]) =>
     left < right ? -1 : left > right ? 1 : 0,
   );
@@ -199,13 +200,13 @@ const spendInputItem = (txIdHex: string, outputIndex: number): Buffer =>
     outputIndex,
   });
 
-export const rawLedgerEntry = (byte: number): SDK.DaPayloadEntry => [
+export const rawLedgerEntry = (byte: number): SDKDa.DaPayloadEntry => [
   spendInputItem(h32(byte), 0).toString("hex"),
   LEDGER_OUTPUT_CBOR,
 ];
 
 export const utxoRootWithDescriptors = (
-  utxos: readonly SDK.DaPayloadEntry[],
+  utxos: readonly SDKDa.DaPayloadEntry[],
 ): Promise<Awaited<ReturnType<typeof keyValuePhasRootWithCount>>> =>
   keyValuePhasRootWithCount(
     utxos.map(([key, value]) => ({
@@ -227,13 +228,13 @@ export const encodedEntry = <K, V>({
   readonly keySchema: Parameters<typeof Data.Nullable>[0];
   readonly value: V;
   readonly valueSchema: Parameters<typeof Data.Nullable>[0];
-}): SDK.DaPayloadEntry =>
+}): SDKDa.DaPayloadEntry =>
   entry(encodeData(key, keySchema), encodeData(value, valueSchema));
 
 const traceEntryWithKey = (
   key: bigint,
   step: SDK.TransitionStep,
-): SDK.DaPayloadEntry =>
+): SDKDa.DaPayloadEntry =>
   encodedEntry({
     key,
     keySchema: Data.Integer() as never,
@@ -241,13 +242,13 @@ const traceEntryWithKey = (
     valueSchema: SDK.TransitionStepSchema,
   });
 
-export const traceEntry = (step: SDK.TransitionStep): SDK.DaPayloadEntry =>
+export const traceEntry = (step: SDK.TransitionStep): SDKDa.DaPayloadEntry =>
   traceEntryWithKey(step.step_index, step);
 
 export const eventToStepEntry = (
   key: SDK.EventKey,
   value: SDK.EventToStepValue,
-): SDK.DaPayloadEntry =>
+): SDKDa.DaPayloadEntry =>
   encodedEntry({
     key,
     keySchema: SDK.EventKeySchema,
@@ -257,13 +258,13 @@ export const eventToStepEntry = (
 
 export type PayloadFixtureInput = {
   readonly prevUtxosRoot?: string;
-  readonly utxos?: readonly SDK.DaPayloadEntry[];
-  readonly withdrawals?: readonly SDK.DaPayloadEntry[];
-  readonly forcedTransactions?: readonly SDK.DaPayloadEntry[];
-  readonly transactions?: readonly SDK.DaPayloadEntry[];
-  readonly transactionPreimages?: readonly SDK.DaPayloadEntry[];
-  readonly deposits?: readonly SDK.DaPayloadEntry[];
+  readonly utxos?: readonly SDKDa.DaPayloadEntry[];
+  readonly withdrawals?: readonly SDKDa.DaPayloadEntry[];
+  readonly forcedTransactions?: readonly SDKDa.DaPayloadEntry[];
+  readonly transactions?: readonly SDKDa.DaPayloadEntry[];
+  readonly transactionPreimages?: readonly SDKDa.DaPayloadEntry[];
+  readonly deposits?: readonly SDKDa.DaPayloadEntry[];
   readonly steps?: readonly SDK.TransitionStep[];
-  readonly transitionTraceEntries?: readonly SDK.DaPayloadEntry[];
-  readonly eventToStep?: readonly SDK.DaPayloadEntry[];
+  readonly transitionTraceEntries?: readonly SDKDa.DaPayloadEntry[];
+  readonly eventToStep?: readonly SDKDa.DaPayloadEntry[];
 };

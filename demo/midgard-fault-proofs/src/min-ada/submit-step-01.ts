@@ -4,13 +4,15 @@ import {
   getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
   HUB_ORACLE_ASSET_NAME,
-  MinAdaStep01SpendRedeemerSchema,
-  MinAdaStep02DatumSchema,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  MinAdaStep01SpendRedeemerSchema,
+  MinAdaStep02DatumSchema,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   credentialToAddress,

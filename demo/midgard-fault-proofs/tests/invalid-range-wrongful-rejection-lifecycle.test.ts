@@ -6,12 +6,13 @@ import {
 } from "@al-ft/midgard-core/codec/forced";
 import {
   ForcedInclusionTxV1Schema,
-  forcedVerdictSubject,
   OutputReference,
   Proof,
   ROOT_DOMAINS,
-} from "@al-ft/midgard-sdk";
-import * as SDK from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import { forcedVerdictSubject } from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, getAddressDetails } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -191,7 +192,7 @@ const stageForcedRejection = async (interval: {
       sourceKind: "forced",
       subjectCbor: Data.to(
         evidence.subject as never,
-        SDK.InvalidRangeVerdictSubjectSchema as never,
+        SDKFraudProof.InvalidRangeVerdictSubjectSchema as never,
       ),
       inputFieldPreimageCbor: "",
       inputFieldCommitment: "00".repeat(32),
@@ -200,7 +201,7 @@ const stageForcedRejection = async (interval: {
           header,
           membership,
         } as never,
-        SDK.InvalidRangeForcedSourcePayloadSchema as never,
+        SDKFraudProof.InvalidRangeForcedSourcePayloadSchema as never,
       ),
     });
   const captures: Awaited<ReturnType<typeof captureEmulatorSubmission>>[] = [];

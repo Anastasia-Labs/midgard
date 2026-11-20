@@ -9,7 +9,8 @@ import {
   MIDGARD_CONSENSUS_LIMITS,
   MIDGARD_VALIDATION_CASE_OPEN_WINDOW_MS,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -119,7 +120,7 @@ describe("validation-trace dispute runner: our init, open, verify_source and clo
       unit,
     );
     const { blockTime } = await Effect.runPromise(
-      SDK.validationDisputeChallengedBlock(
+      SDKDa.validationDisputeChallengedBlock(
         block!,
         h.contracts.stateQueue.policyId,
       ),
@@ -170,7 +171,7 @@ describe("validation-trace dispute runner: our init, open, verify_source and clo
     const [caseUtxo] = await h.proverLucid.utxosAt(
       scene.chain.case.spendingScriptAddress,
     );
-    const caseDatum = Data.from(caseUtxo!.datum!, SDK.Case);
+    const caseDatum = Data.from(caseUtxo!.datum!, SDKDa.Case);
     const started = Number(caseDatum.started_at);
     awaitLastSlotAtOrBefore(
       scene,

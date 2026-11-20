@@ -19,7 +19,7 @@ import {
   FraudProofTokenDatum,
   InvalidRangeStep02Datum,
   ZeroInputStep02Datum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, getAddressDetails, toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

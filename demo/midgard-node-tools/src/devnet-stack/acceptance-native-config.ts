@@ -8,7 +8,7 @@ import {
   type DeploymentManifest,
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
-import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk";
+import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk/da";
 import type { WatcherConfig } from "midgard-watcher";
 
 import {

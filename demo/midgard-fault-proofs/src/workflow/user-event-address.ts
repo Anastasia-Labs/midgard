@@ -1,4 +1,4 @@
-import type { AddressData, CredentialD } from "@al-ft/midgard-sdk";
+import type { AddressData, CredentialD } from "@al-ft/midgard-sdk/core";
 import {
   type Credential,
   credentialToAddress,

@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { Data, datumToHash } from "@lucid-evolution/lucid";
 import {
   fetchKupoAncestorPoint,
@@ -118,7 +119,7 @@ export const collectAcceptancePayoutLineages = async (input: {
     let current = { txHash: record.txHash, outputIndex: indexes[0]! };
     const node = Data.from(
       decoded.outputs[current.outputIndex]!.datum!,
-      SDK.EventHistoryNode,
+      SDKUsers.EventHistoryNode,
     );
     requireAcceptance(
       typeof node.payload === "object" && "Order" in node.payload,

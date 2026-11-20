@@ -2,7 +2,7 @@ import "./protected-output-signer-missing-lifecycle.registered-contracts.js";
 
 import { type MidgardNativeTxFull } from "@al-ft/midgard-core";
 import { type MidgardForcedTxFull } from "@al-ft/midgard-core/codec/forced";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 import { type ProtectedOutputSignerMissingEvidence } from "../src/protected-output-signer-missing/index.js";
 import { makeScenario } from "./protected-output-signer-missing-lifecycle.make-scenario.js";

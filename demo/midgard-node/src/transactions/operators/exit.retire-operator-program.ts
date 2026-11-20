@@ -1,6 +1,7 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { alignedUnixTimeStrictlyAfter } from "@al-ft/midgard-core/ogmios-slot";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKOperators from "@al-ft/midgard-sdk/operators";
 import { type LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -45,7 +46,7 @@ export const retireOperatorProgram = (
   referenceScriptsAddress: string,
   input: {
     readonly operatorKeyHash: string;
-    readonly mode: SDK.RetirementMode;
+    readonly mode: SDKOperators.RetirementMode;
     readonly economics: OperatorEconomics;
   } & PlannedSnapshot,
   options: { readonly label?: string } = {},
@@ -61,7 +62,7 @@ export const retireOperatorProgram = (
       contracts,
       input,
     );
-    const status = SDK.deriveOperatorStatus(
+    const status = SDKOperators.deriveOperatorStatus(
       snapshot,
       input.operatorKeyHash,
       yield* resolveL1NowMs(lucid),
@@ -118,7 +119,7 @@ export const retireOperatorProgram = (
     );
     const { validFrom, validTo } = yield* exitValidityWindow(lucid);
     const witnesses = yield* deriveWitnesses(() =>
-      SDK.deriveRetireOperatorWitnesses({
+      SDKOperators.deriveRetireOperatorWitnesses({
         snapshot,
         contracts,
         operatorKeyHash: input.operatorKeyHash,
@@ -126,11 +127,11 @@ export const retireOperatorProgram = (
         schedulerSpendingScriptRef: scriptRefs.spending.scheduler,
       }),
     );
-    const retiredNodeLovelace = SDK.retiredOperatorBondTranche(
+    const retiredNodeLovelace = SDKOperators.retiredOperatorBondTranche(
       input.mode,
       input.economics,
     );
-    const { tx } = yield* SDK.buildUnsignedRetireOperatorTxProgram({
+    const { tx } = yield* SDKOperators.buildUnsignedRetireOperatorTxProgram({
       lucid,
       contracts,
       operatorKeyHash: input.operatorKeyHash,
@@ -204,7 +205,7 @@ export const recoverOperatorBondProgram = (
       input,
     );
     const nowMs = yield* resolveL1NowMs(lucid);
-    const status = SDK.deriveOperatorStatus(
+    const status = SDKOperators.deriveOperatorStatus(
       snapshot,
       input.operatorKeyHash,
       nowMs,
@@ -245,7 +246,7 @@ export const recoverOperatorBondProgram = (
       ["retired-operators"],
     );
     const witnesses = yield* deriveWitnesses(() =>
-      SDK.deriveRecoverOperatorBondWitnesses({
+      SDKOperators.deriveRecoverOperatorBondWitnesses({
         snapshot,
         contracts,
         operatorKeyHash: input.operatorKeyHash,
@@ -284,18 +285,19 @@ export const recoverOperatorBondProgram = (
       unlockLowerBound === null || validFrom > unlockLowerBound
         ? validFrom
         : unlockLowerBound;
-    const { tx } = yield* SDK.buildUnsignedRecoverOperatorBondTxProgram({
-      lucid,
-      contracts,
-      operatorKeyHash: input.operatorKeyHash,
-      retiredOperatorScriptRefs: scriptRefs.family("retired-operators"),
-      retiredNode: witnesses.retiredNode,
-      retiredAnchor: witnesses.retiredAnchor,
-      retiredNodeUnit: witnesses.retiredNodeUnit,
-      validFrom: lowerBound,
-      validTo,
-      walletInputs: yield* operatorWalletInputsProgram(lucid, label),
-    });
+    const { tx } =
+      yield* SDKOperators.buildUnsignedRecoverOperatorBondTxProgram({
+        lucid,
+        contracts,
+        operatorKeyHash: input.operatorKeyHash,
+        retiredOperatorScriptRefs: scriptRefs.family("retired-operators"),
+        retiredNode: witnesses.retiredNode,
+        retiredAnchor: witnesses.retiredAnchor,
+        retiredNodeUnit: witnesses.retiredNodeUnit,
+        validFrom: lowerBound,
+        validTo,
+        walletInputs: yield* operatorWalletInputsProgram(lucid, label),
+      });
     const txHash = yield* handleSignSubmit(
       lucid,
       tx,
@@ -322,7 +324,7 @@ export type DuplicateSlashSubmission = {
   readonly operatorKeyHash: string;
   /** Key (activation time hex) of the registered node that was removed. */
   readonly removedRegisteredNodeKey: string;
-  readonly proofKind: SDK.DuplicateProof["kind"];
+  readonly proofKind: SDKOperators.DuplicateProof["kind"];
   readonly feeLovelace: bigint;
   /** The key the bounty was paid to: this node's wallet key. */
   readonly bountyClaimantKeyHash: string;

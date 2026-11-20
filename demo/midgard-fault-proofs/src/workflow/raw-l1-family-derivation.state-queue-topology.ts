@@ -1,13 +1,15 @@
 import {
   type FraudProofCatalogueCategoryName,
-  FraudProofTokenDatum,
   getHeaderFromStateQueueDatum,
   hashBlockHeader,
-  sortStateQueueUTxOs,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
+} from "@al-ft/midgard-sdk/core";
+import { FraudProofTokenDatum } from "@al-ft/midgard-sdk/fraud-proof";
+import {
+  sortStateQueueUTxOs,
   type StateQueueUTxO,
   utxoToStateQueueUTxO,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import { CML, coreToTxOutput, Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

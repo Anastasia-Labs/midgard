@@ -5,15 +5,15 @@ import {
   deriveMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core";
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
+import { type MidgardAddressWitness } from "@al-ft/midgard-sdk/core";
 import {
   decodeAddressWitnessPreimage,
   forcedVerdictSubject,
-  type MidgardAddressWitness,
   missingSignatureVkeyHash,
   type VerdictSubject,
   verdictSubjectIsCanonical,
   verifyAddressWitness,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { buildForcedTransactionLeafMembershipProof } from "../transition-trace/witnesses.build-source-membership-proof.js";

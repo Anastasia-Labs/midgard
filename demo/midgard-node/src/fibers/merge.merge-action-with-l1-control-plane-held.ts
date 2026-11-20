@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Effect, Ref } from "effect";
 
 import {
@@ -59,7 +60,7 @@ export const mergeActionWithL1ControlPlaneHeld = (
   | SDK.HashingError
   | SDK.LinkedListError
   | SDK.LucidError
-  | SDK.StateQueueError
+  | SDKStateQueue.StateQueueError
   | SDK.CmlUnexpectedError
   | SDK.CborSerializationError
   | DatabaseError
@@ -89,7 +90,7 @@ export const mergeActionWithL1ControlPlaneHeld = (
     const contracts = yield* MidgardContracts;
     const { stateQueue: stateQueueAuthValidator } = contracts;
 
-    const fetchConfig: SDK.StateQueueFetchConfig = {
+    const fetchConfig: SDKStateQueue.StateQueueFetchConfig = {
       stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
       stateQueuePolicyId: stateQueueAuthValidator.policyId,
     };

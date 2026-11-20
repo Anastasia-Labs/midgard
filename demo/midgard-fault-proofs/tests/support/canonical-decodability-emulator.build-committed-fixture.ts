@@ -14,10 +14,10 @@ import {
 } from "@al-ft/midgard-core";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
-  miscountedMidgardFieldPreimage,
   type NativeTxWitnessSetCompact,
   Proof,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { miscountedMidgardFieldPreimage } from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type Script, type UTxO } from "@lucid-evolution/lucid";
 
 import type { CanonicalDecodabilityContracts } from "../../src/canonical-decodability/contracts.js";

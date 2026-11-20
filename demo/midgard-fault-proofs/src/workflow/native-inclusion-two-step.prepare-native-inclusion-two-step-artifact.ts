@@ -2,7 +2,8 @@ import {
   deriveMidgardNativeTxFaultEvidenceMaterial,
   midgardFieldCommitment,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
 
 import {
@@ -137,8 +138,8 @@ export const prepareNativeInclusionTwoStepArtifact = async <
     violationReason = prepared.tx.violationReason;
     blockSlot = prepared.blockSlot.toString();
     subjectCbor = Data.to(
-      SDK.acceptedVerdictSubject(preparedNodeTxId) as never,
-      SDK.InvalidRangeVerdictSubjectSchema as never,
+      SDKFraudProof.acceptedVerdictSubject(preparedNodeTxId) as never,
+      SDKFraudProof.InvalidRangeVerdictSubjectSchema as never,
     );
   } else if (category === "invalidRange") {
     const forced = await prepareInvalidRangeForcedPlan({
@@ -177,11 +178,11 @@ export const prepareNativeInclusionTwoStepArtifact = async <
     blockSlot = forced.evidence.blockSlot.toString();
     subjectCbor = Data.to(
       forced.evidence.subject as never,
-      SDK.InvalidRangeVerdictSubjectSchema as never,
+      SDKFraudProof.InvalidRangeVerdictSubjectSchema as never,
     );
     forcedSourceCbor = Data.to(
       forced.forcedSource as never,
-      SDK.InvalidRangeForcedSourcePayloadSchema as never,
+      SDKFraudProof.InvalidRangeForcedSourcePayloadSchema as never,
     );
   } else if (
     !classification.selected.detectionId.startsWith("zero-input:forced:")
@@ -209,7 +210,9 @@ export const prepareNativeInclusionTwoStepArtifact = async <
     if (field === undefined)
       throw new Error("zeroInput accepted field 0 disappeared");
     const acceptedEvidence = prepareZeroInputEvidence({
-      finding: { subject: SDK.acceptedVerdictSubject(preparedNodeTxId) },
+      finding: {
+        subject: SDKFraudProof.acceptedVerdictSubject(preparedNodeTxId),
+      },
       inputFieldPreimage: field,
       committedFieldHashHex: midgardFieldCommitment(field).toString("hex"),
     });

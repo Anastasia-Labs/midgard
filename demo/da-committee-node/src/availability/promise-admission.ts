@@ -8,7 +8,8 @@ import {
 } from "@al-ft/midgard-core";
 import type { AvailabilityOperationActorSnapshot } from "@al-ft/midgard-core/availability-operation-journal";
 import { computeDaSha256Hash } from "@al-ft/midgard-core/da-transport";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 
 import type { CommitteeConfig } from "../config.js";
 import type { StateQueueHeaderRecord, ValidationSummary } from "../domain.js";
@@ -28,7 +29,7 @@ import { retainedAvailabilityPayload } from "./retained-payload.js";
 
 export type CommitteePromiseAdmissionCandidate = Readonly<{
   record: StateQueueHeaderRecord;
-  commitment: SDK.DaAvailabilityCommitment;
+  commitment: SDKDa.DaAvailabilityCommitment;
   commitmentDigest: string;
   /** Supplied by production verification before the fresh-signing gate. */
   verifiedPayload?: Readonly<{
@@ -66,9 +67,9 @@ export type CommitteePromiseAdmissionSource = Readonly<{
   /** Absent until runtime bindings and conditional calibration are adopted. */
   policyAuthority?: CommitteePromiseRuntimePolicyAuthority;
   /** One aggregate scope retained through the final pre-signing fence. */
-  openReadScope?: () => SDK.DaAvailabilityReadScope;
-  drainReadResources?: (scope?: SDK.DaAvailabilityReadScope) => Promise<void>;
-  readResourceWorkload?: (scope?: SDK.DaAvailabilityReadScope) => Promise<
+  openReadScope?: () => SDKDa.DaAvailabilityReadScope;
+  drainReadResources?: (scope?: SDKDa.DaAvailabilityReadScope) => Promise<void>;
+  readResourceWorkload?: (scope?: SDKDa.DaAvailabilityReadScope) => Promise<
     Readonly<{
       walletInputs: number;
       journalEntries: number;
@@ -78,14 +79,14 @@ export type CommitteePromiseAdmissionSource = Readonly<{
   >;
   projectResources?: (
     candidate: CommitteePromiseAdmissionCandidate,
-    scope?: SDK.DaAvailabilityReadScope,
+    scope?: SDKDa.DaAvailabilityReadScope,
   ) => Promise<Readonly<{ storeRecords: number; storeEncodedBytes: number }>>;
   readSnapshot: (
-    scope?: SDK.DaAvailabilityReadScope,
+    scope?: SDKDa.DaAvailabilityReadScope,
   ) => Promise<CommitteePromiseAdmissionSnapshot>;
   assertCurrent: (
     boundary: CommitteePromiseAdmissionBoundary,
-    scope?: SDK.DaAvailabilityReadScope,
+    scope?: SDKDa.DaAvailabilityReadScope,
     candidate?: CommitteePromiseAdmissionCandidate,
   ) => Promise<void>;
 }>;
@@ -114,13 +115,13 @@ const scalar = (value: bigint): number => {
     throw new Error("admission scalar is out of range");
   return Number(value);
 };
-const digest = (commitment: SDK.DaAvailabilityCommitment): string =>
+const digest = (commitment: SDKDa.DaAvailabilityCommitment): string =>
   computeDaSha256Hash(
-    Buffer.from(SDK.encodeDaAvailabilityCommitment(commitment), "hex"),
+    Buffer.from(SDKDa.encodeDaAvailabilityCommitment(commitment), "hex"),
   ).toString("hex");
 
 const potential = (
-  commitment: SDK.DaAvailabilityCommitment,
+  commitment: SDKDa.DaAvailabilityCommitment,
   config: CommitteeConfig,
 ): AvailabilityResponseObligation => {
   const classes = config.availabilityChallenge.responseClasses;
@@ -152,9 +153,9 @@ const active = (
   const commitment = challenge.record.datum.commitment;
   // Discovery authenticates these datums against the exact live queue. Do not
   // turn missing or timed-out state into zero remaining interference.
-  SDK.parseDaAvailabilityCommitmentCbor(
-    SDK.encodeDaAvailabilityCommitment(commitment),
-    SDK.availabilityResponseGeometry(
+  SDKDa.parseDaAvailabilityCommitmentCbor(
+    SDKDa.encodeDaAvailabilityCommitment(commitment),
+    SDKDa.availabilityResponseGeometry(
       config.availabilityChallenge.responseGeometry,
     ),
   );
@@ -245,7 +246,7 @@ export const committeePromiseAdmission = (args: {
       candidateHeaderHash: candidate.record.headerHash,
       candidateCommitmentDigest: candidate.commitmentDigest,
     };
-    let scope: SDK.DaAvailabilityReadScope | undefined;
+    let scope: SDKDa.DaAvailabilityReadScope | undefined;
     const reads = committeeAdmissionReads(args.source);
     const incomplete = reads.incomplete(base, () => scope);
     const authority = args.source.policyAuthority;
@@ -278,9 +279,9 @@ export const committeePromiseAdmission = (args: {
           witnessIndex !== args.signerValidation.signerIndex
         )
           continue;
-        const commitment = SDK.parseDaAvailabilityCommitmentCbor(
+        const commitment = SDKDa.parseDaAvailabilityCommitmentCbor(
           record.availabilityCommitmentCbor,
-          SDK.availabilityResponseGeometry(
+          SDKDa.availabilityResponseGeometry(
             args.config.availabilityChallenge.responseGeometry,
           ),
         );

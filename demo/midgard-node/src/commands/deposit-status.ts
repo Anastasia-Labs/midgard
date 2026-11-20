@@ -1,4 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data as EffectData, Effect, Option } from "effect";
 
 import * as DepositsDB from "../database/deposits.js";

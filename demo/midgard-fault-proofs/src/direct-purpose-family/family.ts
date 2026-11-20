@@ -4,7 +4,8 @@
  * terminal names a verdict, fixed when the final state alone convicts and
  * built per proof from what else the terminal reads otherwise, and the kit
  * submits its terminal too. */
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import type { Script } from "@lucid-evolution/lucid";
 
 /** Every role name a direct walk family can bind. */
@@ -22,7 +23,10 @@ export type DirectPurposeRole =
 /** Resolved deployment of one direct purpose family. */
 export type DirectPurposeContracts = {
   /** Every role in the family's role order, step-01 first. */
-  readonly steps: readonly [SDK.SpendingValidator, ...SDK.SpendingValidator[]];
+  readonly steps: readonly [
+    SDKCore.SpendingValidator,
+    ...SDKCore.SpendingValidator[],
+  ];
   readonly computationThread: {
     readonly policyId: string;
     readonly mintingScript: Script;
@@ -57,7 +61,7 @@ export type DirectPurposeCustodyFamily = {
   /** Named roles; fails closed when the chain is not the family's graph. */
   readonly roles: (
     contracts: DirectPurposeContracts,
-  ) => Readonly<Partial<Record<DirectPurposeRole, SDK.SpendingValidator>>>;
+  ) => Readonly<Partial<Record<DirectPurposeRole, SDKCore.SpendingValidator>>>;
   /** The step-01 spend redeemer's schema; the shared direct step-01 when
    * absent. */
   readonly step01Redeemer?: typeof SDK.DirectStep01Redeemer;
@@ -82,7 +86,7 @@ export const directPurposeRoleValidator = (
   family: DirectPurposeCustodyFamily,
   contracts: DirectPurposeContracts,
   role: DirectPurposeRole,
-): SDK.SpendingValidator => {
+): SDKCore.SpendingValidator => {
   const validator = family.roles(contracts)[role];
   if (validator === undefined)
     throw new Error(`${family.label}: ${role} is not a role of the family`);

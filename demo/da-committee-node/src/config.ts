@@ -5,7 +5,7 @@ import "@al-ft/midgard-core";
 import "@al-ft/midgard-core/consensus-profile";
 import "@al-ft/midgard-core/da-transport";
 import "@al-ft/midgard-core/deployment-manifest-identity";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/state-queue";
 import "@multiformats/multiaddr";
 import "@noble/hashes/blake2.js";
 import "./l1/deployment.js";

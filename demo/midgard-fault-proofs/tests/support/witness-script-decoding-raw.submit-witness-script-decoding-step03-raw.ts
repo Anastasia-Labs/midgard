@@ -1,15 +1,17 @@
 import {
-  type FieldOpening,
   type NativeTxWitnessSetCompact,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
+  type FieldOpening,
   type WitnessScriptDecodingScanState,
   WitnessScriptDecodingStep03DatumSchema,
   WitnessScriptDecodingStep03RedeemerSchema,
   WitnessScriptDecodingStep04DatumSchema,
   WitnessScriptDecodingStep04RedeemerSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

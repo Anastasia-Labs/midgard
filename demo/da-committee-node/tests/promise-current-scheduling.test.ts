@@ -1,5 +1,7 @@
 import { computeDaSha256Hash } from "@al-ft/midgard-core/da-transport";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
@@ -13,18 +15,18 @@ const fixture = async (commitClockOffsetMs = 0) => {
   const payload = await makePayloadFixture(1);
   const policy = "ab".repeat(28),
     identity = "cd".repeat(28);
-  const commitment = SDK.buildDaAvailabilityCommitment({
+  const commitment = SDKDa.buildDaAvailabilityCommitment({
     deploymentIdentity: identity,
     headerHash: payload.headerHash,
     payload: Uint8Array.of(1, 2, 3, 4),
-    responseGeometry: SDK.availabilityResponseGeometry({
+    responseGeometry: SDKDa.availabilityResponseGeometry({
       chunkByteLength: 14020,
       trancheByteLength: 4 * 1024 * 1024,
       maxTrancheCount: 16,
     }),
   });
   const digest = computeDaSha256Hash(
-    Buffer.from(SDK.encodeDaAvailabilityCommitment(commitment), "hex"),
+    Buffer.from(SDKDa.encodeDaAvailabilityCommitment(commitment), "hex"),
   ).toString("hex");
   const deployment = {
     hubOraclePolicyId: identity,
@@ -36,7 +38,7 @@ const fixture = async (commitClockOffsetMs = 0) => {
         spendingScriptAddress: "availability",
       },
     },
-  } as SDK.DaAvailabilityDeployment;
+  } as SDKDa.DaAvailabilityDeployment;
   const point = { slot: 50, blockNo: 5, blockHash: "12".repeat(32) };
   const cutoff = Number(payload.header.endTime) + 720000;
   const boundary = {
@@ -45,7 +47,9 @@ const fixture = async (commitClockOffsetMs = 0) => {
     blockHash: "34".repeat(32),
   };
   const status = {
-    Attested: { commitment_hash: SDK.daAvailabilityCommitmentHash(commitment) },
+    Attested: {
+      commitment_hash: SDKDa.daAvailabilityCommitmentHash(commitment),
+    },
   };
   const output = (
     index: number,
@@ -62,7 +66,7 @@ const fixture = async (commitClockOffsetMs = 0) => {
   const root = output(
     0,
     "queue",
-    policy + SDK.STATE_QUEUE_ROOT_ASSET_NAME,
+    policy + SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME,
     SDK.encodeLinkedListNodeView({
       key: "Empty",
       next: { Key: { key: payload.headerHash } },
@@ -175,7 +179,7 @@ describe("current timing scheduling versus protected restoration", () => {
             block_time: f.args.liabilities[0]!.header.header.endTime,
             da_attestation: {
               Challenged: {
-                commitment_hash: SDK.daAvailabilityCommitmentHash(
+                commitment_hash: SDKDa.daAvailabilityCommitmentHash(
                   f.args.liabilities[0]!.commitment,
                 ),
                 challenge_asset_name: "90".repeat(32),
@@ -238,7 +242,9 @@ describe("current timing scheduling versus protected restoration", () => {
   });
   it("revalidates complete raw identities at the final fence despite unchanged point and counts", async () => {
     const f = await fixture();
-    const scope = SDK.createDaAvailabilityReadScope({ attemptTimeoutMs: 1000 });
+    const scope = SDKDa.createDaAvailabilityReadScope({
+      attemptTimeoutMs: 1000,
+    });
     let queue = f.args.rawSnapshot.stateQueueUtxos;
     const source = promiseSchedulingSource({
       lucid: {
@@ -283,7 +289,9 @@ describe("current timing scheduling versus protected restoration", () => {
   });
   it("does not let an older overlapping capture replace the newer certificate", async () => {
     const f = await fixture();
-    const scope = SDK.createDaAvailabilityReadScope({ attemptTimeoutMs: 1000 });
+    const scope = SDKDa.createDaAvailabilityReadScope({
+      attemptTimeoutMs: 1000,
+    });
     let releaseFirst!: () => void;
     let enteredFirst!: () => void;
     const entered = new Promise<void>((resolve) => {

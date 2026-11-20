@@ -14,7 +14,7 @@ import {
 import { attributeWithdrawalClassificationFault } from "@al-ft/midgard-fault-proofs/block-replay";
 import type { BlockReplayMaterial } from "@al-ft/midgard-fault-proofs/replayed-ledger";
 import { forcedVerdictForRejection } from "@al-ft/midgard-fault-proofs/workflow/forced-rejection-reason";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { deriveCanonicalOriginalDepositTransitionEffect } from "@al-ft/midgard-validation/transition-effect";
 import { Data, type Network } from "@lucid-evolution/lucid";
 import { Effect } from "effect";

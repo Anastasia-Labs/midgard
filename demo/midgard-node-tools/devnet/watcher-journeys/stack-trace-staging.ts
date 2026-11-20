@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { protectedPredecessorHoldMs } from "midgard-watcher/tests/support/history-predecessor-hold";
 import {
   EMPTY_PREDECESSOR_INTERVAL_MS,
@@ -45,7 +46,7 @@ export const stackTraceShiftWorkMs = (
   const txMs = input.transactionAllowanceMs;
   const holdMs = protectedPredecessorHoldMs(input.eventHistoryProtectionMs);
   // A deposit's validity ends within its time to live, slot-aligned.
-  const validityMs = SDK.USER_EVENT_TX_TTL_MS + 1_000;
+  const validityMs = SDKUsers.USER_EVENT_TX_TTL_MS + 1_000;
   const admissionMs = validityMs + input.eventWaitMs;
   const traceDepositAfterMs =
     holdMs +
@@ -99,7 +100,7 @@ export const stackTraceAttachedStack = async (
     commitAllowanceMs: timing.transactionAllowanceMs,
     onStage,
   });
-  const { recipe } = SDK.requireEventHistoryContracts(
+  const { recipe } = SDKUsers.requireEventHistoryContracts(
     context.deployment.contracts,
   ).deposit;
   const shiftWorkMs = stackTraceShiftWorkMs({

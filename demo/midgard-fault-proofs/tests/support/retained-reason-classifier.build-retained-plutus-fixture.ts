@@ -19,12 +19,12 @@ import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import {
-  encodeDaPayload,
   type EventKey,
   EventKeySchema,
   GENESIS_HEADER_HASH,
   hashBlockHeader,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { encodeDaPayload } from "@al-ft/midgard-sdk/da";
 import { replayValidationMachineEvent } from "@al-ft/midgard-validation/tests/validation-machine-event-replay.trace";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";

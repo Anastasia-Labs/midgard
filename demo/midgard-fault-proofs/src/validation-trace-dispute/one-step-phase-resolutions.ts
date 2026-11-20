@@ -1,6 +1,6 @@
 /** Each validation phase the runner drives, with its resolver's and its
  * semantic resolvers' holders (one-step-phase.ts). */
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { ValidationTracePhaseHolder } from "./one-step-phase-contracts.js";
 import { SCRIPT_SOURCES_REDEEMER_SEMANTIC } from "./one-step-script-sources-redeemer.js";

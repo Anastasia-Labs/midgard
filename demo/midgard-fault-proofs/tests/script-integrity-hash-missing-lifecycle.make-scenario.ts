@@ -2,7 +2,8 @@ import {
   deriveMidgardNativeTxWitnessSetCompact,
   encodeMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 
 import { ScriptIntegrityStepDatums } from "../src/script-integrity-hash-missing/schemas.js";
@@ -171,7 +172,7 @@ export const makeScenario = async ({
       anchoredWitnessSetHash = witnessSetHash,
       forcedMembership = null,
     }: {
-      readonly subject: SDK.VerdictSubject;
+      readonly subject: SDKFraudProof.VerdictSubject;
       readonly anchoredWitnessSetHash?: string;
       readonly forcedMembership?: SDK.RootMembershipProof<
         SDK.OutputReference,
@@ -208,7 +209,7 @@ export const makeScenario = async ({
       staged = false,
     }: {
       readonly decision: {
-        readonly subject: SDK.VerdictSubject;
+        readonly subject: SDKFraudProof.VerdictSubject;
         readonly script_integrity_hash: string;
         readonly contains_non_native_script: boolean;
         readonly has_redeemers: boolean;

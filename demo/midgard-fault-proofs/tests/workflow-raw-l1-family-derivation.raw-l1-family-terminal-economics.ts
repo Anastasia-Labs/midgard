@@ -4,12 +4,12 @@ import {
   ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX,
   castConfirmedStateToData,
   encodeLinkedListNodeView,
-  FraudProofTokenDatum,
   makeGenesisConfirmedState,
   RETIRED_OPERATOR_NODE_ASSET_NAME_PREFIX,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
-  STATE_QUEUE_ROOT_ASSET_NAME,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { FraudProofTokenDatum } from "@al-ft/midgard-sdk/fraud-proof";
+import { STATE_QUEUE_ROOT_ASSET_NAME } from "@al-ft/midgard-sdk/state-queue";
 import { CML, Data, toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

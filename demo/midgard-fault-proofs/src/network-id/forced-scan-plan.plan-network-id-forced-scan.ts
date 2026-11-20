@@ -3,7 +3,7 @@ import {
   NETWORK_ID_FORCED_GRAMMAR_BATCH,
   NETWORK_ID_FORCED_SCAN_BATCH,
   type NetworkIdForcedScanState,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { FaultProofFieldOpeningPlan } from "../field-opening.js";
 import {

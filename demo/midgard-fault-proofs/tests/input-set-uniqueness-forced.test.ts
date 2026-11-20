@@ -1,12 +1,14 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   ForcedInclusionTxV1Schema,
-  forcedVerdictSubject,
-  InputSetUniquenessVerdictSubjectSchema,
   OutputReference,
   Proof,
   ROOT_DOMAINS,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  forcedVerdictSubject,
+  InputSetUniquenessVerdictSubjectSchema,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, expectTypeOf, it } from "vitest";
 

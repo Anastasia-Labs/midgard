@@ -1,5 +1,5 @@
 import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { SqlClient } from "@effect/sql";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";

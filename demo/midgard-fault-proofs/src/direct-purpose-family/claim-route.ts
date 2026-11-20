@@ -2,7 +2,7 @@
  * claim-only entry, then claim start and adjudication over the context's
  * target coordinate (the leaf's own purpose, or a walked redeemer's pointer),
  * ending at the terminal datum. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";

@@ -1,5 +1,6 @@
 import type { DerivationHook } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -51,7 +52,7 @@ export const committeeQueueDerivation = (
         );
       for (const { outRef, output } of entry.created) {
         if (!output.address.equals(parameters.stateQueueAddress)) continue;
-        const decoded = SDK.decodeStateQueueOutput(
+        const decoded = SDKStateQueue.decodeStateQueueOutput(
           output,
           parameters.stateQueuePolicyId,
         );

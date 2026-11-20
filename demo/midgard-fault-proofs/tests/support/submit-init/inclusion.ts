@@ -8,7 +8,7 @@ import {
   invalidRangeViolationReason,
   nativeTxBodyHasZeroInputViolation,
   normalizeNativeTxValidityRange,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { expect } from "vitest";
 
 import { trieRootHex } from "../emulator/catalogue.js";

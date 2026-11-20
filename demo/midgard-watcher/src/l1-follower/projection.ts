@@ -9,7 +9,7 @@ import type {
   TemporalTableSpec,
   TrackedSet,
 } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import {
   CML,
   credentialToAddress,

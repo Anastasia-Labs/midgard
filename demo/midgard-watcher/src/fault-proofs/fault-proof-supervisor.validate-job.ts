@@ -8,7 +8,7 @@ import type {
   HeaderDecision,
   HeaderFaultDecision,
 } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
-import { Header, StateQueueNode } from "@al-ft/midgard-sdk";
+import { Header, StateQueueNode } from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 
 import { assertWatcherStateQueueHeaderObservation } from "../indexers/authenticated-state-queue-observation.js";

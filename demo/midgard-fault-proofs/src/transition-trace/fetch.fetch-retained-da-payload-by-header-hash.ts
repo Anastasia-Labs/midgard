@@ -3,7 +3,7 @@ import {
   assertSecurityGradeEvidence,
   CanonicalEvidenceRejection,
   requireEvidenceTrustClass,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import { transitionTraceError } from "./errors.js";
 import {

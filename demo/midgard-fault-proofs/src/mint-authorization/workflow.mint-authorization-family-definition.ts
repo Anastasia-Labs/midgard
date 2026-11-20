@@ -6,7 +6,7 @@ import {
   MintAuthorizationStep04Datum,
   MintAuthorizationStep05Datum,
   MintAuthorizationWitnessScanDatum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import { MINT_AUTHORIZATION_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.create-complete-canonical-replay-union.js";
 import { cursorFamilyActionInput } from "../workflow/cursor-family-runtime.js";

@@ -2,7 +2,7 @@ import {
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import { expect } from "vitest";
 
 import { prepareDirectScriptMaterial } from "../../src/direct-script-derivation/material.js";

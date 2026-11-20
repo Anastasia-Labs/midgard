@@ -2,7 +2,7 @@
  * The operator watchdog's deferral through the slot-aware due-work registry,
  * and its projection of the SDK planner's result onto the policy's view.
  */
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/operators";
 import { Effect } from "effect";
 
 import {

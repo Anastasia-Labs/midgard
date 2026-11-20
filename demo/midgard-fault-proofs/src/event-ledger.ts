@@ -18,7 +18,8 @@ import {
   decodeMidgardForcedTxFullFromCanonicalCbor,
   encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import { latestBefore, type Pass, record, view } from "./event-ledger.view.js";
@@ -408,7 +409,7 @@ export const eventLedgerBefore = async ({
   // These are the existing evidence-grade and source-root authorities. A
   // diagnostic/operator-private reconstruction cannot produce proof material.
   blockTransactionsFromCanonicalEvidence(block);
-  SDK.assertTransactionSourceInclusionRootAuthenticated(
+  SDKFraudProof.assertTransactionSourceInclusionRootAuthenticated(
     block.inclusionRootAuthentication,
   );
   // The walk reads the reconstruction's header; it must be the block's.

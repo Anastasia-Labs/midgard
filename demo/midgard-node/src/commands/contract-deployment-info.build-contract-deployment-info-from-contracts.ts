@@ -2,8 +2,10 @@ import { existsSync } from "node:fs";
 
 import { writeJsonFileAtomic } from "@al-ft/midgard-core/atomic-write";
 import { type DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
-import * as SDK from "@al-ft/midgard-sdk";
-import { type ReferenceScriptAuthPolicyDeploymentInfo } from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
+import { type ReferenceScriptAuthPolicyDeploymentInfo } from "@al-ft/midgard-sdk/state-queue";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -32,13 +34,13 @@ import {
 } from "./contract-deployment-info.build-reference-script-out-ref-map.js";
 
 export const buildContractDeploymentInfoFromContracts = (
-  contracts: SDK.MidgardValidators,
+  contracts: SDKCore.MidgardValidators,
   referenceScriptAuthPolicy: ReferenceScriptAuthPolicyDeploymentInfo,
   referenceScriptOutRefs: ReadonlyMap<
     string,
     ContractDeploymentInfoRefScriptUTxO
   > = new Map(),
-  fraudProofCatalogue?: SDK.FraudProofCatalogueDeploymentInfo,
+  fraudProofCatalogue?: SDKCore.FraudProofCatalogueDeploymentInfo,
 ): ContractDeploymentInfo =>
   Object.freeze({
     referenceScriptAuthPolicy,
@@ -55,9 +57,10 @@ export const buildContractDeploymentInfoFromContracts = (
                   : undefined;
           const historyRecipe =
             descriptor.name === "depositMint"
-              ? SDK.requireEventHistoryContracts(contracts).deposit.recipe
+              ? SDKUsers.requireEventHistoryContracts(contracts).deposit.recipe
               : descriptor.name === "withdrawalMint"
-                ? SDK.requireEventHistoryContracts(contracts).withdrawal.recipe
+                ? SDKUsers.requireEventHistoryContracts(contracts).withdrawal
+                    .recipe
                 : undefined;
           return [
             descriptor.name,
@@ -146,7 +149,7 @@ export const resolveLiveContractDeploymentInfoProgram = (
   });
 
 export const buildContractDeploymentInfoProgram = (
-  contracts: SDK.MidgardValidators,
+  contracts: SDKCore.MidgardValidators,
   referenceScriptUtxos: readonly UTxO[],
   referenceScriptAuthPolicy: ReferenceScriptAuthPolicyDeploymentInfo,
 ): Effect.Effect<ContractDeploymentInfo, Error> =>

@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { SqlClient } from "@effect/sql";
 import { type LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect, Schedule } from "effect";
@@ -169,13 +170,13 @@ const fetchCommittedBlockOutRef = ({
 }: {
   readonly contracts: SDK.MidgardValidators;
   readonly headerHash: string;
-}): Effect.Effect<string, SDK.StateQueueError, SqlClient.SqlClient> =>
+}): Effect.Effect<string, SDKStateQueue.StateQueueError, SqlClient.SqlClient> =>
   requireLandedStateQueue(contracts.stateQueue, "the explicit commit").pipe(
     Effect.flatMap((queue) => {
       const block = findLandedBlock(queue, headerHash);
       return block === undefined
         ? Effect.fail(
-            new SDK.StateQueueError({
+            new SDKStateQueue.StateQueueError({
               message: "The committed block is not in the landed state queue",
               cause: `header_hash=${headerHash}`,
             }),
@@ -200,7 +201,7 @@ export const commitExplicitBlockHeaderProgram = (
   params: ExplicitBlockHeaderCommitParams,
 ): Effect.Effect<
   ExplicitBlockHeaderCommitOutput,
-  | SDK.StateQueueError
+  | SDKStateQueue.StateQueueError
   | SDK.DataCoercionError
   | SDK.HeaderTransitionCommitmentsError
   | SDK.LucidError
@@ -214,7 +215,7 @@ export const commitExplicitBlockHeaderProgram = (
     const lucidService = yield* Lucid;
     const contracts = yield* MidgardContracts;
     const lucid = lucidService.api;
-    const fetchConfig: SDK.StateQueueFetchConfig = {
+    const fetchConfig: SDKStateQueue.StateQueueFetchConfig = {
       stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
       stateQueuePolicyId: contracts.stateQueue.policyId,
     };
@@ -253,7 +254,7 @@ export const commitExplicitBlockHeaderProgram = (
     );
     if ("dueWork" in explicitBuildResult) {
       return yield* Effect.fail(
-        new SDK.StateQueueError({
+        new SDKStateQueue.StateQueueError({
           message:
             "Explicit block commit discovered scheduler due work instead of a ready transaction",
           cause: `kind=${explicitBuildResult.dueWork.kind},due_slot=${explicitBuildResult.dueWork.dueSlot.toString()},wait_ms=${explicitBuildResult.dueWork.waitMs.toString()}`,

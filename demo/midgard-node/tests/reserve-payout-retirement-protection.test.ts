@@ -1,5 +1,6 @@
 import { SUBMIT_SLOT_VALIDITY_BUFFER } from "@al-ft/midgard-core/ogmios-slot";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { it } from "@effect/vitest";
 import { Emulator, Lucid } from "@lucid-evolution/lucid";
 import { Effect, TestClock } from "effect";
@@ -10,9 +11,9 @@ import { retryAfterRetirementProtection } from "../src/commands/reserve-payout.r
 const PROTECTION_DURATION_MS = 120_000n;
 
 const protectedFailure = (protectedUntilMs: bigint) =>
-  new SDK.ReservePayoutTxError({
+  new SDKUsers.ReservePayoutTxError({
     message: "Failed to resolve authenticated retirement state",
-    cause: new SDK.HistoryRetirementProtectedError(
+    cause: new SDKUsers.HistoryRetirementProtectedError(
       protectedUntilMs,
       0,
       PROTECTION_DURATION_MS,
@@ -36,7 +37,7 @@ const chain = Effect.gen(function* () {
  * recording the tip slot each attempt was built at. */
 const scripted = (
   tipSlot: () => number,
-  outcomes: readonly (SDK.ReservePayoutTxError | Error | "tx")[],
+  outcomes: readonly (SDKUsers.ReservePayoutTxError | Error | "tx")[],
 ) => {
   const builtAt: number[] = [];
   const attempt = Effect.suspend(() => {
@@ -44,7 +45,7 @@ const scripted = (
     builtAt.push(tipSlot());
     return outcome === "tx"
       ? Effect.succeed("tx")
-      : Effect.fail(outcome as SDK.ReservePayoutTxError);
+      : Effect.fail(outcome as SDKUsers.ReservePayoutTxError);
   });
   return { attempt, builtAt };
 };
@@ -135,7 +136,7 @@ describe("retirement protection wait", () => {
     Effect.gen(function* () {
       const { lucid, tipSlot } = yield* chain;
       const startSlot = tipSlot();
-      const other = new SDK.ReservePayoutTxError({
+      const other = new SDKUsers.ReservePayoutTxError({
         message: "Failed to resolve authenticated retirement state",
         cause: new Error("Event is no longer an authenticated live Order"),
       });

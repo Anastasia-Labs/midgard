@@ -30,7 +30,10 @@ import {
   WITHDRAWN_INPUT_COMPLETE_CANONICAL_REPLAY,
   WITHDRAWN_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY,
 } from "@al-ft/midgard-fault-proofs/workflow/complete-replay";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { afterEach, expect, it, vi } from "vitest";
@@ -164,10 +167,10 @@ const openFamilyWindow = async (deposits: number) => {
 const historyWitness = async (
   block: VerifiableJourneyBlock,
   event: StagedLocalHistoryEvent,
-  witness: SDK.EventHistoryWitness = event.order.history,
+  witness: SDKUsers.EventHistoryWitness = event.order.history,
 ) => {
   const { contracts, operatorLucid } = stage.deployment;
-  const pair = SDK.requireEventHistoryContracts(contracts);
+  const pair = SDKUsers.requireEventHistoryContracts(contracts);
   const history =
     event.order.kind === "Deposit" ? pair.deposit : pair.withdrawal;
   const hub = await Effect.runPromise(
@@ -686,7 +689,7 @@ it.each(["Deposit", "Withdrawal"] as const)(
       /authentic_content_matches_commitment/u,
     );
     const proofInclusion = async (
-      block: VerifiableJourneyBlock & { payload: SDK.DaPayload },
+      block: VerifiableJourneyBlock & { payload: SDKDa.DaPayload },
       event: StagedLocalHistoryEvent,
     ) => {
       const entries =
@@ -695,8 +698,8 @@ it.each(["Deposit", "Withdrawal"] as const)(
           : block.payload.block_body.withdrawals;
       const keyCbor =
         kind === "Deposit"
-          ? SDK.committedDepositKeyBytes(event.order.event.id)
-          : SDK.committedWithdrawalKeyBytes(event.order.event.id);
+          ? SDKFraudProof.committedDepositKeyBytes(event.order.event.id)
+          : SDKFraudProof.committedWithdrawalKeyBytes(event.order.event.id);
       const valueCbor = canonical(
         plutusConstrFieldCbor(rawEventCbor(event), [1]),
       );
@@ -816,12 +819,12 @@ it.each(["Deposit", "Withdrawal"] as const)(
       retired.inclusionTime,
     );
     // The fresh admission and proof capture may have moved the list anchor.
-    const currentHistory = SDK.eventHistoryDeploymentFromContracts(
-      SDK.requireEventHistoryContracts(stage.deployment.contracts)[
+    const currentHistory = SDKUsers.eventHistoryDeploymentFromContracts(
+      SDKUsers.requireEventHistoryContracts(stage.deployment.contracts)[
         kind === "Deposit" ? "deposit" : "withdrawal"
       ],
     );
-    const currentAbsence = await SDK.fetchEventHistoryWitness(
+    const currentAbsence = await SDKUsers.fetchEventHistoryWitness(
       { utxosAt: (address) => lucid.utxosAt(address) },
       currentHistory,
       retired.order.event.id,
@@ -934,7 +937,7 @@ it.each(["Deposit", "Withdrawal"] as const)(
     expect(await lucid.utxosByOutRef(preservedThread)).toEqual(preservedThread);
     expect(
       (
-        await SDK.fetchEventHistoryWitness(
+        await SDKUsers.fetchEventHistoryWitness(
           { utxosAt: (address) => lucid.utxosAt(address) },
           currentHistory,
           retired.order.event.id,
@@ -943,7 +946,7 @@ it.each(["Deposit", "Withdrawal"] as const)(
     ).toBe("Absent");
     expect(
       (
-        await SDK.fetchEventHistoryWitness(
+        await SDKUsers.fetchEventHistoryWitness(
           { utxosAt: (address) => lucid.utxosAt(address) },
           currentHistory,
           fresh.order.event.id,

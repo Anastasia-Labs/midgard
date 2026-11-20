@@ -11,7 +11,8 @@ import {
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -35,19 +36,21 @@ const encodedEntry = <K, V>({
   readonly keySchema: Parameters<typeof Data.Nullable>[0];
   readonly value: V;
   readonly valueSchema: Parameters<typeof Data.Nullable>[0];
-}): SDK.DaPayloadEntry => [
+}): SDKDa.DaPayloadEntry => [
   Data.to(key as never, keySchema as never),
   Data.to(value as never, valueSchema as never),
 ];
 
-const sorted = (entries: readonly SDK.DaPayloadEntry[]): SDK.DaPayloadEntry[] =>
+const sorted = (
+  entries: readonly SDKDa.DaPayloadEntry[],
+): SDKDa.DaPayloadEntry[] =>
   [...entries].sort(([left], [right]) =>
     left < right ? -1 : left > right ? 1 : 0,
   );
 
 const countedRoot = (
   domain: Parameters<typeof buildCountedRoot>[0],
-  entries: readonly SDK.DaPayloadEntry[],
+  entries: readonly SDKDa.DaPayloadEntry[],
 ) =>
   buildCountedRoot(
     domain,
@@ -58,7 +61,7 @@ const countedRoot = (
   );
 
 export type StrictRetainedDaPairFixture = {
-  readonly payload: SDK.DaPayload;
+  readonly payload: SDKDa.DaPayload;
   readonly payloadEnvelopeCbor: Buffer;
   readonly header: SDK.Header;
   readonly headerHash: string;
@@ -67,7 +70,7 @@ export type StrictRetainedDaPairFixture = {
   readonly forcedTransactionCommitmentHex: string;
   readonly forcedOrderIdHex: string;
   /** The ledger the header's UTxO roots commit to; the payload does not carry it. */
-  readonly ledger: readonly SDK.DaPayloadEntry[];
+  readonly ledger: readonly SDKDa.DaPayloadEntry[];
 };
 
 export const buildStrictRetainedDaPairFixture = async ({
@@ -76,7 +79,7 @@ export const buildStrictRetainedDaPairFixture = async ({
   withForcedTwin = true,
 }: {
   readonly canonicalTransactionCbor: Uint8Array;
-  readonly resolvedReferenceUtxos?: readonly SDK.DaPayloadEntry[];
+  readonly resolvedReferenceUtxos?: readonly SDKDa.DaPayloadEntry[];
   /**
    * Also commit the transaction as a valid forced transaction ahead of the
    * normal one. A block replayed in order cannot apply one transaction twice,
@@ -170,11 +173,11 @@ export const buildStrictRetainedDaPairFixture = async ({
       valueSchema: SDK.ForcedInclusionTxV1Schema,
     }),
   );
-  const transactions: SDK.DaPayloadEntry[] = [
+  const transactions: SDKDa.DaPayloadEntry[] = [
     [transactionIdHex, Data.to(source as never, SDK.L2TransactionSourceSchema)],
   ];
   const transitionTrace = steps.map(
-    (step): SDK.DaPayloadEntry =>
+    (step): SDKDa.DaPayloadEntry =>
       encodedEntry({
         key: step.step_index,
         keySchema: Data.Integer() as never,
@@ -183,7 +186,7 @@ export const buildStrictRetainedDaPairFixture = async ({
       }),
   );
   const normalStepIndex = withForcedTwin ? 1n : 0n;
-  const eventToStep: readonly SDK.DaPayloadEntry[] = [
+  const eventToStep: readonly SDKDa.DaPayloadEntry[] = [
     ...(withForcedTwin
       ? [
           encodedEntry({
@@ -231,7 +234,7 @@ export const buildStrictRetainedDaPairFixture = async ({
     ),
     eventToStep: await countedRoot(SDK.ROOT_DOMAINS.eventToStep, eventToStep),
   };
-  const counts: SDK.DaPayloadCounts = {
+  const counts: SDKDa.DaPayloadCounts = {
     withdrawalCount: 0n,
     forcedTransactionCount: withForcedTwin ? 1n : 0n,
     l2TransactionCount: 1n,
@@ -265,8 +268,8 @@ export const buildStrictRetainedDaPairFixture = async ({
     protocolVersion: 1n,
   };
   const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
-  const payload: SDK.DaPayload = {
-    version: SDK.DA_PAYLOAD_VERSION,
+  const payload: SDKDa.DaPayload = {
+    version: SDKDa.DA_PAYLOAD_VERSION,
     block_body: {
       header_hash: headerHash,
       header,
@@ -294,7 +297,7 @@ export const buildStrictRetainedDaPairFixture = async ({
   };
   return {
     payload,
-    payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(payload), {
+    payloadEnvelopeCbor: await wrapDaPayload(SDKDa.encodeDaPayload(payload), {
       mode: "identity",
     }),
     header,

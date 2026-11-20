@@ -15,7 +15,7 @@ import {
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
 import { encodeMidgardForcedTxCompact } from "@al-ft/midgard-core/codec/forced";
-import { Proof } from "@al-ft/midgard-sdk";
+import { Proof } from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 
 import { encodeL2TransactionSourceValue } from "../../src/prepare-double-spend.encode-l2-transaction-source-value.js";

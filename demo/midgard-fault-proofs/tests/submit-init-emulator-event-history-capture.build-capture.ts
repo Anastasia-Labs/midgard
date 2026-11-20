@@ -1,4 +1,6 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   type BuildTxWithRedeemer,
   Data,
@@ -18,8 +20,8 @@ import {
 export const buildCapture = async (
   h: Harness,
   p: Proof,
-  w: SDK.EventHistoryWitness,
-  window: SDK.EventHistoryCaptureWindow,
+  w: SDKUsers.EventHistoryWitness,
+  window: SDKUsers.EventHistoryCaptureWindow,
 ) => {
   const refs = [
     h.hub,
@@ -29,7 +31,7 @@ export const buildCapture = async (
   ];
   const captured =
     w.kind === "Present"
-      ? SDK.captureEventHistoryWitness(
+      ? SDKUsers.captureEventHistoryWitness(
           w,
           deployment(h, p.kind).policyId,
           p.kind,
@@ -65,19 +67,19 @@ export const buildCapture = async (
   if (p.kind === "Deposit") {
     const state = Data.from(
       p.thread.datum!,
-      SDK.FabricatedDepositStep02Datum,
+      SDKFraudProof.FabricatedDepositStep02Datum,
     ).data!;
     datum = Data.to(
       {
         fraud_prover: h.owner,
-        data: SDK.fabricatedDepositStep03State(
+        data: SDKFraudProof.fabricatedDepositStep03State(
           state,
           captured
             ? { DepositEventObserved: { commitment: captured.commitment } }
             : "DepositIdentityAbsent",
         ),
       },
-      SDK.FabricatedDepositStep03Datum,
+      SDKFraudProof.FabricatedDepositStep03Datum,
     );
     redeemer = (ctx) =>
       Data.to(
@@ -96,24 +98,24 @@ export const buildCapture = async (
             },
           ],
         },
-        SDK.FabricatedDepositStep02SpendRedeemer,
+        SDKFraudProof.FabricatedDepositStep02SpendRedeemer,
       );
   } else {
     const state = Data.from(
       p.thread.datum!,
-      SDK.FabricatedWithdrawalStep02Datum,
+      SDKFraudProof.FabricatedWithdrawalStep02Datum,
     ).data!;
     datum = Data.to(
       {
         fraud_prover: h.owner,
-        data: SDK.fabricatedWithdrawalStep03State(
+        data: SDKFraudProof.fabricatedWithdrawalStep03State(
           state,
           captured
             ? { WithdrawalEventObserved: { commitment: captured.commitment } }
             : "WithdrawalIdentityAbsent",
         ),
       },
-      SDK.FabricatedWithdrawalStep03Datum,
+      SDKFraudProof.FabricatedWithdrawalStep03Datum,
     );
     redeemer = (ctx) =>
       Data.to(
@@ -132,7 +134,7 @@ export const buildCapture = async (
             },
           ],
         },
-        SDK.FabricatedWithdrawalStep02SpendRedeemer,
+        SDKFraudProof.FabricatedWithdrawalStep02SpendRedeemer,
       );
   }
   const tx = await h.lucid
@@ -152,7 +154,7 @@ export const continueCaptured = async (
   h: Harness,
   p: Proof,
   thread: UTxO,
-  captured: ReturnType<typeof SDK.captureEventHistoryWitness> | undefined,
+  captured: ReturnType<typeof SDKUsers.captureEventHistoryWitness> | undefined,
   badOpening = false,
 ) => {
   const funding = await h.funding();
@@ -181,9 +183,9 @@ export const continueCaptured = async (
   if (p.kind === "Deposit") {
     const state = Data.from(
       thread.datum!,
-      SDK.FabricatedDepositStep03Datum,
+      SDKFraudProof.FabricatedDepositStep03Datum,
     ).data!;
-    const fault: SDK.FabricatedDepositFault = captured
+    const fault: SDKFraudProof.FabricatedDepositFault = captured
       ? {
           IneligibleDepositEvent: {
             event_inclusion_time: captured.commitment.inclusion_time,
@@ -193,13 +195,13 @@ export const continueCaptured = async (
     datum = Data.to(
       {
         fraud_prover: h.owner,
-        data: SDK.fabricatedDepositStep04State(state, fault),
+        data: SDKFraudProof.fabricatedDepositStep04State(state, fault),
       },
-      SDK.FabricatedDepositStep04Datum,
+      SDKFraudProof.FabricatedDepositStep04Datum,
     );
     const bytes = Data.to(
       opening,
-      SDK.FabricatedDepositAuthenticContentOpening,
+      SDKFraudProof.FabricatedDepositAuthenticContentOpening,
     );
     redeemer = (ctx) =>
       Data.to(
@@ -209,19 +211,19 @@ export const continueCaptured = async (
               ...commonArgs(ctx),
               authentic_content: Data.from(
                 bytes,
-                SDK.FabricatedDepositAuthenticContentOpening,
+                SDKFraudProof.FabricatedDepositAuthenticContentOpening,
               ),
             },
           ],
         },
-        SDK.FabricatedDepositStep03SpendRedeemer,
+        SDKFraudProof.FabricatedDepositStep03SpendRedeemer,
       );
   } else {
     const state = Data.from(
       thread.datum!,
-      SDK.FabricatedWithdrawalStep03Datum,
+      SDKFraudProof.FabricatedWithdrawalStep03Datum,
     ).data!;
-    const fault: SDK.FabricatedWithdrawalFault = captured
+    const fault: SDKFraudProof.FabricatedWithdrawalFault = captured
       ? {
           IneligibleWithdrawalEvent: {
             event_inclusion_time: captured.commitment.inclusion_time,
@@ -231,13 +233,13 @@ export const continueCaptured = async (
     datum = Data.to(
       {
         fraud_prover: h.owner,
-        data: SDK.fabricatedWithdrawalStep04State(state, fault),
+        data: SDKFraudProof.fabricatedWithdrawalStep04State(state, fault),
       },
-      SDK.FabricatedWithdrawalStep04Datum,
+      SDKFraudProof.FabricatedWithdrawalStep04Datum,
     );
     const bytes = Data.to(
       opening,
-      SDK.FabricatedWithdrawalAuthenticContentOpening,
+      SDKFraudProof.FabricatedWithdrawalAuthenticContentOpening,
     );
     redeemer = (ctx) =>
       Data.to(
@@ -247,12 +249,12 @@ export const continueCaptured = async (
               ...commonArgs(ctx),
               authentic_content: Data.from(
                 bytes,
-                SDK.FabricatedWithdrawalAuthenticContentOpening,
+                SDKFraudProof.FabricatedWithdrawalAuthenticContentOpening,
               ),
             },
           ],
         },
-        SDK.FabricatedWithdrawalStep03SpendRedeemer,
+        SDKFraudProof.FabricatedWithdrawalStep03SpendRedeemer,
       );
   }
   return h.lucid
@@ -300,7 +302,7 @@ export const productionContracts = (h: Harness, p: Proof) => {
     stateQueuePolicyId: h.hubPolicy,
     categoryId:
       p.kind === "Deposit"
-        ? SDK.FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID
-        : SDK.FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID,
+        ? SDKFraudProof.FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID
+        : SDKFraudProof.FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID,
   };
 };

@@ -1,6 +1,6 @@
 /** The `missingRedeemer` family's emulator driver: the walk-keyed driver
  * with the purpose to observe. */
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { DirectPurposeRole } from "../../src/direct-purpose-family/index.js";
 import {

@@ -14,7 +14,7 @@ import {
   MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE,
   midgardCommittedFieldShapeVerdict,
   sizedMidgardFieldEnvelope,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import { COMMITTED_FIELD_SHAPE_CATEGORY_LABEL } from "../src/committed-field-shape/contracts.js";

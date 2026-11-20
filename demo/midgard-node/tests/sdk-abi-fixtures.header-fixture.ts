@@ -4,8 +4,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
-import * as SDK from "@al-ft/midgard-sdk";
 import { parseBlueprintAbi } from "@al-ft/midgard-sdk/blueprint-abi";
+import type * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
@@ -174,7 +175,7 @@ export const eventToStepValueFixture: SDK.EventToStepValue = {
   phase: "Withdrawal",
 };
 
-export const daPayloadBodyFixture: SDK.DaPayloadBody = {
+export const daPayloadBodyFixture: SDKDa.DaPayloadBody = {
   header_hash: h28,
   header: headerFixture,
   withdrawals: [["03", "04"]],

@@ -1,5 +1,5 @@
 import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 
 import type {
   DaPayloadRecord,

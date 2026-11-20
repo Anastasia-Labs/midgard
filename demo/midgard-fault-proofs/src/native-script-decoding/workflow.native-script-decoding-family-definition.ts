@@ -5,7 +5,7 @@ import {
   NativeScriptDecodingStep03BindDescriptorDatumSchema,
   NativeScriptDecodingStep03OpenSubjectDatumSchema,
   NativeScriptDecodingStep04DatumSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import { NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";
 import { cursorFamilyActionInput } from "../workflow/cursor-family-runtime.js";

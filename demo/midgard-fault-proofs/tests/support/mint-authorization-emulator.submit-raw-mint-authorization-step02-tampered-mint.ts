@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,
@@ -51,7 +52,7 @@ export const submitRawMintAuthorizationStep02TamperedMint = async ({
   const anchorState = requireMintAuthorizationStepState({
     threadUtxo,
     signer,
-    schema: SDK.MintAuthorizationStep02Datum,
+    schema: SDKFraudProof.MintAuthorizationStep02Datum,
     stepIndex: 1,
   });
   const evidence = await buildMintAuthorizationStep02Evidence({
@@ -71,9 +72,9 @@ export const submitRawMintAuthorizationStep02TamperedMint = async ({
       stepIndex: 1,
     }),
   ];
-  const step03State: SDK.MintAuthorizationStep03State = {
+  const step03State: SDKFraudProof.MintAuthorizationStep03State = {
     policy_id: "ab".repeat(28),
-    direction: SDK.MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT,
+    direction: SDKFraudProof.MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT,
     bad_tx_id: anchorState.bad_tx_id,
     bad_tx_witness_set_hash: anchorState.bad_tx_witness_set_hash,
     validity_interval_start: anchorState.validity_interval_start,
@@ -82,7 +83,7 @@ export const submitRawMintAuthorizationStep02TamperedMint = async ({
   };
   const step03Datum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: step03State },
-    SDK.MintAuthorizationStep03Datum,
+    SDKFraudProof.MintAuthorizationStep03Datum,
   );
   const step03OutputMatches = computationThreadOutputPredicate({
     address: contracts.steps[2].spendingScriptAddress,
@@ -104,8 +105,8 @@ export const submitRawMintAuthorizationStep02TamperedMint = async ({
       tamperedUtxo,
       "raw mint-authorization tampered publication",
     );
-    const mintOpening = SDK.fieldOpeningForField({
-      fieldIndex: SDK.MIDGARD_FIELD_INDEX.mint,
+    const mintOpening = SDKFraudProof.fieldOpeningForField({
+      fieldIndex: SDKFraudProof.MIDGARD_FIELD_INDEX.mint,
       nativeTxCompactCbor: block.nativeTxCompactCbor,
       carriage: { RawUtxo: { ref_input_index: refIndex } },
     });
@@ -127,12 +128,12 @@ export const submitRawMintAuthorizationStep02TamperedMint = async ({
             event_to_step_membership: evidence.eventToStepMembership,
             transition_step_membership: evidence.transitionStepMembership,
             policy_index: 0n,
-            direction: SDK.MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT,
+            direction: SDKFraudProof.MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT,
             mint_opening: mintOpening,
           },
         ],
       },
-      SDK.MintAuthorizationStep02SpendRedeemer,
+      SDKFraudProof.MintAuthorizationStep02SpendRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
   const unsigned = await lucid

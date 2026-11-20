@@ -1,18 +1,20 @@
 import {
-  CompletedFraudWitness,
-  FraudProofComputationThreadRedeemer,
-  FraudProofTokenMintRedeemer,
   requireInputIndex,
   requireMintRedeemerIndex,
   requireOwnMintPurpose,
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
+  FraudProofComputationThreadRedeemer,
+  FraudProofTokenMintRedeemer,
   TransitionFaultProof,
   TransitionTraceFinalSpendRedeemer,
   TransitionTraceL1EventFinalSpendRedeemer,
   TransitionTraceYieldFinalSpendRedeemer,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
+import { CompletedFraudWitness } from "@al-ft/midgard-sdk/state-queue";
 import {
   type BuildTxWithRedeemer,
   Data,

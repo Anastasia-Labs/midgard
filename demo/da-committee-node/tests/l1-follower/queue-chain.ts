@@ -6,7 +6,8 @@ import {
   type SimTx,
   simUniverse,
 } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 
 import {
   type SlotTime,
@@ -132,7 +133,7 @@ export class QueueChain {
       inputs: [this.chain.outsideInput()],
       outputs: [
         queueOutput(
-          SDK.STATE_QUEUE_ROOT_ASSET_NAME,
+          SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME,
           rootDatum(GENESIS_HASH, 0, null),
         ),
       ],
@@ -157,11 +158,11 @@ export class QueueChain {
       tail?.hash ?? root.headerHash,
       slotTimeMs(this.chain.tip.point.slot + 3, this.slotTime),
     );
-    const hash = SDK.stateQueueHeaderHash(header);
+    const hash = SDKStateQueue.stateQueueHeaderHash(header);
     const relinked =
       tail === undefined
         ? queueOutput(
-            SDK.STATE_QUEUE_ROOT_ASSET_NAME,
+            SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME,
             rootDatum(root.headerHash, root.endTimeMs, hash),
           )
         : queueOutput(
@@ -233,7 +234,7 @@ export class QueueChain {
       inputs: [root.outRef, node.outRef],
       outputs: [
         queueOutput(
-          SDK.STATE_QUEUE_ROOT_ASSET_NAME,
+          SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME,
           rootDatum(node.hash, endTimeMs, node.link),
         ),
       ],

@@ -3,7 +3,7 @@ import {
   encodeDaConflictingSignatureHeaderEvidenceCbor,
 } from "@al-ft/midgard-core/da-transport";
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { describe, expect, it } from "vitest";
 
 import type {

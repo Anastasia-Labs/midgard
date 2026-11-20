@@ -5,7 +5,7 @@
  * journal the actions are confirmed into is the one a test's later captures
  * read their carriage from.
  */
-import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
+import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 import type {
   Emulator,
   LucidEvolution,

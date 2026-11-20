@@ -1,13 +1,15 @@
 import {
   HUB_ORACLE_ASSET_NAME,
-  InputSetUniquenessStep01SpendRedeemer,
-  InputSetUniquenessStep02Datum,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
   requireWithdrawalRedeemerIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  InputSetUniquenessStep01SpendRedeemer,
+  InputSetUniquenessStep02Datum,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   credentialToAddress,

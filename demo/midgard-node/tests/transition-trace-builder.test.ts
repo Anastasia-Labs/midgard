@@ -1,5 +1,5 @@
 import "@al-ft/midgard-core/consensus-profile";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
 import "@effect/vitest";
 import "@lucid-evolution/lucid";
 import "effect";
@@ -9,7 +9,7 @@ import "./helpers/transition-fixtures.js";
 import "./transition-trace-builder.snapshot-trace-oracle.js";
 
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { it } from "@effect/vitest";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";

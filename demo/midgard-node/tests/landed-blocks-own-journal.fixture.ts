@@ -16,7 +16,7 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { encodeTransactionRootValue } from "@al-ft/midgard-fault-proofs/block-replay";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { computeMidgardTxIdFromCanonicalCbor } from "@al-ft/midgard-validation/ledger-tx/codec";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";

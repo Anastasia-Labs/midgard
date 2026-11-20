@@ -4,7 +4,8 @@
  * `utxos_root`, and tests read it back by root or by header. Production code
  * under test admits any ledger only through `checkLedgerAgainstRoot`.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 
 import type { LedgerAt, LedgerEntry } from "../../src/ledger-at.js";
 import type { RetainedDaPayloadSource } from "../../src/transition-trace/fetch.admit-retained-da-provenance.js";
@@ -12,12 +13,12 @@ import { fetchRetainedDaPayloadByHeaderHash } from "../../src/transition-trace/f
 import { reconstructDaPayload } from "../../src/transition-trace/reconstruct.reconstruct-da-payload.js";
 
 type FixtureLedgerEntry =
-  | SDK.DaPayloadEntry
+  | SDKDa.DaPayloadEntry
   | Readonly<{ key: Uint8Array; value: Uint8Array }>;
 
-const ledgersByRoot = new Map<string, readonly SDK.DaPayloadEntry[]>();
+const ledgersByRoot = new Map<string, readonly SDKDa.DaPayloadEntry[]>();
 
-const hexEntry = (entry: FixtureLedgerEntry): SDK.DaPayloadEntry =>
+const hexEntry = (entry: FixtureLedgerEntry): SDKDa.DaPayloadEntry =>
   Array.isArray(entry)
     ? [entry[0], entry[1]]
     : [
@@ -41,7 +42,7 @@ export const recordFixtureLedger = (
 /** The recorded ledger with root `utxosRoot`, as `[out-ref, output]` hex. */
 export const fixtureLedgerEntries = (
   utxosRoot: string,
-): SDK.DaPayloadEntry[] => {
+): SDKDa.DaPayloadEntry[] => {
   if (utxosRoot === SDK.EMPTY_MERKLE_TREE_ROOT) return [];
   const entries = ledgersByRoot.get(utxosRoot);
   if (entries === undefined)
@@ -52,7 +53,7 @@ export const fixtureLedgerEntries = (
 /** The recorded ledger after a block with header `header`. */
 export const fixtureLedgerAfter = (header: {
   readonly utxosRoot: string;
-}): SDK.DaPayloadEntry[] => fixtureLedgerEntries(header.utxosRoot);
+}): SDKDa.DaPayloadEntry[] => fixtureLedgerEntries(header.utxosRoot);
 
 /** The recorded ledger with root `utxosRoot`, as `LedgerEntry` values. */
 export const fixtureLedgerEntriesByRoot = (utxosRoot: string): LedgerEntry[] =>

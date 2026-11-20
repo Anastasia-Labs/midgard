@@ -11,7 +11,7 @@ import {
   FabricatedWithdrawalStep03Datum,
   FabricatedWithdrawalStep04Datum,
   FraudProofComputationThreadStepDatum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import type { LucidEvolution, Network } from "@lucid-evolution/lucid";
 
 import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.parse-trust-roots.js";

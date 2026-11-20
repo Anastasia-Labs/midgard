@@ -1,7 +1,7 @@
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { encodeTransactionRootValue } from "@al-ft/midgard-fault-proofs/block-replay";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { Duration, Effect, Metric } from "effect";
 
 import {

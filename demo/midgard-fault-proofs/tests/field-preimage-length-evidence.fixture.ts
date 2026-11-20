@@ -5,7 +5,8 @@ import {
 import { decodeSingleCbor, encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -84,7 +85,7 @@ export const forcedLengthMismatchFixture = async () => {
         encodeMidgardNativeTxProofFieldLengths(lengths).toString("hex"),
     },
   };
-  const sources: SDK.DaPayloadEntry[] = [
+  const sources: SDKDa.DaPayloadEntry[] = [
     [key, Data.to(changed, SDK.ForcedInclusionTxV1)],
   ];
   const root = await buildCountedRoot(
@@ -96,7 +97,7 @@ export const forcedLengthMismatchFixture = async () => {
   );
   const header = { ...fixture.header, forcedTransactionsRoot: root.root };
   const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
-  const payload: SDK.DaPayload = {
+  const payload: SDKDa.DaPayload = {
     ...fixture.payload,
     block_body: {
       ...fixture.payload.block_body,
@@ -110,7 +111,7 @@ export const forcedLengthMismatchFixture = async () => {
     header,
     headerHash,
     payload,
-    payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(payload), {
+    payloadEnvelopeCbor: await wrapDaPayload(SDKDa.encodeDaPayload(payload), {
       mode: "identity",
     }),
   };
@@ -158,11 +159,11 @@ export const opaqueForcedLengthMismatchFixture = async (preimage: Buffer) => {
 
 const recommitFieldLengthFixture = async (
   fixture: Awaited<ReturnType<typeof fieldLengthForcedFixture>>,
-  body: SDK.DaPayload["block_body"],
+  body: SDKDa.DaPayload["block_body"],
 ) => {
   const root = async (
     domain: SDK.RootDomain,
-    entries: readonly SDK.DaPayloadEntry[],
+    entries: readonly SDKDa.DaPayloadEntry[],
   ) =>
     (
       await buildCountedRoot(
@@ -194,7 +195,7 @@ const recommitFieldLengthFixture = async (
     header,
     headerHash,
     payload,
-    payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(payload), {
+    payloadEnvelopeCbor: await wrapDaPayload(SDKDa.encodeDaPayload(payload), {
       mode: "identity",
     }),
   };

@@ -5,7 +5,7 @@ import {
   SUBMIT_SLOT_VALIDITY_BUFFER,
   type SubmitSlotSnapshot,
 } from "@al-ft/midgard-core/ogmios-slot";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 import { type InlineWaitPolicy, planSubmitTiming } from "../submit-timing.js";

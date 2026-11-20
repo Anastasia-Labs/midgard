@@ -1,4 +1,6 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKOperators from "@al-ft/midgard-sdk/operators";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { paymentCredentialOf } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import {
@@ -88,7 +90,7 @@ it("reads the attached stack's tail from the replay before onboarding operator-2
 
 /** The deployment's user-event timing, as the SDK compiles it. */
 const timing = {
-  eventTtlMs: SDK.USER_EVENT_TX_TTL_MS,
+  eventTtlMs: SDKUsers.USER_EVENT_TX_TTL_MS,
   eventWaitMs: SDK.EVENT_WAIT_DURATION_MS,
   negligenceTimeoutMs: Number(SDK.USER_EVENTS_NEGLIGENCE_TIMEOUT_MS),
   graceMs: Number(SDK.NEW_SHIFT_INACTIVITY_GRACE_PERIOD_MS),
@@ -137,7 +139,7 @@ it("builds the trace deposit no earlier than operator-2's floor when a predecess
     readUndeliveredEvent: (tailEndTimeMs) => {
       tailsRead.push(tailEndTimeMs);
       return Effect.runPromise(
-        SDK.fetchNeglectedUserEventProgram(
+        SDKOperators.fetchNeglectedUserEventProgram(
           operatorLucid,
           deployment.contracts,
           tailEndTimeMs,

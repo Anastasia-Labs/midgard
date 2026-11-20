@@ -3,10 +3,12 @@ import {
   requireMintRedeemerIndex,
   requireOwnMintPurpose,
   requireReferenceInputIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
   StateQueueRedeemer,
   type StateQueueRedeemer as StateQueueRedeemerData,
   type StateQueueUTxO,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import {
   type BuildTxWithRedeemer,
   Data,

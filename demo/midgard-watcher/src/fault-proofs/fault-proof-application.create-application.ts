@@ -17,7 +17,7 @@ import {
   WORKFLOW_RUNNER_FACTORIES,
   type WorkflowAdapterRunner,
 } from "@al-ft/midgard-fault-proofs";
-import { Header } from "@al-ft/midgard-sdk";
+import { Header } from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 
 import { watcherWorkflowFundingProfiles } from "../funding/workflow-funding-profile-overlay.js";

@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
@@ -61,8 +62,8 @@ const entry = (
   id: SDK.OutputReference,
   info: SDK.WithdrawalInfo,
 ): readonly [string, string] => [
-  SDK.committedWithdrawalKeyBytes(id),
-  SDK.committedWithdrawalValueBytes(info),
+  SDKFraudProof.committedWithdrawalKeyBytes(id),
+  SDKFraudProof.committedWithdrawalValueBytes(info),
 ];
 
 export const makeHarness = async () => {

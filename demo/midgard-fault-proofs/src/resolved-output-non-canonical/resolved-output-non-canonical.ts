@@ -1,6 +1,7 @@
 import "@al-ft/midgard-core";
 import "@al-ft/midgard-core/codec/forced";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "@al-ft/midgard-validation/ledger-output-descriptor";
 import "../prepare-double-spend.resolve-double-spend-pair.js";
 import "../transition-trace/phas.js";

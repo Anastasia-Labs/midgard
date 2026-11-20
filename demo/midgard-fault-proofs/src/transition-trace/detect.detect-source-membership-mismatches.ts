@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 import {
   detection,
@@ -52,7 +53,7 @@ export const detectTraceLinkFaults = async (
 export const detectDuplicateTraceEvents = async (
   reconstruction: TransitionTraceReconstruction,
 ): Promise<readonly TransitionTraceDetection[]> => {
-  const seen = new Map<string, SDK.TransitionStep>();
+  const seen = new Map<string, SDKCore.TransitionStep>();
   const detections: TransitionTraceDetection[] = [];
   for (const step of orderedTrace(reconstruction)) {
     const fingerprint = eventKeyFingerprint(step.event_key);

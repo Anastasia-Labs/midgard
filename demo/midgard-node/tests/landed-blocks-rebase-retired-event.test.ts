@@ -24,7 +24,7 @@
  */
 import type { FactStore, OutRef } from "@al-ft/midgard-l1-follower";
 import { type EventKind, eventsAt } from "@al-ft/midgard-l1-follower/events";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/da";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

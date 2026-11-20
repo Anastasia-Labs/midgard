@@ -12,7 +12,8 @@
 import "./helpers/follower-emulator-installed.js";
 import "./operator-commands-emulator.select-duplicate-registration.js";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKOperators from "@al-ft/midgard-sdk/operators";
 import { generateSeedPhrase, Lucid } from "@lucid-evolution/lucid";
 import { Effect, Either } from "effect";
 import { describe, expect, it } from "vitest";
@@ -92,7 +93,7 @@ const retiredBondOf = async (
   operatorKeyHash: string,
 ): Promise<bigint | null> => {
   const snapshot = await fetchInactivityDirectorySnapshot(fixture);
-  const node = SDK.findNodeByKey(snapshot.retired, operatorKeyHash);
+  const node = SDKOperators.findNodeByKey(snapshot.retired, operatorKeyHash);
   return node === undefined ? null : (node.utxo.assets["lovelace"] ?? 0n);
 };
 

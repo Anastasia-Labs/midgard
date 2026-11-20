@@ -11,7 +11,7 @@ import {
 } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
 import { openSqliteFactStore } from "@al-ft/midgard-l1-follower";
 import { simStoreOptions } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { describe, expect, it } from "vitest";
 
 import {

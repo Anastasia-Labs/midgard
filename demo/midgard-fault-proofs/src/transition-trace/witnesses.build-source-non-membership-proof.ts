@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 
 import { transitionTraceError } from "./errors.js";
 import {
@@ -24,7 +25,7 @@ export const buildSourceNonMembershipProof = async ({
 }: {
   readonly reconstruction: TransitionTraceReconstruction;
   readonly eventKey: SDK.EventKey;
-}): Promise<SDK.TransitionSourceNonMembershipProof> => {
+}): Promise<SDKFraudProof.TransitionSourceNonMembershipProof> => {
   if ("WithdrawalEventKey" in eventKey) {
     return {
       WithdrawalSourceNonMembership: {
@@ -84,10 +85,10 @@ export const buildTraceBoundaryFault = async ({
   stepIndex,
 }: {
   readonly reconstruction: TransitionTraceReconstruction;
-  readonly side: SDK.TraceBoundarySide;
+  readonly side: SDKFraudProof.TraceBoundarySide;
   readonly stepIndex: bigint;
-}): Promise<SDK.TransitionFault> =>
-  SDK.traceBoundaryFault({
+}): Promise<SDKFraudProof.TransitionFault> =>
+  SDKFraudProof.traceBoundaryFault({
     side,
     traceProof: await buildIndexedTraceProof({ reconstruction, stepIndex }),
   });
@@ -98,8 +99,8 @@ export const buildTraceLinkFault = async ({
 }: {
   readonly reconstruction: TransitionTraceReconstruction;
   readonly lowerStepIndex: bigint;
-}): Promise<SDK.TransitionFault> =>
-  SDK.traceLinkFault(
+}): Promise<SDKFraudProof.TransitionFault> =>
+  SDKFraudProof.traceLinkFault(
     await buildAdjacentTraceProof({ reconstruction, lowerStepIndex }),
   );
 
@@ -109,12 +110,12 @@ export const buildEventToStepMismatchFault = async ({
 }: {
   readonly reconstruction: TransitionTraceReconstruction;
   readonly stepIndex: bigint;
-}): Promise<SDK.TransitionFault> => {
+}): Promise<SDKFraudProof.TransitionFault> => {
   const traceProof = await buildIndexedTraceProof({
     reconstruction,
     stepIndex,
   });
-  return SDK.eventToStepMismatchFault({
+  return SDKFraudProof.eventToStepMismatchFault({
     traceProof,
     eventToStep: await buildEventToStepProof({
       reconstruction,
@@ -131,8 +132,8 @@ export const buildMappedEventMissingFromSourceFault = async ({
   readonly reconstruction: TransitionTraceReconstruction;
   readonly stepIndex: bigint;
   readonly eventKey: SDK.EventKey;
-}): Promise<SDK.TransitionFault> =>
-  SDK.sourceMembershipMismatchFault({
+}): Promise<SDKFraudProof.TransitionFault> =>
+  SDKFraudProof.sourceMembershipMismatchFault({
     MappedEventMissingFromSource: {
       trace_proof: await buildIndexedTraceProof({ reconstruction, stepIndex }),
       event_to_step: await buildEventToStepMembershipProof({
@@ -152,8 +153,8 @@ export const buildSourceEventMissingTraceFault = async ({
 }: {
   readonly reconstruction: TransitionTraceReconstruction;
   readonly eventKey: SDK.EventKey;
-}): Promise<SDK.TransitionFault> =>
-  SDK.sourceMembershipMismatchFault({
+}): Promise<SDKFraudProof.TransitionFault> =>
+  SDKFraudProof.sourceMembershipMismatchFault({
     SourceEventMissingTrace: {
       source_membership: await buildSourceMembershipProof({
         reconstruction,
@@ -172,9 +173,9 @@ export const buildSourcePhaseMismatchFault = async ({
 }: {
   readonly reconstruction: TransitionTraceReconstruction;
   readonly stepIndex: bigint;
-}): Promise<SDK.TransitionFault> => {
+}): Promise<SDKFraudProof.TransitionFault> => {
   const trace = requireTraceEntry(reconstruction, stepIndex);
-  return SDK.sourceMembershipMismatchFault({
+  return SDKFraudProof.sourceMembershipMismatchFault({
     SourcePhaseMismatch: {
       trace_proof: await buildIndexedTraceProof({ reconstruction, stepIndex }),
       source_membership: await buildSourceMembershipProof({
@@ -186,11 +187,11 @@ export const buildSourcePhaseMismatchFault = async ({
 };
 
 export type ValidWithdrawalTransitionEvidence = {
-  readonly spentUtxo: SDK.LedgerDeleteWitness;
+  readonly spentUtxo: SDKFraudProof.LedgerDeleteWitness;
 };
 
 export type ValidDepositTransitionEvidence = {
-  readonly projectedUtxo: SDK.LedgerInsertWitness;
+  readonly projectedUtxo: SDKFraudProof.LedgerInsertWitness;
 };
 
 /**
@@ -199,8 +200,8 @@ export type ValidDepositTransitionEvidence = {
  * are taken from the authenticated retained-DA transaction, not caller input.
  */
 export type L2TransactionTransitionEvidence = {
-  readonly spentUtxos: readonly SDK.LedgerDeleteWitness[];
-  readonly producedUtxos: readonly SDK.LedgerInsertWitness[];
+  readonly spentUtxos: readonly SDKFraudProof.LedgerDeleteWitness[];
+  readonly producedUtxos: readonly SDKFraudProof.LedgerInsertWitness[];
 };
 
 export const buildInvalidWithdrawalNoOpWitness = async ({
@@ -209,7 +210,7 @@ export const buildInvalidWithdrawalNoOpWitness = async ({
 }: {
   readonly reconstruction: TransitionTraceReconstruction;
   readonly stepIndex: bigint;
-}): Promise<SDK.InvalidOneStepTransitionWitness> => {
+}): Promise<SDKFraudProof.InvalidOneStepTransitionWitness> => {
   const trace = requireTraceEntry(reconstruction, stepIndex);
   const source = sourceEventOrThrow(reconstruction, trace.value.event_key);
   if (source.phase !== "Withdrawal") {
@@ -248,7 +249,7 @@ export const buildValidWithdrawalTransitionWitness = async ({
   readonly reconstruction: TransitionTraceReconstruction;
   readonly stepIndex: bigint;
   readonly evidence: ValidWithdrawalTransitionEvidence;
-}): Promise<SDK.InvalidOneStepTransitionWitness> => {
+}): Promise<SDKFraudProof.InvalidOneStepTransitionWitness> => {
   const trace = requireTraceEntry(reconstruction, stepIndex);
   const source = sourceEventOrThrow(reconstruction, trace.value.event_key);
   if (source.phase !== "Withdrawal") {

@@ -1,5 +1,7 @@
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { h32 } from "@al-ft/midgard-test-support/hex";
 import { selectPlainFundingUtxos } from "@al-ft/midgard-test-support/reference-script-funding";
 import {
@@ -147,7 +149,7 @@ export const createFixture = async (
   );
   const preliminaryLucid = await createAvailabilityEmulatorLucid(preliminary);
   preliminaryLucid.selectWallet.fromPrivateKey(publisher.privateKey);
-  const authPolicy = await SDK.createReferenceScriptAuthPolicy(
+  const authPolicy = await SDKStateQueue.createReferenceScriptAuthPolicy(
     preliminaryLucid,
     preliminary.now(),
   );
@@ -177,7 +179,7 @@ export const createFixture = async (
   const committee = committeeKeys
     .map((key) => Buffer.from(key.to_public().to_raw_bytes()).toString("hex"))
     .join("");
-  const daParamsDatum: SDK.DaParamsDatum = {
+  const daParamsDatum: SDKDa.DaParamsDatum = {
     committee,
     committee_signers_hash: Buffer.from(
       blake2b(Buffer.from(committee, "hex"), { dkLen: 32 }),
@@ -262,12 +264,12 @@ export const createFixture = async (
     SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX +
     headerHash;
   const rootUnit =
-    contracts.stateQueue.policyId + SDK.STATE_QUEUE_ROOT_ASSET_NAME;
+    contracts.stateQueue.policyId + SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME;
   const hubUnit = contracts.hubOracle.policyId + SDK.HUB_ORACLE_ASSET_NAME;
   const paramsUnit =
-    contracts.daParamsGovernor.policyId + SDK.DA_PARAMS_ASSET_NAME;
+    contracts.daParamsGovernor.policyId + SDKDa.DA_PARAMS_ASSET_NAME;
   const lockUnit = SDK.correctionLockUnit(contracts.hubOracle.policyId);
-  const poolUnit = SDK.daBondPoolUnit(contracts.daBondPool.policyId);
+  const poolUnit = SDKDa.daBondPoolUnit(contracts.daBondPool.policyId);
   const genesis = (
     address: string,
     assets: Assets,
@@ -305,7 +307,7 @@ export const createFixture = async (
       genesis(
         contracts.daParamsGovernor.spendingScriptAddress,
         { lovelace: 3_000_000n, [paramsUnit]: 1n },
-        Data.to(daParamsDatum, SDK.DaParamsDatum),
+        Data.to(daParamsDatum, SDKDa.DaParamsDatum),
       ),
       ...(emptyQueue
         ? []
@@ -344,7 +346,7 @@ export const createFixture = async (
             genesis(
               contracts.daBondPool.spendingScriptAddress,
               { lovelace: seededPool.lovelace, [poolUnit]: 1n },
-              SDK.encodeDaBondPoolDatum(seededPool.datum),
+              SDKDa.encodeDaBondPoolDatum(seededPool.datum),
             ),
           ]),
       ...(emptyQueue
@@ -455,11 +457,11 @@ export const createFixture = async (
     ...(options.referenceScriptTargets?.(contracts) ?? []),
   ]) {
     const { tx, layout } = await Effect.runPromise(
-      SDK.completeReferenceScriptPublicationTxProgram({
+      SDKStateQueue.completeReferenceScriptPublicationTxProgram({
         lucid: publishingLucid,
         selectedFundingInputs: selectPlainFundingUtxos(
           await publishingLucid.wallet().getUtxos(),
-          SDK.referenceScriptPublicationFundingTarget(1),
+          SDKStateQueue.referenceScriptPublicationFundingTarget(1),
         ),
         walletAddress: publisher.address,
         referenceScriptsAddress: publisher.address,
@@ -537,11 +539,11 @@ export const createFixture = async (
     { length: payloadBytes },
     (_, i) => (i * 17 + 3) % 256,
   );
-  const commitment = SDK.buildDaAvailabilityCommitment({
+  const commitment = SDKDa.buildDaAvailabilityCommitment({
     deploymentIdentity: contracts.hubOracle.policyId,
     headerHash,
     payload,
-    responseGeometry: SDK.availabilityResponseGeometry({
+    responseGeometry: SDKDa.availabilityResponseGeometry({
       chunkByteLength: Number(parameters.response_geometry.chunk_byte_length),
       trancheByteLength: Number(
         parameters.response_geometry.tranche_byte_length,
@@ -549,7 +551,7 @@ export const createFixture = async (
       maxTrancheCount: Number(parameters.response_geometry.max_tranche_count),
     }),
   });
-  const target: SDK.DaAttestationStateQueueTarget | undefined =
+  const target: SDKDa.DaAttestationStateQueueTarget | undefined =
     queueUtxo === undefined
       ? undefined
       : {
@@ -561,7 +563,7 @@ export const createFixture = async (
             assetName: SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + headerHash,
           },
         };
-  const daReferences: SDK.DaAttestationReferenceScripts = {
+  const daReferences: SDKDa.DaAttestationReferenceScripts = {
     daAttestationMinting: reference("da-attestation minting"),
     daAttestationSpending: reference("da-attestation spending"),
     stateQueueMinting: reference("state-queue minting"),
@@ -577,7 +579,7 @@ export const createFixture = async (
   /** The one live pool UTxO (fails closed when absent or ambiguous). */
   const getPool = async (): Promise<UTxO> =>
     (
-      await SDK.fetchDaBondPool(lucid, {
+      await SDKDa.fetchDaBondPool(lucid, {
         policyId: contracts.daBondPool.policyId,
         address: contracts.daBondPool.spendingScriptAddress,
       })
@@ -620,7 +622,7 @@ export const createFixture = async (
   ): Promise<UTxO> =>
     asWallet(oneShotHolder.privateKey, async () => {
       const tx = await Effect.runPromise(
-        SDK.buildInitDaBondPoolTxProgram(lucid, {
+        SDKDa.buildInitDaBondPoolTxProgram(lucid, {
           poolValidator: contracts.daBondPool,
           parameters,
           initUtxo: hubOneShotUtxo,
@@ -638,7 +640,7 @@ export const createFixture = async (
     options: { skipMinimumPrecheck?: true } = {},
   ): Promise<UTxO> => {
     const tx = await Effect.runPromise(
-      SDK.buildTopUpDaBondPoolTxProgram(lucid, {
+      SDKDa.buildTopUpDaBondPoolTxProgram(lucid, {
         poolValidator: contracts.daBondPool,
         parameters,
         pool: { utxo: await getPool() },
@@ -671,7 +673,7 @@ export const createFixture = async (
     asWallet(responder.privateKey, async () => {
       const validFrom = validity.validFrom ?? BigInt(emulator.now());
       const tx = await Effect.runPromise(
-        SDK.buildBeginDaBondPoolWithdrawTxProgram(lucid, {
+        SDKDa.buildBeginDaBondPoolWithdrawTxProgram(lucid, {
           ...(await quorumConfig()),
           withdrawDelayMs: AVAILABILITY_TIMING.daBondWithdrawDelayMs,
           validity: {
@@ -688,14 +690,17 @@ export const createFixture = async (
           quorum.extraSigners,
         ),
       );
-      const datum = SDK.decodeDaBondPoolDatum(pool.datum!);
+      const datum = SDKDa.decodeDaBondPoolDatum(pool.datum!);
       if (datum === "Bonded") throw new Error("BeginWithdraw left pool Bonded");
       return { pool, unlockAt: datum.Withdrawing.unlock_at };
     });
   const cancelPoolWithdraw = async (): Promise<UTxO> =>
     asWallet(responder.privateKey, async () => {
       const tx = await Effect.runPromise(
-        SDK.buildCancelDaBondPoolWithdrawTxProgram(lucid, await quorumConfig()),
+        SDKDa.buildCancelDaBondPoolWithdrawTxProgram(
+          lucid,
+          await quorumConfig(),
+        ),
       );
       return poolOutput(
         await submit(
@@ -720,7 +725,7 @@ export const createFixture = async (
   ): Promise<UTxO> =>
     asWallet(responder.privateKey, async () => {
       const tx = await Effect.runPromise(
-        SDK.buildCompleteDaBondPoolWithdrawTxProgram(lucid, {
+        SDKDa.buildCompleteDaBondPoolWithdrawTxProgram(lucid, {
           ...(await quorumConfig()),
           amount,
           destination: options.destination ?? responder.address,

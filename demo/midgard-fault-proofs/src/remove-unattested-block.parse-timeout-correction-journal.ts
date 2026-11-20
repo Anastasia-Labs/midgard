@@ -2,10 +2,8 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 
-import {
-  STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
-  type StateQueueUTxO,
-} from "@al-ft/midgard-sdk";
+import { STATE_QUEUE_NODE_ASSET_NAME_PREFIX } from "@al-ft/midgard-sdk/core";
+import { type StateQueueUTxO } from "@al-ft/midgard-sdk/state-queue";
 import { CML } from "@lucid-evolution/lucid";
 
 import { outRefLabel } from "./runtime.js";

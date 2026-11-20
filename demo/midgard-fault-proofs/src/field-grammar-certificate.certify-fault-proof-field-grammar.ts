@@ -9,6 +9,7 @@ import {
   midgardFieldGrammarWaypoints,
   walkMidgardFieldGrammar,
 } from "@al-ft/midgard-core/codec/native-tx-field-access";
+import { type SpendingValidator } from "@al-ft/midgard-sdk/core";
 import {
   buildUnsignedFieldGrammarCertificateAdvanceProgram,
   buildUnsignedFieldGrammarCertificateOpenProgram,
@@ -18,8 +19,7 @@ import {
   type FieldGrammarCertificateSource,
   fieldGrammarCertificateUnit,
   isCompleteFieldGrammarCertificate,
-  type SpendingValidator,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   credentialToAddress,
   Data,

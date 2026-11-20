@@ -12,7 +12,7 @@ import {
   buildScriptDecodeValidator,
   SCRIPT_DECODE_STAKER_CLASS_NAMES,
   type ScriptDecodeStakerClassName,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   applyDoubleCborEncoding,
   credentialToAddress,

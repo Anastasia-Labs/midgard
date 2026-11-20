@@ -6,7 +6,8 @@ import {
   selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core";
 import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -93,7 +94,7 @@ export const prepareInputNoIdxFromTransactions = async ({
     );
   }
 
-  const evidence = SDK.inputNoIdxEvidenceFromCommittedTransactions({
+  const evidence = SDKFraudProof.inputNoIdxEvidenceFromCommittedTransactions({
     badTxId: candidate.badTx.nodeTxId,
     badInputsIndex: candidate.badInputsIndex,
     badInput: candidate.badInput,
@@ -108,7 +109,7 @@ export const prepareInputNoIdxFromTransactions = async ({
   // bounded-collection commitments the two opening steps compare against, so a
   // projection bug can never reach a prover.
   const derivedInputsCommitment =
-    SDK.inputNoIdxSpendInputsCommitment(inputsPreimage);
+    SDKFraudProof.inputNoIdxSpendInputsCommitment(inputsPreimage);
   if (
     derivedInputsCommitment !==
     candidate.badTx.nativeTxCompact.body.spend_inputs_hash
@@ -119,7 +120,7 @@ export const prepareInputNoIdxFromTransactions = async ({
     );
   }
   const derivedOutputsCommitment =
-    SDK.inputNoIdxOutputsCommitment(outputsPreimage);
+    SDKFraudProof.inputNoIdxOutputsCommitment(outputsPreimage);
   if (
     derivedOutputsCommitment !==
     candidate.producingTx.nativeTxCompact.body.outputs_hash
@@ -132,11 +133,11 @@ export const prepareInputNoIdxFromTransactions = async ({
 
   // #604: thread state carries the §2.5 anchor — the transaction id — not the
   // field-0 commitment. Step-02 re-opens field 0 through the §8.8 door from it.
-  const step02State = SDK.inputNoIdxStep02StateFromBadTx(
+  const step02State = SDKFraudProof.inputNoIdxStep02StateFromBadTx(
     candidate.badTx.nodeTxId,
   );
-  const step03State = SDK.inputNoIdxStep03StateFromEvidence(evidence);
-  const step04State = SDK.inputNoIdxStep04StateFromEvidence({
+  const step03State = SDKFraudProof.inputNoIdxStep03StateFromEvidence(evidence);
+  const step04State = SDKFraudProof.inputNoIdxStep04StateFromEvidence({
     evidence,
     producingTxId: candidate.producingTx.nodeTxId,
   });
@@ -144,7 +145,7 @@ export const prepareInputNoIdxFromTransactions = async ({
   // §5.1's envelope over field 0's canonical items — the bytes the door hashes
   // and the length §8.4 partitions the carriage tier on.
   const step02SpendInputsPreimage = encodeMidgardFieldPreimage(
-    inputsPreimage.map(SDK.encodeMidgardTxInputCanonical),
+    inputsPreimage.map(SDKFraudProof.encodeMidgardTxInputCanonical),
   );
   const inputsPreimageDatum = Data.to(
     inputsPreimage,
@@ -152,12 +153,12 @@ export const prepareInputNoIdxFromTransactions = async ({
   );
   const outputsPreimageDatum = Data.to(
     outputsPreimage,
-    asLucidSchema(SDK.MidgardTxOutputList),
+    asLucidSchema(SDKFraudProof.MidgardTxOutputList),
   );
 
   const output: PreparedInputNoIdxOutput = {
     schemaVersion: INPUT_NO_IDX_EVIDENCE_SCHEMA_VERSION,
-    violationId: SDK.INPUT_NO_IDX_VIOLATION_ID,
+    violationId: SDKFraudProof.INPUT_NO_IDX_VIOLATION_ID,
     headerHash: normalizedHeaderHash,
     txCount: decoded.length,
     transactionsPhasRoot: trie.root,

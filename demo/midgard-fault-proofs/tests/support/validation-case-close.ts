@@ -3,15 +3,15 @@
  * case itself with its bond. Each builder returns the transaction before
  * signing, so a test can evaluate a changed one and see it refused.
  */
+import { requireInputIndex } from "@al-ft/midgard-sdk/core";
 import {
   Case,
   CaseRedeemer,
   DisputeBondSpendRedeemer,
   LostDefenseReceipt,
   ReceiptRedeemer,
-  requireInputIndex,
   ValidationTimeoutSpendRedeemer,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/da";
 import {
   Constr,
   Data,

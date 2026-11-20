@@ -1,6 +1,5 @@
 import "node:util";
 import "@al-ft/lucid-midgard";
-import "@al-ft/midgard-sdk";
 import "@effect/sql";
 import "@lucid-evolution/lucid";
 import "effect";

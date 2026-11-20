@@ -11,11 +11,8 @@ import {
   materializeMidgardNativeTxFromCanonical,
   midgardNativeTxProofFieldPreimageLengths,
 } from "@al-ft/midgard-core";
-import {
-  type FieldPreimageLengthMismatchFaultProofContracts,
-  type Header,
-  Proof,
-} from "@al-ft/midgard-sdk";
+import { type Header, Proof } from "@al-ft/midgard-sdk/core";
+import { type FieldPreimageLengthMismatchFaultProofContracts } from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, getAddressDetails } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 

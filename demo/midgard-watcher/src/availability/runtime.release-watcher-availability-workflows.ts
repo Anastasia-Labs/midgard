@@ -6,7 +6,7 @@ import {
 } from "@al-ft/midgard-core/availability-operation-journal";
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/da";
 import { type UTxO } from "@lucid-evolution/lucid";
 
 import {

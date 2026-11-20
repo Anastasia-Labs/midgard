@@ -1,10 +1,12 @@
 import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
+} from "@al-ft/midgard-sdk/core";
+import {
   FieldOpeningSchema,
   ProofThreadSubjectSourceSchema,
   VerdictSubjectSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 export const ProtectedOutputSignerBoundSchema = Data.Object({

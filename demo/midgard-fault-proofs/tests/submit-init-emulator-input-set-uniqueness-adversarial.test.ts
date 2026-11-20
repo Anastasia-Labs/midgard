@@ -22,7 +22,7 @@
  * every script evaluation and vitest isolates per FILE; that leak is fixed
  * upstream, and the split is kept so each file runs in its own fresh process.
  */
-import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk";
+import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk/fraud-proof";
 import { type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

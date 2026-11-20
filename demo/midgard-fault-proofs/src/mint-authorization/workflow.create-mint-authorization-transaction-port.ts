@@ -1,10 +1,10 @@
 import { encodeMidgardFieldPreimage } from "@al-ft/midgard-core";
+import { Proof } from "@al-ft/midgard-sdk/core";
 import {
   MIDGARD_FIELD_INDEX,
   MintAuthorizationStep04Datum,
   type MintAuthorizationStep04State,
-  Proof,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
 
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";

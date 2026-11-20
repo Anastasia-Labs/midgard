@@ -3,7 +3,9 @@ import "@al-ft/midgard-core/consensus-profile";
 import "@al-ft/midgard-core/da-payload-envelope";
 import "@al-ft/midgard-core/da-transport";
 import "@al-ft/midgard-core/deployment-manifest-identity";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/da";
 import "@lucid-evolution/lucid";
 import "effect";
 import "vitest";
@@ -28,7 +30,8 @@ import {
 } from "@al-ft/midgard-core/da-payload-envelope";
 import type { DaPayloadEmissionMode } from "@al-ft/midgard-core/da-payload-sizing";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -104,10 +107,10 @@ describe("DaPayloadV1 builder", () => {
     expect(decodeDaPayloadEnvelope(insert.payload_cbor).contentEncoding).toBe(
       DaPayloadContentEncoding.identity,
     );
-    const payload = SDK.decodeDaPayload(unwrapped.innerBytes);
+    const payload = SDKDa.decodeDaPayload(unwrapped.innerBytes);
 
     expect(insert.version).toBe(1);
-    expect(payload.version).toBe(SDK.DA_PAYLOAD_VERSION);
+    expect(payload.version).toBe(SDKDa.DA_PAYLOAD_VERSION);
     expect(payload.block_body.transaction_preimages).toEqual([]);
     expect(payload.block_body.forced_transaction_preimages).toEqual([]);
     expect(payload.block_body.header).toEqual(header);
@@ -135,7 +138,7 @@ describe("DaPayloadV1 builder", () => {
     const identityUnwrapped = await unwrapDaPayload(insert.payload_cbor, {
       maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
     });
-    const payload = SDK.decodeDaPayload(identityUnwrapped.innerBytes);
+    const payload = SDKDa.decodeDaPayload(identityUnwrapped.innerBytes);
 
     expect(payload.block_body.header_hash).toBe(headerHash.toString("hex"));
     expect(payload.block_body.header).toEqual(header);
@@ -241,7 +244,7 @@ describe("DaPayloadV1 builder", () => {
       maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
     });
     expect(
-      SDK.decodeDaPayload(backfilled.innerBytes).block_body.header_hash,
+      SDKDa.decodeDaPayload(backfilled.innerBytes).block_body.header_hash,
     ).toBe(headerHash.toString("hex"));
   });
 
@@ -336,7 +339,7 @@ describe("DaPayloadV1 builder", () => {
     };
 
     const insert = await runOnNode(buildDaPayloadInsert({ record: journal }));
-    const payload = SDK.decodeDaPayload(
+    const payload = SDKDa.decodeDaPayload(
       (
         await unwrapDaPayload(insert.payload_cbor, {
           maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,

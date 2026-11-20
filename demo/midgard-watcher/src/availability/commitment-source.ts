@@ -1,5 +1,6 @@
 import type { FraudProofRawL1Transaction } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
   CML,
   coreToTxOutput,
@@ -111,21 +112,21 @@ export const recoverWatcherAttestedCommitment = async (input: {
   readTransaction(
     txHash: string,
   ): Promise<FraudProofRawL1Transaction | undefined>;
-}): Promise<SDK.RecoveredDaAvailabilityCommitment> => {
+}): Promise<SDKDa.RecoveredDaAvailabilityCommitment> => {
   const history = await input.readHistory(
     input.stateQueuePolicyId +
       SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX +
       input.headerHash,
   );
   const attestationName =
-    SDK.DA_ATTESTATION_ASSET_NAME_PREFIX + input.headerHash;
+    SDKDa.DA_ATTESTATION_ASSET_NAME_PREFIX + input.headerHash;
   const applies = history.filter(
     (transaction) =>
       transaction.isValid &&
       burnsUnit(transaction, input.daAttestationPolicyId, attestationName),
   );
   if (applies.length !== 1)
-    throw new SDK.DaAvailabilityTransactionError(
+    throw new SDKDa.DaAvailabilityTransactionError(
       `Attested header ${input.headerHash} has ${applies.length.toString()} canonical Apply transactions; exactly one is required`,
       "apply-commitment-unrecoverable",
     );
@@ -136,7 +137,7 @@ export const recoverWatcherAttestedCommitment = async (input: {
     applies[0]!,
     input.daAttestationPolicyId + attestationName,
   );
-  const recovered = await SDK.recoverDaAvailabilityCommitmentFromApplyTx(
+  const recovered = await SDKDa.recoverDaAvailabilityCommitmentFromApplyTx(
     input.lucid,
     {
       applyTxHash: applies[0]!.txHash,
@@ -153,7 +154,7 @@ export const recoverWatcherAttestedCommitment = async (input: {
     },
   );
   if (recovered.headerHash !== input.headerHash)
-    throw new SDK.DaAvailabilityTransactionError(
+    throw new SDKDa.DaAvailabilityTransactionError(
       "Recovered commitment names a different block",
       "apply-commitment-unrecoverable",
     );

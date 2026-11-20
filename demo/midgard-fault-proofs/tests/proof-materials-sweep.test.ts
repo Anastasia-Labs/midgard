@@ -6,7 +6,7 @@
  * ending until each sweep is final at release depth. A sweep that does not
  * build, or is not yet final, holds the ending rather than changing it.
  */
-import { Proof } from "@al-ft/midgard-sdk";
+import { Proof } from "@al-ft/midgard-sdk/core";
 import {
   Data,
   Emulator,

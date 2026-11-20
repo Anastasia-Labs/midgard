@@ -6,7 +6,8 @@ import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
 } from "@al-ft/midgard-core";
 import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 import { claimedReasonReachesPhase } from "../evidence/claimed-coordinate.js";
 import type {
@@ -49,7 +50,7 @@ export const directPurposeFieldPresent = (
 
 /** A rejection whose reason has the arm `arm`. */
 export const rejectionReasonIs = (
-  verdict: SDK.OperatorVerdict,
+  verdict: SDKCore.OperatorVerdict,
   arm: "ScriptSourceMissing" | "RedeemerMissing",
 ): boolean =>
   verdict !== "ForcedTxValid" &&
@@ -58,8 +59,8 @@ export const rejectionReasonIs = (
 
 /** A rejection whose reason names no purpose coordinate. */
 export const purposelessRejection = (
-  verdict: SDK.OperatorVerdict | undefined,
-): verdict is Exclude<SDK.OperatorVerdict, "ForcedTxValid"> =>
+  verdict: SDKCore.OperatorVerdict | undefined,
+): verdict is Exclude<SDKCore.OperatorVerdict, "ForcedTxValid"> =>
   verdict !== undefined &&
   verdict !== "ForcedTxValid" &&
   SDK.purposeCoordinateOfReason(verdict.ForcedTxInvalid.reason) === null;
@@ -67,7 +68,9 @@ export const purposelessRejection = (
 /** Such a reason recorded at or after the purpose phase. The network context
  * moves only `NetworkIdMismatch`, which the purpose phase admits at either of
  * its phases; the prover decides admission under the bound context. */
-export const purposePhaseRejection = (verdict: SDK.OperatorVerdict): boolean =>
+export const purposePhaseRejection = (
+  verdict: SDKCore.OperatorVerdict,
+): boolean =>
   purposelessRejection(verdict) &&
   claimedReasonReachesPhase(
     verdict.ForcedTxInvalid.reason,
@@ -113,7 +116,7 @@ export const acceptedScriptSources = (
 export const directPurposeEventKey = (
   current: TransitionTraceReconstruction,
   { sourceKind, sourceIndex }: DirectPurposeSourceCoordinate,
-): SDK.EventKey | null => {
+): SDKCore.EventKey | null => {
   if (sourceKind === 0) {
     const entry = current.transactions[sourceIndex];
     return entry === undefined || !opensScriptMaterial(entry)

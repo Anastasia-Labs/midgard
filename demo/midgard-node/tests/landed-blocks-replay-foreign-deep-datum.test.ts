@@ -11,7 +11,8 @@ import {
 } from "@al-ft/midgard-core/plutus-data-cbor";
 import type { FactStore } from "@al-ft/midgard-l1-follower";
 import { eventsAt } from "@al-ft/midgard-l1-follower/events";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
   ADMISSION_PAYLOAD_NODES,
   DEEP_PLUTUS_DATA_CASES,
@@ -69,7 +70,7 @@ afterEach(async () => {
 const replayedBy = async (
   replayer: ReturnType<typeof replayerFor>,
   store: FactStore,
-  payload: SDK.DaPayload,
+  payload: SDKDa.DaPayload,
 ) => {
   await retain(await retainedRow(payload));
   return inNode(replayer(await inputFor(store, payload)));

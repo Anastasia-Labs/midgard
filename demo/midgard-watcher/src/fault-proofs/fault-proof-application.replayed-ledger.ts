@@ -4,7 +4,7 @@ import {
   headerDecisionReplayContext,
   retainedPayloadReplaySource,
 } from "@al-ft/midgard-fault-proofs";
-import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
+import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk/core";
 
 import type { WatcherConfig } from "../runtime/config.js";
 import type { VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";

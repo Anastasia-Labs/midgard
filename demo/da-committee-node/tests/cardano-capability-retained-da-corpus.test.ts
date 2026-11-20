@@ -7,7 +7,7 @@ import {
   hashMidgardVersionedScript,
   MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/da";
 import { runPhaseAValidation } from "@al-ft/midgard-validation/phase-a";
 import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { Effect } from "effect";

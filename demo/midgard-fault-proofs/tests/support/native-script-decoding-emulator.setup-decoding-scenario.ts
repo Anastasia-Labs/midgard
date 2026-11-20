@@ -1,11 +1,11 @@
 import { type MidgardLedgerOutputReferenceScriptLanguage } from "@al-ft/midgard-core";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import {
-  encodeMidgardTxInputCanonical,
   faultProofStepRedeemerSchema,
   type MidgardTxInput,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { encodeMidgardTxInputCanonical } from "@al-ft/midgard-sdk/fraud-proof";
 import {
   Data,
   generateEmulatorAccount,

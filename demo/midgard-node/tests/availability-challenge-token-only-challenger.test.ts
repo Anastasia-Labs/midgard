@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { openAvailabilityOperationJournal } from "@al-ft/midgard-core/availability-operation-journal";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import {
   Data,
   Emulator,

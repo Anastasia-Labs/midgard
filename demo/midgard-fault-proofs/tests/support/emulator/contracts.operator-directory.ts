@@ -1,4 +1,4 @@
-import { type AuthenticatedValidator } from "@al-ft/midgard-sdk";
+import { type AuthenticatedValidator } from "@al-ft/midgard-sdk/core";
 
 import { applyCompiledScript, type Blueprint } from "./blueprints.js";
 import { makeMintingValidator, makeSpendingValidator } from "./validators.js";

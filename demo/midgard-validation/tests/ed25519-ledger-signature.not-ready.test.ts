@@ -1,12 +1,14 @@
 import { verifyLedgerEd25519Signature } from "@al-ft/midgard-core";
 import {
-  findInvalidAddressWitnessIndex,
-  nativeTxHasInvalidSignatureViolation,
   signWithdrawalBodyCbor,
-  verifyAddressWitness,
   verifyWithdrawalSignatureCbor,
   WithdrawalBody,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  findInvalidAddressWitnessIndex,
+  nativeTxHasInvalidSignatureViolation,
+  verifyAddressWitness,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 

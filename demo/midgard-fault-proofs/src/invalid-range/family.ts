@@ -3,7 +3,7 @@ import {
   normalizeNativeTxValidityRange,
   type VerdictSubject,
   verdictSubjectIsCanonical,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 export type InvalidRangeReason =
   | "ValidityIntervalMalformed"

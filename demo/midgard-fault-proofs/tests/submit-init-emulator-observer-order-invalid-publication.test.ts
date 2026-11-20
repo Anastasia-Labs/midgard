@@ -1,4 +1,4 @@
-import { AddressData, addressDataFromBech32 } from "@al-ft/midgard-sdk";
+import { AddressData, addressDataFromBech32 } from "@al-ft/midgard-sdk/core";
 import { Data, validatorToScriptHash } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";

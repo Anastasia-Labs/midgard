@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   CML,
   getAddressDetails,
@@ -67,15 +68,15 @@ export type ReferenceScriptSweepResult = {
 };
 
 type ReferenceScriptSweepError =
-  | SDK.StateQueueError
+  | SDKStateQueue.StateQueueError
   | SDK.LucidError
   | TxConfirmError
   | TxExpiredError
   | TxSignError
   | TxSubmitError;
 
-const refusalToError = (cause: unknown): SDK.StateQueueError =>
-  new SDK.StateQueueError({
+const refusalToError = (cause: unknown): SDKStateQueue.StateQueueError =>
+  new SDKStateQueue.StateQueueError({
     message:
       cause instanceof Error
         ? cause.message
@@ -189,7 +190,7 @@ export const sweepRetiredReferenceScriptsProgram = ({
     const returnAddress = yield* Effect.tryPromise({
       try: () => lucid.wallet().address(),
       catch: (cause) =>
-        new SDK.StateQueueError({
+        new SDKStateQueue.StateQueueError({
           message: "Failed to resolve the reference-script wallet address",
           cause,
         }),
@@ -243,7 +244,7 @@ export const sweepRetiredReferenceScriptsProgram = ({
     }
     if (!options.acknowledgeRetirement) {
       return yield* Effect.fail(
-        new SDK.StateQueueError({
+        new SDKStateQueue.StateQueueError({
           message:
             "Refusing to execute reference-script sweep without retirement acknowledgement",
           cause:

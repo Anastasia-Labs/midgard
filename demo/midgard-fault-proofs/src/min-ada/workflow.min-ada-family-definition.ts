@@ -3,7 +3,7 @@ import {
   MinAdaStep02DatumSchema,
   MinAdaStep03DatumSchema,
   MinAdaStep04DatumSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import { parseContractDeploymentReferenceScriptAuthPolicyId } from "../inspect-contracts.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";

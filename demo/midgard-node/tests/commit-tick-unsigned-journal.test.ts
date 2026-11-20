@@ -6,7 +6,7 @@
  * with a signed intent is left alone. The site is driven up to the worker it
  * launches.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { SqlClient } from "@effect/sql";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect, Exit, Option, Ref } from "effect";

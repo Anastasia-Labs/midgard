@@ -2,7 +2,7 @@ import {
   CoreStepEvidenceSchema,
   SemanticBuiltinWitnessSchema,
   StagedMaterialV1Schema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/da";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

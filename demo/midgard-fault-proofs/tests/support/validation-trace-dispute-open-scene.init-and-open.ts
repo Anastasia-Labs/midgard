@@ -1,6 +1,7 @@
 /** Init a validation-trace thread on one of the Open scene's blocks and
  * Open it with a claim (validation-trace-dispute-open-scene.ts). */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -28,7 +29,7 @@ const liveBlock = async (scene: Scene, block: Block): Promise<UTxO> => {
 export const initAndOpen = async (
   scene: Scene,
   block: Block,
-  claim: SDK.ValidationDisputeClaim,
+  claim: SDKDa.ValidationDisputeClaim,
 ): Promise<{ readonly opener: UTxO }> => {
   const { h, chain } = scene;
   const category = h.catalogue.categories.validationTraceDispute;
@@ -66,12 +67,12 @@ export const initAndOpen = async (
   ).find((utxo) => utxo.txHash === init.txHash);
   if (thread === undefined) throw new Error("the Init thread is absent");
   const challenged = await Effect.runPromise(
-    SDK.validationDisputeChallengedBlock(
+    SDKDa.validationDisputeChallengedBlock(
       blockUtxo,
       h.contracts.stateQueue.policyId,
     ),
   );
-  const built = await SDK.appendValidationDisputeOpen(h.proverLucid.newTx(), {
+  const built = await SDKDa.appendValidationDisputeOpen(h.proverLucid.newTx(), {
     contracts: { opener: chain.opener, source: chain.source },
     computationThreadPolicyId: h.contracts.computationThread.policyId,
     openerReferenceScript: scene.references.opener,

@@ -8,7 +8,7 @@ import {
   encodeMidgardAddressText,
 } from "@al-ft/midgard-core/codec";
 import { aikenSerialisedPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/users";
 import { SqlClient } from "@effect/sql";
 import { Effect, Metric, Option } from "effect";
 

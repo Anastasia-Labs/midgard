@@ -1,4 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { Effect, Either } from "effect";
 import {

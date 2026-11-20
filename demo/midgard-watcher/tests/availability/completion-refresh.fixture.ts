@@ -6,7 +6,7 @@ import { io, PARAMETERS } from "./concurrent-challenges.fixture.js";
 
 /** Actual SDK signing/inspection over CML; provider and ledger I/O are controlled. */
 export const completionLedger = async (oldCost = 8620n, newCost = 4310n) => {
-  const sdk = await vi.importActual<typeof SDK>("@al-ft/midgard-sdk");
+  const sdk = await vi.importActual<typeof SDK>("@al-ft/midgard-sdk/da");
   const lucid = await vi.importActual<typeof Lucid>("@lucid-evolution/lucid");
   const protocol = await new lucid.Emulator([]).getProtocolParameters();
   const initial = { ...protocol, coinsPerUtxoByte: oldCost };

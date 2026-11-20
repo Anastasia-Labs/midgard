@@ -3,13 +3,13 @@ import {
   castConfirmedStateToData,
   encodeLinkedListNodeView,
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
-  FraudProofTokenDatum,
   hashBlockHeader,
   makeGenesisConfirmedState,
   RETIRED_OPERATOR_NODE_ASSET_NAME_PREFIX,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
-  STATE_QUEUE_ROOT_ASSET_NAME,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { FraudProofTokenDatum } from "@al-ft/midgard-sdk/fraud-proof";
+import { STATE_QUEUE_ROOT_ASSET_NAME } from "@al-ft/midgard-sdk/state-queue";
 import {
   CML,
   credentialToAddress,

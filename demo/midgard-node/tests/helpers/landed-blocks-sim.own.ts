@@ -8,7 +8,8 @@
  */
 import { createHash } from "node:crypto";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
@@ -172,7 +173,7 @@ export const insertOwnJournal = (journal: SimOwnJournal) =>
 export type SimOwnBlock = Readonly<{
   headerHash: string;
   parentHash: string;
-  header: SDK.Header;
+  header: SDKCore.Header;
   txIds: readonly Buffer[];
   /** The journal's time: a member it restores to the mempool carries it. */
   at: Date;

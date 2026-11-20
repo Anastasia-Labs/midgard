@@ -13,7 +13,7 @@ import {
   encodeMidgardNativeTxCompact,
   midgardFieldCommitment,
 } from "@al-ft/midgard-core";
-import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk";
+import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import { planFaultProofFieldOpening } from "../src/field-opening.plan-fault-proof-field-opening.js";

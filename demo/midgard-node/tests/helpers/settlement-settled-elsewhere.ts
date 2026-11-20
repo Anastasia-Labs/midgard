@@ -28,7 +28,7 @@ import {
   simTxHash,
   simUniverse,
 } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { SqlClient } from "@effect/sql";
 import { PgClient } from "@effect/sql-pg";
 import { Data, type LucidEvolution } from "@lucid-evolution/lucid";

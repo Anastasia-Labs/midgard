@@ -20,14 +20,14 @@ import {
 } from "@al-ft/midgard-core";
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core/codec";
 import {
-  FraudProofComputationThreadStepDatum,
   type L2TransactionSource,
   L2TransactionSourceSchema,
   type MidgardTxInput,
   NativeTxCompact,
   type NativeTxCompact as NativeTxCompactData,
   Proof,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 
 import {

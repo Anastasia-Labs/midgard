@@ -5,7 +5,7 @@ import {
   encodeMidgardLedgerOutputValueControl,
   MidgardLedgerOutputScanStages,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { Constr, Data } from "@lucid-evolution/lucid";
 
 import {

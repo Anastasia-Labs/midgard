@@ -1,14 +1,16 @@
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
-  MIDGARD_FIELD_INDEX,
-  NativeScriptInvalidStep02DatumSchema,
-  NativeScriptInvalidStep02SpendRedeemerSchema,
-  NativeScriptInvalidStep03DatumSchema,
   type NativeTxWitnessSetCompact,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  MIDGARD_FIELD_INDEX,
+  NativeScriptInvalidStep02DatumSchema,
+  NativeScriptInvalidStep02SpendRedeemerSchema,
+  NativeScriptInvalidStep03DatumSchema,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

@@ -1,5 +1,5 @@
 import { FraudProofL1UnavailableError } from "@al-ft/midgard-fault-proofs/workflow/l1-source";
-import { DaAvailabilityReadScopeExpiredError } from "@al-ft/midgard-sdk";
+import { DaAvailabilityReadScopeExpiredError } from "@al-ft/midgard-sdk/da";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createWatcherAvailabilityRuntime } from "../../src/availability/runtime.create-watcher-availability-runtime.js";
@@ -22,8 +22,8 @@ vi.mock("@al-ft/midgard-core/availability-operation-journal", () => ({
     close() {},
   }),
 }));
-vi.mock("@al-ft/midgard-sdk", async (original) => ({
-  ...(await original<typeof import("@al-ft/midgard-sdk")>()),
+vi.mock("@al-ft/midgard-sdk/da", async (original) => ({
+  ...(await original<typeof import("@al-ft/midgard-sdk/da")>()),
   daAvailabilityOperationLimits: () => ({}),
   reconcileDaAvailabilityOperations: io.reconcile,
 }));

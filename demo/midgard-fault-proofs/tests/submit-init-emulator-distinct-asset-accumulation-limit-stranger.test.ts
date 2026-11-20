@@ -9,7 +9,8 @@
  * crossing in the mint walks the outputs and the mint, so the two reach every
  * role.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   generateEmulatorAccount,
@@ -208,7 +209,7 @@ describe("distinct-asset-accumulation-limit steps against a stranger key", () =>
     const input = await refuseStrangerAtEveryRole(INPUT_CROSSING);
     expect(new Set([...mint, ...input])).toStrictEqual(
       new Set(
-        SDK.DISTINCT_ASSET_ACCUMULATION_LIMIT_ROLE_ORDER.filter(
+        SDKFraudProof.DISTINCT_ASSET_ACCUMULATION_LIMIT_ROLE_ORDER.filter(
           (role) => role !== "step01" && role !== "terminal",
         ),
       ),

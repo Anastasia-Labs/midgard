@@ -17,7 +17,7 @@
  * that output's min-ada, which the proof-materials sweep recovers, and the step
  * that reads the carriage is indifferent to which copy it reads.
  */
-import { slotAlignedUpperBoundAtOrBefore } from "@al-ft/midgard-sdk";
+import { slotAlignedUpperBoundAtOrBefore } from "@al-ft/midgard-sdk/core";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 /**

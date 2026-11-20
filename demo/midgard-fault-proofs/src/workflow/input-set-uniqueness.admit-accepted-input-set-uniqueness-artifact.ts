@@ -5,7 +5,7 @@ import {
 import {
   MIDGARD_FIELD_INDEX,
   ProofThreadForcedSourcePayloadSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import {

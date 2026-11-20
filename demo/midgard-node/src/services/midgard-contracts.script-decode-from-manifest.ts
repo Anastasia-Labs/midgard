@@ -1,9 +1,9 @@
 import type { DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
-import * as SDK from "@al-ft/midgard-sdk";
 import {
   authenticatedValidatorFromManifest,
   withdrawalValidatorFromManifest,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import type { Network } from "@lucid-evolution/lucid";
 
 /** The script-decode validator and its class stakers, from the manifest. */

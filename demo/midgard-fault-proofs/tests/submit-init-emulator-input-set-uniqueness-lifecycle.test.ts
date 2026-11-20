@@ -21,7 +21,9 @@
  * upstream, and the split is kept so each file runs in its own fresh process.
  */
 import { outRefLabel } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Data, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -281,7 +283,7 @@ describe("input-set-uniqueness emulator lifecycle", () => {
     expect(outRefLabel(fraudProofUtxo)).toBe(step02.fraudProofOutRef);
     expect(fraudProofUtxo.assets[step02.fraudProofUnit]).toBe(1n);
     expect(
-      Data.from(fraudProofUtxo.datum!, SDK.FraudProofTokenDatum),
+      Data.from(fraudProofUtxo.datum!, SDKFraudProof.FraudProofTokenDatum),
     ).toStrictEqual({ fraud_prover: proverSigner.paymentKeyHash });
 
     // ——— Removal leg: the minted token is the standing evidence that takes
@@ -332,7 +334,7 @@ describe("input-set-uniqueness emulator lifecycle", () => {
       throw new Error("Removal did not preserve the state-queue root");
     }
     const finalRoot = await Effect.runPromise(
-      SDK.utxoToStateQueueUTxO(
+      SDKStateQueue.utxoToStateQueueUTxO(
         finalRootUtxo,
         harness.contracts.stateQueue.policyId,
       ),
@@ -573,7 +575,7 @@ describe("input-set-uniqueness emulator lifecycle", () => {
     );
     expect(fraudProofUtxo.assets[step02.fraudProofUnit]).toBe(1n);
     expect(
-      Data.from(fraudProofUtxo.datum!, SDK.FraudProofTokenDatum),
+      Data.from(fraudProofUtxo.datum!, SDKFraudProof.FraudProofTokenDatum),
     ).toStrictEqual({ fraud_prover: proverSigner.paymentKeyHash });
   }, 600_000);
 });

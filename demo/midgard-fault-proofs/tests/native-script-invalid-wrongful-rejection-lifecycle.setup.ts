@@ -13,7 +13,8 @@ import {
   deriveMidgardForcedTxProofSource,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { CML, Data, getAddressDetails } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
@@ -273,7 +274,7 @@ export const setup = async ({
     membership,
   };
   const state = {
-    subject: SDK.forcedVerdictSubject({
+    subject: SDKFraudProof.forcedVerdictSubject({
       transactionId: txId,
       sourceKey: key,
       rejectionReason: reason,
@@ -318,7 +319,7 @@ export const setup = async ({
     detectionId: `native-script-invalid:forced:0:${txId}:${scriptIndex}`,
     forcedSourceCbor: Data.to(
       source as never,
-      SDK.NativeScriptInvalidForcedSourcePayloadSchema as never,
+      SDKFraudProof.NativeScriptInvalidForcedSourcePayloadSchema as never,
     ),
     fullTransactionCbor:
       encodeMidgardForcedTxCanonical(submitted).toString("hex"),

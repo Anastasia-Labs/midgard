@@ -9,13 +9,13 @@ import {
   type DeploymentManifestEconomics,
   parseDeploymentManifestAvailabilityChallenge,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import {
   type ReferenceScriptAuthPolicyDeploymentInfo,
   type ReferenceScriptAuthPolicyRef,
   type ReferenceScriptAuthTokenTarget,
   referenceScriptAuthUnit,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import {
   type Script,
   type UTxO,

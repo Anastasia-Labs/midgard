@@ -1,7 +1,9 @@
 import "@aiken-lang/merkle-patricia-forestry";
 import "@al-ft/midgard-core";
 import "@al-ft/midgard-core/codec";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "@lucid-evolution/lucid";
 import "../../src/committed-field-shape/submit-common.js";
 import "../../src/prepare-double-spend.js";

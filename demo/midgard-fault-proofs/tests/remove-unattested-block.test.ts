@@ -1,5 +1,6 @@
 import { MIDGARD_PROTOCOL_VERSION } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { CML, credentialToAddress } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
@@ -51,7 +52,7 @@ const block = (
   byte: string,
   endTime = 1n,
   attested = false,
-): SDK.StateQueueUTxO => ({
+): SDKStateQueue.StateQueueUTxO => ({
   assetName: SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + h(byte),
   datum: {
     key: { Key: { key: h(byte) } },
@@ -72,10 +73,10 @@ const block = (
     assets: { lovelace: 5_000_000n },
   },
 });
-const queue = (...nodes: SDK.StateQueueUTxO[]) => {
-  const root: SDK.StateQueueUTxO = {
+const queue = (...nodes: SDKStateQueue.StateQueueUTxO[]) => {
+  const root: SDKStateQueue.StateQueueUTxO = {
     ...block("aa"),
-    assetName: SDK.STATE_QUEUE_ROOT_ASSET_NAME,
+    assetName: SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME,
     datum: { key: "Empty", next: "Empty", data: "d87980" },
   };
   const all = [root, ...nodes].map((node) => ({
@@ -114,7 +115,7 @@ const journal = (
   return {
     version: 1,
     targetHeaderHash: h("11"),
-    targetDeadlineMs: (SDK.DA_ATTESTATION_TIMEOUT_MS + 1n).toString(),
+    targetDeadlineMs: (SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS + 1n).toString(),
     completed: false,
     steps: [
       {
@@ -213,16 +214,16 @@ describe("generalized attestation-timeout recovery", () => {
       (
         await selectTimeoutCorrectionTarget(
           nodes,
-          SDK.DA_ATTESTATION_TIMEOUT_MS,
+          SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS,
           "Idle",
         )
       )?.deadline,
-    ).toBe(SDK.DA_ATTESTATION_TIMEOUT_MS + 1n);
+    ).toBe(SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS + 1n);
     expect(
       (
         await selectTimeoutCorrectionTarget(
           nodes,
-          SDK.DA_ATTESTATION_TIMEOUT_MS + 1n,
+          SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS + 1n,
           "Idle",
         )
       )?.target,

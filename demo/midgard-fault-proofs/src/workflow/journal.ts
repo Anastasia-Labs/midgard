@@ -2,7 +2,7 @@ import "node:crypto";
 import "node:fs/promises";
 import "node:path";
 import "@al-ft/midgard-core/da-transport";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
 import "./journal.fraud-proof-workflow-terminal.js";
 import "./journal.fraud-proof-workflow-journal-event.js";
 import "./journal.create-fraud-proof-workflow-journal-fold.js";

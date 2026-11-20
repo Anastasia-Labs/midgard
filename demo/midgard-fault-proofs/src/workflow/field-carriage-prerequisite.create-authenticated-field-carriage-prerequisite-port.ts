@@ -1,7 +1,5 @@
-import {
-  buildUnsignedFieldPreimagePublicationProgram,
-  type FraudProofCatalogueCategoryName,
-} from "@al-ft/midgard-sdk";
+import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
+import { buildUnsignedFieldPreimagePublicationProgram } from "@al-ft/midgard-sdk/state-queue";
 import {
   type LucidEvolution,
   type Network,

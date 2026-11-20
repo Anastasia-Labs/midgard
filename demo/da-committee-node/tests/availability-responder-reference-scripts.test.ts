@@ -1,4 +1,4 @@
-import { referenceScriptAuthUnit } from "@al-ft/midgard-sdk";
+import { referenceScriptAuthUnit } from "@al-ft/midgard-sdk/state-queue";
 import { Emulator, Lucid, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

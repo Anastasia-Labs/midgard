@@ -1,5 +1,7 @@
 import { MIDGARD_PROTOCOL_VERSION } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   credentialToAddress,
   Data,
@@ -56,7 +58,7 @@ const fixture = async () => {
   });
   const submitTx = vi.fn();
   const currentTime = Number(
-    header.endTime + SDK.DA_ATTESTATION_TIMEOUT_MS + 1n,
+    header.endTime + SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS + 1n,
   );
   const target = (): UTxO => ({
     txHash: "aa".repeat(32),
@@ -89,7 +91,7 @@ const fixture = async () => {
         owners: [],
         update_threshold: 1n,
       },
-      SDK.DaParamsDatum,
+      SDKDa.DaParamsDatum,
     ),
   };
   const lucid = {

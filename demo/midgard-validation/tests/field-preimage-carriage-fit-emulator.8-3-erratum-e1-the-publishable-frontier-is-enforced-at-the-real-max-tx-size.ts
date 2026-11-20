@@ -11,7 +11,7 @@ import {
   MIDGARD_CHUNK_BYTES_K,
   MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
 } from "@al-ft/midgard-core/codec/native-tx-field-access";
-import { certifyFieldPreimageRedeemer } from "@al-ft/midgard-sdk";
+import { certifyFieldPreimageRedeemer } from "@al-ft/midgard-sdk/state-queue";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import {

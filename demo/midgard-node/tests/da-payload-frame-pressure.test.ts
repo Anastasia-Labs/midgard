@@ -2,7 +2,8 @@ import {
   type DaPayloadEmissionMode,
   maxDaPayloadInnerBytes,
 } from "@al-ft/midgard-core/da-payload-sizing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Effect, Either, Logger, LogLevel } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -44,7 +45,7 @@ type Logged = { readonly level: LogLevel.LogLevel; readonly text: string };
 
 // Synthetic deposit payload bytes isolate frame sizing from event validation.
 const assertSize = (
-  deposits: readonly SDK.DaPayloadEntry[],
+  deposits: readonly SDKDa.DaPayloadEntry[],
   envelopeMode: DaPayloadEmissionMode,
 ) =>
   Effect.gen(function* () {
@@ -100,7 +101,7 @@ const assertSize = (
   });
 
 const innerBytesOf = async (
-  deposits: readonly SDK.DaPayloadEntry[],
+  deposits: readonly SDKDa.DaPayloadEntry[],
   envelopeMode: DaPayloadEmissionMode,
 ): Promise<number> => {
   const { result } = await Effect.runPromise(
@@ -115,7 +116,7 @@ const innerBytesOf = async (
 const depositsOf = (
   coarseBytes: number,
   fineBytes: number,
-): SDK.DaPayloadEntry[] => [
+): SDKDa.DaPayloadEntry[] => [
   ["44".repeat(32), "55".repeat(coarseBytes)],
   ["66".repeat(32), "77".repeat(fineBytes)],
 ];
@@ -182,11 +183,11 @@ const largestCoarseWithin = async (
  * byte per value byte) that closes the remaining gap. Each size is built
  * once per mode and shared, unchanged, by the cases that use it.
  */
-const depositsBySize = new Map<string, Promise<SDK.DaPayloadEntry[]>>();
+const depositsBySize = new Map<string, Promise<SDKDa.DaPayloadEntry[]>>();
 const depositsForInnerBytes = (
   innerBytes: number,
   envelopeMode: DaPayloadEmissionMode,
-): Promise<SDK.DaPayloadEntry[]> => {
+): Promise<SDKDa.DaPayloadEntry[]> => {
   const key = `${envelopeMode}:${innerBytes.toString()}`;
   const built =
     depositsBySize.get(key) ?? buildDeposits(innerBytes, envelopeMode);
@@ -197,7 +198,7 @@ const depositsForInnerBytes = (
 const buildDeposits = async (
   innerBytes: number,
   envelopeMode: DaPayloadEmissionMode,
-): Promise<SDK.DaPayloadEntry[]> => {
+): Promise<SDKDa.DaPayloadEntry[]> => {
   const low = await largestCoarseWithin(innerBytes, envelopeMode);
   const gap =
     innerBytes - (await innerBytesOf(depositsOf(low, 24), envelopeMode));

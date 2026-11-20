@@ -13,7 +13,7 @@ import {
   type MidgardTxInput as MidgardTxInputV1,
 } from "@al-ft/midgard-core/codec";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import { type MidgardTxInput } from "@al-ft/midgard-sdk";
+import { type MidgardTxInput } from "@al-ft/midgard-sdk/core";
 import {
   CML,
   type LucidEvolution,

@@ -3,7 +3,7 @@ import {
   InputSetUniquenessStep02Datum,
   InputSetUniquenessStep03DatumSchema,
   InputSetUniquenessStep04DatumSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import { type FaultProofFieldOpeningPlan } from "../field-opening.js";
 import { INPUT_SET_UNIQUENESS_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";

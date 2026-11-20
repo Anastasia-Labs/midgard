@@ -4,12 +4,12 @@
  * over a stub chain whose authenticated observer refuses an output the way the
  * production observer does.
  */
+import { FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX } from "@al-ft/midgard-sdk/core";
+import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk/fraud-proof";
 import {
   deriveFieldPreimageCertification,
-  FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX,
   fieldPreimagePublicationDatumCbor,
-  MIDGARD_FIELD_INDEX,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import {
   type LucidEvolution,
   type MintingPolicy,

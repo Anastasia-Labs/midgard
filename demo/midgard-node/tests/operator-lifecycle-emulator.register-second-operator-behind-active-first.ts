@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKOperators from "@al-ft/midgard-sdk/operators";
 import {
   Data,
   Emulator,
@@ -121,7 +122,7 @@ export const registeredActivationTime = async (
   const activationTime =
     registration === undefined
       ? undefined
-      : SDK.registeredNodeKeyToPosixTime(registration.key);
+      : SDKOperators.registeredNodeKeyToPosixTime(registration.key);
   if (activationTime === undefined) {
     throw new Error(`Missing the registration of operator ${operatorKeyHash}`);
   }

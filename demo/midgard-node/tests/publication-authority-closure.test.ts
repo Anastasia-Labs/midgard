@@ -1,4 +1,4 @@
-import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
+import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk/state-queue";
 import {
   Emulator,
   generateEmulatorAccount,

@@ -2,13 +2,13 @@ import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   EventToStepMembershipProofSchema,
   faultProofStepRedeemerSchema,
-  FieldOpeningSchema,
   ForcedLeafMembershipV1Schema,
   HeaderSchema,
   NativeTxInclusionCarriageSchema,
   ProofSchema,
   TransitionTraceMembershipProofSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { FieldOpeningSchema } from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import {

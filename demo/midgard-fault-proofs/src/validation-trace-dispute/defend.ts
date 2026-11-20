@@ -11,7 +11,8 @@ import {
   type MidgardValidationTraceProof,
 } from "@al-ft/midgard-core";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
   credentialToAddress,
   Data,
@@ -43,7 +44,7 @@ const defenseBondUnlockTime = (startedAt: bigint): bigint => {
 };
 
 /** `validation_case_v1.open_thread`'s first turn. */
-const firstTurn = (stepCount: bigint): SDK.CaseThread["turn"] =>
+const firstTurn = (stepCount: bigint): SDKDa.CaseThread["turn"] =>
   stepCount === 1n
     ? "ReadyForOneStep"
     : { AwaitingOperator: { midpoint: stepCount / 2n } };
@@ -68,7 +69,7 @@ export const validationTraceDefendersProof = async ({
   priorDefenders,
   defenderVkh,
 }: {
-  readonly caseDatum: SDK.Case;
+  readonly caseDatum: SDKDa.Case;
   readonly priorDefenders: readonly string[];
   readonly defenderVkh: string;
 }): Promise<ValidationTraceDefendersProof> => {
@@ -149,10 +150,10 @@ export const buildValidationTraceDefend = ({
   tx: TxBuilder;
   threadUnit: string;
   /** The thread the Defend opens at output 1. */
-  thread: SDK.CaseThread;
+  thread: SDKDa.CaseThread;
 }> => {
   const { chain } = deployment;
-  const caseDatum = Data.from(caseUtxo.datum!, SDK.Case);
+  const caseDatum = Data.from(caseUtxo.datum!, SDKDa.Case);
   const caseIds = Object.keys(caseUtxo.assets)
     .filter((unit) => unit.startsWith(chain.case.policyId))
     .map((unit) => unit.slice(56));
@@ -161,14 +162,14 @@ export const buildValidationTraceDefend = ({
   const caseId = caseIds[0]!;
   const threadUnit =
     chain.case.policyId + validationTraceThreadTokenName(caseId, defenderVkh);
-  const config = Data.from(caseConfig.datum!, SDK.CaseConfig);
+  const config = Data.from(caseConfig.datum!, SDKDa.CaseConfig);
 
   const lower = BigInt(validFrom);
   const upper = BigInt(validTo - 1);
   const elapsed =
     lower > caseDatum.started_at ? lower - caseDatum.started_at : 0n;
   const clock = BigInt(MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS);
-  const thread: SDK.CaseThread = {
+  const thread: SDKDa.CaseThread = {
     header: { started_at: caseDatum.started_at, defender_vkh: defenderVkh },
     version: 1n,
     case_id: caseId,
@@ -223,13 +224,15 @@ export const buildValidationTraceDefend = ({
           defender_vkh: defenderVkh,
           defenders_proof: defenders.proof,
           defender_root: defense.root,
-          defender_state: SDK.validationMachineStateDataFromCore(defense.state),
-          defender_state_proof: SDK.validationTraceProofDataFromCore(
+          defender_state: SDKDa.validationMachineStateDataFromCore(
+            defense.state,
+          ),
+          defender_state_proof: SDKDa.validationTraceProofDataFromCore(
             defense.stateProof,
           ),
         },
       },
-      SDK.CaseRedeemer,
+      SDKDa.CaseRedeemer,
     );
   const nodeRedeemer = (ctx: RedeemerContext) =>
     Data.to(
@@ -263,7 +266,7 @@ export const buildValidationTraceDefend = ({
             open_threads: caseDatum.open_threads + 1n,
             defenders_root: defenders.defendersRoot,
           },
-          SDK.Case,
+          SDKDa.Case,
         ),
       },
       caseUtxo.assets,
@@ -277,7 +280,7 @@ export const buildValidationTraceDefend = ({
         kind: "inline",
         value: Data.to(
           { fraud_prover: caseDatum.bounty_claimant, data: thread },
-          SDK.CaseThreadDatum,
+          SDKDa.CaseThreadDatum,
         ),
       },
       { lovelace: VALIDATION_TRACE_THREAD_FLOOR_LOVELACE, [threadUnit]: 1n },

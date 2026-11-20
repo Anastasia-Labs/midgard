@@ -1,5 +1,6 @@
 import type { SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   credentialToAddress,
   type LucidEvolution,
@@ -41,7 +42,7 @@ export const fetchRealStateQueueWitnessContext = (
   successorHoldsAllPending?: (successor: string) => Effect.Effect<boolean>,
 ): Effect.Effect<
   RealStateQueueWitnessContext | CommitTimingDueWork,
-  SDK.StateQueueError | TxSignError | TxSubmitError,
+  SDKStateQueue.StateQueueError | TxSignError | TxSubmitError,
   IntentJournal
 > =>
   Effect.gen(function* () {
@@ -113,7 +114,7 @@ export const fetchRealStateQueueWitnessContext = (
     ).pipe(
       Effect.mapError(
         (cause) =>
-          new SDK.StateQueueError({
+          new SDKStateQueue.StateQueueError({
             message:
               "Failed to fetch registered-operators UTxOs for scheduler refresh",
             cause,
@@ -128,7 +129,7 @@ export const fetchRealStateQueueWitnessContext = (
     ).pipe(
       Effect.mapError(
         (cause) =>
-          new SDK.StateQueueError({
+          new SDKStateQueue.StateQueueError({
             message: "Failed to fetch scheduler UTxOs for state_queue commit",
             cause,
           }),
@@ -159,7 +160,7 @@ export const fetchRealStateQueueWitnessContext = (
     const network = lucid.config().network;
     if (network === undefined) {
       return yield* Effect.fail(
-        new SDK.StateQueueError({
+        new SDKStateQueue.StateQueueError({
           message:
             "Failed to resolve Cardano network for hub-oracle witness lookup",
           cause: "lucid.config().network is undefined",
@@ -177,7 +178,7 @@ export const fetchRealStateQueueWitnessContext = (
     const hubOracleWitnessUtxos = yield* Effect.tryPromise({
       try: () => lucid.utxosAtWithUnit(hubOracleAddress, hubOracleUnit),
       catch: (cause) =>
-        new SDK.StateQueueError({
+        new SDKStateQueue.StateQueueError({
           message:
             "Failed to fetch hub-oracle UTxOs for state_queue commit witness",
           cause,
@@ -185,7 +186,7 @@ export const fetchRealStateQueueWitnessContext = (
     });
     if (hubOracleWitnessUtxos.length !== 1) {
       return yield* Effect.fail(
-        new SDK.StateQueueError({
+        new SDKStateQueue.StateQueueError({
           message:
             "Failed to resolve unique hub-oracle UTxO for state_queue commit witness",
           cause: `expected=1,found=${hubOracleWitnessUtxos.length},address=${hubOracleAddress},unit=${hubOracleUnit}`,
@@ -202,7 +203,7 @@ export const fetchRealStateQueueWitnessContext = (
     ).pipe(
       Effect.mapError(
         (cause) =>
-          new SDK.StateQueueError({
+          new SDKStateQueue.StateQueueError({
             message:
               "Failed to fetch authenticated correction-lock witness for state_queue commit",
             cause,
@@ -215,7 +216,7 @@ export const fetchRealStateQueueWitnessContext = (
     const operatorWalletView = yield* readSelectedWalletView(lucid).pipe(
       Effect.mapError(
         (cause) =>
-          new SDK.StateQueueError({
+          new SDKStateQueue.StateQueueError({
             message: `Failed to read the operator wallet view for the state_queue commit: ${cause.message}`,
             cause,
           }),

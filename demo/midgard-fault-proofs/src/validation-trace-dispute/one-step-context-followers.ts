@@ -8,7 +8,7 @@
  * authenticate binds: the finalize midgard for a MidgardV1 execution, and
  * for a PlutusV3 one the finalize of its purpose, a spend, mint or withdraw
  * (one-step-context-finalize.ts). */
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 
 /** Each follower holder's contract among the deployment's context stages. */
 export const CONTEXT_FOLLOWER_STAGES = Object.freeze({

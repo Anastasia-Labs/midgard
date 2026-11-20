@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   Data,
   type Script,
@@ -34,12 +35,14 @@ export const prepareTimedOutTailRemoval = async ({
     stateQueuePolicyId: contracts.stateQueue.policyId,
   };
   const fetchQueue = () =>
-    Effect.runPromise(SDK.fetchSortedStateQueueUTxOsProgram(lucid, config));
+    Effect.runPromise(
+      SDKStateQueue.fetchSortedStateQueueUTxOsProgram(lucid, config),
+    );
   const beforeQueue = await fetchQueue();
   const target = beforeQueue.at(-1)!;
   const predecessor = beforeQueue.at(-2)!;
   expect(
-    await Effect.runPromise(SDK.headerHashFromStateQueueUTxO(target)),
+    await Effect.runPromise(SDKStateQueue.headerHashFromStateQueueUTxO(target)),
   ).toBe(targetHeaderHash);
   expect(target.datum.next).toBe("Empty");
   expect(predecessor.datum.next).toEqual({ Key: { key: targetHeaderHash } });
@@ -51,7 +54,7 @@ export const prepareTimedOutTailRemoval = async ({
       SDK.getHeaderFromStateQueueDatum(target.datum),
     );
     const readyAt =
-      Number(header.endTime + SDK.DA_ATTESTATION_TIMEOUT_MS) + 60_000;
+      Number(header.endTime + SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS) + 60_000;
     if (emulator.now() < readyAt)
       emulator.awaitSlot(Math.ceil((readyAt - emulator.now()) / 1000));
     vi.setSystemTime(new Date(emulator.now()));
@@ -81,7 +84,7 @@ export const prepareTimedOutTailRemoval = async ({
     const withdrawal =
       contracts.stateQueue.yields.unattestedTimeout.withdrawalScript;
     const validFrom = BigInt(emulator.now() - 60_000);
-    const builder = SDK.incompleteRemoveLastUnattestedBlockTxProgram(
+    const builder = SDKStateQueue.incompleteRemoveLastUnattestedBlockTxProgram(
       lucid,
       config,
       {

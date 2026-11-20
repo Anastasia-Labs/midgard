@@ -1,5 +1,13 @@
 import {
   type FieldCarriage,
+  requireInputIndex,
+  requireMintRedeemerIndex,
+  requireOwnMintPurpose,
+  requireOwnSpendPurpose,
+  requireReferenceInputIndex,
+  requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
   fieldOpeningForField,
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
@@ -9,13 +17,7 @@ import {
   InputSetUniquenessStep02SpendRedeemer,
   type InputSetUniquenessStep02State,
   MIDGARD_FIELD_INDEX,
-  requireInputIndex,
-  requireMintRedeemerIndex,
-  requireOwnMintPurpose,
-  requireOwnSpendPurpose,
-  requireReferenceInputIndex,
-  requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

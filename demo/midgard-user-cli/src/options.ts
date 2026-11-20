@@ -9,7 +9,7 @@ import {
 import { normalizeHex } from "@al-ft/midgard-core/hex";
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import { replacePlutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import {
   type Assets,
   Data,

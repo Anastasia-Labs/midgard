@@ -6,7 +6,8 @@ import {
   decodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
 import { decodeMidgardForcedTxCompact } from "@al-ft/midgard-core/codec/forced";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";
 import {
@@ -15,7 +16,9 @@ import {
 } from "../step-support.js";
 import type { OpenedProofThreadSource } from "./source.js";
 
-const decodedInput = (item: Buffer | undefined): SDK.MidgardTxInput | null => {
+const decodedInput = (
+  item: Buffer | undefined,
+): SDKCore.MidgardTxInput | null => {
   if (item === undefined) return null;
   const decoded = decodeMidgardSpendInputItem(item);
   return {
@@ -95,7 +98,7 @@ export const deriveInputExistenceSelection = ({
     });
   const coordinate =
     reason === null ? null : SDK.resolutionCoordinateOfReason(reason);
-  let claimedInput: SDK.MidgardTxInput | null = null;
+  let claimedInput: SDKCore.MidgardTxInput | null = null;
   let claimedFieldPlan: ReturnType<typeof plan> | null = null;
   if (
     coordinate !== null &&

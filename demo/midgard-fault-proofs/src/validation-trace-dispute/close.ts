@@ -4,7 +4,9 @@
  * fraud-proof record, the case tokens are locked beside it, and the bond
  * and the case's remaining lovelace return to us. */
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   Constr,
   credentialToAddress,
@@ -48,7 +50,7 @@ const FRAUD_PROOF_OUTPUT_LOVELACE = BigInt(
 export const VALIDATION_TRACE_CLOSE_SMALL_OUTPUT_LOVELACE = 1_500_000n;
 
 /** `case_outcome` (validation-case-v1) is Convicted. */
-const convicts = (caseDatum: SDK.Case): boolean =>
+const convicts = (caseDatum: SDKDa.Case): boolean =>
   !caseDatum.defender_won &&
   caseDatum.open_threads === 0n &&
   !caseDatum.neither_claim_valid;
@@ -92,7 +94,7 @@ export const buildValidationTraceClose = async ({
 }): Promise<
   Readonly<{
     tx: TxBuilder;
-    caseDatum: SDK.Case;
+    caseDatum: SDKDa.Case;
     proof: Readonly<{ address: string; unit: string }>;
     candidates: Parameters<typeof captured>[1];
     caseInput: UTxO;
@@ -104,7 +106,7 @@ export const buildValidationTraceClose = async ({
   const bond = await ours(lucid, bondOutRef, "bond");
   if (typeof caseUtxo.datum !== "string")
     throw new Error("validation-trace case carries no inline datum");
-  const caseDatum = Data.from(caseUtxo.datum, SDK.Case);
+  const caseDatum = Data.from(caseUtxo.datum, SDKDa.Case);
   if (!convicts(caseDatum))
     throw new Error("validation-trace case does not convict");
   const [hubOracle, caseConfig] = await Promise.all([
@@ -155,7 +157,7 @@ export const buildValidationTraceClose = async ({
           remainder_output_index: 1n,
         },
       },
-      SDK.CaseRedeemer,
+      SDKDa.CaseRedeemer,
     );
   signer.selectWallet(lucid);
   const tx = lucid
@@ -164,13 +166,13 @@ export const buildValidationTraceClose = async ({
     .collectFrom([bond], (ctx) =>
       Data.to(
         { case_input_index: SDK.requireInputIndex(ctx, caseUtxo, "case") },
-        SDK.DisputeBondSpendRedeemer,
+        SDKDa.DisputeBondSpendRedeemer,
       ),
     )
     .mintAssets({ [threadUnit]: -1n }, () =>
       Data.to(
         { Success: { burning_token_asset_name: assetName } },
-        SDK.FraudProofComputationThreadRedeemer,
+        SDKFraudProof.FraudProofComputationThreadRedeemer,
       ),
     )
     .mintAssets({ [proofUnit]: 1n }, (ctx) =>
@@ -183,7 +185,7 @@ export const buildValidationTraceClose = async ({
             "validation-trace close thread burn",
           ),
         },
-        SDK.FraudProofTokenMintRedeemer,
+        SDKFraudProof.FraudProofTokenMintRedeemer,
       ),
     )
     .readFrom([
@@ -215,7 +217,7 @@ export const buildValidationTraceClose = async ({
         kind: "inline",
         value: Data.to(
           { fraud_prover: caseDatum.bounty_claimant },
-          SDK.FraudProofTokenDatum,
+          SDKFraudProof.FraudProofTokenDatum,
         ),
       },
       { lovelace: FRAUD_PROOF_OUTPUT_LOVELACE, [proofUnit]: 1n },

@@ -1,4 +1,4 @@
-import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk";
+import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk/da";
 
 import type {
   CommitteePromiseAdmissionResult,

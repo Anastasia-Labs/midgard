@@ -1,4 +1,4 @@
-import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
+import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 
 import { readJourneyWorkflowRows } from "./correction.js";
 import type { JourneyWatcherEvidence } from "./watcher-evidence-reader.js";

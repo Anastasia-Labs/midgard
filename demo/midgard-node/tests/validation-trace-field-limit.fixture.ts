@@ -9,7 +9,8 @@ import {
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core/codec";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
   encodeByteList,
   encodeRecomputedNativeTx,
@@ -239,7 +240,7 @@ export const fixture = async (
     },
     verdict,
   };
-  const unhashed: SDK.DaPayload = {
+  const unhashed: SDKDa.DaPayload = {
     ...base.payload,
     block_body: {
       ...base.payload.block_body,
@@ -286,7 +287,7 @@ export const fixture = async (
     ...headerCommittedRoots(roots),
   };
   const headerHash = Effect.runSync(SDK.hashBlockHeader(header));
-  const payload: SDK.DaPayload = {
+  const payload: SDKDa.DaPayload = {
     ...unhashed,
     block_body: { ...unhashed.block_body, header, header_hash: headerHash },
   };

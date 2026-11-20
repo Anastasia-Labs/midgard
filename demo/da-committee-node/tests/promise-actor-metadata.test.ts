@@ -1,6 +1,6 @@
 import { rmSync } from "node:fs";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { promiseAdmissionActorMetadata } from "../src/availability/promise-actor-metadata.js";

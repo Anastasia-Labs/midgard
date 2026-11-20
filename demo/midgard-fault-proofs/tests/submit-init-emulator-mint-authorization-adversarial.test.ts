@@ -21,8 +21,8 @@
  * inside the validator. Own file for the wasm-leak isolation its siblings cite.
  */
 import { midgardFieldCarriageBounds } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
-import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
+import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import { planFaultProofFieldOpening } from "../src/field-opening.plan-fault-proof-field-opening.js";

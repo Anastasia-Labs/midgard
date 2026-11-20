@@ -8,7 +8,9 @@ import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
   plutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { createCanonicalMidgardLedgerDescriptorResolver } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { deriveCanonicalOriginalDepositTransitionEffect } from "@al-ft/midgard-validation/transition-effect";
 import { type Assets, Data } from "@lucid-evolution/lucid";
@@ -22,7 +24,7 @@ import {
 } from "./emulator/header-fixtures.js";
 import { fixtureLedgerAfter, fixtureLedgerEntries } from "./fixture-ledger.js";
 
-export const sealDepositPayload = async (payload: SDK.DaPayload) => {
+export const sealDepositPayload = async (payload: SDKDa.DaPayload) => {
   const header = payload.block_body.header;
   const headerHash = computeHash28(SDK.encodeHeaderCbor(header)).toString(
     "hex",
@@ -35,7 +37,7 @@ export const sealDepositPayload = async (payload: SDK.DaPayload) => {
     payload: sealed,
     header,
     headerHash,
-    payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(sealed), {
+    payloadEnvelopeCbor: await wrapDaPayload(SDKDa.encodeDaPayload(sealed), {
       mode: "identity",
     }),
   };
@@ -73,7 +75,7 @@ export const depositEventsRetainedBlock = async (input: {
   prevHeaderHash: string;
   prevUtxosRoot: string;
   /** Defaults to the fixture ledger recorded for `prevUtxosRoot`. */
-  priorLedger?: readonly SDK.DaPayloadEntry[];
+  priorLedger?: readonly SDKDa.DaPayloadEntry[];
   events: readonly RetainedDepositEvent[];
   /** The L2 fee schedule the header commits; zero unless given. */
   minFeeA?: bigint;
@@ -105,7 +107,7 @@ export const depositEventsRetainedBlock = async (input: {
     throw new Error("Retained prior ledger differs from the predecessor root");
   const entries: Record<
     "deposits" | "event_to_step" | "transition_trace",
-    SDK.DaPayloadEntry[]
+    SDKDa.DaPayloadEntry[]
   > = { deposits: [], event_to_step: [], transition_trace: [] };
   const events = input.events
     .map((item) => ({ ...item, ...retainedDepositEvent(item) }))
@@ -144,7 +146,10 @@ export const depositEventsRetainedBlock = async (input: {
     base = await buildLedger();
     const eventKey: SDK.EventKey = { DepositEventKey: { deposit_id: id } };
     const stepIndex = BigInt(index);
-    entries.deposits.push([SDK.committedDepositKeyBytes(id), item.infoCbor]);
+    entries.deposits.push([
+      SDKFraudProof.committedDepositKeyBytes(id),
+      item.infoCbor,
+    ]);
     entries.event_to_step.push([
       Data.to(eventKey, SDK.EventKey),
       Data.to(
@@ -169,7 +174,7 @@ export const depositEventsRetainedBlock = async (input: {
   }
   for (const values of Object.values(entries))
     values.sort(([a], [b]) => a.localeCompare(b));
-  const root = async (domain: SDK.RootDomain, values: SDK.DaPayloadEntry[]) =>
+  const root = async (domain: SDK.RootDomain, values: SDKDa.DaPayloadEntry[]) =>
     (
       await buildCountedRoot(
         domain,

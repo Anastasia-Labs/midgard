@@ -13,7 +13,7 @@ import {
 import type {
   SharedRedeemerItemStages,
   SpendingValidator,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import { redeemerItemControlData } from "@al-ft/midgard-validation/validation-machine-data";
 import { Constr, Data } from "@lucid-evolution/lucid";
 

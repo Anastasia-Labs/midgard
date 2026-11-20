@@ -7,7 +7,7 @@ import {
   acceptedVerdictSubject,
   buildMintDeclaredAssetLimitFaultProofContracts,
   forcedVerdictSubject,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

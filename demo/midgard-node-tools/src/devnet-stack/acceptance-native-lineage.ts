@@ -1,4 +1,4 @@
-import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk";
+import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk/da";
 import { readOgmiosBlockTransaction } from "midgard-node/l1-external/kupmios-history";
 
 import type { AcceptanceNativePoint } from "./acceptance-native-boundary.js";

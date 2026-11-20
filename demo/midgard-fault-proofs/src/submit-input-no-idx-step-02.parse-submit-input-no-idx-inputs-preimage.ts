@@ -1,4 +1,5 @@
-import { InputNoIdxStep02Datum, type MidgardTxInput } from "@al-ft/midgard-sdk";
+import { type MidgardTxInput } from "@al-ft/midgard-sdk/core";
+import { InputNoIdxStep02Datum } from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 
 import { parseHex, requireRecord } from "./json-file.js";

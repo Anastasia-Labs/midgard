@@ -1,6 +1,6 @@
 /** The `unusedRedeemer` direct purpose family the submitters and prover
  * read. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 import {
   DIRECT_CLAIM_VERDICT,

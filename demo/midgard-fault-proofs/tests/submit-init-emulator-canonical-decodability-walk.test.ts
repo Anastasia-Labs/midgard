@@ -13,7 +13,7 @@ import {
   MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL,
   MIDGARD_ENVELOPE_VERDICT_MISSING_ITEM_HEADER,
   miscountedMidgardFieldPreimage,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   credentialToAddress,
   Data,

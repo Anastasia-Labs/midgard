@@ -50,7 +50,7 @@ import {
   type FollowerProjection,
 } from "@al-ft/midgard-l1-follower";
 import { SIM_ORIGIN } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Effect, Runtime } from "effect";
 
 import { stateQueueProjection } from "../../src/l1-state-queue/projection.js";

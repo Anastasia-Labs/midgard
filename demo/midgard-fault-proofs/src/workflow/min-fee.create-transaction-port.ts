@@ -1,5 +1,5 @@
 import { encodeMidgardNativeTxWitnessSetCompact } from "@al-ft/midgard-core";
-import { MIN_FEE_VIOLATION_ID } from "@al-ft/midgard-sdk";
+import { MIN_FEE_VIOLATION_ID } from "@al-ft/midgard-sdk/fraud-proof";
 import type { UTxO } from "@lucid-evolution/lucid";
 
 import { resolveFaultProofFieldPreimageCertificate } from "../field-opening.certify-fault-proof-field-carriage.js";

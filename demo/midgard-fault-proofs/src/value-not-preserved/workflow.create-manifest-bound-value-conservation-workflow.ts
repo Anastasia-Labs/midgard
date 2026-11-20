@@ -1,5 +1,5 @@
 import { decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
-import { FraudProofTokenDatum } from "@al-ft/midgard-sdk";
+import { FraudProofTokenDatum } from "@al-ft/midgard-sdk/fraud-proof";
 import {
   CML,
   coreToTxOutput,

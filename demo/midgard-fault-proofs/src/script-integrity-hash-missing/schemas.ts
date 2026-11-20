@@ -2,13 +2,15 @@ import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
   FieldCarriageSchema,
-  FieldOpeningSchema,
   ForcedLeafMembershipV1Schema,
   HeaderSchema,
   NativeTxInclusionCarriageSchema,
   NativeTxWitnessSetCompactSchema,
+} from "@al-ft/midgard-sdk/core";
+import {
+  FieldOpeningSchema,
   VerdictSubjectSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 export const ScriptIntegrityBindStateSchema = Data.Enum([

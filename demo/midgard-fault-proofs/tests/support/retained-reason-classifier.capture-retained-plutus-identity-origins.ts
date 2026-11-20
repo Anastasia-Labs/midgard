@@ -3,7 +3,8 @@ import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
   deriveMidgardForcedTxProofSource,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   CML,
   credentialToAddress,
@@ -86,7 +87,7 @@ export const captureRetainedPlutusIdentityOrigins = async (
       fixture.transaction.canonicalCbor,
     ),
   );
-  const order: SDK.TxOrderDatum = {
+  const order: SDKUsers.TxOrderDatum = {
     event: {
       id: fixture.orderKey,
       tx: {
@@ -121,7 +122,7 @@ export const captureRetainedPlutusIdentityOrigins = async (
           {
             address: address(orderPolicy),
             unit: orderUnit,
-            datumCbor: Data.to(order, SDK.TxOrderDatum),
+            datumCbor: Data.to(order, SDKUsers.TxOrderDatum),
           },
         ]),
   ];

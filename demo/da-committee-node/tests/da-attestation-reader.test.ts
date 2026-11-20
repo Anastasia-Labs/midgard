@@ -4,7 +4,7 @@ import type {
   StoredOutput,
   UtxoRead,
 } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import {
   credentialToAddress,
   Data,

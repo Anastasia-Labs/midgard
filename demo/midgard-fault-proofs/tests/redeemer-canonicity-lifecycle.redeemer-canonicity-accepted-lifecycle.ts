@@ -3,7 +3,7 @@ import {
   encodeMidgardNativeTxWitnessSetCompact,
   midgardFieldCommitment,
 } from "@al-ft/midgard-core";
-import { acceptedVerdictSubject } from "@al-ft/midgard-sdk";
+import { acceptedVerdictSubject } from "@al-ft/midgard-sdk/fraud-proof";
 import { getAddressDetails } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

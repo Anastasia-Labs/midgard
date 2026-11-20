@@ -1,13 +1,15 @@
 import {
+  requireInputIndex,
+  requireOwnSpendPurpose,
+  requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
   InputSetUniquenessStep03DatumSchema,
   InputSetUniquenessStep03SpendRedeemerSchema,
   type InputSetUniquenessStep03State,
   InputSetUniquenessStep04DatumSchema,
   MIDGARD_FIELD_INDEX,
-  requireInputIndex,
-  requireOwnSpendPurpose,
-  requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

@@ -1,5 +1,5 @@
 import "@al-ft/midgard-core/error-format";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
 import "@lucid-evolution/lucid";
 import "effect";
 import "../database/blocks.js";

@@ -1,5 +1,6 @@
 import { openAvailabilityOperationJournal } from "@al-ft/midgard-core/availability-operation-journal";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
   type LucidEvolution,
   paymentCredentialOf,
@@ -112,7 +113,7 @@ export const availabilityResponderFromConfig = async (
       hubOraclePolicyId: contracts.hubOracle.policyId,
     }),
   );
-  const deployment: SDK.DaAvailabilityDeployment = {
+  const deployment: SDKDa.DaAvailabilityDeployment = {
     contracts: {
       ...contracts,
       correctionLock: correctionLockValidatorFromDeploymentInfo(
@@ -175,7 +176,7 @@ export const availabilityResponderFromConfig = async (
         journal,
         stateQueuePolicyId: deployment.contracts.stateQueue.policyId,
         minimumConfirmationDepth: config.finalityDepth,
-        transactionLimits: SDK.daAvailabilityOperationLimits(
+        transactionLimits: SDKDa.daAvailabilityOperationLimits(
           lucid,
           deployment.parameters,
         ),

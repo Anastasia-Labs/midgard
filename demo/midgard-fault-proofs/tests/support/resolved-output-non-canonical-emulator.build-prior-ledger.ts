@@ -14,7 +14,7 @@ import {
   AddressData,
   addressDataFromBech32,
   type RejectionReason,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";

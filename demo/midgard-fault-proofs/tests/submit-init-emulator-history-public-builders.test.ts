@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { CML, Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { afterAll, expect, it } from "vitest";
@@ -41,9 +42,9 @@ afterAll(() => {
 
 const publicContracts = (
   h: Awaited<ReturnType<typeof setupHistoryPair>>,
-): SDK.UserHistoryContracts => {
+): SDKUsers.UserHistoryContracts => {
   const histories = h.applied.map(
-    (a, i): SDK.EventHistoryContracts => ({
+    (a, i): SDKUsers.EventHistoryContracts => ({
       recipe: h.recipes[i]!,
       list: {
         ...SDK.makeAuthenticatedValidator(
@@ -98,7 +99,7 @@ it.each([
     const withdrawal = historyPairPayloads(h)[1]!;
     if (!("WithdrawalPayload" in withdrawal))
       throw new Error("Expected withdrawal");
-    const depositConfig: SDK.SubmitDepositConfig = {
+    const depositConfig: SDKUsers.SubmitDepositConfig = {
       l2Address: h.wallet.address,
       l2Datum: external ? Data.to("ab".repeat(600)) : null,
       lovelace: 20_000_000n,
@@ -109,7 +110,7 @@ it.each([
         ? { depositMinting: h.scripts[0]! }
         : undefined,
     };
-    const withdrawalConfig: SDK.SubmitWithdrawalConfig = {
+    const withdrawalConfig: SDKUsers.SubmitWithdrawalConfig = {
       body: withdrawal.WithdrawalPayload.event.info.body,
       signature: withdrawal.WithdrawalPayload.event.info.signature,
       refundAddress: withdrawal.WithdrawalPayload.refund_address,
@@ -125,14 +126,14 @@ it.each([
     const prepared =
       kind === "Deposit"
         ? await Effect.runPromise(
-            SDK.prepareDepositSubmissionProgram(
+            SDKUsers.prepareDepositSubmissionProgram(
               h.lucid,
               contracts,
               depositConfig,
             ),
           )
         : await Effect.runPromise(
-            SDK.prepareWithdrawalSubmissionProgram(
+            SDKUsers.prepareWithdrawalSubmissionProgram(
               h.lucid,
               contracts,
               withdrawalConfig,
@@ -140,12 +141,12 @@ it.each([
           );
     const payload = Data.from(
       prepared.request.payloadCbor,
-      SDK.EventHistoryPayload,
+      SDKUsers.EventHistoryPayload,
     );
     expect(prepared.plan.kind).toBe(external ? "External" : "Inline");
     let externalData: UTxO | undefined;
     if (external) {
-      const publication = await SDK.buildEventHistoryPublication(
+      const publication = await SDKUsers.buildEventHistoryPublication(
         prepared.context,
         prepared.request.payloadCbor,
         prepared.request.reclaimAuth,
@@ -160,13 +161,17 @@ it.each([
     const built =
       kind === "Deposit"
         ? await Effect.runPromise(
-            SDK.buildUnsignedDepositTxWithMetadataProgram(h.lucid, contracts, {
-              ...depositConfig,
-              externalData,
-            }),
+            SDKUsers.buildUnsignedDepositTxWithMetadataProgram(
+              h.lucid,
+              contracts,
+              {
+                ...depositConfig,
+                externalData,
+              },
+            ),
           )
         : await Effect.runPromise(
-            SDK.buildUnsignedWithdrawalTxWithMetadataProgram(
+            SDKUsers.buildUnsignedWithdrawalTxWithMetadataProgram(
               h.lucid,
               contracts,
               { ...withdrawalConfig, externalData },
@@ -177,7 +182,7 @@ it.each([
     expect(cml.body().withdrawals()?.len()).toBe(1);
     expect(built.metadata.nonceInput.txHash).toBe(nonce.txHash);
     const txHash = await h.submit(`${kind}-public-admission`, built.tx);
-    const witness = await SDK.fetchEventHistoryWitness(
+    const witness = await SDKUsers.fetchEventHistoryWitness(
       h.lucid,
       {
         policyId: h.applied[index]!.policyId,
@@ -195,7 +200,7 @@ it.each([
     );
     expect(witness.payload).toEqual(payload);
     expect(witness.retainedDataUtxo !== undefined).toBe(external);
-    const captured = SDK.captureEventHistoryWitness(
+    const captured = SDKUsers.captureEventHistoryWitness(
       witness,
       h.applied[index]!.policyId,
       kind,
@@ -203,16 +208,18 @@ it.each([
     expect(captured.originalAssets.get("")?.get("")).toBe(
       kind === "Deposit" ? 20_000_000n : prepared.request.assets.lovelace,
     );
-    const deployment = SDK.eventHistoryDeploymentFromContracts(
+    const deployment = SDKUsers.eventHistoryDeploymentFromContracts(
       kind === "Deposit"
         ? contracts.eventHistory!.deposit
         : contracts.eventHistory!.withdrawal,
     );
     const read = () =>
       kind === "Deposit"
-        ? Effect.runPromise(SDK.fetchDepositUTxOsProgram(h.lucid, deployment))
+        ? Effect.runPromise(
+            SDKUsers.fetchDepositUTxOsProgram(h.lucid, deployment),
+          )
         : Effect.runPromise(
-            SDK.fetchWithdrawalUTxOsProgram(h.lucid, deployment),
+            SDKUsers.fetchWithdrawalUTxOsProgram(h.lucid, deployment),
           );
     const before = await read();
     expect(before).toHaveLength(1);
@@ -266,7 +273,7 @@ it.each([
 it("quotes structural ADA without adding it to the requested deposit Value", async () => {
   const h = await setupHistoryPair({ blueprint, records });
   h.emulator.awaitSlot(100);
-  const config: SDK.SubmitDepositConfig = {
+  const config: SDKUsers.SubmitDepositConfig = {
     l2Address: h.wallet.address,
     l2Datum: Data.to("ab".repeat(300)),
     lovelace: 1_500_000n,
@@ -279,11 +286,15 @@ it("quotes structural ADA without adding it to the requested deposit Value", asy
     },
   };
   const prepared = await Effect.runPromise(
-    SDK.prepareDepositSubmissionProgram(h.lucid, publicContracts(h), config),
+    SDKUsers.prepareDepositSubmissionProgram(
+      h.lucid,
+      publicContracts(h),
+      config,
+    ),
   );
   expect(prepared.request.structuralLovelace).toBeGreaterThan(0n);
   const built = await Effect.runPromise(
-    SDK.buildUnsignedDepositTxWithMetadataProgram(
+    SDKUsers.buildUnsignedDepositTxWithMetadataProgram(
       h.lucid,
       publicContracts(h),
       config,
@@ -297,9 +308,9 @@ it("quotes structural ADA without adding it to the requested deposit Value", asy
     prepared.request.assets.lovelace - prepared.request.structuralLovelace,
   ).toBe(config.lovelace);
   const deposits = await Effect.runPromise(
-    SDK.fetchDepositUTxOsProgram(
+    SDKUsers.fetchDepositUTxOsProgram(
       h.lucid,
-      SDK.eventHistoryDeploymentFromContracts(
+      SDKUsers.eventHistoryDeploymentFromContracts(
         publicContracts(h).eventHistory!.deposit,
       ),
     ),
@@ -314,7 +325,7 @@ it("quotes structural ADA without adding it to the requested deposit Value", asy
 it("refuses external admission before actual publication and preserves the nonce", async () => {
   const h = await setupHistoryPair({ blueprint, records });
   const nonce = h.eventNonces[0]!;
-  const config: SDK.SubmitDepositConfig = {
+  const config: SDKUsers.SubmitDepositConfig = {
     l2Address: h.wallet.address,
     l2Datum: Data.to("ab".repeat(600)),
     lovelace: 20_000_000n,
@@ -328,7 +339,7 @@ it("refuses external admission before actual publication and preserves the nonce
   };
   await expect(
     Effect.runPromise(
-      SDK.buildUnsignedDepositTxWithMetadataProgram(
+      SDKUsers.buildUnsignedDepositTxWithMetadataProgram(
         h.lucid,
         publicContracts(h),
         config,
@@ -346,12 +357,12 @@ it.each(["Deposit", "Withdrawal"] as const)(
     const withdrawal = historyPairPayloads(h)[1]!;
     if (!("WithdrawalPayload" in withdrawal))
       throw new Error("Expected withdrawal");
-    const attempts: SDK.UserSubmissionAttempt[] = [];
-    const view: SDK.UserL1View = {
+    const attempts: SDKUsers.UserSubmissionAttempt[] = [];
+    const view: SDKUsers.UserL1View = {
       lucid: h.lucid,
       indexedSlot: async () => h.emulator.slot,
     };
-    const options: SDK.UserSubmissionOptions = {
+    const options: SDKUsers.UserSubmissionOptions = {
       store: {
         latest: async () => attempts.at(-1),
         append: async (attempt) => {
@@ -370,7 +381,7 @@ it.each(["Deposit", "Withdrawal"] as const)(
     const nonce = h.eventNonces[kind === "Deposit" ? 0 : 1]!;
     const outcome = await Effect.runPromise(
       kind === "Deposit"
-        ? SDK.submitDepositProgram(
+        ? SDKUsers.submitDepositProgram(
             view,
             contracts,
             {
@@ -383,7 +394,7 @@ it.each(["Deposit", "Withdrawal"] as const)(
             },
             options,
           )
-        : SDK.submitWithdrawalProgram(
+        : SDKUsers.submitWithdrawalProgram(
             view,
             contracts,
             {
@@ -403,7 +414,9 @@ it.each(["Deposit", "Withdrawal"] as const)(
     ]);
     expect(outcome.publicationTxHash).toBe(attempts[0]!.txHash);
     expect(outcome.admissionTxHash).toBe(attempts[1]!.txHash);
-    expect(outcome.eventId).toBe(SDK.outputReferenceToPlutusDataCbor(nonce));
+    expect(outcome.eventId).toBe(
+      SDKUsers.outputReferenceToPlutusDataCbor(nonce),
+    );
     expect(await h.lucid.utxosByOutRef([nonce])).toHaveLength(0);
   },
   180_000,
@@ -413,7 +426,7 @@ it("refuses a public deposit that cannot fund future pointer changes with the re
   const h = await setupHistoryPair({ blueprint, records });
   await expect(
     Effect.runPromise(
-      SDK.prepareDepositSubmissionProgram(h.lucid, publicContracts(h), {
+      SDKUsers.prepareDepositSubmissionProgram(h.lucid, publicContracts(h), {
         l2Address: h.wallet.address,
         l2Datum: Data.to("ab".repeat(300)),
         lovelace: 1_500_000n,

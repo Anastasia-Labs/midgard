@@ -9,9 +9,7 @@ import {
 } from "@al-ft/midgard-core/codec/forced";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import {
-  DA_PAYLOAD_VERSION,
   EMPTY_MERKLE_TREE_ROOT,
-  encodeDaPayload,
   EventKeySchema,
   EventToStepValueSchema,
   ForcedInclusionTxV1Schema,
@@ -20,7 +18,8 @@ import {
   ROOT_DOMAINS,
   TransitionStepSchema,
   ValidationTraceDescriptorSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { DA_PAYLOAD_VERSION, encodeDaPayload } from "@al-ft/midgard-sdk/da";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";

@@ -3,7 +3,10 @@
  * separate transactions. Composed into one, the timeout withdrawal refuses;
  * submitted apart, both land in the same block.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKOperators from "@al-ft/midgard-sdk/operators";
+import type * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   type Assets,
   Data,
@@ -83,7 +86,7 @@ const directoryGenesis = (
       activeOperators.spendingScriptAddress,
       {
         lovelace: BOND_LOVELACE,
-        [SDK.activeOperatorNodeUnit(
+        [SDKOperators.activeOperatorNodeUnit(
           activeOperators.policyId,
           OPERATOR_KEY_HASH,
         )]: 1n,
@@ -121,7 +124,7 @@ const directoryGenesis = (
 
 const directoryReferenceScripts = (
   contracts: SDK.MidgardValidators,
-): readonly SDK.ReferenceScriptTarget[] => [
+): readonly SDKStateQueue.ReferenceScriptTarget[] => [
   {
     name: "active-operators spending",
     script: contracts.activeOperators.spendingScript,
@@ -148,11 +151,11 @@ const forcedRetirementConfig = async (
   f: AvailabilityFixture,
   validFrom: bigint,
   validTo: bigint,
-): Promise<SDK.RetireOperatorTxConfig> => {
+): Promise<SDKOperators.RetireOperatorTxConfig> => {
   const directory = await Effect.runPromise(
-    SDK.fetchOperatorDirectorySnapshotProgram(f.lucid, f.contracts),
+    SDKOperators.fetchOperatorDirectorySnapshotProgram(f.lucid, f.contracts),
   );
-  const witnesses = SDK.deriveRetireOperatorWitnesses({
+  const witnesses = SDKOperators.deriveRetireOperatorWitnesses({
     snapshot: directory,
     contracts: f.contracts,
     operatorKeyHash: OPERATOR_KEY_HASH,
@@ -178,10 +181,13 @@ const forcedRetirementConfig = async (
     activeNodeUnit: witnesses.activeNodeUnit,
     retiredNodeUnit: witnesses.retiredNodeUnit,
     bondUnlockTime: witnesses.bondUnlockTime,
-    retiredNodeLovelace: SDK.retiredOperatorBondTranche("forced-inactivity", {
-      requiredBondLovelace: BOND_LOVELACE,
-      inactivitySlashingPenaltyLovelace: INACTIVITY_SLASHING_PENALTY_LOVELACE,
-    }),
+    retiredNodeLovelace: SDKOperators.retiredOperatorBondTranche(
+      "forced-inactivity",
+      {
+        requiredBondLovelace: BOND_LOVELACE,
+        inactivitySlashingPenaltyLovelace: INACTIVITY_SLASHING_PENALTY_LOVELACE,
+      },
+    ),
     mode: "forced-inactivity",
     inactivitySlashingPenaltyLovelace: INACTIVITY_SLASHING_PENALTY_LOVELACE,
     schedulerSync: witnesses.schedulerSync,
@@ -192,11 +198,11 @@ const forcedRetirementConfig = async (
 
 const directoryState = async (f: AvailabilityFixture) => {
   const directory = await Effect.runPromise(
-    SDK.fetchOperatorDirectorySnapshotProgram(f.lucid, f.contracts),
+    SDKOperators.fetchOperatorDirectorySnapshotProgram(f.lucid, f.contracts),
   );
   return {
-    active: SDK.findNodeByKey(directory.active, OPERATOR_KEY_HASH),
-    retired: SDK.findNodeByKey(directory.retired, OPERATOR_KEY_HASH),
+    active: SDKOperators.findNodeByKey(directory.active, OPERATOR_KEY_HASH),
+    retired: SDKOperators.findNodeByKey(directory.retired, OPERATOR_KEY_HASH),
   };
 };
 
@@ -213,7 +219,7 @@ describe("availability-challenge timeout beside an operator directory change", (
     const s = await attestAndOpen(f, d);
     const terminal = await expireAndSettle(f, d, s);
     const pool = await f.getPool();
-    const slash = SDK.planDaBondPoolSlash({
+    const slash = SDKDa.planDaBondPoolSlash({
       poolLovelace: pool.assets.lovelace,
       parameters: f.parameters,
     });
@@ -221,7 +227,7 @@ describe("availability-challenge timeout beside an operator directory change", (
     expect(slash.feePart).toBeLessThan(SLASHING_PENALTY_LOVELACE);
     const remaining = Data.from(
       terminal.datum!,
-      SDK.DaAvailabilityTerminalAccumulatorDatum,
+      SDKDa.DaAvailabilityTerminalAccumulatorDatum,
     ).remaining_challenger_lovelace;
     const validFrom = BigInt(f.emulator.now());
     const validTo = validFrom + 60_000n;
@@ -234,7 +240,7 @@ describe("availability-challenge timeout beside an operator directory change", (
       challengerOutputLovelace:
         remaining + f.parameters.challenge_record_lovelace + slash.payout,
     })
-      .compose(SDK.buildRetireOperatorTx(retirement))
+      .compose(SDKOperators.buildRetireOperatorTx(retirement))
       .pay.ToAddress(f.responder.address, {
         lovelace: INACTIVITY_SLASHING_PENALTY_LOVELACE,
       })
@@ -252,7 +258,7 @@ describe("availability-challenge timeout beside an operator directory change", (
 
     // Apart, both land in the same block.
     const built = await Effect.runPromise(
-      SDK.buildTimeoutDaAvailabilityChallengeTxProgram(
+      SDKDa.buildTimeoutDaAvailabilityChallengeTxProgram(
         f.lucid,
         d,
         await timeoutParams(f, s, terminal, pool),
@@ -261,7 +267,7 @@ describe("availability-challenge timeout beside an operator directory change", (
     const timeout = await built.tx.sign.withWallet().complete();
     f.lucid.selectWallet.fromPrivateKey(submitter.privateKey);
     const { tx } = await Effect.runPromise(
-      SDK.buildUnsignedRetireOperatorTxProgram({
+      SDKOperators.buildUnsignedRetireOperatorTxProgram({
         ...retirement,
         walletInputs: await f.lucid.wallet().getUtxos(),
       }),

@@ -4,7 +4,8 @@
  * stops accepting appends. The strike validator checks neither; both are
  * this node's policy.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Effect, Either } from "effect";
 
 import type { LandedStateQueue } from "../l1-state-queue/index.js";
@@ -57,7 +58,7 @@ export const stateQueueStrikeFactsOf = (
     if (node.daStatus === "Unattested" && node.blockTimeMs !== null)
       closesAt = minOf(
         closesAt,
-        node.blockTimeMs + SDK.DA_ATTESTATION_TIMEOUT_MS,
+        node.blockTimeMs + SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS,
       );
   return {
     tailBlockTimeMs: tail === queue.root ? null : tail.blockTimeMs,

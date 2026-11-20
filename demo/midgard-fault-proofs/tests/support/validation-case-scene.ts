@@ -17,14 +17,16 @@ import {
 } from "@al-ft/midgard-core";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import {
-  appendValidationCaseConfigInitialization,
-  buildValidationCaseContracts,
   HUB_ORACLE_ASSET_NAME,
   parseFaultProofBlueprint,
+} from "@al-ft/midgard-sdk/core";
+import {
+  appendValidationCaseConfigInitialization,
   protocolTreasuryAddress,
   VALIDATION_CASE_CONFIG_ASSET_NAME,
   validationCaseConfigAddress,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/da";
+import { buildValidationCaseContracts } from "@al-ft/midgard-sdk/fraud-proof";
 import {
   Constr,
   Data,

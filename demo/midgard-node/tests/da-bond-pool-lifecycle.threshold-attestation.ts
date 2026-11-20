@@ -1,5 +1,6 @@
 import { DEPLOYMENT_PROFILES } from "@al-ft/midgard-core/deployment-profile";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { CML, Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";
@@ -83,7 +84,7 @@ export const assertPoolSpendRefusal = async (
 
 /** Pool datum, lovelace and the full asset set. */
 export const poolView = (pool: UTxO) => ({
-  datum: SDK.decodeDaBondPoolDatum(pool.datum!),
+  datum: SDKDa.decodeDaBondPoolDatum(pool.datum!),
   lovelace: pool.assets.lovelace,
   units: Object.keys(pool.assets).sort(),
 });
@@ -105,7 +106,7 @@ export const topUpProgram = async (
   amount: bigint,
   options: { skipMinimumPrecheck?: true } = {},
 ) =>
-  SDK.buildTopUpDaBondPoolTxProgram(f.lucid, {
+  SDKDa.buildTopUpDaBondPoolTxProgram(f.lucid, {
     poolValidator: f.contracts.daBondPool,
     parameters: f.parameters,
     pool: { utxo: await f.getPool() },
@@ -123,11 +124,11 @@ export const topUpProgram = async (
  */
 export const thresholdAttestation = async (
   f: AvailabilityFixture,
-): Promise<SDK.DaAttestationUtxo> => {
+): Promise<SDKDa.DaAttestationUtxo> => {
   const { lucid, contracts } = f;
   lucid.selectWallet.fromPrivateKey(f.responder.privateKey);
   const init = await Effect.runPromise(
-    SDK.incompleteInitDaAttestationTxProgram(lucid, contracts, {
+    SDKDa.incompleteInitDaAttestationTxProgram(lucid, contracts, {
       daParamsUtxo: f.daParamsUtxo,
       daParamsDatum: f.daParamsDatum,
       target: f.target,
@@ -140,21 +141,21 @@ export const thresholdAttestation = async (
     }),
   );
   await f.submit("attestation init", init, true);
-  const unit = SDK.daAttestationUnit(
+  const unit = SDKDa.daAttestationUnit(
     contracts.daAttestation,
     f.target.headerHash,
   );
-  const current = async (): Promise<SDK.DaAttestationUtxo> => {
+  const current = async (): Promise<SDKDa.DaAttestationUtxo> => {
     const [utxo] = await lucid.utxosAtWithUnit(
       contracts.daAttestation.spendingScriptAddress,
       unit,
     );
     if (!utxo?.datum) throw new Error("Missing attestation");
-    return { utxo, datum: Data.from(utxo.datum, SDK.DaAttestationDatum) };
+    return { utxo, datum: Data.from(utxo.datum, SDKDa.DaAttestationDatum) };
   };
-  const message = SDK.daAvailabilityAttestationMessage(f.commitment);
+  const message = SDKDa.daAvailabilityAttestationMessage(f.commitment);
   const add = await Effect.runPromise(
-    SDK.incompleteAddDaAttestationSignaturesTxProgram(lucid, contracts, {
+    SDKDa.incompleteAddDaAttestationSignaturesTxProgram(lucid, contracts, {
       daParamsUtxo: f.daParamsUtxo,
       daParamsDatum: f.daParamsDatum,
       attestation: await current(),
@@ -174,27 +175,31 @@ export const thresholdAttestation = async (
 /** The SDK Apply against the live pool (re-fetched on every build, H8). */
 export const applyProgram = (
   f: AvailabilityFixture,
-  attestation: SDK.DaAttestationUtxo,
+  attestation: SDKDa.DaAttestationUtxo,
   options: { skipPoolPrecheck?: true } = {},
 ) =>
-  SDK.incompleteApplyDaAttestationToStateQueueTxProgram(f.lucid, f.contracts, {
-    daParamsUtxo: f.daParamsUtxo,
-    daParamsDatum: f.daParamsDatum,
-    attestation,
-    target: f.target,
-    referenceScripts: f.daReferences,
-    availabilityParameters: f.parameters,
-    validityRange: {
-      validFrom: BigInt(f.emulator.now()),
-      validTo: BigInt(f.emulator.now() + 60_000),
+  SDKDa.incompleteApplyDaAttestationToStateQueueTxProgram(
+    f.lucid,
+    f.contracts,
+    {
+      daParamsUtxo: f.daParamsUtxo,
+      daParamsDatum: f.daParamsDatum,
+      attestation,
+      target: f.target,
+      referenceScripts: f.daReferences,
+      availabilityParameters: f.parameters,
+      validityRange: {
+        validFrom: BigInt(f.emulator.now()),
+        validTo: BigInt(f.emulator.now() + 60_000),
+      },
+      ...options,
     },
-    ...options,
-  });
+  );
 
 /** The DA attestation mint (`ApplyToStateQueue`) is the refusing check. */
 export const assertApplyRefusedByDaAttestationMint = async (
   f: AvailabilityFixture,
-  attestation: SDK.DaAttestationUtxo,
+  attestation: SDKDa.DaAttestationUtxo,
 ) => {
   const tx = await Effect.runPromise(
     applyProgram(f, attestation, { skipPoolPrecheck: true }),
@@ -211,7 +216,7 @@ export const assertApplyRefusedByDaAttestationMint = async (
 /** Lands Apply and asserts the node is `Attested{commitment_hash}`. */
 export const applyAndAssertAttested = async (
   f: AvailabilityFixture,
-  attestation: SDK.DaAttestationUtxo,
+  attestation: SDKDa.DaAttestationUtxo,
 ) => {
   const poolBefore = await f.getPool();
   const apply = await Effect.runPromise(applyProgram(f, attestation));
@@ -227,7 +232,7 @@ export const applyAndAssertAttested = async (
   );
   expect(node.da_attestation).toEqual({
     Attested: {
-      commitment_hash: SDK.daAvailabilityCommitmentHash(f.commitment),
+      commitment_hash: SDKDa.daAvailabilityCommitmentHash(f.commitment),
     },
   });
   // The pool is a reference input: Apply neither spends nor changes it.

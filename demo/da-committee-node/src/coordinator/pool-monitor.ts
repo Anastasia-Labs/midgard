@@ -7,7 +7,7 @@
  * reads the pool after every tick and before every apply; each read lands
  * here.
  */
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/da";
 
 import type { CommitteeTickRunnerDeps } from "../tick-runner.js";
 import type { OnChainCoordinatorHooks } from "./factory.js";

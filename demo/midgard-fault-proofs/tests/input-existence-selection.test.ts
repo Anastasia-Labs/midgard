@@ -7,7 +7,8 @@ import {
   MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
   midgardFieldStride,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   credentialToAddress,
   type MintingPolicy,
@@ -318,7 +319,9 @@ describe("input-existence workflow field prerequisites", () => {
               outputIndex: index,
               address,
               assets: { lovelace: 2_000_000n },
-              datum: SDK.fieldPreimagePublicationDatumCbor(publication.bytes),
+              datum: SDKStateQueue.fieldPreimagePublicationDatumCbor(
+                publication.bytes,
+              ),
             }),
           ),
           certificate: undefined,

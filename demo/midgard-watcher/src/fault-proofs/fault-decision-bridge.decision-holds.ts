@@ -1,6 +1,6 @@
 import { createValidationTraceReplayHolds } from "@al-ft/midgard-fault-proofs/validation-trace-dispute/replay-hold";
 import type { HeaderDecision } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
-import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "@al-ft/midgard-sdk";
+import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "@al-ft/midgard-sdk/core";
 
 import type { WatcherAuthenticatedStateQueueObservation } from "../indexers/authenticated-state-queue-observation.js";
 import {

@@ -1,5 +1,6 @@
 import type { TimeoutCorrectionJournal } from "@al-ft/midgard-fault-proofs/remove-unattested-block";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Cause, Effect, Exit, FiberId, Ref, Runtime } from "effect";
 import { UnknownException } from "effect/Cause";
 import { describe, expect, it } from "vitest";
@@ -103,7 +104,7 @@ describe("attestation-timeout correction step", () => {
     expect(attestationTimeoutCorrectionReadinessBounds(10_000)).toEqual(
       attestationTimeoutCorrectionReadinessBounds(10_000, {
         maxValidityRangeMs: SDK.MAX_VALIDITY_RANGE_LENGTH_MS,
-        daAttestationTimeoutMs: SDK.DA_ATTESTATION_TIMEOUT_MS,
+        daAttestationTimeoutMs: SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS,
       }),
     );
   });

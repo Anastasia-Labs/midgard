@@ -1,4 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { Effect } from "effect";
 
 import { isRetryableProviderError } from "../provider-retry.js";

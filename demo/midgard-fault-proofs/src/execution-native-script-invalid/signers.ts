@@ -9,7 +9,7 @@ import {
   emptyMidgardValidationMerkleFrontier,
   type MidgardValidationMerkleFrontier,
 } from "@al-ft/midgard-core";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 export type NativeSignerSet = {
   /** Each address witness's key hash, in field order. */

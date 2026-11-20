@@ -2,7 +2,7 @@
  * Open scene: it retires voluntarily, out of the active list into the
  * retired list, and once its bond unlocks it recovers that bond, which takes
  * it out of the retired list as well. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/operators";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

@@ -6,7 +6,8 @@ import {
   encodeTransitionIntegerCbor,
   encodeTransitionStepCbor,
 } from "@al-ft/midgard-fault-proofs/block-replay";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { encodeMidgardCekCardanoFlatProgram } from "@al-ft/midgard-validation/cek-program";
 import { MidgardRedeemerTag } from "@al-ft/midgard-validation/midgard-redeemers";
 import {
@@ -153,7 +154,7 @@ export const normalFixture = async (
       })),
     )
   ).toString("hex");
-  const descriptor = SDK.validationTraceDescriptorDataFromCore(
+  const descriptor = SDKDa.validationTraceDescriptorDataFromCore(
     placeholderValidationTraceDescriptorV1(
       {
         eventKeyCbor: Buffer.from(eventCbor, "hex"),
@@ -187,7 +188,7 @@ export const normalFixture = async (
     prevUtxosRoot: prior,
     utxosRoot: post,
   };
-  const payload: SDK.DaPayload = {
+  const payload: SDKDa.DaPayload = {
     version: 1n,
     block_body: {
       header,
@@ -234,7 +235,7 @@ export const normalFixture = async (
     payload: bound,
     sourceKey,
     transactionId: tx.txId.toString("hex"),
-    imported: (payload: SDK.DaPayload = bound) =>
+    imported: (payload: SDKDa.DaPayload = bound) =>
       verdict(payload, {
         parentUtxosRoot: prior,
         parentEntries: [{ outref: spent, output }],

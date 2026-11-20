@@ -6,7 +6,7 @@ import {
   MIDGARD_FIELD_COUNT,
   MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 
 import { prepareDirectScriptMaterial } from "../../src/direct-script-derivation/material.js";

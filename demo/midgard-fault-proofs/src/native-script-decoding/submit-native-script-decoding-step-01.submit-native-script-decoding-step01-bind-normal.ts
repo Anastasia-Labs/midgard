@@ -1,16 +1,18 @@
 import {
-  acceptedVerdictSubject,
   HUB_ORACLE_ASSET_NAME,
-  type NativeScriptDecodingBindState,
-  NativeScriptDecodingStep01SpendRedeemer,
-  NativeScriptDecodingStep02Datum,
   type NativeTxInclusionCarriage,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
   requireWithdrawalRedeemerIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  acceptedVerdictSubject,
+  type NativeScriptDecodingBindState,
+  NativeScriptDecodingStep01SpendRedeemer,
+  NativeScriptDecodingStep02Datum,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   credentialToAddress,

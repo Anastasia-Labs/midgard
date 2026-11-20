@@ -8,7 +8,8 @@ import {
   encodeMidgardForcedTxCanonical,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -80,8 +81,8 @@ const fixture = async (present: boolean, index: bigint, consumed = false) => {
     SDK.OutputReference,
   );
   const sourceValue = Data.to(leaf, SDK.ForcedInclusionTxV1);
-  const entries: SDK.DaPayloadEntry[] = [[sourceKey, sourceValue]];
-  const preimages: SDK.DaPayloadEntry[] = [
+  const entries: SDKDa.DaPayloadEntry[] = [[sourceKey, sourceValue]];
+  const preimages: SDKDa.DaPayloadEntry[] = [
     [
       sourceKey,
       encodeMidgardForcedTxCanonical(
@@ -99,10 +100,10 @@ const fixture = async (present: boolean, index: bigint, consumed = false) => {
     pre_utxos_root: finalRoot,
     post_utxos_root: finalRoot,
   };
-  const traces: SDK.DaPayloadEntry[] = [
+  const traces: SDKDa.DaPayloadEntry[] = [
     [Data.to(targetIndex), Data.to(step, SDK.TransitionStep)],
   ];
-  const events: SDK.DaPayloadEntry[] = [
+  const events: SDKDa.DaPayloadEntry[] = [
     [
       Data.to(base.eventKey, SDK.EventKey),
       Data.to(
@@ -176,7 +177,10 @@ const fixture = async (present: boolean, index: bigint, consumed = false) => {
       ),
     ]);
   }
-  const rootFor = async (domain: SDK.RootDomain, rows: SDK.DaPayloadEntry[]) =>
+  const rootFor = async (
+    domain: SDK.RootDomain,
+    rows: SDKDa.DaPayloadEntry[],
+  ) =>
     buildCountedRoot(
       domain,
       rows.map(([key, value]) => ({
@@ -223,7 +227,7 @@ const fixture = async (present: boolean, index: bigint, consumed = false) => {
       event_to_step: events,
       validation_traces: validations,
     },
-  } as SDK.DaPayload;
+  } as SDKDa.DaPayload;
   const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
     observation: authenticatedHeaderObservation(predecessorFixture, {
       header,

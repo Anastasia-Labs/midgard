@@ -1,5 +1,6 @@
 import { DEPLOYMENT_PROFILES } from "@al-ft/midgard-core/deployment-profile";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKOperators from "@al-ft/midgard-sdk/operators";
+import * as SDK from "@al-ft/midgard-sdk/users";
 import {
   Emulator,
   generateEmulatorAccount,
@@ -188,7 +189,9 @@ describe("the gate before each of the drill's user events", () => {
   // landing.
   const dueAtCommitLanding =
     commitLandsMs - timing.negligenceTimeoutMs - SHIFT_START_MS;
-  const undelivered = (dueMs: number): SDK.NeglectedUserEventClaim => ({
+  const undelivered = (
+    dueMs: number,
+  ): SDKOperators.NeglectedUserEventClaim => ({
     kind: "Deposit",
     utxo: {
       txHash: "ab".repeat(32),

@@ -25,7 +25,7 @@ import {
   type SqlTx,
 } from "@al-ft/midgard-l1-follower";
 import { eventKeyOfId } from "@al-ft/midgard-l1-follower/events";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/users";
 import type { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 

@@ -3,10 +3,10 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   CML,
-  credentialToAddress,
   type LucidEvolution,
   type Script,
   type UTxO,
@@ -26,6 +26,13 @@ import {
 import { assertTimeoutCorrectionExclusion } from "../src/remove-unattested-block.supersede-timeout-correction-attempts.js";
 import { DEFAULT_CONFIRMATION_POLL_MS } from "../src/runtime.js";
 import { createSupersededAttemptReadSchedule } from "../src/workflow/superseded-attempt-read-schedule.js";
+import {
+  address,
+  h,
+  node,
+  tx,
+  utxo,
+} from "./remove-unattested-block-submit.fixture.js";
 import { emulatorDoubleSpendRefusal } from "./support/emulator/double-spend-refusal.js";
 
 const seams = vi.hoisted(() => ({
@@ -36,12 +43,11 @@ const seams = vi.hoisted(() => ({
   reference: vi.fn(),
   hub: vi.fn(),
 }));
-vi.mock("@al-ft/midgard-sdk", async (original) => {
-  const actual = await original<typeof SDK>();
+vi.mock("@al-ft/midgard-sdk/core", async (original) => {
+  const actual = await original<typeof import("@al-ft/midgard-sdk/core")>();
   const { Effect } = await import("effect");
   return {
     ...actual,
-    fetchSortedStateQueueUTxOsProgram: () => Effect.succeed(seams.queue()),
     fetchCorrectionLockUTxOProgram: () => Effect.succeed(seams.lock()),
     getStateQueueNodeFromStateQueueDatum: (datum: SDK.LinkedListNodeView) =>
       Effect.succeed({
@@ -52,6 +58,15 @@ vi.mock("@al-ft/midgard-sdk", async (original) => {
             ? { Attested: { commitment_hash: "aa".repeat(32) } }
             : SDK.NO_DA_ATTESTATION,
       }),
+  };
+});
+vi.mock("@al-ft/midgard-sdk/state-queue", async (original) => {
+  const actual =
+    await original<typeof import("@al-ft/midgard-sdk/state-queue")>();
+  const { Effect } = await import("effect");
+  return {
+    ...actual,
+    fetchSortedStateQueueUTxOsProgram: () => Effect.succeed(seams.queue()),
     incompletePruneUnattestedBlockDescendantTxProgram: (...args: unknown[]) =>
       seams.build(...args),
     incompleteRemoveLastUnattestedBlockTxProgram: (...args: unknown[]) =>
@@ -68,31 +83,9 @@ vi.mock("../src/runtime.js", async (original) => ({
   requireSingletonUtxo: (...args: unknown[]) => seams.hub(...args),
 }));
 
-const h = (byte: string) => byte.repeat(28);
-const tx = (byte: string) => byte.repeat(32);
-const address = credentialToAddress("Preprod", { type: "Key", hash: h("dd") });
-const utxo = (byte: string): UTxO => ({
-  txHash: tx(byte),
-  outputIndex: 0,
-  address,
-  assets: { lovelace: 20_000_000n },
-});
-const node = (
-  byte: string,
-  next?: string,
-  attested = false,
-): SDK.StateQueueUTxO => ({
-  assetName: SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + h(byte),
-  utxo: utxo(byte),
-  datum: {
-    key: { Key: { key: h(byte) } },
-    next: next === undefined ? "Empty" : { Key: { key: h(next) } },
-    data: attested ? "attested" : "unattested",
-  },
-});
-const root: SDK.StateQueueUTxO = {
+const root: SDKStateQueue.StateQueueUTxO = {
   ...node("aa", "01"),
-  assetName: SDK.STATE_QUEUE_ROOT_ASSET_NAME,
+  assetName: SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME,
   datum: { key: "Empty", next: { Key: { key: h("01") } }, data: "root" },
 };
 const point = { slot: 9999, hash: tx("77") };
@@ -149,8 +142,8 @@ const setup = ({ ttl = 20n }: { readonly ttl?: bigint | "validity" } = {}) => {
       _lucid: unknown,
       _config: unknown,
       params: {
-        timedOutBlockUTxO: SDK.StateQueueUTxO;
-        predecessorUTxO: SDK.StateQueueUTxO;
+        timedOutBlockUTxO: SDKStateQueue.StateQueueUTxO;
+        predecessorUTxO: SDKStateQueue.StateQueueUTxO;
         additionalInputs: UTxO[];
         correctionLockInput: { utxo: UTxO };
         validTo: bigint;

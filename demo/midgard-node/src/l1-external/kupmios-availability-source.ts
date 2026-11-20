@@ -14,7 +14,7 @@
  * - Unit history: every Kupo match (live or spent) holding the unit, with
  *   its inline datum.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 import type {

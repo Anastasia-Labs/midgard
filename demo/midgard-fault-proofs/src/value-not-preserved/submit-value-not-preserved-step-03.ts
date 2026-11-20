@@ -27,12 +27,12 @@ import {
   type MidgardTxOutput,
 } from "@al-ft/midgard-core";
 import {
-  MIDGARD_FIELD_INDEX,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

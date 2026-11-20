@@ -10,7 +10,7 @@ import type {
   FraudProofRawL1Point,
   FraudProofRawL1Transaction,
 } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
-import type { DaAvailabilityForeignSpendReaders } from "@al-ft/midgard-sdk";
+import type { DaAvailabilityForeignSpendReaders } from "@al-ft/midgard-sdk/da";
 import { CML } from "@lucid-evolution/lucid";
 import { afterEach, expect, it, vi } from "vitest";
 
@@ -32,8 +32,8 @@ const follower = availabilityFollowerIo();
 vi.mock("../../src/indexers/authenticated-state-queue-observation.js", () => ({
   assertWatcherStateQueueObservation: () => {},
 }));
-vi.mock("@al-ft/midgard-sdk", async (original) => {
-  const actual = await original<typeof import("@al-ft/midgard-sdk")>();
+vi.mock("@al-ft/midgard-sdk/da", async (original) => {
+  const actual = await original<typeof import("@al-ft/midgard-sdk/da")>();
   return {
     ...actual,
     // Isolate workflow classification; retain the actual SDK canonical spend verifier and depth computation.

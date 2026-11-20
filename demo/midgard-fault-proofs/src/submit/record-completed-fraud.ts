@@ -5,7 +5,9 @@
  * token by reference, so the convicted block cannot merge. It is
  * permissionless: the authenticated token is the authority, and any wallet
  * pays the fee. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   type BuildTxWithRedeemer,
   Data,
@@ -71,7 +73,7 @@ const requireProofTokenUtxo = (
     );
   if (utxo.datum == null)
     throw new Error("Completed-fraud record reference has no inline datum");
-  Data.from(utxo.datum, SDK.FraudProofTokenDatum);
+  Data.from(utxo.datum, SDKFraudProof.FraudProofTokenDatum);
 };
 
 /** Build (not submit) the standalone record of an existing proof token. */
@@ -149,7 +151,7 @@ export const buildRecordCompletedFraudByReferenceTx = async ({
           ),
         },
       },
-      SDK.StateQueueSpendRedeemer,
+      SDKStateQueue.StateQueueSpendRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
   const walletInputs = await plainWalletInputs(lucid, [

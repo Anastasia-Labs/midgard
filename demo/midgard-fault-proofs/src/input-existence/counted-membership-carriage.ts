@@ -1,6 +1,6 @@
 /** Build one counted opening using indices from the completed transaction.
  * The caller attaches the corresponding existing direct/published verifier. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import type { RedeemerContext } from "@lucid-evolution/lucid";
 
 import type { PublishedProofChunk } from "../proof-chunk-carriage.js";

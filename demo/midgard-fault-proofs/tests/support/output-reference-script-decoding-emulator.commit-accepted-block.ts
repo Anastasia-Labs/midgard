@@ -14,7 +14,7 @@ import {
   addressDataFromBech32,
   Proof,
   type RejectionReason,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";

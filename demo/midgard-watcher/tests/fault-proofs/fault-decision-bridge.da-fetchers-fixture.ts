@@ -6,7 +6,8 @@
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { buildCanonicalBlockFixture } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import type { RetainedDaPayloadSource } from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Effect } from "effect";
 
 import { createWatcherReplayedLedger } from "../../src/fault-proofs/replayed-ledger.js";
@@ -65,7 +66,7 @@ export const replayKeeper = (confirmed: () => Block) =>
     l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     availabilityAuthority: () => ({
       deploymentIdentity: "c7".repeat(28),
-      responseGeometry: SDK.availabilityResponseGeometry({
+      responseGeometry: SDKDa.availabilityResponseGeometry({
         chunkByteLength: 4096,
         trancheByteLength: 64 * 1024,
         maxTrancheCount: 1024,

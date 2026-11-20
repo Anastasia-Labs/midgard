@@ -6,12 +6,13 @@ import {
   parseDeploymentManifestEventHistoryBounds,
   parseDeploymentManifestEventHistoryRetentionAddress,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
-import * as SDK from "@al-ft/midgard-sdk";
 import {
   mintingValidatorFromManifest,
   spendingValidatorFromManifest,
   withdrawalValidatorFromManifest,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/deployment";
+import type * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import type { Network } from "@lucid-evolution/lucid";
 
 export const faultProofMemberFromManifest = (
@@ -35,7 +36,7 @@ export const faultProofMemberFromManifest = (
 
 export const faultProofFamilyScriptsFromManifest = <
   Family extends Exclude<
-    keyof SDK.FaultProofContractChains,
+    keyof SDKFraudProof.FaultProofContractChains,
     "validationTraceDispute"
   >,
 >(
@@ -43,14 +44,14 @@ export const faultProofFamilyScriptsFromManifest = <
   manifest: DeploymentManifest,
   sourcePath: string,
   family: Family,
-): Omit<SDK.FaultProofContractChains[Family], "history"> =>
+): Omit<SDKFraudProof.FaultProofContractChains[Family], "history"> =>
   SDK.restoreFaultProofFamilyScripts(family, (contract) =>
     faultProofMemberFromManifest(network, manifest, sourcePath, contract),
   );
 
 export const linearFaultProofChainFromManifest = <
   Family extends Exclude<
-    keyof SDK.FaultProofContractChains,
+    keyof SDKFraudProof.FaultProofContractChains,
     "transitionTrace" | "validationTraceDispute"
   >,
 >(
@@ -58,7 +59,7 @@ export const linearFaultProofChainFromManifest = <
   manifest: DeploymentManifest,
   sourcePath: string,
   family: Family,
-): SDK.FaultProofContractChains[Family] => {
+): SDKFraudProof.FaultProofContractChains[Family] => {
   const scripts = faultProofFamilyScriptsFromManifest(
     network,
     manifest,
@@ -83,7 +84,7 @@ export const linearFaultProofChainFromManifest = <
           entry.eventHistoryRetentionAddress,
         ),
       },
-    } as SDK.FaultProofContractChains[Family];
+    } as SDKFraudProof.FaultProofContractChains[Family];
   }
-  return scripts as SDK.FaultProofContractChains[Family];
+  return scripts as SDKFraudProof.FaultProofContractChains[Family];
 };

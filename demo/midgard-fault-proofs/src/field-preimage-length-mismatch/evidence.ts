@@ -3,7 +3,8 @@ import { createHash } from "node:crypto";
 import { MIDGARD_FIELD_COUNT } from "@al-ft/midgard-core";
 import { decodeMidgardNativeTxProofFieldLengths } from "@al-ft/midgard-core/codec";
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
@@ -320,18 +321,19 @@ export const detectAuthenticatedFieldPreimageLengthEvidence = async ({
   observation,
   sources,
 }: {
-  readonly observation: SDK.AuthenticatedStateQueueHeaderObservation;
+  readonly observation: SDKFraudProof.AuthenticatedStateQueueHeaderObservation;
   readonly sources: readonly RetainedDaPayloadSource[];
 }): Promise<FieldPreimageLengthWorkflowEvidence> => {
-  const admitted = await SDK.admitAuthenticatedStateQueueHeaderObservation({
-    observation,
-  });
+  const admitted =
+    await SDKFraudProof.admitAuthenticatedStateQueueHeaderObservation({
+      observation,
+    });
   const fetched = await fetchRetainedDaPayloadByHeaderHash({
     headerHash: admitted.headerHash,
     sources,
   });
-  const provenance = SDK.assertSecurityGradeEvidence(
-    SDK.admitEvidenceProvenance({ provenance: fetched.provenance }),
+  const provenance = SDKFraudProof.assertSecurityGradeEvidence(
+    SDKFraudProof.admitEvidenceProvenance({ provenance: fetched.provenance }),
   );
   try {
     return await fieldPreimageLengthEvidenceFromCanonicalBlock(

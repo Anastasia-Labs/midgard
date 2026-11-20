@@ -6,8 +6,8 @@ import {
   encodeMidgardFieldPreimage,
   midgardFieldCommitment,
 } from "@al-ft/midgard-core";
-import type * as SDK from "@al-ft/midgard-sdk";
-import { isMidgardWitnessSetField } from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/fraud-proof";
+import { isMidgardWitnessSetField } from "@al-ft/midgard-sdk/fraud-proof";
 
 import { planFaultProofFieldOpening } from "../field-opening.js";
 import type { DirectScriptMaterial } from "./material.js";

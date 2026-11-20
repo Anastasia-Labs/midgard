@@ -1,7 +1,7 @@
 import {
   CommittedFieldShapeStep01Datum,
   CommittedFieldShapeStep02Datum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { CommittedFieldShapeContracts } from "../committed-field-shape/contracts.js";
 import {

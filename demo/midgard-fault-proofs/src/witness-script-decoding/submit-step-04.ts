@@ -2,7 +2,7 @@ import {
   type WitnessScriptDecodingScanState,
   WitnessScriptDecodingStep04DatumSchema,
   WitnessScriptDecodingStep04RedeemerSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import {

@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Effect, Metric } from "effect";
 
 import { PendingBlockFinalizationsDB } from "../../database/index.js";
@@ -49,27 +50,28 @@ export const daPayloadCompressDurationTimer = Metric.timer(
   "Duration of DA payload envelope construction and compression",
 );
 
-export const bufferEntry = (key: Buffer, value: Buffer): SDK.DaPayloadEntry => [
-  key.toString("hex"),
-  value.toString("hex"),
-];
+export const bufferEntry = (
+  key: Buffer,
+  value: Buffer,
+): SDKDa.DaPayloadEntry => [key.toString("hex"), value.toString("hex")];
 
 export const sortedEntries = (
-  entries: readonly SDK.DaPayloadEntry[],
-): SDK.DaPayloadEntry[] =>
+  entries: readonly SDKDa.DaPayloadEntry[],
+): SDKDa.DaPayloadEntry[] =>
   [...entries].sort(([left], [right]) =>
     left < right ? -1 : left > right ? 1 : 0,
   );
 
-const entryKeys = (entries: readonly SDK.DaPayloadEntry[]): readonly Buffer[] =>
-  entries.map(([key]) => Buffer.from(key, "hex"));
+const entryKeys = (
+  entries: readonly SDKDa.DaPayloadEntry[],
+): readonly Buffer[] => entries.map(([key]) => Buffer.from(key, "hex"));
 
 const entryValues = (
-  entries: readonly SDK.DaPayloadEntry[],
+  entries: readonly SDKDa.DaPayloadEntry[],
 ): readonly Buffer[] => entries.map(([, value]) => Buffer.from(value, "hex"));
 
 export const computeDaPayloadRoots = (
-  payload: SDK.DaPayload,
+  payload: SDKDa.DaPayload,
 ): Effect.Effect<PayloadRootSet, DatabaseError | MpfError> =>
   Effect.gen(function* () {
     const body = payload.block_body;
@@ -131,7 +133,7 @@ export const computeDaPayloadRoots = (
 
 const authenticatedPayloadRoot = (
   domain: SDK.RootDomain,
-  entries: readonly SDK.DaPayloadEntry[],
+  entries: readonly SDKDa.DaPayloadEntry[],
 ): Effect.Effect<string, MpfError> =>
   buildAuthenticatedRootFromEncodedEntries(
     domain,

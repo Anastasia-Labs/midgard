@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { encodeCbor, type L1NodeTransport } from "@al-ft/l1-node-transport";
 import { fakeL1NodeTransport } from "@al-ft/l1-node-transport/testing";
 import { LedgerProvider } from "@al-ft/midgard-l1-follower/provider";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import {
   CML,
   type Emulator,

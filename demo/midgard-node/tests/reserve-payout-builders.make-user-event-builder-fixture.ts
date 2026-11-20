@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   credentialToAddress,
   Data,
@@ -46,7 +47,7 @@ export const makeUserEventBuilderFixture = async () => {
     "Custom",
     scriptHashToCredential(contracts.hubOracle.policyId),
   );
-  const history = SDK.requireEventHistoryContracts(contracts);
+  const history = SDKUsers.requireEventHistoryContracts(contracts);
   const emptyRoot = Data.to(
     {
       position: "Root",
@@ -54,7 +55,7 @@ export const makeUserEventBuilderFixture = async () => {
       protected_until: 0n,
       payload: "RootContent",
     },
-    SDK.EventHistoryNode,
+    SDKUsers.EventHistoryNode,
   );
   const emulator = new Emulator(
     [

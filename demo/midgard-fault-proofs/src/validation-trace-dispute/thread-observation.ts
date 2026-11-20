@@ -6,7 +6,7 @@
  * ReadyForOneStep on a trace of ours is planned from that trace. With every
  * thread closed and none the defender's, the case closes once its defense
  * deadline has passed, as an undefended case does. */
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/da";
 import {
   Constr,
   Data,

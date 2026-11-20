@@ -4,15 +4,17 @@ import { join } from "node:path";
 
 import {
   commitCountedRootProgram,
-  committedWithdrawalKeyBytes,
-  committedWithdrawalValueBytes,
-  isWithdrawnInputViolation,
   type MidgardTxInput,
   type OutputReference,
   Proof,
   ROOT_DOMAINS,
   type WithdrawalInfo,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  committedWithdrawalKeyBytes,
+  committedWithdrawalValueBytes,
+  isWithdrawnInputViolation,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

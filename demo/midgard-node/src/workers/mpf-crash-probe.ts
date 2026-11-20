@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Effect, Option } from "effect";
 
 import { deleteMpfStore } from "../mpf/ledger-hydration.js";

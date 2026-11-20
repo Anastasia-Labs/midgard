@@ -1,4 +1,4 @@
-import type { MintAuthorizationStep03State } from "@al-ft/midgard-sdk";
+import type { MintAuthorizationStep03State } from "@al-ft/midgard-sdk/fraud-proof";
 
 import {
   type LocallyEvaluatedTransaction,

@@ -33,7 +33,8 @@ import {
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
 } from "@al-ft/midgard-fault-proofs/workflow/release-finality-policy";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
   credentialToAddress,
   Data,
@@ -67,7 +68,7 @@ export const classifyFullCatalogueTransactionFixture = async (input: {
     Buffer.from(input.block.payloadEnvelopeCbor),
     { maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes },
   );
-  const payload = SDK.decodeDaPayload(Buffer.from(envelope.innerBytes));
+  const payload = SDKDa.decodeDaPayload(Buffer.from(envelope.innerBytes));
   const body = payload.block_body;
   if (
     body.deposits.length + body.withdrawals.length > 0 ||

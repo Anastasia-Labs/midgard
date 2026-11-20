@@ -1,7 +1,5 @@
-import {
-  deriveFieldPreimageCertification,
-  FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX,
-} from "@al-ft/midgard-sdk";
+import { FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX } from "@al-ft/midgard-sdk/core";
+import { deriveFieldPreimageCertification } from "@al-ft/midgard-sdk/state-queue";
 import type { UTxO } from "@lucid-evolution/lucid";
 
 import { buildStep01 } from "../double-spend/submit-step-01.js";

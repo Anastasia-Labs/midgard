@@ -6,7 +6,9 @@ import {
   plutusConstrFieldCbor,
   replacePlutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 
@@ -35,7 +37,7 @@ let deposit: SDK.DepositSourceLeafMembershipProof;
 let withdrawal: SDK.WithdrawalSourceMembershipProof;
 let cases: {
   name: string;
-  fault: SDK.TransitionFault;
+  fault: SDKFraudProof.TransitionFault;
   path: number[];
   raw: string;
   /** The proof field's own CBOR: the raw leaf, or a deposit's leaf bytes. */
@@ -74,7 +76,7 @@ beforeAll(async () => {
       rawDatum,
     ),
   );
-  const entries = (raw: string): SDK.DaPayloadEntry[] => [
+  const entries = (raw: string): SDKDa.DaPayloadEntry[] => [
     [Data.to(id, SDK.OutputReference), raw],
   ];
   const root = (domain: SDK.RootDomain, raw: string) =>
@@ -91,7 +93,7 @@ beforeAll(async () => {
     { WithdrawalEventKey: { withdrawal_id: id } },
     { DepositEventKey: { deposit_id: id } },
   ];
-  const event_to_step: SDK.DaPayloadEntry[] = eventKeys.map((key, index) => [
+  const event_to_step: SDKDa.DaPayloadEntry[] = eventKeys.map((key, index) => [
     Data.to(key, SDK.EventKey),
     Data.to(
       {
@@ -102,23 +104,25 @@ beforeAll(async () => {
     ),
   ]);
   event_to_step.sort(([a], [b]) => a.localeCompare(b));
-  const transition_trace: SDK.DaPayloadEntry[] = eventKeys.map((key, index) => [
-    Data.to(BigInt(index)),
-    Data.to(
-      {
-        schema_version: 1n,
-        step_index: BigInt(index),
-        event_key: key,
-        phase: index === 0 ? "Withdrawal" : "Deposit",
-        pre_utxos_root: base.header.utxosRoot,
-        post_utxos_root: base.header.utxosRoot,
-      },
-      SDK.TransitionStep,
-    ),
-  ]);
+  const transition_trace: SDKDa.DaPayloadEntry[] = eventKeys.map(
+    (key, index) => [
+      Data.to(BigInt(index)),
+      Data.to(
+        {
+          schema_version: 1n,
+          step_index: BigInt(index),
+          event_key: key,
+          phase: index === 0 ? "Withdrawal" : "Deposit",
+          pre_utxos_root: base.header.utxosRoot,
+          post_utxos_root: base.header.utxosRoot,
+        },
+        SDK.TransitionStep,
+      ),
+    ],
+  );
   const commitment = async (
     domain: SDK.RootDomain,
-    values: SDK.DaPayloadEntry[],
+    values: SDKDa.DaPayloadEntry[],
   ) =>
     (
       await buildCountedRoot(
@@ -153,7 +157,7 @@ beforeAll(async () => {
   const headerHash = computeHash28(SDK.encodeHeaderCbor(header)).toString(
     "hex",
   );
-  const payload: SDK.DaPayload = {
+  const payload: SDKDa.DaPayload = {
     ...base.payload,
     block_body: {
       ...base.payload.block_body,
@@ -167,7 +171,7 @@ beforeAll(async () => {
     },
   };
   reconstruction = await reconstructDaPayload({
-    payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(payload), {
+    payloadEnvelopeCbor: await wrapDaPayload(SDKDa.encodeDaPayload(payload), {
       mode: "identity",
     }),
     expectedHeaderHash: headerHash,
@@ -274,7 +278,7 @@ beforeAll(async () => {
     ["Deposit", deposit, rawDeposit],
     ["Withdrawal", withdrawal, rawWithdrawal],
   ] as const) {
-    const window: SDK.OutOfWindowSourceEventWitness =
+    const window: SDKFraudProof.OutOfWindowSourceEventWitness =
       kind === "Deposit"
         ? {
             OutOfWindowDeposit: {
@@ -300,7 +304,7 @@ describe("transition raw proof material", () => {
   it("retains all five full-leaf history source branches across decoding, JSON and compact carriage", () => {
     expect(cases).toHaveLength(5);
     for (const item of cases) {
-      const proof = SDK.makeTransitionFaultProof({
+      const proof = SDKFraudProof.makeTransitionFaultProof({
         challengedHeaderHash: reconstruction.headerHash,
         header: reconstruction.header,
         fault: item.fault,
@@ -338,7 +342,7 @@ describe("transition raw proof material", () => {
   });
 
   it("refuses an altered raw leaf even when its collapsed typed view agrees", () => {
-    const proof = SDK.makeTransitionFaultProof({
+    const proof = SDKFraudProof.makeTransitionFaultProof({
       challengedHeaderHash: reconstruction.headerHash,
       header: reconstruction.header,
       fault: cases[0]!.fault,

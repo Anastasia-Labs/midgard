@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Kupmios, KupmiosError } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -89,7 +90,7 @@ describe("isRetryableProviderError honours Kupmios's typed retryability", () => 
       });
       expect(isRetryableProviderError(wrapped)).toBe(retryable);
       // The reference-script read wraps its failure the same way.
-      const referenceScriptRead = new SDK.StateQueueError({
+      const referenceScriptRead = new SDKStateQueue.StateQueueError({
         message: "Failed to fetch reference script UTxOs",
         cause,
       });

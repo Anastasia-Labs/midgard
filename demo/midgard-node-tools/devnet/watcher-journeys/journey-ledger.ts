@@ -3,7 +3,8 @@ import {
   checkLedgerAgainstRoot,
   type LedgerEntry,
 } from "@al-ft/midgard-fault-proofs/ledger-at";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Effect, Either } from "effect";
 
 import type { JourneyBlock } from "./fixture.js";
@@ -12,7 +13,7 @@ import type { JourneyBlock } from "./fixture.js";
 export type JourneyLedgerPredecessor = {
   header: SDK.Header;
   headerHash: string;
-  payload: SDK.DaPayload;
+  payload: SDKDa.DaPayload;
   payloadEnvelopeCbor: Uint8Array;
   ledger: CheckedLedger;
 };
@@ -20,7 +21,7 @@ export type JourneyLedgerPredecessor = {
 /** String pairs for fixture builders; these are never serialized into retained DA. */
 export const journeyLedgerPairs = (
   ledger: CheckedLedger,
-): SDK.DaPayloadEntry[] =>
+): SDKDa.DaPayloadEntry[] =>
   ledger.entries.map(({ outRef, output }) => [
     outRef.toString("hex"),
     output.toString("hex"),

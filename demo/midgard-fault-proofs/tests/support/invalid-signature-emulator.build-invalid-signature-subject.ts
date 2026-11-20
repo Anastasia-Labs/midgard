@@ -7,7 +7,8 @@ import {
   midgardFieldCarriageBounds,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { CML, Data, type Lucid, type UTxO } from "@lucid-evolution/lucid";
 
 import {
@@ -131,7 +132,8 @@ const nativeTxWithWitnesses = ({
             ),
           ],
     fee,
-    addrTxWitsPreimageCbor: SDK.encodeAddressWitnessPreimage(addrTxWits),
+    addrTxWitsPreimageCbor:
+      SDKFraudProof.encodeAddressWitnessPreimage(addrTxWits),
   });
 
 /**

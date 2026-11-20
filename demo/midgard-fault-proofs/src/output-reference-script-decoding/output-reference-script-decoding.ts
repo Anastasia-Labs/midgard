@@ -22,7 +22,7 @@ import {
   terminalVerdictContradiction,
   type VerdictSubject,
   verdictSubjectIsCanonical,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { claimedItem } from "../evidence/claimed-coordinate.js";

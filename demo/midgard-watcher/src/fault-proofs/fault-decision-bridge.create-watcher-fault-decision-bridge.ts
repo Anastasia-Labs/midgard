@@ -3,7 +3,7 @@ import {
   createWorkflowActuationPermitController,
 } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
 import { authenticatedStateQueueObservationDigest } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
-import { GENESIS_HEADER_HASH, Header } from "@al-ft/midgard-sdk";
+import { GENESIS_HEADER_HASH, Header } from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { WatcherWalletLeases } from "../funding/prover-funding-reservation.js";

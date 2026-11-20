@@ -1,5 +1,6 @@
 import { computeHash28 } from "@al-ft/midgard-core/codec/hash";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { CML, coreToTxOutput, Data } from "@lucid-evolution/lucid";
 
 import {
@@ -38,7 +39,7 @@ export const queueOutput = ({
   }
   const assetName = assets[0]![0].slice(stateQueuePolicyId.length);
   const headerHash =
-    assetName === SDK.STATE_QUEUE_ROOT_ASSET_NAME
+    assetName === SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME
       ? null
       : assetName.startsWith(SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX) &&
           HEX_28.test(
@@ -122,7 +123,7 @@ export const lockOutput = ({
       "CorrectionLock output has invalid address/value/datum topology",
     );
   }
-  const parsed = SDK.parseStateQueueCorrectionLockDatum(
+  const parsed = SDKStateQueue.parseStateQueueCorrectionLockDatum(
     Data.from(datum.to_canonical_cbor_hex(), SDK.CorrectionLockDatum),
   );
   if (parsed === null) throw new Error("CorrectionLock datum is non-canonical");

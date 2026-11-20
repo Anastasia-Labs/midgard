@@ -7,7 +7,7 @@ import {
 } from "@al-ft/midgard-core";
 import type { MidgardVersionedScript } from "@al-ft/midgard-core/codec";
 import { protectMidgardAddress } from "@al-ft/midgard-core/codec/address";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import {
   hashScriptWitness,
   makeMintPreimageCbor,

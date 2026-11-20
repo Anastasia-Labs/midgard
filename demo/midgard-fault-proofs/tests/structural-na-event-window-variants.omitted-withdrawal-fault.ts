@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
@@ -18,18 +19,18 @@ export const omittedWithdrawalFault = ({
 }: {
   readonly domain?: SDK.RootDomain;
   readonly key?: SDK.OutputReference;
-} = {}): SDK.TransitionFault =>
-  SDK.omittedDueL1EventFault({
+} = {}): SDKFraudProof.TransitionFault =>
+  SDKFraudProof.omittedDueL1EventFault({
     OmittedDueWithdrawal: {
       source_non_membership: nonMembership({
         domain,
         key,
-      }) as SDK.WithdrawalSourceNonMembershipProof,
+      }) as SDKFraudProof.WithdrawalSourceNonMembershipProof,
     },
   });
 
-export const omittedForcedFault = (): SDK.TransitionFault =>
-  SDK.omittedDueL1EventFault({
+export const omittedForcedFault = (): SDKFraudProof.TransitionFault =>
+  SDKFraudProof.omittedDueL1EventFault({
     OmittedDueForcedTransaction: {
       event_ref_input_index: EVENT_REF_INPUT_INDEX,
       event_asset_name: EVENT_ASSET_NAME,
@@ -37,12 +38,12 @@ export const omittedForcedFault = (): SDK.TransitionFault =>
       source_non_membership: nonMembership({
         domain: SDK.ROOT_DOMAINS.forcedTransactionsV1,
         key: outRef(0n),
-      }) as SDK.ForcedTransactionSourceNonMembershipProof,
+      }) as SDKFraudProof.ForcedTransactionSourceNonMembershipProof,
     },
   });
 
-export const outOfWindowDepositFault = (): SDK.TransitionFault =>
-  SDK.outOfWindowSourceEventFault({
+export const outOfWindowDepositFault = (): SDKFraudProof.TransitionFault =>
+  SDKFraudProof.outOfWindowSourceEventFault({
     OutOfWindowDeposit: {
       source_membership: membership({
         domain: SDK.ROOT_DOMAINS.deposits,
@@ -52,8 +53,8 @@ export const outOfWindowDepositFault = (): SDK.TransitionFault =>
     },
   });
 
-export const outOfWindowWithdrawalFault = (): SDK.TransitionFault =>
-  SDK.outOfWindowSourceEventFault({
+export const outOfWindowWithdrawalFault = (): SDKFraudProof.TransitionFault =>
+  SDKFraudProof.outOfWindowSourceEventFault({
     OutOfWindowWithdrawal: {
       source_membership: membership({
         domain: SDK.ROOT_DOMAINS.withdrawals,
@@ -63,8 +64,8 @@ export const outOfWindowWithdrawalFault = (): SDK.TransitionFault =>
     },
   });
 
-export const outOfWindowForcedFault = (): SDK.TransitionFault =>
-  SDK.outOfWindowSourceEventFault({
+export const outOfWindowForcedFault = (): SDKFraudProof.TransitionFault =>
+  SDKFraudProof.outOfWindowSourceEventFault({
     OutOfWindowForcedTransaction: {
       event_ref_input_index: EVENT_REF_INPUT_INDEX,
       event_asset_name: EVENT_ASSET_NAME,

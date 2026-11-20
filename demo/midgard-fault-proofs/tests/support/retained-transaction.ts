@@ -10,7 +10,8 @@ import {
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { replayValidationMachineEvent } from "@al-ft/midgard-validation/tests/validation-machine-event-replay.trace";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -143,7 +144,7 @@ export const retainedTransactionFixture = async (input: {
   });
   return {
     ...block,
-    payload: SDK.decodeDaPayload(Buffer.from(envelope.innerBytes)),
+    payload: SDKDa.decodeDaPayload(Buffer.from(envelope.innerBytes)),
     replay,
     postLedgerEntries: [...postLedger].map(([outRef, output]) => ({
       outRef: Buffer.from(outRef, "hex"),

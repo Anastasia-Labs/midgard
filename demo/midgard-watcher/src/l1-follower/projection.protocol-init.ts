@@ -4,7 +4,7 @@ import type {
   SqlTx,
   TemporalTableSpec,
 } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 
 import { WATCHER_PROTOCOL_INIT_FAULTS_TABLE } from "./tables.js";
 

@@ -1,4 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 
 export { h28, h32 };

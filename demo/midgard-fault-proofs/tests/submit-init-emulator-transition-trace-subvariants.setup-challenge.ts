@@ -1,5 +1,7 @@
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";
@@ -88,10 +90,10 @@ export const withUnrelatedWithdrawal = async (header: SDK.Header) => {
     pre_utxos_root: header.prevUtxosRoot,
     post_utxos_root: header.prevUtxosRoot,
   };
-  const withdrawals: SDK.DaPayloadEntry[] = [
+  const withdrawals: SDKDa.DaPayloadEntry[] = [
     [
       Data.to(transitionTraceOutRef("94"), SDK.OutputReference),
-      SDK.committedWithdrawalValueBytes(
+      SDKFraudProof.committedWithdrawalValueBytes(
         withdrawalInfo("IncorrectWithdrawalSignature"),
       ),
     ],
@@ -114,7 +116,7 @@ export const withUnrelatedWithdrawal = async (header: SDK.Header) => {
   ];
   const root = (
     domain: SDK.RootDomain,
-    entries: readonly SDK.DaPayloadEntry[],
+    entries: readonly SDKDa.DaPayloadEntry[],
   ) =>
     buildCountedRoot(
       domain,
@@ -151,14 +153,14 @@ export const reconstruct = async ({
   eventToStep = [],
 }: {
   readonly header: SDK.Header;
-  readonly withdrawals?: readonly SDK.DaPayloadEntry[];
-  readonly transitionTrace?: readonly SDK.DaPayloadEntry[];
-  readonly eventToStep?: readonly SDK.DaPayloadEntry[];
+  readonly withdrawals?: readonly SDKDa.DaPayloadEntry[];
+  readonly transitionTrace?: readonly SDKDa.DaPayloadEntry[];
+  readonly eventToStep?: readonly SDKDa.DaPayloadEntry[];
 }) => {
   const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
   const payloadEnvelopeCbor = await wrapDaPayload(
-    SDK.encodeDaPayload({
-      version: SDK.DA_PAYLOAD_VERSION,
+    SDKDa.encodeDaPayload({
+      version: SDKDa.DA_PAYLOAD_VERSION,
       block_body: {
         header_hash: headerHash,
         header,

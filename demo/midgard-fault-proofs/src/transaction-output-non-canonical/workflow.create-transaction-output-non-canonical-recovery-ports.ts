@@ -1,5 +1,5 @@
 import { decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
-import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
+import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";

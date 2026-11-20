@@ -1,4 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/da";
 import { type UTxO } from "@lucid-evolution/lucid";
 import { TEST_AVAILABILITY_PARAMETERS } from "midgard-node/tests/helpers/availability-challenge";
 import { describe, expect, it } from "vitest";

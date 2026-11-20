@@ -5,7 +5,7 @@
  */
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { type DepthParameters, isSafe } from "@al-ft/midgard-l1-follower/heads";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import { CML, type LucidEvolution, type OutRef } from "@lucid-evolution/lucid";
 import { Data, Effect, Either, Metric } from "effect";
 

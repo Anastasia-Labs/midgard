@@ -6,7 +6,8 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { inspect } from "node:util";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { Effect, Metric } from "effect";
 
 import { fullScanCounter as confirmedLedgerFullScanCounter } from "../database/confirmedLedger.js";
@@ -109,7 +110,7 @@ const buildProbeSourceEvents = (
     phase: "L2Transaction",
     eventKey: {
       L2TransactionEventKey: { tx_id: transactionIds[index]! },
-    } as SDK.EventKey,
+    } as SDKCore.EventKey,
     ledgerOps: [
       { type: "delete", key: entry.key },
       {

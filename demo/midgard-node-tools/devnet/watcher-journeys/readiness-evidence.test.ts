@@ -33,7 +33,7 @@ vi.mock(
     verifyFinalizedDeploymentManifest: () => {},
   }),
 );
-vi.mock("@al-ft/midgard-sdk", async (importOriginal) => ({
+vi.mock("@al-ft/midgard-sdk/core", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   hashBlockHeader: (header: { hash: string }) => Effect.succeed(header.hash),
 }));

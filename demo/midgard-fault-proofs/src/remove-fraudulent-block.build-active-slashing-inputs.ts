@@ -3,7 +3,6 @@ import {
   ACTIVE_OPERATORS_ROOT_ASSET_NAME,
   ActiveOperatorMintRedeemer,
   encodeLinkedListNodeView,
-  type FraudProverRewardPlan,
   requireOwnMintPurpose,
   requireOwnSpendPurpose,
   RETIRED_OPERATOR_NODE_ASSET_NAME_PREFIX,
@@ -11,7 +10,8 @@ import {
   SCHEDULER_ASSET_NAME,
   SchedulerDatum,
   SchedulerSpendRedeemer,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { type FraudProverRewardPlan } from "@al-ft/midgard-sdk/state-queue";
 import {
   Data,
   type LucidEvolution,

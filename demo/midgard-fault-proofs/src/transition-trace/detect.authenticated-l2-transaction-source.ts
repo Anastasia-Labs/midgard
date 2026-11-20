@@ -8,7 +8,8 @@ import {
   encodeCborBytes,
   encodeCborUnsigned,
 } from "@al-ft/midgard-core/codec/cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
@@ -78,7 +79,7 @@ export const nativePreimageItems = (
 };
 
 export const authenticatedL2TransactionSource = (
-  sourceMembership: SDK.L2TransactionSourceMembershipProof,
+  sourceMembership: SDKFraudProof.L2TransactionSourceMembershipProof,
 ): {
   readonly compact: ReturnType<typeof decodeMidgardNativeTxCompact>;
   readonly txId: Buffer;

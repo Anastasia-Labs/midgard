@@ -13,17 +13,19 @@ import {
   MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
 } from "@al-ft/midgard-core";
 import {
+  type FieldCarriage,
+  type NativeTxWitnessSetCompact,
+} from "@al-ft/midgard-sdk/core";
+import {
   type CanonicalDecodabilityEvidence,
   canonicalDecodabilityEvidenceFromCommittedField,
   type CanonicalDecodabilityStep02State,
   canonicalDecodabilityStep02StateFromEvidence,
   type CommittedFieldClaim,
-  type FieldCarriage,
   isMidgardWitnessSetField,
   MIDGARD_COMMITTED_FIELD_COUNT,
   MIDGARD_FIELD_INDEX,
-  type NativeTxWitnessSetCompact,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import { canonicalDecodabilitySubmitError } from "./submit-common.js";
 

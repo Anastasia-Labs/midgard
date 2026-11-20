@@ -1,10 +1,8 @@
 import { createHash } from "node:crypto";
 
 import { computeHash32 } from "@al-ft/midgard-core";
-import {
-  FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX,
-  fieldPreimagePublicationDatumCbor,
-} from "@al-ft/midgard-sdk";
+import { FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX } from "@al-ft/midgard-sdk/core";
+import { fieldPreimagePublicationDatumCbor } from "@al-ft/midgard-sdk/state-queue";
 import { Data } from "@lucid-evolution/lucid";
 import { expect, it, vi } from "vitest";
 

@@ -1,5 +1,5 @@
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { expect, it } from "vitest";
 
 import { depositEventsRetainedBlock } from "./journey-fixture-ledger.test-support.js";

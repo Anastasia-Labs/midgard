@@ -3,7 +3,7 @@ import {
   availabilityResponseGeometry,
   buildDaAvailabilityCommitment,
   daAvailabilityAttestationMessage,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/da";
 import { CML, walletFromSeed } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { beforeAll, describe, expect, it } from "vitest";

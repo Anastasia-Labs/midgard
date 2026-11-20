@@ -17,7 +17,8 @@ import {
   type OutRef,
 } from "@al-ft/midgard-l1-follower";
 import type { SimOutput } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -96,7 +97,7 @@ const pruneOverUnprocessedOwnBlock = async (floorInForce: boolean) => {
   const root = (link: string | null) =>
     queueOutput(ROOT_ASSET, rootDatum(FRONTIER, link, startFor(origin + 2)));
   const rootTx = await send([chain.chain.outsideInput()], [root(null)]);
-  const header: SDK.Header = {
+  const header: SDKCore.Header = {
     ...simHeader(1, FRONTIER),
     startTime: startFor(origin + 2),
     endTime: startFor(origin + 4),

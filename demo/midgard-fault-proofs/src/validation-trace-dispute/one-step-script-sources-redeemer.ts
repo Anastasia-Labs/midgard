@@ -12,7 +12,8 @@
  * it from the thread's own L1 history, where the payment into the semantic
  * resolver wrote it (one-step-context-item-hops.ts). */
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 
 import { deriveScriptSourcesRedeemerItemPlan } from "../redeemer-item-plan.js";
@@ -93,7 +94,7 @@ export const isScriptSourcesRedeemerOwnHolder = (
 ): holder is ValidationTraceScriptSourcesRedeemerOwnHolder => OWN.has(holder);
 
 type Stages =
-  SDK.ValidationTraceDisputeFaultProofContracts["validationTraceDispute"]["scriptSourcesStageOneRedeemerStages"];
+  SDKFraudProof.ValidationTraceDisputeFaultProofContracts["validationTraceDispute"]["scriptSourcesStageOneRedeemerStages"];
 
 /** The validator of each holder of the chain past its entry. */
 export const scriptSourcesRedeemerValidators = (

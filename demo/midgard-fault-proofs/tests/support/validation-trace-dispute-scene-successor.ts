@@ -2,7 +2,7 @@
  * defending operator's transactions do to the operator's later commits: the
  * scene's operator commits a successor of the block it names, now, with
  * the operator's active node, the scheduler and the hub oracle read live. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { toUnit, type UTxO } from "@lucid-evolution/lucid";
 
 import { submitSuccessorBlockTx } from "./submit-init/successor.js";

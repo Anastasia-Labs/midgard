@@ -3,7 +3,7 @@ import { outRefLabel } from "@al-ft/midgard-core";
 import type {
   CanonicalDecodabilityStep02State,
   CommittedFieldClaim,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import { buildCanonicalDecodabilityInit } from "../src/canonical-decodability/submit-canonical-decodability-init.js";

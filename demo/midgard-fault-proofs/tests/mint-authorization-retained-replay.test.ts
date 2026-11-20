@@ -1,5 +1,5 @@
 import { encodeMidgardVersionedScript } from "@al-ft/midgard-core";
-import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
+import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk/core";
 import { describe, expect, it } from "vitest";
 
 import {

@@ -17,16 +17,18 @@
  */
 
 import {
+  type MidgardTxInput,
+  requireInputIndex,
+  requireOwnSpendPurpose,
+  requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
   DoubleSpendStep03Datum,
   DoubleSpendStep03SpendRedeemer,
   DoubleSpendStep04Datum,
   type FieldOpening,
   MIDGARD_FIELD_INDEX,
-  type MidgardTxInput,
-  requireInputIndex,
-  requireOwnSpendPurpose,
-  requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

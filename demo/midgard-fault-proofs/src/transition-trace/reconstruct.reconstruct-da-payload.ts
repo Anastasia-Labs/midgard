@@ -1,7 +1,8 @@
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -155,7 +156,7 @@ export const reconstructDaPayload = async ({
   // committed source leaf is itself a total Q44 violation.
   const authenticatedSourceLeafDefect = rawTransactions.find(
     ({ key, value }) =>
-      SDK.daHashPreimageEvidenceFromCommittedLeaf({
+      SDKFraudProof.daHashPreimageEvidenceFromCommittedLeaf({
         committedTxId: key.toString("hex"),
         committedLeafValue: value,
       }).isViolation,

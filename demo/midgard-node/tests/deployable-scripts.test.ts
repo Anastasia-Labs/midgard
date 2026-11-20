@@ -3,7 +3,7 @@ import {
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   DEPLOYMENT_MEMBERS,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import { Effect } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
 

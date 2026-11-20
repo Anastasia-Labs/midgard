@@ -10,7 +10,8 @@ import {
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   getAddressDetails,
   Lucid,
@@ -265,7 +266,7 @@ describe("forced-tx admission at the real tx-order mint", () => {
       .spyOn(Date, "now")
       .mockImplementation(() => h.emulator.now());
     const built = await Effect.runPromise(
-      SDK.buildUnsignedTxOrderTxWithMetadataProgram(
+      SDKUsers.buildUnsignedTxOrderTxWithMetadataProgram(
         lowerBound === undefined ? lucid : withLowerBound(lucid, lowerBound),
         h.contracts,
         {
@@ -323,7 +324,7 @@ describe("forced-tx admission at the real tx-order mint", () => {
       // The SDK refuses it before signing, at the same check.
       screen.enabled = true;
       expect(() =>
-        SDK.deriveTxOrderMaterial({
+        SDKUsers.deriveTxOrderMaterial({
           submittedTxCbor: submittedBytes(refused),
           owner: Buffer.alloc(28),
         }),
@@ -423,13 +424,13 @@ describe("forced-tx admission at the real tx-order mint", () => {
       });
     const limit = 121;
     expect(() =>
-      SDK.deriveTxOrderMaterial({
+      SDKUsers.deriveTxOrderMaterial({
         submittedTxCbor: withPolicies(limit),
         owner: Buffer.alloc(28),
       }),
     ).not.toThrow();
     expect(() =>
-      SDK.deriveTxOrderMaterial({
+      SDKUsers.deriveTxOrderMaterial({
         submittedTxCbor: withPolicies(limit + 1),
         owner: Buffer.alloc(28),
       }),
@@ -465,13 +466,13 @@ describe("forced-tx admission at the real tx-order mint", () => {
     };
     const limit = 236;
     expect(() =>
-      SDK.deriveTxOrderMaterial({
+      SDKUsers.deriveTxOrderMaterial({
         submittedTxCbor: withAssets(limit),
         owner: Buffer.alloc(28),
       }),
     ).not.toThrow();
     expect(() =>
-      SDK.deriveTxOrderMaterial({
+      SDKUsers.deriveTxOrderMaterial({
         submittedTxCbor: withAssets(limit + 1),
         owner: Buffer.alloc(28),
       }),

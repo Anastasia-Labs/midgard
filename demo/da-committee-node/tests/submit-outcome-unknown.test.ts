@@ -8,7 +8,8 @@
  */
 import { computeDaSha256Hash } from "@al-ft/midgard-core/da-transport";
 import { L1SubmitOutcomeUnknownError } from "@al-ft/midgard-l1-follower/provider";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
   CML,
   Emulator,
@@ -285,12 +286,12 @@ describe("the coordinator after a submission whose outcome is unknown", () => {
   });
 });
 
-const availabilityCommitmentCbor = SDK.encodeDaAvailabilityCommitment(
-  SDK.buildDaAvailabilityCommitment({
+const availabilityCommitmentCbor = SDKDa.encodeDaAvailabilityCommitment(
+  SDKDa.buildDaAvailabilityCommitment({
     deploymentIdentity: "99".repeat(28),
     headerHash: "01".repeat(28),
     payload: Buffer.from("public retained DA"),
-    responseGeometry: SDK.availabilityResponseGeometry({
+    responseGeometry: SDKDa.availabilityResponseGeometry({
       chunkByteLength: 14_020,
       trancheByteLength: 4 * 1_024 * 1_024,
       maxTrancheCount: 16,
@@ -313,7 +314,7 @@ const signatureRecord = (): DaSignatureRecord => ({
   broadcastStatus: "local",
   l1ChainPoint: {},
   validation: {
-    payloadVersion: Number(SDK.DA_PAYLOAD_VERSION),
+    payloadVersion: Number(SDKDa.DA_PAYLOAD_VERSION),
     rootsMatch: true,
     stateQueueOutRef: "state#0",
     headerHash: "01".repeat(28),

@@ -8,7 +8,7 @@ import {
   planMidgardFieldCarriage,
 } from "@al-ft/midgard-core";
 import { DEPLOYMENT_PROFILES } from "@al-ft/midgard-core/deployment-profile";
-import { Proof } from "@al-ft/midgard-sdk";
+import { Proof } from "@al-ft/midgard-sdk/core";
 import { scriptDecodeScriptHash } from "@al-ft/midgard-validation/script-decode.step";
 import { startScriptDecodeWalk } from "@al-ft/midgard-validation/script-decode.step-walk";
 import {

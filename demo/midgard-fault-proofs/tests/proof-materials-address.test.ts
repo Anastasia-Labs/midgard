@@ -8,7 +8,7 @@
  * may pay and spend reserved outputs at both, but posts collateral from, and
  * returns collateral to, the funding address only.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import {
   CML,
   Constr,

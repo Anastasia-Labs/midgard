@@ -1,4 +1,4 @@
-import type { MintingValidator } from "@al-ft/midgard-sdk";
+import type { MintingValidator } from "@al-ft/midgard-sdk/core";
 import type { LucidEvolution, Network, UTxO } from "@lucid-evolution/lucid";
 
 import { type ResolvedProverSigner } from "../../src/runtime.js";

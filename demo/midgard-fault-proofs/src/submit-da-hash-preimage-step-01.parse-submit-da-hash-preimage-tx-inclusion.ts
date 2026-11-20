@@ -1,7 +1,5 @@
-import {
-  daHashPreimageEvidenceFromCommittedLeaf,
-  Proof,
-} from "@al-ft/midgard-sdk";
+import { Proof } from "@al-ft/midgard-sdk/core";
+import { daHashPreimageEvidenceFromCommittedLeaf } from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import { parseHex, requireRecord } from "./json-file.js";

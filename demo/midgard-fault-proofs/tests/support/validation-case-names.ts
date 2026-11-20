@@ -3,7 +3,7 @@
  * case NFT, the bond marker, and the thread token a defense mints (whose name
  * the lost-defense receipt shares).
  */
-import { hashHexWithBlake2b } from "@al-ft/midgard-sdk";
+import { hashHexWithBlake2b } from "@al-ft/midgard-sdk/core";
 import { Constr, Data, fromText } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

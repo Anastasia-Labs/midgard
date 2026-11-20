@@ -36,7 +36,8 @@ import { deriveMidgardTxFieldPreimages } from "@al-ft/midgard-core/consensus-val
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { decodeTransaction, type FactStore } from "@al-ft/midgard-l1-follower";
 import { SIM_ORIGIN } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   Data,
   Emulator,
@@ -126,7 +127,7 @@ const harness = async (): Promise<Harness> => {
   )) as unknown as SDK.MidgardValidators;
   const contracts: SDK.MidgardValidators = {
     ...placeholder,
-    ...SDK.buildTxOrderValidators({
+    ...SDKUsers.buildTxOrderValidators({
       blueprint: BLUEPRINT,
       network: NETWORK,
       hubOraclePolicyId: placeholder.hubOracle.policyId,
@@ -240,7 +241,7 @@ const transaction = (tx: TxShape): Buffer =>
     }),
   );
 
-type Carriage = SDK.TxOrderMintRedeemer["material_carriage"];
+type Carriage = SDKUsers.TxOrderMintRedeemer["material_carriage"];
 
 const inlineBytes = (entry: Carriage[number]): string => {
   if (!("Inline" in entry)) throw new Error("expected inline carriage");
@@ -304,14 +305,14 @@ const buildOrder = async (
     schema: unknown,
     options: unknown,
   ) => {
-    if (schema !== SDK.TxOrderMintRedeemer)
+    if (schema !== SDKUsers.TxOrderMintRedeemer)
       return (encode as (...args: unknown[]) => string)(value, schema, options);
-    const honest = value as SDK.TxOrderMintRedeemer;
+    const honest = value as SDKUsers.TxOrderMintRedeemer;
     const cbor = encode(
       forge === undefined
         ? honest
         : { ...honest, material_carriage: forge(honest.material_carriage) },
-      SDK.TxOrderMintRedeemer,
+      SDKUsers.TxOrderMintRedeemer,
     );
     redeemer = Buffer.from(cbor, "hex");
     return cbor;
@@ -322,15 +323,19 @@ const buildOrder = async (
   try {
     const built = await Effect.runPromise(
       Effect.either(
-        SDK.buildUnsignedTxOrderTxWithMetadataProgram(h.lucid, h.contracts, {
-          nonceInput: nonce,
-          submittedTxCbor: submitted.toString("hex"),
-          carriageReferenceInputs: [],
-          fieldPreimageCertificatePolicyId:
-            h.contracts.fieldPreimageCertificate.policyId,
-          refundAddress,
-          lovelace: 3_000_000n,
-        }),
+        SDKUsers.buildUnsignedTxOrderTxWithMetadataProgram(
+          h.lucid,
+          h.contracts,
+          {
+            nonceInput: nonce,
+            submittedTxCbor: submitted.toString("hex"),
+            carriageReferenceInputs: [],
+            fieldPreimageCertificatePolicyId:
+              h.contracts.fieldPreimageCertificate.policyId,
+            refundAddress,
+            lovelace: 3_000_000n,
+          },
+        ),
       ),
     );
     if (redeemer === undefined) {
@@ -346,7 +351,7 @@ const buildOrder = async (
 
 /** What `carriage.ts` makes of an inline-only redeemer for `submitted`. */
 const nodeRead = (submitted: Buffer, redeemer: Buffer) => {
-  const material = SDK.deriveTxOrderMaterial({
+  const material = SDKUsers.deriveTxOrderMaterial({
     submittedTxCbor: submitted,
     owner: Buffer.alloc(28),
   });

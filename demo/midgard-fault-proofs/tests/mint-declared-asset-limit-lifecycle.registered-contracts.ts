@@ -10,11 +10,11 @@ import {
   midgardFieldCommitment,
 } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubject,
   AddressData,
   addressDataFromBech32,
   Proof,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { acceptedVerdictSubject } from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";

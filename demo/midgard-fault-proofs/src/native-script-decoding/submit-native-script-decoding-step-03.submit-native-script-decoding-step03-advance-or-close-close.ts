@@ -2,16 +2,14 @@ import {
   isExactMidgardNativeScriptStructureTerminal,
   MIDGARD_LEDGER_OUTPUT_FIELD_INDEX,
 } from "@al-ft/midgard-core";
-import type {
-  BoundedItemChunkProof,
-  NativeScriptDecodingScanThreadState,
-} from "@al-ft/midgard-sdk";
+import type { BoundedItemChunkProof } from "@al-ft/midgard-sdk/core";
+import type { NativeScriptDecodingScanThreadState } from "@al-ft/midgard-sdk/fraud-proof";
 import {
   NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE,
   NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION,
   NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_MALFORMED,
   NativeScriptDecodingStep03AdvanceOrCloseSpendRedeemer,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import { type ResolvedProverSigner } from "../runtime.js";

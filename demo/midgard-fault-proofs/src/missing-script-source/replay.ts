@@ -4,7 +4,7 @@
  * or `RedeemerMissing` rejection, and every forced rejection whose reason
  * names no purpose and is not recorded before the purpose phase, is planned
  * through the prover's verdict. */
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 import { directPurposeArtifactFamily } from "../direct-purpose-family/artifact-family.js";
 import {

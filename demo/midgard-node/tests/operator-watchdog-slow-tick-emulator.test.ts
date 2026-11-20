@@ -11,7 +11,7 @@
  */
 import "./helpers/follower-emulator-installed.js";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/operators";
 import { generateSeedPhrase, walletFromSeed } from "@lucid-evolution/lucid";
 import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vitest";

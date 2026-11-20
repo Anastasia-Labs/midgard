@@ -9,7 +9,7 @@ import {
   MIDGARD_VALIDATION_CASE_OPEN_WINDOW_MS,
   MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { CML, coreToTxOutput, Data } from "@lucid-evolution/lucid";
 
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";

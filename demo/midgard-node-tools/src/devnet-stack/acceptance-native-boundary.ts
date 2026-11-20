@@ -1,7 +1,7 @@
 import {
   createDaAvailabilityReadScope,
   type DaAvailabilityReadScope,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/da";
 
 import {
   type AcceptanceNativeReadConfig,

@@ -10,7 +10,7 @@
  * (absent ones as 32 zero bytes); the empty trie's root is Midgard's
  * empty root (`EMPTY_MERKLE_TREE_ROOT`).
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { blake2b } from "@noble/hashes/blake2.js";
 
 const DIGEST_BYTES = 32;

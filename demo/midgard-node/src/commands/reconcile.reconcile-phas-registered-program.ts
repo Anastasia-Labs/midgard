@@ -1,5 +1,6 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Effect } from "effect";
 
 import { loadPhasMembershipWithdrawalScript } from "../phas-membership.js";
@@ -20,10 +21,10 @@ import {
 type CanonicalStateQueueHeader = {
   readonly headerHash: string;
   readonly outRef: string;
-  readonly utxo: SDK.StateQueueUTxO;
+  readonly utxo: SDKStateQueue.StateQueueUTxO;
 };
 
-const stateQueueOutRef = (utxo: SDK.StateQueueUTxO): string =>
+const stateQueueOutRef = (utxo: SDKStateQueue.StateQueueUTxO): string =>
   `${utxo.utxo.txHash}#${utxo.utxo.outputIndex.toString()}`;
 
 /** The landed queue's blocks (P1), root excluded, in list order. */

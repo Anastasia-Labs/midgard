@@ -17,7 +17,8 @@ import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
   plutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { Data, datumToHash, type UTxO } from "@lucid-evolution/lucid";
 
 import { encodeOutRef } from "../codec.js";
@@ -130,7 +131,7 @@ export const retirementEvidence = (
   try {
     const { witness } = Data.from(
       hex(observed.redeemer.data),
-      SDK.EventHistoryRetirementArgs,
+      SDKUsers.EventHistoryRetirementArgs,
     );
     return {
       reason:
@@ -139,7 +140,7 @@ export const retirementEvidence = (
           : "refunded",
       observerRedeemerIndex: observed.ordinal,
       witnessCbor: Buffer.from(
-        Data.to(witness, SDK.EventHistoryRetirementWitness),
+        Data.to(witness, SDKUsers.EventHistoryRetirementWitness),
         "hex",
       ),
     };
@@ -187,7 +188,7 @@ export const openOrder = (
   retained: readonly UTxO[],
 ): AdmittedEvent | "not_an_order" => {
   if (utxo.datum == null) throw new Error("list output has no inline datum");
-  const node = Data.from(utxo.datum, SDK.EventHistoryNode);
+  const node = Data.from(utxo.datum, SDKUsers.EventHistoryNode);
   if (
     node.position === "Root" ||
     node.payload === "RootContent" ||
@@ -213,11 +214,11 @@ export const openOrder = (
   }
   const payloadCbor =
     aikenSerialisedPlutusDataCborPreservingMapOrder(rawPayload);
-  const captured = SDK.captureEventHistoryWitness(
+  const captured = SDKUsers.captureEventHistoryWitness(
     {
       kind: "Present",
       anchor: { utxo, node, key: node.position.Key[0] },
-      payload: Data.from(payloadCbor, SDK.EventHistoryPayload),
+      payload: Data.from(payloadCbor, SDKUsers.EventHistoryPayload),
       payloadCbor,
       ...(retainedDataUtxo === undefined ? {} : { retainedDataUtxo }),
     },

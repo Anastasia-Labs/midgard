@@ -14,7 +14,9 @@ import {
   deriveMidgardForcedTxProofSource,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { Data, toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -116,7 +118,7 @@ describe("transition-trace forced order validity interval", () => {
       });
       const assetName = "97",
         unit = toUnit(harness.contracts.txOrder.policyId, assetName);
-      const datum: SDK.TxOrderDatum = {
+      const datum: SDKUsers.TxOrderDatum = {
         event: {
           id,
           tx: {
@@ -142,7 +144,7 @@ describe("transition-trace forced order validity interval", () => {
           .mintAssets({ [unit]: 1n }, Data.void())
           .pay.ToContract(
             harness.contracts.txOrder.spendingScriptAddress,
-            { kind: "inline", value: Data.to(datum, SDK.TxOrderDatum) },
+            { kind: "inline", value: Data.to(datum, SDKUsers.TxOrderDatum) },
             { lovelace: 5000000n, [unit]: 1n },
           )
           .attach.MintingPolicy(harness.contracts.txOrder.mintingScript)
@@ -168,7 +170,7 @@ describe("transition-trace forced order validity interval", () => {
         event,
         "bounded-validity order",
       );
-      const fault: SDK.TransitionFault =
+      const fault: SDKFraudProof.TransitionFault =
         scenario === "omission"
           ? await buildOmittedDueL1EventFault({
               reconstruction: await reconstruct({ ...omitting, header }),
@@ -200,7 +202,7 @@ describe("transition-trace forced order validity interval", () => {
                 },
               },
             };
-      const proof: SDK.TransitionFaultProof = {
+      const proof: SDKFraudProof.TransitionFaultProof = {
         challenged_header_hash: lifecycle.setup.headerHash,
         header,
         fault,

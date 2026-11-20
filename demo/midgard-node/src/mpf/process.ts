@@ -5,7 +5,9 @@
 import "node:path";
 import "@aiken-lang/merkle-patricia-forestry";
 import "@al-ft/midgard-core/consensus-profile";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/da";
+import "@al-ft/midgard-sdk/users";
 import "@al-ft/midgard-validation/phase-a";
 import "effect";
 import "fs";

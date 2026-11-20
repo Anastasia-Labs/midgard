@@ -1,4 +1,4 @@
-import type { CardanoDatum } from "@al-ft/midgard-sdk";
+import type { CardanoDatum } from "@al-ft/midgard-sdk/core";
 import { expect, it } from "vitest";
 
 import { verifyAcceptancePayoutLineage } from "../src/devnet-stack/acceptance-payout-lineage.js";

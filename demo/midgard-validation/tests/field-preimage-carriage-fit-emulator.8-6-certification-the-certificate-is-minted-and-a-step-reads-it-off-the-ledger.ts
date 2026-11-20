@@ -15,7 +15,7 @@ import {
   fieldPreimagePublicationOutputs,
   resolveChunkReferenceIndices,
   retireFieldPreimageCertificateRedeemer,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import {
   credentialToAddress,
   scriptHashToCredential,

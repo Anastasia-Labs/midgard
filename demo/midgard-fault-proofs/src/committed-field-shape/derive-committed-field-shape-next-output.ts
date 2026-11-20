@@ -3,7 +3,7 @@ import {
   CommittedFieldShapeStep01Datum,
   CommittedFieldShapeStep02Datum,
   type CommittedFieldShapeStep02State,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 
 import type { ResolvedProverSigner } from "../runtime.js";

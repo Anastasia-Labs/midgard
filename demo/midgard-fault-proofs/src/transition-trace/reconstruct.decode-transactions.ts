@@ -3,7 +3,9 @@ import {
   deriveMidgardNativeTxFaultEvidenceMaterial,
 } from "@al-ft/midgard-core/codec";
 import { normalizeHex } from "@al-ft/midgard-core/hex";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import { transitionTraceError } from "./errors.js";
@@ -22,11 +24,13 @@ import {
   validatePayloadEntryArray,
 } from "./reconstruct.transition-trace-reconstruction.js";
 
-export const decodePayloadStrict = (payloadCbor: Uint8Array): SDK.DaPayload => {
+export const decodePayloadStrict = (
+  payloadCbor: Uint8Array,
+): SDKDa.DaPayload => {
   const buffer = Buffer.from(payloadCbor);
-  let payload: SDK.DaPayload;
+  let payload: SDKDa.DaPayload;
   try {
-    payload = SDK.decodeDaPayload(buffer);
+    payload = SDKDa.decodeDaPayload(buffer);
   } catch (cause) {
     throw transitionTraceError(
       "malformedPayload",
@@ -34,16 +38,16 @@ export const decodePayloadStrict = (payloadCbor: Uint8Array): SDK.DaPayload => {
       cause,
     );
   }
-  if (!SDK.encodeDaPayload(payload).equals(buffer)) {
+  if (!SDKDa.encodeDaPayload(payload).equals(buffer)) {
     throw transitionTraceError(
       "nonCanonicalPayload",
       "DA payload CBOR is not canonical for DaPayloadV1.",
     );
   }
-  if (payload.version !== SDK.DA_PAYLOAD_VERSION) {
+  if (payload.version !== SDKDa.DA_PAYLOAD_VERSION) {
     throw transitionTraceError(
       "wrongPayloadVersion",
-      `Expected DA payload version ${SDK.DA_PAYLOAD_VERSION.toString()}, got ${payload.version.toString()}.`,
+      `Expected DA payload version ${SDKDa.DA_PAYLOAD_VERSION.toString()}, got ${payload.version.toString()}.`,
     );
   }
   normalizeHeaderHash(payload.block_body.header_hash, "payload header_hash");
@@ -114,7 +118,7 @@ export const validateDenseTransitionTrace = (
 
 export const rawEntries = (
   fieldName: string,
-  entries: readonly SDK.DaPayloadEntry[],
+  entries: readonly SDKDa.DaPayloadEntry[],
 ): readonly KeyValuePhasEntry[] =>
   canonicalizeKeyValuePhasEntries(
     entries.map(([key, value], index) => ({
@@ -131,7 +135,7 @@ export const decodeTypedEntries = <K, V>({
   valueEncoder,
 }: {
   readonly fieldName: string;
-  readonly entries: readonly SDK.DaPayloadEntry[];
+  readonly entries: readonly SDKDa.DaPayloadEntry[];
   readonly keySchema: DataSchema;
   readonly valueSchema: DataSchema;
   readonly valueEncoder?: (value: V, raw: string) => string;
@@ -156,8 +160,8 @@ export const decodeTransactions = async ({
   entries,
   preimages,
 }: {
-  readonly entries: readonly SDK.DaPayloadEntry[];
-  readonly preimages: readonly SDK.DaPayloadEntry[];
+  readonly entries: readonly SDKDa.DaPayloadEntry[];
+  readonly preimages: readonly SDKDa.DaPayloadEntry[];
 }): Promise<readonly DecodedTransactionEntry[]> => {
   const preimagesByTxId = new Map(
     preimages.map(([key, value], index) => [
@@ -230,7 +234,7 @@ export const decodeTransactions = async ({
     }
     const committedFieldDefect = raw.fieldPreimages
       .map((preimage, fieldIndex) =>
-        SDK.canonicalDecodabilityEvidenceFromCommittedField({
+        SDKFraudProof.canonicalDecodabilityEvidenceFromCommittedField({
           badTxId: txId,
           fieldIndex,
           committedPreimage: preimage,

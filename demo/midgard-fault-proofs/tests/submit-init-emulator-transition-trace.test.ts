@@ -8,7 +8,7 @@
  * and the split is kept so each file runs in its own fresh process.
  */
 import { outRefLabel } from "@al-ft/midgard-core";
-import { FraudProofTokenDatum } from "@al-ft/midgard-sdk";
+import { FraudProofTokenDatum } from "@al-ft/midgard-sdk/fraud-proof";
 import {
   Data,
   Emulator,

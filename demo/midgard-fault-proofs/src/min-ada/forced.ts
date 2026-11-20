@@ -1,6 +1,6 @@
 import { decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
-import { forcedVerdictSubject } from "@al-ft/midgard-sdk";
+import { forcedVerdictSubject } from "@al-ft/midgard-sdk/fraud-proof";
 import {
   MIDGARD_COINS_PER_UTXO_BYTE,
   outputMeetsMinAda,

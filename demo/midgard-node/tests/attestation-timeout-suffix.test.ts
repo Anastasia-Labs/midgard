@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { SqlClient } from "@effect/sql";
 import { type LucidEvolution, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { Effect, Either, Ref } from "effect";
@@ -54,7 +55,7 @@ const fixture = async (tailApplied = false, headApplied = true) => {
     datum: SDK.encodeLinkedListNodeView(datum),
   });
   const root = node(
-    SDK.STATE_QUEUE_ROOT_ASSET_NAME,
+    SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME,
     {
       key: "Empty",
       next: { Key: { key: firstHash } },
@@ -116,7 +117,7 @@ const fixture = async (tailApplied = false, headApplied = true) => {
     );
   const queue = await Promise.all(
     outputs.map((utxo) =>
-      Effect.runPromise(SDK.utxoToStateQueueUTxO(utxo, policyId)),
+      Effect.runPromise(SDKStateQueue.utxoToStateQueueUTxO(utxo, policyId)),
     ),
   );
   return { api, queue, tailHash, run };
@@ -129,7 +130,7 @@ describe("pending queue attestation expiry", () => {
       await Effect.runPromise(
         observeAttestationTimeoutQueue(
           queue,
-          SDK.DA_ATTESTATION_TIMEOUT_MS + 2_000n - 50_000n,
+          SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS + 2_000n - 50_000n,
           120_000n,
         ),
       ),
@@ -138,7 +139,7 @@ describe("pending queue attestation expiry", () => {
       await Effect.runPromise(
         observeAttestationTimeoutQueue(
           queue,
-          SDK.DA_ATTESTATION_TIMEOUT_MS + 2_000n,
+          SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS + 2_000n,
           120_000n,
         ),
       ),
@@ -158,7 +159,7 @@ describe("pending queue attestation expiry", () => {
       stateQueueAddress: address,
       stateQueuePolicyId: policyId,
     };
-    const timeoutMs = Number(SDK.DA_ATTESTATION_TIMEOUT_MS);
+    const timeoutMs = Number(SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS);
     // L1 now at slot 0, before every fixture node's deadline: an expired node
     // refuses instead. The stub client has no slot mapping, so slot s starts
     // at s * 1000 ms.
@@ -203,7 +204,7 @@ describe("pending queue attestation expiry", () => {
       stateQueueAddress: address,
       stateQueuePolicyId: policyId,
     };
-    const timeoutMs = Number(SDK.DA_ATTESTATION_TIMEOUT_MS);
+    const timeoutMs = Number(SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS);
     const cases = [
       // An unattested tail behind an attested head, its deadline 2000 + T.
       { queue: await fixture(), deadlineMs: 2_000 + timeoutMs },
@@ -243,7 +244,7 @@ describe("pending queue attestation expiry", () => {
       stateQueueAddress: address,
       stateQueuePolicyId: policyId,
     };
-    const timeoutMs = Number(SDK.DA_ATTESTATION_TIMEOUT_MS);
+    const timeoutMs = Number(SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS);
     // The tail's deadline is 2000 + T. L1 now is one slot before it; the wall
     // clock is 10 minutes past it.
     const queue = await fixture();
@@ -296,11 +297,11 @@ describe("pending queue attestation expiry", () => {
       await queue.run(
         resolveCommitAppendFenceEndTimeCapLocal(queue.api, fetchConfig),
       ),
-    ).toBe(2_000 + Number(SDK.DA_ATTESTATION_TIMEOUT_MS) - 1);
+    ).toBe(2_000 + Number(SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS) - 1);
   });
   it("refuses a commit preflight extending an expired suffix and permits an applied tail", async () => {
     const expiredAtSlot =
-      Number(SDK.DA_ATTESTATION_TIMEOUT_MS + 2_000n) / 1_000;
+      Number(SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS + 2_000n) / 1_000;
     {
       const expired = await fixture();
       attachTestL1Access(expired.api, expiredAtSlot);
@@ -341,7 +342,7 @@ it("records the tick's one queue classification for readiness, and returns a cla
     consecutiveFailures: 0,
     oldestUnattestedHeader: null,
   });
-  const nowMs = Number(SDK.DA_ATTESTATION_TIMEOUT_MS) + 2_000;
+  const nowMs = Number(SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS) + 2_000;
   const { queue, tailHash } = await fixture();
   const timedOut = await Effect.runPromise(
     observeAndRecordAttestationTimeoutQueue(health, queue, {
@@ -358,7 +359,7 @@ it("records the tick's one queue classification for readiness, and returns a cla
     lastQueueReadAtMs: nowMs,
     oldestUnattestedHeader: {
       headerHash: tailHash,
-      deadlineMs: 2_000 + Number(SDK.DA_ATTESTATION_TIMEOUT_MS),
+      deadlineMs: 2_000 + Number(SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS),
     },
   });
 
@@ -407,7 +408,7 @@ it("judges the DA-attestation deadline at L1 now: a local clock 10 minutes fast 
     consecutiveFailures: 0,
     oldestUnattestedHeader: null,
   });
-  const deadlineMs = Number(SDK.DA_ATTESTATION_TIMEOUT_MS) + 2_000;
+  const deadlineMs = Number(SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS) + 2_000;
   // L1 now is well before the tail's deadline (more than the alert lead);
   // the local clock reads 10 minutes past it.
   const l1NowMs = deadlineMs - 1_000_000;

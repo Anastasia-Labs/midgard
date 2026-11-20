@@ -12,7 +12,7 @@
  * family.
  */
 import { outRefLabel } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

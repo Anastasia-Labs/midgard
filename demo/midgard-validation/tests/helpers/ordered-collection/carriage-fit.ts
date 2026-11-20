@@ -8,7 +8,7 @@ import {
   MIDGARD_CONSENSUS_LIMITS,
   MIDGARD_ENVELOPE_MEASUREMENTS,
 } from "@al-ft/midgard-core/consensus-profile";
-import { deriveValidationProofItemPublication } from "@al-ft/midgard-sdk";
+import { deriveValidationProofItemPublication } from "@al-ft/midgard-sdk/fraud-proof";
 import { CML } from "@lucid-evolution/lucid";
 
 export type MidgardCompleteItemCarriageFit = {

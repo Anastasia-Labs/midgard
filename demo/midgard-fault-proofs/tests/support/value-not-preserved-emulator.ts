@@ -19,7 +19,9 @@
 
 import "@aiken-lang/merkle-patricia-forestry";
 import "@al-ft/midgard-core";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "@al-ft/midgard-validation/ledger-output-descriptor";
 import "@lucid-evolution/lucid";
 import "effect";

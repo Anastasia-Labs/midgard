@@ -1,6 +1,9 @@
 import "@al-ft/midgard-core";
 import "@al-ft/midgard-core/da-transport";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/da";
+import "@al-ft/midgard-sdk/users";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "../evidence/canonical-decodability-raw-evidence.js";
 import "../evidence/fraud-proof-evidence.js";
 import "./action-changed.js";

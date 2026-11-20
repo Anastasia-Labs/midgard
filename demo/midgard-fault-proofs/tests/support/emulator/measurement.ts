@@ -1,4 +1,4 @@
-import { type MidgardValidators } from "@al-ft/midgard-sdk";
+import { type MidgardValidators } from "@al-ft/midgard-sdk/core";
 import {
   CML,
   Emulator,

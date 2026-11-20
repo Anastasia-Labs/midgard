@@ -1,6 +1,6 @@
 import { createServer } from "node:net";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { afterEach } from "vitest";
 
 import { DaLibp2pAttestationExchange } from "../src/da/libp2p/attestations.js";

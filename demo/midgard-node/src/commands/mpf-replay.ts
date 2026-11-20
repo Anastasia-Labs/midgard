@@ -3,7 +3,7 @@ import "node:fs";
 import "node:fs/promises";
 import "node:os";
 import "node:path";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
 import "@lucid-evolution/lucid";
 import "blake2b";
 import "effect";

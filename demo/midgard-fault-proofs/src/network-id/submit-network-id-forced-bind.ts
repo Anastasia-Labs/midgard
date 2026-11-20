@@ -1,16 +1,16 @@
+import { forcedLeafMembershipV1 } from "@al-ft/midgard-sdk/core";
 import {
-  forcedLeafMembershipV1,
-  proofThreadDirectionOfForcedLeaf,
-} from "@al-ft/midgard-sdk";
+  requireInputIndex,
+  requireOwnSpendPurpose,
+  requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk/fraud-proof";
 import {
   NetworkIdForcedScanDatumSchema,
   type NetworkIdForcedScanState,
   NetworkIdForcedStepDatum,
   NetworkIdForcedStepSpendRedeemerSchema,
-  requireInputIndex,
-  requireOwnSpendPurpose,
-  requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

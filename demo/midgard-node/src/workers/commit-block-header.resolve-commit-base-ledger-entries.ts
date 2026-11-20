@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Effect, Option } from "effect";
 
 import {
@@ -141,9 +142,10 @@ export const resolveCommitBaseLedgerEntries = ({
         availableConfirmedBlock,
       );
       if (latestBlock.datum.key === "Empty") {
-        confirmedState = (yield* SDK.getConfirmedStateFromStateQueueDatum(
-          latestBlock.datum,
-        )).data;
+        confirmedState =
+          (yield* SDKStateQueue.getConfirmedStateFromStateQueueDatum(
+            latestBlock.datum,
+          )).data;
         if (!requireEntries && nativeMpfRoot === confirmedState.utxoRoot) {
           return {
             source: "persistent-ledger-mpf",

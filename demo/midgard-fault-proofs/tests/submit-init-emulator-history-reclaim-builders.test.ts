@@ -6,7 +6,8 @@ import { join } from "node:path";
 import { inspect } from "node:util";
 
 import { compareOutRefs, findOutRefIndex } from "@al-ft/midgard-core/out-ref";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   Data,
   scriptFromNative,
@@ -32,7 +33,7 @@ const records: unknown[] = [];
 it("reclaims both retained event kinds only through their exact published authorization script", async () => {
   const h = await setupHistoryPair({ blueprint, records });
   const history = h.applied.map(
-    (applied, i): SDK.EventHistoryContracts => ({
+    (applied, i): SDKUsers.EventHistoryContracts => ({
       recipe: h.recipes[i]!,
       list: {
         ...SDK.makeAuthenticatedValidator(
@@ -90,7 +91,7 @@ it("reclaims both retained event kinds only through their exact published author
       payload.WithdrawalPayload.event.info.body.l1_datum = {
         InlineDatum: { data: "ab".repeat(1000) },
       };
-    const plan = SDK.prepareEventHistoryPayload(
+    const plan = SDKUsers.prepareEventHistoryPayload(
       payload,
       { ScriptCredential: [h.hubPolicy] },
       h.recipes[i]!,
@@ -133,7 +134,7 @@ it("reclaims both retained event kinds only through their exact published author
   expect(wrongReference?.scriptRef).toEqual(alternate);
   const retained = [depositData!, withdrawalData!];
   for (const [i, kind] of (["Deposit", "Withdrawal"] as const).entries()) {
-    const config: SDK.ReclaimEventHistoryDataConfig = {
+    const config: SDKUsers.ReclaimEventHistoryDataConfig = {
       kind,
       retainedInput: retained[i]!,
       hubOracleRefInput: h.hub,
@@ -165,7 +166,7 @@ it("reclaims both retained event kinds only through their exact published author
     ] as const) {
       const result = await Effect.runPromise(
         Effect.either(
-          SDK.buildReclaimEventHistoryDataTxProgram(h.lucid, contracts, {
+          SDKUsers.buildReclaimEventHistoryDataTxProgram(h.lucid, contracts, {
             ...config,
             scriptAuthorization,
           }),
@@ -178,9 +179,9 @@ it("reclaims both retained event kinds only through their exact published author
       expect(await h.lucid.utxosByOutRef([retained[i]!])).toHaveLength(1);
       records.push({ label, kind, refusal: String(result.left.cause) });
     }
-    const absence = await SDK.fetchEventHistoryWitness(
+    const absence = await SDKUsers.fetchEventHistoryWitness(
       h.lucid,
-      SDK.eventHistoryDeploymentFromContracts(history[i]!),
+      SDKUsers.eventHistoryDeploymentFromContracts(history[i]!),
       {
         transactionId: h.eventNonces[i]!.txHash,
         outputIndex: BigInt(h.eventNonces[i]!.outputIndex),
@@ -188,7 +189,11 @@ it("reclaims both retained event kinds only through their exact published author
     );
     expect(absence.kind).toBe("Absent");
     const built = await Effect.runPromise(
-      SDK.buildReclaimEventHistoryDataTxProgram(h.lucid, contracts, config),
+      SDKUsers.buildReclaimEventHistoryDataTxProgram(
+        h.lucid,
+        contracts,
+        config,
+      ),
     );
     const body = built.tx.toTransaction().body();
     const references = body.reference_inputs()!;

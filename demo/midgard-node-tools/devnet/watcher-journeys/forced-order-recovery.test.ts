@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/users";
 import { CML, credentialToAddress } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { afterEach, expect, it, vi } from "vitest";

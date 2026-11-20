@@ -18,7 +18,8 @@
  *
  * The finding this pins is docs/midgard/decisions/da-sibling-signatures-not-slashable.md.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { CML, Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -68,11 +69,11 @@ const siblingOf = async (f: AvailabilityFixture) => {
     utxosRoot: "03".repeat(32),
   };
   const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
-  const commitment = SDK.buildDaAvailabilityCommitment({
+  const commitment = SDKDa.buildDaAvailabilityCommitment({
     deploymentIdentity: f.contracts.hubOracle.policyId,
     headerHash,
     payload: Uint8Array.of(0xb0),
-    responseGeometry: SDK.availabilityResponseGeometry({
+    responseGeometry: SDKDa.availabilityResponseGeometry({
       chunkByteLength: Number(f.parameters.response_geometry.chunk_byte_length),
       trancheByteLength: Number(
         f.parameters.response_geometry.tranche_byte_length,
@@ -84,7 +85,7 @@ const siblingOf = async (f: AvailabilityFixture) => {
     header,
     headerHash,
     commitment,
-    message: SDK.daAvailabilityAttestationMessage(commitment),
+    message: SDKDa.daAvailabilityAttestationMessage(commitment),
   };
 };
 
@@ -105,7 +106,7 @@ const attestLandedSiblingA = async (
   expect(sibling.headerHash).not.toBe(f.target.headerHash);
 
   const member = f.committeeKeys[MEMBER]!;
-  const messageA = SDK.daAvailabilityAttestationMessage(f.commitment);
+  const messageA = SDKDa.daAvailabilityAttestationMessage(f.commitment);
   const memberOnA = signatureHex(member, messageA);
   const memberOnB = signatureHex(member, sibling.message);
   // Two valid signatures by one member over sibling headers.
@@ -118,11 +119,11 @@ const attestLandedSiblingA = async (
     SDK.addressDataFromBech32(f.responder.address),
   );
   const init = (
-    target: SDK.DaAttestationStateQueueTarget,
-    availabilityCommitment: SDK.DaAvailabilityCommitment,
+    target: SDKDa.DaAttestationStateQueueTarget,
+    availabilityCommitment: SDKDa.DaAvailabilityCommitment,
   ) =>
     Effect.runPromise(
-      SDK.incompleteInitDaAttestationTxProgram(lucid, contracts, {
+      SDKDa.incompleteInitDaAttestationTxProgram(lucid, contracts, {
         daParamsUtxo: f.daParamsUtxo,
         daParamsDatum: f.daParamsDatum,
         target,
@@ -153,21 +154,21 @@ const attestLandedSiblingA = async (
     true,
   );
 
-  const attestationUnit = SDK.daAttestationUnit(
+  const attestationUnit = SDKDa.daAttestationUnit(
     contracts.daAttestation,
     f.target.headerHash,
   );
-  const getAttestation = async (): Promise<SDK.DaAttestationUtxo> => {
+  const getAttestation = async (): Promise<SDKDa.DaAttestationUtxo> => {
     const [utxo] = await lucid.utxosAtWithUnit(
       contracts.daAttestation.spendingScriptAddress,
       attestationUnit,
     );
     if (!utxo?.datum) throw new Error("Missing attestation");
-    return { utxo, datum: Data.from(utxo.datum, SDK.DaAttestationDatum) };
+    return { utxo, datum: Data.from(utxo.datum, SDKDa.DaAttestationDatum) };
   };
   const addSignatures = async (memberSignatureHex: string) =>
     Effect.runPromise(
-      SDK.incompleteAddDaAttestationSignaturesTxProgram(lucid, contracts, {
+      SDKDa.incompleteAddDaAttestationSignaturesTxProgram(lucid, contracts, {
         daParamsUtxo: f.daParamsUtxo,
         daParamsDatum: f.daParamsDatum,
         attestation: await getAttestation(),
@@ -201,7 +202,7 @@ const attestLandedSiblingA = async (
   );
 
   const apply = await Effect.runPromise(
-    SDK.incompleteApplyDaAttestationToStateQueueTxProgram(lucid, contracts, {
+    SDKDa.incompleteApplyDaAttestationToStateQueueTxProgram(lucid, contracts, {
       daParamsUtxo: f.daParamsUtxo,
       daParamsDatum: f.daParamsDatum,
       attestation: await getAttestation(),
@@ -222,7 +223,7 @@ const attestLandedSiblingA = async (
   if (!queue) throw new Error("Apply omitted the queue node");
   expect(nodeOf(queue).da_attestation).toEqual({
     Attested: {
-      commitment_hash: SDK.daAvailabilityCommitmentHash(f.commitment),
+      commitment_hash: SDKDa.daAvailabilityCommitmentHash(f.commitment),
     },
   });
   return { queue, sibling };
@@ -239,7 +240,7 @@ const siblingQueueNodes = (f: AvailabilityFixture, headerHash: string) =>
 const daParamsNow = async (f: AvailabilityFixture): Promise<UTxO> => {
   const [params] = await f.lucid.utxosAtWithUnit(
     f.contracts.daParamsGovernor.spendingScriptAddress,
-    f.contracts.daParamsGovernor.policyId + SDK.DA_PARAMS_ASSET_NAME,
+    f.contracts.daParamsGovernor.policyId + SDKDa.DA_PARAMS_ASSET_NAME,
   );
   if (!params) throw new Error("Missing DA params");
   return params;
@@ -293,7 +294,7 @@ describe("a committee member signing sibling headers", () => {
     const params = await daParamsNow(f);
     expect(params.datum).toBe(f.daParamsUtxo.datum);
     expect(
-      Data.from(params.datum!, SDK.DaParamsDatum).committee.slice(
+      Data.from(params.datum!, SDKDa.DaParamsDatum).committee.slice(
         MEMBER * 64,
         MEMBER * 64 + 64,
       ),
@@ -320,7 +321,7 @@ describe("a committee member signing sibling headers", () => {
     expect(backingOf(pool)).toBeGreaterThanOrEqual(
       f.parameters.da_bond_lovelace,
     );
-    const slash = SDK.planDaBondPoolSlash({
+    const slash = SDKDa.planDaBondPoolSlash({
       poolLovelace: pool.assets.lovelace,
       parameters: f.parameters,
     });
@@ -328,7 +329,7 @@ describe("a committee member signing sibling headers", () => {
       pool.assets.lovelace - f.parameters.da_bond_lovelace,
     );
     const built = await Effect.runPromise(
-      SDK.buildTimeoutDaAvailabilityChallengeTxProgram(
+      SDKDa.buildTimeoutDaAvailabilityChallengeTxProgram(
         f.lucid,
         d,
         await timeoutParams(f, s, terminal, pool),

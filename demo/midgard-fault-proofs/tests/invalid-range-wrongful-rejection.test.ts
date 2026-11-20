@@ -6,7 +6,7 @@ import {
 import {
   acceptedVerdictSubject,
   forcedVerdictSubject,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, expectTypeOf, it } from "vitest";
 
 import {

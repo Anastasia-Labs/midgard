@@ -1,5 +1,5 @@
 import { computeDaSha256Hash } from "@al-ft/midgard-core/da-transport";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 
 import type { CommitteeStore } from "../store.js";
 

@@ -1,6 +1,6 @@
 import { RETENTION_MS_PER_DAY } from "@al-ft/midgard-core";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 

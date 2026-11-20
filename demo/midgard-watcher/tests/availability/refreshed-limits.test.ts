@@ -24,7 +24,9 @@ it.each([
 ])(
   "captures winning rebuild limits when min-ADA changes %s -> %s",
   async (oldCost, newCost) => {
-    const actualSdk = await vi.importActual<typeof SDK>("@al-ft/midgard-sdk");
+    const actualSdk = await vi.importActual<typeof SDK>(
+      "@al-ft/midgard-sdk/da",
+    );
     const deriveLimits = actualSdk.daAvailabilityOperationLimits;
     const actualLucid = await vi.importActual<typeof Lucid>(
       "@lucid-evolution/lucid",

@@ -1,5 +1,6 @@
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   credentialToAddress,
@@ -96,7 +97,7 @@ export const submitRawTerminal = async ({
   );
   const fraudProofDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash },
-    SDK.FraudProofTokenDatum,
+    SDKFraudProof.FraudProofTokenDatum,
   );
   const fraudProofOutputMatches = outputWithDatumAndUnitPredicate({
     address: contracts.fraudProof.spendingScriptAddress,
@@ -140,7 +141,7 @@ export const submitRawTerminal = async ({
           },
         ],
       },
-      SDK.DoubleWithdrawStep02SpendRedeemer,
+      SDKFraudProof.DoubleWithdrawStep02SpendRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
   const threadBurn = ((ctx) => {
@@ -151,7 +152,7 @@ export const submitRawTerminal = async ({
     );
     return Data.to(
       { Success: { burning_token_asset_name: threadToken.assetName } },
-      SDK.FraudProofComputationThreadRedeemer,
+      SDKFraudProof.FraudProofComputationThreadRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
   const proofMint = ((ctx) => {
@@ -169,7 +170,7 @@ export const submitRawTerminal = async ({
           "raw terminal thread burn",
         ),
       },
-      SDK.FraudProofTokenMintRedeemer,
+      SDKFraudProof.FraudProofTokenMintRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
   const terminalBase = lucid
@@ -252,7 +253,7 @@ export const submitRawCancel = async ({
     );
     return Data.to(
       { BurnForCancellation: { burning_token_asset_name: token.assetName } },
-      SDK.FraudProofComputationThreadRedeemer,
+      SDKFraudProof.FraudProofComputationThreadRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
   const cancelBase = lucid

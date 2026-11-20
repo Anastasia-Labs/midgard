@@ -2,7 +2,7 @@
  * Replay corpus block shapes consumed by the MPF probes.
  */
 
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 
 export type CorpusHexEntry = { readonly key: string; readonly value: string };
 

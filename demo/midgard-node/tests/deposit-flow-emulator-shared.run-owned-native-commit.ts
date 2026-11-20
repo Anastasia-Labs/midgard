@@ -1,4 +1,4 @@
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import { Effect, Ref } from "effect";
 
 import { promoteOrRecoverNativeMpf } from "../src/fibers/block-commitment.promote-or-recover-native-mpf.js";

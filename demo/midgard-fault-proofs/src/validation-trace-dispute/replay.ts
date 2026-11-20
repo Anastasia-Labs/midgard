@@ -3,7 +3,7 @@
  * own trace, so nothing here reads a trace from the DA payload. */
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import {
   buildValidationMachineLedgerMutationSteps,
   canonicalTransitionEffectFromStatePatch,

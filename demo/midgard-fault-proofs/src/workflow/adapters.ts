@@ -1,5 +1,5 @@
 import "@al-ft/midgard-core/da-transport";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
 import "./runner-admission.js";
 import "./adapters.freeze-registration.js";
 import "./adapters.workflow-adapter-registration-rows.js";

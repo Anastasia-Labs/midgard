@@ -4,7 +4,7 @@
  * families that read it: `NATIVE` holds a native script that does not
  * decode, `SPENT` and `OTHER` are plain key-owned outputs.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { makeOutput } from "@al-ft/midgard-validation/tests/validation-fixtures";
 import { Data } from "@lucid-evolution/lucid";
 

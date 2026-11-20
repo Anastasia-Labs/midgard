@@ -7,7 +7,8 @@
  * case's own bound every defense holds the bond to (validation-case-v1
  * `defense_bond_unlock_time`). Past it the slash is no longer due: the run
  * stops cleanly, with no alarm. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
   type Credential,
   credentialToAddress,
@@ -41,7 +42,7 @@ import {
   type ValidationTraceDisputeDeployment,
 } from "./transactions.js";
 
-export type Directory = SDK.SlashingDirectory;
+export type Directory = SDKDa.SlashingDirectory;
 
 const credentialOf = (
   credential: SDK.AddressData["paymentCredential"],
@@ -99,10 +100,10 @@ const defenderNode = async (
 };
 
 /** The receipt's datum, when `utxo` holds an inline lost-defense receipt. */
-export const receiptOf = (utxo: UTxO): SDK.LostDefenseReceipt => {
+export const receiptOf = (utxo: UTxO): SDKDa.LostDefenseReceipt => {
   if (typeof utxo.datum !== "string")
     throw new Error("lost-defense receipt carries no inline datum");
-  return Data.from(utxo.datum, SDK.LostDefenseReceipt);
+  return Data.from(utxo.datum, SDKDa.LostDefenseReceipt);
 };
 
 /** When the bond of the defender whose node is `node` unlocks, if set. */
@@ -144,7 +145,7 @@ export const validationTraceLostDefenseSlashDeadlines = ({
   };
   const caseBoundMs = async (
     headerHash: string,
-    receipt: SDK.LostDefenseReceipt,
+    receipt: SDKDa.LostDefenseReceipt,
     receiptOutRef: string,
   ): Promise<number | undefined> => {
     try {
@@ -167,7 +168,7 @@ export const validationTraceLostDefenseSlashDeadlines = ({
    * `node`. */
   const ofNode = async (
     headerHash: string,
-    receipt: SDK.LostDefenseReceipt,
+    receipt: SDKDa.LostDefenseReceipt,
     receiptOutRef: string,
     node: DefenderNode | undefined,
   ): Promise<number | undefined> => {
@@ -188,7 +189,7 @@ export const validationTraceLostDefenseSlashDeadlines = ({
     headerHash: string,
     receiptOutRef: string,
   ): Promise<number | undefined> => {
-    let receipt: SDK.LostDefenseReceipt;
+    let receipt: SDKDa.LostDefenseReceipt;
     try {
       receipt = receiptOf(
         await ours(lucid, receiptOutRef, "lost-defense receipt"),

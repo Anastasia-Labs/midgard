@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
 import type { RetainedDaPayloadSource } from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
-import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk";
+import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk/da";
 
 import { assertWatcherL1AvailabilityPayloadSource } from "../availability/published-payload.js";
 import { assertVerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";

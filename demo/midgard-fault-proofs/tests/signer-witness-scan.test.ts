@@ -4,7 +4,7 @@ import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import {
   missingSignatureFieldWalkCheckpoint,
   missingSignatureVkeyHash,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import {

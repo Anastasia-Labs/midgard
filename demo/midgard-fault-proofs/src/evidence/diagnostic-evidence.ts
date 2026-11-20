@@ -11,7 +11,7 @@
  * Operator-private node and file surfaces, including `--midgard-node-url`
  * evidence preparation, remain diagnostic-only.
  */
-import { type EvidenceProvenance } from "@al-ft/midgard-sdk";
+import { type EvidenceProvenance } from "@al-ft/midgard-sdk/fraud-proof";
 
 export const MIDGARD_NODE_URL_DIAGNOSTIC_LABEL =
   "operator node REST endpoint: diagnostic and import only, never a security input for a submitted proof" as const;

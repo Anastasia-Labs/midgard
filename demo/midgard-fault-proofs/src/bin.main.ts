@@ -1,4 +1,4 @@
-import { assertSecurityGradeEvidence } from "@al-ft/midgard-sdk";
+import { assertSecurityGradeEvidence } from "@al-ft/midgard-sdk/fraud-proof";
 
 import { parseArgs } from "./bin.parse-args.js";
 import { usage } from "./bin.parsed-args.js";

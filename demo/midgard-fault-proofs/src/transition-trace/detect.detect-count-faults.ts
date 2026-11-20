@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 
 import { TransitionTraceChallengerError } from "./errors.js";
 import { type TransitionL2ReplayMaterial } from "./proof-material.js";
@@ -50,8 +51,8 @@ export type TransitionTraceDetection =
       readonly kind: TransitionTraceFaultKind;
       readonly invariant: string;
       readonly diagnostic: string;
-      readonly fault: SDK.TransitionFault;
-      readonly proof: SDK.TransitionFaultProof;
+      readonly fault: SDKFraudProof.TransitionFault;
+      readonly proof: SDKFraudProof.TransitionFaultProof;
       /** An accepted-transaction replay's field items and ledger witnesses. */
       readonly l2Replay?: TransitionL2ReplayMaterial;
     }
@@ -96,7 +97,7 @@ export const detection = ({
   readonly kind: TransitionTraceFaultKind;
   readonly invariant: string;
   readonly diagnostic: string;
-  readonly fault: SDK.TransitionFault;
+  readonly fault: SDKFraudProof.TransitionFault;
   readonly l2Replay?: TransitionL2ReplayMaterial;
 }): TransitionTraceDetection => ({
   buildable: true,
@@ -209,7 +210,7 @@ export const detectCountFaults = (
         SourceRootCountMismatch: {
           proof: rootCountProof(reconstruction.rootData.withdrawals),
         },
-      } satisfies SDK.CountFaultWitness,
+      } satisfies SDKFraudProof.CountFaultWitness,
     },
     {
       invariant: "forced_transactions_root_count",
@@ -219,7 +220,7 @@ export const detectCountFaults = (
         SourceRootCountMismatch: {
           proof: rootCountProof(reconstruction.rootData.forcedTransactions),
         },
-      } satisfies SDK.CountFaultWitness,
+      } satisfies SDKFraudProof.CountFaultWitness,
     },
     {
       invariant: "transactions_root_count",
@@ -229,7 +230,7 @@ export const detectCountFaults = (
         SourceRootCountMismatch: {
           proof: rootCountProof(reconstruction.rootData.transactions),
         },
-      } satisfies SDK.CountFaultWitness,
+      } satisfies SDKFraudProof.CountFaultWitness,
     },
     {
       invariant: "deposits_root_count",
@@ -239,7 +240,7 @@ export const detectCountFaults = (
         SourceRootCountMismatch: {
           proof: rootCountProof(reconstruction.rootData.deposits),
         },
-      } satisfies SDK.CountFaultWitness,
+      } satisfies SDKFraudProof.CountFaultWitness,
     },
     {
       invariant: "event_to_step_root_count",
@@ -249,7 +250,7 @@ export const detectCountFaults = (
         EventToStepRootCountMismatch: {
           proof: rootCountProof(reconstruction.rootData.eventToStep),
         },
-      } satisfies SDK.CountFaultWitness,
+      } satisfies SDKFraudProof.CountFaultWitness,
     },
     {
       invariant: "transition_trace_root_count",
@@ -259,7 +260,7 @@ export const detectCountFaults = (
         TransitionTraceRootCountMismatch: {
           proof: rootCountProof(reconstruction.rootData.transitionTrace),
         },
-      } satisfies SDK.CountFaultWitness,
+      } satisfies SDKFraudProof.CountFaultWitness,
     },
   ] as const;
   for (const check of rootCountChecks) {

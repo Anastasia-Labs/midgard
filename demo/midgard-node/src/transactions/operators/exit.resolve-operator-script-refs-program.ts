@@ -3,7 +3,9 @@ import {
   alignedUnixTimeStrictlyAfter,
   ledgerTipBackdatedValidFromMs,
 } from "@al-ft/midgard-core/ogmios-slot";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKOperators from "@al-ft/midgard-sdk/operators";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -88,9 +90,9 @@ export const configuredOperatorEconomicsProgram: Effect.Effect<
 // ---------------------------------------------------------------------------
 
 export type OperatorExitError =
-  | SDK.OperatorDirectorySnapshotError
-  | SDK.StateQueueError
-  | SDK.OperatorExitError
+  | SDKOperators.OperatorDirectorySnapshotError
+  | SDKStateQueue.StateQueueError
+  | SDKOperators.OperatorExitError
   | OperatorFundingShortfall
   | OperatorWalletInputsEmpty
   | OperatorExitRefusal
@@ -132,7 +134,9 @@ export type OperatorScriptFamily =
  * so a missing publication fails the program instead of the build.
  */
 export type OperatorScriptRefs<F extends OperatorScriptFamily> = {
-  readonly family: (family: F) => readonly SDK.ReferenceScriptPublication[];
+  readonly family: (
+    family: F,
+  ) => readonly SDKOperators.ReferenceScriptPublication[];
   readonly spending: Readonly<Record<F, UTxO>>;
 };
 
@@ -143,7 +147,7 @@ export const resolveOperatorScriptRefsProgram = <
   contracts: SDK.MidgardValidators,
   referenceScriptsAddress: string,
   families: readonly F[],
-): Effect.Effect<OperatorScriptRefs<F>, SDK.StateQueueError> =>
+): Effect.Effect<OperatorScriptRefs<F>, SDKStateQueue.StateQueueError> =>
   Effect.gen(function* () {
     const targetsByCommand = referenceScriptTargetsByCommand(contracts);
     const resolved = yield* fetchReferenceScriptUtxosProgram(
@@ -159,7 +163,7 @@ export const resolveOperatorScriptRefsProgram = <
       );
       if (published === undefined) {
         return yield* Effect.fail(
-          new SDK.StateQueueError({
+          new SDKStateQueue.StateQueueError({
             message: `Missing the published ${family} spending script`,
             cause: undefined,
           }),
@@ -245,27 +249,31 @@ export const deriveWitnesses = <A>(derive: () => A): Effect.Effect<A, Error> =>
 export type PlannedSnapshot =
   | Readonly<{ snapshot?: undefined; intentPlan?: undefined }>
   | Readonly<{
-      snapshot: SDK.OperatorDirectorySnapshot;
+      snapshot: SDKOperators.OperatorDirectorySnapshot;
       intentPlan: IntentPlan;
     }>;
 
 /** The directory snapshot an exit plans from, and the plan it records under. */
 export const plannedSnapshotProgram = (
   lucid: LucidEvolution,
-  contracts: SDK.OperatorDirectoryValidators,
+  contracts: SDKOperators.OperatorDirectoryValidators,
   input: PlannedSnapshot,
 ): Effect.Effect<
-  Readonly<{ snapshot: SDK.OperatorDirectorySnapshot; intentPlan: IntentPlan }>,
-  SDK.OperatorDirectorySnapshotError,
+  Readonly<{
+    snapshot: SDKOperators.OperatorDirectorySnapshot;
+    intentPlan: IntentPlan;
+  }>,
+  SDKOperators.OperatorDirectorySnapshotError,
   IntentJournal
 > =>
   input.snapshot === undefined
     ? Effect.gen(function* () {
         const intentPlan = yield* openPlan;
-        const snapshot = yield* SDK.fetchOperatorDirectorySnapshotProgram(
-          lucid,
-          contracts,
-        );
+        const snapshot =
+          yield* SDKOperators.fetchOperatorDirectorySnapshotProgram(
+            lucid,
+            contracts,
+          );
         return { snapshot, intentPlan };
       })
     : Effect.succeed({
@@ -280,7 +288,7 @@ export const plannedSnapshotProgram = (
 export type RetirementSubmission = {
   readonly txHash: string;
   readonly operatorKeyHash: string;
-  readonly mode: SDK.RetirementMode;
+  readonly mode: SDKOperators.RetirementMode;
   /** Lovelace now held by the retired node. */
   readonly retiredBondLovelace: bigint;
   readonly inactivityStrikes: bigint;
@@ -290,7 +298,7 @@ export type RetirementSubmission = {
 };
 
 export const schedulerRouteOf = (
-  sync: SDK.RetireSchedulerSync,
+  sync: SDKOperators.RetireSchedulerSync,
 ): RetirementSubmission["schedulerRoute"] =>
   sync.kind === "OperatorIsInactive"
     ? "OperatorIsInactive"

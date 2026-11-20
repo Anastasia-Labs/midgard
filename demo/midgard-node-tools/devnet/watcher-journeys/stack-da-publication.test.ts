@@ -3,7 +3,7 @@ import {
   decodeDaPayloadSubmitRequestCbor,
   encodeDaPayloadSubmitResponseCbor,
 } from "@al-ft/midgard-core/da-transport";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import type { DaProducerTransport } from "midgard-node/da/libp2p-producer";
 import {
   parseManifestFixture,

@@ -1,6 +1,7 @@
 import type { MessagePort } from "node:worker_threads";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   CML,
   coreToUtxo,
@@ -314,12 +315,12 @@ export type IntentRefusalHoldsNotice = {
 // Datatype to use CBOR hex of state queue UTxOs instead of `UTxO` from LE for
 // transferability.
 export type SerializedStateQueueUTxO = Omit<
-  SDK.StateQueueUTxO,
+  SDKStateQueue.StateQueueUTxO,
   "utxo" | "datum"
 > & { utxo: string; datum: string };
 
 export const serializeStateQueueUTxO = (
-  stateQueueUTxO: SDK.StateQueueUTxO,
+  stateQueueUTxO: SDKStateQueue.StateQueueUTxO,
 ): Effect.Effect<
   SerializedStateQueueUTxO,
   SDK.CmlUnexpectedError | SDK.CborSerializationError
@@ -351,7 +352,7 @@ export const serializeStateQueueUTxO = (
 export const deserializeStateQueueUTxO = (
   stateQueueUTxO: SerializedStateQueueUTxO,
 ): Effect.Effect<
-  SDK.StateQueueUTxO,
+  SDKStateQueue.StateQueueUTxO,
   SDK.CmlUnexpectedError | SDK.CborDeserializationError
 > =>
   Effect.gen(function* () {

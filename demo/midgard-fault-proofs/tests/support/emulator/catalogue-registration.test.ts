@@ -3,7 +3,7 @@ import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/dep
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import { describe, expect, it } from "vitest";
 
 import {

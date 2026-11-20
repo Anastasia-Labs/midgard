@@ -6,7 +6,6 @@ import {
   encodeLinkedListNodeView,
   getHeaderFromStateQueueDatum,
   Header,
-  incompleteEmulatorCommitBlockHeaderTxProgram,
   type MidgardValidators,
   requireInputIndex,
   requireMintRedeemerIndex,
@@ -14,8 +13,11 @@ import {
   requireUniqueOutputIndex,
   SchedulerDatum,
   SchedulerSpendRedeemer,
+} from "@al-ft/midgard-sdk/core";
+import {
+  incompleteEmulatorCommitBlockHeaderTxProgram,
   utxoToStateQueueUTxO,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import {
   type BuildTxWithRedeemer,
   Data,

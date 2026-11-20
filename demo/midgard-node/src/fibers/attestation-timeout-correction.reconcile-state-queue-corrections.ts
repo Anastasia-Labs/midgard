@@ -6,7 +6,8 @@ import type {
   TimeoutCorrectionJournal,
   TimeoutCorrectionJournalStore,
 } from "@al-ft/midgard-fault-proofs/remove-unattested-block";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Effect, type Either, Ref } from "effect";
 
 import { ATTESTATION_TIMEOUT_CORRECTION_FAILURE_THRESHOLD } from "../commands/readiness.js";
@@ -55,7 +56,7 @@ export const attestationTimeoutCorrectionReadinessBounds = (
     readonly daAttestationTimeoutMs: bigint;
   } = {
     maxValidityRangeMs: SDK.MAX_VALIDITY_RANGE_LENGTH_MS,
-    daAttestationTimeoutMs: SDK.DA_ATTESTATION_TIMEOUT_MS,
+    daAttestationTimeoutMs: SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS,
   },
 ): { readonly stallBoundMs: number; readonly queueUnknownBoundMs: number } => {
   const removalWaitMs =
@@ -82,7 +83,7 @@ export const attestationTimeoutCorrectionReadinessBounds = (
  * clock reading that readiness measures queue freshness with. */
 export const observeAndRecordAttestationTimeoutQueue = (
   health: Ref.Ref<AttestationTimeoutCorrectionHealth>,
-  queue: readonly SDK.StateQueueUTxO[],
+  queue: readonly SDKStateQueue.StateQueueUTxO[],
   times: { readonly l1NowMs: number; readonly readAtMs: number },
 ): Effect.Effect<
   Either.Either<AttestationTimeoutObservation, SDK.DataCoercionError>

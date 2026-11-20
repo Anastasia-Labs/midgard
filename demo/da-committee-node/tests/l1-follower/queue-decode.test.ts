@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -19,7 +20,7 @@ const output = (assetName: string, datum: Buffer) => ({
 
 const rowOf = (outRef: string, assetName: string, datum: Buffer): QueueRow => ({
   outRef,
-  ...SDK.decodeStateQueueOutput(output(assetName, datum), POLICY)!,
+  ...SDKStateQueue.decodeStateQueueOutput(output(assetName, datum), POLICY)!,
   datumHex: datum.toString("hex"),
   createdSlot: 1,
   createdHeight: 1,
@@ -79,7 +80,7 @@ describe("a state-queue node output whose NFT does not name its header", () => {
       const queue = walkLandedQueue([
         rowOf(
           "r#0",
-          SDK.STATE_QUEUE_ROOT_ASSET_NAME,
+          SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME,
           rootDatum("00".repeat(28), 0, key),
         ),
         node,

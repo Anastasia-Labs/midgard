@@ -28,9 +28,11 @@ import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-confi
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   type FraudProofCatalogueDeploymentInfo,
+} from "@al-ft/midgard-sdk/core";
+import {
   REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
   referenceScriptAuthUnit,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import {
   credentialToAddress,
   validatorToScriptHash,

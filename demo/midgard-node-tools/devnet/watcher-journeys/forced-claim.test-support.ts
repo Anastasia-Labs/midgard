@@ -14,7 +14,7 @@ import {
 } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import { retainedTransactionFixture } from "@al-ft/midgard-fault-proofs/test-support/retained-transaction";
 import type { HeaderDecision } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import {
   CML,
   generateEmulatorAccount,

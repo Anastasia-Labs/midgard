@@ -1,5 +1,6 @@
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
   credentialToAddress,
   getAddressDetails,
@@ -68,9 +69,9 @@ type Block = Pick<
   Fixture["block"],
   "header" | "headerHash" | "payloadEnvelopeCbor"
 >;
-type Body = SDK.DaPayload["block_body"];
+type Body = SDKDa.DaPayload["block_body"];
 
-const entries = (values: readonly SDK.DaPayloadEntry[]) =>
+const entries = (values: readonly SDKDa.DaPayloadEntry[]) =>
   values.map(([key, value]) => ({
     key: Buffer.from(key, "hex"),
     value: Buffer.from(value, "hex"),
@@ -86,7 +87,7 @@ const recommit = async (
     payloadEnvelopeCbor: block.payloadEnvelopeCbor,
   });
   const body = { ...payload.block_body, ...mutate(payload.block_body) };
-  const sorted = (values: readonly SDK.DaPayloadEntry[]) =>
+  const sorted = (values: readonly SDKDa.DaPayloadEntry[]) =>
     [...values].sort(([left], [right]) =>
       left < right ? -1 : left > right ? 1 : 0,
     );

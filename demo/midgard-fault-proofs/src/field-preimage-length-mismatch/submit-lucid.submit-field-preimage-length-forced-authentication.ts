@@ -1,19 +1,21 @@
 import { MIDGARD_FIELD_COUNT } from "@al-ft/midgard-core";
 import {
-  type CommittedFieldClaim,
-  FieldPreimageLengthStep02RedeemerSchema,
-  FieldPreimageLengthStep03DatumSchema,
   type ForcedInclusionTxV1,
   forcedLeafMembershipV1,
-  forcedVerdictSubject,
   type Header,
   type OutputReference,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
   type RootMembershipProof,
+} from "@al-ft/midgard-sdk/core";
+import {
+  type CommittedFieldClaim,
+  FieldPreimageLengthStep02RedeemerSchema,
+  FieldPreimageLengthStep03DatumSchema,
+  forcedVerdictSubject,
   type VerdictSubject,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

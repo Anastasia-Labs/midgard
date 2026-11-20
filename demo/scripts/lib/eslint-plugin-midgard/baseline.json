@@ -308,14 +308,14 @@
     "midgard-node-tools/devnet/watcher-journeys/history-events.build-journey-withdrawn-transaction.ts": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
       "sites": [
-        "SDK.committedWithdrawalKeyBytes(left.id).localeCompare(",
+        "SDKFraudProof.committedWithdrawalKeyBytes(left.id).localeCompare(",
         "entries.sort(([left], [right]) => left.localeCompare(right));"
       ]
     },
     "midgard-node-tools/devnet/watcher-journeys/history-events.retain-journey-withdrawals.ts": {
       "reason": "Pre-rule call site in test, devnet or script code that sorts with the host's default collation. Untriaged: some of these orders are compared against production digests, so switching the collation is checked site by site in the \"en\" sweep, not rewritten here.",
       "sites": [
-        "SDK.committedWithdrawalKeyBytes(left.id).localeCompare(",
+        "SDKFraudProof.committedWithdrawalKeyBytes(left.id).localeCompare(",
         "entries.sort(([left], [right]) => left.localeCompare(right));"
       ]
     },
@@ -568,6 +568,46 @@
     }
   },
   "midgard/no-cross-package-root": {
+    "da-committee-node/src/availability/factory.discover-availability-responder-challenges.ts": {
+      "reason": "Kept on the root because da-committee-node/tests/availability-responder-lagging-tip.test.ts and da-committee-node/tests/availability-responder-wall-ahead.test.ts stub buildPublishDaAvailabilityChunkTxProgram on the root entry together with a `signingCompleted` property the SDK does not export, and the stub reaches this module only through the root import. Narrowing waits on those tests being rewritten (the layering change split or retargeted mocks only by specifier).",
+      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
+    },
+    "da-committee-node/src/availability/factory.ts": {
+      "reason": "Evaluation-order preamble: da-committee-node/src/availability/factory.discover-availability-responder-challenges.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
+    },
+    "da-committee-node/tests/availability-responder-lagging-tip.test.ts": {
+      "reason": "The test stubs buildPublishDaAvailabilityChunkTxProgram on the SDK root (vi.mock with a spread of the actual module) and adds a `signingCompleted` property the SDK does not export, which it reads back through the root namespace; a mock of the `/da` layer would carry that property only on the layer, so the test and the modules its stub reaches keep the root until the test is rewritten (the layering change split or retargeted mocks only by specifier).",
+      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
+    },
+    "da-committee-node/tests/availability-responder-wall-ahead.test.ts": {
+      "reason": "The test stubs buildPublishDaAvailabilityChunkTxProgram on the SDK root (vi.mock with a spread of the actual module) and adds a `signingCompleted` property the SDK does not export, which it reads back through the root namespace; a mock of the `/da` layer would carry that property only on the layer, so the test and the modules its stub reaches keep the root until the test is rewritten (the layering change split or retargeted mocks only by specifier).",
+      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
+    },
+    "da-committee-node/tests/coordinator.coordinator-witness-and-candidate-planning.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
+    },
+    "da-committee-node/tests/coordinator.test.ts": {
+      "reason": "Evaluation-order preamble: da-committee-node/tests/coordinator.coordinator-witness-and-candidate-planning.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
+    },
+    "da-committee-node/tests/peer-coordinator.test.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
+    },
+    "da-committee-node/tests/submitter.test.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
+    },
+    "da-committee-node/tests/tx-builders.da-attestation-init-output.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
+    },
+    "da-committee-node/tests/tx-builders.test.ts": {
+      "reason": "Evaluation-order preamble: da-committee-node/tests/tx-builders.da-attestation-init-output.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
+    },
     "lucid-midgard/src/builder.complete-tx.ts": {
       "reason": "Kept on the root because midgard-node/tests/commit-da-frame-step-down-persistence.test.ts, midgard-node/tests/commit-stage-eviction.test.ts, midgard-node/tests/foreign-block-import.local-fault-sites.test.ts, midgard-node/tests/foreign-block-import.phase-a-throw.test.ts stub runPhaseAValidation, runPhaseBValidationWithPatch on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
       "sites": ["} from \"@al-ft/midgard-validation\";"]
@@ -580,17 +620,243 @@
       "reason": "Kept on the root because midgard-fault-proofs/tests/validation-trace-dispute-replay-hold-bounds.test.ts, midgard-fault-proofs/tests/validation-trace-dispute-replay-hold-runner.test.ts, midgard-fault-proofs/tests/validation-trace-dispute-replay-hold.test.ts, midgard-fault-proofs/tests/validation-trace-dispute-replay-union.test.ts, midgard-node/tests/foreign-block-import.replay-clock.test.ts stub replayValidationVerdictEvent on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
       "sites": ["} from \"@al-ft/midgard-validation\";"]
     },
+    "midgard-fault-proofs/src/remove-unattested-block.submit-unattested-timeout-correction.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": ["} from \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-fault-proofs/src/remove-unattested-block.ts": {
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/src/remove-unattested-block.submit-unattested-timeout-correction.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
+    },
     "midgard-fault-proofs/src/validation-trace-dispute/claim-material.ts": {
       "reason": "Kept on the root because midgard-fault-proofs/tests/validation-trace-dispute-claim-build-held.test.ts, midgard-fault-proofs/tests/validation-trace-dispute-replay-hold-runner.test.ts stub openValidationTraceV1 on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
       "sites": ["} from \"@al-ft/midgard-validation\";"]
+    },
+    "midgard-fault-proofs/src/validation-trace-dispute/one-step-core-chains.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": ["} from \"@al-ft/midgard-sdk\";"]
     },
     "midgard-fault-proofs/src/validation-trace-dispute/replay.ts": {
       "reason": "Kept on the root because midgard-fault-proofs/tests/validation-trace-dispute-replay-hold-bounds.test.ts, midgard-fault-proofs/tests/validation-trace-dispute-replay-hold-runner.test.ts, midgard-fault-proofs/tests/validation-trace-dispute-replay-hold.test.ts, midgard-fault-proofs/tests/validation-trace-dispute-replay-union.test.ts, midgard-node/tests/foreign-block-import.replay-clock.test.ts stub commitValidationTraceV1, replayValidationVerdictEvent on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
       "sites": ["} from \"@al-ft/midgard-validation\";"]
     },
+    "midgard-fault-proofs/src/validation-trace-dispute/transactions.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
+    },
     "midgard-fault-proofs/src/workflow/complete-replay.ts": {
       "reason": "Evaluation-order preamble: midgard-fault-proofs/src/validation-trace-dispute/replay.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-validation\";"]
+    },
+    "midgard-fault-proofs/tests/bin.test.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-fault-proofs/tests/field-item-width-illegal-lifecycle.test.ts": {
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-fault-proofs/tests/helpers/input-existence-chronology-fixture.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-fault-proofs/tests/ledger-delta-dense-trace-totality.test.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": [
+        "import \"@al-ft/midgard-sdk\";",
+        "import * as SDK from \"@al-ft/midgard-sdk\";"
+      ]
+    },
+    "midgard-fault-proofs/tests/mint-declared-asset-limit-lifecycle.test.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": [
+        "import \"@al-ft/midgard-sdk\";",
+        "} from \"@al-ft/midgard-sdk\";"
+      ]
+    },
+    "midgard-fault-proofs/tests/network-id-wrongful-rejection-lifecycle.test.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": [
+        "import \"@al-ft/midgard-sdk\";",
+        "} from \"@al-ft/midgard-sdk\";"
+      ]
+    },
+    "midgard-fault-proofs/tests/observer-order-invalid-lifecycle.test.ts": {
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-fault-proofs/tests/observers-forbidden-on-untagged-network-lifecycle.test.ts": {
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-fault-proofs/tests/protected-output-signer-missing-lifecycle.test.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": [
+        "import \"@al-ft/midgard-sdk\";",
+        "import * as SDK from \"@al-ft/midgard-sdk\";",
+        "} from \"@al-ft/midgard-sdk\";"
+      ]
+    },
+    "midgard-fault-proofs/tests/redeemer-canonicity-lifecycle.test.ts": {
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-fault-proofs/tests/resolved-output-non-canonical-lifecycle.test.ts": {
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/resolved-output-non-canonical-emulator.make-resolved-output-stages.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-fault-proofs/tests/script-integrity-hash-missing-lifecycle.test.ts": {
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-fault-proofs/tests/spend-input-signer-missing-lifecycle.test.ts": {
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-fault-proofs/tests/step-redeemer-blueprint-conformance.test.ts": {
+      "reason": "The namespace import of the SDK root is used as a value (the test compares the whole root export set with the family schema modules), which the layer codemod leaves alone (it rewrites `NS.name` references and namespace spies only); narrowing it is a test-body change, which the layering change made none of.",
+      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-fault-proofs/tests/submit-init-emulator-double-withdraw.test.ts": {
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-fault-proofs/tests/submit-init-emulator-event-history-capture.test.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": [
+        "import \"@al-ft/midgard-sdk\";",
+        "import * as SDK from \"@al-ft/midgard-sdk\";"
+      ]
+    },
+    "midgard-fault-proofs/tests/submit-init-emulator-fabricated-deposit.test.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-fault-proofs/tests/submit-init-emulator-fabricated-withdrawal.test.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-fault-proofs/tests/submit-init-emulator-input-no-idx.test.ts": {
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-fault-proofs/tests/submit-init-emulator-min-fee.test.ts": {
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-fault-proofs/tests/submit-init-emulator-native-script-decoding-adversarial.test.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": [
+        "import \"@al-ft/midgard-sdk\";",
+        "import * as SDK from \"@al-ft/midgard-sdk\";"
+      ]
+    },
+    "midgard-fault-proofs/tests/submit-init-emulator-native-script-decoding-direction-a.test.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-fault-proofs/tests/submit-init-emulator-native-script-decoding-negatives.test.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-fault-proofs/tests/submit-init-emulator-no-reference-input-lifecycle.test.ts": {
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-fault-proofs/tests/submit-init-emulator-transition-history.test.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-fault-proofs/tests/submit-init-emulator-transition-raw-history.test.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-fault-proofs/tests/submit-init-emulator-transition-timing-history.test.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-fault-proofs/tests/submit-init-emulator-transition-trace-subvariants.test.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": [
+        "import \"@al-ft/midgard-sdk\";",
+        "import * as SDK from \"@al-ft/midgard-sdk\";"
+      ]
+    },
+    "midgard-fault-proofs/tests/submit-init-emulator-transition-trace-withdrawal-branch.test.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-fault-proofs/tests/support/canonical-decodability-emulator.ts": {
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-fault-proofs/tests/support/direct-handoff-regressions.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-fault-proofs/tests/support/direct-source-lifecycle.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-fault-proofs/tests/support/emulator/harness.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": ["} from \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-fault-proofs/tests/support/invalid-signature-wrongful-emulator.ts": {
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-fault-proofs/tests/support/mint-authorization-emulator.ts": {
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-fault-proofs/tests/support/output-reference-script-decoding-emulator.ts": {
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-fault-proofs/tests/support/resolved-output-non-canonical-emulator.make-resolved-output-stages.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": ["} from \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-fault-proofs/tests/support/resolved-output-non-canonical-emulator.ts": {
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts, midgard-fault-proofs/tests/support/resolved-output-non-canonical-emulator.make-resolved-output-stages.ts still import the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when those modules are narrowed.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-fault-proofs/tests/support/script-decode-installed-workflow.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-fault-proofs/tests/transaction-output-non-canonical-lifecycle.test.ts": {
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-fault-proofs/tests/witness-script-decoding-lifecycle.test.ts": {
+      "reason": "Evaluation-order preamble: midgard-fault-proofs/tests/support/emulator/harness.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-fault-proofs/tests/zero-input-wrongful-rejection-lifecycle.test.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": ["} from \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-node-tools/devnet/watcher-journeys/da-bond-pool-emulator-port.create-da-bond-pool-emulator-port.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-node-tools/devnet/watcher-journeys/da-bond-pool-emulator-port.ts": {
+      "reason": "Evaluation-order preamble: midgard-node-tools/devnet/watcher-journeys/da-bond-pool-emulator-port.create-da-bond-pool-emulator-port.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-node-tools/devnet/watcher-journeys/da-bond-pool-live-port.create-live-da-bond-pool-journey-port.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-node-tools/devnet/watcher-journeys/da-bond-pool-live-port.test.ts": {
+      "reason": "Evaluation-order preamble: midgard-node-tools/devnet/watcher-journeys/da-bond-pool-live-port.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-node-tools/devnet/watcher-journeys/da-bond-pool-live-port.ts": {
+      "reason": "Evaluation-order preamble: midgard-node-tools/devnet/watcher-journeys/da-bond-pool-live-port.create-live-da-bond-pool-journey-port.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "midgard-node-tools/devnet/watcher-journeys/journey-mocks.ts": {
       "reason": "A literal dynamic import inside a journey mock's body; narrowing it is a test-body change, which the narrowing change made none of.",
@@ -608,6 +874,17 @@
       "reason": "Kept on the root because midgard-node-tools/devnet/watcher-journeys/readiness-evidence.test.ts stubs validateFraudProofWorkflowJournal on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
       "sites": ["} from \"@al-ft/midgard-fault-proofs\";"]
     },
+    "midgard-node-tools/devnet/watcher-journeys/staging-recovery.test.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-node-tools/scripts/verify-phase4-journal-kill-recovery-summary.mjs": {
+      "reason": "A JavaScript script outside the consumer package's TypeScript program, which the layer codemod rewrites; it keeps the root until it is narrowed by hand.",
+      "sites": [
+        "import \"@al-ft/midgard-sdk\";",
+        "import * as SDK from \"@al-ft/midgard-sdk\";"
+      ]
+    },
     "midgard-node-tools/src/funding-measurements.ts": {
       "reason": "Its compiled dist is loaded by tests/funding-measurements.test.ts through a run-time URL import, which the workspace bundle's routing cannot see. Through the root it shares the bundled fault-proofs instance that the test's own root import makes a bundle entry; a subpath here loads a second instance from source. It and that test narrow together once the routing sees the dist import.",
       "sites": ["} from \"@al-ft/midgard-fault-proofs\";"]
@@ -617,6 +894,35 @@
       "sites": [
         "import { submitCapturedTransaction } from \"@al-ft/midgard-fault-proofs\";"
       ]
+    },
+    "midgard-node-tools/tests/phase4-journal-kill-recovery-summary-verifier.test.mjs": {
+      "reason": "A JavaScript script outside the consumer package's TypeScript program, which the layer codemod rewrites; it keeps the root until it is narrowed by hand.",
+      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-node/scripts/generate-transaction-root-v1-fixture.mjs": {
+      "reason": "A JavaScript script outside the consumer package's TypeScript program, which the layer codemod rewrites; it keeps the root until it is narrowed by hand.",
+      "sites": [
+        "import \"@al-ft/midgard-sdk\";",
+        "import * as SDK from \"@al-ft/midgard-sdk\";"
+      ]
+    },
+    "midgard-node/scripts/mpf-architecture-g-commit-candidate-gate.capture-source-identity.mjs": {
+      "reason": "A JavaScript script outside the consumer package's TypeScript program, which the layer codemod rewrites; it keeps the root until it is narrowed by hand.",
+      "sites": [
+        "import { EMPTY_MERKLE_TREE_ROOT } from \"@al-ft/midgard-sdk\";"
+      ]
+    },
+    "midgard-node/src/commands/reconcile.ts": {
+      "reason": "Evaluation-order preamble: midgard-node/src/fibers/merge.ts, midgard-node/src/workers/commit-block-header.ts still import the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when those modules are narrowed.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-node/src/fibers/merge.ts": {
+      "reason": "Evaluation-order preamble: midgard-node/src/transactions/state-queue/merge-to-confirmed-state.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-node/src/index.ts": {
+      "reason": "Evaluation-order preamble: midgard-node/src/commands/reconcile.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
     },
     "midgard-node/src/mpf/event-window.classify-forced-transactions.ts": {
       "reason": "Kept on the root because midgard-node/tests/commit-da-frame-step-down-persistence.test.ts, midgard-node/tests/commit-stage-eviction.test.ts, midgard-node/tests/foreign-block-import.local-fault-sites.test.ts, midgard-node/tests/foreign-block-import.phase-a-throw.test.ts stub runPhaseAValidation, runPhaseBValidationWithPatch on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
@@ -644,6 +950,70 @@
       "reason": "Kept on the root because midgard-node/tests/foreign-block-import.local-fault-sites.test.ts stubs decodeMidgardLedgerTxFromCanonicalCbor on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test). decodeMidgardLedgerTxFromCanonicalCbor also has no subpath yet.",
       "sites": ["} from \"@al-ft/midgard-validation\";"]
     },
+    "midgard-node/src/transactions/register-active-operator.operator-lifecycle-program.ts": {
+      "reason": "Kept on the root because midgard-node/tests/operator-lifecycle-emulator.test.ts (at its module-size cap, so kept on the root) stubs buildActivateOperatorTx on the root entry with vi.spyOn, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the layering change edited no capped test).",
+      "sites": [
+        "import * as SDK from \"@al-ft/midgard-sdk\";",
+        "} from \"@al-ft/midgard-sdk\";"
+      ]
+    },
+    "midgard-node/src/transactions/state-queue/merge-to-confirmed-state.build-and-submit-merge-tx.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-node/src/transactions/state-queue/merge-to-confirmed-state.ts": {
+      "reason": "Evaluation-order preamble: midgard-node/src/transactions/state-queue/merge-to-confirmed-state.build-and-submit-merge-tx.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-node/src/workers/commit-block-header.ts": {
+      "reason": "Evaluation-order preamble: midgard-node/src/workers/utils/scheduler-refresh.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-node/src/workers/utils/scheduler-refresh.ensure-scheduler-aligned-for-commit.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-node/src/workers/utils/scheduler-refresh.ts": {
+      "reason": "Evaluation-order preamble: midgard-node/src/workers/utils/scheduler-refresh.ensure-scheduler-aligned-for-commit.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-node/tests/availability-challenge-command.test.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-node/tests/availability-challenge-lifecycle.test.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-node/tests/availability-challenge-pool-slash-lifecycle.test.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": [
+        "import \"@al-ft/midgard-sdk\";",
+        "import * as SDK from \"@al-ft/midgard-sdk\";"
+      ]
+    },
+    "midgard-node/tests/availability-challenge-sdk-lifecycle.test.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": [
+        "import \"@al-ft/midgard-sdk\";",
+        "import * as SDK from \"@al-ft/midgard-sdk\";"
+      ]
+    },
+    "midgard-node/tests/database.test/finalization.ts": {
+      "reason": "Evaluation-order preamble: midgard-node/src/workers/commit-block-header.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-node/tests/database.test/mpf.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-node/tests/deposit-flow-emulator-shared.ts": {
+      "reason": "The namespace import of the SDK root is re-exported (`export { SDK }`) to the emulator tests, which read `SDK.name` through it, so the layer codemod leaves the file alone (it rewrites only the references inside one file), and its evaluation-order preamble with it; narrowing it means changing those importers, which the layering change did not do.",
+      "sites": [
+        "import \"@al-ft/midgard-sdk\";",
+        "import * as SDK from \"@al-ft/midgard-sdk\";"
+      ]
+    },
     "midgard-node/tests/forced-transactions.test.ts": {
       "reason": "Evaluation-order preamble: midgard-node/src/mpf/event-window.classify-forced-transactions.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-validation\";"]
@@ -651,6 +1021,43 @@
     "midgard-node/tests/foreign-block-import.replay-clock.test.ts": {
       "reason": "The test stubs replayValidationVerdictEvent on the validation root (vi.mock with a spread of the actual module) and imports that root to observe the stub; narrowing it is a test change, which the narrowing change made none of.",
       "sites": ["} from \"@al-ft/midgard-validation\";"]
+    },
+    "midgard-node/tests/operator-exit-emulator.build-operator-exit-snapshot.ts": {
+      "reason": "The namespace import of the SDK root is used as a value (`const { REGISTRATION_DURATION_MS, SHIFT_DURATION_MS } = SDK`), which the layer codemod leaves alone (it rewrites `NS.name` references and namespace spies only); narrowing it is a test-body change, which the layering change made none of.",
+      "sites": [
+        "import * as SDK from \"@al-ft/midgard-sdk\";",
+        "import { createReferenceScriptAuthPolicy } from \"@al-ft/midgard-sdk\";"
+      ]
+    },
+    "midgard-node/tests/operator-exit-emulator.test.ts": {
+      "reason": "Evaluation-order preamble: midgard-node/tests/operator-exit-emulator.build-operator-exit-snapshot.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-node/tests/operator-lifecycle-emulator.test.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": [
+        "import \"@al-ft/midgard-sdk\";",
+        "import * as SDK from \"@al-ft/midgard-sdk\";",
+        "import { createReferenceScriptAuthPolicy } from \"@al-ft/midgard-sdk\";"
+      ]
+    },
+    "midgard-node/tests/reference-script-sweep-emulator.test.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-node/tests/withdrawal-classification-semantics.test.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-validation/scripts/generate-cek-core-routing-v1-goldens.mjs": {
+      "reason": "A JavaScript script outside the consumer package's TypeScript program, which the layer codemod rewrites; it keeps the root until it is narrowed by hand.",
+      "sites": [
+        "import { cekCoreFailureRoute, cekCoreGroup } from \"@al-ft/midgard-sdk\";"
+      ]
+    },
+    "midgard-validation/scripts/generate-validation-one-step-aiken-fixture.mjs": {
+      "reason": "A JavaScript script outside the consumer package's TypeScript program, which the layer codemod rewrites; it keeps the root until it is narrowed by hand.",
+      "sites": ["} from \"@al-ft/midgard-sdk\";"]
     },
     "midgard-watcher/src/fault-proofs/fault-decision-bridge.ts": {
       "reason": "Evaluation-order preamble: midgard-watcher/src/fault-proofs/fault-proof-application.production-dependencies.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
@@ -718,6 +1125,14 @@
       "reason": "Evaluation-order preamble: midgard-watcher/src/fault-proofs/fault-proof-execution.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-fault-proofs\";"]
     },
+    "midgard-watcher/tests/availability/completion-refresh.fixture.ts": {
+      "reason": "The namespace import of the SDK root is used as a type (`vi.importActual<typeof SDK>`), which the layer codemod leaves alone (it rewrites `NS.name` references and namespace spies only); narrowing it is a test-body change, which the layering change made none of.",
+      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-watcher/tests/availability/refreshed-limits.test.ts": {
+      "reason": "The namespace import of the SDK root is used as a type (`vi.importActual<typeof SDK>`), which the layer codemod leaves alone (it rewrites `NS.name` references and namespace spies only); narrowing it is a test-body change, which the layering change made none of.",
+      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
+    },
     "midgard-watcher/tests/fault-proofs/fault-decision-bridge.test.ts": {
       "reason": "Evaluation-order preamble: midgard-watcher/src/fault-proofs/fault-proof-application.production-dependencies.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-fault-proofs\";"]
@@ -738,6 +1153,14 @@
       "reason": "Evaluation-order preamble: midgard-watcher/tests/support/fault-proof-funding-fixture.setup-funding-recovery-fixture.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-fault-proofs\";"]
     },
+    "midgard-watcher/tests/published-da-target-consumption.test.ts": {
+      "reason": "Evaluation-order preamble: midgard-watcher/tests/support/published-block-actor.create-published-watcher-block-actor.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-watcher/tests/published-header-submission.test.ts": {
+      "reason": "The namespace import of the SDK root is used as a type (`importOriginal<typeof SDK>()` in its `/state-queue` mock), which the layer codemod leaves alone (it rewrites `NS.name` references and namespace spies only); narrowing it is a test-body change, which the layering change made none of.",
+      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
+    },
     "midgard-watcher/tests/runtime/secret-distinctness.test.ts": {
       "reason": "The test stubs resolveProverSigner on the fault-proofs root (vi.mock with a spread of the actual module) and imports that root to observe the stub; narrowing it is a test change, which the narrowing change made none of.",
       "sites": ["import * as FaultProofs from \"@al-ft/midgard-fault-proofs\";"]
@@ -749,6 +1172,18 @@
     "midgard-watcher/tests/support/fault-proof-funding-fixture.ts": {
       "reason": "Evaluation-order preamble: midgard-watcher/tests/support/fault-proof-funding-fixture.setup-funding-recovery-fixture.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-fault-proofs\";"]
+    },
+    "midgard-watcher/tests/support/published-block-actor.create-published-watcher-block-actor.ts": {
+      "reason": "At its module-size cap: one import per SDK layer would push it past the cap, so it keeps the SDK root entry until the file is split.",
+      "sites": ["import * as SDK from \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-watcher/tests/support/published-block-actor.ts": {
+      "reason": "Evaluation-order preamble: midgard-watcher/tests/support/published-block-actor.create-published-watcher-block-actor.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
+    },
+    "midgard-watcher/tests/support/published-deposit-trace.ts": {
+      "reason": "Evaluation-order preamble: midgard-watcher/tests/support/published-block-actor.ts still imports the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "sites": ["import \"@al-ft/midgard-sdk\";"]
     }
   },
   "midgard/no-own-package-barrel": {

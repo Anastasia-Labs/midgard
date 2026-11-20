@@ -7,7 +7,7 @@
  * derived submit slot 32940, `validTo` slot 33161.
  */
 import type { SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import {
   Emulator,
   generateEmulatorAccount,

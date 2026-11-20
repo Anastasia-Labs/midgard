@@ -9,9 +9,6 @@
  */
 import {
   commitCountedRootProgram,
-  FraudProofComputationThreadRedeemer,
-  FraudProofTokenDatum,
-  FraudProofTokenMintRedeemer,
   requireInputIndex,
   requireMintRedeemerIndex,
   requireOwnMintPurpose,
@@ -19,10 +16,15 @@ import {
   requireUniqueOutputIndex,
   ROOT_DOMAINS,
   type WithdrawalSourceMembershipProof,
+} from "@al-ft/midgard-sdk/core";
+import {
+  FraudProofComputationThreadRedeemer,
+  FraudProofTokenDatum,
+  FraudProofTokenMintRedeemer,
   WithdrawnReferenceInputStep03Datum,
   WithdrawnReferenceInputStep03SpendRedeemer,
   type WithdrawnReferenceInputStep03State,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

@@ -4,7 +4,7 @@
  * a typed expired error, submitting nothing, once no transaction can be
  * valid under the policy any more.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import {
   Emulator,
   generateEmulatorAccount,

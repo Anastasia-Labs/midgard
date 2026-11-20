@@ -11,7 +11,9 @@
  * `docs/fault-proofs/decisions/0001-reference-input-field-evidence.md`.
  */
 
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "@lucid-evolution/lucid";
 import "./legacy-submission-boundary.js";
 import "./proof-chunk-carriage.js";

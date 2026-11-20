@@ -6,7 +6,7 @@
  */
 import "./helpers/follower-emulator-installed.js";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import {
   CML,
   Emulator,

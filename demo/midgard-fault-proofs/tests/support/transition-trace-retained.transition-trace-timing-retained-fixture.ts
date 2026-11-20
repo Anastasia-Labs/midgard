@@ -1,4 +1,7 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import type * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { type Assets, Data } from "@lucid-evolution/lucid";
 
 import { buildCountedRoot } from "../../src/transition-trace/phas.js";
@@ -19,8 +22,8 @@ import {
 export const transitionTraceTimingRetainedFixture = async (input: {
   operatorVkey: string;
   now: number;
-  payload: SDK.EventHistoryPayload;
-  companion: SDK.EventHistoryPayload;
+  payload: SDKUsers.EventHistoryPayload;
+  companion: SDKUsers.EventHistoryPayload;
   originalAssets: Assets;
   omitted: boolean;
 }) => {
@@ -74,19 +77,19 @@ export const transitionTraceTimingRetainedFixture = async (input: {
   const eventKey: SDK.EventKey = {
     WithdrawalEventKey: { withdrawal_id: event.id },
   };
-  const withdrawals: SDK.DaPayloadEntry[] = [
+  const withdrawals: SDKDa.DaPayloadEntry[] = [
     [
       Data.to(event.id, SDK.OutputReference),
-      SDK.committedWithdrawalValueBytes(info),
+      SDKFraudProof.committedWithdrawalValueBytes(info),
     ],
   ];
-  const eventToStep: SDK.DaPayloadEntry[] = [
+  const eventToStep: SDKDa.DaPayloadEntry[] = [
     [
       Data.to(eventKey, SDK.EventKey),
       Data.to({ step_index: 0n, phase: "Withdrawal" }, SDK.EventToStepValue),
     ],
   ];
-  const transitionTrace: SDK.DaPayloadEntry[] = [
+  const transitionTrace: SDKDa.DaPayloadEntry[] = [
     [
       Data.to(0n),
       Data.to(
@@ -102,7 +105,10 @@ export const transitionTraceTimingRetainedFixture = async (input: {
       ),
     ],
   ];
-  const root = async (domain: SDK.RootDomain, entries: SDK.DaPayloadEntry[]) =>
+  const root = async (
+    domain: SDK.RootDomain,
+    entries: SDKDa.DaPayloadEntry[],
+  ) =>
     (
       await buildCountedRoot(
         domain,

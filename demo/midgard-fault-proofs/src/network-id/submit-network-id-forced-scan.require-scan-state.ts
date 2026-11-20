@@ -1,7 +1,7 @@
 import {
   type NetworkIdForcedScanState,
   type NetworkIdStep02State,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type LucidEvolution,
   type Network,

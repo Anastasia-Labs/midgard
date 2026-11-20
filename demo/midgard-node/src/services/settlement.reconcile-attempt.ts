@@ -1,6 +1,6 @@
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
 import { type IntentStatus, isDeadStatus } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/users";
 import {
   CML,
   type LucidEvolution,

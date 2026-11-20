@@ -7,7 +7,7 @@ import {
   computeDeploymentManifestId,
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { referenceScriptAuthTokenName } from "@al-ft/midgard-sdk";
+import { referenceScriptAuthTokenName } from "@al-ft/midgard-sdk/state-queue";
 import { it } from "@effect/vitest";
 import {
   toUnit,

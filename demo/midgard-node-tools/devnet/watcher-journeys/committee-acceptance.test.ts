@@ -8,7 +8,8 @@ import {
   buildCanonicalBlockFixture,
   outRefCbor,
 } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   CML,
   credentialToAddress,
@@ -203,11 +204,11 @@ const eventHistory = {
  */
 const readEventOrder = async (input: {
   eventId: SDK.OutputReference;
-  payload: SDK.EventHistoryPayload;
+  payload: SDKUsers.EventHistoryPayload;
   inclusionTime: bigint;
   owner: string;
 }) => {
-  const key = await Effect.runPromise(SDK.eventHistoryKey(input.eventId));
+  const key = await Effect.runPromise(SDKUsers.eventHistoryKey(input.eventId));
   const root: UTxO = {
     txHash: "01".repeat(32),
     outputIndex: 0,
@@ -220,7 +221,7 @@ const readEventOrder = async (input: {
         protected_until: 0n,
         payload: "RootContent",
       },
-      SDK.EventHistoryNode,
+      SDKUsers.EventHistoryNode,
     ),
   };
   const order: UTxO = {
@@ -246,10 +247,10 @@ const readEventOrder = async (input: {
             },
           },
         },
-        SDK.EventHistoryNode,
+        SDKUsers.EventHistoryNode,
       ),
       [3, 0, 2, 0],
-      canonical(Data.to(input.payload, SDK.EventHistoryPayload)),
+      canonical(Data.to(input.payload, SDKUsers.EventHistoryPayload)),
     ),
   };
   return { root, order };
@@ -279,7 +280,7 @@ const stagedDeposit = async (opened: Opened): Promise<StagedHistoryEvent> => {
     owner: opened.owner,
   });
   const [order] = await Effect.runPromise(
-    SDK.utxosToDepositUTxOs([utxos.root, utxos.order], [], eventHistory),
+    SDKUsers.utxosToDepositUTxOs([utxos.root, utxos.order], [], eventHistory),
   );
   return { order: order!, policyId: EVENT_POLICY_ID };
 };
@@ -314,7 +315,11 @@ const stagedWithdrawal = async (
     owner: opened.owner,
   });
   const [order] = await Effect.runPromise(
-    SDK.utxosToWithdrawalUTxOs([utxos.root, utxos.order], [], eventHistory),
+    SDKUsers.utxosToWithdrawalUTxOs(
+      [utxos.root, utxos.order],
+      [],
+      eventHistory,
+    ),
   );
   return { order: order!, policyId: EVENT_POLICY_ID };
 };

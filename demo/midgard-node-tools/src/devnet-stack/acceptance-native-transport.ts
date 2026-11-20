@@ -1,6 +1,6 @@
 import { Socket } from "node:net";
 
-import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk";
+import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk/da";
 import { Agent, WebSocket } from "undici";
 
 /** Real TCP ownership before connect, including an unresponsive upgrade/close. */

@@ -1,4 +1,4 @@
-import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk";
+import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk/da";
 
 /** Store reads retain callback ownership until completion. Expiry fences the
  * result; it does not cancel filesystem work or a shared database connection. */

@@ -10,7 +10,7 @@ import {
   type SqlTx,
   walkLinkedQueue,
 } from "@al-ft/midgard-l1-follower";
-import type { StateQueueOutputProblem } from "@al-ft/midgard-sdk";
+import type { StateQueueOutputProblem } from "@al-ft/midgard-sdk/state-queue";
 
 import { COMMITTEE_QUEUE_TABLE } from "./queue-table.js";
 

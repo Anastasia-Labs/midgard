@@ -16,11 +16,13 @@ import { join } from "node:path";
 
 import {
   commitCountedRootProgram,
-  EMPTY_SPEND_INPUTS_HASH,
-  nativeTxBodyHasZeroInputViolation,
   type NativeTxCompact as NativeTxCompactData,
   ROOT_DOMAINS,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  EMPTY_SPEND_INPUTS_HASH,
+  nativeTxBodyHasZeroInputViolation,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Effect } from "effect";
 
 import { parseHex, stringifyJson } from "./json-file.js";

@@ -8,7 +8,8 @@ import {
   encodeDaPayloadByHeaderResponseCbor,
 } from "@al-ft/midgard-core/da-transport";
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Clock, Effect } from "effect";
 import { afterEach, expect, it, vi } from "vitest";
 
@@ -58,7 +59,7 @@ const identity = ContractDeploymentIdentity.make({
   consensusProfile: MIDGARD_CONSENSUS_PROFILE,
   deploymentMarker: makeDeploymentMarker(manifest.contractDeploymentManifestId),
 });
-const acquire = (payload: SDK.DaPayload) =>
+const acquire = (payload: SDKDa.DaPayload) =>
   Effect.runPromise(
     Effect.either(
       fetchForeignRetainedDa(
@@ -67,8 +68,8 @@ const acquire = (payload: SDK.DaPayload) =>
       ),
     ).pipe(Effect.provideService(ContractDeploymentIdentity, identity)),
   );
-const envelope = (payload: SDK.DaPayload) =>
-  wrapDaPayload(SDK.encodeDaPayload(payload), { mode: "identity" });
+const envelope = (payload: SDKDa.DaPayload) =>
+  wrapDaPayload(SDKDa.encodeDaPayload(payload), { mode: "identity" });
 
 const transport = (material: (peerIndex: number) => Buffer | undefined) => {
   vi.spyOn(
@@ -261,7 +262,7 @@ it("backs off a header whose fetch failed, asking no peer before its next attemp
 it("asks the next peer within the fetch when a body differs from the attested commitment", async () => {
   const { payload } = await normalFixture();
   // The same body recompressed: other bytes under the same header.
-  const variant = await wrapDaPayload(SDK.encodeDaPayload(payload), {
+  const variant = await wrapDaPayload(SDKDa.encodeDaPayload(payload), {
     mode: "zstd",
   });
   const canonical = await envelope(payload);

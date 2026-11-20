@@ -4,7 +4,8 @@ import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
   plutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { Data } from "@lucid-evolution/lucid";
 
 /** Durable preimages. Authority comes from the commitment in the L1 checkpoint. */
@@ -15,11 +16,11 @@ export type TransitionDepositOpening = Readonly<{
 
 export const transitionDepositOpening = (
   captured: Pick<
-    ReturnType<typeof SDK.captureEventHistoryWitness>,
+    ReturnType<typeof SDKUsers.captureEventHistoryWitness>,
     "commitment" | "openingCbor"
   >,
 ): TransitionDepositOpening => ({
-  commitmentCbor: Data.to(captured.commitment, SDK.EventHistoryCommitment),
+  commitmentCbor: Data.to(captured.commitment, SDKUsers.EventHistoryCommitment),
   openingCbor: captured.openingCbor,
 });
 
@@ -35,18 +36,18 @@ export const reopenTransitionDeposit = (
 ) => {
   const commitment = Data.from(
     retained.commitmentCbor,
-    SDK.EventHistoryCommitment,
+    SDKUsers.EventHistoryCommitment,
   );
-  const opening = Data.from(retained.openingCbor, SDK.EventHistoryOpening);
+  const opening = Data.from(retained.openingCbor, SDKUsers.EventHistoryOpening);
   if (
     commitment.kind !== "Deposit" ||
     commitment.policy !== policy ||
     (checkpointCommitmentCbor !== undefined &&
       Data.to(
-        Data.from(checkpointCommitmentCbor, SDK.EventHistoryCommitment),
-        SDK.EventHistoryCommitment,
-      ) !== Data.to(commitment, SDK.EventHistoryCommitment)) ||
-    !SDK.opensEventHistoryCommitmentCbor(
+        Data.from(checkpointCommitmentCbor, SDKUsers.EventHistoryCommitment),
+        SDKUsers.EventHistoryCommitment,
+      ) !== Data.to(commitment, SDKUsers.EventHistoryCommitment)) ||
+    !SDKUsers.opensEventHistoryCommitmentCbor(
       commitment,
       plutusConstrFieldCbor(retained.openingCbor, [0]),
       plutusConstrFieldCbor(retained.openingCbor, [1]),

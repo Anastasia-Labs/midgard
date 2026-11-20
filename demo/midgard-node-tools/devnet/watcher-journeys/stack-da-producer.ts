@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import {
   createDaLibp2pProducerTransport,
   type DaProducerPublicationManifest,

@@ -3,7 +3,7 @@ import {
   deriveMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core";
 import { decodeMidgardForcedTxCanonicalEnvelopeForFaultEvidence } from "@al-ft/midgard-core/codec/forced";
-import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk";
+import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk/fraud-proof";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import { resolveFaultProofFieldPreimageCertificate } from "../field-opening.certify-fault-proof-field-carriage.js";

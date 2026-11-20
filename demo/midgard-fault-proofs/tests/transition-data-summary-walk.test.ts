@@ -1,7 +1,7 @@
 import { buildMidgardCekDataTraverseTrace } from "@al-ft/midgard-core";
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

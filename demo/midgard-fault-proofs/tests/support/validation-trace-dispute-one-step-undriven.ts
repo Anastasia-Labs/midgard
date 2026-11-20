@@ -3,7 +3,7 @@
  * one-step-required alarm, which names the thread, the step and the
  * deadline its entry must land by, and the run keeps going without ever
  * entering the step's resolution. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { Data } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 

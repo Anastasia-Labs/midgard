@@ -2,7 +2,7 @@ import {
   ForcedRejectionStopped,
   forcedVerdictForRejection,
 } from "@al-ft/midgard-fault-proofs";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import type { CanonicalTransitionEffect } from "@al-ft/midgard-validation/transition-effect";
 import type { RejectCode, RejectedTx } from "@al-ft/midgard-validation/types";
 import type {

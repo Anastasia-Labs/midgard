@@ -1,6 +1,6 @@
 /** The observed purpose route of the `missingScriptSource` thread, from the
  * family entry to claim start. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import {

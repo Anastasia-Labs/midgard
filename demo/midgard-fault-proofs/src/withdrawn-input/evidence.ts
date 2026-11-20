@@ -3,7 +3,7 @@ import {
   type OutputReference,
   type WithdrawalInfo,
   type WithdrawalSourceMembershipProof,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 
 import type { SubmitStep01TxInclusion } from "../step-support.js";
 

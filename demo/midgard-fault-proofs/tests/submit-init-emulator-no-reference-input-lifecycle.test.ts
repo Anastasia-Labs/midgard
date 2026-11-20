@@ -53,7 +53,9 @@ import {
   MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
   outRefLabel,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Data, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -103,7 +105,7 @@ describe("no-reference-input emulator lifecycle", () => {
     expect(
       planFaultProofFieldOpening({
         anchorSourceKind: 0n,
-        fieldIndex: SDK.MIDGARD_FIELD_INDEX.referenceInputs,
+        fieldIndex: SDKFraudProof.MIDGARD_FIELD_INDEX.referenceInputs,
         anchorTxId: fixture.subjectTxId,
         nativeTxCompactCbor: fixture.nativeTxCompactCbor,
         itemCbors: fixture.referenceInputItemCbors,
@@ -156,7 +158,7 @@ describe("no-reference-input emulator lifecycle", () => {
     expect(outRefLabel(fraudProofUtxo)).toBe(step04.fraudProofOutRef);
     expect(fraudProofUtxo.assets[step04.fraudProofUnit]).toBe(1n);
     expect(
-      Data.from(fraudProofUtxo.datum!, SDK.FraudProofTokenDatum),
+      Data.from(fraudProofUtxo.datum!, SDKFraudProof.FraudProofTokenDatum),
     ).toStrictEqual({ fraud_prover: proverSigner.paymentKeyHash });
 
     // ——— Removal leg: the minted token is the standing evidence that takes
@@ -209,7 +211,7 @@ describe("no-reference-input emulator lifecycle", () => {
       throw new Error("Removal did not preserve the state-queue root");
     }
     const finalRoot = await Effect.runPromise(
-      SDK.utxoToStateQueueUTxO(
+      SDKStateQueue.utxoToStateQueueUTxO(
         finalRootUtxo,
         harness.contracts.stateQueue.policyId,
       ),
@@ -286,7 +288,7 @@ describe("no-reference-input emulator lifecycle", () => {
     expect(
       planFaultProofFieldOpening({
         anchorSourceKind: 0n,
-        fieldIndex: SDK.MIDGARD_FIELD_INDEX.referenceInputs,
+        fieldIndex: SDKFraudProof.MIDGARD_FIELD_INDEX.referenceInputs,
         anchorTxId: fixture.subjectTxId,
         nativeTxCompactCbor: fixture.nativeTxCompactCbor,
         itemCbors: fixture.referenceInputItemCbors,
@@ -304,7 +306,8 @@ describe("no-reference-input emulator lifecycle", () => {
     // The tier-2 publication really exists: the whole §5.1 preimage sits at the
     // prover's proof-materials address as a bytes-only inline datum, referenced
     // by the step rather than carried in its redeemer.
-    const expectedDatum = SDK.fieldPreimagePublicationDatumCbor(preimage);
+    const expectedDatum =
+      SDKStateQueue.fieldPreimagePublicationDatumCbor(preimage);
     const publications = (
       await proverLucid.utxosAt(proverSigner.proofMaterialsAddress)
     ).filter((utxo) => utxo.datum === expectedDatum);

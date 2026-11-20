@@ -1,5 +1,7 @@
 import "@al-ft/midgard-core/da-transport";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/da";
 import "@noble/hashes/blake2.js";
 import "vitest";
 import "../src/committee-service.js";

@@ -2,7 +2,7 @@ import {
   advanceCanonicalDecodabilityWalk,
   CanonicalDecodabilityStep01Datum,
   CanonicalDecodabilityStep02Datum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 
 import type { ResolvedProverSigner } from "../runtime.js";

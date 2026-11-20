@@ -2,7 +2,7 @@ import {
   encodeMidgardForcedTxCanonical,
   encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
-import { missingSignatureVkeyHash } from "@al-ft/midgard-sdk";
+import { missingSignatureVkeyHash } from "@al-ft/midgard-sdk/fraud-proof";
 import { CML } from "@lucid-evolution/lucid";
 import { afterAll, describe, expect, it } from "vitest";
 

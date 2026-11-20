@@ -4,16 +4,18 @@ import {
   replacePlutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
-  FraudProofTokenDatum,
   hashBlockHeader,
   HUB_ORACLE_ASSET_NAME,
   HubOracleDatum,
   requireInputIndex,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
+  FraudProofTokenDatum,
   TransitionTraceProofCommitmentDatum,
   TransitionTraceYieldFinalSpendRedeemer,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   credentialToAddress,

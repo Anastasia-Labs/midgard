@@ -3,7 +3,7 @@ import {
   FabricatedWithdrawalStep03Datum,
   FabricatedWithdrawalStep04Datum,
   FraudProofComputationThreadStepDatum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { type LucidEvolution } from "@lucid-evolution/lucid";
 
 import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.build-remove-fraudulent-block.js";

@@ -4,7 +4,7 @@ import { arch, cpus, platform, totalmem } from "node:os";
 import { canonicalJson } from "@al-ft/midgard-core/canonical-json";
 import { isPlainRecord } from "@al-ft/midgard-core/narrowing";
 import type { View } from "@al-ft/midgard-l1-follower";
-import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk";
+import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk/da";
 import type { ProtocolParameters, SlotConfig } from "@lucid-evolution/lucid";
 
 import {

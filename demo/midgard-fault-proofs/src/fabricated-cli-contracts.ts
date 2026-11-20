@@ -4,7 +4,7 @@ import {
   FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID,
   type FabricatedDepositFaultProofContracts,
   type FabricatedWithdrawalFaultProofContracts,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { type UTxO } from "@lucid-evolution/lucid";
 
 import { readJsonFile } from "./json-file.js";

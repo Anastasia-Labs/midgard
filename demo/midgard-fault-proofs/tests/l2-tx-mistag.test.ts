@@ -12,7 +12,7 @@ import {
 import {
   type L2TransactionSource,
   L2TransactionSource as L2TransactionSourceCodec,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

@@ -1,5 +1,5 @@
 import "@al-ft/midgard-core/da-transport";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/da";
 import "./domain.da-payload-record.js";
 import "./domain.parse-da-stored-payload-record.js";
 import "./domain.parse-da-signature-record.js";

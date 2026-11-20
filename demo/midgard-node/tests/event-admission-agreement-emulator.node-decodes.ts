@@ -6,7 +6,8 @@ import {
   openOrder,
   type ProjectedEvent,
 } from "@al-ft/midgard-l1-follower/events";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { CML, Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -22,7 +23,7 @@ export type Group = "deposit" | "withdrawal" | "external deposit";
  * a datum hash becomes the output's CML datum hash. */
 const payableDatum = (datumCbor: string): void => {
   const datum =
-    SDK.__reservePayoutTest.cardanoDatumCborToOutputDatum(datumCbor);
+    SDKUsers.__reservePayoutTest.cardanoDatumCborToOutputDatum(datumCbor);
   if (datum?.kind === "hash") CML.DatumHash.from_hex(datum.value).free();
 };
 

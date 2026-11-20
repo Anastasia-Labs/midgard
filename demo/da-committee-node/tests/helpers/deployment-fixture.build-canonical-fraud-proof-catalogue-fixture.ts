@@ -14,7 +14,7 @@ import {
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   type FraudProofCatalogueDeploymentInfo,
   ScriptHashSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 
 type FraudProofCatalogueCategoryName =

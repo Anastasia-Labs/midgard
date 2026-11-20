@@ -1,8 +1,9 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import {
   createReferenceScriptAuthPolicy,
   type ReferenceScriptAuthPolicy,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -155,12 +156,12 @@ export const resolvePublishableReferenceScriptAuthPolicyProgram = <E>({
   readonly timelockDurationMs: number;
   readonly contractsFor: (
     policy: ReferenceScriptAuthPolicy,
-  ) => Effect.Effect<SDK.MidgardValidators, E>;
+  ) => Effect.Effect<SDKCore.MidgardValidators, E>;
   readonly publication?: ReferencePublicationOptions;
 }): Effect.Effect<
   {
     readonly authPolicy: ReferenceScriptAuthPolicy;
-    readonly contracts: SDK.MidgardValidators;
+    readonly contracts: SDKCore.MidgardValidators;
   },
   E | RunStateError | SDK.StateQueueError,
   IntentJournal

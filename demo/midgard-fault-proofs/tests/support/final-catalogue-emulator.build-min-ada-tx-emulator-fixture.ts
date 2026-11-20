@@ -8,11 +8,13 @@ import {
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
 import {
-  buildNativeScriptInvalidFaultProofContracts,
-  type MinAdaFault,
   type NativeTxWitnessSetCompact,
   parseFaultProofBlueprint,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  buildNativeScriptInvalidFaultProofContracts,
+  type MinAdaFault,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { type Script, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

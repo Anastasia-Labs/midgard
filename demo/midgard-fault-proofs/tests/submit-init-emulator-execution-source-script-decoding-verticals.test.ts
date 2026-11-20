@@ -8,7 +8,8 @@
  * terminal, which returns false.
  */
 import { outRefLabel } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -136,7 +137,9 @@ describe("execution-source-script-decoding genuine-Init verticals", () => {
         outcome.fraudProofUnit,
       );
       expect(outRefLabel(token)).toBe(outcome.fraudProofOutRef);
-      expect(Data.from(token.datum!, SDK.FraudProofTokenDatum)).toStrictEqual({
+      expect(
+        Data.from(token.datum!, SDKFraudProof.FraudProofTokenDatum),
+      ).toStrictEqual({
         fraud_prover: harness.proverSigner.paymentKeyHash,
       });
       for (const step of harness.direct.steps)

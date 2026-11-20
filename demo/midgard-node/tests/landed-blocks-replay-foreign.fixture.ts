@@ -26,7 +26,8 @@ import {
   eventTrackedSet,
 } from "@al-ft/midgard-l1-follower/events";
 import type { SimTx } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -137,7 +138,7 @@ export const forcedAndL2Block = async () => {
     event_key: SDK.EventKey,
     phase: "ForcedTransaction" | "L2Transaction",
     post_utxos_root: string,
-  ): SDK.DaPayloadEntry => [
+  ): SDKDa.DaPayloadEntry => [
     encodeTransitionIntegerCbor(index).toString("hex"),
     encodeTransitionStepCbor({
       schema_version: 1n,
@@ -164,7 +165,7 @@ export const forcedAndL2Block = async () => {
     validationTraceCount: 2n,
   };
   return rebind({
-    version: SDK.DA_PAYLOAD_VERSION,
+    version: SDKDa.DA_PAYLOAD_VERSION,
     block_body: {
       ...normal,
       header: { ...normal.header, ...counts },
@@ -177,7 +178,7 @@ export const forcedAndL2Block = async () => {
       event_to_step: [
         ...forced.event_to_step,
         ...normal.event_to_step.map(
-          ([key]): SDK.DaPayloadEntry => [
+          ([key]): SDKDa.DaPayloadEntry => [
             key,
             encodeEventToStepValueCbor({
               step_index: 1n,
@@ -227,7 +228,7 @@ export const idKey = (outRef: OutRef): string =>
     SDK.OutputReference,
   );
 
-const emptyBody = (): SDK.DaPayload["block_body"] => ({
+const emptyBody = (): SDKDa.DaPayload["block_body"] => ({
   header_hash: "00".repeat(28),
   header: headerFor(
     Object.fromEntries(
@@ -259,14 +260,14 @@ const emptyBody = (): SDK.DaPayload["block_body"] => ({
 
 /** A block with no events: honest on an empty parent. */
 export const emptyBlock = () =>
-  rebind({ version: SDK.DA_PAYLOAD_VERSION, block_body: emptyBody() });
+  rebind({ version: SDKDa.DA_PAYLOAD_VERSION, block_body: emptyBody() });
 
 /** `payload` with its body's event lists replaced (roots rebound). */
 export const naming = (
-  payload: SDK.DaPayload,
+  payload: SDKDa.DaPayload,
   lists: Partial<
     Pick<
-      SDK.DaPayload["block_body"],
+      SDKDa.DaPayload["block_body"],
       "deposits" | "withdrawals" | "forced_transactions"
     >
   >,
@@ -276,9 +277,9 @@ export const naming = (
  * list with a repeated key, so the header keeps the honest roots: the
  * replayer's set check runs before any root check. */
 export const repeating = (
-  payload: SDK.DaPayload,
+  payload: SDKDa.DaPayload,
   list: "deposits" | "withdrawals" | "forced_transactions",
-): SDK.DaPayload => ({
+): SDKDa.DaPayload => ({
   ...payload,
   block_body: {
     ...payload.block_body,
@@ -321,7 +322,7 @@ export const depositBlock = async (entry: {
   const body = emptyBody();
   const counts = countsFromLengths({ deposits: 1 });
   return rebind({
-    version: SDK.DA_PAYLOAD_VERSION,
+    version: SDKDa.DA_PAYLOAD_VERSION,
     block_body: {
       ...body,
       header: { ...body.header, ...counts, utxosRoot: root },
@@ -441,7 +442,7 @@ export const inNode = <A, E>(
  */
 export const inputFor = async (
   store: FactStore,
-  payload: SDK.DaPayload,
+  payload: SDKDa.DaPayload,
   daAvailability?: SDK.DaAvailabilityStateQueueStatus,
 ): Promise<ReplayInput> => {
   const header = payload.block_body.header;
@@ -469,14 +470,14 @@ export const replayerFor = (store: FactStore) =>
   });
 
 /** Replays `payload` with a fresh production replayer at the store's view. */
-export const replay = async (store: FactStore, payload: SDK.DaPayload) =>
+export const replay = async (store: FactStore, payload: SDKDa.DaPayload) =>
   inNode(replayerFor(store)(await inputFor(store, payload)));
 
 /** Retains `row` through the history-write gate. */
 export const retain = (row: DaPayloadsDB.InsertInput) =>
   inNode(withFollowerWrite(DaPayloadsDB.upsertAvailable(row)));
 
-export const retained = (payload: SDK.DaPayload) =>
+export const retained = (payload: SDKDa.DaPayload) =>
   inNode(
     DaPayloadsDB.retrieveByHeaderHash(
       Buffer.from(payload.block_body.header_hash, "hex"),

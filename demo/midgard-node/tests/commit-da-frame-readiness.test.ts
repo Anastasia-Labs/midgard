@@ -1,6 +1,6 @@
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { maxDaPayloadInnerBytes } from "@al-ft/midgard-core/da-payload-sizing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Effect, Either, Metric, Ref } from "effect";
 import { describe, expect, it, vi } from "vitest";
 

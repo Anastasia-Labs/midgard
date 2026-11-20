@@ -1,7 +1,8 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { type BuildTxWithRedeemer, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";
@@ -58,7 +59,7 @@ export const reportAvailabilityScenario = (
 /** The SDK challenge builders' deployment view of the fixture. */
 export const availabilityDeployment = (
   f: AvailabilityFixture,
-): SDK.DaAvailabilityDeployment => {
+): SDKDa.DaAvailabilityDeployment => {
   const names = [
     "availability-challenge spending",
     "availability-challenge minting",
@@ -95,7 +96,7 @@ export const attestAvailability = async (
   const { lucid, contracts } = f;
   lucid.selectWallet.fromPrivateKey(f.responder.privateKey);
   const init = await Effect.runPromise(
-    SDK.incompleteInitDaAttestationTxProgram(lucid, contracts, {
+    SDKDa.incompleteInitDaAttestationTxProgram(lucid, contracts, {
       daParamsUtxo: f.daParamsUtxo,
       daParamsDatum: f.daParamsDatum,
       target: f.target,
@@ -108,21 +109,21 @@ export const attestAvailability = async (
     }),
   );
   await f.submit("attestation init", init, true);
-  const attestationUnit = SDK.daAttestationUnit(
+  const attestationUnit = SDKDa.daAttestationUnit(
     contracts.daAttestation,
     f.target.headerHash,
   );
-  const getAttestation = async (): Promise<SDK.DaAttestationUtxo> => {
+  const getAttestation = async (): Promise<SDKDa.DaAttestationUtxo> => {
     const [utxo] = await lucid.utxosAtWithUnit(
       contracts.daAttestation.spendingScriptAddress,
       attestationUnit,
     );
     if (!utxo?.datum) throw new Error("Missing attestation");
-    return { utxo, datum: Data.from(utxo.datum, SDK.DaAttestationDatum) };
+    return { utxo, datum: Data.from(utxo.datum, SDKDa.DaAttestationDatum) };
   };
-  const message = SDK.daAvailabilityAttestationMessage(f.commitment);
+  const message = SDKDa.daAvailabilityAttestationMessage(f.commitment);
   const add = await Effect.runPromise(
-    SDK.incompleteAddDaAttestationSignaturesTxProgram(lucid, contracts, {
+    SDKDa.incompleteAddDaAttestationSignaturesTxProgram(lucid, contracts, {
       daParamsUtxo: f.daParamsUtxo,
       daParamsDatum: f.daParamsDatum,
       attestation: await getAttestation(),
@@ -156,22 +157,26 @@ export const attestAvailability = async (
     const [first, ...rest] =
       threshold.datum.availability_commitment.tranche_descriptors;
     const substituted = await Effect.runPromise(
-      SDK.incompleteApplyDaAttestationToStateQueueTxProgram(lucid, contracts, {
-        ...applyConfig,
-        attestation: {
-          ...threshold,
-          datum: {
-            ...threshold.datum,
-            availability_commitment: {
-              ...threshold.datum.availability_commitment,
-              tranche_descriptors: [
-                { ...first!, chunk_commitment: "00".repeat(32) },
-                ...rest,
-              ],
+      SDKDa.incompleteApplyDaAttestationToStateQueueTxProgram(
+        lucid,
+        contracts,
+        {
+          ...applyConfig,
+          attestation: {
+            ...threshold,
+            datum: {
+              ...threshold.datum,
+              availability_commitment: {
+                ...threshold.datum.availability_commitment,
+                tranche_descriptors: [
+                  { ...first!, chunk_commitment: "00".repeat(32) },
+                  ...rest,
+                ],
+              },
             },
           },
         },
-      }),
+      ),
     );
     await assertAvailabilityRefusal(
       substituted.complete({ coinSelection: true, localUPLCEval: true }),
@@ -180,7 +185,7 @@ export const attestAvailability = async (
     );
   }
   const apply = await Effect.runPromise(
-    SDK.incompleteApplyDaAttestationToStateQueueTxProgram(
+    SDKDa.incompleteApplyDaAttestationToStateQueueTxProgram(
       lucid,
       contracts,
       applyConfig,
@@ -192,7 +197,7 @@ export const attestAvailability = async (
     f.queueUnit,
   );
   if (!queue?.datum) throw new Error("Apply omitted the queue node");
-  const commitmentHash = SDK.daAvailabilityCommitmentHash(f.commitment);
+  const commitmentHash = SDKDa.daAvailabilityCommitmentHash(f.commitment);
   const node = Data.castFrom(
     (await Effect.runPromise(SDK.getLinkedListNodeViewFromUTxO(queue))).data,
     SDK.StateQueueNode,
@@ -208,5 +213,5 @@ export const coordinate =
   (ctx) =>
     Data.to(
       { Coordinate: { mint_redeemer_index: mintAt(ctx, policy) } },
-      SDK.DaAvailabilitySpendRedeemer,
+      SDKDa.DaAvailabilitySpendRedeemer,
     );

@@ -1,14 +1,16 @@
 import {
   forcedLeafMembershipV1,
   type ForcedTransactionSourceMembershipProof,
+  requireInputIndex,
+  requireOwnSpendPurpose,
+  requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
   MinFeeStep01SpendRedeemer,
   MinFeeStep02Datum,
   type MinFeeStep02State,
   minFeeTerminalContradiction,
-  requireInputIndex,
-  requireOwnSpendPurpose,
-  requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

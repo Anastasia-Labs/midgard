@@ -10,7 +10,7 @@
  * admission carries no redeemers, so an admitted forced leaf has none to
  * prove. */
 import { decodeMidgardVersionedScriptEnvelope } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 import { directPurposeClaimRoute } from "../direct-purpose-family/claim-route.js";
 import {

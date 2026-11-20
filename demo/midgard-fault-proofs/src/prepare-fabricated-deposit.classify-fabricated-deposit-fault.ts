@@ -2,7 +2,8 @@ import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
   plutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -84,7 +85,7 @@ export const decodeCommittedDepositLeaf = async (
     );
   }
   if (
-    SDK.committedDepositKeyBytes(committedDepositId) !==
+    SDKFraudProof.committedDepositKeyBytes(committedDepositId) !==
       committedDepositIdCbor ||
     aikenSerialisedPlutusDataCborPreservingMapOrder(
       committedDepositInfoCbor,
@@ -96,7 +97,7 @@ export const decodeCommittedDepositLeaf = async (
     );
   }
   const committedDepositInfoHash = await Effect.runPromise(
-    SDK.depositInfoCommitmentCbor(committedDepositInfoCbor),
+    SDKFraudProof.depositInfoCommitmentCbor(committedDepositInfoCbor),
   );
   return {
     index,
@@ -113,8 +114,8 @@ export const decodeCommittedDepositLeaf = async (
 export type FabricatedDepositL1Witness = FabricatedHistoryWitness;
 
 export type ClassifiedFabricatedDepositFault = {
-  readonly verdict: SDK.FabricatedDepositEvidenceVerdict;
-  readonly fault: SDK.FabricatedDepositFault;
+  readonly verdict: SDKFraudProof.FabricatedDepositEvidenceVerdict;
+  readonly fault: SDKFraudProof.FabricatedDepositFault;
   readonly stateQueuePolicyId: string;
   readonly openingCbor: string | null;
   readonly authenticDepositInfoHash?: string;
@@ -167,7 +168,7 @@ export const classifyFabricatedDepositFault = async ({
       "Wrong authenticated event kind",
     );
   const authenticDepositInfoHash = await Effect.runPromise(
-    SDK.depositInfoCommitmentCbor(
+    SDKFraudProof.depositInfoCommitmentCbor(
       plutusConstrFieldCbor(captured.payloadCbor, [0, 1]),
     ),
   );
@@ -223,8 +224,8 @@ export type PreparedFabricatedDepositStateJson = {
 
 export type PreparedFabricatedDepositOutput = {
   readonly schemaVersion: typeof FABRICATED_DEPOSIT_EVIDENCE_SCHEMA_VERSION;
-  readonly violationId: typeof SDK.FABRICATED_DEPOSIT_VIOLATION_ID;
-  readonly fraudCategoryId: typeof SDK.FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID;
+  readonly violationId: typeof SDKFraudProof.FABRICATED_DEPOSIT_VIOLATION_ID;
+  readonly fraudCategoryId: typeof SDKFraudProof.FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID;
   readonly headerHash: string;
   readonly threadTokenAssetName: string;
   readonly depositCount: number;

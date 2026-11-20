@@ -3,7 +3,7 @@
  * it: the shape it admits, and each shape beside it, refused. A spend back
  * spends our one staging output that a staging of ours left, with our one
  * native script, to our wallet only. */
-import { midgardCekStagingScript } from "@al-ft/midgard-sdk";
+import { midgardCekStagingScript } from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import { exactResolvedOutputCbor } from "../src/workflow/funding-reservation-permit.create-workflow-funding-reservation-permit.js";

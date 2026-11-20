@@ -7,7 +7,7 @@ import {
   type MidgardValidationMachineState,
   type MidgardValidationTraceProof,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import {
   credentialToAddress,
   Data,

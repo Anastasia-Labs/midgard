@@ -1,4 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { getAddressDetails } from "@lucid-evolution/lucid";
 import { exactObjectKeys } from "midgard-node/exact-object-keys";
 import { loadPhasMembershipWithdrawalScript } from "midgard-node/phas-membership";

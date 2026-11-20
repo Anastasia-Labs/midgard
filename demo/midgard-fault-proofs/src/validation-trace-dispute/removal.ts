@@ -3,7 +3,8 @@
  * other family's do: the shared cursor-family remove stage over the family's
  * authenticated raw-L1 observation, the shared state-queue mutation lease,
  * and the shared remove-fraudulent-block builder. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
@@ -84,7 +85,7 @@ export const validationTraceComputationSteps = (
     {
       role: "computation_thread_step_01",
       address: chain.opener.spendingScriptAddress,
-      datumSchema: SDK.FraudProofComputationThreadStepDatumSchema,
+      datumSchema: SDKFraudProof.FraudProofComputationThreadStepDatumSchema,
     },
     {
       role: "computation_thread_step_02",

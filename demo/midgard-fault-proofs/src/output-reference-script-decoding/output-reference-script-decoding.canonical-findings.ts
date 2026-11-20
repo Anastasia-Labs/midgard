@@ -5,7 +5,7 @@
 import {
   encodeProofThreadForcedSourceKey,
   PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type { CanonicalViolationDetection } from "../workflow/classification.js";

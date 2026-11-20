@@ -2,12 +2,14 @@ import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core";
 import {
   ForcedInclusionTxV1Schema,
-  forcedVerdictSubject,
-  MissingSignatureForcedWitnessSpendRedeemer,
   OutputReference,
   Proof,
   ROOT_DOMAINS,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  forcedVerdictSubject,
+  MissingSignatureForcedWitnessSpendRedeemer,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
 
 import { faultProofFieldOpening } from "../../src/field-opening.js";

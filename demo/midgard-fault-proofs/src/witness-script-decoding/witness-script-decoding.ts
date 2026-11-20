@@ -10,14 +10,16 @@ import {
   selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core";
 import {
-  encodeVerdictSubject,
   hashHexWithBlake2b,
+  type RejectionReason,
+} from "@al-ft/midgard-sdk/core";
+import {
+  encodeVerdictSubject,
   PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE,
   PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
-  type RejectionReason,
   type VerdictSubject,
   verdictSubjectIsCanonical,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Effect } from "effect";
 
 import { cborDefiniteBytes, cborSerialiseInteger } from "../cbor-serialise.js";

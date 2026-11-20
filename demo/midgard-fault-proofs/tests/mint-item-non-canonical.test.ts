@@ -2,7 +2,7 @@ import { midgardFieldCommitment } from "@al-ft/midgard-core";
 import {
   acceptedVerdictSubject,
   forcedVerdictSubject,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import { prepareMintItemEvidence } from "../src/mint-item-non-canonical/mint-item-non-canonical.js";

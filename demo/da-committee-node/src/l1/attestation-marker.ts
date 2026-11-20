@@ -1,4 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 
 export type DaAttestationMarkerClassification =
   | { readonly kind: "unattested" }

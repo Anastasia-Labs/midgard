@@ -3,15 +3,16 @@ import {
   parseDeploymentManifestEventHistoryBounds,
   parseDeploymentManifestEventHistoryRetentionAddresses,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
 import {
   authenticatedValidatorFromManifest,
   mintingValidatorFromManifest,
   requireManifestString,
   spendingValidatorFromManifest,
-  userHistoryValidatorsFromManifest,
   withdrawalValidatorFromManifest,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
+import { userHistoryValidatorsFromManifest } from "@al-ft/midgard-sdk/users";
 import { Network } from "@lucid-evolution/lucid";
 
 import {
@@ -25,7 +26,7 @@ export const midgardContractsFromDeploymentManifest = (
   network: Network,
   manifest: DeploymentManifest,
   sourcePath: string,
-): SDK.MidgardValidators => {
+): SDKCore.MidgardValidators => {
   const { hubOracle, eventHistory, deposit, withdrawal } =
     userHistoryValidatorsFromManifest(network, manifest, sourcePath);
   const referenceScriptAuth = mintingValidatorFromManifest(
@@ -413,7 +414,7 @@ export const midgardContractsFromDeploymentManifest = (
   };
   const fraudProofs = SDK.fraudProofContractsToFirstSteps(fraudProofContracts);
 
-  const contracts: SDK.MidgardValidators = {
+  const contracts: SDKCore.MidgardValidators = {
     referenceScriptAuth,
     hubOracle,
     daParamsGovernor: authenticatedValidatorFromManifest(

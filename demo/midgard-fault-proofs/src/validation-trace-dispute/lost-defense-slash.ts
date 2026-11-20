@@ -15,7 +15,9 @@
  * (retired-operators.ak), and a defense holds that time at least
  * `started_at + D_case + P` (validation-case-v1 `defense_bond_unlock_time`). */
 import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   credentialToAddress,
   Data,
@@ -205,12 +207,12 @@ const buildSlash = async ({
     ...scriptReferences,
   ])
     if (utxo !== undefined) read.set(outRefOf(utxo), utxo);
-  const tx = SDK.collectRemoveSlashingInputs(
+  const tx = SDKStateQueue.collectRemoveSlashingInputs(
     lucid
       .newTx()
       .collectFrom(
         [receipt],
-        Data.to("SpendReceipt", SDK.ValidationAwardSpendRedeemer),
+        Data.to("SpendReceipt", SDKDa.ValidationAwardSpendRedeemer),
       )
       .mintAssets({ [receiptUnit]: -1n }, (ctx) =>
         Data.to(
@@ -229,7 +231,7 @@ const buildSlash = async ({
               permission: { SlashedForThisLoss: { directory } },
             },
           },
-          SDK.ReceiptRedeemer,
+          SDKDa.ReceiptRedeemer,
         ),
       )
       .readFrom([...read.values()]),

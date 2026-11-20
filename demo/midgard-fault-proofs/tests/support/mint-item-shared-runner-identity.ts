@@ -1,7 +1,5 @@
-import {
-  acceptedVerdictSubject,
-  getProtocolParameters,
-} from "@al-ft/midgard-sdk";
+import { getProtocolParameters } from "@al-ft/midgard-sdk/core";
+import { acceptedVerdictSubject } from "@al-ft/midgard-sdk/fraud-proof";
 import type { UTxO } from "@lucid-evolution/lucid";
 import { expect, vi } from "vitest";
 

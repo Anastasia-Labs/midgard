@@ -37,7 +37,8 @@ import {
   postgresDialect,
   readIntentsByWorkflowIn,
 } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { SqlClient } from "@effect/sql";
 import {
   CML,
@@ -114,7 +115,7 @@ export const bondUnlockTimeOf = (node: UTxO): bigint | null => {
 
 /** When the case `caseUtxo` started (L1 time). */
 export const startedAtOf = (caseUtxo: UTxO): number =>
-  Number(Data.from(caseUtxo.datum!, SDK.Case).started_at);
+  Number(Data.from(caseUtxo.datum!, SDKDa.Case).started_at);
 
 /** What the node runs a defender effect with. */
 type NodeServices = SqlClient.SqlClient | Globals | IntentJournal;

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { canonicalJson } from "@al-ft/midgard-core/canonical-json";
-import type { EvidenceProvenance } from "@al-ft/midgard-sdk";
+import type { EvidenceProvenance } from "@al-ft/midgard-sdk/fraud-proof";
 
 import {
   COMPUTATION_THREAD_STEP_ROLES,

@@ -6,7 +6,6 @@ import {
   deriveMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
-import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
 import {
   encodeHeaderCbor,
   ForcedInclusionTxV1,
@@ -14,7 +13,8 @@ import {
   HeaderSchema,
   OutputReference,
   ROOT_DOMAINS,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import { commitCountedRoot } from "../transition-trace/phas.js";

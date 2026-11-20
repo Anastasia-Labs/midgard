@@ -1,5 +1,5 @@
 import { maxDaPayloadInnerBytes } from "@al-ft/midgard-core/da-payload-sizing";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { Effect, Option } from "effect";
 
 import {

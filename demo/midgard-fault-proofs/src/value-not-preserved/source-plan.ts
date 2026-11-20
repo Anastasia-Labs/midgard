@@ -8,7 +8,7 @@ import {
   forcedLeafMembershipV1,
   type ForcedTransactionSourceMembershipProof,
   type Header,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import { Constr, Data } from "@lucid-evolution/lucid";
 
 import type { ConservationSubmissionAction } from "./submit-union.js";

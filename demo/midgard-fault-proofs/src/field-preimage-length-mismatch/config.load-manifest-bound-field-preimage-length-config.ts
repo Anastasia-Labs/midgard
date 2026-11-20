@@ -2,7 +2,7 @@ import {
   FieldPreimageLengthStep01DatumSchema,
   FieldPreimageLengthStep02DatumSchema,
   FieldPreimageLengthStep03DatumSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import type { ResolvedProverSigner } from "../runtime.js";

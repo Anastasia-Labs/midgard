@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";
@@ -47,16 +48,16 @@ export const prepare = async (
     proverCredential: signer.paymentKeyHash,
     stepDatumSchemas: deposit
       ? [
-          SDK.FraudProofComputationThreadStepDatum,
-          SDK.FabricatedDepositStep02Datum,
-          SDK.FabricatedDepositStep03Datum,
-          SDK.FabricatedDepositStep04Datum,
+          SDKFraudProof.FraudProofComputationThreadStepDatum,
+          SDKFraudProof.FabricatedDepositStep02Datum,
+          SDKFraudProof.FabricatedDepositStep03Datum,
+          SDKFraudProof.FabricatedDepositStep04Datum,
         ]
       : [
-          SDK.FraudProofComputationThreadStepDatum,
-          SDK.FabricatedWithdrawalStep02Datum,
-          SDK.FabricatedWithdrawalStep03Datum,
-          SDK.FabricatedWithdrawalStep04Datum,
+          SDKFraudProof.FraudProofComputationThreadStepDatum,
+          SDKFraudProof.FabricatedWithdrawalStep02Datum,
+          SDKFraudProof.FabricatedWithdrawalStep03Datum,
+          SDKFraudProof.FabricatedWithdrawalStep04Datum,
         ],
   });
   const resolved = binding.resolvedContracts;
@@ -197,7 +198,7 @@ export const prepare = async (
     init.computationThreadUnit,
   );
   expect(
-    Data.from(first.datum!, SDK.FraudProofComputationThreadStepDatum),
+    Data.from(first.datum!, SDKFraudProof.FraudProofComputationThreadStepDatum),
   ).toEqual({ fraud_prover: signer.paymentKeyHash, data: null });
   const common = { lucid, contracts, signer, now, awaitConfirmation: true };
   const firstInput = {
@@ -245,8 +246,8 @@ export const prepare = async (
   );
   expect(
     deposit
-      ? Data.from(second.datum!, SDK.FabricatedDepositStep02Datum)
-      : Data.from(second.datum!, SDK.FabricatedWithdrawalStep02Datum),
+      ? Data.from(second.datum!, SDKFraudProof.FabricatedDepositStep02Datum)
+      : Data.from(second.datum!, SDKFraudProof.FabricatedWithdrawalStep02Datum),
   ).toEqual({ fraud_prover: signer.paymentKeyHash, data: expected02 });
   selectSigner();
   const secondInput = {
@@ -273,8 +274,8 @@ export const prepare = async (
   );
   expect(
     deposit
-      ? Data.from(third.datum!, SDK.FabricatedDepositStep03Datum)
-      : Data.from(third.datum!, SDK.FabricatedWithdrawalStep03Datum),
+      ? Data.from(third.datum!, SDKFraudProof.FabricatedDepositStep03Datum)
+      : Data.from(third.datum!, SDKFraudProof.FabricatedWithdrawalStep03Datum),
   ).toEqual({
     fraud_prover: signer.paymentKeyHash,
     data: { ...expected02, verdict: secondResult.verdict },

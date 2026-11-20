@@ -8,7 +8,7 @@ import {
 import {
   type FraudProofCatalogueCategoryName,
   type ParsedFaultProofBlueprint,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import {
   credentialToAddress,
   type Network,

@@ -10,9 +10,11 @@ import {
   type FraudProofCatalogueCategoryDeploymentInfo,
   type FraudProofCatalogueCategoryName,
   type FraudProofCatalogueDeploymentInfo,
+} from "@al-ft/midgard-sdk/core";
+import {
   REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
   type ReferenceScriptAuthTokenTarget,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import {
   mintingPolicyToId,
   validatorToScriptHash,

@@ -6,7 +6,7 @@ import {
   createFileTimeoutCorrectionJournalStore,
   submitUnattestedTimeoutCorrection,
 } from "@al-ft/midgard-fault-proofs/remove-unattested-block";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { getAddressDetails } from "@lucid-evolution/lucid";
 import { Cause, Effect, Ref, Runtime } from "effect";
 

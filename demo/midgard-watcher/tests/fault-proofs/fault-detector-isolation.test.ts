@@ -13,7 +13,7 @@ import {
   FraudProofL1RefusedError,
   FraudProofL1UnavailableError,
 } from "@al-ft/midgard-fault-proofs/workflow/l1-source";
-import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
+import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {

@@ -1,4 +1,4 @@
-import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
+import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.admit-retained-da-provenance.js";
 import { DaLibp2pRetainedDaSource } from "../transition-trace/fetch.da-libp2p-retained-da-source.js";

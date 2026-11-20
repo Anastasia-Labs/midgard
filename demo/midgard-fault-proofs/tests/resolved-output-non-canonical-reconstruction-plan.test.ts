@@ -7,7 +7,7 @@ import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core/codec/forced
 import {
   acceptedVerdictSubject,
   forcedVerdictSubject,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { describe, expect, it } from "vitest";
 

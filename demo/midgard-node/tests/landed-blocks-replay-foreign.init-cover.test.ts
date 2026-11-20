@@ -17,7 +17,7 @@ import type {
   FactStoreOptions,
   OutRef,
 } from "@al-ft/midgard-l1-follower";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/da";
 import { Effect } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

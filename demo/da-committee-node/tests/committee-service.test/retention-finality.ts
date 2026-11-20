@@ -1,5 +1,5 @@
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { expect, it } from "vitest";
 

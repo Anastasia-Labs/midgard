@@ -3,7 +3,9 @@ import {
   ledgerTipBackdatedValidFromMs,
   SUBMIT_SLOT_VALIDITY_BUFFER,
 } from "@al-ft/midgard-core/ogmios-slot";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import type * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
+import * as SDK from "@al-ft/midgard-sdk/users";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 import { Context, Effect, Option } from "effect";
 
@@ -39,14 +41,14 @@ export {
   type ReservePayoutReferenceScripts,
   ReservePayoutTxError,
   valueToAssets,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/users";
 
 type ReservePayoutSubmitError =
   | SDK.ReservePayoutTxError
-  | SDK.HubOracleError
-  | SDK.LucidError
-  | SDK.Bech32DeserializationError
-  | SDK.StateQueueError
+  | SDKCore.HubOracleError
+  | SDKCore.LucidError
+  | SDKCore.Bech32DeserializationError
+  | SDKStateQueue.StateQueueError
   | TxSubmitError
   | TxConfirmError
   | TxExpiredError
@@ -154,7 +156,7 @@ const retirementClockAtTip = <C extends { readonly nowMs?: number }>(
 
 export const submitAbsorbConfirmedDepositToReserveProgram = (
   lucid: LucidEvolution,
-  contracts: SDK.MidgardValidators,
+  contracts: SDKCore.MidgardValidators,
   config: SDK.AbsorbConfirmedDepositConfig,
   plan: IntentPlan,
 ): Effect.Effect<string, ReservePayoutSubmitError, IntentJournal> =>
@@ -180,7 +182,7 @@ export const submitAbsorbConfirmedDepositToReserveProgram = (
 
 export const submitInitializePayoutProgram = (
   lucid: LucidEvolution,
-  contracts: SDK.MidgardValidators,
+  contracts: SDKCore.MidgardValidators,
   config: SDK.InitializePayoutConfig,
   plan: IntentPlan,
 ): Effect.Effect<string, ReservePayoutSubmitError, IntentJournal> =>
@@ -206,7 +208,7 @@ export const submitInitializePayoutProgram = (
 
 export const submitAddReserveFundsToPayoutProgram = (
   lucid: LucidEvolution,
-  contracts: SDK.MidgardValidators,
+  contracts: SDKCore.MidgardValidators,
   config: SDK.AddReserveFundsConfig,
   /** The withdrawal event id CBOR the payout settles. */
   eventId: Buffer,
@@ -225,7 +227,7 @@ export const submitAddReserveFundsToPayoutProgram = (
 
 export const submitConcludePayoutProgram = (
   lucid: LucidEvolution,
-  contracts: SDK.MidgardValidators,
+  contracts: SDKCore.MidgardValidators,
   config: SDK.ConcludePayoutConfig,
   /** The withdrawal event id CBOR the payout settles. */
   eventId: Buffer,

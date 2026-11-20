@@ -9,7 +9,8 @@
  * The category is not installed until its defender exists; this file
  * stands in for that install so the production classifier mints the
  * objective's actuation permit. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -88,7 +89,8 @@ describe("validation-trace dispute case of ours closed by another party", () => 
         proofUnit,
       );
       expect(
-        Data.from(record!.datum!, SDK.FraudProofTokenDatum).fraud_prover,
+        Data.from(record!.datum!, SDKFraudProof.FraudProofTokenDatum)
+          .fraud_prover,
       ).toBe(h.proverSigner.paymentKeyHash);
 
       const { result, history } = await turnUntil(

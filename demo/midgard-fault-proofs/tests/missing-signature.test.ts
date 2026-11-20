@@ -10,7 +10,8 @@ import {
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core/codec";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
@@ -34,7 +35,7 @@ import {
 } from "./helpers/canonical-block-evidence-fixture.js";
 
 const TARGET_VKEY = "11".repeat(32);
-const TARGET_HASH = SDK.missingSignatureVkeyHash(TARGET_VKEY);
+const TARGET_HASH = SDKFraudProof.missingSignatureVkeyHash(TARGET_VKEY);
 
 const transaction = ({
   inputByte,
@@ -67,7 +68,8 @@ const transaction = ({
       networkId: MIDGARD_NATIVE_NETWORK_ID_NONE,
     },
     witnessSet: {
-      addrTxWitsPreimageCbor: SDK.encodeAddressWitnessPreimage(witnesses),
+      addrTxWitsPreimageCbor:
+        SDKFraudProof.encodeAddressWitnessPreimage(witnesses),
       scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
       redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
     },
@@ -152,7 +154,7 @@ describe("production missing-signature workflow evidence", () => {
       await MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY.replay(evidence);
     expect(decision.detections).toHaveLength(1);
     expect(decision.detections[0]).toMatchObject({
-      violationId: SDK.MISSING_SIGNATURE_VIOLATION_ID,
+      violationId: SDKFraudProof.MISSING_SIGNATURE_VIOLATION_ID,
     });
     const classification = requireMissingSignatureClassification(
       await classifyCanonicalBlockViolations({

@@ -1,11 +1,11 @@
 import { compareMidgardAssetKeyBytes } from "@al-ft/midgard-core";
+import { type RejectionReason } from "@al-ft/midgard-sdk/core";
 import {
   PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE,
   PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
-  type RejectionReason,
   type VerdictSubject,
   verdictSubjectIsCanonical,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 export const MINT_DECLARED_ASSET_LIMIT_CATEGORY =
   "mintDeclaredAssetLimit" as const;

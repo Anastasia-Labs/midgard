@@ -24,7 +24,7 @@ import {
   type SimOutput,
   type SimTx,
 } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 
 import { readLandedStateQueueFrom } from "../../src/l1-state-queue/hook.js";
 import {

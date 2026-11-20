@@ -19,7 +19,7 @@ import {
 import {
   fieldPreimagePublicationBytes,
   fieldPreimagePublicationOutputs,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import { type UTxO } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 

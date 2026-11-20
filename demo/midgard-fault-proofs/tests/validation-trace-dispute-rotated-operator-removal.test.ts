@@ -10,7 +10,8 @@
  * the retired operator's retired-directory node: the prover receives the
  * reward, the fee is the slashing penalty, and the retired directory's
  * anchor continues with what the node held beyond both, here nothing. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
   CML,
   credentialToAddress,
@@ -268,7 +269,7 @@ describe("validation-trace dispute runner: removal of a block whose operator ret
     // Nobody defends: the case's defense deadline passes.
     const [live] = await h.proverLucid.utxosByOutRef([parseOwnOutRef(opened)]);
     const deadline = validationTraceDefenseDeadlineMs(
-      Data.from(live!.datum!, SDK.Case),
+      Data.from(live!.datum!, SDKDa.Case),
     );
     h.emulator.awaitSlot(
       h.proverLucid.unixTimeToSlot(deadline) - h.proverLucid.currentSlot() + 1,

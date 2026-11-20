@@ -6,7 +6,7 @@ import type {
   FraudProofWorkflowJournalEntry,
   FraudProofWorkflowTerminal,
 } from "@al-ft/midgard-fault-proofs/workflow/journal";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import { expect } from "vitest";
 
 import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";

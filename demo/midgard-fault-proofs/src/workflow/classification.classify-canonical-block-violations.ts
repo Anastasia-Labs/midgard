@@ -1,8 +1,8 @@
 import {
-  admitAuthenticatedStateQueueHeaderObservation,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueCategoryName,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { admitAuthenticatedStateQueueHeaderObservation } from "@al-ft/midgard-sdk/fraud-proof";
 
 import {
   blockTransactionsFromCanonicalEvidence,

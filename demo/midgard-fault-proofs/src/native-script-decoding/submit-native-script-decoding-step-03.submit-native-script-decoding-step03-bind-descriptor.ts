@@ -5,6 +5,9 @@ import {
 } from "@al-ft/midgard-core";
 import {
   type BoundedItemChunkProof,
+  type Proof,
+} from "@al-ft/midgard-sdk/core";
+import {
   NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE,
   NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION,
   NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_MALFORMED,
@@ -12,8 +15,7 @@ import {
   nativeScriptDecodingOpenedSubjectState,
   type NativeScriptDecodingScanThreadState,
   NativeScriptDecodingStep03BindDescriptorSpendRedeemer,
-  type Proof,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

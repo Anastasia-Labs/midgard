@@ -1,5 +1,9 @@
 import "@al-ft/midgard-core";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/da";
+import "@al-ft/midgard-sdk/users";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "../committed-field-shape/prepare-committed-field-shape.js";
 import "../committed-field-shape/submit-committed-field-shape-init.js";
 import "../committed-field-shape/submit-committed-field-shape-step-01.js";

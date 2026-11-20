@@ -4,7 +4,9 @@ import {
   plutusConstrFieldCbor,
   replacePlutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { deriveCanonicalOriginalDepositTransitionEffect } from "@al-ft/midgard-validation/transition-effect";
 import { Data, datumToHash } from "@lucid-evolution/lucid";
@@ -38,14 +40,14 @@ const info: SDK.DepositInfo = {
   l2_network_id: 0n,
   l2_datum: 42n,
 };
-const payload: SDK.EventHistoryPayload = {
+const payload: SDKUsers.EventHistoryPayload = {
   DepositPayload: { event: { id, info } },
 };
 const originalAssets: SDK.Value = new Map([
   ["", new Map([["", 3_000_000n]])],
   ["78".repeat(28), new Map([["ab", 17n]])],
 ]);
-const commitment = SDK.eventHistoryCommitment(
+const commitment = SDKUsers.eventHistoryCommitment(
   policy,
   "Deposit",
   { event_id: id, inclusion_time: 150n },
@@ -56,7 +58,7 @@ const retained = transitionDepositOpening({
   commitment,
   openingCbor: Data.to(
     { payload, original_assets: originalAssets },
-    SDK.EventHistoryOpening,
+    SDKUsers.EventHistoryOpening,
   ),
 });
 const source = { key: id, value: info };
@@ -112,7 +114,7 @@ describe("transition deposit retained opening", () => {
         operatorVkey: "89".repeat(28),
         now: 0,
         eventCbor,
-        originalAssets: SDK.valueToAssets(originalAssets),
+        originalAssets: SDKUsers.valueToAssets(originalAssets),
         honest,
       });
       const reconstruct = (fixture: typeof fixtures.current) =>
@@ -129,7 +131,7 @@ describe("transition deposit retained opening", () => {
         plutusConstrFieldCbor(eventCbor, [1]),
       );
       const typedView = () =>
-        SDK.committedDepositValueBytes(current.deposits[0]!.value);
+        SDKFraudProof.committedDepositValueBytes(current.deposits[0]!.value);
       if (typed === "throws") expect(typedView).toThrow();
       else if (typed === "differs")
         expect(current.deposits[0]!.valueBytes.toString("hex")).not.toBe(
@@ -158,7 +160,7 @@ describe("transition deposit retained opening", () => {
         l2NetworkId: info.l2_network_id,
         l2Address: info.l2_address,
         l2DatumCbor: Buffer.from(rawDatum, "hex"),
-        originalAssets: SDK.valueToAssets(originalAssets),
+        originalAssets: SDKUsers.valueToAssets(originalAssets),
       }).operations[0];
       if (operation?.type !== "insert")
         throw new Error("Expected exact deposit insertion");
@@ -214,7 +216,7 @@ describe("transition deposit retained opening", () => {
   );
   it("retains raw map pairs and requires the same raw committed source", () => {
     const rawPayload = replacePlutusConstrFieldCbor(
-      Data.to(payload, SDK.EventHistoryPayload),
+      Data.to(payload, SDKUsers.EventHistoryPayload),
       [0, 1, 2, 0],
       "a3020a010b020c",
     );
@@ -290,7 +292,7 @@ describe("transition deposit retained opening", () => {
       ...retained,
       openingCbor: Data.to(
         { payload, original_assets: assets },
-        SDK.EventHistoryOpening,
+        SDKUsers.EventHistoryOpening,
       ),
     };
     expect(() => reopenTransitionDeposit(changed, policy, source)).toThrow(
@@ -300,7 +302,7 @@ describe("transition deposit retained opening", () => {
   it("rejects different checkpoint time, policy, payload and source", () => {
     const changedCheckpoint = Data.to(
       { ...commitment, inclusion_time: 151n },
-      SDK.EventHistoryCommitment,
+      SDKUsers.EventHistoryCommitment,
     );
     expect(() =>
       reopenTransitionDeposit(retained, policy, source, changedCheckpoint),
@@ -323,7 +325,7 @@ describe("transition deposit retained opening", () => {
           },
           original_assets: originalAssets,
         },
-        SDK.EventHistoryOpening,
+        SDKUsers.EventHistoryOpening,
       ),
     };
     expect(() => reopenTransitionDeposit(changed, policy, source)).toThrow(

@@ -1,4 +1,4 @@
-import { type FieldOpening } from "@al-ft/midgard-sdk";
+import { type FieldOpening } from "@al-ft/midgard-sdk/fraud-proof";
 
 /** Replace the compact transaction bytes the opening is anchored to. */
 export const mutateCompactSource = (

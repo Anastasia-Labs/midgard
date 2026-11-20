@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   type LucidEvolution,
   type Script,
@@ -42,9 +43,9 @@ export const ensureRuntimeRewardAccountsRegisteredProgram = (
       contracts.pexcludes,
       contracts.reserve,
       ...Object.values(contracts.scriptDecode.stakers),
-      ...Object.values(SDK.requireEventHistoryContracts(contracts)).flatMap(
-        ({ list, retirement }) => [list, retirement],
-      ),
+      ...Object.values(
+        SDKUsers.requireEventHistoryContracts(contracts),
+      ).flatMap(({ list, retirement }) => [list, retirement]),
     ];
     const scripts = new Map<string, Script>();
     for (const { withdrawalScript: script } of validators) {
@@ -133,7 +134,9 @@ export const ensureEventHistoryRewardAccountsRegisteredProgram = (
   contracts: SDK.MidgardValidators,
 ) =>
   Effect.gen(function* () {
-    const history = Object.values(SDK.requireEventHistoryContracts(contracts));
+    const history = Object.values(
+      SDKUsers.requireEventHistoryContracts(contracts),
+    );
     // S5: the plan opens before the registration and wallet reads.
     const plan = yield* openPlan;
     const registrations = yield* Effect.forEach(

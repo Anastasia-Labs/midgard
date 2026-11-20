@@ -15,10 +15,8 @@ import {
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core/codec";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
-import {
-  MIDGARD_FIELD_INDEX,
-  type NativeTxWitnessSetCompact,
-} from "@al-ft/midgard-sdk";
+import { type NativeTxWitnessSetCompact } from "@al-ft/midgard-sdk/core";
+import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk/fraud-proof";
 
 import {
   DECODING_SIGNER_KEY,

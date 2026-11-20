@@ -10,7 +10,7 @@ import {
   encodeMidgardSpendInputItem,
   materializeMidgardNativeTxFromCanonical,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

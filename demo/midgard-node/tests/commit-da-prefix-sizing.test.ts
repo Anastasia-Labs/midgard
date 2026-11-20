@@ -4,7 +4,8 @@ import {
   encodeTransitionIntegerCbor,
   encodeTransitionStepCbor,
 } from "@al-ft/midgard-fault-proofs/block-replay";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -45,11 +46,11 @@ const aggregate = (entries: readonly SDK.DaPayloadEntry[]) => ({
   ),
 });
 const source = (
-  key: SDK.EventKey,
-  phase: SDK.TransitionPhase,
+  key: SDKCore.EventKey,
+  phase: SDKCore.TransitionPhase,
   step: number,
 ) => {
-  const value: SDK.TransitionStep = {
+  const value: SDKCore.TransitionStep = {
     schema_version: 1n,
     step_index: BigInt(step),
     event_key: key,
@@ -71,7 +72,7 @@ const contentAt = (prefix: number): DaPayloadBlockContent => {
   const normal = blockContentFor(txs, {
     descriptorBytes: 220 + 2 * 63,
   });
-  const forcedKey: SDK.EventKey = {
+  const forcedKey: SDKCore.EventKey = {
     ForcedTransactionEventKey: {
       tx_order_id: { transactionId: "fa".repeat(32), outputIndex: 0n },
     },
@@ -102,7 +103,7 @@ const contentAt = (prefix: number): DaPayloadBlockContent => {
     ),
   ];
   const eventToStepMembers = transitionTraceMembers.map((member) => {
-    const value: SDK.EventToStepValue = {
+    const value: SDKCore.EventToStepValue = {
       phase: member.value.phase,
       step_index: member.stepIndex,
     };

@@ -14,7 +14,7 @@ import type {
   SimTx,
   SimUtxo,
 } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data, type Data as PlutusData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

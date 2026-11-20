@@ -6,12 +6,12 @@ import {
   MIDGARD_CONSENSUS_LIMITS,
   MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
 } from "@al-ft/midgard-core";
+import { parseFaultProofBlueprint } from "@al-ft/midgard-sdk/core";
 import {
   buildCanonicalDecodabilityFaultProofContracts,
   CanonicalDecodabilityStep01SpendRedeemer,
   type CanonicalDecodabilityStep01SpendRedeemer as Step01Redeemer,
-  parseFaultProofBlueprint,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";

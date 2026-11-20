@@ -4,7 +4,8 @@
  * checkpoint hash.
  */
 import { type MidgardLedgerOutputScanControl } from "@al-ft/midgard-core";
-import { encodeVerdictSubject, hashHexWithBlake2b } from "@al-ft/midgard-sdk";
+import { hashHexWithBlake2b } from "@al-ft/midgard-sdk/core";
+import { encodeVerdictSubject } from "@al-ft/midgard-sdk/fraud-proof";
 import { Effect } from "effect";
 
 import { cborDefiniteBytes, cborSerialiseInteger } from "../cbor-serialise.js";

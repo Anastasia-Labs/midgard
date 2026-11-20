@@ -4,7 +4,7 @@
  */
 
 import "@al-ft/midgard-core/consensus-profile";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
 import "effect";
 import "../services/mpf-native-owner/index.js";
 import "../workers/utils/mpf/phas.js";

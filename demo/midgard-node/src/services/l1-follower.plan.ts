@@ -9,7 +9,7 @@ import {
   type EventProjectionConfig,
   eventProjectionConfigFromContracts,
 } from "@al-ft/midgard-l1-follower/events";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/users";
 
 import {
   type ForcedOrderConfig,

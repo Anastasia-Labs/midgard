@@ -1,5 +1,7 @@
 import "@al-ft/midgard-core/out-ref";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/users";
 import "@lucid-evolution/lucid";
 import "effect";
 import "../database/withdrawals.js";

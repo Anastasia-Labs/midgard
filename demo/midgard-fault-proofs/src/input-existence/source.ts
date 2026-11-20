@@ -3,7 +3,8 @@
  * L1 redeemer indices or an unchecked onchain VerifiedTxSourceView. */
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import { deriveMidgardNativeTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/native";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
@@ -22,7 +23,7 @@ type CommonSource = Readonly<{
   headerHash: string;
   header: SDK.Header;
   eventKey: SDK.EventKey;
-  subject: SDK.VerdictSubject;
+  subject: SDKFraudProof.VerdictSubject;
   compactCbor: string;
   witnessSetCompactCbor: string;
   fieldPreimageLengthsCbor: string;
@@ -72,7 +73,7 @@ export const openProofThreadSubjectFromCanonicalEvidence = async ({
   readonly eventKey: SDK.EventKey;
 }): Promise<OpenedProofThreadSource> => {
   blockTransactionsFromCanonicalEvidence(block);
-  SDK.assertTransactionSourceInclusionRootAuthenticated(
+  SDKFraudProof.assertTransactionSourceInclusionRootAuthenticated(
     block.inclusionRootAuthentication,
   );
   const event = block.reconstruction.sourceEventsByFingerprint.get(
@@ -122,7 +123,7 @@ export const openProofThreadSubjectFromCanonicalEvidence = async ({
     return {
       ...common,
       kind: "accepted",
-      subject: SDK.acceptedVerdictSubject(event.entry.txId),
+      subject: SDKFraudProof.acceptedVerdictSubject(event.entry.txId),
       compactCbor: material.proofSource.compactCbor.toString("hex"),
       witnessSetCompactCbor:
         material.proofSource.witnessSetCompactCbor.toString("hex"),
@@ -173,7 +174,7 @@ export const openProofThreadSubjectFromCanonicalEvidence = async ({
     ...common,
     kind: "forced",
     membership,
-    subject: SDK.forcedVerdictSubject({
+    subject: SDKFraudProof.forcedVerdictSubject({
       transactionId: event.entry.value.tx_id,
       sourceKey: event.entry.key,
       rejectionReason:

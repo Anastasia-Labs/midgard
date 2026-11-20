@@ -1,8 +1,6 @@
 import { decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
-import {
-  type FraudProofCatalogueCategoryName,
-  FraudProofComputationThreadStepDatum,
-} from "@al-ft/midgard-sdk";
+import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
+import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk/fraud-proof";
 import type { UTxO } from "@lucid-evolution/lucid";
 
 import { planFaultProofFieldOpening } from "../field-opening.plan-fault-proof-field-opening.js";

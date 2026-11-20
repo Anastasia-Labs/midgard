@@ -6,9 +6,16 @@ import {
   AddressData,
   addressDataFromBech32,
   type AuthenticatedValidator,
+  buildCorrectionLockValidator,
+  buildStateQueueValidator,
+  FAULT_PROOF_SHARED_TITLES,
+  type MidgardValidators,
+  type MintingValidator as SdkMintingValidator,
+  parseFaultProofBlueprint,
+} from "@al-ft/midgard-sdk/core";
+import {
   buildCanonicalDecodabilityFaultProofContracts,
   buildCommittedFieldShapeFaultProofContracts,
-  buildCorrectionLockValidator,
   buildDaHashPreimageFaultProofContracts,
   buildDistinctAssetAccumulationLimitFaultProofContracts,
   buildDoubleSpendFaultProofContracts,
@@ -19,7 +26,6 @@ import {
   buildFabricatedWithdrawalFaultProofContracts,
   buildFieldItemWidthIllegalFaultProofContracts,
   buildFieldPreimageLengthMismatchFaultProofContracts,
-  buildHubOracleMintingValidator,
   buildInputNoIdxFaultProofContracts,
   buildInputSetUniquenessFaultProofContracts,
   buildInvalidRangeFaultProofContracts,
@@ -48,10 +54,8 @@ import {
   buildScriptIntegrityHashMismatchFaultProofContracts,
   buildScriptIntegrityHashMissingFaultProofContracts,
   buildSpendInputSignerMissingFaultProofContracts,
-  buildStateQueueValidator,
   buildTransactionOutputNonCanonicalFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
-  buildTxOrderValidators,
   buildUnusedRedeemerFaultProofContracts,
   buildUnusedScriptWitnessFaultProofContracts,
   buildValidationCaseContracts,
@@ -64,13 +68,13 @@ import {
   buildZeroInputFaultProofContracts,
   FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID,
   FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID,
-  FAULT_PROOF_SHARED_TITLES,
   type FaultProofContractChains,
   fraudProofContractsToFirstSteps,
-  type MidgardValidators,
-  type MintingValidator as SdkMintingValidator,
-  parseFaultProofBlueprint,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
+import {
+  buildHubOracleMintingValidator,
+  buildTxOrderValidators,
+} from "@al-ft/midgard-sdk/users";
 import {
   credentialToAddress,
   Data,

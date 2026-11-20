@@ -1,5 +1,6 @@
 import { computeHash28 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Constr,
@@ -96,7 +97,7 @@ it.each(["A-N", "A-F", "R-F"] as const)(
     const policy = "cc".repeat(28),
       returnHash = "ee".repeat(28);
     const roles = await Effect.runPromise(
-      SDK.buildDirectBindingContracts({
+      SDKFraudProof.buildDirectBindingContracts({
         blueprint,
         network,
         computationThreadPolicyId: policy,
@@ -115,7 +116,7 @@ it.each(["A-N", "A-F", "R-F"] as const)(
     // composition; full source inclusion/Init/family terminal is a separate gate.
     const startDatum = Data.to(
       { fraud_prover: prover, data: states.source },
-      SDK.DirectBindEventDatum,
+      SDKFraudProof.DirectBindEventDatum,
     );
     const emulator = new Emulator(
       [
@@ -159,11 +160,11 @@ it.each(["A-N", "A-F", "R-F"] as const)(
         stage === 0
           ? Data.to(
               { fraud_prover: prover, data: states.selected },
-              SDK.DirectBindPreStateDatum,
+              SDKFraudProof.DirectBindPreStateDatum,
             )
           : Data.to(
               { fraud_prover: prover, data: states.bound },
-              SDK.DirectScriptBoundDatum,
+              SDKFraudProof.DirectScriptBoundDatum,
             );
       const proof =
         stage === 0 ? material.eventMembership : material.transitionMembership;
@@ -225,7 +226,7 @@ it.each(["A-N", "A-F", "R-F"] as const)(
                   },
                 ],
               },
-              SDK.DirectBindEventRedeemer,
+              SDKFraudProof.DirectBindEventRedeemer,
             )
           : Data.to(
               {
@@ -241,7 +242,7 @@ it.each(["A-N", "A-F", "R-F"] as const)(
                   },
                 ],
               },
-              SDK.DirectBindPreStateRedeemer,
+              SDKFraudProof.DirectBindPreStateRedeemer,
             );
       }) satisfies BuildTxWithRedeemer;
       const build = (redeemer: BuildTxWithRedeemer, output: string) =>
@@ -282,7 +283,7 @@ it.each(["A-N", "A-F", "R-F"] as const)(
 it("publishes every physical direct receive stage within the unchanged L1 envelope", async () => {
   const blueprint = readBlueprint(realBlueprintPath);
   const roles = await Effect.runPromise(
-    SDK.buildDirectReceiveContracts({
+    SDKFraudProof.buildDirectReceiveContracts({
       blueprint,
       network,
       computationThreadPolicyId: "cc".repeat(28),
@@ -358,7 +359,7 @@ it.each(["Base", "Enterprise"] as const)(
   async (walletAddressType) => {
     const blueprint = readBlueprint(realBlueprintPath);
     const roles = await Effect.runPromise(
-      SDK.buildDirectSourceContracts({
+      SDKFraudProof.buildDirectSourceContracts({
         blueprint,
         network,
         computationThreadPolicyId: "cc".repeat(28),

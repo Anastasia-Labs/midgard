@@ -3,11 +3,14 @@ import { inspect } from "node:util";
 import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
   addressDataFromBech32,
+  EVENT_WAIT_DURATION_MS,
+  PayoutDatum,
+} from "@al-ft/midgard-sdk/core";
+import {
   buildEventHistoryAdmission,
   buildEventHistoryPublication,
   countHistoryDataNodes,
   encodeEventHistoryData,
-  EVENT_WAIT_DURATION_MS,
   EventHistoryData,
   eventHistoryDataHash,
   type EventHistoryKind,
@@ -15,9 +18,8 @@ import {
   EventHistoryPayload,
   eventHistoryWithdrawalFunding,
   fetchEventHistoryWitness,
-  PayoutDatum,
   prepareEventHistoryPayload,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/users";
 import {
   calculateMinLovelaceFromUTxO,
   Constr,

@@ -17,16 +17,18 @@
  */
 import {
   HUB_ORACLE_ASSET_NAME,
-  MintAuthorizationStep01SpendRedeemer,
-  MintAuthorizationStep02Datum,
-  type MintAuthorizationStep02State,
   type NativeTxInclusionCarriage,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
   requireWithdrawalRedeemerIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  MintAuthorizationStep01SpendRedeemer,
+  MintAuthorizationStep02Datum,
+  type MintAuthorizationStep02State,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   credentialToAddress,

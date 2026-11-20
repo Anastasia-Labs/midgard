@@ -1,6 +1,8 @@
 import { join } from "node:path";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKOperators from "@al-ft/midgard-sdk/operators";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { paymentCredentialOf, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import {
@@ -240,7 +242,7 @@ export const stackUserEventPublicationGate = (
       })(targetTime);
     },
     timing: {
-      eventTtlMs: SDK.USER_EVENT_TX_TTL_MS,
+      eventTtlMs: SDKUsers.USER_EVENT_TX_TTL_MS,
       eventWaitMs: SDK.EVENT_WAIT_DURATION_MS,
       negligenceTimeoutMs: Number(SDK.USER_EVENTS_NEGLIGENCE_TIMEOUT_MS),
       graceMs: Number(SDK.NEW_SHIFT_INACTIVITY_GRACE_PERIOD_MS),
@@ -249,7 +251,7 @@ export const stackUserEventPublicationGate = (
     commitAllowanceMs: input.commitAllowanceMs,
     readUndeliveredEvent: (tailEndTimeMs) =>
       Effect.runPromise(
-        SDK.fetchNeglectedUserEventProgram(
+        SDKOperators.fetchNeglectedUserEventProgram(
           operatorLucid,
           contracts,
           tailEndTimeMs,

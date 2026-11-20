@@ -1,6 +1,7 @@
 import { type MidgardNativeTxFull } from "@al-ft/midgard-core";
 import { type MidgardForcedTxFull } from "@al-ft/midgard-core/codec/forced";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type RedeemerContext, type UTxO } from "@lucid-evolution/lucid";
 
 import { buildCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
@@ -304,7 +305,7 @@ export const makeScenario = async ({
     readonly stepIndex: 1;
     readonly nextStepIndex: 2 | 3;
     readonly nextDatum: string;
-    readonly opening: SDK.FieldOpening;
+    readonly opening: SDKFraudProof.FieldOpening;
     readonly carriageReferenceInputs: readonly UTxO[];
     readonly redeemerSchema: unknown;
   }) =>
@@ -328,8 +329,8 @@ export const makeScenario = async ({
     readonly terminal?: boolean;
     readonly nextDatum: string;
     readonly opening:
-      | SDK.FieldOpening
-      | ((ctx: RedeemerContext) => SDK.FieldOpening);
+      | SDKFraudProof.FieldOpening
+      | ((ctx: RedeemerContext) => SDKFraudProof.FieldOpening);
     readonly checkpointCbor: string | null;
     readonly carriageReferenceInputs: readonly UTxO[];
   }) =>
@@ -345,7 +346,7 @@ export const makeScenario = async ({
       openingFor:
         typeof input.opening === "function"
           ? input.opening
-          : () => input.opening as SDK.FieldOpening,
+          : () => input.opening as SDKFraudProof.FieldOpening,
       checkpointCbor: input.checkpointCbor,
       referenceScriptUtxo: refs[2]!,
       carriageReferenceInputs: input.carriageReferenceInputs,

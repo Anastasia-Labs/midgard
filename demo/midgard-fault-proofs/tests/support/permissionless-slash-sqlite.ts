@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { outRefLabel } from "@al-ft/midgard-core";
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { type Header } from "@al-ft/midgard-sdk";
+import { type Header } from "@al-ft/midgard-sdk/core";
 import {
   credentialToAddress,
   type LucidEvolution,

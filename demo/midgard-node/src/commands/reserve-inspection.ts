@@ -1,10 +1,11 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   addAssets,
   assetsEqual,
   subtractAssets,
   valueToAssets,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/users";
 import {
   type Assets,
   Data as LucidData,
@@ -82,7 +83,7 @@ export const reserveUtxosProgram: Effect.Effect<
       }),
   });
   const summaries = utxos.map((utxo): ReserveUtxoSummary => {
-    const unspendableReason = SDK.reserveInputShapeRejection(utxo) ?? null;
+    const unspendableReason = SDKUsers.reserveInputShapeRejection(utxo) ?? null;
     return {
       outRef: outRefLabel(utxo),
       assets: utxo.assets,

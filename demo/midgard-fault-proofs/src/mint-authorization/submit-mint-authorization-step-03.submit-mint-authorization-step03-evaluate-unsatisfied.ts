@@ -7,14 +7,16 @@ import {
 } from "@al-ft/midgard-core";
 import {
   hashHexWithBlake2b,
+  requireReferenceInputIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
   MIDGARD_FIELD_INDEX,
   MINT_AUTHORIZATION_DIRECTION_SCRIPT_UNSATISFIED,
   MintAuthorizationEvaluateDatum,
   type MintAuthorizationEvaluateState,
   MintAuthorizationStep05Datum,
   type MintAuthorizationStep05State,
-  requireReferenceInputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

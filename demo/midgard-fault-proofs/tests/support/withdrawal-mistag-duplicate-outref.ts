@@ -8,7 +8,8 @@ import {
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core/codec";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { CML, Data } from "@lucid-evolution/lucid";
 
@@ -123,8 +124,11 @@ export const buildDuplicateOutRefMistagMaterial = async (
     id: SDK.OutputReference,
     info: SDK.WithdrawalInfo,
   ) => ({
-    key: Buffer.from(SDK.committedWithdrawalKeyBytes(id), "hex"),
-    value: Buffer.from(SDK.committedWithdrawalValueBytes(info), "hex"),
+    key: Buffer.from(SDKFraudProof.committedWithdrawalKeyBytes(id), "hex"),
+    value: Buffer.from(
+      SDKFraudProof.committedWithdrawalValueBytes(info),
+      "hex",
+    ),
   });
   const withdrawalEntries = [
     withdrawalEntry(FIRST_ID, first),

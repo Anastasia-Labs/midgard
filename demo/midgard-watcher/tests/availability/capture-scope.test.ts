@@ -1,7 +1,7 @@
 import "./capture-scope.fixture.js";
 
 import { FraudProofL1UnavailableError } from "@al-ft/midgard-fault-proofs/workflow/l1-source";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 import { expect, it } from "vitest";
 

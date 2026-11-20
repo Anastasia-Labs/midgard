@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   CML,
   coreToTxOutput,
@@ -402,13 +403,13 @@ describe("transition trace immutable L1 evidence", () => {
         const raw = changed.scopes.find(
           ({ role }) => role === "forced_transaction_event",
         )!.utxos[0]!;
-        const datum = Data.from(raw.datumCbor!, SDK.TxOrderDatum);
+        const datum = Data.from(raw.datumCbor!, SDKUsers.TxOrderDatum);
         changed = changeDatum(
           changed,
           Number(raw.outRef.split("#")[1]),
           Data.to(
             { ...datum, inclusion_time: datum.inclusion_time + 1n },
-            SDK.TxOrderDatum,
+            SDKUsers.TxOrderDatum,
           ),
         );
       }
@@ -589,7 +590,7 @@ describe("immutable event parsing failure and contextual outputs", () => {
       (scope) => scope.role === "forced_transaction_event",
     )!.utxos[0]!;
     const index = Number(raw.outRef.split("#")[1]);
-    const original = Data.from(raw.datumCbor!, SDK.TxOrderDatum);
+    const original = Data.from(raw.datumCbor!, SDKUsers.TxOrderDatum);
     for (const transaction of [
       { ...original.event.tx, tx_id: "ff".repeat(32) },
       {
@@ -609,7 +610,7 @@ describe("immutable event parsing failure and contextual outputs", () => {
               ...original,
               event: { ...original.event, tx: transaction },
             },
-            SDK.TxOrderDatum,
+            SDKUsers.TxOrderDatum,
           ),
         ),
       );
@@ -657,7 +658,7 @@ describe("immutable event parsing failure and contextual outputs", () => {
     )!;
     const original = Data.from(
       forcedScope.utxos[0]!.datumCbor!,
-      SDK.TxOrderDatum,
+      SDKUsers.TxOrderDatum,
     );
     if (original.refund_address.stakeCredential !== null)
       throw new Error("fixture requires an unstaked refund address");
@@ -676,7 +677,7 @@ describe("immutable event parsing failure and contextual outputs", () => {
       signature: ["", ""],
       validity: { SpentWithdrawalUtxo: { l2_tx_id: "ab".repeat(32) } },
     };
-    const datum: SDK.WithdrawalOrderDatum = {
+    const datum: SDKUsers.WithdrawalOrderDatum = {
       event: { id: original.event.id, info },
       inclusion_time: evidence.header.endTime + 1n,
       witness: original.witness,
@@ -687,9 +688,11 @@ describe("immutable event parsing failure and contextual outputs", () => {
       .hash;
     const oldUnit =
       getAddressDetails(forcedScope.address).paymentCredential!.hash + "01";
-    const key = await Effect.runPromise(SDK.eventHistoryKey(datum.event.id));
+    const key = await Effect.runPromise(
+      SDKUsers.eventHistoryKey(datum.event.id),
+    );
     const unit = policy + key;
-    const order: SDK.EventHistoryNode = {
+    const order: SDKUsers.EventHistoryNode = {
       position: { Key: [key] },
       next: null,
       protected_until: 0n,
@@ -729,7 +732,9 @@ describe("immutable event parsing failure and contextual outputs", () => {
           CML.Address.from_bech32(withdrawalScope.address),
           CML.Value.new(3_000_000n, assets),
           CML.DatumOption.new_datum(
-            CML.PlutusData.from_cbor_hex(Data.to(order, SDK.EventHistoryNode)),
+            CML.PlutusData.from_cbor_hex(
+              Data.to(order, SDKUsers.EventHistoryNode),
+            ),
           ),
         ),
       );
@@ -962,8 +967,8 @@ const historyDepositSnapshot = async (
 ) => {
   const policy = (kind === "deposit" ? "62" : "63").repeat(28);
   const id = { transactionId: "a1".repeat(32), outputIndex: 0n };
-  const key = await Effect.runPromise(SDK.eventHistoryKey(id));
-  let payload: SDK.EventHistoryPayload = {
+  const key = await Effect.runPromise(SDKUsers.eventHistoryKey(id));
+  let payload: SDKUsers.EventHistoryPayload = {
     DepositPayload: {
       event: {
         id,
@@ -1010,23 +1015,23 @@ const historyDepositSnapshot = async (
   let reference:
     | FraudProofRawL1Snapshot["scopes"][number]["utxos"][number]
     | undefined;
-  const data: SDK.EventHistoryData = {
+  const data: SDKUsers.EventHistoryData = {
     event_key: key,
-    event_payload: Data.from(Data.to(payload, SDK.EventHistoryPayload)),
+    event_payload: Data.from(Data.to(payload, SDKUsers.EventHistoryPayload)),
     reclaim_auth: { PublicKeyCredential: ["aa".repeat(28)] },
   };
   if (external) {
     const published = appendHistoryOutput(
       snapshot,
       kind === "deposit" ? "deposit_history_data" : "withdrawal_history_data",
-      SDK.encodeEventHistoryData(data),
+      SDKUsers.encodeEventHistoryData(data),
       "a2".repeat(32),
       { lovelace: 5_000_000n },
     );
     snapshot = published.snapshot;
     reference = published.raw;
   }
-  const node: SDK.EventHistoryNode = {
+  const node: SDKUsers.EventHistoryNode = {
     position: { Key: [key] },
     next: "ff".repeat(32),
     protected_until: 0n,
@@ -1040,7 +1045,7 @@ const historyDepositSnapshot = async (
           location: external
             ? {
                 External: {
-                  storage_datum_hash: SDK.eventHistoryDataHash(data),
+                  storage_datum_hash: SDKUsers.eventHistoryDataHash(data),
                 },
               }
             : { Inline: { payload } },
@@ -1051,7 +1056,7 @@ const historyDepositSnapshot = async (
   snapshot = appendHistoryOutput(
     snapshot,
     kind === "deposit" ? "deposit_event" : "withdrawal_event",
-    Data.to(node, SDK.EventHistoryNode),
+    Data.to(node, SDKUsers.EventHistoryNode),
     id.transactionId,
     {
       lovelace: 25_000_000n,
@@ -1070,7 +1075,7 @@ const historyDepositSnapshot = async (
         protected_until: 0n,
         payload: "RootContent",
       },
-      SDK.EventHistoryNode,
+      SDKUsers.EventHistoryNode,
     ),
     "a3".repeat(32),
     { lovelace: 5_000_000n, [policy]: 1n },
@@ -1085,7 +1090,7 @@ const historyDepositSnapshot = async (
         protected_until: 0n,
         payload: { Filler: { refund_key: "aa".repeat(28) } },
       },
-      SDK.EventHistoryNode,
+      SDKUsers.EventHistoryNode,
     ),
     "a4".repeat(32),
     { lovelace: 9_000_000n, [policy + "ff".repeat(32)]: 1n },
@@ -1114,7 +1119,7 @@ describe("authenticated history Order capture", () => {
       expect(event.assetName).toBe(fixture.key);
       const opening = Data.from(
         event.history.openingCbor,
-        SDK.EventHistoryOpening,
+        SDKUsers.EventHistoryOpening,
       );
       expect(opening.payload).toEqual(fixture.payload);
       expect(opening.original_assets).toEqual(
@@ -1145,11 +1150,14 @@ describe("authenticated history Order capture", () => {
     const scope = fixture.snapshot.scopes.find(
       (entry) => entry.role === "deposit_event",
     )!;
-    const order = Data.from(scope.utxos[0]!.datumCbor!, SDK.EventHistoryNode);
+    const order = Data.from(
+      scope.utxos[0]!.datumCbor!,
+      SDKUsers.EventHistoryNode,
+    );
     const invalid = appendHistoryOutput(
       seed,
       "deposit_event",
-      Data.to(order, SDK.EventHistoryNode),
+      Data.to(order, SDKUsers.EventHistoryNode),
       "a5".repeat(32),
       { lovelace: 25_000_000n, [fixture.policy + "00".repeat(32)]: 1n },
     ).snapshot;

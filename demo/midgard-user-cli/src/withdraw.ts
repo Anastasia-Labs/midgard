@@ -10,7 +10,8 @@
  */
 import { decodeMidgardAddressText } from "@al-ft/midgard-core/codec";
 import { replacePlutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { CML, Data, type OutRef } from "@lucid-evolution/lucid";
 
 import { type UserCliDeps } from "./deps.js";
@@ -99,7 +100,10 @@ const readSelectedOutput = async (
     );
   return {
     owner,
-    valueCbor: Data.to(SDK.assetsToValue({ ...selected.assets }), SDK.Value),
+    valueCbor: Data.to(
+      SDKUsers.assetsToValue({ ...selected.assets }),
+      SDK.Value,
+    ),
   };
 };
 
@@ -117,7 +121,7 @@ const recordedValueCbor = (intent: Readonly<Record<string, unknown>>) => {
 export const runWithdraw = async (
   options: WithdrawOptions,
   deps: UserCliDeps,
-): Promise<SDK.UserSubmissionOutcome> => {
+): Promise<SDKUsers.UserSubmissionOutcome> => {
   const submissionId = parseSubmissionId(options.submissionId);
   const l2OutRef = parseL2OutRef(options.l2OutRef);
   const l1Datum = parseOptionalDataHex(options.l1Datum, "--l1-datum");
@@ -184,7 +188,7 @@ export const runWithdraw = async (
     };
     return {
       config,
-      intentHash: SDK.userSubmissionIntentHash("Withdrawal", config),
+      intentHash: SDKUsers.userSubmissionIntentHash("Withdrawal", config),
     };
   };
 
@@ -230,11 +234,11 @@ export const runWithdraw = async (
         l2ValueCbor: valueCbor,
       },
       recordDirectory,
-      config: (withdrawalMinting): SDK.SubmitWithdrawalConfig => ({
+      config: (withdrawalMinting): SDKUsers.SubmitWithdrawalConfig => ({
         ...config,
         referenceScripts: { withdrawalMinting },
       }),
     },
-    SDK.submitWithdrawalProgram,
+    SDKUsers.submitWithdrawalProgram,
   );
 };

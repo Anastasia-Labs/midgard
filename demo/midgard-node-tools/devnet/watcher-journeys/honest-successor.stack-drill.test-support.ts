@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { setTimeout as pause } from "node:timers/promises";
 
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import {
   assetsToValue,
   CML,

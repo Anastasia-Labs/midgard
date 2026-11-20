@@ -1,6 +1,6 @@
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import type { OperatorVerdict } from "@al-ft/midgard-sdk";
+import type { OperatorVerdict } from "@al-ft/midgard-sdk/core";
 import { runPhaseAValidation } from "@al-ft/midgard-validation/phase-a";
 import { runPhaseBValidationWithPatch } from "@al-ft/midgard-validation/phase-b";
 import { Effect } from "effect";

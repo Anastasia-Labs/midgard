@@ -1,6 +1,7 @@
 import { decodeMidgardLedgerOutputCommitment } from "@al-ft/midgard-core";
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core/codec";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 import {
   detectCountFaults,
@@ -137,14 +138,16 @@ const detectOmittedDueL1Events = async (
   for (const item of evidence) {
     const eventKey =
       item.kind === "deposit"
-        ? ({ DepositEventKey: { deposit_id: item.depositId } } as SDK.EventKey)
+        ? ({
+            DepositEventKey: { deposit_id: item.depositId },
+          } as SDKCore.EventKey)
         : item.kind === "withdrawal"
           ? ({
               WithdrawalEventKey: { withdrawal_id: item.withdrawalId },
-            } as SDK.EventKey)
+            } as SDKCore.EventKey)
           : ({
               ForcedTransactionEventKey: { tx_order_id: item.txOrderId },
-            } as SDK.EventKey);
+            } as SDKCore.EventKey);
     const fingerprint = eventKeyFingerprint(eventKey);
     if (!reconstruction.sourceEventsByFingerprint.has(fingerprint)) {
       detections.push(
@@ -174,14 +177,16 @@ const detectOutOfWindowSourceEvents = async (
   for (const item of evidence) {
     const eventKey =
       item.kind === "deposit"
-        ? ({ DepositEventKey: { deposit_id: item.depositId } } as SDK.EventKey)
+        ? ({
+            DepositEventKey: { deposit_id: item.depositId },
+          } as SDKCore.EventKey)
         : item.kind === "withdrawal"
           ? ({
               WithdrawalEventKey: { withdrawal_id: item.withdrawalId },
-            } as SDK.EventKey)
+            } as SDKCore.EventKey)
           : ({
               ForcedTransactionEventKey: { tx_order_id: item.txOrderId },
-            } as SDK.EventKey);
+            } as SDKCore.EventKey);
     const fingerprint = eventKeyFingerprint(eventKey);
     if (reconstruction.sourceEventsByFingerprint.has(fingerprint)) {
       detections.push(

@@ -1,5 +1,5 @@
 import { DEPLOYMENT_PROFILES } from "@al-ft/midgard-core/deployment-profile";
-import { USER_EVENT_TX_TTL_MS } from "@al-ft/midgard-sdk";
+import { USER_EVENT_TX_TTL_MS } from "@al-ft/midgard-sdk/users";
 import { expect, it } from "vitest";
 
 import { DEPLOYMENT_PARAMETERS } from "../../src/devnet-stack/node-env.js";

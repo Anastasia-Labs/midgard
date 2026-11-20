@@ -1,4 +1,6 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { Effect } from "effect";
 import { vi } from "vitest";
 
@@ -37,7 +39,7 @@ export const submitWithdrawalWithDiagnostics = async (
   readonly withdrawalEventId: string;
 }> => {
   const outcome = await runUserSubmissionOnEmulator(fixture, (view, options) =>
-    SDK.submitWithdrawalProgram(
+    SDKUsers.submitWithdrawalProgram(
       view,
       fixture.contracts,
       { ...config, referenceScripts: fixture.referenceScripts.withdrawal },
@@ -209,7 +211,7 @@ export const getStateQueueDatumEndTime = (datum: SDK.LinkedListNodeView) =>
     Effect.gen(function* () {
       if (datum.key === "Empty") {
         const { data: confirmedState } =
-          yield* SDK.getConfirmedStateFromStateQueueDatum(datum);
+          yield* SDKStateQueue.getConfirmedStateFromStateQueueDatum(datum);
         return Number(confirmedState.endTime);
       }
       const latestHeader = yield* SDK.getHeaderFromStateQueueDatum(datum);

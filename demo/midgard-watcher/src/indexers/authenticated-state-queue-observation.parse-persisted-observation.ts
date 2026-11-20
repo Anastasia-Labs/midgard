@@ -1,5 +1,6 @@
 import { computeHash28 } from "@al-ft/midgard-core/codec/hash";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { CML, coreToTxOutput, Data } from "@lucid-evolution/lucid";
 
 import {
@@ -36,7 +37,7 @@ const parsePersistedLock = (
     "observedChainPointId",
     "finalityDepth",
   ]);
-  const datum = SDK.parseStateQueueCorrectionLockDatum(record?.datum);
+  const datum = SDKStateQueue.parseStateQueueCorrectionLockDatum(record?.datum);
   if (
     record === null ||
     typeof record.outRef !== "string" ||
@@ -98,7 +99,9 @@ export const parsePersistedObservation = (
     "finalityDepth",
   ]);
   const checkpoints = Array.isArray(record?.checkpoints)
-    ? record.checkpoints.map(SDK.parseStateQueueAuthenticatedReplayCheckpoint)
+    ? record.checkpoints.map(
+        SDKStateQueue.parseStateQueueAuthenticatedReplayCheckpoint,
+      )
     : null;
   const queue = parseQueueNodes(record?.finalizedQueue);
   const headers = Array.isArray(record?.finalizedHeaders)
@@ -110,7 +113,7 @@ export const parsePersistedObservation = (
       : parsePersistedLock(record?.finalizedCorrectionLock);
   const witnesses = Array.isArray(record?.correctionLockWitnesses)
     ? record.correctionLockWitnesses.map(
-        SDK.parseStateQueueCorrectionLockWitness,
+        SDKStateQueue.parseStateQueueCorrectionLockWitness,
       )
     : null;
   if (
@@ -177,7 +180,7 @@ export const parsePersistedObservation = (
       | string
       | null,
     checkpoints: Object.freeze(
-      checkpoints as SDK.StateQueueAuthenticatedReplayCheckpoint[],
+      checkpoints as SDKStateQueue.StateQueueAuthenticatedReplayCheckpoint[],
     ),
     finalizedQueue: queue,
     finalizedHeaders: Object.freeze(
@@ -185,7 +188,7 @@ export const parsePersistedObservation = (
     ),
     finalizedCorrectionLock: lock,
     correctionLockWitnesses: Object.freeze(
-      witnesses as SDK.StateQueueCorrectionLockWitness[],
+      witnesses as SDKStateQueue.StateQueueCorrectionLockWitness[],
     ),
   };
   return watcherSha256CanonicalJson(canonical) === record.observationDigest &&

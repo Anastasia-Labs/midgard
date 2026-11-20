@@ -1,8 +1,5 @@
 /** Terminal handoff: burn the thread NFT and mint the permanent fraud token. */
 import {
-  FraudProofComputationThreadRedeemer,
-  FraudProofTokenDatum,
-  FraudProofTokenMintRedeemer,
   requireInputIndex,
   requireMintRedeemerIndex,
   requireOwnMintPurpose,
@@ -11,7 +8,12 @@ import {
   type WithdrawalMistagPreparedEvidence,
   WithdrawalMistagStep05Datum,
   WithdrawalMistagStep05SpendRedeemer,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  FraudProofComputationThreadRedeemer,
+  FraudProofTokenDatum,
+  FraudProofTokenMintRedeemer,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

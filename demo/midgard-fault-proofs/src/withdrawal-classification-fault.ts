@@ -21,7 +21,7 @@ import {
   assertMidgardPlutusDataWellFormed,
   plutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
-import type { WithdrawalLedgerClassificationInput } from "@al-ft/midgard-sdk";
+import type { WithdrawalLedgerClassificationInput } from "@al-ft/midgard-sdk/core";
 import { Effect } from "effect";
 
 import { ReplayLocalFault } from "./block-replay.faults.js";

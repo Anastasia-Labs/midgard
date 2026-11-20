@@ -6,7 +6,9 @@ import {
   traceMidgardLedgerOutputScan,
 } from "@al-ft/midgard-core";
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { deriveCanonicalOriginalDepositTransitionEffect } from "@al-ft/midgard-validation/transition-effect";
 import { Data, type Network } from "@lucid-evolution/lucid";
 
@@ -155,8 +157,8 @@ export const deriveTransitionTraceReplayEvidence = async ({
             step.event_key,
             "representable_field_shape",
           );
-        const spentUtxos: SDK.LedgerDeleteWitness[] = [];
-        const producedUtxos: SDK.LedgerInsertWitness[] = [];
+        const spentUtxos: SDKFraudProof.LedgerDeleteWitness[] = [];
+        const producedUtxos: SDKFraudProof.LedgerInsertWitness[] = [];
         for (const key of decodeMidgardFieldPreimage(
           full.body.spendInputsPreimageCbor,
         )) {
@@ -208,7 +210,7 @@ export const deriveTransitionTraceReplayEvidence = async ({
       const selected = deposits.filter(({ history }) => {
         const commitment = Data.from(
           history.commitmentCbor,
-          SDK.EventHistoryCommitment,
+          SDKUsers.EventHistoryCommitment,
         );
         return (
           Data.to(commitment.event_id, SDK.OutputReference) ===

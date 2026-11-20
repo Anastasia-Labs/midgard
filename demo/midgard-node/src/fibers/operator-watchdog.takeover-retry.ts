@@ -14,7 +14,8 @@
  * once no other event is citable, so passing over the only evidence never
  * leaves the watchdog idle in front of a stalled shift.
  */
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKOperators from "@al-ft/midgard-sdk/operators";
+import type * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { Effect } from "effect";
 
 import {
@@ -98,7 +99,10 @@ export const citableNeglectedEventProgram = (
   published: PublishedOperatorSet | undefined,
   tailEndMs: bigint,
   failures: CitationFailures,
-): Effect.Effect<SDK.NeglectedUserEventClaim | null, SDK.StateQueueError> =>
+): Effect.Effect<
+  SDKOperators.NeglectedUserEventClaim | null,
+  SDK.StateQueueError
+> =>
   publishedNeglectedUserEventProgram(
     published,
     tailEndMs,

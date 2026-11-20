@@ -2,7 +2,7 @@
  * a record at the fraud-proof address holding exactly one of the header's
  * unit, with a datum that decodes. Anything else at that out-ref is refused,
  * so a wrong out-ref can never become the removal's cited record. */
-import { FraudProofTokenDatum } from "@al-ft/midgard-sdk";
+import { FraudProofTokenDatum } from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

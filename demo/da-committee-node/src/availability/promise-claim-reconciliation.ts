@@ -1,5 +1,5 @@
 import type { AvailabilityOperationJournal } from "@al-ft/midgard-core/availability-operation-journal";
-import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk";
+import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk/da";
 
 import { promiseAdmissionActorMetadata } from "./promise-actor-metadata.js";
 

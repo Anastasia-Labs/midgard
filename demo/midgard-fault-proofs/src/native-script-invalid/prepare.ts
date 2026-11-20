@@ -7,7 +7,7 @@ import {
   MIDGARD_POSIX_TIME_NONE,
   verifyMidgardNativeScript,
 } from "@al-ft/midgard-core";
-import { missingSignatureVkeyHash } from "@al-ft/midgard-sdk";
+import { missingSignatureVkeyHash } from "@al-ft/midgard-sdk/fraud-proof";
 
 import {
   blockTransactionsFromCanonicalEvidence,

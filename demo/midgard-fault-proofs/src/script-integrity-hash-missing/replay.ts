@@ -8,7 +8,8 @@ import {
   deriveMidgardForcedTxProofSourceFromCanonicalCbor,
   type MidgardForcedTxFull,
 } from "@al-ft/midgard-core/codec/forced";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import {
@@ -58,11 +59,11 @@ export type ScriptIntegrityHashMissingReplayDetection = DetectionSubject &
   }>;
 
 export type ScriptIntegrityHashMissingAuthenticatedSource = Readonly<{
-  header: SDK.Header;
+  header: SDKCore.Header;
   nativeTxCompactCbor: string;
   witnessSetCompactCbor: string;
   acceptedInclusion?: SubmitStep01TxInclusion;
-  forcedHeader?: SDK.Header;
+  forcedHeader?: SDKCore.Header;
   forcedMembership?: Awaited<
     ReturnType<typeof buildForcedTransactionLeafMembershipProof>
   >;
@@ -124,7 +125,7 @@ const decodeSemantics = (
 
 const eventPosition = (
   reconstruction: TransitionTraceReconstruction,
-  eventKey: SDK.EventKey,
+  eventKey: SDKCore.EventKey,
 ): bigint => {
   const mapped = reconstruction.eventToStepByFingerprint.get(
     eventKeyFingerprint(eventKey),

@@ -1,8 +1,8 @@
 import {
   type FraudProofCatalogueDeploymentInfo,
   type MidgardValidators,
-  referenceScriptAuthPolicyDeploymentInfo,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { referenceScriptAuthPolicyDeploymentInfo } from "@al-ft/midgard-sdk/state-queue";
 import { type Script } from "@lucid-evolution/lucid";
 
 import { type CanonicalDecodabilityContracts } from "../../../src/canonical-decodability/index.js";

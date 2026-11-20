@@ -1,7 +1,8 @@
 import { performance } from "node:perf_hooks";
 
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   Duration,
   Effect,
@@ -597,7 +598,7 @@ describe("merge intent journal guard", () => {
           return Effect.promise(async () => during?.()).pipe(
             Effect.zipRight(
               Effect.fail(
-                new SDK.StateQueueError({
+                new SDKStateQueue.StateQueueError({
                   message: "The landed queue never showed the merge",
                   cause: submittedHeader,
                 }),
@@ -634,7 +635,7 @@ describe("merge intent journal guard", () => {
     };
     const expectTimedOut = (result: Either.Either<unknown, unknown>) =>
       expect(Either.isLeft(result) && result.left).toBeInstanceOf(
-        SDK.StateQueueError,
+        SDKStateQueue.StateQueueError,
       );
     const expectSkipped = (result: Either.Either<unknown, unknown>) =>
       expect(Either.isRight(result) && result.right).toEqual(

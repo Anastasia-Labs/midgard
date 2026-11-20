@@ -3,7 +3,7 @@ import {
   InputNoIdxStep02Datum,
   InputNoIdxStep03Datum,
   InputNoIdxStep04Datum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import { requireFaultProofFieldGrammarDeployment } from "../field-grammar-certificate.resolve-fault-proof-field-grammar-deployment.js";
 import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.build-remove-fraudulent-block.js";

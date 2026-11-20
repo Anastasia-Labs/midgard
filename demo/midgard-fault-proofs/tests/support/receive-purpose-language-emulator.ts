@@ -2,7 +2,8 @@
  * driver with the receive purpose to observe, the verdict its forced rows
  * record, and its receiving subjects. Subjects are the direct purpose
  * subjects of `missing-redeemer-emulator.subject.ts`. */
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { DirectPurposeRole } from "../../src/direct-purpose-family/index.js";
 import {
@@ -35,7 +36,7 @@ export const driveReceivePurposeLanguageThread = ({
   readonly scenario: MissingRedeemerScenario;
   readonly references: ReadonlyMap<DirectPurposeRole, RoleReference>;
   /** The receive purpose to observe; the first convicting one otherwise. */
-  readonly observed?: SDK.DirectPurposeCoordinate;
+  readonly observed?: SDKFraudProof.DirectPurposeCoordinate;
   /** Replaces the planned custody (e.g. a prefix for refusal rows). */
   readonly transitions?: (
     prepared: ReceivePurposeLanguageProofPlan,
@@ -72,7 +73,7 @@ export const receivePurposeLanguageVerdict = (
 /** Receive purpose `index`. */
 export const receiveCoordinate = (
   index: bigint,
-): SDK.DirectPurposeCoordinate => ({ kind: 3n, index });
+): SDKFraudProof.DirectPurposeCoordinate => ({ kind: 3n, index });
 
 /** A forced transaction the admission screen accepts: the honest signed
  * spend beside one receive purpose paying `script`, with no redeemer. A

@@ -7,7 +7,8 @@ import {
   computeHash28,
   encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import { makeOutput } from "@al-ft/midgard-validation/tests/validation-fixtures";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../../src/evidence/canonical-block-evidence.js";
@@ -106,7 +107,7 @@ export const plutusExecutionEventsBlockFixture = async (
   const headerHash = computeHash28(SDK.encodeHeaderCbor(header)).toString(
     "hex",
   );
-  const payload: SDK.DaPayload = {
+  const payload: SDKDa.DaPayload = {
     ...base.payload,
     block_body: {
       ...base.payload.block_body,

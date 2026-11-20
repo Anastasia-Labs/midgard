@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import type { SqlClient } from "@effect/sql";
 import { type LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -23,7 +24,10 @@ export const getConfirmedStateFromStateQueueDatumLocal = (
 ): Effect.Effect<
   { readonly data: SDK.ConfirmedState; readonly link: unknown },
   SDK.DataCoercionError
-> => localizeSdkEffect(SDK.getConfirmedStateFromStateQueueDatum(nodeDatum));
+> =>
+  localizeSdkEffect(
+    SDKStateQueue.getConfirmedStateFromStateQueueDatum(nodeDatum),
+  );
 
 export const getHeaderFromStateQueueDatumLocal = (
   nodeDatum: SDK.LinkedListNodeView,
@@ -37,7 +41,7 @@ export const hashBlockHeaderLocal = (
 
 export const updateLatestBlocksDatumAndGetTheNewHeaderLocal = (
   lucid: Parameters<
-    typeof SDK.updateLatestBlocksDatumAndGetTheNewHeaderProgram
+    typeof SDKStateQueue.updateLatestBlocksDatumAndGetTheNewHeaderProgram
   >[0],
   latestBlocksDatum: SDK.LinkedListNodeView,
   newUTxOsRoot: string,
@@ -61,7 +65,7 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderLocal = (
   | SDK.HashingError
 > =>
   localizeSdkEffect(
-    SDK.updateLatestBlocksDatumAndGetTheNewHeaderProgram(
+    SDKStateQueue.updateLatestBlocksDatumAndGetTheNewHeaderProgram(
       lucid,
       latestBlocksDatum,
       newUTxOsRoot,
@@ -88,11 +92,11 @@ export const getLatestBlockDatumEndTime = (
         Effect.map((latestHeader) => new Date(Number(latestHeader.endTime))),
       );
 
-export const stateQueueOutRef = (block: SDK.StateQueueUTxO): string =>
+export const stateQueueOutRef = (block: SDKStateQueue.StateQueueUTxO): string =>
   `${block.utxo.txHash}#${block.utxo.outputIndex.toString()}`;
 
 export const stateQueueBaseHeaderHash = (
-  block: SDK.StateQueueUTxO,
+  block: SDKStateQueue.StateQueueUTxO,
 ): Effect.Effect<string, SDK.DataCoercionError | SDK.HashingError, never> =>
   Effect.gen(function* () {
     if (block.datum.key === "Empty") {
@@ -107,10 +111,10 @@ export const stateQueueBaseHeaderHash = (
 
 /** The landed queue's tail: the latest committed block (P1). */
 export const fetchLatestCommittedBlockLocal = (
-  fetchConfig: SDK.StateQueueFetchConfig,
+  fetchConfig: SDKStateQueue.StateQueueFetchConfig,
 ): Effect.Effect<
-  SDK.StateQueueUTxO,
-  SDK.StateQueueError,
+  SDKStateQueue.StateQueueUTxO,
+  SDKStateQueue.StateQueueError,
   SqlClient.SqlClient
 > =>
   landedStateQueueTail(
@@ -119,8 +123,8 @@ export const fetchLatestCommittedBlockLocal = (
   );
 
 export type CommitAppendFenceReferences = {
-  readonly confirmedStateRefInput?: SDK.StateQueueUTxO["utxo"];
-  readonly headStateQueueNodeRefInput?: SDK.StateQueueUTxO["utxo"];
+  readonly confirmedStateRefInput?: SDKStateQueue.StateQueueUTxO["utxo"];
+  readonly headStateQueueNodeRefInput?: SDKStateQueue.StateQueueUTxO["utxo"];
 };
 
 /**
@@ -137,14 +141,14 @@ export type CommitAppendFenceReferences = {
  */
 const unexpiredUnattestedSuffixBlockTimes = (
   lucid: LucidEvolution,
-  ordered: readonly SDK.StateQueueUTxO[],
-): Effect.Effect<readonly number[], SDK.StateQueueError> =>
+  ordered: readonly SDKStateQueue.StateQueueUTxO[],
+): Effect.Effect<readonly number[], SDKStateQueue.StateQueueError> =>
   Effect.gen(function* () {
     const nowMs = BigInt(
       yield* l1NowUnixTimeMs(lucid).pipe(
         Effect.mapError(
           (cause) =>
-            new SDK.StateQueueError({
+            new SDKStateQueue.StateQueueError({
               message: "Commit paused until the L1 slot is known",
               cause,
             }),
@@ -159,7 +163,7 @@ const unexpiredUnattestedSuffixBlockTimes = (
       >(SDK.getStateQueueNodeFromStateQueueDatum(entry.datum)).pipe(
         Effect.mapError(
           (cause) =>
-            new SDK.StateQueueError({
+            new SDKStateQueue.StateQueueError({
               message: "Failed to inspect pending DA attestation before commit",
               cause,
             }),
@@ -168,9 +172,9 @@ const unexpiredUnattestedSuffixBlockTimes = (
       if (node.da_attestation !== SDK.NO_DA_ATTESTATION) {
         continue;
       }
-      if (nowMs >= node.block_time + SDK.DA_ATTESTATION_TIMEOUT_MS) {
+      if (nowMs >= node.block_time + SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS) {
         return yield* Effect.fail(
-          new SDK.StateQueueError({
+          new SDKStateQueue.StateQueueError({
             message:
               "Commit paused until expired unattested suffix is corrected",
             cause: `expired_out_ref=${stateQueueOutRef(entry)}`,
@@ -194,10 +198,10 @@ const unexpiredUnattestedSuffixBlockTimes = (
  */
 export const resolveCommitAppendFenceEndTimeCapLocal = (
   lucid: LucidEvolution,
-  fetchConfig: SDK.StateQueueFetchConfig,
+  fetchConfig: SDKStateQueue.StateQueueFetchConfig,
 ): Effect.Effect<
   number | undefined,
-  SDK.StateQueueError,
+  SDKStateQueue.StateQueueError,
   SqlClient.SqlClient
 > =>
   Effect.gen(function* () {
@@ -212,7 +216,7 @@ export const resolveCommitAppendFenceEndTimeCapLocal = (
     return unattestedBlockTimesMs.length === 0
       ? undefined
       : Math.min(...unattestedBlockTimesMs) +
-          Number(SDK.DA_ATTESTATION_TIMEOUT_MS) -
+          Number(SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS) -
           1;
   });
 
@@ -225,11 +229,11 @@ export const resolveCommitAppendFenceEndTimeCapLocal = (
  */
 export const resolveCommitAppendFenceReferencesLocal = (
   lucid: LucidEvolution,
-  fetchConfig: SDK.StateQueueFetchConfig,
-  expectedTail: SDK.StateQueueUTxO,
+  fetchConfig: SDKStateQueue.StateQueueFetchConfig,
+  expectedTail: SDKStateQueue.StateQueueUTxO,
 ): Effect.Effect<
   CommitAppendFenceReferences,
-  SDK.StateQueueError,
+  SDKStateQueue.StateQueueError,
   SqlClient.SqlClient
 > =>
   Effect.gen(function* () {
@@ -241,7 +245,7 @@ export const resolveCommitAppendFenceReferencesLocal = (
     const canonicalTail = ordered.at(-1);
     if (canonicalTail === undefined) {
       return yield* Effect.fail(
-        new SDK.StateQueueError({
+        new SDKStateQueue.StateQueueError({
           message: "Canonical state queue is empty",
           cause: "missing confirmed-state root",
         }),
@@ -249,7 +253,7 @@ export const resolveCommitAppendFenceReferencesLocal = (
     }
     if (stateQueueOutRef(canonicalTail) !== stateQueueOutRef(expectedTail)) {
       return yield* Effect.fail(
-        new SDK.StateQueueError({
+        new SDKStateQueue.StateQueueError({
           message:
             "Commit base is stale; aborting block build before creating a pending journal",
           cause: `expected_tail=${stateQueueOutRef(expectedTail)},canonical_tail=${stateQueueOutRef(canonicalTail)}`,
@@ -259,7 +263,7 @@ export const resolveCommitAppendFenceReferencesLocal = (
     if (ordered.length === 1) {
       if (canonicalTail.datum.key !== "Empty") {
         return yield* Effect.fail(
-          new SDK.StateQueueError({
+          new SDKStateQueue.StateQueueError({
             message: "Canonical state queue is missing its root",
             cause: `tail=${stateQueueOutRef(canonicalTail)}`,
           }),
@@ -277,7 +281,7 @@ export const resolveCommitAppendFenceReferencesLocal = (
       canonicalTail.datum.key === "Empty"
     ) {
       return yield* Effect.fail(
-        new SDK.StateQueueError({
+        new SDKStateQueue.StateQueueError({
           message: "Canonical state-queue topology is malformed",
           cause: `nodes=${ordered.length.toString()}`,
         }),
@@ -297,11 +301,11 @@ export const resolveCommitAppendFenceReferencesLocal = (
  * replacement under the same NFT is still accepted while it is the tail.
  */
 export const fetchExpectedStateQueueTailLocal = (
-  fetchConfig: SDK.StateQueueFetchConfig,
-  expectedTail: SDK.StateQueueUTxO,
+  fetchConfig: SDKStateQueue.StateQueueFetchConfig,
+  expectedTail: SDKStateQueue.StateQueueUTxO,
 ): Effect.Effect<
-  SDK.StateQueueUTxO,
-  SDK.StateQueueError,
+  SDKStateQueue.StateQueueUTxO,
+  SDKStateQueue.StateQueueError,
   SqlClient.SqlClient
 > =>
   Effect.gen(function* () {
@@ -315,7 +319,7 @@ export const fetchExpectedStateQueueTailLocal = (
     ].find(({ element }) => element.assetName === expectedTail.assetName);
     if (element === undefined) {
       return yield* Effect.fail(
-        new SDK.StateQueueError({
+        new SDKStateQueue.StateQueueError({
           message:
             "Commit base is stale; aborting block build before creating a pending journal",
           cause: `expected_asset_name=${expectedTail.assetName},matches=0`,
@@ -331,7 +335,7 @@ export const fetchExpectedStateQueueTailLocal = (
     }
     if (candidate.datum.next !== "Empty") {
       return yield* Effect.fail(
-        new SDK.StateQueueError({
+        new SDKStateQueue.StateQueueError({
           message:
             "Commit base is stale; aborting block build before creating a pending journal",
           cause: `asset_name=${expectedTail.assetName},outref=${stateQueueOutRef(candidate)}`,

@@ -1,6 +1,6 @@
 import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
-import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
-import { Proof, ProofChunkDatum } from "@al-ft/midgard-sdk";
+import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
+import { Proof, ProofChunkDatum } from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 
 import { type JournalJsonObject } from "./journal.js";

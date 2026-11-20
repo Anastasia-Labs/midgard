@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { Data } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 
@@ -115,11 +116,11 @@ describe("transition trace decision identity", () => {
 
   it("moves the decision digest when an event datum changes", async () => {
     const raw = forcedEvent(seed);
-    const datum = Data.from(raw.datumCbor!, SDK.TxOrderDatum);
+    const datum = Data.from(raw.datumCbor!, SDKUsers.TxOrderDatum);
     const changed = changeDatum(
       seed,
       Number(raw.outRef.split("#")[1]),
-      Data.to({ ...datum, witness: "85".repeat(28) }, SDK.TxOrderDatum),
+      Data.to({ ...datum, witness: "85".repeat(28) }, SDKUsers.TxOrderDatum),
     );
     const before = await decide(seed);
     const after = await decide(changed);

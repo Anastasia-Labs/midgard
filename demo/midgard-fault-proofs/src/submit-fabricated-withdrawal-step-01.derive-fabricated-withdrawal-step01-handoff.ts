@@ -1,16 +1,18 @@
 import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
   commitCountedRootProgram,
-  committedWithdrawalKeyBytes,
-  type FabricatedWithdrawalStep02State,
   type Header,
   OutputReference,
   Proof,
   ROOT_DOMAINS,
   type RootMembershipProof,
-  withdrawalContentCommitmentCbor,
   WithdrawalInfo,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  committedWithdrawalKeyBytes,
+  type FabricatedWithdrawalStep02State,
+  withdrawalContentCommitmentCbor,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type Script } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

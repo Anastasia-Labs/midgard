@@ -1,4 +1,6 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";
@@ -44,15 +46,15 @@ export const buildAvailabilityTimeout = async (
   } = {},
 ) => {
   const pool = options.pool ?? (await f.getPool());
-  const slash = SDK.planDaBondPoolSlash({
+  const slash = SDKDa.planDaBondPoolSlash({
     poolLovelace: pool.assets.lovelace,
     parameters: f.parameters,
   });
   const terminalDatum = Data.from(
     terminal.datum!,
-    SDK.DaAvailabilityTerminalAccumulatorDatum,
+    SDKDa.DaAvailabilityTerminalAccumulatorDatum,
   );
-  const plan = SDK.planDaAvailabilityTimeout({
+  const plan = SDKDa.planDaAvailabilityTimeout({
     poolLovelace: pool.assets.lovelace,
     remainingChallengerLovelace: terminalDatum.remaining_challenger_lovelace,
     challengerFeeLovelace: options.challengerFeeLovelace ?? 0n,
@@ -89,7 +91,7 @@ export const buildAvailabilityTimeout = async (
     .collectFrom([record, terminal], coordinate(open.policy))
     .collectFrom(
       [queue, f.rootUtxo],
-      Data.to("LinkedListMutation", SDK.StateQueueSpendRedeemer),
+      Data.to("LinkedListMutation", SDKStateQueue.StateQueueSpendRedeemer),
     )
     .collectFrom([f.correctionLockUtxo], (ctx) =>
       Data.to(
@@ -111,7 +113,7 @@ export const buildAvailabilityTimeout = async (
             output_index: 3n,
           },
         },
-        SDK.DaBondPoolSpendRedeemer,
+        SDKDa.DaBondPoolSpendRedeemer,
       ),
     )
     .readFrom(references)
@@ -137,7 +139,7 @@ export const buildAvailabilityTimeout = async (
               challenger_refund_output_index: 2n,
             },
           },
-          SDK.DaAvailabilityMintRedeemer,
+          SDKDa.DaAvailabilityMintRedeemer,
         ),
     )
     .mintAssets({ [f.queueUnit]: -1n }, (ctx) =>
@@ -158,7 +160,7 @@ export const buildAvailabilityTimeout = async (
             },
           },
         },
-        SDK.StateQueueRedeemer,
+        SDKStateQueue.StateQueueRedeemer,
       ),
     )
     .pay.ToContract(f.rootUtxo.address, inline(rootDatum), f.rootUtxo.assets)
@@ -287,7 +289,7 @@ export const liveAvailabilityAnchors = async (f: AvailabilityCommitFixture) => {
 /** The block's live queue node as an attestation target, if still queued. */
 export const liveAvailabilityTarget = async (
   f: AvailabilityFixture,
-): Promise<SDK.DaAttestationStateQueueTarget | undefined> => {
+): Promise<SDKDa.DaAttestationStateQueueTarget | undefined> => {
   const [utxo] = await f.lucid.utxosAtWithUnit(
     f.contracts.stateQueue.spendingScriptAddress,
     f.queueUnit,

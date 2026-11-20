@@ -17,7 +17,8 @@ import {
   encodeTransitionStepCbor,
 } from "@al-ft/midgard-fault-proofs/block-replay";
 import { forcedVerdictForRejection } from "@al-ft/midgard-fault-proofs/workflow/forced-rejection-reason";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { encodeMidgardCekCardanoFlatProgram } from "@al-ft/midgard-validation/cek-program";
 import { MidgardRedeemerTag } from "@al-ft/midgard-validation/midgard-redeemers";
 import type { MidgardCekVerdictRequest } from "@al-ft/midgard-validation/phase-b";
@@ -269,7 +270,7 @@ export const committedBlock = async (
     traces.push([
       eventCbor,
       Data.to(
-        SDK.validationTraceDescriptorDataFromCore(
+        SDKDa.validationTraceDescriptorDataFromCore(
           placeholderValidationTraceDescriptorV1(
             {
               eventKeyCbor: Buffer.from(eventCbor, "hex"),

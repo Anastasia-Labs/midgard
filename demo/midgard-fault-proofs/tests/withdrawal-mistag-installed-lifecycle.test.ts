@@ -4,7 +4,8 @@ import { join } from "node:path";
 import { inspect } from "node:util";
 
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { getAddressDetails, toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
@@ -190,7 +191,7 @@ describe("withdrawalMistag installed cursor actuator", () => {
           "computation_thread_step_05",
         ] as const;
         const datumSchemas = [
-          SDK.FraudProofComputationThreadStepDatum,
+          SDKFraudProof.FraudProofComputationThreadStepDatum,
           SDK.WithdrawalMistagStep02Datum,
           SDK.WithdrawalMistagStep03Datum,
           SDK.WithdrawalMistagStep04Datum,

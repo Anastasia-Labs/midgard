@@ -10,7 +10,7 @@
  * transaction spent has no withdrawn finding and stays with the
  * ledger-absence family.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import {

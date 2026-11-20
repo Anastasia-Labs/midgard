@@ -1,6 +1,7 @@
 /** Authenticate the current queue node and bind terminal proof minting to its
  * completed-fraud marker. A pointer/DA continuation is fetched afresh. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   type BuildTxWithRedeemer,
   credentialToAddress,
@@ -150,7 +151,9 @@ export const prepareFabricatedCompletedFraud = async ({
     }) as SDK.LinkedListNodeView["data"],
   });
   const matches = outputWithDatumAndUnitPredicate({ address, datum, unit });
-  const witness = (ctx: RedeemerContext): SDK.CompletedFraudWitness =>
+  const witness = (
+    ctx: RedeemerContext,
+  ): SDKStateQueue.CompletedFraudWitness =>
     previouslyRecorded
       ? {
           PreviouslyRecorded: {
@@ -189,7 +192,7 @@ export const prepareFabricatedCompletedFraud = async ({
           m_fraud_proof_ref_input_index: null,
         },
       },
-      SDK.StateQueueSpendRedeemer,
+      SDKStateQueue.StateQueueSpendRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
   return {

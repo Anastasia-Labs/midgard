@@ -15,7 +15,7 @@ import {
   buildSpendInputSignerMissingFaultProofContracts,
   forcedVerdictSubject,
   missingSignatureVkeyHash,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { beforeAll, describe, expect, it } from "vitest";
 

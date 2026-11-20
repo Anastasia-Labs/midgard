@@ -6,7 +6,8 @@
 // must carry the LICENSE and any vendored package import byte for byte with
 // its source notice (see demo/scripts/lib/vendored-imports.mjs), no test,
 // fixture or secret may ride along, and every export must load by package
-// name through ESM import, CommonJS require and NodeNext types.
+// name through ESM import and NodeNext types, and through CommonJS require
+// when it has a `require` condition.
 // Nothing here publishes; the checked tarballs and their hashes are the input
 // to the manual publish steps in docs/deployment-release-tooling.md.
 import { spawnSync } from "node:child_process";
@@ -415,7 +416,8 @@ const OUTPUT_TAIL_LINES = 20;
 
 /**
  * Type-checks every typed export of `packages`, installed under
- * `installRoot`, by package name from an ES module and a CommonJS module,
+ * `installRoot`, by package name from an ES module and, when a CommonJS
+ * consumer can require it (`loadableSpecifiers`), from a CommonJS module,
  * with the TypeScript 5.8 compiler and `@types/node` of the SDK workspace
  * package under `root`. Returns the problems, each prefixed `types:`.
  */
@@ -450,9 +452,15 @@ export const typesCheck = (root, installRoot, packages) => {
       .map((s, index) => `import * as m${index} from "${s}";\nvoid m${index};`)
       .join("\n"),
   );
+  const requirable = new Set(
+    packages.flatMap(({ name, manifest }) =>
+      loadableSpecifiers(name, manifest, "require"),
+    ),
+  );
   writeFileSync(
     join(probe, "cjs.cts"),
     specifiers
+      .filter((s) => requirable.has(s))
       .map((s, index) => `import m${index} = require("${s}");\nvoid m${index};`)
       .join("\n"),
   );

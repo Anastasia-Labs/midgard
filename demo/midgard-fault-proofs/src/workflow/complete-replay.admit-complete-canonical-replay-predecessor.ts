@@ -2,7 +2,7 @@ import {
   decodeMidgardFieldPreimage,
   decodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
-import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
+import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk/core";
 
 import {
   eventLedgerBefore,

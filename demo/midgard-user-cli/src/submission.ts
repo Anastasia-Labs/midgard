@@ -15,7 +15,7 @@ import {
   type UserSubmissionOptions,
   type UserSubmissionOutcome,
   type UserSubmissionPending,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/users";
 import { type OutRef, type UTxO } from "@lucid-evolution/lucid";
 import { Effect, Either } from "effect";
 

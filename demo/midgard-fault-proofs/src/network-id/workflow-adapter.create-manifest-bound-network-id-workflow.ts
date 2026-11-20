@@ -1,7 +1,7 @@
 import {
   FraudProofComputationThreadStepDatum,
   NetworkIdStep02Datum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import { resolveFaultProofFieldGrammarDeployment } from "../field-grammar-certificate.resolve-fault-proof-field-grammar-deployment.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";

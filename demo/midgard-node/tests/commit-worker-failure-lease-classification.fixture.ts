@@ -8,7 +8,8 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { SqlClient } from "@effect/sql";
 import { OgmiosJsonRpcError } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -304,7 +305,7 @@ export const SUBMIT_FAILURES: readonly {
   },
   {
     name: "a stale tail",
-    liveTail: new SDK.StateQueueError({
+    liveTail: new SDKStateQueue.StateQueueError({
       message: "Commit base is stale",
       cause: `tail=${TAIL_TX_HASH}#0`,
     }),

@@ -3,7 +3,7 @@ import {
   ActiveOperatorDatum,
   buildPhasMembershipRewardRegistrationTxProgram,
   getLinkedListNodeViewFromUTxO,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import {
   assetsToValue,
   CML,

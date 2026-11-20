@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 
 import { proofMaterialsAddressOfFundingAddress } from "@al-ft/midgard-fault-proofs/funding/proof-materials-address";
-import { FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-sdk";
+import { FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-sdk/core";
 
 import { createWatcherAvailabilityRuntime } from "../availability/runtime.create-watcher-availability-runtime.js";
 import type {

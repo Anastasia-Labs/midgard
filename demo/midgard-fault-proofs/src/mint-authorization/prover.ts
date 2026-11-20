@@ -34,11 +34,11 @@ import {
   type MidgardNativeScript,
   verifyMidgardNativeScript,
 } from "@al-ft/midgard-core";
+import { hashHexWithBlake2b } from "@al-ft/midgard-sdk/core";
 import {
-  hashHexWithBlake2b,
   MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT,
   MINT_AUTHORIZATION_DIRECTION_SCRIPT_UNSATISFIED,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Effect } from "effect";
 
 import { MINT_AUTHORIZATION_CATEGORY_LABEL } from "./contracts.js";

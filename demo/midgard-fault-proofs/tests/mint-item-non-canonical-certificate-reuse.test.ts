@@ -5,7 +5,7 @@
  * reuses that certificate, and the opening keeps a single certificate until
  * the walk reaches its terminal.
  */
-import { acceptedVerdictSubject } from "@al-ft/midgard-sdk";
+import { acceptedVerdictSubject } from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import { buildMintItemNonCanonicalStep01Accepted } from "../src/mint-item-non-canonical/submit-step-01-accepted.js";

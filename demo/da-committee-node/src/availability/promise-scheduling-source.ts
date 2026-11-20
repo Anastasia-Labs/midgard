@@ -1,4 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/da";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 import type { CommitteeAvailabilityReads } from "../l1/follower/availability-reads.js";

@@ -7,15 +7,17 @@ import {
 import {
   HUB_ORACLE_ASSET_NAME,
   type NativeTxInclusionCarriage,
-  NetworkIdStep01SpendRedeemerSchema,
-  NetworkIdStep02DatumSchema,
-  type NetworkIdStep02State,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
   requireWithdrawalRedeemerIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  NetworkIdStep01SpendRedeemerSchema,
+  NetworkIdStep02DatumSchema,
+  type NetworkIdStep02State,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   credentialToAddress,

@@ -26,7 +26,8 @@
 import { createHash } from "node:crypto";
 
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
   CML,
   Constr,
@@ -242,13 +243,13 @@ export const assertValidationDisputeMoveCase = ({
     confirmed.outRef !== authority.caseOpenerOutRef
   )
     refuse(["case opener lineage"]);
-  let pending: SDK.PendingValidationClaimDatum | null = null;
+  let pending: SDKDa.PendingValidationClaimDatum | null = null;
   try {
     pending = Data.from(
       coreToTxOutput(
         CML.TransactionOutput.from_cbor_hex(confirmed!.resolvedOutputCborHex),
       ).datum!,
-      SDK.PendingValidationClaimDatum,
+      SDKDa.PendingValidationClaimDatum,
     );
   } catch {
     refuse(["case opener datum"]);
@@ -264,7 +265,7 @@ export const assertValidationDisputeMoveCase = ({
   ]);
   if (differing.length > 0) refuse(differing);
   const [txHash, outputIndex] = authority.caseOpenerOutRef.split("#");
-  return SDK.validationCaseId(
+  return SDKDa.validationCaseId(
     claim!.challenged_header_hash,
     claim!.claim.event_to_step_membership.key,
     { txHash: txHash!, outputIndex: Number(outputIndex) },
@@ -343,7 +344,7 @@ const threadDatum = (
     thread.address === moves.timeoutAddress ||
     thread.address === moves.oneStep?.boundaryAddress;
   if (keepsCaseThread) {
-    const datum = Data.from(thread.datum!, SDK.CaseThreadDatum);
+    const datum = Data.from(thread.datum!, SDKDa.CaseThreadDatum);
     return {
       prover: datum.fraud_prover,
       caseId: datum.data?.case_id ?? "",

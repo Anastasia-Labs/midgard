@@ -3,7 +3,7 @@ import type {
   DialectName,
   TemporalTableSpec,
 } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 
 import {
   WATCHER_DA_ATTESTATIONS_TABLE,

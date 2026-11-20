@@ -15,7 +15,7 @@ import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
   plutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { Cause, Effect, Exit } from "effect";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";

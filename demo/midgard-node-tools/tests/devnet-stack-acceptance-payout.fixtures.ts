@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   assetsToValue,
   CML,
@@ -190,11 +191,11 @@ export const payoutFixture = (
   const body: SDK.WithdrawalBody = {
     l2_outref: { transactionId: hash("12"), outputIndex: 3n },
     l2_owner: "41".repeat(28),
-    l2_value: SDK.assetsToValue(target),
+    l2_value: SDKUsers.assetsToValue(target),
     l1_address: payment,
     l1_datum: options.datum ?? "NoDatum",
   };
-  const payload: SDK.EventHistoryPayload = {
+  const payload: SDKUsers.EventHistoryPayload = {
     WithdrawalPayload: {
       event: {
         id: eventId,
@@ -204,7 +205,7 @@ export const payoutFixture = (
       refund_datum: "NoDatum",
     },
   };
-  const payloadCbor = Data.to(payload, SDK.EventHistoryPayload);
+  const payloadCbor = Data.to(payload, SDKUsers.EventHistoryPayload);
   const eventKey = datumToHash(Data.to(eventId, SDK.OutputReference));
   const externalDatum = Data.to(
     {
@@ -212,7 +213,7 @@ export const payoutFixture = (
       event_payload: Data.from(payloadCbor),
       reclaim_auth: { PublicKeyCredential: ["41".repeat(28)] },
     },
-    SDK.EventHistoryData,
+    SDKUsers.EventHistoryData,
   );
   const externalPublication = options.external
     ? transaction(
@@ -226,7 +227,7 @@ export const payoutFixture = (
         ],
       )
     : undefined;
-  const node: SDK.EventHistoryNode = {
+  const node: SDKUsers.EventHistoryNode = {
     position: { Key: [eventKey] },
     next: null,
     protected_until: 0n,
@@ -250,7 +251,7 @@ export const payoutFixture = (
       {
         address: withdrawalAddress,
         assets: { lovelace: 2_000_000n, [withdrawalPolicy + eventKey]: 1n },
-        datum: Data.to(node, SDK.EventHistoryNode),
+        datum: Data.to(node, SDKUsers.EventHistoryNode),
       },
     ],
     {},
@@ -265,7 +266,7 @@ export const payoutFixture = (
   let orderRef = { txHash: order.observed.txHash, outputIndex: 0 };
   const orderSuccessors: AcceptanceCanonicalTransaction[] = [];
   for (let index = 0; index < (options.orderMoves ?? 0); index++) {
-    const moved: SDK.EventHistoryNode = {
+    const moved: SDKUsers.EventHistoryNode = {
       ...node,
       next: hash((index + 20).toString(16).padStart(2, "0")),
       protected_until: BigInt(index + 1),
@@ -289,7 +290,7 @@ export const payoutFixture = (
             lovelace: options.corruptOrderValue ? 2_000_001n : 2_000_000n,
             [withdrawalPolicy + eventKey]: 1n,
           },
-          datum: Data.to(moved, SDK.EventHistoryNode),
+          datum: Data.to(moved, SDKUsers.EventHistoryNode),
         },
       ],
     );

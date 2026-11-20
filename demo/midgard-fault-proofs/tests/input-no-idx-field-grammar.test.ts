@@ -11,10 +11,10 @@ import {
 } from "@al-ft/midgard-core";
 import {
   fieldGrammarCertificateUnit,
-  fieldPreimagePublicationDatumCbor,
   inputNoIdxOutputsCommitment,
   MIDGARD_FIELD_INDEX,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
+import { fieldPreimagePublicationDatumCbor } from "@al-ft/midgard-sdk/state-queue";
 import { describe, expect, it } from "vitest";
 
 import { fieldGrammarCertificateAddress } from "../src/field-grammar-certificate.certify-fault-proof-field-grammar.js";

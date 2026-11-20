@@ -1,4 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { CML, coreToTxOutput, type UTxO } from "@lucid-evolution/lucid";
 
 /** Current caught-up native coverage contains no transaction with this hash.

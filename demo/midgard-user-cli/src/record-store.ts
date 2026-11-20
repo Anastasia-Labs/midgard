@@ -20,7 +20,7 @@ import {
   outputReferenceToPlutusDataCbor,
   type UserSubmissionAttempt,
   type UserSubmissionStore,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/users";
 
 import { refuse } from "./options.js";
 

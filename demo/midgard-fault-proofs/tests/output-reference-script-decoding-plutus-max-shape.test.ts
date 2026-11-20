@@ -27,7 +27,7 @@
 import {
   acceptedVerdictSubject,
   forcedVerdictSubject,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { scriptDecodeRecordOfScript } from "@al-ft/midgard-validation/script-decode.step-walk";
 import { describe, expect, it } from "vitest";
 

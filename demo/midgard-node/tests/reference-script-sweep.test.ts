@@ -1,4 +1,4 @@
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/state-queue";
 import "@lucid-evolution/lucid";
 import "vitest";
 import "../src/transactions/reference-script-sweep.build-reference-script-sweep-plan.js";

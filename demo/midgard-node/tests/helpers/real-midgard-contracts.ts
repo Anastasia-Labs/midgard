@@ -2,7 +2,7 @@ import {
   type L1SlotConfig,
   NAMED_NETWORK_L1_SLOT_CONFIGS,
 } from "@al-ft/midgard-core/l1-slot-config";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import { Effect } from "effect";
 
 import { AlwaysSucceedsContract } from "../../src/services/always-succeeds.always-succeeds-contract.js";

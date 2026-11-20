@@ -2,12 +2,12 @@ import {
   computeMidgardNativeTxId,
   midgardFieldCommitment,
 } from "@al-ft/midgard-core";
+import { type RejectionReason } from "@al-ft/midgard-sdk/core";
 import {
   acceptedVerdictSubject,
   type FieldOpening,
   forcedVerdictSubject,
-  type RejectionReason,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { getAddressDetails } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 

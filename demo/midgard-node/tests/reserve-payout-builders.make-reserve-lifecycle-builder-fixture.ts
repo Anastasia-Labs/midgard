@@ -1,4 +1,6 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   Constr,
   credentialToAddress,
@@ -61,13 +63,13 @@ export const makeReserveLifecycleBuilderFixture = async ({
   const depositId = { transactionId: "11".repeat(32), outputIndex: 0n };
   const withdrawalId = { transactionId: "22".repeat(32), outputIndex: 0n };
   const depositAssetName = await Effect.runPromise(
-    SDK.eventHistoryKey(depositId),
+    SDKUsers.eventHistoryKey(depositId),
   );
   const withdrawalAssetName = await Effect.runPromise(
-    SDK.eventHistoryKey(withdrawalId),
+    SDKUsers.eventHistoryKey(withdrawalId),
   );
   const settlementAssetName = "cc";
-  const history = SDK.requireEventHistoryContracts(contracts);
+  const history = SDKUsers.requireEventHistoryContracts(contracts);
   const owner = getAddressDetails(operator.address).paymentCredential!.hash;
   const authorizationScript = scriptFromNative({ type: "sig", keyHash: owner });
   const depositRetirementScript = history.deposit.retirement.withdrawalScript;
@@ -104,7 +106,7 @@ export const makeReserveLifecycleBuilderFixture = async ({
       validity: "WithdrawalIsValid",
     },
   };
-  const payload = (withdrawal: boolean): SDK.EventHistoryPayload =>
+  const payload = (withdrawal: boolean): SDKUsers.EventHistoryPayload =>
     withdrawal
       ? {
           WithdrawalPayload: {
@@ -114,7 +116,7 @@ export const makeReserveLifecycleBuilderFixture = async ({
           },
         }
       : { DepositPayload: { event: depositEvent } };
-  const retainedData: SDK.EventHistoryData | undefined =
+  const retainedData: SDKUsers.EventHistoryData | undefined =
     externalKind === undefined
       ? undefined
       : {
@@ -123,7 +125,7 @@ export const makeReserveLifecycleBuilderFixture = async ({
           event_payload: Data.from(
             Data.to(
               payload(externalKind === "Withdrawal"),
-              SDK.EventHistoryPayload,
+              SDKUsers.EventHistoryPayload,
             ),
           ),
           reclaim_auth: scriptOwner
@@ -134,7 +136,7 @@ export const makeReserveLifecycleBuilderFixture = async ({
     event: SDK.DepositEvent | SDK.WithdrawalEvent,
     key: string,
     withdrawal: boolean,
-  ): SDK.EventHistoryNode => ({
+  ): SDKUsers.EventHistoryNode => ({
     position: { Key: [key] },
     next: null,
     protected_until: protectedUntil,
@@ -149,7 +151,9 @@ export const makeReserveLifecycleBuilderFixture = async ({
             externalKind === (withdrawal ? "Withdrawal" : "Deposit")
               ? {
                   External: {
-                    storage_datum_hash: SDK.eventHistoryDataHash(retainedData!),
+                    storage_datum_hash: SDKUsers.eventHistoryDataHash(
+                      retainedData!,
+                    ),
                   },
                 }
               : { Inline: { payload: payload(withdrawal) } },
@@ -159,11 +163,11 @@ export const makeReserveLifecycleBuilderFixture = async ({
   });
   const depositDatumCbor = Data.to(
     order(depositEvent, depositAssetName, false),
-    SDK.EventHistoryNode,
+    SDKUsers.EventHistoryNode,
   );
   const withdrawalDatumCbor = Data.to(
     order(withdrawalEvent, withdrawalAssetName, true),
-    SDK.EventHistoryNode,
+    SDKUsers.EventHistoryNode,
   );
   const eventCbors = (
     event: SDK.DepositEvent | SDK.WithdrawalEvent,
@@ -208,7 +212,7 @@ export const makeReserveLifecycleBuilderFixture = async ({
       withdrawalValueCbor,
     ),
   ]);
-  const settlementDatum: SDK.SettlementDatum = {
+  const settlementDatum: SDKStateQueue.SettlementDatum = {
     deposits_root: depositsRoot.root,
     withdrawals_root: withdrawalsRoot.root,
     forced_transactions_root: SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -228,7 +232,7 @@ export const makeReserveLifecycleBuilderFixture = async ({
         protected_until: 0n,
         payload: "RootContent",
       },
-      SDK.EventHistoryNode,
+      SDKUsers.EventHistoryNode,
     );
   const confirmedDatum = Data.to(
     new Constr(0, [
@@ -279,7 +283,8 @@ export const makeReserveLifecycleBuilderFixture = async ({
         address: contracts.stateQueue.spendingScriptAddress,
         assets: {
           lovelace: 3_000_000n,
-          [contracts.stateQueue.policyId + SDK.STATE_QUEUE_ROOT_ASSET_NAME]: 1n,
+          [contracts.stateQueue.policyId +
+          SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME]: 1n,
         },
         inlineDatum: confirmedDatum,
       }),
@@ -292,7 +297,7 @@ export const makeReserveLifecycleBuilderFixture = async ({
                 : history.withdrawal
               ).retention.spendingScriptAddress,
               assets: { lovelace: 3_000_000n },
-              inlineDatum: SDK.encodeEventHistoryData(retainedData),
+              inlineDatum: SDKUsers.encodeEventHistoryData(retainedData),
             }),
           ]),
       operator,
@@ -318,7 +323,7 @@ export const makeReserveLifecycleBuilderFixture = async ({
           address: operator.address,
           assets: {
             lovelace: 3_000_000n,
-            [SDK.referenceScriptAuthUnit(
+            [SDKStateQueue.referenceScriptAuthUnit(
               contracts.referenceScriptAuth.policyId,
               name,
             )]: 1n,
@@ -347,7 +352,7 @@ export const makeReserveLifecycleBuilderFixture = async ({
       makeSeededScriptAccount({
         address: contracts.settlement.spendingScriptAddress,
         assets: { lovelace: 3_000_000n, [settlementUnit]: 1n },
-        inlineDatum: Data.to(settlementDatum, SDK.SettlementDatum),
+        inlineDatum: Data.to(settlementDatum, SDKStateQueue.SettlementDatum),
       }),
     ],
     EMULATOR_PROTOCOL_PARAMETERS,
@@ -442,9 +447,9 @@ export const makeReserveLifecycleBuilderFixture = async ({
     contracts,
     deposit: (
       await Effect.runPromise(
-        SDK.fetchDepositUTxOsProgram(
+        SDKUsers.fetchDepositUTxOsProgram(
           lucid,
-          SDK.eventHistoryDeploymentFromContracts(history.deposit),
+          SDKUsers.eventHistoryDeploymentFromContracts(history.deposit),
         ),
       )
     )[0]!,
@@ -468,9 +473,9 @@ export const makeReserveLifecycleBuilderFixture = async ({
     settlementRefInput,
     withdrawal: (
       await Effect.runPromise(
-        SDK.fetchWithdrawalUTxOsProgram(
+        SDKUsers.fetchWithdrawalUTxOsProgram(
           lucid,
-          SDK.eventHistoryDeploymentFromContracts(history.withdrawal),
+          SDKUsers.eventHistoryDeploymentFromContracts(history.withdrawal),
         ),
       )
     )[0]!,

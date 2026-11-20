@@ -1,4 +1,6 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   credentialToAddress,
   Data,
@@ -109,7 +111,7 @@ export const FI_STEP_04_STATE_CBOR =
 export const MM_STEP_04_STATE_CBOR =
   "d8799f581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb581c39e9477c2cde2da7f1830e232c2d3ece94d4e3760f4b46cc1477334a0a14d8799f58208b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b02ffd87a9f58208e8f341a7ae7b42e43bf1b09b3e63c742979eb2ada627a417d7af04be1dbe2a35820283ad237b5850498ff2cc5e4c2017d6129a3d955265f5e3a889387776716d12f0fffff";
 
-export const DA_PROVENANCE: SDK.EvidenceProvenance = {
+export const DA_PROVENANCE: SDKFraudProof.EvidenceProvenance = {
   trustClass: "public_or_permissionless_da",
   sourceId: "retained-da-peer",
   grade: "security",
@@ -154,9 +156,9 @@ export type WithdrawalsBlockFixture = {
   readonly withdrawalsRoot: string;
   readonly withdrawalsPhasRoot: string;
   readonly withdrawalCount: bigint;
-  readonly entries: readonly SDK.DaPayloadEntry[];
+  readonly entries: readonly SDKDa.DaPayloadEntry[];
   readonly payloadEnvelopeCbor: Buffer;
-  readonly observation: SDK.AuthenticatedStateQueueHeaderObservation;
+  readonly observation: SDKFraudProof.AuthenticatedStateQueueHeaderObservation;
 };
 
 /**
@@ -197,10 +199,10 @@ export const buildWithdrawalsBlockFixture = async ({
     withdrawalCount,
   };
   const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
-  const entries: SDK.DaPayloadEntry[] = leaves
-    .map(({ key, value }): SDK.DaPayloadEntry => [key, value])
+  const entries: SDKDa.DaPayloadEntry[] = leaves
+    .map(({ key, value }): SDKDa.DaPayloadEntry => [key, value])
     .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
-  const payload: SDK.DaPayload = {
+  const payload: SDKDa.DaPayload = {
     ...base.payload,
     block_body: {
       ...base.payload.block_body,
@@ -227,9 +229,9 @@ export const buildWithdrawalsBlockFixture = async ({
 };
 
 export const l1Observation = (
-  overrides: Partial<SDK.AuthenticatedL1Observation> = {},
-): SDK.AuthenticatedL1Observation => ({
-  schemaVersion: SDK.CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
+  overrides: Partial<SDKFraudProof.AuthenticatedL1Observation> = {},
+): SDKFraudProof.AuthenticatedL1Observation => ({
+  schemaVersion: SDKFraudProof.CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
   sourceMode: "local_node",
   provenance: {
     trustClass: "authenticated_cardano_l1",

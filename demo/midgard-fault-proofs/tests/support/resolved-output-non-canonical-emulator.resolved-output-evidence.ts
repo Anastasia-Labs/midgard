@@ -1,11 +1,11 @@
 import { encodeMidgardNativeTxCanonical } from "@al-ft/midgard-core";
 import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core/codec/forced";
+import { Proof } from "@al-ft/midgard-sdk/core";
 import {
   acceptedVerdictSubject,
   forcedVerdictSubject,
-  Proof,
   type VerdictSubject,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import {

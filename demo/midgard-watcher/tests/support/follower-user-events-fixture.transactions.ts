@@ -5,7 +5,8 @@
  * admit.
  */
 import { eventKeyOfId } from "@al-ft/midgard-l1-follower/events";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   CML,
   Data,
@@ -125,7 +126,7 @@ export const listOrderTransaction = (
     (entry) => entry.kind === kind,
   );
   if (list === undefined) throw new Error(`the deployment has no ${kind} list`);
-  const payload: SDK.EventHistoryPayload =
+  const payload: SDKUsers.EventHistoryPayload =
     kind === "deposit"
       ? {
           DepositPayload: {
@@ -160,7 +161,7 @@ export const listOrderTransaction = (
           },
         };
   const bounds = WATCHER_EMULATOR_HISTORY_RECIPE.bounds;
-  const plan = SDK.prepareEventHistoryPayload(payload, OWNER_AUTH, {
+  const plan = SDKUsers.prepareEventHistoryPayload(payload, OWNER_AUTH, {
     inlineLimitBytes: BigInt(bounds.inlineLimitBytes),
     maxPayloadBytes: BigInt(bounds.maxPayloadBytes),
     maxPayloadNodes: BigInt(bounds.maxPayloadNodes),
@@ -184,7 +185,7 @@ export const listOrderTransaction = (
         },
       },
     },
-    SDK.EventHistoryNode,
+    SDKUsers.EventHistoryNode,
   );
   return syntheticTransaction({
     inputs: [event.nonce],
@@ -220,7 +221,7 @@ export const PLACEHOLDER_FORCED_PAYLOAD: ForcedOrderPayload = Object.freeze({
 
 /** The forced-order inclusion time the replay suites have always used. */
 export const FORCED_ORDER_INCLUSION_TIME = BigInt(
-  SDK.resolveEventInclusionTime(
+  SDKUsers.resolveEventInclusionTime(
     slotToBeginUnixTime(1_000, SLOT_CONFIG_NETWORK.Preprod),
     "Preprod",
   ),
@@ -238,7 +239,7 @@ export const forcedOrderTransaction = (
   payload: ForcedOrderPayload = PLACEHOLDER_FORCED_PAYLOAD,
 ): string => {
   const scripts = deployment.scripts.forcedOrder;
-  const witness = SDK.userEventWitnessScriptHash(event.key);
+  const witness = SDKUsers.userEventWitnessScriptHash(event.key);
   const datum = Data.to(
     {
       inclusion_time: FORCED_ORDER_INCLUSION_TIME,
@@ -257,7 +258,7 @@ export const forcedOrderTransaction = (
         },
       },
     },
-    SDK.TxOrderDatum,
+    SDKUsers.TxOrderDatum,
   );
   const policy = CML.ScriptHash.from_hex(scripts.policyId);
   const outputs = CML.TransactionOutputList.new();
@@ -315,11 +316,11 @@ export const forcedOrderTransaction = (
       },
       material_carriage: material,
     },
-    SDK.TxOrderMintRedeemer,
+    SDKUsers.TxOrderMintRedeemer,
   );
   const certRedeemer = Data.to(
     { MintOrBurn: { targetPolicy: scripts.policyId } },
-    SDK.UserEventWitnessPublishRedeemer,
+    SDKUsers.UserEventWitnessPublishRedeemer,
   );
   for (const [tag, cbor] of [
     [CML.RedeemerTag.Mint, mintRedeemer],

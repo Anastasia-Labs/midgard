@@ -4,7 +4,7 @@ import {
   decodeMidgardSpendInputItem,
   encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core/codec";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 
 import {
   TransitionTraceChallengerError,

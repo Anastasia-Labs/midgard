@@ -4,13 +4,14 @@ import {
   decodeMidgardNativeTxCompact,
 } from "@al-ft/midgard-core";
 import { decodeMidgardForcedTxCompact } from "@al-ft/midgard-core/codec/forced";
-import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   invalidRangeViolationReason,
   nativeTxBodyHasZeroInputViolation,
   normalizeNativeTxValidityRange,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
@@ -110,8 +111,8 @@ export const admitNativeInclusionTwoStepArtifact = (
     }
     const subject = Data.from(
       artifact.subjectCbor,
-      SDK.InvalidRangeVerdictSubjectSchema as never,
-    ) as SDK.VerdictSubject;
+      SDKFraudProof.InvalidRangeVerdictSubjectSchema as never,
+    ) as SDKFraudProof.VerdictSubject;
     invalidRangeEvidence = prepareInvalidRangeEvidence({
       subject,
       blockSlot: BigInt(artifact.blockSlot!),
@@ -143,7 +144,7 @@ export const admitNativeInclusionTwoStepArtifact = (
     const subject = Data.from(
       artifact.subjectCbor,
       ZeroInputVerdictSubjectSchema as never,
-    ) as SDK.VerdictSubject;
+    ) as SDKFraudProof.VerdictSubject;
     zeroInputEvidence = prepareZeroInputEvidence({
       finding: { subject },
       inputFieldPreimage: Buffer.from(artifact.inputFieldPreimageCbor, "hex"),
@@ -192,7 +193,7 @@ export const admitNativeInclusionTwoStepArtifact = (
         throw new Error(
           "zero-input forced artifact changed authenticated leaf",
         );
-      const derivedSubject = SDK.forcedVerdictSubject({
+      const derivedSubject = SDKFraudProof.forcedVerdictSubject({
         transactionId: leaf.tx_id,
         sourceKey: source.membership.key,
         rejectionReason: leaf.verdict.ForcedTxInvalid.reason,
@@ -233,11 +234,11 @@ export const admitNativeInclusionTwoStepArtifact = (
   } else if (artifact.sourceKind === "forced") {
     const subject = Data.from(
       artifact.subjectCbor,
-      SDK.InvalidRangeVerdictSubjectSchema as never,
-    ) as SDK.VerdictSubject;
+      SDKFraudProof.InvalidRangeVerdictSubjectSchema as never,
+    ) as SDKFraudProof.VerdictSubject;
     const source = Data.from(
       artifact.forcedSourceCbor,
-      SDK.InvalidRangeForcedSourcePayloadSchema as never,
+      SDKFraudProof.InvalidRangeForcedSourcePayloadSchema as never,
     ) as {
       header: SDK.Header;
       membership: SDK.ForcedTransactionSourceMembershipProof;
@@ -265,7 +266,7 @@ export const admitNativeInclusionTwoStepArtifact = (
       throw new Error(
         "invalid-range forced artifact changed authenticated leaf",
       );
-    const derived = SDK.forcedVerdictSubject({
+    const derived = SDKFraudProof.forcedVerdictSubject({
       transactionId: leaf.tx_id,
       sourceKey: source.membership.key,
       rejectionReason: leaf.verdict.ForcedTxInvalid.reason,
@@ -273,7 +274,7 @@ export const admitNativeInclusionTwoStepArtifact = (
     if (
       Data.to(
         derived as never,
-        SDK.InvalidRangeVerdictSubjectSchema as never,
+        SDKFraudProof.InvalidRangeVerdictSubjectSchema as never,
       ) !== artifact.subjectCbor
     )
       throw new Error(

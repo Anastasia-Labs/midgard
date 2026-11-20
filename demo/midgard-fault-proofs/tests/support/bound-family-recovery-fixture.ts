@@ -1,9 +1,9 @@
+import { parseFaultProofBlueprint } from "@al-ft/midgard-sdk/core";
 import {
   buildScriptDecodeValidator,
-  parseFaultProofBlueprint,
   SCRIPT_DECODE_STAKER_CLASS_NAMES,
   SCRIPT_DECODE_STAKER_MEMBERS,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { credentialToAddress, type UTxO } from "@lucid-evolution/lucid";
 import { vi } from "vitest";
 

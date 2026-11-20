@@ -1,7 +1,8 @@
 import "./listen-startup.ensure-protocol-initialized-on-startup.js";
 
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { SqlClient } from "@effect/sql";
 import { Effect, Option, Ref } from "effect";
 
@@ -108,7 +109,7 @@ const repairUnanchoredConfirmedLedger = (
         const expected = journal[Journals.Columns.EXPECTED_UTXOS_ROOT];
         if (root !== expected)
           return yield* Effect.fail(
-            new SDK.StateQueueError({
+            new SDKStateQueue.StateQueueError({
               message:
                 "Startup's journal-chain fold of confirmed_ledger does not reach the journal's root",
               cause: `folded_root=${root},journal_root=${expected}`,
@@ -180,7 +181,7 @@ export const seedLatestLocalBlockBoundaryOnStartup = Effect.gen(function* () {
         );
       } else if (confirmedLedgerEntries.length > 0) {
         return yield* Effect.fail(
-          new SDK.StateQueueError({
+          new SDKStateQueue.StateQueueError({
             message:
               "Startup clean-queue confirmed ledger root does not match the on-chain state queue root",
             cause: `confirmed_ledger_entries=${confirmedLedgerEntries.length.toString()},confirmed_ledger_root=${confirmedLedgerRoot},on_chain_utxo_root=${onChainUtxoRoot},snapshot=${snapshot.snapshotId}`,

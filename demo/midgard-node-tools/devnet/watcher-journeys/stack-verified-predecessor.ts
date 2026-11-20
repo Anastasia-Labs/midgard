@@ -45,7 +45,7 @@ import { createHash } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { toUnit } from "@lucid-evolution/lucid";
 import type { WatcherVerificationDiagnostic } from "midgard-watcher";
 

@@ -6,7 +6,7 @@ import {
 } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import { fixtureLedgerEntries } from "@al-ft/midgard-fault-proofs/test-support/fixture-ledger";
 import { depositEventsRetainedBlock } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-retained";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { CML } from "@lucid-evolution/lucid";
 
 import type { JourneyBlock } from "./fixture.js";

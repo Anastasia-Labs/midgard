@@ -1,5 +1,6 @@
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   Data,
   generateEmulatorAccount,
@@ -66,7 +67,7 @@ export const directHandoffContext = async (blueprint: unknown) => {
     nextHash = "ee".repeat(28),
     certificate = "77".repeat(28);
   const receive = await Effect.runPromise(
-    SDK.buildDirectReceiveContracts({
+    SDKFraudProof.buildDirectReceiveContracts({
       blueprint,
       network,
       computationThreadPolicyId: policy,
@@ -75,7 +76,7 @@ export const directHandoffContext = async (blueprint: unknown) => {
     }),
   );
   const source = await Effect.runPromise(
-    SDK.buildDirectSourceContracts({
+    SDKFraudProof.buildDirectSourceContracts({
       blueprint,
       network,
       computationThreadPolicyId: policy,
@@ -110,7 +111,7 @@ export const directHandoffInitialThread = ({
   readonly prover: string;
   readonly source: Awaited<ReturnType<typeof directHandoffContext>>["source"];
   readonly receive: Awaited<ReturnType<typeof directHandoffContext>>["receive"];
-  readonly sourceState: SDK.DirectSourceScanState;
+  readonly sourceState: SDKFraudProof.DirectSourceScanState;
 }) => {
   const initial =
     family === "input"
@@ -122,12 +123,12 @@ export const directHandoffInitialThread = ({
     family === "input"
       ? Data.to(
           { fraud_prover: prover, data: material.bound },
-          SDK.DirectScriptBoundDatum,
+          SDKFraudProof.DirectScriptBoundDatum,
         )
       : family === "witness"
         ? Data.to(
             { fraud_prover: prover, data: sourceState },
-            SDK.DirectSourceScanDatum,
+            SDKFraudProof.DirectSourceScanDatum,
           )
         : Data.to(
             {
@@ -137,7 +138,7 @@ export const directHandoffInitialThread = ({
                 source_index: sourceState.source_index,
               },
             },
-            SDK.DirectReceiveStartDatum,
+            SDKFraudProof.DirectReceiveStartDatum,
           );
   return { initial, initialDatum };
 };

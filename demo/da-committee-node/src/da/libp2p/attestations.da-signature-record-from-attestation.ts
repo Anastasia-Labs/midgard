@@ -10,7 +10,7 @@ import {
   decodeDaAttestationsByHeaderResponseCbor,
   encodeDaAttestationsByHeaderRequestCbor,
 } from "@al-ft/midgard-core/da-transport";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 
 import type { Libp2pDaTransportLimits } from "../../config.js";
 import type {

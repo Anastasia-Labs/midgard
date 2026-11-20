@@ -1,6 +1,6 @@
 /** Reading a validation-trace (00000006) removal's outcome: the prover's
  * reward address and the outputs paying it the reward. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import {
   CML,
   credentialToAddress,

@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import { type CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
@@ -52,8 +53,14 @@ const sameOutputWithdrawalEvidence = async (
     return {
       key,
       value,
-      keyBytes: Buffer.from(SDK.committedWithdrawalKeyBytes(key), "hex"),
-      valueBytes: Buffer.from(SDK.committedWithdrawalValueBytes(value), "hex"),
+      keyBytes: Buffer.from(
+        SDKFraudProof.committedWithdrawalKeyBytes(key),
+        "hex",
+      ),
+      valueBytes: Buffer.from(
+        SDKFraudProof.committedWithdrawalValueBytes(value),
+        "hex",
+      ),
     };
   });
   const sourceEvents = withdrawals.map((entry) => {
@@ -153,7 +160,7 @@ describe("Q55/W-O6 deterministic violation classification", () => {
       ).toMatchObject({
         decision: "fault_detected",
         category: "doubleWithdraw",
-        selected: { violationId: SDK.DOUBLE_WITHDRAW_VIOLATION_ID },
+        selected: { violationId: SDKFraudProof.DOUBLE_WITHDRAW_VIOLATION_ID },
       });
   });
 

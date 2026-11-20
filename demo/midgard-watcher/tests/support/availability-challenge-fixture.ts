@@ -1,4 +1,6 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import type * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { credentialToAddress, Data, type UTxO } from "@lucid-evolution/lucid";
 
 /** Availability challenge snapshots and parameters for watcher unit suites. */
@@ -50,7 +52,7 @@ export const queueNode = (input: {
   status: SDK.DaAvailabilityStateQueueStatus;
   endTime?: bigint;
   index?: number;
-}): SDK.StateQueueUTxO => ({
+}): SDKStateQueue.StateQueueUTxO => ({
   utxo: utxo(input.index ?? 3),
   datum: {
     key: { Key: { key: input.headerHash } },
@@ -69,11 +71,11 @@ export const queueNode = (input: {
 });
 
 export const parametersFixture = () =>
-  SDK.daAvailabilityParameters({
-    responseGeometry: SDK.availabilityResponseGeometry(
-      SDK.DA_AVAILABILITY_RESPONSE_GEOMETRY_MEASUREMENT_CANDIDATE,
+  SDKDa.daAvailabilityParameters({
+    responseGeometry: SDKDa.availabilityResponseGeometry(
+      SDKDa.DA_AVAILABILITY_RESPONSE_GEOMETRY_MEASUREMENT_CANDIDATE,
     ),
-    ...SDK.DA_AVAILABILITY_PROFILE_BOND_AMOUNTS,
+    ...SDKDa.DA_AVAILABILITY_PROFILE_BOND_AMOUNTS,
     challengerBondLovelace: 10_000_000_000n,
     maxOpenFeeLovelace: 500_000n,
     maxPublicationFeeLovelace: 500_000n,
@@ -90,13 +92,13 @@ export const DA_BOND_POOL_ADDRESS = credentialToAddress("Preprod", {
 });
 export const daBondPoolUtxo = (
   lovelace: bigint,
-  datum: SDK.DaBondPoolDatum = "Bonded",
+  datum: SDKDa.DaBondPoolDatum = "Bonded",
 ): UTxO => ({
   txHash: "77".repeat(32),
   outputIndex: 0,
   address: DA_BOND_POOL_ADDRESS,
-  assets: { lovelace, [SDK.daBondPoolUnit(DA_BOND_POOL_POLICY_ID)]: 1n },
-  datum: SDK.encodeDaBondPoolDatum(datum),
+  assets: { lovelace, [SDKDa.daBondPoolUnit(DA_BOND_POOL_POLICY_ID)]: 1n },
+  datum: SDKDa.encodeDaBondPoolDatum(datum),
 });
 
 export const idleLock = () => ({
@@ -120,14 +122,14 @@ export const fixture = (
 ) => {
   const parameters = parametersFixture();
   const bytes = new Uint8Array(16_000).fill(7);
-  const commitment = SDK.buildDaAvailabilityCommitment({
+  const commitment = SDKDa.buildDaAvailabilityCommitment({
     deploymentIdentity: "33".repeat(28),
     headerHash: headerByte.repeat(28),
     payload: bytes,
     responseGeometry: parameters.response_geometry,
   });
-  const commitmentHash = SDK.daAvailabilityCommitmentHash(commitment);
-  const plan = SDK.buildDaAvailabilityChallengeDatumPlan({
+  const commitmentHash = SDKDa.daAvailabilityCommitmentHash(commitment);
+  const plan = SDKDa.buildDaAvailabilityChallengeDatumPlan({
     commitment,
     challengerFundingOutRef: {
       transactionId: headerByte.repeat(32),
@@ -137,7 +139,7 @@ export const fixture = (
     openedAt,
     parameters,
   });
-  const confirmedState: SDK.StateQueueUTxO = {
+  const confirmedState: SDKStateQueue.StateQueueUTxO = {
     utxo: utxo(9),
     datum: {
       key: "Empty",
@@ -146,7 +148,7 @@ export const fixture = (
     },
     assetName: "",
   };
-  const attested: SDK.DaAvailabilityChallengeSnapshot = {
+  const attested: SDKDa.DaAvailabilityChallengeSnapshot = {
     headerHash: commitment.header_hash,
     queue: queueNode({
       headerHash: commitment.header_hash,
@@ -157,7 +159,7 @@ export const fixture = (
     correctionLock: idleLock(),
     tranches: [],
   };
-  const challenged: SDK.DaAvailabilityChallengeSnapshot = {
+  const challenged: SDKDa.DaAvailabilityChallengeSnapshot = {
     ...attested,
     queue: queueNode({
       headerHash: commitment.header_hash,

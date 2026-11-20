@@ -8,7 +8,7 @@
  * the input-existence chronologies add forced transactions, withdrawals and
  * deposits.
  */
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import { describe, expect, it } from "vitest";
 
 import { eventLedgerBefore } from "../src/event-ledger.js";

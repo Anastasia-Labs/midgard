@@ -1,6 +1,6 @@
 import type { MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { Effect } from "effect";
 
 import type { processMpfs } from "../mpf/index.js";

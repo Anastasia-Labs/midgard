@@ -10,7 +10,8 @@
  * `ScriptSourceMissing` or `RedeemerMissing` reason names a purpose after a
  * purpose whose script has no source. */
 import { decodeMidgardVersionedScriptEnvelope } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 import {
   directPurposeClaimEntry,
@@ -86,7 +87,7 @@ const claimedSpendUnshown = (material: DirectScriptMaterial): boolean => {
   );
 };
 
-const isSourceMissingReason = (reason: SDK.RejectionReason): boolean =>
+const isSourceMissingReason = (reason: SDKCore.RejectionReason): boolean =>
   typeof reason === "object" && "ScriptSourceMissing" in reason;
 
 /** A mint item, output or script witness not in the shape the purpose walk

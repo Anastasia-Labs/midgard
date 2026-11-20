@@ -39,7 +39,8 @@ import {
   type EventProjectionConfig,
   eventsAt,
 } from "@al-ft/midgard-l1-follower/events";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -180,7 +181,7 @@ export const foreignReplayMaterial = (
         // bytes, so a throw is the block's fault, never a local one.
         const fieldPreimages = yield* Effect.try({
           try: () => {
-            const payload = SDK.decodeTxOrderDatumCbor(datum).event.tx;
+            const payload = SDKUsers.decodeTxOrderDatumCbor(datum).event.tx;
             const derived = deriveMidgardForcedTxFaultEvidenceMaterial(
               canonicalTransactionCbor,
             );

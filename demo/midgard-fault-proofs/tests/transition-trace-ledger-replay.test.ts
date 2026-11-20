@@ -3,7 +3,8 @@ import {
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { placeholderValidationTraceDescriptorV1 } from "@al-ft/midgard-validation/validation-machine";
 import { Data } from "@lucid-evolution/lucid";
@@ -63,7 +64,7 @@ describe("transition trace retained descriptor mutations", () => {
       ForcedTxInvalid: { reason: "EmptyInputs" },
     });
     const submitted = transaction.submitted_source;
-    const descriptor = SDK.validationTraceDescriptorDataFromCore(
+    const descriptor = SDKDa.validationTraceDescriptorDataFromCore(
       placeholderValidationTraceDescriptorV1(
         {
           eventKeyCbor: Buffer.from(Data.to(eventKey, SDK.EventKey), "hex"),

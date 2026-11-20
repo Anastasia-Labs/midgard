@@ -9,15 +9,15 @@ import {
   selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core";
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
+import { type RejectionReason } from "@al-ft/midgard-sdk/core";
 import {
   PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE,
   PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
-  type RejectionReason,
   terminalVerdictContradiction,
   type VerdictSubject,
   verdictSubjectIsCanonical,
   VerdictSubjectSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import { claimedItem } from "../evidence/claimed-coordinate.js";

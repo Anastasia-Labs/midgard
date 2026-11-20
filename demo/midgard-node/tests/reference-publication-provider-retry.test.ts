@@ -5,7 +5,7 @@
  * ends with exactly one authenticated reference. An expired auth policy is
  * still refused without a retry.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import {
   Emulator,
   generateEmulatorAccount,

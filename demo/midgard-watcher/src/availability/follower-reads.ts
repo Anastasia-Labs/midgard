@@ -5,7 +5,7 @@ import {
   type FraudProofRawL1Transaction,
 } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
 import type { FactStore } from "@al-ft/midgard-l1-follower";
-import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk";
+import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk/da";
 
 import type { WatcherAuthenticatedStateQueueObservation } from "../indexers/authenticated-state-queue-observation.js";
 import { required } from "../l1-follower/fault-proof-l1-source.chain.js";

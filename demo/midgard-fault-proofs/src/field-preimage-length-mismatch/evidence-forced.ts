@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 
 import { decodeMidgardNativeTxProofFieldLengths } from "@al-ft/midgard-core/codec";
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -22,7 +23,7 @@ export const forcedFieldPreimageLengthRawFinding = async ({
 }: {
   readonly headerHash: string;
   readonly header: SDK.Header;
-  readonly body: SDK.DaPayload["block_body"];
+  readonly body: SDKDa.DaPayload["block_body"];
 }): Promise<
   | (AuthenticatedFieldPreimageLengthEvidence & { readonly position: bigint })
   | undefined

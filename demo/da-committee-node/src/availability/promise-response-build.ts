@@ -1,4 +1,4 @@
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/da";
 
 import type { CommitteeL1Clock } from "../l1/follower/l1-clock.js";
 import {

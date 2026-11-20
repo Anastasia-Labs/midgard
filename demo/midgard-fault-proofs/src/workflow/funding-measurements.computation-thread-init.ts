@@ -1,9 +1,9 @@
 import { DEPLOYMENT_MANIFEST_FRAUD_PROOF_CONTRACT_BY_CATEGORY } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 import {
-  type FraudProofCatalogueCategoryName,
   FraudProofComputationThreadRedeemer,
   FraudProofComputationThreadStepDatum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { CML, Data, type LucidEvolution } from "@lucid-evolution/lucid";
 
 import {

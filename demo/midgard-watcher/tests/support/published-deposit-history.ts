@@ -2,7 +2,8 @@ import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
   plutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { Data, datumToHash } from "@lucid-evolution/lucid";
 
 /** Retained proof material captured by an authenticated reader, not new L1 authority. */
@@ -35,16 +36,16 @@ export const readPublishedDepositHistory = (
     throw new Error("Authenticated deposit history capture is required");
   const commitment = Data.from(
     history.commitmentCbor,
-    SDK.EventHistoryCommitment,
+    SDKUsers.EventHistoryCommitment,
   );
-  const opening = Data.from(history.openingCbor, SDK.EventHistoryOpening);
+  const opening = Data.from(history.openingCbor, SDKUsers.EventHistoryOpening);
   if (
-    canonical(Data.to(commitment, SDK.EventHistoryCommitment)) !==
+    canonical(Data.to(commitment, SDKUsers.EventHistoryCommitment)) !==
       history.commitmentCbor ||
     canonical(history.openingCbor) !== history.openingCbor ||
     commitment.kind !== "Deposit" ||
     !("DepositPayload" in opening.payload) ||
-    !SDK.opensEventHistoryCommitmentCbor(
+    !SDKUsers.opensEventHistoryCommitmentCbor(
       commitment,
       plutusConstrFieldCbor(history.openingCbor, [0]),
       plutusConstrFieldCbor(history.openingCbor, [1]),
@@ -60,7 +61,7 @@ export const readPublishedDepositHistory = (
     throw new Error(
       "Deposit history opening differs from its captured commitment or metadata",
     );
-  const originalAssets = SDK.valueToAssets(opening.original_assets);
+  const originalAssets = SDKUsers.valueToAssets(opening.original_assets);
   if (Object.values(originalAssets).some((quantity) => quantity < 0n))
     throw new Error("Deposit history has negative original funds");
   return {
@@ -72,10 +73,10 @@ export const readPublishedDepositHistory = (
 
 /** Call only with an Order returned by the actual authenticated history reader. */
 export const capturePublishedDepositHistory = (
-  order: SDK.DepositUTxO,
+  order: SDKUsers.DepositUTxO,
   policyId: string,
 ): PublishedDepositHistory => {
-  const captured = SDK.captureEventHistoryWitness(
+  const captured = SDKUsers.captureEventHistoryWitness(
     order.history,
     policyId,
     "Deposit",
@@ -89,8 +90,10 @@ export const capturePublishedDepositHistory = (
       canonical(
         Data.to(captured.payload.DepositPayload.event, SDK.DepositEvent),
       ) ||
-    canonical(Data.to(order.facts, SDK.EventHistoryFacts)) !==
-      canonical(Data.to(node.payload.Order.facts, SDK.EventHistoryFacts)) ||
+    canonical(Data.to(order.facts, SDKUsers.EventHistoryFacts)) !==
+      canonical(
+        Data.to(node.payload.Order.facts, SDKUsers.EventHistoryFacts),
+      ) ||
     order.idCbor.toString("hex") !==
       canonical(plutusConstrFieldCbor(captured.payloadCbor, [0, 0])) ||
     order.infoCbor.toString("hex") !==
@@ -100,15 +103,16 @@ export const capturePublishedDepositHistory = (
       canonical(
         plutusConstrFieldCbor(order.history.anchor.utxo.datum, [3, 0]),
       ) ||
-    canonical(Data.to(SDK.assetsToValue(order.originalAssets), SDK.Value)) !==
-      canonical(Data.to(captured.originalAssets, SDK.Value))
+    canonical(
+      Data.to(SDKUsers.assetsToValue(order.originalAssets), SDK.Value),
+    ) !== canonical(Data.to(captured.originalAssets, SDK.Value))
   )
     throw new Error(
       "Authenticated deposit reader disagrees with its history witness",
     );
   const history = Object.freeze({
     commitmentCbor: canonical(
-      Data.to(captured.commitment, SDK.EventHistoryCommitment),
+      Data.to(captured.commitment, SDKUsers.EventHistoryCommitment),
     ),
     openingCbor: canonical(captured.openingCbor),
   });

@@ -1,4 +1,6 @@
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "@lucid-evolution/lucid";
 import "../committed-field-shape/submit-committed-field-shape-init.js";
 import "../linear-fault-cancel.js";

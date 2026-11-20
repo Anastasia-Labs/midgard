@@ -6,18 +6,20 @@
  */
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  Case,
-  CaseRedeemer,
   castActiveOperatorDatumToData,
-  DisputeBond,
   EMPTY_MERKLE_TREE_ROOT,
   EventKey,
   LinkedListDatum,
   Proof,
   requireInputIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
+  Case,
+  CaseRedeemer,
+  DisputeBond,
   validationMachineStateDataFromCore,
   validationTraceProofDataFromCore,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/da";
 import { Constr, Data, fromText, type UTxO } from "@lucid-evolution/lucid";
 
 import { type CompleteSignedTransactionMeasurement } from "./submit-init-emulator-shared.js";

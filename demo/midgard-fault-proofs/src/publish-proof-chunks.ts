@@ -25,7 +25,7 @@ import {
   MAXIMUM_CHUNK_PROOF_STEP_COUNT,
   MAXIMUM_PROOF_CHUNK_COUNT,
   ProofChunkDatum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
 
 import { isAdaOnlyInlineDatumOutput } from "./ada-only-carriage-output.js";

@@ -6,11 +6,9 @@
  * canonical-decode holders; and the phase holders, with the yields their
  * semantic resolvers invoke under their roles' authentication tokens. */
 import { DEPLOYMENT_MEMBERS } from "@al-ft/midgard-core";
-import {
-  buildFieldGrammarCertificateValidator,
-  type createReferenceScriptAuthPolicy,
-  parseFaultProofBlueprint,
-} from "@al-ft/midgard-sdk";
+import { parseFaultProofBlueprint } from "@al-ft/midgard-sdk/core";
+import { buildFieldGrammarCertificateValidator } from "@al-ft/midgard-sdk/fraud-proof";
+import { type createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk/state-queue";
 import type { Script, UTxO } from "@lucid-evolution/lucid";
 
 import {

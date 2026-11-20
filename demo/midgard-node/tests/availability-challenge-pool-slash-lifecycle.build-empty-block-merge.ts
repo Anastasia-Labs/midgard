@@ -1,4 +1,6 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";
@@ -63,7 +65,7 @@ export const buildEmptyBlockMerge = async (
     .validFrom(f.emulator.now())
     .collectFrom(
       [root, queue],
-      Data.to("LinkedListMutation", SDK.StateQueueSpendRedeemer),
+      Data.to("LinkedListMutation", SDKStateQueue.StateQueueSpendRedeemer),
     )
     .readFrom(references)
     .pay.ToContract(root.address, inline(continuedDatum), root.assets)
@@ -94,7 +96,7 @@ export const buildEmptyBlockMerge = async (
             merged_block_validation_trace_count: header.validationTraceCount,
           },
         },
-        SDK.StateQueueRedeemer,
+        SDKStateQueue.StateQueueRedeemer,
       ),
     )
     .withdraw(
@@ -124,16 +126,16 @@ export const advanceToMaturity = (f: AvailabilityFixture, queue: UTxO) => {
  */
 export const expectTimeoutArithmetic = (
   f: AvailabilityFixture,
-  built: SDK.BuiltDaAvailabilityTransaction,
+  built: SDKDa.BuiltDaAvailabilityTransaction,
   landed: { outputs: UTxO[]; measurement: Measurement },
   legs: { pool: UTxO; terminal: UTxO },
   expected: { taken: bigint; feePart: bigint; payout: bigint },
 ) => {
   const remaining = Data.from(
     legs.terminal.datum!,
-    SDK.DaAvailabilityTerminalAccumulatorDatum,
+    SDKDa.DaAvailabilityTerminalAccumulatorDatum,
   ).remaining_challenger_lovelace;
-  const slash = SDK.planDaBondPoolSlash({
+  const slash = SDKDa.planDaBondPoolSlash({
     poolLovelace: legs.pool.assets.lovelace,
     parameters,
   });

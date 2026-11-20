@@ -5,7 +5,8 @@ import {
   plutusConstrFieldCbor,
   replacePlutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
@@ -26,9 +27,9 @@ export type TransitionL2ReplayMaterial = Readonly<{
   /** The outputs field (§2.5 field 2) items, in field order. */
   outputCbors: readonly string[];
   /** One delete witness per spend input, in field order. */
-  spentUtxos: readonly SDK.LedgerDeleteWitness[];
+  spentUtxos: readonly SDKFraudProof.LedgerDeleteWitness[];
   /** One insert witness per output, in field order. */
-  producedUtxos: readonly SDK.LedgerInsertWitness[];
+  producedUtxos: readonly SDKFraudProof.LedgerInsertWitness[];
 }>;
 
 /** A serialization source, not an authority token. Installed workflows create
@@ -41,12 +42,13 @@ export type TransitionProofMaterial = Readonly<{
 /** Typed callers author new Data; material callers retain already committed
  * Data. A typed view cannot recover a raw leaf's map order or repeated pairs. */
 export type TransitionProofInput =
-  | SDK.TransitionFaultProof
+  | SDKFraudProof.TransitionFaultProof
   | TransitionProofMaterial;
 
 export const transitionProofCbor = (input: TransitionProofInput): string => {
-  if (!("proofCbor" in input)) return Data.to(input, SDK.TransitionFaultProof);
-  Data.from(input.proofCbor, SDK.TransitionFaultProof);
+  if (!("proofCbor" in input))
+    return Data.to(input, SDKFraudProof.TransitionFaultProof);
+  Data.from(input.proofCbor, SDKFraudProof.TransitionFaultProof);
   return input.proofCbor;
 };
 
@@ -74,7 +76,7 @@ export type TransitionReplayedTransaction = Readonly<{
 }>;
 
 export const transitionReplayedTransaction = (
-  witness: SDK.InvalidOneStepTransitionWitness,
+  witness: SDKFraudProof.InvalidOneStepTransitionWitness,
 ): TransitionReplayedTransaction | null => {
   if ("L2TransactionTransition" in witness) {
     const { trace_proof, source_membership } = witness.L2TransactionTransition;
@@ -111,8 +113,8 @@ export const transitionReplayedTransaction = (
 
 export const readTransitionProof = (
   input: TransitionProofInput,
-): SDK.TransitionFaultProof =>
-  Data.from(transitionProofCbor(input), SDK.TransitionFaultProof);
+): SDKFraudProof.TransitionFaultProof =>
+  Data.from(transitionProofCbor(input), SDKFraudProof.TransitionFaultProof);
 
 type HistorySource = (
   | { kind: "Deposit"; membership: SDK.DepositSourceLeafMembershipProof }
@@ -129,7 +131,7 @@ export const depositSourceView = (
 });
 
 const historySource = (
-  proof: SDK.TransitionFaultProof,
+  proof: SDKFraudProof.TransitionFaultProof,
 ): HistorySource | null => {
   const fault = proof.fault;
   if ("InvalidOneStepTransition" in fault) {
@@ -177,9 +179,9 @@ const historySource = (
  * encoder frames every other field; the raw leaf then fills the value field.
  * A deposit source carries its leaf as bytes and needs no frame. */
 const withSourceValueFrame = (
-  proof: SDK.TransitionFaultProof,
+  proof: SDKFraudProof.TransitionFaultProof,
   source: HistorySource,
-): SDK.TransitionFaultProof => {
+): SDKFraudProof.TransitionFaultProof => {
   if (source.kind === "Deposit") return proof;
   const value = {
     ...source.membership.value,
@@ -202,13 +204,15 @@ const withSourceValueFrame = (
           },
         },
       },
-    } as SDK.TransitionFaultProof["fault"],
+    } as SDKFraudProof.TransitionFaultProof["fault"],
   };
 };
 
 export const transitionProofHistorySource = (input: TransitionProofInput) => {
   const cbor = transitionProofCbor(input);
-  const source = historySource(Data.from(cbor, SDK.TransitionFaultProof));
+  const source = historySource(
+    Data.from(cbor, SDKFraudProof.TransitionFaultProof),
+  );
   return source === null
     ? null
     : {
@@ -225,7 +229,7 @@ export const transitionProofHistorySource = (input: TransitionProofInput) => {
  * This verifies encoding/membership, not the claimed transition fault itself. */
 export const makeTransitionProofMaterial = (
   reconstruction: TransitionTraceReconstruction,
-  proof: SDK.TransitionFaultProof,
+  proof: SDKFraudProof.TransitionFaultProof,
   l2Replay?: TransitionL2ReplayMaterial,
 ): TransitionProofMaterial => {
   if (
@@ -237,7 +241,7 @@ export const makeTransitionProofMaterial = (
   const source = historySource(proof);
   let proofCbor = Data.to(
     source === null ? proof : withSourceValueFrame(proof, source),
-    SDK.TransitionFaultProof,
+    SDKFraudProof.TransitionFaultProof,
   );
   if (source !== null) {
     const root =

@@ -2,7 +2,9 @@ import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
   replacePlutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDK from "@al-ft/midgard-sdk/users";
 import {
   credentialToAddress,
   Data,
@@ -84,13 +86,13 @@ export const presentEventWitness = ({
     }),
   );
 
-export const l1AddressOf = (byte: number): SDK.AddressData => ({
+export const l1AddressOf = (byte: number): SDKCore.AddressData => ({
   paymentCredential: { PublicKeyCredential: [h28(byte)] as [string] },
   stakeCredential: null,
 });
 
 /** `step-01.ak`'s `authentic_withdrawal_info_v1`, as typed data. */
-export const authenticWithdrawalInfo = (): SDK.WithdrawalInfo => ({
+export const authenticWithdrawalInfo = (): SDKCore.WithdrawalInfo => ({
   body: {
     l2_outref: { transactionId: "7e".repeat(32), outputIndex: 1n },
     l2_owner: h28(0x9c),
@@ -110,8 +112,8 @@ export const withdrawalEventDatum = ({
   info = authenticWithdrawalInfo(),
   inclusionTime = AUTHENTIC_INCLUSION_TIME,
 }: {
-  readonly id?: SDK.OutputReference;
-  readonly info?: SDK.WithdrawalInfo;
+  readonly id?: SDKCore.OutputReference;
+  readonly info?: SDKCore.WithdrawalInfo;
   readonly inclusionTime?: bigint;
 } = {}): SDK.WithdrawalOrderDatum => ({
   event: { id, info },
@@ -123,7 +125,7 @@ export const withdrawalEventDatum = ({
 
 /** Legacy content fixture encoded canonically before conversion to a history payload. */
 export const eventDatumBytes = (datum: SDK.WithdrawalOrderDatum): string =>
-  SDK.withdrawalEventDatumBytes(datum);
+  SDKFraudProof.withdrawalEventDatumBytes(datum);
 
 export const withdrawalEventUtxoFixture = ({
   policyId = WITHDRAWAL_POLICY_ID,
@@ -183,7 +185,7 @@ export const historyLucid = (nodes: readonly UTxO[]): LucidEvolution =>
 // Built from the Aiken constants rather than from a local block, so the step-04
 // handoff bytes can be compared against the Aiken scenarios' exact CBOR.
 
-export const historyAssets: SDK.Value = new Map([
+export const historyAssets: SDKCore.Value = new Map([
   ["", new Map([["", 3_000_000n]])],
 ]);
 
@@ -209,7 +211,7 @@ export const historyOpening = (
           original_assets: assets,
         },
       },
-      SDK.FabricatedWithdrawalAuthenticContentOpening,
+      SDKFraudProof.FabricatedWithdrawalAuthenticContentOpening,
     ),
     [0],
     aikenSerialisedPlutusDataCborPreservingMapOrder(
@@ -228,7 +230,7 @@ export const historyCommitment = SDK.eventHistoryCommitment(
   historyAssets,
 );
 
-export const fiStep03State: SDK.FabricatedWithdrawalStep03State = {
+export const fiStep03State: SDKFraudProof.FabricatedWithdrawalStep03State = {
   state_queue_policy: "bb".repeat(28),
   challenged_header_hash: FI_HEADER_HASH,
   header_start_time: HEADER_START_TIME,
@@ -239,7 +241,7 @@ export const fiStep03State: SDK.FabricatedWithdrawalStep03State = {
   verdict: "WithdrawalIdentityAbsent",
 };
 
-export const mmStep03State: SDK.FabricatedWithdrawalStep03State = {
+export const mmStep03State: SDKFraudProof.FabricatedWithdrawalStep03State = {
   state_queue_policy: "bb".repeat(28),
   challenged_header_hash: MM_HEADER_HASH,
   header_start_time: HEADER_START_TIME,
@@ -293,7 +295,7 @@ describe("Q40 fabricated-withdrawal evidence admission", () => {
           diagnosticLabel: "operator diagnostic",
         },
       }),
-    ).rejects.toBeInstanceOf(SDK.CanonicalEvidenceRejection);
+    ).rejects.toBeInstanceOf(SDKFraudProof.CanonicalEvidenceRejection);
   });
 
   it("refuses a payload whose embedded header is not the observed one", async () => {

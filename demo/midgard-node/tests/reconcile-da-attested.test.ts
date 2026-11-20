@@ -1,4 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
@@ -23,11 +23,10 @@ vi.mock("../src/services/landed-state-queue.js", async (importOriginal) => ({
   landedStateQueueUTxOs: vi.fn(),
 }));
 
-vi.mock("@al-ft/midgard-sdk", async () => {
-  const actual =
-    await vi.importActual<typeof import("@al-ft/midgard-sdk")>(
-      "@al-ft/midgard-sdk",
-    );
+vi.mock("@al-ft/midgard-sdk/core", async () => {
+  const actual = await vi.importActual<
+    typeof import("@al-ft/midgard-sdk/core")
+  >("@al-ft/midgard-sdk/core");
   return {
     ...actual,
     getStateQueueNodeFromStateQueueDatum: vi.fn(),

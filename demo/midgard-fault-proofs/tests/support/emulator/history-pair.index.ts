@@ -1,7 +1,7 @@
 import {
   requireInputIndex,
   requireReferenceInputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import { type RedeemerContext, type UTxO } from "@lucid-evolution/lucid";
 
 export const same = (a: UTxO, b: UTxO) =>

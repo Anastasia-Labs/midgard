@@ -3,7 +3,8 @@
  * output and declaration passes. A pass yields the transitions between a
  * caller-owned start and finish, and its completed state. */
 import { decodeMidgardMintPolicyItem } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 
 import { directSpendEvidence } from "../direct-script-derivation/claimed-purpose.js";
 import { buildDirectReceiveEvidence } from "../direct-script-derivation/receive-evidence.js";
@@ -104,7 +105,7 @@ export const spendRankPass = <State>(
     readonly subject: Buffer;
     readonly from: number;
     readonly state: (progress: {
-      readonly cursor: SDK.DirectFieldCursor;
+      readonly cursor: SDKFraudProof.DirectFieldCursor;
       readonly rank: bigint;
       readonly complete: boolean;
     }) => State;
@@ -149,7 +150,7 @@ export const mintPass = (
     readonly label: string;
     readonly grammar: Role;
     readonly scan: Role;
-    readonly datum: (scan: SDK.DirectMintPurposeState) => string;
+    readonly datum: (scan: SDKFraudProof.DirectMintPurposeState) => string;
     readonly grammarRedeemer: (args: DirectPurposeProgress) => string;
     readonly scanRedeemer: (args: DirectPurposeProgress) => string;
   },
@@ -159,7 +160,7 @@ export const mintPass = (
   const policies = plan.items.map((item) =>
     Buffer.from(decodeMidgardMintPolicyItem(item).policyId).toString("hex"),
   );
-  let state: SDK.DirectMintPurposeState = {
+  let state: SDKFraudProof.DirectMintPurposeState = {
     cursor: plan.position("Certifying", 0).cursor,
     target_ordinal: targetOrdinal,
     previous_policy: "",
@@ -214,9 +215,9 @@ export const mintPass = (
 
 export type DirectPurposeOutputScanArgs = {
   readonly indices: Indices;
-  readonly opening: SDK.FieldOpening;
+  readonly opening: SDKFraudProof.FieldOpening;
   readonly checkpoint_bytes: string;
-  readonly witnesses: readonly SDK.DirectReceiveOutputWitness[];
+  readonly witnesses: readonly SDKFraudProof.DirectReceiveOutputWitness[];
 };
 
 /** Field-2 certification then the output pass recording each protected
@@ -227,7 +228,7 @@ export const receiveOutputsPass = async (
     readonly label: string;
     readonly grammar: Role;
     readonly outputs: Role;
-    readonly datum: (scan: SDK.DirectReceiveOutputState) => string;
+    readonly datum: (scan: SDKFraudProof.DirectReceiveOutputState) => string;
     readonly grammarRedeemer: (args: DirectPurposeProgress) => string;
     readonly scanRedeemer: (args: DirectPurposeOutputScanArgs) => string;
   },
@@ -236,7 +237,7 @@ export const receiveOutputsPass = async (
   const batch = batchOf(inputs);
   const count = plan.items.length;
   const evidence = await buildDirectReceiveEvidence(plan.items);
-  let state: SDK.DirectReceiveOutputState = {
+  let state: SDKFraudProof.DirectReceiveOutputState = {
     cursor: plan.position("Certifying", 0).cursor,
     source_index: inputs.evidence.index,
     credential_root: SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -258,7 +259,9 @@ export const receiveOutputsPass = async (
     });
   }
   const opened = state;
-  const stateAt = (position: number): SDK.DirectReceiveOutputState => ({
+  const stateAt = (
+    position: number,
+  ): SDKFraudProof.DirectReceiveOutputState => ({
     ...opened,
     cursor: plan.position("Walking", position).cursor,
     credential_root: evidence.outputRoots[position]!,
@@ -319,14 +322,16 @@ export const declarationPass = (
   spec: {
     readonly label: string;
     readonly role: Role;
-    readonly datum: (scan: SDK.DirectReceiveDeclarationState) => string;
+    readonly datum: (
+      scan: SDKFraudProof.DirectReceiveDeclarationState,
+    ) => string;
     readonly scanRedeemer: (
       indices: Indices,
-      entries: readonly SDK.DirectDeclaredCredential[],
+      entries: readonly SDKFraudProof.DirectDeclaredCredential[],
     ) => string;
   },
 ) => {
-  const initialState: SDK.DirectReceiveDeclarationState = {
+  const initialState: SDKFraudProof.DirectReceiveDeclarationState = {
     bound: inputs.material.bound,
     source_index: inputs.evidence.index,
     output_root: evidence.outputRoot,
@@ -339,7 +344,9 @@ export const declarationPass = (
   };
   const count = evidence.entries.length;
   const chosen = evidence.entries[Number(target)];
-  const stateAt = (position: number): SDK.DirectReceiveDeclarationState => ({
+  const stateAt = (
+    position: number,
+  ): SDKFraudProof.DirectReceiveDeclarationState => ({
     ...initialState,
     declared_root: evidence.declarationRoots[position]!,
     declared_count: BigInt(position),

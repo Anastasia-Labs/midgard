@@ -16,7 +16,8 @@
  * rollback recovery its run ends resolved by that other record, never as
  * its conviction; the runner whose journal created the record completes on
  * the removal, and a prover named by neither reads no terminal of its own. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -288,7 +289,8 @@ const expectRemovedAgainstOurRecord = async (
     parseOwnOutRef(record),
   ]);
   expect(
-    Data.from(recorded!.datum!, SDK.FraudProofTokenDatum).fraud_prover,
+    Data.from(recorded!.datum!, SDKFraudProof.FraudProofTokenDatum)
+      .fraud_prover,
   ).toBe(scene.h.proverSigner.paymentKeyHash);
   expect(result.terminal.headerHash).toBe(scene.failing.evidence.headerHash);
   expect(result.terminal.correction.referencedProofTokenOutRef).toBe(record);
@@ -415,7 +417,8 @@ describe("validation-trace dispute runner: both cases on the block convicted on 
       for (const record of records) {
         const live = await liveAt(scene, record);
         expect(
-          Data.from(live!.datum!, SDK.FraudProofTokenDatum).fraud_prover,
+          Data.from(live!.datum!, SDKFraudProof.FraudProofTokenDatum)
+            .fraud_prover,
         ).toBe(h.proverSigner.paymentKeyHash);
       }
       const cited = [...records].sort()[0]!;

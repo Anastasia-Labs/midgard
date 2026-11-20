@@ -1,7 +1,7 @@
 import {
   DaHashPreimageStep02Datum,
   FraudProofComputationThreadStepDatum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import { parseSubmitDaHashPreimageTxInclusion } from "../submit-da-hash-preimage-step-01.parse-submit-da-hash-preimage-tx-inclusion.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";

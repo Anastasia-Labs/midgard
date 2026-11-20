@@ -20,8 +20,8 @@ import {
   encodeMidgardFieldPreimage,
   midgardFieldCarriageBounds,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
-import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
+import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk/fraud-proof";
 import type { UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

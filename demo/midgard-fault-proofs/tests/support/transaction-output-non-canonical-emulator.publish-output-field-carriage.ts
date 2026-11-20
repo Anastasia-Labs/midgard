@@ -1,4 +1,7 @@
-import { type FieldOpening, fieldOpeningForField } from "@al-ft/midgard-sdk";
+import {
+  type FieldOpening,
+  fieldOpeningForField,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type LucidEvolution,
   type Network,

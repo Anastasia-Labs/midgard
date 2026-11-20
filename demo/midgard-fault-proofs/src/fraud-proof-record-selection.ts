@@ -8,7 +8,7 @@
  * builder and the case reads all select through here, so they name one record.
  */
 import { outRefLabel, parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
-import { FraudProofTokenDatum } from "@al-ft/midgard-sdk";
+import { FraudProofTokenDatum } from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 /** The prover an inline datum of `schema`, a fault-proof step's or a

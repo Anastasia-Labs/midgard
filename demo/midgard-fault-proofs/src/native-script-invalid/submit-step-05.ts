@@ -1,14 +1,16 @@
 import { decodeMidgardVersionedScript } from "@al-ft/midgard-core";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
-  NativeScriptInvalidStep05DatumSchema,
-  NativeScriptInvalidStep05SpendRedeemerSchema,
-  nativeScriptItemCommitment,
-  type NativeScriptPushdownFrame,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { type NativeScriptPushdownFrame } from "@al-ft/midgard-sdk/da";
+import {
+  NativeScriptInvalidStep05DatumSchema,
+  NativeScriptInvalidStep05SpendRedeemerSchema,
+  nativeScriptItemCommitment,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

@@ -4,7 +4,7 @@ import { mkdir, readdir, readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-sdk";
+import { FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-sdk/core";
 import {
   createWatcherFaultProofReadinessApplication,
   deriveWatcherNativeGenesisIdentity,

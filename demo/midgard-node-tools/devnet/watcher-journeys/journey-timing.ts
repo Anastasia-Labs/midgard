@@ -1,7 +1,8 @@
 import "node:fs/promises";
 import "node:path";
 import "@al-ft/midgard-core/deployment-manifest-identity";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/users";
 import "./journey-timing.journey-timing-for-plan.js";
 import "./journey-timing.read-journey-timing-tip.js";
 import "./journey-timing.stack-limit.js";

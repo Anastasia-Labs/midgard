@@ -10,7 +10,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { Worker } from "node:worker_threads";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import {
   applyDoubleCborEncoding,
   credentialToAddress,

@@ -4,10 +4,10 @@ import {
   midgardFieldCommitment,
 } from "@al-ft/midgard-core";
 import {
-  acceptedVerdictSubject,
   requireInputIndex,
   requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { acceptedVerdictSubject } from "@al-ft/midgard-sdk/fraud-proof";
 import { type BuildTxWithRedeemer, Data } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 

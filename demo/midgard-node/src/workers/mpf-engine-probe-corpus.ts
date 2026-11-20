@@ -7,7 +7,7 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { hexToBytes } from "@al-ft/midgard-core/hex";
 import { encodeTransactionRootValue } from "@al-ft/midgard-fault-proofs/block-replay";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 
 import { ledgerOutputToInsertBatchOp } from "../mpf/ledger-delta.js";
 import type { TransitionTraceSourceEvent } from "../mpf/trace-events.js";

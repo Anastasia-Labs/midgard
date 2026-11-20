@@ -3,18 +3,22 @@ import {
   replacePlutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
+  HUB_ORACLE_ASSET_NAME,
+  HubOracleDatum,
+  type OutputReference,
+} from "@al-ft/midgard-sdk/core";
+import {
   admitAuthenticatedL1Observation,
   assertSecurityGradeEvidence,
   type AuthenticatedL1Observation,
+} from "@al-ft/midgard-sdk/fraud-proof";
+import {
   captureEventHistoryWitness,
   countHistoryDataNodesCbor,
   type EventHistoryPayloadBounds,
   type EventHistoryWitness,
   fetchEventHistoryWitness,
-  HUB_ORACLE_ASSET_NAME,
-  HubOracleDatum,
-  type OutputReference,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/users";
 import {
   credentialToAddress,
   Data,

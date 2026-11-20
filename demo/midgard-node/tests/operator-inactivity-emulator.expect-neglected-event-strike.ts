@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/operators";
 import type { UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";
@@ -37,7 +38,7 @@ export const requireOperator = (
 export const activeNodeDatum = async (
   fixture: OperatorInactivityFixture,
   operatorKeyHash: string,
-): Promise<SDK.ActiveOperatorDatum> => {
+): Promise<SDKCore.ActiveOperatorDatum> => {
   const snapshot = await fetchInactivityDirectorySnapshot(fixture);
   const node = SDK.findNodeByKey(snapshot.active, operatorKeyHash);
   if (node === undefined || node.active === null) {

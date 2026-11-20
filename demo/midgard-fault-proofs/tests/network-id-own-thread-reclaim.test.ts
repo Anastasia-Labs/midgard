@@ -7,7 +7,7 @@
  * cancel's own rollback recovery, and only then ends resolved by the other
  * record: no conviction of ours, no terminal. */
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { CML, generateEmulatorAccount, Lucid } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

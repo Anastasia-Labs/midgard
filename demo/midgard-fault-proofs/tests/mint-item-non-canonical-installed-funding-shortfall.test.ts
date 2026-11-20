@@ -14,7 +14,7 @@ import {
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core/codec";
-import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk";
+import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk/fraud-proof";
 import type { OutRef } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 

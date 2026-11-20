@@ -2,7 +2,8 @@ import {
   decodeMidgardValidationTraceDescriptor,
   encodeMidgardValidationTraceDescriptor,
 } from "@al-ft/midgard-core/validation-trace";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -50,7 +51,7 @@ describe("placeholderValidationTraceDescriptorV1", () => {
       // The bytes committed under the validation_traces root.
       expect(
         LucidData.to(
-          SDK.validationTraceDescriptorDataFromCore(descriptor),
+          SDKDa.validationTraceDescriptorDataFromCore(descriptor),
           SDK.ValidationTraceDescriptor,
         ),
       ).toBe(vector.expected.descriptorDataCbor);

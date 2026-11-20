@@ -1,7 +1,8 @@
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { buildCanonicalBlockFixture } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import { buildCountedRoot } from "@al-ft/midgard-fault-proofs/transition-trace/phas";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -47,8 +48,8 @@ export const buildJourneyRepeatedDeposit = async (
   const eventKey: SDK.EventKey = {
     DepositEventKey: { deposit_id: Data.from(entry[0], SDK.OutputReference) },
   };
-  const deposits: SDK.DaPayloadEntry[] = input.honest ? [] : [entry];
-  const mappings: SDK.DaPayloadEntry[] = input.honest
+  const deposits: SDKDa.DaPayloadEntry[] = input.honest ? [] : [entry];
+  const mappings: SDKDa.DaPayloadEntry[] = input.honest
     ? []
     : [
         [
@@ -56,7 +57,7 @@ export const buildJourneyRepeatedDeposit = async (
           Data.to({ step_index: 0n, phase: "Deposit" }, SDK.EventToStepValue),
         ],
       ];
-  const transitions: SDK.DaPayloadEntry[] = input.honest
+  const transitions: SDKDa.DaPayloadEntry[] = input.honest
     ? []
     : [
         [
@@ -74,7 +75,7 @@ export const buildJourneyRepeatedDeposit = async (
           ),
         ],
       ];
-  const root = (domain: SDK.RootDomain, entries: SDK.DaPayloadEntry[]) =>
+  const root = (domain: SDK.RootDomain, entries: SDKDa.DaPayloadEntry[]) =>
     buildCountedRoot(
       domain,
       entries.map(([key, value]) => ({
@@ -106,7 +107,7 @@ export const buildJourneyRepeatedDeposit = async (
     transitionTraceRoot: traceRoot.root,
   };
   const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
-  const payload: SDK.DaPayload = {
+  const payload: SDKDa.DaPayload = {
     ...base.payload,
     block_body: {
       ...base.payload.block_body,
@@ -123,7 +124,7 @@ export const buildJourneyRepeatedDeposit = async (
       header,
       headerHash,
       payload,
-      payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(payload), {
+      payloadEnvelopeCbor: await wrapDaPayload(SDKDa.encodeDaPayload(payload), {
         mode: "identity",
       }),
     },

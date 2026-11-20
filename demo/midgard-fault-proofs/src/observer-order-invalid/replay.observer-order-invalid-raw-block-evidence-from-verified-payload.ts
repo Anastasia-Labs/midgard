@@ -7,7 +7,9 @@ import {
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
@@ -93,9 +95,9 @@ export const observerOrderInvalidRawBlockEvidenceFromVerifiedPayload = async ({
   daProvenance,
   minimumConfirmationDepth,
 }: {
-  readonly observation: SDK.AuthenticatedStateQueueHeaderObservation;
+  readonly observation: SDKFraudProof.AuthenticatedStateQueueHeaderObservation;
   readonly payloadEnvelopeCbor: Uint8Array;
-  readonly daProvenance: SDK.EvidenceProvenance;
+  readonly daProvenance: SDKFraudProof.EvidenceProvenance;
   readonly minimumConfirmationDepth?: number;
 }): Promise<ObserverOrderInvalidRawBlockEvidence> => {
   const raw = await daHashPreimageBlockEvidenceFromVerifiedPayload({
@@ -113,8 +115,8 @@ export const observerOrderInvalidRawBlockEvidenceFromVerifiedPayload = async ({
       })
     ).innerBytes,
   );
-  const payload = SDK.decodeDaPayload(payloadCbor);
-  if (!SDK.encodeDaPayload(payload).equals(payloadCbor))
+  const payload = SDKDa.decodeDaPayload(payloadCbor);
+  if (!SDKDa.encodeDaPayload(payload).equals(payloadCbor))
     throw new Error("observerOrderInvalid DA payload is not canonical");
 
   const entries = raw.entries.map(([key, value]) => ({
@@ -191,7 +193,7 @@ const acceptedEvidence = (
   try {
     const evidence = prepareObserverOrderInvalidEvidence({
       finding: {
-        subject: SDK.acceptedVerdictSubject(transaction.nodeTxId),
+        subject: SDKFraudProof.acceptedVerdictSubject(transaction.nodeTxId),
         observerIndex: BigInt(observerIndex),
       },
       fieldPreimage: field,
@@ -272,7 +274,7 @@ export const detectObserverOrderInvalidForcedReplay = (
       if (field === undefined) return;
       const evidence = prepareObserverOrderInvalidEvidence({
         finding: {
-          subject: SDK.forcedVerdictSubject({
+          subject: SDKFraudProof.forcedVerdictSubject({
             transactionId: transaction.value.tx_id,
             sourceKey: transaction.key,
             rejectionReason: reason,

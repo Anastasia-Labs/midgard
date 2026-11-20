@@ -1,4 +1,4 @@
-import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk";
+import type { DaAvailabilityReadScope } from "@al-ft/midgard-sdk/da";
 import type { Provider } from "@lucid-evolution/lucid";
 
 /** The follower provider exposes no external AbortSignal: every request runs

@@ -6,7 +6,9 @@ import {
   computeDaSha256Hash,
   DA_TRANSPORT_LIMITS,
 } from "@al-ft/midgard-core/da-transport";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Effect } from "effect";
 
 import { stringifyJson } from "./json-file.js";
@@ -116,10 +118,10 @@ export const prepareFabricatedDepositFromCommittedLeaves = async ({
   };
   const output: PreparedFabricatedDepositOutput = {
     schemaVersion: FABRICATED_DEPOSIT_EVIDENCE_SCHEMA_VERSION,
-    violationId: SDK.FABRICATED_DEPOSIT_VIOLATION_ID,
-    fraudCategoryId: SDK.FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID,
+    violationId: SDKFraudProof.FABRICATED_DEPOSIT_VIOLATION_ID,
+    fraudCategoryId: SDKFraudProof.FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID,
     headerHash: headerHash.toLowerCase(),
-    threadTokenAssetName: SDK.fabricatedDepositThreadTokenAssetName(
+    threadTokenAssetName: SDKFraudProof.fabricatedDepositThreadTokenAssetName(
       headerHash.toLowerCase(),
     ),
     depositCount: Number(depositCount),
@@ -180,10 +182,10 @@ export const prepareFabricatedDepositFromCommittedLeaves = async ({
 };
 
 export type FabricatedDepositBlockEvidence = {
-  readonly grade: SDK.EvidenceGrade;
+  readonly grade: SDKFraudProof.EvidenceGrade;
   readonly provenance: {
-    readonly l1: SDK.EvidenceProvenance;
-    readonly da: SDK.EvidenceProvenance;
+    readonly l1: SDKFraudProof.EvidenceProvenance;
+    readonly da: SDKFraudProof.EvidenceProvenance;
   };
   readonly headerHash: string;
   readonly payloadEnvelopeSha256: string;
@@ -207,21 +209,21 @@ export const fabricatedDepositBlockEvidenceFromVerifiedPayload = async ({
   daProvenance,
   minimumConfirmationDepth,
 }: {
-  readonly observation: SDK.AuthenticatedStateQueueHeaderObservation;
+  readonly observation: SDKFraudProof.AuthenticatedStateQueueHeaderObservation;
   readonly payloadEnvelopeCbor: Uint8Array;
-  readonly daProvenance: SDK.EvidenceProvenance;
+  readonly daProvenance: SDKFraudProof.EvidenceProvenance;
   readonly minimumConfirmationDepth?: number;
 }): Promise<FabricatedDepositBlockEvidence> => {
   const admittedObservation =
-    await SDK.admitAuthenticatedStateQueueHeaderObservation({
+    await SDKFraudProof.admitAuthenticatedStateQueueHeaderObservation({
       observation,
       ...(minimumConfirmationDepth === undefined
         ? {}
         : { minimumConfirmationDepth }),
     });
-  const admittedDa = SDK.assertSecurityGradeEvidence(daProvenance);
+  const admittedDa = SDKFraudProof.assertSecurityGradeEvidence(daProvenance);
   if (admittedDa.trustClass !== "public_or_permissionless_da") {
-    throw new SDK.CanonicalEvidenceRejection(
+    throw new SDKFraudProof.CanonicalEvidenceRejection(
       "da_evidence_wrong_trust_class",
       `expected=public_or_permissionless_da actual=${admittedDa.trustClass}`,
     );
@@ -242,25 +244,25 @@ export const fabricatedDepositBlockEvidenceFromVerifiedPayload = async ({
       `failed to decode the mandatory DaPayloadEnvelopeV1: ${String(cause)}`,
     );
   }
-  let payload: SDK.DaPayload;
+  let payload: SDKDa.DaPayload;
   try {
-    payload = SDK.decodeDaPayload(payloadCbor);
+    payload = SDKDa.decodeDaPayload(payloadCbor);
   } catch (cause) {
     throw new FabricatedDepositRejection(
       "malformed_da_payload",
       `failed to decode DaPayloadV1 canonical CBOR: ${String(cause)}`,
     );
   }
-  if (!SDK.encodeDaPayload(payload).equals(payloadCbor)) {
+  if (!SDKDa.encodeDaPayload(payload).equals(payloadCbor)) {
     throw new FabricatedDepositRejection(
       "non_canonical_da_payload",
       "DA payload CBOR is not canonical for DaPayloadV1",
     );
   }
-  if (payload.version !== SDK.DA_PAYLOAD_VERSION) {
+  if (payload.version !== SDKDa.DA_PAYLOAD_VERSION) {
     throw new FabricatedDepositRejection(
       "wrong_da_payload_version",
-      `expected=${SDK.DA_PAYLOAD_VERSION.toString()} actual=${payload.version.toString()}`,
+      `expected=${SDKDa.DA_PAYLOAD_VERSION.toString()} actual=${payload.version.toString()}`,
     );
   }
   const body = payload.block_body;
@@ -278,7 +280,7 @@ export const fabricatedDepositBlockEvidenceFromVerifiedPayload = async ({
   }
 
   return {
-    grade: SDK.combineEvidenceGrade([
+    grade: SDKFraudProof.combineEvidenceGrade([
       admittedObservation.provenance,
       admittedDa,
     ]),

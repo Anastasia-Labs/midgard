@@ -21,16 +21,18 @@
  */
 import {
   HUB_ORACLE_ASSET_NAME,
-  MissingSignatureStep01SpendRedeemer,
-  MissingSignatureStep02Datum,
-  type MissingSignatureStep02State,
-  missingSignatureStep02StateFromVerifiedTx,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
   requireWithdrawalRedeemerIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  MissingSignatureStep01SpendRedeemer,
+  MissingSignatureStep02Datum,
+  type MissingSignatureStep02State,
+  missingSignatureStep02StateFromVerifiedTx,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   credentialToAddress,

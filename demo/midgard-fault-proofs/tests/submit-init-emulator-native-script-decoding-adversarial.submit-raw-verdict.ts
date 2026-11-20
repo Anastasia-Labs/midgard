@@ -1,5 +1,6 @@
 import { MIDGARD_LEDGER_OUTPUT_FIELD_INDEX } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 
 import type { NativeScriptDecodingContracts } from "../src/native-script-decoding/contracts.js";
@@ -33,7 +34,7 @@ type DecodingHarness = Awaited<ReturnType<typeof makeDecodingEmulatorHarness>>;
 type DecodingReferenceScripts = readonly [UTxO, UTxO, UTxO, UTxO, UTxO, UTxO];
 
 /** The §2.4.3(e) rejection direction B disputes, accusing (reference, 0). */
-export const MALFORMED_REJECTION_VERDICT: SDK.OperatorVerdict = {
+export const MALFORMED_REJECTION_VERDICT: SDKCore.OperatorVerdict = {
   ForcedTxInvalid: {
     reason: {
       ResolvedReferenceScriptMalformed: { source_kind: 1n, input_index: 0n },

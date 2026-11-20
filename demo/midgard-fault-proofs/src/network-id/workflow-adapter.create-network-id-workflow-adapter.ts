@@ -1,9 +1,7 @@
 import { outRefLabel } from "@al-ft/midgard-core";
-import {
-  deriveFieldPreimageCertification,
-  FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX,
-  NetworkIdForcedScanDatum,
-} from "@al-ft/midgard-sdk";
+import { FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX } from "@al-ft/midgard-sdk/core";
+import { NetworkIdForcedScanDatum } from "@al-ft/midgard-sdk/fraud-proof";
+import { deriveFieldPreimageCertification } from "@al-ft/midgard-sdk/state-queue";
 import { Data, toUnit, type UTxO } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";

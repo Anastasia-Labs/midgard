@@ -6,7 +6,7 @@
  * the deadline the move must land by; so does a move that does not build,
  * under the one-step-required state for a move of the one-step resolution
  * and the move-unbuilt state for any other. */
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/da";
 
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";
 import { ValidationDisputeWalletMoveUnfundedError } from "../workflow/funding-reservation-permit.validation-dispute-wallet-move-reserve.js";

@@ -1,7 +1,7 @@
 /** The funded two-defender case whose silent operator loses its thread, as
  * the lost-defense slash files play it: the defender's node, its receipt,
  * the run to defender-won, and another watcher's slash of the defender. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data, getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
 
 import { proofMaterialsAddress } from "../../src/funding/proof-materials-address.js";

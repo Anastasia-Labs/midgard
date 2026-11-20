@@ -9,7 +9,7 @@ import {
   signWithdrawalBodyCbor,
   WithdrawalBody,
   WithdrawalInfo,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";

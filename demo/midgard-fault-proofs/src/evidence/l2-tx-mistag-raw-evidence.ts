@@ -6,7 +6,9 @@
  */
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import type * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
@@ -33,7 +35,7 @@ export const L2_TX_MISTAG_RAW_EVIDENCE =
 
 export type L2TxMistagRawBlockEvidence = Readonly<{
   schemaVersion: typeof L2_TX_MISTAG_RAW_EVIDENCE;
-  grade: SDK.EvidenceGrade;
+  grade: SDKFraudProof.EvidenceGrade;
   provenance: DaHashPreimageBlockEvidence["provenance"];
   headerHash: string;
   payloadEnvelopeSha256: string;
@@ -58,7 +60,7 @@ export type RawNormalLeaves = Readonly<{
  * in committed order: the block has a structural trace fault of its own, and
  * this order is still one every watcher computes alike.
  */
-const decodedTrace = (body: SDK.DaPayload["block_body"]) => {
+const decodedTrace = (body: SDKDa.DaPayload["block_body"]) => {
   try {
     const trace = decodeTypedEntries<bigint, SDK.TransitionStep>({
       fieldName: "transition_trace",
@@ -96,9 +98,9 @@ export const rawNormalLeavesFromVerifiedPayload = async ({
   daProvenance,
   minimumConfirmationDepth,
 }: {
-  readonly observation: SDK.AuthenticatedStateQueueHeaderObservation;
+  readonly observation: SDKFraudProof.AuthenticatedStateQueueHeaderObservation;
   readonly payloadEnvelopeCbor: Uint8Array;
-  readonly daProvenance: SDK.EvidenceProvenance;
+  readonly daProvenance: SDKFraudProof.EvidenceProvenance;
   readonly minimumConfirmationDepth?: number;
 }): Promise<RawNormalLeaves> => {
   const raw = await daHashPreimageBlockEvidenceFromVerifiedPayload({
@@ -109,7 +111,7 @@ export const rawNormalLeavesFromVerifiedPayload = async ({
       ? {}
       : { minimumConfirmationDepth }),
   });
-  const payload = SDK.decodeDaPayload(
+  const payload = SDKDa.decodeDaPayload(
     Buffer.from(
       (
         await unwrapDaPayload(payloadEnvelopeCbor, {

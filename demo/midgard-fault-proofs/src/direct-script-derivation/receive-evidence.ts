@@ -1,6 +1,7 @@
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import { directOutputAddress, directReceiveCredentials } from "./purposes.js";
@@ -19,7 +20,7 @@ export const buildDirectReceiveEvidence = async (
 ) => {
   const trie = await Trie.fromList([]);
   const first = new Map<string, number>();
-  const witnesses: SDK.DirectReceiveOutputWitness[] = [];
+  const witnesses: SDKFraudProof.DirectReceiveOutputWitness[] = [];
   const outputRoots: string[] = [SDK.EMPTY_MERKLE_TREE_ROOT];
   for (const [index, item] of outputs.entries()) {
     const address = directOutputAddress(item);
@@ -67,7 +68,7 @@ export const buildDirectReceiveEvidence = async (
     outputRoots.push(rootHex(trie.hash));
   }
   const declarationTrie = await Trie.fromList([]);
-  const entries: SDK.DirectDeclaredCredential[] = [];
+  const entries: SDKFraudProof.DirectDeclaredCredential[] = [];
   const declarationRoots: string[] = [SDK.EMPTY_MERKLE_TREE_ROOT];
   for (const credential of directReceiveCredentials(outputs)) {
     const oldRoot = rootHex(declarationTrie.hash);

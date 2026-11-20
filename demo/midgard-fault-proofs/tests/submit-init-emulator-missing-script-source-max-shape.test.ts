@@ -10,7 +10,7 @@
  * refused at the source lookup after the same source walk and selection.
  */
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

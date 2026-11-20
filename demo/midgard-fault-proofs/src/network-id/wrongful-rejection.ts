@@ -8,7 +8,7 @@ import {
   isAnyNetworkIdMismatch,
   type NetworkIdFault,
   type VerdictSubject,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { deriveTransactionOutputScan } from "../transaction-output-non-canonical/transaction-output-non-canonical.js";

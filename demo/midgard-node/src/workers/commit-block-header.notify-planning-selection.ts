@@ -1,4 +1,4 @@
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { Effect } from "effect";
 
 import type { ContractDeploymentIdentityValue } from "../services/midgard-contracts.js";

@@ -22,13 +22,17 @@
 // modules that load one of them, the settlement worker's route to the
 // fault-proofs root that `settlement-worker-module-graph.test.ts` asserts, a
 // dynamic import inside a test's mock body, files at their module-size cap,
-// and a module whose compiled dist a test loads by URL together with that
-// test (the workspace bundle serves both one instance only through the root).
+// a module whose compiled dist a test loads by URL together with that test
+// (the workspace bundle serves both one instance only through the root), and
+// for the SDK (whose subpaths are its layers) a test whose root mock adds a
+// property the SDK does not export, a namespace import used as a value or a
+// bare type, and JavaScript scripts outside a TypeScript program.
 
 import { defineRule } from "../baseline.mjs";
 
 export const NARROWED_ROOTS = new Map([
   ["@al-ft/midgard-fault-proofs", "midgard-fault-proofs"],
+  ["@al-ft/midgard-sdk", "midgard-sdk"],
   ["@al-ft/midgard-validation", "midgard-validation"],
 ]);
 

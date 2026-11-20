@@ -1,4 +1,4 @@
-import { hashBlockHeader } from "@al-ft/midgard-sdk";
+import { hashBlockHeader } from "@al-ft/midgard-sdk/core";
 import { Effect } from "effect";
 
 import {

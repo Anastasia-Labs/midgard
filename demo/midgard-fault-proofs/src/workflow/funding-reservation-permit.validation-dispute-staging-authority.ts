@@ -37,7 +37,7 @@ import {
   midgardCekStagingDeposit,
   midgardCekStagingRunChunks,
   midgardCekStagingScript,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   CML,
   type TxSigned,

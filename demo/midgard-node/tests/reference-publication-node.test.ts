@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { setTimeout as pause } from "node:timers/promises";
 
 import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "@al-ft/midgard-core/deployment-manifest-identity";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { selectPlainFundingUtxos } from "@al-ft/midgard-test-support/reference-script-funding";
 import { CML, Kupmios, Lucid, type UTxO } from "@lucid-evolution/lucid";
 import { expect, it } from "vitest";

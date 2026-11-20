@@ -13,7 +13,7 @@ import {
   MIDGARD_FIELD_SHAPE_VERDICT_FIELD_BYTE_BOUND,
   MIDGARD_FIELD_SHAPE_VERDICT_WRONG_STRIDE,
   midgardCommittedFieldShapeVerdict,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   credentialToAddress,
   Data,

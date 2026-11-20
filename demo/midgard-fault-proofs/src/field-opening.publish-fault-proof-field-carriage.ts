@@ -1,12 +1,14 @@
 import { type MidgardFieldCarriagePlan } from "@al-ft/midgard-core";
+import { type FieldCarriage } from "@al-ft/midgard-sdk/core";
 import {
-  buildUnsignedFieldPreimagePublicationProgram,
-  type FieldCarriage,
   type FieldOpening,
   fieldOpeningForField,
+} from "@al-ft/midgard-sdk/fraud-proof";
+import {
+  buildUnsignedFieldPreimagePublicationProgram,
   resolveCertificateReferenceIndex,
   resolveChunkReferenceIndices,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

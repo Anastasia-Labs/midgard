@@ -8,7 +8,7 @@ import {
   MIDGARD_CONSENSUS_PROFILE_ID,
 } from "@al-ft/midgard-core/consensus-profile";
 import { aikenSerialisedPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { SqlClient } from "@effect/sql";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";

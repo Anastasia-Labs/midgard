@@ -5,7 +5,7 @@ import {
   type MidgardValidationMerkleFrontier,
 } from "@al-ft/midgard-core";
 import { hashMidgardValidationWorkWitness } from "@al-ft/midgard-core/validation-trace";
-import { ValidationOneStepWitness } from "@al-ft/midgard-sdk";
+import { ValidationOneStepWitness } from "@al-ft/midgard-sdk/da";
 import { Constr, Data } from "@lucid-evolution/lucid";
 
 import {

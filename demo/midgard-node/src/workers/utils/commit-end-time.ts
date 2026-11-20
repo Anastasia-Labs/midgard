@@ -4,7 +4,7 @@ import {
   ledgerTipBackdatedValidFromMs,
   type SubmitSlotSnapshot,
 } from "@al-ft/midgard-core/ogmios-slot";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { LucidEvolution } from "@lucid-evolution/lucid";
 
 export const EXPLICIT_COMMIT_DEFAULT_CANDIDATE_FUTURE_BUFFER_MS = 5 * 60 * 1000;

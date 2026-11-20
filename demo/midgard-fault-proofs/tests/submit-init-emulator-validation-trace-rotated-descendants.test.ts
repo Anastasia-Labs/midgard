@@ -5,7 +5,7 @@
  * convicted block's removal slashes the first operator and pays the prover.
  * Every row is a transaction written directly against the deployed scripts. */
 import { outRefLabel } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 import { expect, it } from "vitest";
 

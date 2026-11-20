@@ -7,7 +7,7 @@
  * the deployed scheduler script while each refresh is completed, so a refused
  * hop fails the alignment.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import {
   type Emulator,
   Lucid as makeLucid,

@@ -7,7 +7,7 @@ import {
   materializeMidgardNativeTxFromCanonical,
   midgardFieldCommitment,
 } from "@al-ft/midgard-core";
-import { acceptedVerdictSubject } from "@al-ft/midgard-sdk";
+import { acceptedVerdictSubject } from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import { prepareFieldItemWidthEvidence } from "../src/field-item-width-illegal/field-item-width-illegal.js";

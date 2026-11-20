@@ -1,4 +1,4 @@
-import { DA_ATTESTATION_TIMEOUT_MS } from "@al-ft/midgard-sdk";
+import { DA_ATTESTATION_TIMEOUT_MS } from "@al-ft/midgard-sdk/state-queue";
 import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { describe, expect, it } from "vitest";
 

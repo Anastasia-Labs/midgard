@@ -2,7 +2,7 @@ import {
   FraudProofComputationThreadStepDatum,
   WithdrawnInputStep02Datum,
   WithdrawnInputStep03Datum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { WithdrawnInputContracts } from "../withdrawn-input/contracts.js";
 import { buildWithdrawnInputInit } from "../withdrawn-input/submit-withdrawn-input-init.js";

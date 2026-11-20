@@ -1,4 +1,4 @@
-import { utxoToStateQueueUTxO } from "@al-ft/midgard-sdk";
+import { utxoToStateQueueUTxO } from "@al-ft/midgard-sdk/state-queue";
 import { Effect } from "effect";
 
 import { transactionOutputs } from "./raw-l1-family-derivation.derive-retained-state-queue-header-observation-from-raw-l1.js";

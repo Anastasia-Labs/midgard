@@ -7,7 +7,7 @@
  * our case's token for one of its recorded defenders, at the holder its
  * address names, with a datum that names us its prover. Each move carries the
  * funding permit's move authority and names the output it leaves. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";

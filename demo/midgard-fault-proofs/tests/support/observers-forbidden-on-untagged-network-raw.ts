@@ -8,7 +8,9 @@
 import "@aiken-lang/merkle-patricia-forestry";
 import "@al-ft/midgard-core";
 import "@al-ft/midgard-core/codec/forced";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "@lucid-evolution/lucid";
 import "../../src/field-opening.publish-fault-proof-field-carriage.js";
 import "../../src/field-opening.plan-fault-proof-field-opening.js";

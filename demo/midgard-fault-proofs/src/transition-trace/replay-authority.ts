@@ -6,7 +6,8 @@ import {
 } from "@al-ft/midgard-core";
 import { canonicalJson } from "@al-ft/midgard-core/canonical-json";
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { Data, paymentCredentialOf } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
@@ -43,14 +44,14 @@ const parseEventFacts = (
     if (entry.kind !== "forcedTransaction") {
       const commitment = Data.from(
         entry.history.commitmentCbor,
-        SDK.EventHistoryCommitment,
+        SDKUsers.EventHistoryCommitment,
       );
       const opening = Data.from(
         entry.history.openingCbor,
-        SDK.EventHistoryOpening,
+        SDKUsers.EventHistoryOpening,
       );
       if (
-        !SDK.opensEventHistoryCommitmentCbor(
+        !SDKUsers.opensEventHistoryCommitmentCbor(
           commitment,
           plutusConstrFieldCbor(entry.history.openingCbor, [0]),
           plutusConstrFieldCbor(entry.history.openingCbor, [1]),
@@ -79,7 +80,7 @@ const parseEventFacts = (
         };
       throw new Error("Transition history payload has the wrong event kind");
     }
-    const datum = Data.from(entry.utxo.datum!, SDK.TxOrderDatum);
+    const datum = Data.from(entry.utxo.datum!, SDKUsers.TxOrderDatum);
     const compact = decodeMidgardForcedTxCompact(
       Buffer.from(datum.event.tx.submitted_source.compact_cbor, "hex"),
     );

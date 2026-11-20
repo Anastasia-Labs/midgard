@@ -1,16 +1,18 @@
 import {
-  DoubleSpendStep04Datum,
-  DoubleSpendStep04SpendRedeemer,
-  type FieldOpening,
-  FraudProofComputationThreadRedeemer,
-  FraudProofTokenMintRedeemer,
   type MidgardTxInput,
   requireInputIndex,
   requireMintRedeemerIndex,
   requireOwnMintPurpose,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  DoubleSpendStep04Datum,
+  DoubleSpendStep04SpendRedeemer,
+  type FieldOpening,
+  FraudProofComputationThreadRedeemer,
+  FraudProofTokenMintRedeemer,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

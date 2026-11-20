@@ -1,5 +1,5 @@
 import { outRefToCbor } from "@al-ft/lucid-midgard";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 
 /** Existing SDK.OutputReference to canonical field-0/1 ledger-key conversion. */

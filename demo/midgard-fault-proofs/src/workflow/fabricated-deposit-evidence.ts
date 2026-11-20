@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
 
+import { OutputReference } from "@al-ft/midgard-sdk/core";
 import {
   type AuthenticatedStateQueueHeaderObservation,
   FABRICATED_DEPOSIT_VIOLATION_ID,
-  OutputReference,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   Data,
   type LucidEvolution,

@@ -1,7 +1,7 @@
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { reconstructDaPayload } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-reconstruct";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import {
   decodeDaPayloadStrict,
   verifyDaPayloadAgainstHeader,

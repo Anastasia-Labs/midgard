@@ -18,14 +18,16 @@ import {
   encodeHeaderCbor,
   FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX,
   ForcedInclusionTxV1Schema,
+  OutputReference,
+  Proof,
+  ROOT_DOMAINS,
+} from "@al-ft/midgard-sdk/core";
+import {
   FraudProofTokenDatumSchema,
   type NetworkIdFault,
   NetworkIdForcedScanDatumSchema,
   NetworkIdForcedStepDatumSchema,
-  OutputReference,
-  Proof,
-  ROOT_DOMAINS,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   Data,
   type LucidEvolution,

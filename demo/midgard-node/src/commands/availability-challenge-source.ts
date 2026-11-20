@@ -8,7 +8,7 @@
  * here). `--l1 node` and `--l1 blockfrost` are refused before anything is
  * read (`assertAvailabilityAccessServed`).
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/da";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 import type { AvailabilityUnitHistory } from "./availability-challenge.plan-availability-command-action.js";

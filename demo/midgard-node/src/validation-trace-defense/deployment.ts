@@ -9,7 +9,9 @@
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import { liveUtxosIn, postgresDialect } from "@al-ft/midgard-l1-follower";
 import { toLucidUtxo } from "@al-ft/midgard-l1-follower/provider";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import type * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { SqlClient } from "@effect/sql";
 import {
   getAddressDetails,
@@ -24,7 +26,7 @@ import type { DefenseMaterialWorker } from "./material.js";
 import { type DefenseMaterialCache, DefenseSurveyFailed } from "./survey.js";
 
 export type ValidationTraceDisputeContracts =
-  SDK.ValidationTraceDisputeFaultProofContracts["validationTraceDispute"];
+  SDKFraudProof.ValidationTraceDisputeFaultProofContracts["validationTraceDispute"];
 
 /** The published reference scripts the defender's transactions read. */
 export type ValidationTraceDefenseReferences = Readonly<{
@@ -96,7 +98,7 @@ export const defenseAnchorUnits = (port: ValidationTraceDefensePort) => ({
     SDK.ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX +
     port.ourVkh,
   caseConfig:
-    port.dispute.caseConfig.policyId + SDK.VALIDATION_CASE_CONFIG_ASSET_NAME,
+    port.dispute.caseConfig.policyId + SDKDa.VALIDATION_CASE_CONFIG_ASSET_NAME,
   hubOracle: port.hubOraclePolicyId + SDK.HUB_ORACLE_ASSET_NAME,
 });
 

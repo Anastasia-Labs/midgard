@@ -1,7 +1,5 @@
-import {
-  cekContextReferenceScripts,
-  type ValidationTraceDisputeFaultProofContracts,
-} from "@al-ft/midgard-sdk";
+import { cekContextReferenceScripts } from "@al-ft/midgard-sdk/core";
+import { type ValidationTraceDisputeFaultProofContracts } from "@al-ft/midgard-sdk/fraud-proof";
 import {
   Emulator,
   generateEmulatorAccount,

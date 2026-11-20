@@ -36,7 +36,7 @@ import {
   simTxHash,
   type SimUtxo,
 } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/users";
 import { Data } from "@lucid-evolution/lucid";
 
 import {

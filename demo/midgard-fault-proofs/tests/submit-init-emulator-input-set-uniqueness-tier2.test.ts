@@ -30,10 +30,8 @@ import {
   MIDGARD_CHUNK_BYTES_K,
   MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
 } from "@al-ft/midgard-core";
-import {
-  fieldPreimagePublicationDatumCbor,
-  type MidgardTxInput,
-} from "@al-ft/midgard-sdk";
+import { type MidgardTxInput } from "@al-ft/midgard-sdk/core";
+import { fieldPreimagePublicationDatumCbor } from "@al-ft/midgard-sdk/state-queue";
 import { describe, expect, it } from "vitest";
 
 import {

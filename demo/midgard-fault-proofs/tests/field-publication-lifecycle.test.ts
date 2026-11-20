@@ -1,5 +1,5 @@
 import { planMidgardFieldCarriage } from "@al-ft/midgard-core";
-import * as sdk from "@al-ft/midgard-sdk";
+import * as sdk from "@al-ft/midgard-sdk/state-queue";
 import {
   CML,
   credentialToAddress,

@@ -6,11 +6,13 @@ import {
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
   type WitnessScriptDecodingScanState,
   WitnessScriptDecodingStep03DatumSchema,
   WitnessScriptDecodingStep03RedeemerSchema,
   WitnessScriptDecodingStep04DatumSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

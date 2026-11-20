@@ -51,7 +51,8 @@ import {
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
@@ -244,7 +245,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         "hex",
       ),
     };
-    const subject = SDK.acceptedVerdictSubject(block.nativeTxId);
+    const subject = SDKFraudProof.acceptedVerdictSubject(block.nativeTxId);
     const evidence = prepareScriptIntegrityHashMissingEvidence({
       finding: {
         category: "scriptIntegrityHashMissing",
@@ -666,7 +667,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       reconstruction: block.reconstruction,
       eventKey,
     });
-    const subject = SDK.forcedVerdictSubject({
+    const subject = SDKFraudProof.forcedVerdictSubject({
       transactionId: block.nativeTxId,
       sourceKey: orderKey,
       rejectionReason: "ScriptIntegrityHashMissing",
@@ -1044,7 +1045,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         certificatePolicyId: family.fieldPreimageCertificatePolicyId,
         label: "integrity max opening",
       });
-    const subject = SDK.acceptedVerdictSubject(block.nativeTxId);
+    const subject = SDKFraudProof.acceptedVerdictSubject(block.nativeTxId);
     if (block.txInclusion === null)
       throw new Error("max normal inclusion missing");
     const productionEvidence = prepareScriptIntegrityHashMissingEvidence({
@@ -1600,7 +1601,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         fee: 4_000n,
       }),
     });
-    const subject = SDK.acceptedVerdictSubject(s.block.nativeTxId);
+    const subject = SDKFraudProof.acceptedVerdictSubject(s.block.nativeTxId);
     const honest = {
       subject,
       script_integrity_hash: "01".repeat(32),
@@ -1621,7 +1622,9 @@ describe("script-integrity-hash-missing real lifecycle", () => {
     // Subject coordinate: step 02 recomputes the subject from the bound
     // source and refuses a datum naming another transaction.
     await expectOnchainRefusal(() =>
-      s.step02(bound, { subject: SDK.acceptedVerdictSubject("99".repeat(32)) }),
+      s.step02(bound, {
+        subject: SDKFraudProof.acceptedVerdictSubject("99".repeat(32)),
+      }),
     );
     coverage.scenario("reason_or_subject_coordinate_mutation");
     // Witness-set anchor: the carried anchor must be the bound one.
@@ -1695,7 +1698,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         ForcedTransactionEventKey: { tx_order_id: FORCED_ORDER_KEY },
       },
     });
-    const subject = SDK.forcedVerdictSubject({
+    const subject = SDKFraudProof.forcedVerdictSubject({
       transactionId: s.block.nativeTxId,
       sourceKey: FORCED_ORDER_KEY,
       rejectionReason: REASON,
@@ -1705,7 +1708,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
     // same leaf; the exact-reason bind refuses it.
     await expectOnchainRefusal(() =>
       s.step02(pending, {
-        subject: SDK.forcedVerdictSubject({
+        subject: SDKFraudProof.forcedVerdictSubject({
           transactionId: s.block.nativeTxId,
           sourceKey: FORCED_ORDER_KEY,
           rejectionReason: "ObserversForbiddenOnUntaggedNetwork",
@@ -1759,7 +1762,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         fee: 6_000n,
       }),
     });
-    const subject = SDK.acceptedVerdictSubject(s.block.nativeTxId);
+    const subject = SDKFraudProof.acceptedVerdictSubject(s.block.nativeTxId);
     const evidence = prepareScriptIntegrityHashMissingEvidence({
       finding: {
         category: "scriptIntegrityHashMissing",

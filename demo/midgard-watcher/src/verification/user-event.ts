@@ -1,4 +1,5 @@
-import { Value, valueToAssets } from "@al-ft/midgard-sdk";
+import { Value } from "@al-ft/midgard-sdk/core";
+import { valueToAssets } from "@al-ft/midgard-sdk/users";
 import { Data } from "@lucid-evolution/lucid";
 
 /**

@@ -1,7 +1,9 @@
 import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
 import { computeMidgardForcedTxProofCommitment } from "@al-ft/midgard-core/codec/forced";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -25,17 +27,17 @@ import {
 type PayloadFixtureInput = {
   readonly prevHeaderHash?: string;
   readonly prevUtxosRoot?: string;
-  readonly validationDescriptors?: readonly SDK.DaPayloadEntry[];
-  readonly retainedWitnesses?: readonly SDK.DaPayloadEntry[];
-  readonly utxos?: readonly SDK.DaPayloadEntry[];
-  readonly withdrawals?: readonly SDK.DaPayloadEntry[];
-  readonly forcedTransactions?: readonly SDK.DaPayloadEntry[];
-  readonly transactions?: readonly SDK.DaPayloadEntry[];
-  readonly transactionPreimages?: readonly SDK.DaPayloadEntry[];
-  readonly deposits?: readonly SDK.DaPayloadEntry[];
+  readonly validationDescriptors?: readonly SDKDa.DaPayloadEntry[];
+  readonly retainedWitnesses?: readonly SDKDa.DaPayloadEntry[];
+  readonly utxos?: readonly SDKDa.DaPayloadEntry[];
+  readonly withdrawals?: readonly SDKDa.DaPayloadEntry[];
+  readonly forcedTransactions?: readonly SDKDa.DaPayloadEntry[];
+  readonly transactions?: readonly SDKDa.DaPayloadEntry[];
+  readonly transactionPreimages?: readonly SDKDa.DaPayloadEntry[];
+  readonly deposits?: readonly SDKDa.DaPayloadEntry[];
   readonly steps?: readonly SDK.TransitionStep[];
-  readonly transitionTraceEntries?: readonly SDK.DaPayloadEntry[];
-  readonly eventToStep?: readonly SDK.DaPayloadEntry[];
+  readonly transitionTraceEntries?: readonly SDKDa.DaPayloadEntry[];
+  readonly eventToStep?: readonly SDKDa.DaPayloadEntry[];
 };
 
 export const buildPayloadFixture = async ({
@@ -53,13 +55,13 @@ export const buildPayloadFixture = async ({
   transitionTraceEntries = steps.map(traceEntry),
   eventToStep = [],
 }: PayloadFixtureInput): Promise<{
-  readonly payload: SDK.DaPayload;
+  readonly payload: SDKDa.DaPayload;
   readonly payloadEnvelopeCbor: Buffer;
   readonly header: SDK.Header;
   readonly headerHash: string;
 }> => {
   const forcedTransactionPreimages = forcedTransactions.map(
-    ([key, value], index): SDK.DaPayloadEntry => {
+    ([key, value], index): SDKDa.DaPayloadEntry => {
       const forced = Data.from(
         value,
         SDK.ForcedInclusionTxV1,
@@ -98,7 +100,7 @@ export const buildPayloadFixture = async ({
   const validationTraces =
     validationDescriptors ??
     validationEventKeys.map(
-      (eventKey, index): SDK.DaPayloadEntry =>
+      (eventKey, index): SDKDa.DaPayloadEntry =>
         encodedEntry({
           key: eventKey,
           keySchema: SDK.EventKeySchema,
@@ -198,8 +200,8 @@ export const buildPayloadFixture = async ({
     protocolVersion: 1n,
   };
   const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
-  const payload: SDK.DaPayload = {
-    version: SDK.DA_PAYLOAD_VERSION,
+  const payload: SDKDa.DaPayload = {
+    version: SDKDa.DA_PAYLOAD_VERSION,
     block_body: {
       header_hash: headerHash,
       header,
@@ -218,7 +220,7 @@ export const buildPayloadFixture = async ({
   };
   return {
     payload,
-    payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(payload), {
+    payloadEnvelopeCbor: await wrapDaPayload(SDKDa.encodeDaPayload(payload), {
       mode: "identity",
     }),
     header,
@@ -237,8 +239,8 @@ export const reconstruct = async (
 
 export const authenticatedObservation = (
   fixture: Awaited<ReturnType<typeof buildPayloadFixture>>,
-): SDK.AuthenticatedStateQueueHeaderObservation => ({
-  schemaVersion: SDK.CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
+): SDKFraudProof.AuthenticatedStateQueueHeaderObservation => ({
+  schemaVersion: SDKFraudProof.CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
   sourceMode: "local_node",
   provenance: {
     trustClass: "authenticated_cardano_l1",
@@ -301,8 +303,8 @@ export type L2ReplayFixture = {
   readonly reconstruction: TransitionTraceReconstruction;
   readonly evidence: {
     readonly stepIndex: bigint;
-    readonly spentUtxos: readonly SDK.LedgerDeleteWitness[];
-    readonly producedUtxos: readonly SDK.LedgerInsertWitness[];
+    readonly spentUtxos: readonly SDKFraudProof.LedgerDeleteWitness[];
+    readonly producedUtxos: readonly SDKFraudProof.LedgerInsertWitness[];
   };
   readonly replayedPostRoot: string;
 };

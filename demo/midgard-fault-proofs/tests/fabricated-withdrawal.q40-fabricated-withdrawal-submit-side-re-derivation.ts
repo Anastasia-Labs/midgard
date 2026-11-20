@@ -1,6 +1,8 @@
 import "./fabricated-withdrawal.q40-fabricated-withdrawal-l1-witness-authentication.js";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { credentialToAddress, Data, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -194,7 +196,10 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
     expect(absent.opening).toBe("NoAuthenticContent");
     expect(absent.fault).toBe("NonexistentWithdrawalIdentity");
     expect(
-      Data.to(absent.step04State, SDK.FabricatedWithdrawalStep04State),
+      Data.to(
+        absent.step04State,
+        SDKFraudProof.FabricatedWithdrawalStep04State,
+      ),
     ).toBe(FI_STEP_04_STATE_CBOR);
 
     const present = await deriveFabricatedWithdrawalStep03Handoff({
@@ -209,7 +214,10 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
       },
     });
     expect(
-      Data.to(present.step04State, SDK.FabricatedWithdrawalStep04State),
+      Data.to(
+        present.step04State,
+        SDKFraudProof.FabricatedWithdrawalStep04State,
+      ),
     ).toBe(MM_STEP_04_STATE_CBOR);
 
     // One 32-byte inequality settles body and signature: a forged signature
@@ -236,13 +244,13 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
     // the one place this family must *not* demand byte-identical CBOR.
     const rawLucidDatum = Data.to(
       withdrawalEventDatum(),
-      SDK.WithdrawalOrderDatum,
+      SDKUsers.WithdrawalOrderDatum,
     );
     expect(rawLucidDatum).not.toBe(DATUM_AUTHENTIC_WITHDRAWAL_EVENT);
     const normalized = await deriveFabricatedWithdrawalStep03Handoff({
       state: mmStep03State,
       openingCbor: historyOpening(
-        Data.from(rawLucidDatum, SDK.WithdrawalOrderDatum),
+        Data.from(rawLucidDatum, SDKUsers.WithdrawalOrderDatum),
       ),
     });
     expect(normalized.fault).toEqual(present.fault);
@@ -271,13 +279,16 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
       }),
     ).rejects.toThrow(/does not match the authenticated history commitment/u);
 
-    const established = SDK.fabricatedWithdrawalStep04State(mmStep03State, {
-      MismatchedWithdrawalContent: {
-        committed_withdrawal_content_hash: HASH_DIVERTED_WITHDRAWAL_CONTENT,
-        authentic_withdrawal_content_hash: HASH_AUTHENTIC_WITHDRAWAL_CONTENT,
-        event_inclusion_time: AUTHENTIC_INCLUSION_TIME,
+    const established = SDKFraudProof.fabricatedWithdrawalStep04State(
+      mmStep03State,
+      {
+        MismatchedWithdrawalContent: {
+          committed_withdrawal_content_hash: HASH_DIVERTED_WITHDRAWAL_CONTENT,
+          authentic_withdrawal_content_hash: HASH_AUTHENTIC_WITHDRAWAL_CONTENT,
+          event_inclusion_time: AUTHENTIC_INCLUSION_TIME,
+        },
       },
-    });
+    );
     expect(() =>
       assertFabricatedWithdrawalStep04Finalizable({
         state: established,

@@ -1,6 +1,6 @@
 /** The bounded field-8 pointer scan shared by the observed route and the
  * claimed redeemer route: grammar certification, then the pointer walk. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";

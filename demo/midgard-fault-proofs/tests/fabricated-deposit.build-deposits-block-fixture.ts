@@ -1,4 +1,7 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   credentialToAddress,
   Data,
@@ -92,7 +95,7 @@ export const FI_STEP_04_STATE_CBOR =
 export const MM_STEP_04_STATE_CBOR =
   "d8799f581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb581cb50943cc7ac3d1b46b37e1b33223419dcb3d4dbd03564f4966918ec60a14d8799f58207a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a03ffd87a9f58200ee4d3827f036188d9d47734f69d3d0db79598a14864eb91595ccbe7f00f8335582089ccb485f7c52cf77b0bdec91ab262a90bc7b519e9b6fae5a2a03529833c68630fffff";
 
-export const DA_PROVENANCE: SDK.EvidenceProvenance = {
+export const DA_PROVENANCE: SDKFraudProof.EvidenceProvenance = {
   trustClass: "public_or_permissionless_da",
   sourceId: "retained-da-peer",
   grade: "security",
@@ -120,9 +123,9 @@ export type DepositsBlockFixture = {
   readonly depositsRoot: string;
   readonly depositsPhasRoot: string;
   readonly depositCount: bigint;
-  readonly entries: readonly SDK.DaPayloadEntry[];
+  readonly entries: readonly SDKDa.DaPayloadEntry[];
   readonly payloadEnvelopeCbor: Buffer;
-  readonly observation: SDK.AuthenticatedStateQueueHeaderObservation;
+  readonly observation: SDKFraudProof.AuthenticatedStateQueueHeaderObservation;
 };
 
 /**
@@ -163,10 +166,10 @@ export const buildDepositsBlockFixture = async ({
     depositCount,
   };
   const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
-  const entries: SDK.DaPayloadEntry[] = leaves
-    .map(({ key, value }): SDK.DaPayloadEntry => [key, value])
+  const entries: SDKDa.DaPayloadEntry[] = leaves
+    .map(({ key, value }): SDKDa.DaPayloadEntry => [key, value])
     .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
-  const payload: SDK.DaPayload = {
+  const payload: SDKDa.DaPayload = {
     ...base.payload,
     block_body: {
       ...base.payload.block_body,
@@ -193,9 +196,9 @@ export const buildDepositsBlockFixture = async ({
 };
 
 export const l1Observation = (
-  overrides: Partial<SDK.AuthenticatedL1Observation> = {},
-): SDK.AuthenticatedL1Observation => ({
-  schemaVersion: SDK.CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
+  overrides: Partial<SDKFraudProof.AuthenticatedL1Observation> = {},
+): SDKFraudProof.AuthenticatedL1Observation => ({
+  schemaVersion: SDKFraudProof.CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
   sourceMode: "local_node",
   provenance: {
     trustClass: "authenticated_cardano_l1",
@@ -237,7 +240,7 @@ export const rootHistoryUtxo = (): UTxO => ({
         protected_until: 0n,
         payload: "RootContent",
       },
-      SDK.EventHistoryNode,
+      SDKUsers.EventHistoryNode,
     ),
     assets: { [DEPOSIT_POLICY_ID]: 1n },
   }),

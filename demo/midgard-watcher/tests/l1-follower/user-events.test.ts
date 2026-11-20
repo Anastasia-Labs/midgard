@@ -6,7 +6,7 @@
  * fenced by the store's rewinds and resets as capabilities. The header is
  * the store's own observation of a synthetic Init/Commit pair.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 import { afterEach, describe, expect, it } from "vitest";
 

@@ -3,7 +3,7 @@ import {
   makeDeploymentMarker,
   MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

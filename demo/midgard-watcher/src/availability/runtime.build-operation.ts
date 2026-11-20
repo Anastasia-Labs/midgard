@@ -1,5 +1,7 @@
 import type { openAvailabilityOperationJournal } from "@al-ft/midgard-core/availability-operation-journal";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   Data,
   type LucidEvolution,
@@ -35,10 +37,10 @@ const watcherAvailabilityValidity = async (
   lucid: LucidEvolution,
   action: string,
   ledgerTipSlot: () => Promise<number>,
-  limits?: SDK.DaAvailabilityValidityLimits,
+  limits?: SDKDa.DaAvailabilityValidityLimits,
 ): Promise<{ validFrom: bigint; validTo: bigint }> => {
   const tipSlot = await ledgerTipSlot();
-  const window = SDK.daAvailabilityValidityWindow({
+  const window = SDKDa.daAvailabilityValidityWindow({
     lucid,
     tip: { currentSlot: tipSlot, ledgerTipSlot: tipSlot },
     nowMs: Date.now(),
@@ -60,13 +62,13 @@ const watcherAvailabilityValidity = async (
 };
 
 export const buildWatcherAvailabilityOperation = async (
-  snapshot: SDK.DaAvailabilityChallengeSnapshot,
+  snapshot: SDKDa.DaAvailabilityChallengeSnapshot,
   action: WatcherAvailabilityAction,
   observation: WatcherAuthenticatedStateQueueObservation,
-  commitment: SDK.DaAvailabilityCommitment | undefined,
+  commitment: SDKDa.DaAvailabilityCommitment | undefined,
   buildLucid: LucidEvolution,
   context: {
-    deployment: SDK.DaAvailabilityDeployment;
+    deployment: SDKDa.DaAvailabilityDeployment;
     walletAddress: string;
     actor: string;
     config: WatcherProcessConfig;
@@ -75,11 +77,11 @@ export const buildWatcherAvailabilityOperation = async (
     /** The observed L1 ledger tip's slot. */
     ledgerTipSlot: () => Promise<number>;
   },
-  scope?: SDK.DaAvailabilityReadScope,
+  scope?: SDKDa.DaAvailabilityReadScope,
 ): Promise<{
   action: string;
   completesWorkflow?: boolean;
-  build(): Promise<TxSignBuilder | SDK.DaAvailabilityOperationBuild>;
+  build(): Promise<TxSignBuilder | SDKDa.DaAvailabilityOperationBuild>;
 }> => {
   const {
     deployment,
@@ -110,7 +112,7 @@ export const buildWatcherAvailabilityOperation = async (
   const liveQueue =
     action.action === "timeout"
       ? await Effect.runPromise(
-          SDK.fetchSortedStateQueueUTxOsProgram(buildLucid, {
+          SDKStateQueue.fetchSortedStateQueueUTxOsProgram(buildLucid, {
             stateQueueAddress:
               deployment.contracts.stateQueue.spendingScriptAddress,
             stateQueuePolicyId: deployment.contracts.stateQueue.policyId,
@@ -121,10 +123,10 @@ export const buildWatcherAvailabilityOperation = async (
   // Timeout reads it at the tip rather than from the finalized snapshot,
   // which lags the tip. Without an authentic pool there the Timeout is
   // skipped this reconciliation, never built against the snapshot's pool.
-  let livePool: Awaited<ReturnType<typeof SDK.fetchDaBondPool>> | undefined;
+  let livePool: Awaited<ReturnType<typeof SDKDa.fetchDaBondPool>> | undefined;
   if (action.action === "timeout") {
     try {
-      livePool = await SDK.fetchDaBondPool(buildLucid, {
+      livePool = await SDKDa.fetchDaBondPool(buildLucid, {
         policyId: deployment.contracts.daBondPool.policyId,
         address: deployment.contracts.daBondPool.spendingScriptAddress,
       });
@@ -193,7 +195,7 @@ export const buildWatcherAvailabilityOperation = async (
     return {
       action: "prepare",
       build: async () =>
-        SDK.buildDaAvailabilityFundingPreparationTx(
+        SDKDa.buildDaAvailabilityFundingPreparationTx(
           buildLucid,
           {
             walletInputs: [funds.funding],
@@ -249,7 +251,7 @@ export const buildWatcherAvailabilityOperation = async (
       if (action.action === "open") {
         return (
           await Effect.runPromise(
-            SDK.buildOpenDaAvailabilityChallengeTxProgram(
+            SDKDa.buildOpenDaAvailabilityChallengeTxProgram(
               buildLucid,
               deployment,
               {
@@ -271,7 +273,7 @@ export const buildWatcherAvailabilityOperation = async (
         const tranche = required(action.tranche, "next tranche");
         return (
           await Effect.runPromise(
-            SDK.buildSettleDaAvailabilityTrancheTxProgram(
+            SDKDa.buildSettleDaAvailabilityTrancheTxProgram(
               buildLucid,
               deployment,
               {
@@ -290,7 +292,7 @@ export const buildWatcherAvailabilityOperation = async (
       if (action.action === "close")
         return (
           await Effect.runPromise(
-            SDK.buildCloseDaAvailabilityChallengeTxProgram(
+            SDKDa.buildCloseDaAvailabilityChallengeTxProgram(
               buildLucid,
               deployment,
               {
@@ -324,7 +326,7 @@ export const buildWatcherAvailabilityOperation = async (
         // min(penalty, taken) + c, so no wallet coin funds it (E2). The
         // pool is the one read at the tip for this step.
         const built = await Effect.runPromise(
-          SDK.buildTimeoutDaAvailabilityChallengeTxProgram(
+          SDKDa.buildTimeoutDaAvailabilityChallengeTxProgram(
             buildLucid,
             deployment,
             {
@@ -355,12 +357,12 @@ export const buildWatcherAvailabilityOperation = async (
       return (
         await Effect.runPromise(
           action.action === "prune"
-            ? SDK.buildPruneDaUnavailableBlockDescendantTxProgram(
+            ? SDKDa.buildPruneDaUnavailableBlockDescendantTxProgram(
                 buildLucid,
                 deployment,
                 removal,
               )
-            : SDK.buildRemoveDaUnavailableHeadTxProgram(
+            : SDKDa.buildRemoveDaUnavailableHeadTxProgram(
                 buildLucid,
                 deployment,
                 removal,

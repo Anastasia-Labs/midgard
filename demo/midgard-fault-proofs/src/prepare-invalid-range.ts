@@ -1,12 +1,12 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { type NativeTxCompact as NativeTxCompactData } from "@al-ft/midgard-sdk/core";
 import {
   invalidRangeViolationReason,
-  type NativeTxCompact as NativeTxCompactData,
   type NormalizedTimeRange,
   normalizeNativeTxValidityRange,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import { parseHex, parseSignedInteger, stringifyJson } from "./json-file.js";
 import type {

@@ -17,7 +17,9 @@ import {
 } from "@al-ft/midgard-core/consensus-validation";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { hashMidgardValidationRejectionReasonV1 } from "@al-ft/midgard-core/validation-trace";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { replayValidationVerdictEvent } from "@al-ft/midgard-validation/validation-machine";
 import { Data } from "@lucid-evolution/lucid";
@@ -104,7 +106,7 @@ describe("forced admission screens", () => {
             .canonical,
         ),
       ).toBeNull();
-      const orderMaterial = SDK.deriveTxOrderMaterial({
+      const orderMaterial = SDKUsers.deriveTxOrderMaterial({
         submittedTxCbor: transaction.canonicalCbor,
         owner: Buffer.alloc(28),
       });
@@ -274,7 +276,7 @@ describe("forced admission screens", () => {
         protocolVersion: 1n,
         ...counts,
       };
-      const payload: SDK.DaPayload = {
+      const payload: SDKDa.DaPayload = {
         version: 1n,
         block_body: {
           header,
@@ -329,7 +331,7 @@ describe("forced admission screens", () => {
           validation_trace_witnesses: [],
         },
       };
-      const decoded = decodeDaPayloadStrict(SDK.encodeDaPayload(payload));
+      const decoded = decodeDaPayloadStrict(SDKDa.encodeDaPayload(payload));
       expect(decoded.block_body.forced_transactions).toEqual(
         payload.block_body.forced_transactions,
       );
@@ -350,9 +352,9 @@ describe("forced admission screens", () => {
           ),
         ],
       ];
-      expect(() => decodeDaPayloadStrict(SDK.encodeDaPayload(payload))).toThrow(
-        /verdict/,
-      );
+      expect(() =>
+        decodeDaPayloadStrict(SDKDa.encodeDaPayload(payload)),
+      ).toThrow(/verdict/);
       payload.block_body.forced_transactions = [
         [orderKey, Data.to(leaf, SDK.ForcedInclusionTxV1)],
       ];
@@ -365,7 +367,7 @@ describe("forced admission screens", () => {
         ],
       ];
       expect(() =>
-        decodeDaPayloadStrict(SDK.encodeDaPayload(payload)),
+        decodeDaPayloadStrict(SDKDa.encodeDaPayload(payload)),
       ).toThrow();
     },
   );

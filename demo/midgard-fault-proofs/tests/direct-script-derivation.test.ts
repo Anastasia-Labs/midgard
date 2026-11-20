@@ -6,7 +6,8 @@ import {
   encodeMidgardVersionedScript,
 } from "@al-ft/midgard-core";
 import { encodeCborUnsigned } from "@al-ft/midgard-core/codec/cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -41,7 +42,7 @@ const output = (hash: string, protectedAddress = true) =>
 
 describe("direct script preparation", () => {
   it("preserves the completed source receipt in every receive wire state", () => {
-    const bound: SDK.DirectScriptBound = {
+    const bound: SDKFraudProof.DirectScriptBound = {
       subject: {
         version: 1n,
         direction: 0n,
@@ -58,11 +59,17 @@ describe("direct script preparation", () => {
     const receipt = { bound, source_index };
     const fraud_prover = "aa".repeat(28);
     expect(
-      Data.to({ fraud_prover, data: receipt }, SDK.DirectReceiveStartDatum),
+      Data.to(
+        { fraud_prover, data: receipt },
+        SDKFraudProof.DirectReceiveStartDatum,
+      ),
     ).toBe(
-      Data.to({ fraud_prover, data: receipt }, SDK.DirectSourceBoundIndexDatum),
+      Data.to(
+        { fraud_prover, data: receipt },
+        SDKFraudProof.DirectSourceBoundIndexDatum,
+      ),
     );
-    const cursor: SDK.DirectFieldCursor = {
+    const cursor: SDKFraudProof.DirectFieldCursor = {
       bound,
       field_index: 2n,
       phase: "Certifying",
@@ -80,7 +87,7 @@ describe("direct script preparation", () => {
             complete: false,
           },
         },
-        SDK.DirectReceiveOutputDatum,
+        SDKFraudProof.DirectReceiveOutputDatum,
       ),
       Data.to(
         {
@@ -97,7 +104,7 @@ describe("direct script preparation", () => {
             selected: null,
           },
         },
-        SDK.DirectReceiveDeclarationDatum,
+        SDKFraudProof.DirectReceiveDeclarationDatum,
       ),
       Data.to(
         {
@@ -109,7 +116,7 @@ describe("direct script preparation", () => {
             purpose: null,
           },
         },
-        SDK.DirectPurposeSelectionDatum,
+        SDKFraudProof.DirectPurposeSelectionDatum,
       ),
     ];
     // Absolute field one is the source receipt in each Aiken record, rather
@@ -147,7 +154,9 @@ describe("direct script preparation", () => {
       payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
     });
     const prepared = await prepareDirectScriptMaterial({ current, eventKey });
-    expect(prepared.bound.subject).toEqual(SDK.acceptedVerdictSubject(tx.txId));
+    expect(prepared.bound.subject).toEqual(
+      SDKFraudProof.acceptedVerdictSubject(tx.txId),
+    );
     expect(prepared.sourceBound.compact_cbor).toBe(
       tx.compactCbor.toString("hex"),
     );
@@ -180,8 +189,11 @@ describe("direct script preparation", () => {
       );
       expect(
         Data.from(
-          Data.to(resolved[0]!.witness, SDK.DirectResolvedSourceWitness),
-          SDK.DirectResolvedSourceWitness,
+          Data.to(
+            resolved[0]!.witness,
+            SDKFraudProof.DirectResolvedSourceWitness,
+          ),
+          SDKFraudProof.DirectResolvedSourceWitness,
         ),
       ).toEqual(resolved[0]!.witness);
     },
@@ -460,9 +472,9 @@ describe("direct script preparation", () => {
         execution_steps: 912_345n,
       });
       if (selected === null) throw new Error("matching actual redeemer absent");
-      expect(Data.to(selected, SDK.DirectRedeemer).length / 2).toBeLessThan(
-        200,
-      );
+      expect(
+        Data.to(selected, SDKFraudProof.DirectRedeemer).length / 2,
+      ).toBeLessThan(200);
       expect(
         directRedeemerAt([item], { kind: BigInt(kind), index: 8n }),
       ).toBeNull();

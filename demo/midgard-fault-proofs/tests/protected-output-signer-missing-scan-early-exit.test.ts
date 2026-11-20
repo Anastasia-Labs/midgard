@@ -1,5 +1,5 @@
 import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
-import { forcedVerdictSubject } from "@al-ft/midgard-sdk";
+import { forcedVerdictSubject } from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import { SIGNER_WITNESS_SCAN_BATCH } from "../src/signer-witness-scan/index.js";

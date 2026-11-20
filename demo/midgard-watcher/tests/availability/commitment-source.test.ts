@@ -1,5 +1,6 @@
 import type { FraudProofRawL1Transaction } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
   CML,
   credentialToAddress,
@@ -14,16 +15,16 @@ import { refusalError } from "../../src/l1-follower/fault-proof-l1-source.chain.
 const HEADER = "22".repeat(28);
 const QUEUE_POLICY = "55".repeat(28);
 const DAAT_POLICY = "66".repeat(28);
-const GEOMETRY = SDK.availabilityResponseGeometry(
-  SDK.DA_AVAILABILITY_RESPONSE_GEOMETRY_MEASUREMENT_CANDIDATE,
+const GEOMETRY = SDKDa.availabilityResponseGeometry(
+  SDKDa.DA_AVAILABILITY_RESPONSE_GEOMETRY_MEASUREMENT_CANDIDATE,
 );
-const commitment = SDK.buildDaAvailabilityCommitment({
+const commitment = SDKDa.buildDaAvailabilityCommitment({
   deploymentIdentity: "11".repeat(28),
   headerHash: HEADER,
   payload: Uint8Array.from({ length: 4_000 }, (_, i) => (i * 17 + 3) % 256),
   responseGeometry: GEOMETRY,
 });
-const commitmentHash = SDK.daAvailabilityCommitmentHash(commitment);
+const commitmentHash = SDKDa.daAvailabilityCommitmentHash(commitment);
 const address = CML.Address.from_bech32(
   credentialToAddress("Preprod", { type: "Script", hash: "77".repeat(28) }),
 );
@@ -40,9 +41,9 @@ const attestation = Data.to(
     attested_signers: "00".repeat(32),
     attestation_count: 1n,
   },
-  SDK.DaAttestationDatum,
+  SDKDa.DaAttestationDatum,
 );
-const DAAT_NAME = SDK.daAttestationAssetName(HEADER);
+const DAAT_NAME = SDKDa.daAttestationAssetName(HEADER);
 
 const rawTransaction = (
   inputs: readonly (readonly [string, bigint])[],
@@ -143,8 +144,8 @@ const refusal = async (promise: Promise<unknown>) => {
     () => undefined,
     (cause: unknown) => cause,
   );
-  expect(caught).toBeInstanceOf(SDK.DaAvailabilityTransactionError);
-  return (caught as SDK.DaAvailabilityTransactionError).reason;
+  expect(caught).toBeInstanceOf(SDKDa.DaAvailabilityTransactionError);
+  return (caught as SDKDa.DaAvailabilityTransactionError).reason;
 };
 
 describe("watcher Attested commitment recovery (spec #685 E1)", () => {
@@ -160,7 +161,7 @@ describe("watcher Attested commitment recovery (spec #685 E1)", () => {
       txHash: s.init.txHash,
       outputIndex: 1,
     });
-    expect(SDK.daAvailabilityCommitmentHash(recovered.commitment)).toBe(
+    expect(SDKDa.daAvailabilityCommitmentHash(recovered.commitment)).toBe(
       commitmentHash,
     );
   });

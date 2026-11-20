@@ -1,7 +1,7 @@
 import {
   FraudProofComputationThreadStepDatum,
   InvalidRangeStep02Datum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { InvalidRangeContracts } from "../invalid-range/contracts.js";
 import { ZeroInputStep02DatumSchema } from "../zero-input/schemas.js";

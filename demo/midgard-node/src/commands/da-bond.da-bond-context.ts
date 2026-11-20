@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import {
   CML,
   Data,
@@ -18,7 +19,7 @@ export type DaBondContext = Readonly<{
   /** The deployment's network, recorded in and checked against every file. */
   network: string;
   manifestId: string;
-  poolValidator: SDK.AuthenticatedValidator;
+  poolValidator: SDKCore.AuthenticatedValidator;
   /** The authenticated `da-bond-pool spending` reference-script UTxO. */
   poolSpendingReference: UTxO;
   parameters: SDK.DaAvailabilityParameters;

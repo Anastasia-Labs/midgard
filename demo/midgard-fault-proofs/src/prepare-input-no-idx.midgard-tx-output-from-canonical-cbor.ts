@@ -2,7 +2,8 @@ import {
   decodeMidgardNativeByteListPreimage,
   formatUnknownError,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 import type {
   DecodedTransactionMaterial,
@@ -88,7 +89,7 @@ export const midgardTxOutputFromCanonicalCbor = (
 export type PreparedInputNoIdxInputsPreimageJson = {
   readonly badTxId: string;
   readonly verifiedTxInputsHash: string;
-  readonly inputsPreimage: readonly SDK.MidgardTxInput[];
+  readonly inputsPreimage: readonly SDKCore.MidgardTxInput[];
   readonly badInputsIndex: number;
 };
 
@@ -168,7 +169,7 @@ export type PreparedInputNoIdxOutput = {
 
 export const spendInputsOf = (
   tx: DecodedTransactionMaterial,
-): readonly SDK.MidgardTxInput[] =>
+): readonly SDKCore.MidgardTxInput[] =>
   tx.inputs.map((input) => ({
     tx_id: input.transactionId.toLowerCase(),
     output_index: input.outputIndex,
@@ -193,7 +194,7 @@ export const nativeOutputItems = (
 export type Candidate = {
   readonly badTx: DecodedTransactionMaterial;
   readonly badInputsIndex: number;
-  readonly badInput: SDK.MidgardTxInput;
+  readonly badInput: SDKCore.MidgardTxInput;
   readonly producingTx: DecodedTransactionMaterial;
   readonly producingOutputs: readonly Buffer[];
 };

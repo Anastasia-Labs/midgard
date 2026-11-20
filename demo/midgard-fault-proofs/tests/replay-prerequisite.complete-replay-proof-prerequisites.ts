@@ -1,10 +1,9 @@
 import { decodeMidgardNativeTxFullFromCanonicalCbor } from "@al-ft/midgard-core";
+import { EMPTY_MERKLE_TREE_ROOT, EventKey } from "@al-ft/midgard-sdk/core";
 import {
-  EMPTY_MERKLE_TREE_ROOT,
-  EventKey,
   FABRICATED_DEPOSIT_VIOLATION_ID,
   FABRICATED_WITHDRAWAL_VIOLATION_ID,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

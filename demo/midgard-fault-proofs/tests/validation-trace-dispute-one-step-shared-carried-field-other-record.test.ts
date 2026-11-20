@@ -10,7 +10,7 @@
  * reads the block as removed against another record: it spends the
  * publication back by key, and ends resolved by that record only once the
  * spend back is final at release depth (carried-field.ts). */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { Data, generateEmulatorAccount, Lucid } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 

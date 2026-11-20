@@ -11,7 +11,7 @@ import {
   MIDGARD_CONSENSUS_PROFILE_ID,
   type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 
 import * as ProjectedEvents from "./utils/projected-events.js";

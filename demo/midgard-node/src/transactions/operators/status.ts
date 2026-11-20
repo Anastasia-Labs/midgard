@@ -5,7 +5,9 @@
  * watchdog uses, over the same evidence (the earliest undelivered user
  * event), so what the report predicts is what the watchdog will do.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKOperators from "@al-ft/midgard-sdk/operators";
+import type * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { type LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -14,9 +16,9 @@ import { resolveL1NowMsOrRefuse } from "../register-active-operator/clock.js";
 
 export type OperatorStatusReport = {
   readonly operatorKeyHash: string;
-  readonly state: SDK.OperatorState;
+  readonly state: SDKOperators.OperatorState;
   readonly duplicate: boolean;
-  readonly memberships: readonly SDK.OperatorDirectoryOccupancyKind[];
+  readonly memberships: readonly SDKOperators.OperatorDirectoryOccupancyKind[];
   readonly bondLovelace: string | null;
   readonly inactivityStrikes: number | null;
   readonly maxInactivityStrikes: number;
@@ -39,7 +41,7 @@ export type OperatorStatusReport = {
      * none, and then nobody can be struck.
      */
     readonly neglectedEvent: {
-      readonly kind: SDK.NeglectedUserEventKind;
+      readonly kind: SDKOperators.NeglectedUserEventKind;
       readonly inclusionTime: string;
     } | null;
     readonly thresholdTime: string | null;
@@ -74,19 +76,19 @@ export type OperatorStatusInput = {
     readonly patienceMs: number;
   };
   readonly nowMs?: bigint;
-  readonly snapshot?: SDK.OperatorDirectorySnapshot;
+  readonly snapshot?: SDKOperators.OperatorDirectorySnapshot;
   /** The cited event, read from the provider when omitted. */
-  readonly neglectedEvent?: SDK.NeglectedUserEventClaim | null;
+  readonly neglectedEvent?: SDKOperators.NeglectedUserEventClaim | null;
 };
 
 const isoOf = (ms: number | null): string | null =>
   ms === null ? null : new Date(ms).toISOString();
 
 const inactivityBlock = (
-  plan: SDK.InactivityTakeoverPlan,
-  neglectedEvent: SDK.NeglectedUserEventClaim | null,
+  plan: SDKOperators.InactivityTakeoverPlan,
+  neglectedEvent: SDKOperators.NeglectedUserEventClaim | null,
   nowMs: bigint,
-  status: SDK.OperatorStatus,
+  status: SDKOperators.OperatorStatus,
   patienceMs: number,
 ): OperatorStatusReport["inactivity"] => {
   if (plan.kind === "no-shift") {
@@ -164,26 +166,31 @@ const inactivityBlock = (
  * watchdog record.
  */
 export const deriveOperatorStatusReport = (
-  snapshot: SDK.OperatorDirectorySnapshot,
+  snapshot: SDKOperators.OperatorDirectorySnapshot,
   input: Omit<OperatorStatusInput, "snapshot" | "nowMs" | "neglectedEvent"> & {
     readonly nowMs: bigint;
-    readonly neglectedEvent: SDK.NeglectedUserEventClaim | null;
+    readonly neglectedEvent: SDKOperators.NeglectedUserEventClaim | null;
   },
 ): OperatorStatusReport => {
   const { operatorKeyHash, nowMs, neglectedEvent } = input;
-  const status = SDK.deriveOperatorStatus(snapshot, operatorKeyHash, nowMs, {
-    maxInactivityStrikes: SDK.MAX_INACTIVITY_STRIKES,
-  });
-  const plan = SDK.planInactivityTakeover({
+  const status = SDKOperators.deriveOperatorStatus(
+    snapshot,
+    operatorKeyHash,
+    nowMs,
+    {
+      maxInactivityStrikes: SDK.MAX_INACTIVITY_STRIKES,
+    },
+  );
+  const plan = SDKOperators.planInactivityTakeover({
     snapshot,
     nowMs,
     neglectedEvent,
     params: {
-      ...SDK.DEFAULT_INACTIVITY_TIMING_PARAMETERS,
+      ...SDKOperators.DEFAULT_INACTIVITY_TIMING_PARAMETERS,
       maxInactivityStrikes: SDK.MAX_INACTIVITY_STRIKES,
     },
   });
-  const scheduled = SDK.schedulerCurrentOperator(snapshot.scheduler);
+  const scheduled = SDKOperators.schedulerCurrentOperator(snapshot.scheduler);
   const record = readOperatorWatchdogRecord();
   return {
     operatorKeyHash,
@@ -230,25 +237,30 @@ export const deriveOperatorStatusReport = (
 
 export const operatorStatusProgram = (
   lucid: LucidEvolution,
-  contracts: SDK.OperatorDirectoryValidators &
+  contracts: SDKOperators.OperatorDirectoryValidators &
     Pick<SDK.MidgardValidators, "eventHistory" | "txOrder">,
   input: OperatorStatusInput,
 ): Effect.Effect<
   OperatorStatusReport,
-  SDK.OperatorDirectorySnapshotError | SDK.StateQueueError | SDK.LucidError
+  | SDKOperators.OperatorDirectorySnapshotError
+  | SDKStateQueue.StateQueueError
+  | SDK.LucidError
 > =>
   Effect.gen(function* () {
     const snapshot =
       input.snapshot ??
-      (yield* SDK.fetchOperatorDirectorySnapshotProgram(lucid, contracts));
+      (yield* SDKOperators.fetchOperatorDirectorySnapshotProgram(
+        lucid,
+        contracts,
+      ));
     const nowMs =
       input.nowMs ?? (yield* resolveL1NowMsOrRefuse(lucid, "status"));
     const neglectedEvent =
       input.neglectedEvent !== undefined
         ? input.neglectedEvent
-        : SDK.schedulerCurrentOperator(snapshot.scheduler) === null
+        : SDKOperators.schedulerCurrentOperator(snapshot.scheduler) === null
           ? null
-          : yield* SDK.fetchNeglectedUserEventProgram(
+          : yield* SDKOperators.fetchNeglectedUserEventProgram(
               lucid,
               contracts,
               snapshot.stateQueueTail.endTime,

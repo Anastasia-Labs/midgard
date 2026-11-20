@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKOperators from "@al-ft/midgard-sdk/operators";
 import {
   generateEmulatorAccount,
   Lucid,
@@ -40,12 +41,12 @@ export const advanceShiftToPredecessor = async ({
   const { lucid, contracts, scriptRefs } = fixture;
   const snapshot = await fetchDirectorySnapshot(lucid, contracts);
   const advanceTarget = snapshot.active.find(
-    (node) => SDK.nodeKeyHex(node.datum.next) === scheduledKeyHash,
+    (node) => SDKOperators.nodeKeyHex(node.datum.next) === scheduledKeyHash,
   );
   if (advanceTarget === undefined) {
     throw new Error("Expected a predecessor of the scheduled operator");
   }
-  const nextOperator = SDK.nodeKeyHex(advanceTarget.datum.key);
+  const nextOperator = SDKOperators.nodeKeyHex(advanceTarget.datum.key);
   if (nextOperator === null) {
     throw new Error("Expected the advance target to be a list member");
   }

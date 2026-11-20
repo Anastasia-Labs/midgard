@@ -2,7 +2,8 @@ import {
   computeHash28,
   encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../../src/evidence/canonical-block-evidence.js";
 import { admitCompleteCanonicalReplayPredecessor } from "../../src/workflow/complete-replay.admit-complete-canonical-replay-predecessor.js";
@@ -123,9 +124,9 @@ export const withdrawalMistagRetainedFixture = async ({
   const headerHash = computeHash28(SDK.encodeHeaderCbor(header)).toString(
     "hex",
   );
-  const entries = (root: typeof material.source): SDK.DaPayloadEntry[] =>
+  const entries = (root: typeof material.source): SDKDa.DaPayloadEntry[] =>
     root.entries.map((e) => [e.key.toString("hex"), e.value.toString("hex")]);
-  const payload: SDK.DaPayload = {
+  const payload: SDKDa.DaPayload = {
     ...base.payload,
     block_body: {
       ...base.payload.block_body,

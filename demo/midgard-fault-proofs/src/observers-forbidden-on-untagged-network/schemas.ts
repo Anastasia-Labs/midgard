@@ -1,9 +1,11 @@
 import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
+} from "@al-ft/midgard-sdk/core";
+import {
   FieldOpeningSchema,
   ProofThreadSubjectSourceSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import { ObserversForbiddenStateSchema } from "./family.js";

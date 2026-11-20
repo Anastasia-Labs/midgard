@@ -4,7 +4,7 @@
  * addresses, and its retirement observer. Plain JSON, so a soak plugin can
  * take it from `soak.json`.
  */
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/users";
 import { getAddressDetails } from "@lucid-evolution/lucid";
 
 import type { TrackedSet } from "../types.js";

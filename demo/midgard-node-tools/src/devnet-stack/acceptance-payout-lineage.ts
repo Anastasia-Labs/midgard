@@ -1,6 +1,7 @@
 import { assetsEqual, normalizeAssets } from "@al-ft/midgard-core/assets";
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { CML, Data, datumToHash } from "@lucid-evolution/lucid";
 import { addressDataToBech32 } from "midgard-node/commands/withdrawal-utils";
 
@@ -155,7 +156,7 @@ export const verifyAcceptancePayoutLineage = (
       orderOutput.datumHash === undefined,
     "Order NFT address/datum/quantity mismatch",
   );
-  const node = Data.from(orderOutput.datum!, SDK.EventHistoryNode);
+  const node = Data.from(orderOutput.datum!, SDKUsers.EventHistoryNode);
   requireAcceptance(
     typeof node.position === "object" &&
       node.position.Key[0] === eventKey &&
@@ -180,14 +181,14 @@ export const verifyAcceptancePayoutLineage = (
         datumToHash(external) === facts.location.External.storage_datum_hash,
       "missing or unbound retained external payload",
     );
-    const retained = Data.from(external!, SDK.EventHistoryData);
+    const retained = Data.from(external!, SDKUsers.EventHistoryData);
     requireAcceptance(
       retained.event_key === eventKey,
       "external datum event key mismatch",
     );
     payloadCbor = plutusConstrFieldCbor(external!, [1]);
   }
-  const payload = Data.from(payloadCbor, SDK.EventHistoryPayload);
+  const payload = Data.from(payloadCbor, SDKUsers.EventHistoryPayload);
   requireAcceptance(
     "WithdrawalPayload" in payload,
     "Order payload is not Withdrawal",
@@ -212,7 +213,7 @@ export const verifyAcceptancePayoutLineage = (
     ),
   );
   requireAcceptance(
-    assetsEqual(SDK.valueToAssets(body.l2_value), assets) &&
+    assetsEqual(SDKUsers.valueToAssets(body.l2_value), assets) &&
       addressDataToBech32(config.network, body.l1_address) ===
         record.l1Address &&
       `${body.l2_outref.transactionId}#${body.l2_outref.outputIndex}` ===

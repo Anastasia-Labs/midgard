@@ -1,4 +1,8 @@
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/da";
+import "@al-ft/midgard-sdk/users";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "@al-ft/midgard-validation/script-decode.step";
 import "@al-ft/midgard-validation/script-decode.step-walk";
 import "@lucid-evolution/lucid";

@@ -1,6 +1,6 @@
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 
 /** Decodes a stored DA payload envelope; only the canonical V1 schema is accepted. */
 export const decodeStoredPayload = ({

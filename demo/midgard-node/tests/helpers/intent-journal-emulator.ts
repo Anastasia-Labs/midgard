@@ -33,7 +33,7 @@ import {
   type TxSummary,
 } from "@al-ft/midgard-l1-follower";
 import { encodeUtxoAnswer } from "@al-ft/midgard-l1-follower/testing";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import { SqlClient } from "@effect/sql";
 import { PgClient } from "@effect/sql-pg";
 import {

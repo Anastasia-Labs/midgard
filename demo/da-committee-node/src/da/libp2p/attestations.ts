@@ -1,6 +1,6 @@
 import "@al-ft/midgard-core/da-stream-codec";
 import "@al-ft/midgard-core/da-transport";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/da";
 import "../../peer/signatures.js";
 import "./DaProtocols.js";
 import "./attestations.store-backed-da-attestation-protocol.js";

@@ -1,5 +1,6 @@
 /** L1 fixtures for the state queue root anchor tests. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import {
@@ -18,7 +19,10 @@ export const stateQueue = {
 export const headerHash = Effect.runSync(SDK.hashBlockHeader(header));
 export const otherHash = "ab".repeat(28);
 export const olderHash = "e5".repeat(28);
-const rootUnit = toUnit(stateQueuePolicyId, SDK.STATE_QUEUE_ROOT_ASSET_NAME);
+const rootUnit = toUnit(
+  stateQueuePolicyId,
+  SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME,
+);
 export const nodeUnit = (hash: string) =>
   toUnit(stateQueuePolicyId, SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + hash);
 const link = (hash: string | null): SDK.LinkedListNodeView["next"] =>

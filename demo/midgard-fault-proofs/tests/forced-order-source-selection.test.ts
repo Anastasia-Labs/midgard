@@ -9,7 +9,8 @@ import {
   deriveMidgardForcedTxProofSource,
   encodeMidgardForcedTxCanonical,
 } from "@al-ft/midgard-core/codec/forced";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -123,7 +124,7 @@ const fixture = async (
         key,
         value,
         fullTransactionCbor,
-        keyBytes: SDK.encodeProofThreadForcedSourceKey(key),
+        keyBytes: SDKFraudProof.encodeProofThreadForcedSourceKey(key),
         valueBytes: Buffer.from(
           Data.to<SDK.ForcedInclusionTxV1>(
             value,
@@ -178,7 +179,7 @@ describe.each(families)(
         entries[1]!.value.submitted_source,
       );
       for (const entry of entries) {
-        const subject = SDK.forcedVerdictSubject({
+        const subject = SDKFraudProof.forcedVerdictSubject({
           transactionId: entry.value.tx_id,
           sourceKey: entry.key,
           rejectionReason: reason,
@@ -205,7 +206,7 @@ describe.each(families)(
 
     it("refuses a foreign order key despite a matching transaction ID and reason", async () => {
       const { block, entries } = await fixture(reason);
-      const subject = SDK.forcedVerdictSubject({
+      const subject = SDKFraudProof.forcedVerdictSubject({
         transactionId: entries[0]!.value.tx_id,
         sourceKey: { ...entries[0]!.key, outputIndex: 2n },
         rejectionReason: reason,

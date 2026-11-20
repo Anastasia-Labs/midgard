@@ -1,7 +1,7 @@
 import {
   DoubleWithdrawStep02Datum,
   FraudProofComputationThreadStepDatum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { DoubleWithdrawContracts } from "../double-withdraw/contracts.js";
 import { DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";

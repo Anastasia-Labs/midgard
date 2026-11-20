@@ -25,6 +25,11 @@ import {
   decodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
 import {
+  requireInputIndex,
+  requireOwnSpendPurpose,
+  requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
   MIDGARD_FIELD_INDEX,
   MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT,
   type MintAuthorizationStep04Args,
@@ -33,10 +38,7 @@ import {
   type MintAuthorizationStep04State,
   MintAuthorizationStep05Datum,
   type MintAuthorizationStep05State,
-  requireInputIndex,
-  requireOwnSpendPurpose,
-  requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

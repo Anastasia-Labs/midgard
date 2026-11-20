@@ -13,7 +13,8 @@ import {
   eventProjection,
   eventTrackedSet,
 } from "@al-ft/midgard-l1-follower/events";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -65,7 +66,7 @@ afterAll(async () => {
 });
 
 const GENESIS = "00".repeat(28);
-const ROOT = SDK.STATE_QUEUE_ROOT_ASSET_NAME;
+const ROOT = SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME;
 const PREFIX = SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX;
 
 const union = (a: TrackedSet, b: TrackedSet): TrackedSet => ({
@@ -127,7 +128,7 @@ describe.each(["sqlite", "postgres"] as const)(
         },
       ]);
       const first = simHeader(1, GENESIS);
-      const firstHash = SDK.stateQueueHeaderHash(first);
+      const firstHash = SDKStateQueue.stateQueueHeaderHash(first);
       const rootRef: OutRef = { txHash: rootTx!, index: 0 };
       await chain.forward([
         {
@@ -217,7 +218,7 @@ describe.each(["sqlite", "postgres"] as const)(
           inputs: [outside()],
           outputs: [
             queueOutput(
-              PREFIX + SDK.stateQueueHeaderHash(orphan),
+              PREFIX + SDKStateQueue.stateQueueHeaderHash(orphan),
               nodeDatum(orphan, "Unattested", null),
             ),
           ],

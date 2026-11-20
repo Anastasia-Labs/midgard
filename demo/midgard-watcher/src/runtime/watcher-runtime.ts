@@ -1,7 +1,11 @@
 import "node:fs/promises";
 import "node:path";
 import "@al-ft/midgard-fault-proofs";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/da";
+import "@al-ft/midgard-sdk/users";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "@lucid-evolution/lucid";
 import "../availability/runtime.js";
 import "../fault-proofs/fault-decision-bridge.js";

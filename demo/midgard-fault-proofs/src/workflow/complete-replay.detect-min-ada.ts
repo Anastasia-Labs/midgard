@@ -19,7 +19,7 @@ import {
   NATIVE_SCRIPT_INVALID_VIOLATION_ID,
   verifyAddressWitness,
   WITHDRAWN_INPUT_VIOLATION_ID,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   MIDGARD_COINS_PER_UTXO_BYTE,
   outputMeetsMinAda,

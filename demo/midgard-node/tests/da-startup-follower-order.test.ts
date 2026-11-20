@@ -21,7 +21,8 @@ import {
   SimChain,
   simUniverse,
 } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import {
   Data,
   generateSeedPhrase,
@@ -66,7 +67,7 @@ afterAll(async () => {
   await databases.dropAll();
 });
 
-let contracts: SDK.MidgardValidators;
+let contracts: SDKCore.MidgardValidators;
 let index: NodeIndexSpec;
 beforeAll(async () => {
   contracts = await loadRealMidgardContractsForTest({

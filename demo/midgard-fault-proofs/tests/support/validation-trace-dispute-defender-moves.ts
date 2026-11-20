@@ -3,7 +3,7 @@
  * builders, and the expiry of a thread past its case's duration, with the
  * thread-expiry withdrawal registered and the scripts it runs published. */
 import { type MidgardValidationTraceProof } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import {
   Data,
   type LucidEvolution,

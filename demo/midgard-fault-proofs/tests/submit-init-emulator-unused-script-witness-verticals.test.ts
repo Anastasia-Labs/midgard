@@ -8,7 +8,8 @@
  * witness.
  */
 import { outRefLabel } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -63,7 +64,7 @@ const expectWithinBounds = (steps: Parameters<typeof stepTable>[0]): void => {
   }
 };
 
-const witnessReason = (script_index: bigint): SDK.RejectionReason => ({
+const witnessReason = (script_index: bigint): SDKCore.RejectionReason => ({
   UnusedScriptWitness: { script_index },
 });
 

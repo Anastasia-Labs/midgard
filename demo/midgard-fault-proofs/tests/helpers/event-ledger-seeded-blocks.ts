@@ -2,7 +2,8 @@
  * transactions with one drawn fault, and committed withdrawals for the
  * input-existence chronologies. */
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { makeOutput } from "@al-ft/midgard-validation/tests/validation-fixtures";
 import { canonicalCommittedWithdrawalTransitionEffect } from "@al-ft/midgard-validation/transition-effect";
 import { Data } from "@lucid-evolution/lucid";
@@ -230,7 +231,10 @@ export const withdrawalOf = (byte: number, valid: boolean) => {
   const committed: CommittedChronologyWithdrawal = {
     eventKey: { WithdrawalEventKey: { withdrawal_id: id } },
     rootKey: Buffer.from(Data.to(id, SDK.OutputReference), "hex"),
-    rootValue: Buffer.from(SDK.committedWithdrawalValueBytes(info), "hex"),
+    rootValue: Buffer.from(
+      SDKFraudProof.committedWithdrawalValueBytes(info),
+      "hex",
+    ),
     effect: canonicalCommittedWithdrawalTransitionEffect({
       committedValid: valid,
       outRefCbor: outRefCbor(byte, 0n),

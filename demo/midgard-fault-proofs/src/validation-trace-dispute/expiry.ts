@@ -6,7 +6,8 @@
  * published reference. Expiry is built from the game, timeout and boundary
  * holders. */
 import { MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
   Constr,
   credentialToAddress,
@@ -51,14 +52,14 @@ const releaseRedeemer = (
   };
   switch (holder) {
     case "game":
-      return Data.to(cancel, SDK.ValidationGameSpendRedeemer);
+      return Data.to(cancel, SDKDa.ValidationGameSpendRedeemer);
     case "boundary":
-      return Data.to(cancel, SDK.ValidationBoundarySpendRedeemer);
+      return Data.to(cancel, SDKDa.ValidationBoundarySpendRedeemer);
     case "timeout":
       // The timeout validator's one redeemer; no case input takes part.
       return Data.to(
         { input_index: inputIndex, case_input_index: inputIndex },
-        SDK.ValidationTimeoutSpendRedeemer,
+        SDKDa.ValidationTimeoutSpendRedeemer,
       );
   }
 };
@@ -70,7 +71,7 @@ const releaseRedeemer = (
  */
 export const validationTraceThreadHeader = (
   datum: string,
-): SDK.ThreadHeader => {
+): SDKDa.ThreadHeader => {
   const step = Data.from(datum);
   if (!(step instanceof Constr) || step.fields.length !== 2)
     throw new Error("validation-trace expiry: not a thread holder datum");
@@ -81,7 +82,7 @@ export const validationTraceThreadHeader = (
   if (!(state instanceof Constr) || state.fields[0] === undefined)
     throw new Error("validation-trace expiry: the state has no header");
   try {
-    return Data.castFrom(state.fields[0], SDK.ThreadHeader);
+    return Data.castFrom(state.fields[0], SDKDa.ThreadHeader);
   } catch {
     throw new Error("validation-trace expiry: the state has no header");
   }
@@ -90,7 +91,7 @@ export const validationTraceThreadHeader = (
 /** The first instant a thread with `header` may expire at: a lower bound
  * past `started_at + D_case`. */
 export const validationTraceThreadExpiresAfterMs = (
-  header: SDK.ThreadHeader,
+  header: SDKDa.ThreadHeader,
 ): number =>
   Number(header.started_at) + MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS;
 
@@ -152,7 +153,7 @@ export const buildValidationTraceThreadExpiry = ({
     )
     .mintAssets(
       { [threadUnit]: -1n },
-      Data.to("BurnThreadToken", SDK.CaseRedeemer),
+      Data.to("BurnThreadToken", SDKDa.CaseRedeemer),
     )
     .readFrom([
       caseConfig,

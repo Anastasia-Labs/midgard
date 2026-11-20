@@ -23,7 +23,7 @@ import {
   validationTraceDefenseFromPortable,
   type ValidationTraceDefenseMaterial,
 } from "@al-ft/midgard-fault-proofs/validation-trace-dispute/defender";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/da";
 import { Effect, Option } from "effect";
 
 import { DaPayloadsDB } from "../database/index.js";

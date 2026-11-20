@@ -8,11 +8,8 @@ import {
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import {
-  EventKey,
-  type RejectionReason,
-  rejectionReasonPhase,
-} from "@al-ft/midgard-sdk";
+import { EventKey, type RejectionReason } from "@al-ft/midgard-sdk/core";
+import { rejectionReasonPhase } from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { Cause, Effect, Exit } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";

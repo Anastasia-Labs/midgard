@@ -1,4 +1,6 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   Data,
   type LucidEvolution,
@@ -61,7 +63,7 @@ const decodeDatum = <T>(
   utxo: UTxO,
   schema: Parameters<typeof Data.from>[1],
   label: string,
-): Effect.Effect<T, SDK.StateQueueError> =>
+): Effect.Effect<T, SDKStateQueue.StateQueueError> =>
   Effect.try({
     try: () => {
       if (utxo.datum == null) {
@@ -70,7 +72,7 @@ const decodeDatum = <T>(
       return Data.from(utxo.datum, schema) as T;
     },
     catch: (cause) =>
-      new SDK.StateQueueError({
+      new SDKStateQueue.StateQueueError({
         message: `Failed to decode ${label} datum`,
         cause,
       }),
@@ -118,12 +120,12 @@ export const fetchDaParamsUtxo = (
 ): Effect.Effect<
   {
     readonly utxo: UTxO;
-    readonly datum: SDK.DaParamsDatum;
+    readonly datum: SDKDa.DaParamsDatum;
   },
-  SDK.StateQueueError
+  SDKStateQueue.StateQueueError
 > =>
   Effect.gen(function* () {
-    const daParamsUnit = SDK.daParamsUnit(contracts.daParamsGovernor);
+    const daParamsUnit = SDKDa.daParamsUnit(contracts.daParamsGovernor);
     const daParamsUtxos = yield* Effect.tryPromise({
       try: () =>
         lucid.utxosAtWithUnit(
@@ -131,23 +133,23 @@ export const fetchDaParamsUtxo = (
           daParamsUnit,
         ),
       catch: (cause) =>
-        new SDK.StateQueueError({
+        new SDKStateQueue.StateQueueError({
           message: "Failed to fetch DA params UTxO",
           cause,
         }),
     });
     if (daParamsUtxos.length !== 1) {
       return yield* Effect.fail(
-        new SDK.StateQueueError({
+        new SDKStateQueue.StateQueueError({
           message: "Failed to resolve unique DA params UTxO",
           cause: `expected=1,found=${daParamsUtxos.length.toString()},unit=${daParamsUnit}`,
         }),
       );
     }
     const utxo = daParamsUtxos[0]!;
-    const datum = yield* decodeDatum<SDK.DaParamsDatum>(
+    const datum = yield* decodeDatum<SDKDa.DaParamsDatum>(
       utxo,
-      SDK.DaParamsDatum as never,
+      SDKDa.DaParamsDatum as never,
       "DA params",
     );
     return { utxo, datum };
@@ -161,23 +163,23 @@ const compareBigIntDesc = (left: bigint, right: bigint): number =>
   left === right ? 0 : left > right ? -1 : 1;
 
 const daAttestationMatchesParams = (
-  candidate: SDK.DaAttestationUtxo,
-  daParamsDatum: SDK.DaParamsDatum,
+  candidate: SDKDa.DaAttestationUtxo,
+  daParamsDatum: SDKDa.DaParamsDatum,
 ): boolean =>
   candidate.datum.da_threshold === daParamsDatum.da_threshold &&
   candidate.datum.committee_signers_hash ===
     daParamsDatum.committee_signers_hash;
 
 export const daAttestationReachedThreshold = (
-  candidate: SDK.DaAttestationUtxo,
+  candidate: SDKDa.DaAttestationUtxo,
 ): boolean => candidate.datum.attestation_count >= candidate.datum.da_threshold;
 
 export const selectDaAttestationCandidate = (
-  candidates: readonly SDK.DaAttestationUtxo[],
-  daParamsDatum: SDK.DaParamsDatum,
+  candidates: readonly SDKDa.DaAttestationUtxo[],
+  daParamsDatum: SDKDa.DaParamsDatum,
   label: string,
-  predicate: (candidate: SDK.DaAttestationUtxo) => boolean = () => true,
-): Effect.Effect<SDK.DaAttestationUtxo, SDK.StateQueueError> =>
+  predicate: (candidate: SDKDa.DaAttestationUtxo) => boolean = () => true,
+): Effect.Effect<SDKDa.DaAttestationUtxo, SDKStateQueue.StateQueueError> =>
   Effect.gen(function* () {
     const matching = candidates
       .filter((candidate) =>
@@ -196,7 +198,7 @@ export const selectDaAttestationCandidate = (
       );
     if (matching.length === 0) {
       return yield* Effect.fail(
-        new SDK.StateQueueError({
+        new SDKStateQueue.StateQueueError({
           message: `Failed to select ${label} DA attestation UTxO`,
           cause: `candidate_count=${candidates.length.toString()}`,
         }),
@@ -209,9 +211,12 @@ export const fetchDaAttestationCandidates = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
   headerHash: string,
-): Effect.Effect<readonly SDK.DaAttestationUtxo[], SDK.StateQueueError> =>
+): Effect.Effect<
+  readonly SDKDa.DaAttestationUtxo[],
+  SDKStateQueue.StateQueueError
+> =>
   Effect.gen(function* () {
-    const unit = SDK.daAttestationUnit(contracts.daAttestation, headerHash);
+    const unit = SDKDa.daAttestationUnit(contracts.daAttestation, headerHash);
     const utxos = yield* Effect.tryPromise({
       try: () =>
         lucid.utxosAtWithUnit(
@@ -219,16 +224,16 @@ export const fetchDaAttestationCandidates = (
           unit,
         ),
       catch: (cause) =>
-        new SDK.StateQueueError({
+        new SDKStateQueue.StateQueueError({
           message: "Failed to fetch DA attestation UTxO",
           cause,
         }),
     });
     const decoded = yield* Effect.forEach(utxos, (utxo) =>
       Effect.gen(function* () {
-        const datum = yield* decodeDatum<SDK.DaAttestationDatum>(
+        const datum = yield* decodeDatum<SDKDa.DaAttestationDatum>(
           utxo,
-          SDK.DaAttestationDatum as never,
+          SDKDa.DaAttestationDatum as never,
           "DA attestation",
         );
         return { utxo, datum };
@@ -246,7 +251,10 @@ export const fetchVisibleDaAttestationCandidates = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
   headerHash: string,
-): Effect.Effect<readonly SDK.DaAttestationUtxo[], SDK.StateQueueError> =>
+): Effect.Effect<
+  readonly SDKDa.DaAttestationUtxo[],
+  SDKStateQueue.StateQueueError
+> =>
   Effect.gen(function* () {
     const candidates = yield* fetchDaAttestationCandidates(
       lucid,
@@ -255,7 +263,7 @@ export const fetchVisibleDaAttestationCandidates = (
     );
     if (candidates.length === 0) {
       return yield* Effect.fail(
-        new SDK.StateQueueError({
+        new SDKStateQueue.StateQueueError({
           message: "Failed to find visible DA attestation UTxO",
           cause: `header=${headerHash}`,
         }),
@@ -275,7 +283,10 @@ export const fetchDaAttestationReferenceScripts = (
   lucid: LucidEvolution,
   referenceScriptsAddress: string,
   contracts: SDK.MidgardValidators,
-): Effect.Effect<SDK.DaAttestationReferenceScripts, SDK.StateQueueError> =>
+): Effect.Effect<
+  SDKDa.DaAttestationReferenceScripts,
+  SDKStateQueue.StateQueueError
+> =>
   fetchReferenceScriptUtxosProgram(
     lucid,
     referenceScriptsAddress,

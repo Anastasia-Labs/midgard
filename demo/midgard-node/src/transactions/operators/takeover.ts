@@ -5,7 +5,9 @@
  * CLI verbs so both act on identical logic.
  */
 import { alignedUnixTimeStrictlyAfter } from "@al-ft/midgard-core/ogmios-slot";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKOperators from "@al-ft/midgard-sdk/operators";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   type LucidEvolution,
   paymentCredentialOf,
@@ -79,12 +81,12 @@ export class StrikeLowerBoundAheadOfTip extends Error {
  */
 export const resolveOwnOperatorKeyHashProgram = (
   address: string,
-): Effect.Effect<string, SDK.StateQueueError> => {
+): Effect.Effect<string, SDKStateQueue.StateQueueError> => {
   const credential = paymentCredentialOf(address);
   return credential.type === "Key"
     ? Effect.succeed(credential.hash)
     : Effect.fail(
-        new SDK.StateQueueError({
+        new SDKStateQueue.StateQueueError({
           message: "Operator wallet must use a payment key credential",
           cause: address,
         }),
@@ -100,12 +102,12 @@ export const alignedUnixTimeAtOrAfter = (
 
 export type TakeoverPlanning = {
   readonly nowMs: bigint;
-  readonly snapshot: SDK.OperatorDirectorySnapshot;
-  readonly plan: SDK.InactivityTakeoverPlan;
+  readonly snapshot: SDKOperators.OperatorDirectorySnapshot;
+  readonly plan: SDKOperators.InactivityTakeoverPlan;
   /** The intent plan (S5) opened before `snapshot` was read. */
   readonly intentPlan: IntentPlan;
   /** The timing parameters `plan` was made under; the defaults when unset. */
-  readonly params?: SDK.InactivityTimingParameters;
+  readonly params?: SDKOperators.InactivityTimingParameters;
 };
 
 /**
@@ -115,17 +117,17 @@ export type TakeoverPlanning = {
  */
 export const planTakeoverFrom = (
   lucid: LucidEvolution,
-  snapshot: SDK.OperatorDirectorySnapshot,
+  snapshot: SDKOperators.OperatorDirectorySnapshot,
   intentPlan: IntentPlan,
   options: {
-    readonly neglectedEvent: SDK.NeglectedUserEventClaim | null;
-    readonly params?: SDK.InactivityTimingParameters;
+    readonly neglectedEvent: SDKOperators.NeglectedUserEventClaim | null;
+    readonly params?: SDKOperators.InactivityTimingParameters;
     readonly nowMs?: bigint;
   },
 ): Effect.Effect<TakeoverPlanning, L1SlotUnknownError> =>
   Effect.gen(function* () {
     const nowMs = options.nowMs ?? (yield* resolveL1NowMs(lucid));
-    const plan = SDK.planInactivityTakeover({
+    const plan = SDKOperators.planInactivityTakeover({
       snapshot,
       nowMs,
       neglectedEvent: options.neglectedEvent,
@@ -144,22 +146,24 @@ export const planTakeoverFrom = (
  */
 export const planTakeoverProgram = (
   lucid: LucidEvolution,
-  contracts: SDK.OperatorDirectoryValidators &
+  contracts: SDKOperators.OperatorDirectoryValidators &
     Pick<SDK.MidgardValidators, "eventHistory" | "txOrder">,
   options: Omit<Parameters<typeof planTakeoverFrom>[3], "neglectedEvent"> = {},
 ): Effect.Effect<
   TakeoverPlanning,
-  SDK.OperatorDirectorySnapshotError | SDK.LucidError | L1SlotUnknownError,
+  | SDKOperators.OperatorDirectorySnapshotError
+  | SDK.LucidError
+  | L1SlotUnknownError,
   IntentJournal
 > =>
   Effect.gen(function* () {
     // S5: the plan opens before the directory read.
     const intentPlan = yield* openPlan;
-    const snapshot = yield* SDK.fetchOperatorDirectorySnapshotProgram(
+    const snapshot = yield* SDKOperators.fetchOperatorDirectorySnapshotProgram(
       lucid,
       contracts,
     );
-    const neglectedEvent = yield* SDK.fetchNeglectedUserEventProgram(
+    const neglectedEvent = yield* SDKOperators.fetchNeglectedUserEventProgram(
       lucid,
       contracts,
       snapshot.stateQueueTail.endTime,
@@ -171,7 +175,7 @@ export const planTakeoverProgram = (
   });
 
 export type ReadyTakeoverPlan = Extract<
-  SDK.InactivityTakeoverPlan,
+  SDKOperators.InactivityTakeoverPlan,
   { kind: "ready" }
 >;
 
@@ -180,7 +184,7 @@ export type StrikeSubmission = {
   readonly skippedOperator: string;
   readonly newOperator: string;
   readonly struckInactivityStrikes: bigint;
-  readonly tier: SDK.InactivityTakeoverTier;
+  readonly tier: SDKOperators.InactivityTakeoverTier;
 };
 
 /**
@@ -288,7 +292,7 @@ export const submitInactivityStrikeProgram = (
       );
       plan = yield* replanAtBuildTime(lucid, planning);
     }
-    const result = yield* SDK.buildStrikeInactiveOperatorTxProgram({
+    const result = yield* SDKOperators.buildStrikeInactiveOperatorTxProgram({
       lucid,
       scheduler: contracts.scheduler,
       activeOperators: contracts.activeOperators,

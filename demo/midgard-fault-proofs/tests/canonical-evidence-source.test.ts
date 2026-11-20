@@ -12,7 +12,10 @@
  */
 
 import "@al-ft/midgard-core/da-transport";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/da";
+import "@al-ft/midgard-sdk/users";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "vitest";
 import "../src/bin.js";
 import "../src/evidence/canonical-block-evidence.js";

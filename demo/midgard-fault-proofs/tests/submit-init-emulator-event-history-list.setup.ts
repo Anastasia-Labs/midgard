@@ -3,15 +3,17 @@ import { inspect } from "node:util";
 
 import {
   addressDataFromBech32,
-  applyEventHistoryValidators,
-  eventHistoryKey,
-  type EventHistoryKind,
-  EventHistoryNode,
   hashHexWithBlake2b,
   HubOracleDatum,
   OutputReference,
   parseFaultProofBlueprint,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  applyEventHistoryValidators,
+  eventHistoryKey,
+  type EventHistoryKind,
+  EventHistoryNode,
+} from "@al-ft/midgard-sdk/users";
 import {
   CML,
   Constr,

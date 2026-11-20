@@ -1,6 +1,7 @@
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { midgardScriptSourcePhysicalIndex } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
@@ -20,9 +21,9 @@ const rootHex = (hash: Uint8Array | null | undefined): string =>
   Buffer.from(hash).equals(Buffer.alloc(32))
     ? SDK.EMPTY_MERKLE_TREE_ROOT
     : Buffer.from(hash).toString("hex");
-const descriptorBytes = (source: SDK.DirectScriptSource) =>
-  Buffer.from(Data.to(source, SDK.DirectScriptSource), "hex");
-const inlineSource = (source: SDK.DirectScriptSource) =>
+const descriptorBytes = (source: SDKFraudProof.DirectScriptSource) =>
+  Buffer.from(Data.to(source, SDKFraudProof.DirectScriptSource), "hex");
+const inlineSource = (source: SDKFraudProof.DirectScriptSource) =>
   source.field_index === 6n;
 
 /** The selected source for a script hash is the first one the T224 lookup
@@ -32,8 +33,8 @@ const inlineSource = (source: SDK.DirectScriptSource) =>
  * canonical out-ref order. `left` precedes when it sits at the physical slot
  * the lookup visits first. */
 export const directSourcePrecedes = (
-  left: SDK.DirectScriptSource,
-  right: SDK.DirectScriptSource,
+  left: SDKFraudProof.DirectScriptSource,
+  right: SDKFraudProof.DirectScriptSource,
 ): boolean => {
   if (left.script_hash !== right.script_hash)
     throw new Error("direct source priority compares different hashes");
@@ -95,16 +96,16 @@ export const buildDirectSourceIndex = async (
   const selected = new Map<string, DirectScriptSourceMaterial>();
   const steps: {
     candidate: DirectScriptSourceMaterial;
-    admission: SDK.DirectSourceAdmission;
-    before: SDK.DirectSourceIndex;
-    after: SDK.DirectSourceIndex;
+    admission: SDKFraudProof.DirectSourceAdmission;
+    before: SDKFraudProof.DirectSourceIndex;
+    after: SDKFraudProof.DirectSourceIndex;
   }[] = [];
   for (const candidate of candidates) {
     const source = candidate.descriptor;
     const key = Buffer.from(source.script_hash, "hex");
     const previous = selected.get(source.script_hash);
     const before = { root: rootHex(trie.hash), count: BigInt(selected.size) };
-    let admission: SDK.DirectSourceAdmission;
+    let admission: SDKFraudProof.DirectSourceAdmission;
     if (previous === undefined) {
       await trie.insert(key, descriptorBytes(source));
       const proved = await trie.prove(key);

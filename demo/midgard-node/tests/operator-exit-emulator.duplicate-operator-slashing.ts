@@ -1,6 +1,6 @@
 import "./operator-exit-emulator.operator-exit-scheduler-synchronisation.js";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/operators";
 import { type LucidEvolution } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

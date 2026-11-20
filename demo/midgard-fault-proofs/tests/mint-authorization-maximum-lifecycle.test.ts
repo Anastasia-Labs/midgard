@@ -7,7 +7,8 @@ import {
   encodeMidgardFieldPreimage,
   encodeMidgardVersionedScript,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,
@@ -140,7 +141,7 @@ it.each(["signers", "native", "cancel"])(
       });
       const planned = planFaultProofFieldOpening({
         anchorSourceKind: 0n,
-        fieldIndex: SDK.MIDGARD_FIELD_INDEX.addressWitnesses,
+        fieldIndex: SDKFraudProof.MIDGARD_FIELD_INDEX.addressWitnesses,
         anchorTxId: block.nativeTxId,
         nativeTxCompactCbor: block.nativeTxCompactCbor,
         itemCbors: witnesses.map((item) => Buffer.from(item, "hex")),
@@ -244,7 +245,7 @@ it.each(["signers", "native", "cancel"])(
             fraud_prover: h.proverSigner.paymentKeyHash,
             data: { policy_id: two.step03State.policy_id, direction: 1n },
           },
-          SDK.MintAuthorizationStep05Datum,
+          SDKFraudProof.MintAuthorizationStep05Datum,
         );
         const forged = ((ctx) =>
           Data.to(
@@ -268,7 +269,7 @@ it.each(["signers", "native", "cancel"])(
                 },
               ],
             },
-            SDK.MintAuthorizationEvaluateSpendRedeemer,
+            SDKFraudProof.MintAuthorizationEvaluateSpendRedeemer,
           )) satisfies BuildTxWithRedeemer;
         await expect(
           h.proverLucid

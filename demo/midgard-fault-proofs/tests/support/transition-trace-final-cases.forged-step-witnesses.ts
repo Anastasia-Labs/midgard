@@ -10,7 +10,8 @@ import {
   parseMidgardMpfProofJson,
 } from "@al-ft/midgard-core";
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
@@ -36,9 +37,9 @@ import {
  * ledger, where one proof serves every key.
  */
 export const reinserted = (
-  insert: SDK.LedgerInsertWitness,
+  insert: SDKFraudProof.LedgerInsertWitness,
   preRoot: string,
-  replaced: Partial<Pick<SDK.LedgerInsertWitness, "key" | "value">>,
+  replaced: Partial<Pick<SDKFraudProof.LedgerInsertWitness, "key" | "value">>,
 ) => {
   const forged = { ...insert, ...replaced };
   const proof = mpfProofFromWitness({
@@ -60,20 +61,26 @@ export const reinserted = (
 export const withInsert = (
   step: phasesModule.TransitionTracePhaseStep,
   preRoot: string,
-  replaced: Partial<Pick<SDK.LedgerInsertWitness, "key" | "value">>,
+  replaced: Partial<Pick<SDKFraudProof.LedgerInsertWitness, "key" | "value">>,
   verifiers: NonNullable<phasesModule.TransitionTracePhaseStep["verifiers"]>,
 ): phasesModule.TransitionTracePhaseStep => {
-  const redeemer = Data.from(step.redeemer, SDK.TransitionTraceOutputStep);
+  const redeemer = Data.from(
+    step.redeemer,
+    SDKFraudProof.TransitionTraceOutputStep,
+  );
   const { insert, root } = reinserted(redeemer.insert, preRoot, replaced);
   return {
     state: { ...step.state, current_root: root },
-    redeemer: Data.to({ ...redeemer, insert }, SDK.TransitionTraceOutputStep),
+    redeemer: Data.to(
+      { ...redeemer, insert },
+      SDKFraudProof.TransitionTraceOutputStep,
+    ),
     verifiers,
   };
 };
 
 /** The ledger key of the transaction's output after `state`'s. */
-export const nextOutputKey = (state: SDK.TransitionTraceFinalState) =>
+export const nextOutputKey = (state: SDKFraudProof.TransitionTraceFinalState) =>
   encodeMidgardSpendInputItem({
     txId: Buffer.from(state.tx_id, "hex"),
     outputIndex: Number(state.output_index) + 1,
@@ -85,7 +92,7 @@ export const nextOutputKey = (state: SDK.TransitionTraceFinalState) =>
  */
 export const secondInputDelete = async (
   proof: TransitionProofInput,
-): Promise<SDK.LedgerDeleteWitness> => {
+): Promise<SDKFraudProof.LedgerDeleteWitness> => {
   const spent = transitionL2Replay(proof)?.spentUtxos ?? [];
   const entries = spent.map(({ key, value }) => ({
     key: Buffer.from(key, "hex"),
@@ -135,7 +142,10 @@ export const rerouted = (
   const descriptor = opened?.outputDescriptors?.[Number(state.output_index)];
   if (summaries === undefined || descriptor === undefined)
     throw new Error("transition output summary missing");
-  const { insert } = Data.from(step.redeemer, SDK.TransitionTraceOutputStep);
+  const { insert } = Data.from(
+    step.redeemer,
+    SDKFraudProof.TransitionTraceOutputStep,
+  );
   const next = state.output_index + 1n;
   return {
     state: {
@@ -168,7 +178,10 @@ export const skippedWalk = (
     fieldIndex: 2,
     items: outputs.map((item) => Buffer.from(item, "hex")),
   });
-  const redeemer = Data.from(step.redeemer, SDK.TransitionTraceOutputStep);
+  const redeemer = Data.from(
+    step.redeemer,
+    SDKFraudProof.TransitionTraceOutputStep,
+  );
   return {
     ...step,
     state: {
@@ -186,7 +199,7 @@ export const skippedWalk = (
           ).toString("hex"),
         },
       },
-      SDK.TransitionTraceOutputStep,
+      SDKFraudProof.TransitionTraceOutputStep,
     ),
   };
 };

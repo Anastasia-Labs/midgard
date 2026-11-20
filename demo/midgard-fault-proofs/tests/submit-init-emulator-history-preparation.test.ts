@@ -4,7 +4,9 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { Data } from "@lucid-evolution/lucid";
 import { afterAll, expect, it, vi } from "vitest";
 
@@ -43,8 +45,8 @@ const environment = (h: Harness, kind: Kind) => ({
   maxPayloadBytes: 5000n,
   maxPayloadNodes: 512n,
 });
-const observation = (): SDK.AuthenticatedL1Observation => ({
-  schemaVersion: SDK.CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
+const observation = (): SDKFraudProof.AuthenticatedL1Observation => ({
+  schemaVersion: SDKFraudProof.CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
   sourceMode: "local_node",
   provenance: {
     trustClass: "authenticated_cardano_l1",
@@ -78,15 +80,19 @@ const authority = (h: Harness, kind: Kind) =>
 const fixture = async (
   h: Harness,
   kind: Kind,
-  payload: SDK.EventHistoryPayload,
+  payload: SDKUsers.EventHistoryPayload,
   id: SDK.OutputReference,
   headerEnd: bigint,
 ) => {
   const keyCbor = Data.to(id, SDK.OutputReference);
   const valueCbor =
     "DepositPayload" in payload
-      ? SDK.committedDepositValueBytes(payload.DepositPayload.event.info)
-      : SDK.committedWithdrawalValueBytes(payload.WithdrawalPayload.event.info);
+      ? SDKFraudProof.committedDepositValueBytes(
+          payload.DepositPayload.event.info,
+        )
+      : SDKFraudProof.committedWithdrawalValueBytes(
+          payload.WithdrawalPayload.event.info,
+        );
   const entry = {
     key: Buffer.from(keyCbor, "hex"),
     value: Buffer.from(valueCbor, "hex"),
@@ -235,7 +241,7 @@ for (const kind of ["Deposit", "Withdrawal"] as const) {
     });
     const decoded = Data.from(
       plan.authenticContent.openingCbor!,
-      SDK.FabricatedDepositAuthenticContentOpening,
+      SDKFraudProof.FabricatedDepositAuthenticContentOpening,
     );
     if (decoded === "NoAuthenticContent")
       throw new Error("Missing retained opening");
@@ -395,7 +401,10 @@ for (const kind of ["Deposit", "Withdrawal"] as const) {
         id,
       ),
     ).rejects.toThrow(/explicit payload bounds/);
-    const wrongKeyNode = Data.from(present.anchor.datum!, SDK.EventHistoryNode);
+    const wrongKeyNode = Data.from(
+      present.anchor.datum!,
+      SDKUsers.EventHistoryNode,
+    );
     await expect(
       authenticateFabricatedHistoryWitness(
         {
@@ -404,7 +413,7 @@ for (const kind of ["Deposit", "Withdrawal"] as const) {
             ...present.anchor,
             datum: Data.to(
               { ...wrongKeyNode, position: { Key: ["ff".repeat(32)] } },
-              SDK.EventHistoryNode,
+              SDKUsers.EventHistoryNode,
             ),
           },
         },

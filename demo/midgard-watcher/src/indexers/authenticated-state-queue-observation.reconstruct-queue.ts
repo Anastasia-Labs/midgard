@@ -1,5 +1,5 @@
 import type { FraudProofRawL1Transaction } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import { CML, coreToTxOutput } from "@lucid-evolution/lucid";
 
 import {

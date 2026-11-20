@@ -15,7 +15,8 @@
  * Its own file for the wasm-leak isolation reason its siblings cite.
  */
 import { outRefLabel } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -46,7 +47,7 @@ import {
 
 const ACCUSED_POLICY_INDEX = 0n;
 const DIRECTION_SCRIPT_UNSATISFIED =
-  SDK.MINT_AUTHORIZATION_DIRECTION_SCRIPT_UNSATISFIED;
+  SDKFraudProof.MINT_AUTHORIZATION_DIRECTION_SCRIPT_UNSATISFIED;
 
 describe("mint-authorization direction-B emulator lifecycle", () => {
   it("proves an unsatisfied native mint policy end to end and removes the fraudulent commitment", async () => {
@@ -186,7 +187,7 @@ describe("mint-authorization direction-B emulator lifecycle", () => {
     }
     expect(fraudProofUtxo.assets[step05.fraudProofUnit]).toBe(1n);
     expect(
-      Data.from(fraudProofUtxo.datum!, SDK.FraudProofTokenDatum),
+      Data.from(fraudProofUtxo.datum!, SDKFraudProof.FraudProofTokenDatum),
     ).toStrictEqual({ fraud_prover: proverSigner.paymentKeyHash });
 
     // ——— Removal leg.

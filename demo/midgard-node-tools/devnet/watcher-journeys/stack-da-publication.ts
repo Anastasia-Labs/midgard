@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Effect } from "effect";
 import {
   DaPayloadPublicationError,
@@ -190,7 +191,10 @@ export const classifyStackDaRemoval = async (input: {
     });
   const node = await Effect.runPromise(
     Effect.flatMap(
-      SDK.utxoToStateQueueUTxO(removal.removedOutput, input.stateQueuePolicyId),
+      SDKStateQueue.utxoToStateQueueUTxO(
+        removal.removedOutput,
+        input.stateQueuePolicyId,
+      ),
       (utxo) => SDK.getStateQueueNodeFromStateQueueDatum(utxo.datum),
     ),
   );

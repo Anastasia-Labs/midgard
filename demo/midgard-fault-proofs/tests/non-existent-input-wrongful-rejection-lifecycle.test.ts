@@ -8,7 +8,8 @@ import {
   encodeMidgardForcedTxCanonical,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { Data, getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
@@ -343,7 +344,7 @@ describe("nonExistentInput wrongful rejection registered lifecycle", () => {
                 },
               },
             } as never,
-            SDK.NonExistentInputForcedSourcePayloadSchema as never,
+            SDKFraudProof.NonExistentInputForcedSourcePayloadSchema as never,
           ),
         },
       ])

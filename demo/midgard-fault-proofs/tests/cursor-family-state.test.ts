@@ -1,6 +1,6 @@
 import "./cursor-family-state.descendant-removal.js";
 
-import type { EvidenceProvenance } from "@al-ft/midgard-sdk";
+import type { EvidenceProvenance } from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import { CURSOR_FAMILY_SPECS } from "../src/workflow/cursor-family-spec.js";

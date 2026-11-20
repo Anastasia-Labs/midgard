@@ -1,5 +1,5 @@
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { credentialToAddress } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

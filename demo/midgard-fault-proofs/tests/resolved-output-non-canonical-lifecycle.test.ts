@@ -55,7 +55,7 @@ import {
   OutputReference,
   Proof,
   ROOT_DOMAINS,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 import { afterAll, describe, expect, it } from "vitest";
 

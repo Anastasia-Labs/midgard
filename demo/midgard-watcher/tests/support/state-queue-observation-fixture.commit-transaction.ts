@@ -1,5 +1,6 @@
 import { computeHash28 } from "@al-ft/midgard-core/codec/hash";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   CML,
   createCostModels,
@@ -79,7 +80,7 @@ export const initializationTransaction = (
       CML.Address.from_bech32(stateQueueAddress),
       value(
         authority.protocolScriptHashes.stateQueueMint,
-        SDK.STATE_QUEUE_ROOT_ASSET_NAME,
+        SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME,
       ),
       CML.DatumOption.new_datum(CML.PlutusData.from_cbor_hex(rootDatum)),
       undefined,
@@ -110,7 +111,7 @@ export const initializationTransaction = (
   const mint = CML.Mint.new();
   mint.set(
     CML.ScriptHash.from_hex(authority.protocolScriptHashes.stateQueueMint),
-    CML.AssetName.from_hex(SDK.STATE_QUEUE_ROOT_ASSET_NAME),
+    CML.AssetName.from_hex(SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME),
     1n,
   );
   mint.set(
@@ -128,7 +129,7 @@ export const initializationTransaction = (
   );
   const redeemerCbor = Data.to(
     { InitV1: { output_index: 0n } },
-    SDK.StateQueueRedeemer,
+    SDKStateQueue.StateQueueRedeemer,
   );
   const witnessSet = CML.TransactionWitnessSet.new();
   const witnessRedeemers = CML.LegacyRedeemerList.new();
@@ -216,7 +217,7 @@ export const commitTransaction = (
       CML.Address.from_bech32(stateQueueAddress),
       value(
         authority.protocolScriptHashes.stateQueueMint,
-        SDK.STATE_QUEUE_ROOT_ASSET_NAME,
+        SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME,
       ),
       CML.DatumOption.new_datum(CML.PlutusData.from_cbor_hex(rootDatumCborHex)),
       undefined,
@@ -272,7 +273,7 @@ export const commitTransaction = (
         m_head_state_queue_node_ref_input_index: null,
       },
     },
-    SDK.StateQueueRedeemer,
+    SDKStateQueue.StateQueueRedeemer,
   );
   const witnessSet = CML.TransactionWitnessSet.new();
   const witnessRedeemers = CML.LegacyRedeemerList.new();

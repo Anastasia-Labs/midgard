@@ -1,11 +1,13 @@
 import type {
-  CommittedFieldClaim,
-  FieldPreimageLengthMismatchFaultProofContracts,
   ForcedInclusionTxV1,
   Header,
   OutputReference,
   RootMembershipProof,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import type {
+  CommittedFieldClaim,
+  FieldPreimageLengthMismatchFaultProofContracts,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import type { ResolvedProverSigner } from "../runtime.js";

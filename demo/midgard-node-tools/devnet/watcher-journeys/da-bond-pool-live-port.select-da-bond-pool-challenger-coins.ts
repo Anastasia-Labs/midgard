@@ -1,6 +1,6 @@
 import { join } from "node:path";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/da";
 import { type UTxO } from "@lucid-evolution/lucid";
 import { availabilityTimeoutCollateralLovelace } from "midgard-node/commands/availability-challenge";
 

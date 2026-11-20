@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Client } from "pg";
 import { describe, expect, it } from "vitest";
 
@@ -113,7 +114,7 @@ it("ordinary production header upsert also persists 513 exact linked headers", a
         endTime: BigInt(index * 2 + 2),
         blockSlot: BigInt(index),
       };
-      const headerHash = SDK.stateQueueHeaderHash(header);
+      const headerHash = SDKStateQueue.stateQueueHeaderHash(header);
       const record: StateQueueHeaderRecord = {
         deploymentFingerprint,
         headerHash,

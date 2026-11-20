@@ -4,7 +4,7 @@
  * honest rejection, and the pre-state ledger state for an absence carried
  * against the block-initial ledger. */
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import type { Script, UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

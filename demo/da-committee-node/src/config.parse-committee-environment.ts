@@ -4,7 +4,7 @@ import {
 } from "@al-ft/midgard-core";
 import { parseL1Origin } from "@al-ft/midgard-core/l1-origin";
 import { assertRoleL1Env } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 
 import type { CommitteeConfig, Env } from "./config.committee-config.js";
 import {

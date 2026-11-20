@@ -4,7 +4,7 @@ import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
   type FraudProofCatalogueCategoryName,
   Proof,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
 
 import {

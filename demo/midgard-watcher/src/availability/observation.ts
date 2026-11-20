@@ -3,7 +3,8 @@ import type {
   AvailabilityOperationRecord,
 } from "@al-ft/midgard-core/availability-operation-journal";
 import type { FraudProofRawL1Point } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
   CML,
   coreToTxOutput,
@@ -48,8 +49,8 @@ export const createWatcherAvailabilityObservation = (input: {
   identity: VerifiedWatcherDeploymentIdentity;
   l1: WatcherAvailabilityL1;
   confirmationDepth: number;
-  deployment: SDK.DaAvailabilityDeployment;
-  scope?: SDK.DaAvailabilityReadScope;
+  deployment: SDKDa.DaAvailabilityDeployment;
+  scope?: SDKDa.DaAvailabilityReadScope;
   /** Resolves hashed DAAT datums during commitment recovery (E1). */
   lucid?: Pick<LucidEvolution, "config">;
 }) => {
@@ -80,7 +81,7 @@ export const createWatcherAvailabilityObservation = (input: {
   const pointOf = observationPoint;
   // An Attested node's commitment never changes, so each verified recovery is
   // kept for the node's lifetime in the finalized queue.
-  const commitments = new Map<string, SDK.DaAvailabilityCommitment>();
+  const commitments = new Map<string, SDKDa.DaAvailabilityCommitment>();
   const readAddress = async (
     observation: WatcherAuthenticatedStateQueueObservation,
     address: string,
@@ -121,7 +122,7 @@ export const createWatcherAvailabilityObservation = (input: {
     async snapshot(
       observation: WatcherAuthenticatedStateQueueObservation,
       headerHash: string,
-    ): Promise<SDK.DaAvailabilityChallengeSnapshot> {
+    ): Promise<SDKDa.DaAvailabilityChallengeSnapshot> {
       return await capture(observation, async () => {
         const [
           availabilityUtxos,
@@ -149,7 +150,7 @@ export const createWatcherAvailabilityObservation = (input: {
           ),
         ]);
         input.scope?.assertCurrent();
-        const snapshot = await SDK.daAvailabilityChallengeSnapshotFromUtxos(
+        const snapshot = await SDKDa.daAvailabilityChallengeSnapshotFromUtxos(
           input.deployment,
           headerHash,
           {
@@ -184,7 +185,7 @@ export const createWatcherAvailabilityObservation = (input: {
       observation: WatcherAuthenticatedStateQueueObservation,
       headerHash: string,
       expectedCommitmentHash: string,
-    ): Promise<SDK.DaAvailabilityCommitment> {
+    ): Promise<SDKDa.DaAvailabilityCommitment> {
       input.scope?.assertCurrent();
       const key = `${headerHash}:${expectedCommitmentHash}`;
       const cached = commitments.get(key);
@@ -256,7 +257,7 @@ export const createWatcherAvailabilityObservation = (input: {
       headerHash: string,
       /** The terminal step a released, not yet final row recorded. */
       recorded?: WatcherRecordedWorkflowRelease,
-    ): Promise<SDK.DaAvailabilityWorkflowRelease | undefined> {
+    ): Promise<SDKDa.DaAvailabilityWorkflowRelease | undefined> {
       return await capture(observation, async () => {
         const point = pointOf(observation);
         const boundaryBlockNo =
@@ -265,7 +266,7 @@ export const createWatcherAvailabilityObservation = (input: {
           1;
         const queueUnit = `${observation.stateQueuePolicyId}${SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX}${headerHash}`;
         const spendPoints = new Map<string, FraudProofRawL1Point>();
-        const readers: SDK.DaAvailabilityForeignSpendReaders = {
+        const readers: SDKDa.DaAvailabilityForeignSpendReaders = {
           // Native finality includes the point itself; SDK depth counts
           // only blocks after inclusion, so expose the actual tip height.
           readBoundary: async () => ({
@@ -350,7 +351,7 @@ export const createWatcherAvailabilityObservation = (input: {
           },
         };
         try {
-          return await SDK.resolveDaAvailabilityWorkflowRelease(
+          return await SDKDa.resolveDaAvailabilityWorkflowRelease(
             readers,
             openIntent,
             headerHash,
@@ -371,7 +372,7 @@ export const createWatcherAvailabilityObservation = (input: {
     async operation(
       observation: WatcherAuthenticatedStateQueueObservation,
       intent: AvailabilityOperationIntent,
-    ): Promise<SDK.DaAvailabilityOperationObservation> {
+    ): Promise<SDKDa.DaAvailabilityOperationObservation> {
       return await capture(observation, async () => {
         const signed = CML.Transaction.from_cbor_hex(intent.signedCbor);
         // The ledger admits the transaction no earlier than its validity

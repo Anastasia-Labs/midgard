@@ -2,7 +2,8 @@
  * activates it, `retireOperator` retires the fixture's operator so the
  * scheduler rotates to it, and `commitSuccessorsBy` commits successors of the
  * proved block under its key. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKOperators from "@al-ft/midgard-sdk/operators";
 import {
   generateEmulatorAccount,
   Lucid,
@@ -82,11 +83,11 @@ export const retireOperator = async (
   ).operatorLifecycleReferenceScripts;
   const refs = fixture.removalReferenceScriptPublications.published;
   const snapshot = await Effect.runPromise(
-    SDK.fetchOperatorDirectorySnapshotProgram(lucid, contracts),
+    SDKOperators.fetchOperatorDirectorySnapshotProgram(lucid, contracts),
   );
   const validFrom = BigInt(emulator.now()) - 1_000n;
   const validTo = BigInt(emulator.now()) + 60_000n;
-  const retirement = SDK.deriveRetireOperatorWitnesses({
+  const retirement = SDKOperators.deriveRetireOperatorWitnesses({
     snapshot,
     contracts,
     operatorKeyHash,
@@ -94,7 +95,7 @@ export const retireOperator = async (
     schedulerSpendingScriptRef: refs.schedulerSpend,
   });
   const { tx } = await Effect.runPromise(
-    SDK.buildUnsignedRetireOperatorTxProgram({
+    SDKOperators.buildUnsignedRetireOperatorTxProgram({
       lucid,
       contracts,
       operatorKeyHash,
@@ -145,7 +146,7 @@ export const commitSuccessorsBy = async (
 ): Promise<SuccessorBlockFixture[]> => {
   const { contracts, emulator, funderLucid } = fixture;
   const snapshot = await Effect.runPromise(
-    SDK.fetchOperatorDirectorySnapshotProgram(funderLucid, contracts),
+    SDKOperators.fetchOperatorDirectorySnapshotProgram(funderLucid, contracts),
   );
   const liveScheduler = liveSchedulerOf(fixture);
   let predecessor = fixture.fraudulentHeader;

@@ -19,11 +19,11 @@ import {
   decodeMidgardFieldPreimage,
   MidgardTxCodecError,
 } from "@al-ft/midgard-core";
+import { type RejectionReason } from "@al-ft/midgard-sdk/core";
 import {
   type NetworkOrderContext,
-  type RejectionReason,
   rejectionReasonPhase,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 /** The smallest and largest coordinates the rejection codec admits. */
 const CLAIMED_COORDINATE_LIMIT = 1n << 64n;

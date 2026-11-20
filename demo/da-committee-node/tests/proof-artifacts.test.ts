@@ -6,7 +6,9 @@ import {
   type DaProofBundleByHeaderRequest,
   type DaTraceStepByIndexRequest,
 } from "@al-ft/midgard-core/da-transport";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -398,8 +400,8 @@ const rebindContextWithHeader = async (
   context: VerifiedContext,
   header: SDK.Header,
 ): Promise<VerifiedContext> => {
-  const headerHash = SDK.stateQueueHeaderHash(header);
-  const payload: SDK.DaPayload = {
+  const headerHash = SDKStateQueue.stateQueueHeaderHash(header);
+  const payload: SDKDa.DaPayload = {
     ...context.payload,
     block_body: {
       ...context.payload.block_body,
@@ -407,7 +409,7 @@ const rebindContextWithHeader = async (
       header,
     },
   };
-  const innerPayloadCbor = SDK.encodeDaPayload(payload);
+  const innerPayloadCbor = SDKDa.encodeDaPayload(payload);
   const payloadCbor = await wrapDaPayload(innerPayloadCbor, {
     mode: "identity",
   });

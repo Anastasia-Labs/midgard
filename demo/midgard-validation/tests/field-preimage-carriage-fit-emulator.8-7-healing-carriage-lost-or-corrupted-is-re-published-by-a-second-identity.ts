@@ -12,7 +12,7 @@ import {
 import {
   fieldPreimagePublicationDatumCbor,
   fieldPreimagePublicationOutputs,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import { type UTxO } from "@lucid-evolution/lucid";
 import { beforeEach, describe, expect, it } from "vitest";
 

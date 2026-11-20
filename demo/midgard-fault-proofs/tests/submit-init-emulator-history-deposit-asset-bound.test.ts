@@ -3,7 +3,8 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { type UTxO } from "@lucid-evolution/lucid";
 import { afterAll, expect, it } from "vitest";
 
@@ -82,7 +83,7 @@ it.each([
     const reclaimAuth: SDK.CredentialD = { PublicKeyCredential: [h.owner] };
     let externalData: UTxO | undefined;
     if (mode === "external") {
-      const publication = await SDK.buildEventHistoryPublication(
+      const publication = await SDKUsers.buildEventHistoryPublication(
         context,
         payload,
         reclaimAuth,
@@ -100,7 +101,7 @@ it.each([
     // Refresh funding after publication; every negative reaches local UPLC evaluation.
     context.fundingInputs = await h.funding();
     const request = () =>
-      SDK.buildEventHistoryAdmission(context, {
+      SDKUsers.buildEventHistoryAdmission(context, {
         payload,
         reclaimAuth,
         nonce: h.eventNonces[0]!,
@@ -125,7 +126,7 @@ it.each([
     }
     const admission = await request();
     await h.submit("admit-maximum-original-asset-count", admission.tx);
-    const witness = await SDK.fetchEventHistoryWitness(
+    const witness = await SDKUsers.fetchEventHistoryWitness(
       h.lucid,
       {
         policyId: applied.policyId,
@@ -137,7 +138,7 @@ it.each([
     );
     if (witness.kind !== "Present")
       throw new Error("Admitted maximum deposit missing");
-    const captured = SDK.captureEventHistoryWitness(
+    const captured = SDKUsers.captureEventHistoryWitness(
       witness,
       applied.policyId,
       "Deposit",

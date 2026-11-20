@@ -17,7 +17,7 @@ import {
   MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
 } from "@al-ft/midgard-core";
 import { encodeMidgardFieldPreimage } from "@al-ft/midgard-core/codec";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import {

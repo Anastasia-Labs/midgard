@@ -5,7 +5,8 @@
  * operator wallet whose only UTxO is that nonce is refused, and the nonce
  * stays unspent.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import {
   Emulator,
   generateEmulatorAccount,
@@ -28,7 +29,7 @@ const outRef = (utxo: UTxO): string =>
 
 type EntryPoint = (
   reference: LucidEvolution,
-  contracts: SDK.MidgardValidators,
+  contracts: SDKCore.MidgardValidators,
   authPolicy: SDK.ReferenceScriptAuthPolicy,
   operator: LucidEvolution,
 ) => ReturnType<typeof ensureNodeRuntimeReferenceScriptsProgram>;

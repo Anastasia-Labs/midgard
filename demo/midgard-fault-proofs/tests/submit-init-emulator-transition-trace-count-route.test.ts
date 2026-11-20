@@ -1,5 +1,7 @@
 import { outRefLabel } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -35,7 +37,7 @@ type ShortRoot = "withdrawals" | "transitionTrace" | "eventToStep";
 
 const counted = async (
   domain: SDK.RootDomain,
-  entries: readonly SDK.DaPayloadEntry[],
+  entries: readonly SDKDa.DaPayloadEntry[],
 ) =>
   await buildCountedRoot(
     domain,
@@ -72,10 +74,10 @@ const buildCountBlock = async ({
     return {
       withdrawal: [
         Data.to(withdrawalId, SDK.OutputReference),
-        SDK.committedWithdrawalValueBytes(
+        SDKFraudProof.committedWithdrawalValueBytes(
           withdrawalInfo("IncorrectWithdrawalSignature"),
         ),
-      ] satisfies SDK.DaPayloadEntry,
+      ] satisfies SDKDa.DaPayloadEntry,
       step: transitionTraceDaEntry({
         key: stepIndex,
         keySchema: Data.Integer() as never,
@@ -100,7 +102,7 @@ const buildCountBlock = async ({
       }),
     };
   });
-  const members = (root: ShortRoot, entries: SDK.DaPayloadEntry[]) =>
+  const members = (root: ShortRoot, entries: SDKDa.DaPayloadEntry[]) =>
     root === short ? entries.slice(0, 1) : entries;
   const withdrawals = members(
     "withdrawals",
@@ -167,7 +169,10 @@ const landCountBlock = async ({
 
 type Landed = Awaited<ReturnType<typeof landCountBlock>>;
 
-const submit = async (landed: Landed, proof: SDK.TransitionFaultProof) =>
+const submit = async (
+  landed: Landed,
+  proof: SDKFraudProof.TransitionFaultProof,
+) =>
   await submitTurnsUnjournaled(buildTransitionTraceProof, {
     lucid: landed.harness.proverLucid,
     blueprint: landed.harness.realBlueprint,
@@ -188,7 +193,7 @@ const submit = async (landed: Landed, proof: SDK.TransitionFaultProof) =>
 /** The final-0 count check refused: no fraud-proof token, block retained. */
 const expectRefusedAtFinalZero = async (
   landed: Landed,
-  proof: SDK.TransitionFaultProof,
+  proof: SDKFraudProof.TransitionFaultProof,
 ) => {
   expect(transitionTraceFinalIndex(proof)).toBe(0);
   const refusal = await submit(landed, proof).then(
@@ -285,7 +290,7 @@ describe("transition-trace root-count route lifecycle", () => {
       ).toEqual([]);
       const proof = buildTransitionFaultProof({
         reconstruction,
-        fault: SDK.countFault({
+        fault: SDKFraudProof.countFault({
           SourceRootCountMismatch: {
             proof: {
               ...rootCountProof(reconstruction.rootData.withdrawals),

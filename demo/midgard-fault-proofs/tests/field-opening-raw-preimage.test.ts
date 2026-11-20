@@ -8,7 +8,7 @@ import {
   midgardFieldCommitment,
 } from "@al-ft/midgard-core";
 import { encodeMidgardForcedTxCompact } from "@al-ft/midgard-core/codec/forced";
-import { fieldPreimagePublicationDatumCbor } from "@al-ft/midgard-sdk";
+import { fieldPreimagePublicationDatumCbor } from "@al-ft/midgard-sdk/state-queue";
 import { credentialToAddress, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

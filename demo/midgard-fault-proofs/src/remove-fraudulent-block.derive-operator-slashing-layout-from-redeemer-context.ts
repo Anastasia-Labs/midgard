@@ -7,7 +7,7 @@ import {
   requireSpendRedeemerIndex,
   type RetiredOperatorMintRedeemer as RetiredOperatorMintRedeemerData,
   type SchedulerSpendRedeemer as SchedulerSpendRedeemerData,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import {
   type BuildTxWithRedeemer,
   Data,

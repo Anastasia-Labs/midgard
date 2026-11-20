@@ -1,7 +1,7 @@
 import {
   terminalVerdictContradiction,
   type VerdictSubject,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { SignerWitnessScanCheckpoint } from "./signer-witness-scan.js";
 

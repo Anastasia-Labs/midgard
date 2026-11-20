@@ -9,7 +9,7 @@ import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
 import {
   deriveFieldPreimageCertification,
   fieldPreimagePublicationDatumCbor,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import { CML, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 

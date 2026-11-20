@@ -2,7 +2,11 @@ import "node:crypto";
 import "node:fs";
 import "node:path";
 import "node:url";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/da";
+import "@al-ft/midgard-sdk/users";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "@lucid-evolution/lucid";
 import "@noble/hashes/blake2.js";
 import "effect";
@@ -12,7 +16,10 @@ import "./sdk-abi-fixtures.build-transition-trace-abi-fixtures.js";
 
 import { writeFileSync } from "node:fs";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { Constr, Data, validatorToScriptHash } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { Effect } from "effect";
@@ -280,7 +287,9 @@ describe("SDK canonical ABI fixtures", () => {
       throw new Error("Expected deposit fault witness");
     expect(raw.fields[0].fields).toHaveLength(4);
     raw.fields[0].fields.splice(3, 0, 999n, "00");
-    expect(() => Data.from(Data.to(raw), SDK.TransitionFault)).toThrow();
+    expect(() =>
+      Data.from(Data.to(raw), SDKFraudProof.TransitionFault),
+    ).toThrow();
   });
 
   it("matches transition trace golden ABI fixture files", () => {
@@ -399,8 +408,14 @@ describe("SDK canonical ABI fixtures", () => {
       "reserve_observer",
     ]);
 
-    expectRoundTrip({ InitV1: { output_index: 2n } }, SDK.StateQueueRedeemer);
-    expectRoundTrip("LinkedListMutation", SDK.StateQueueSpendRedeemer);
+    expectRoundTrip(
+      { InitV1: { output_index: 2n } },
+      SDKStateQueue.StateQueueRedeemer,
+    );
+    expectRoundTrip(
+      "LinkedListMutation",
+      SDKStateQueue.StateQueueSpendRedeemer,
+    );
     expect(
       roundTrip(
         {
@@ -416,7 +431,7 @@ describe("SDK canonical ABI fixtures", () => {
             m_head_state_queue_node_ref_input_index: null,
           },
         },
-        SDK.StateQueueRedeemer,
+        SDKStateQueue.StateQueueRedeemer,
       ),
     ).toMatchObject({ CommitBlockHeader: { operator: h28 } });
     expect(
@@ -444,7 +459,7 @@ describe("SDK canonical ABI fixtures", () => {
             merged_block_validation_trace_count: 10n,
           },
         },
-        SDK.StateQueueRedeemer,
+        SDKStateQueue.StateQueueRedeemer,
       ),
     ).toMatchObject({ MergeToConfirmedStateV1: { header_node_key: h28 } });
 
@@ -480,17 +495,18 @@ describe("SDK canonical ABI fixtures", () => {
   });
 
   it("encodes user-event witness, user-event spend, settlement, and fraud-proof fixtures", () => {
-    const witnessValidator = SDK.buildUserEventWitnessCertificateValidator(h32);
-    expect(SDK.userEventWitnessScriptHash(h32)).toBe(
+    const witnessValidator =
+      SDKUsers.buildUserEventWitnessCertificateValidator(h32);
+    expect(SDKUsers.userEventWitnessScriptHash(h32)).toBe(
       validatorToScriptHash(witnessValidator),
     );
     expect(
       Data.from(
-        SDK.encodeUserEventWitnessMintOrBurnRedeemer(h28),
-        SDK.UserEventWitnessPublishRedeemer,
+        SDKUsers.encodeUserEventWitnessMintOrBurnRedeemer(h28),
+        SDKUsers.UserEventWitnessPublishRedeemer,
       ),
     ).toEqual({ MintOrBurn: { targetPolicy: h28 } });
-    const depositDatum: SDK.DepositDatum = {
+    const depositDatum: SDKUsers.DepositDatum = {
       event: {
         id: { transactionId: h32, outputIndex: 0n },
         info: { l2_address: address, l2_network_id: 0n, l2_datum: null },
@@ -498,7 +514,7 @@ describe("SDK canonical ABI fixtures", () => {
       inclusion_time: 123n,
       witness: h28,
     };
-    expectRoundTrip(depositDatum, SDK.DepositDatum);
+    expectRoundTrip(depositDatum, SDKUsers.DepositDatum);
     const depositMembershipProof: SDK.RawRootMembershipProof = {
       domain: SDK.ROOT_DOMAINS.deposits,
       root: "44".repeat(32),
@@ -529,11 +545,11 @@ describe("SDK canonical ABI fixtures", () => {
           membership_proof: depositMembershipProof,
           inclusion_proof_script_withdraw_redeemer_index: 4n,
         },
-        SDK.DepositSpendRedeemer,
+        SDKUsers.DepositSpendRedeemer,
       ),
     ).toMatchObject({ input_index: 0n });
 
-    const withdrawalDatum: SDK.WithdrawalOrderDatum = {
+    const withdrawalDatum: SDKUsers.WithdrawalOrderDatum = {
       event: {
         id: { transactionId: h32, outputIndex: 0n },
         info: {
@@ -553,7 +569,7 @@ describe("SDK canonical ABI fixtures", () => {
       refund_address: address,
       refund_datum: "NoDatum",
     };
-    expectRoundTrip(withdrawalDatum, SDK.WithdrawalOrderDatum);
+    expectRoundTrip(withdrawalDatum, SDKUsers.WithdrawalOrderDatum);
     const withdrawalMembershipValue: SDK.WithdrawalInfo = {
       ...withdrawalDatum.event.info,
       validity: {
@@ -588,7 +604,7 @@ describe("SDK canonical ABI fixtures", () => {
             },
           },
         },
-        SDK.WithdrawalSpendRedeemer,
+        SDKUsers.WithdrawalSpendRedeemer,
       ),
     ).toMatchObject({ purpose: { Refund: expect.any(Object) } });
     expectRoundTrip("UnpayableWithdrawalValue", SDK.WithdrawalValidity);
@@ -602,7 +618,7 @@ describe("SDK canonical ABI fixtures", () => {
           transactions_root: h32,
           resolution_claim: null,
         },
-        SDK.SettlementDatum,
+        SDKStateQueue.SettlementDatum,
       ),
     ).toMatchObject({ resolution_claim: null });
     expectRoundTrip(
@@ -691,15 +707,15 @@ describe("SDK canonical ABI fixtures", () => {
       operatorVkey: h28,
       protocolVersion: 1n,
     };
-    const transitionFaultProof = SDK.makeTransitionFaultProof({
+    const transitionFaultProof = SDKFraudProof.makeTransitionFaultProof({
       challengedHeaderHash: h28,
       header: transitionHeader,
-      fault: SDK.traceBoundaryFault({
+      fault: SDKFraudProof.traceBoundaryFault({
         side: "TraceStart",
         traceProof,
       }),
     });
-    expectRoundTrip(transitionFaultProof, SDK.TransitionFaultProof);
+    expectRoundTrip(transitionFaultProof, SDKFraudProof.TransitionFaultProof);
     expectRoundTrip(
       {
         Continue: [
@@ -711,10 +727,10 @@ describe("SDK canonical ABI fixtures", () => {
           },
         ],
       },
-      SDK.TransitionTraceRouteSpendRedeemer,
+      SDKFraudProof.TransitionTraceRouteSpendRedeemer,
     );
     expect(
-      SDK.transitionTraceThreadAssetName({
+      SDKFraudProof.transitionTraceThreadAssetName({
         fraudCategoryId: "00000004",
         challengedHeaderHash: h28,
       }),
@@ -729,7 +745,7 @@ describe("SDK canonical ABI fixtures", () => {
             hub_ref_input_index: 2n,
           },
         },
-        SDK.SettlementMintRedeemer,
+        SDKStateQueue.SettlementMintRedeemer,
       ),
     ).toMatchObject({ Spawn: { settlement_id: h28 } });
     expectRoundTrip("Init", SDK.FraudProofCatalogueMintRedeemer);

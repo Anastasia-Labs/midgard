@@ -1,6 +1,7 @@
 /** Applied history fixture: genuine list scripts, explicitly native hub/CT authority. */
 
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/users";
 import "@lucid-evolution/lucid";
 import "effect";
 import "vitest";

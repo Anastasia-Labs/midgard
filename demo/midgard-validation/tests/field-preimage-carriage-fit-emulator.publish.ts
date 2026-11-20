@@ -13,7 +13,7 @@ import {
   type FieldPreimagePublicationOutput,
   fieldPreimagePublicationOutputs,
   minimumLovelaceForFieldPreimagePublication,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import {
   CML,
   Emulator,

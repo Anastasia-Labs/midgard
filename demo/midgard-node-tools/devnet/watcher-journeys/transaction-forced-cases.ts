@@ -1,5 +1,5 @@
 import { retainedTransactionFixture } from "@al-ft/midgard-fault-proofs/test-support/retained-transaction";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 
 import { prepareJourneyForcedTransaction } from "./forced-transaction.js";
 import type { JourneyTransactionInput } from "./transaction-cases.js";

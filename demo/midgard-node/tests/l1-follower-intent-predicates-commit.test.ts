@@ -17,7 +17,8 @@
  */
 import type { FactStore } from "@al-ft/midgard-l1-follower";
 import { SIM_ORIGIN } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -74,7 +75,7 @@ const freshAnchor = async (s: PredicateScenario) =>
  */
 const LAST_APPEND_SLOT =
   SIM_ORIGIN.point.slot +
-  Number((2_000n + SDK.DA_ATTESTATION_TIMEOUT_MS) / 1_000n);
+  Number((2_000n + SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS) / 1_000n);
 
 /**
  * This operator holds the shift and the block journal row is live, anchored
@@ -249,7 +250,7 @@ describe("the node's commit predicate over the follower's projections", () => {
     ).toBe(false);
     // An inclusive upper bound exactly at the boundary is refused; one
     // millisecond before it is allowed.
-    const boundary = 2_000 + Number(SDK.DA_ATTESTATION_TIMEOUT_MS);
+    const boundary = 2_000 + Number(SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS);
     const until = LAST_APPEND_SLOT + 2;
     const timeTo =
       (upperMs: number) =>

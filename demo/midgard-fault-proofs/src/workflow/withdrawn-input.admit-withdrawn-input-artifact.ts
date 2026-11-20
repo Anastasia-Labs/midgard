@@ -1,16 +1,18 @@
 import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
 import {
   commitCountedRootProgram,
-  committedWithdrawalKeyBytes,
-  committedWithdrawalValueBytes,
-  encodeMidgardTxInputCanonical,
-  isWithdrawnInputViolation,
   type Proof,
   ROOT_DOMAINS,
   WithdrawalSourceMembershipProof,
   type WithdrawalSourceMembershipProof as WithdrawalSourceMembershipProofV1,
+} from "@al-ft/midgard-sdk/core";
+import {
+  committedWithdrawalKeyBytes,
+  committedWithdrawalValueBytes,
+  encodeMidgardTxInputCanonical,
+  isWithdrawnInputViolation,
   WITHDRAWN_INPUT_VIOLATION_ID,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

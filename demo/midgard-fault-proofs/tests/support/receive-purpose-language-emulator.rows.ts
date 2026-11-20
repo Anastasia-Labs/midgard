@@ -1,7 +1,7 @@
 /** Shared row drivers for the `receivePurposeLanguage` genuine-Init emulator
  * suites: bounds, conviction to a fraud-proof token, the terminal's refusal
  * of an honest leaf, and removal of the convicted block. */
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { expect } from "vitest";
 
 import { RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK } from "../../src/receive-purpose-language/index.js";

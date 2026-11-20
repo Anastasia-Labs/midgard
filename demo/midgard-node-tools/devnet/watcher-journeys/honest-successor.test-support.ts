@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { createSyntheticStateQueueHeader } from "midgard-watcher/tests/support/state-queue-observation-fixture.commit-transaction";

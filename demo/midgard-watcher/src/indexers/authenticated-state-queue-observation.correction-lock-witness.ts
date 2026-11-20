@@ -1,5 +1,6 @@
 import type { FraudProofRawL1Transaction } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { CML, Data } from "@lucid-evolution/lucid";
 
 import { outputReferences } from "./authenticated-state-queue-observation.parse-persisted-observation.js";
@@ -151,7 +152,7 @@ export const correctionLockWitness = ({
     const targetHeaderHash = timeout
       ? decoded.RemoveUnattestedBlockAfterTimeout.timed_out_header_hash
       : decoded.RemoveFraudulentBlockHeader.fraudulent_blocks_header_hash;
-    const identity: SDK.CorrectionIdentity = timeout
+    const identity: SDKCore.CorrectionIdentity = timeout
       ? "AttestationTimeout"
       : fraudProofIdentity({
           proof: (() => {
@@ -200,7 +201,7 @@ export const correctionLockWitness = ({
       );
     }
     const timeout = decoded.RemoveUnavailableBlockAfterTimeout;
-    const identity: SDK.CorrectionIdentity = {
+    const identity: SDKCore.CorrectionIdentity = {
       AvailabilityChallenge: {
         challenge_asset_name: timeout.challenge_asset_name,
       },

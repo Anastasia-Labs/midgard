@@ -1,7 +1,9 @@
 /** A committed event repeated by a later block, captured on the actual list
  * policies and classified by fabricated proof stages 02/03. The hub and
  * initial CT issuer are native fixtures, as in the capture suite. */
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/users";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "effect";
 import "vitest";
 import "./submit-init-emulator-event-history-capture.setup-proof.js";
@@ -10,7 +12,9 @@ import "./submit-init-emulator-event-history-capture.submit-production-classific
 import "./submit-init-emulator-event-history-list.journey.js";
 import "./support/emulator/history-pair.js";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { Effect } from "effect";
 import { expect, it } from "vitest";
 
@@ -52,7 +56,7 @@ for (const kind of ["Deposit", "Withdrawal"] as const) {
     };
     const w = await fetchWitness(h, kind, id);
     if (w.kind !== "Present") throw new Error("Missing admitted Order");
-    const inclusionTime = SDK.captureEventHistoryWitness(
+    const inclusionTime = SDKUsers.captureEventHistoryWitness(
       w,
       deployment(h, kind).policyId,
       kind,
@@ -63,10 +67,12 @@ for (const kind of ["Deposit", "Withdrawal"] as const) {
     const authenticHash =
       "DepositPayload" in payload
         ? Effect.runSync(
-            SDK.depositInfoCommitment(payload.DepositPayload.event.info),
+            SDKFraudProof.depositInfoCommitment(
+              payload.DepositPayload.event.info,
+            ),
           )
         : Effect.runSync(
-            SDK.withdrawalContentCommitment({
+            SDKFraudProof.withdrawalContentCommitment({
               ...payload.WithdrawalPayload.event.info,
               validity: "NonExistentWithdrawalUtxo",
             }),
@@ -84,7 +90,7 @@ for (const kind of ["Deposit", "Withdrawal"] as const) {
       h.emulator.awaitSlot(
         Number((captureFrom - BigInt(h.emulator.now()) + 999n) / 1000n),
       );
-    const window = SDK.eventHistoryCaptureWindow({
+    const window = SDKUsers.eventHistoryCaptureWindow({
       now: BigInt(h.emulator.now()),
       headerEnd: p.headerEnd,
       mergeDeadline: p.headerEnd + SDK.MATURITY_DURATION_MS,
@@ -135,7 +141,7 @@ for (const kind of ["Deposit", "Withdrawal"] as const) {
     h.emulator.awaitSlot(Number(SDK.MATURITY_DURATION_MS / 1000n));
     const headerEnd = BigInt(h.emulator.now()) - 200_000n;
     const p = await setupProof(h, kind, id, headerEnd);
-    const window = SDK.eventHistoryCaptureWindow({
+    const window = SDKUsers.eventHistoryCaptureWindow({
       now: BigInt(h.emulator.now()),
       headerEnd,
       mergeDeadline: headerEnd + SDK.MATURITY_DURATION_MS,

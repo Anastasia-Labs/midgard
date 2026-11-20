@@ -15,10 +15,12 @@
  */
 import {
   requireReferenceInputIndex,
+  type WithdrawalValidator,
+} from "@al-ft/midgard-sdk/core";
+import {
   type ScriptDecodeStakerClassName,
   type ScriptDecodeValidator,
-  type WithdrawalValidator,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import type {
   ScriptDecodeRecord,
   ScriptDecodeRun,

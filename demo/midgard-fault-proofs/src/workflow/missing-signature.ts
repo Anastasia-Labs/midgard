@@ -1,5 +1,9 @@
 import "@al-ft/midgard-core";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/da";
+import "@al-ft/midgard-sdk/users";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "../evidence/prepare-from-evidence.js";
 import "../missing-signature/evidence.js";
 import "../missing-signature/forced-artifact.js";

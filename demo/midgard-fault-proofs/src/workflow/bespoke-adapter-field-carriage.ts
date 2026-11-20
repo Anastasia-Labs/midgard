@@ -12,7 +12,7 @@
  * (`field-opening.own-field-carriage.ts`); this module goes when these two
  * adapters do the same.
  */
-import { fieldPreimagePublicationDatumCbor } from "@al-ft/midgard-sdk";
+import { fieldPreimagePublicationDatumCbor } from "@al-ft/midgard-sdk/state-queue";
 import type { LucidEvolution, Network } from "@lucid-evolution/lucid";
 
 import { isAdaOnlyInlineDatumOutput } from "../ada-only-carriage-output.js";

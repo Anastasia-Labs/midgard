@@ -3,7 +3,7 @@ import {
   hashBlockHeader,
   Header,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import {
   credentialToAddress,
   scriptHashToCredential,

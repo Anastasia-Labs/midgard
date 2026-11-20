@@ -1,5 +1,5 @@
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 
 import { eventLedgerBeforeStep } from "../event-ledger.js";
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";

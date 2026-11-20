@@ -1,4 +1,4 @@
-import { FraudProofTokenDatum } from "@al-ft/midgard-sdk";
+import { FraudProofTokenDatum } from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import { MAX_COMPUTATION_THREAD_STEPS } from "../src/workflow/computation-thread-steps.js";

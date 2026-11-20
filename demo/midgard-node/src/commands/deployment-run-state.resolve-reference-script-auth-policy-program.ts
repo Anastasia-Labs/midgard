@@ -3,7 +3,7 @@ import {
   type ReferenceScriptAuthPolicy,
   referenceScriptAuthPolicyDeploymentInfo,
   referenceScriptAuthPolicyFromDeploymentInfo,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

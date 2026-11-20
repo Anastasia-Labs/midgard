@@ -7,7 +7,7 @@
  * the node's health and retried at the next one.
  */
 import { MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS } from "@al-ft/midgard-core";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import * as LE from "@lucid-evolution/lucid";
 import { Effect, Schedule } from "effect";
 

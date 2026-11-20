@@ -7,7 +7,7 @@ import {
 } from "@al-ft/midgard-core";
 import { MidgardTxCodecError } from "@al-ft/midgard-core/codec";
 import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 
 import { eventLedgerBeforeStep } from "../event-ledger.js";

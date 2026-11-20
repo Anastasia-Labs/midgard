@@ -1,7 +1,11 @@
 import "@aiken-lang/merkle-patricia-forestry";
 import "@al-ft/midgard-core";
 import "@al-ft/midgard-core/codec/forced";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/da";
+import "@al-ft/midgard-sdk/operators";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "@al-ft/midgard-validation/ledger-output-descriptor";
 import "@al-ft/midgard-validation/value-accounting";
 import "@lucid-evolution/lucid";
@@ -36,7 +40,7 @@ import "./support/emulator/setup-tx.submit-setup-tx.js";
 import "./support/synthetic-deep-proof.js";
 import "./min-ada-wrongful-rejection-lifecycle.setup.js";
 
-import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
+import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import { isContinuationTurn } from "../src/fault-proof-turn.js";

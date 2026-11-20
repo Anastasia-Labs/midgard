@@ -15,7 +15,7 @@ import {
   fetchCorrectionLockUTxOProgram,
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   type FraudProofCatalogueCategoryName,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import {
   CML,
   type LucidEvolution,

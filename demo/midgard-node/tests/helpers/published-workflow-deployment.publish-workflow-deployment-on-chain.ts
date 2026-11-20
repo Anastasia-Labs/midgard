@@ -17,7 +17,8 @@ import {
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import type { L1Origin } from "@al-ft/midgard-core/l1-origin";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   type LucidEvolution,
   type UTxO,
@@ -150,7 +151,7 @@ export const publishWorkflowDeploymentOnChain = async ({
   }
   const authPolicy =
     resume?.authPolicy ??
-    (await SDK.createReferenceScriptAuthPolicy(
+    (await SDKStateQueue.createReferenceScriptAuthPolicy(
       publisherLucid,
       chain.now(),
       publicationAuthorityLifetime(
@@ -161,7 +162,7 @@ export const publishWorkflowDeploymentOnChain = async ({
     ));
   const walletAddress = await publisherLucid.wallet().address();
   const authPolicyMetadata =
-    SDK.referenceScriptAuthPolicyDeploymentInfo(authPolicy);
+    SDKStateQueue.referenceScriptAuthPolicyDeploymentInfo(authPolicy);
   verifyReferenceScriptPublicationAuthority({
     cborHex: authPolicyMetadata.nativeScript.cborHex,
     expiresAtSlot: authPolicyMetadata.nativeScript.expiresAtSlot,
@@ -258,8 +259,9 @@ export const publishWorkflowDeploymentOnChain = async ({
         utxo?.scriptRef == null ||
         validatorToScriptHash(utxo.scriptRef) !==
           validatorToScriptHash(target.script) ||
-        utxo.assets[SDK.referenceScriptAuthUnit(authPolicy.policyId, role)] !==
-          1n
+        utxo.assets[
+          SDKStateQueue.referenceScriptAuthUnit(authPolicy.policyId, role)
+        ] !== 1n
       )
         throw new Error(`Confirmed reference identity differs for ${role}`);
       references.set(name, utxo);
@@ -338,7 +340,7 @@ export const publishWorkflowDeploymentOnChain = async ({
     );
   }
   const rootUnit =
-    contracts.stateQueue.policyId + SDK.STATE_QUEUE_ROOT_ASSET_NAME;
+    contracts.stateQueue.policyId + SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME;
   await runWithoutFollower(
     ensurePhasMembershipRewardAccountRegisteredProgram(operatorLucid),
   );
@@ -357,7 +359,7 @@ export const publishWorkflowDeploymentOnChain = async ({
     SDK.getLinkedListNodeViewFromUTxO(roots[0]!),
   );
   const genesis = await Effect.runPromise(
-    SDK.getConfirmedStateFromStateQueueDatum(rootDatum),
+    SDKStateQueue.getConfirmedStateFromStateQueueDatum(rootDatum),
   );
   const expectedGenesis = SDK.makeGenesisConfirmedState(genesis.data.startTime);
   if (
@@ -381,7 +383,10 @@ export const publishWorkflowDeploymentOnChain = async ({
   });
   const confirmedReferences = await publisherLucid.utxosAt(walletAddress);
   for (const role of expectedRoles) {
-    const unit = SDK.referenceScriptAuthUnit(authPolicy.policyId, role);
+    const unit = SDKStateQueue.referenceScriptAuthUnit(
+      authPolicy.policyId,
+      role,
+    );
     const quantity = confirmedReferences.reduce(
       (sum, utxo) => sum + (utxo.assets[unit] ?? 0n),
       0n,
@@ -391,7 +396,7 @@ export const publishWorkflowDeploymentOnChain = async ({
   }
   const deploymentInfo = buildContractDeploymentInfoFromContracts(
     contracts,
-    SDK.referenceScriptAuthPolicyDeploymentInfo(authPolicy),
+    SDKStateQueue.referenceScriptAuthPolicyDeploymentInfo(authPolicy),
     new Map(
       [...references].map(([name, { txHash, outputIndex }]) => [
         name,

@@ -9,7 +9,8 @@ import {
   locally,
   replayBlockEvents,
 } from "@al-ft/midgard-fault-proofs/block-replay";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
   decodeMidgardLedgerTxFromCanonicalCbor,
   midgardOutRefToCborHex,
@@ -203,7 +204,7 @@ class LocalFailure {
 /** The first payload section that names one key twice, if any: such a
  * section has no root, which is the block's fault. Keys compare as the
  * root computation reads them. */
-const repeatedKeySection = (body: SDK.DaPayload["block_body"]) =>
+const repeatedKeySection = (body: SDKDa.DaPayload["block_body"]) =>
   (
     [
       ["withdrawals", body.withdrawals],
@@ -258,7 +259,7 @@ export const verifyAndImportBlock = (
     readonly headerHash: string;
     readonly parentHeaderHash: string;
     readonly parentUtxosRoot: string;
-    readonly payload?: SDK.DaPayload;
+    readonly payload?: SDKDa.DaPayload;
   },
 ) =>
   Effect.gen(function* () {
@@ -303,7 +304,7 @@ export const verifyAndImportBlock = (
       (yield* hashOf(input.header)) !== input.headerHash ||
       payload.block_body.header_hash !== input.headerHash ||
       (yield* hashOf(payload.block_body.header)) !== input.headerHash ||
-      payload.version !== SDK.DA_PAYLOAD_VERSION
+      payload.version !== SDKDa.DA_PAYLOAD_VERSION
     )
       return yield* fail(
         "invalid",
@@ -324,7 +325,7 @@ export const verifyAndImportBlock = (
       ...rootMismatches(headerRoots(input.header), headerCommittedRoots(roots)),
     ];
     const body = payload.block_body;
-    const memberCounts: SDK.DaPayloadCounts = {
+    const memberCounts: SDKDa.DaPayloadCounts = {
       depositCount: BigInt(body.deposits.length),
       withdrawalCount: BigInt(body.withdrawals.length),
       forcedTransactionCount: BigInt(body.forced_transactions.length),
@@ -340,7 +341,7 @@ export const verifyAndImportBlock = (
     };
     for (const key of Object.keys(
       memberCounts,
-    ) as (keyof SDK.DaPayloadCounts)[]) {
+    ) as (keyof SDKDa.DaPayloadCounts)[]) {
       if (
         headerCommittedCounts(memberCounts)[key] !==
           headerCounts(input.header)[key] ||

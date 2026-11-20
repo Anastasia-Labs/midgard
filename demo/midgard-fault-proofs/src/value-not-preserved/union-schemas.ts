@@ -1,5 +1,6 @@
 import "@al-ft/midgard-core/lucid-data";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "@lucid-evolution/lucid";
 import "../transaction-output-non-canonical/schemas.js";
 import "./schemas.js";

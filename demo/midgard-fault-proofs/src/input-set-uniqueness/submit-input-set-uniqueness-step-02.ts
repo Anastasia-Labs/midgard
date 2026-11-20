@@ -21,7 +21,9 @@
  * out-ref item encoding, so item byte equality *is* out-ref equality.
  */
 
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "@lucid-evolution/lucid";
 import "../field-opening.js";
 import "../runtime.js";

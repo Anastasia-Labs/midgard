@@ -1,5 +1,5 @@
 import { RetainedDaPayloadUnavailableError } from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
-import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "@al-ft/midgard-sdk";
+import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "@al-ft/midgard-sdk/core";
 import { describe, expect, it, vi } from "vitest";
 
 import { harness } from "./fault-decision-bridge.harness.js";

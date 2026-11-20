@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Client } from "pg";
 import { afterAll, describe, expect, it } from "vitest";
 

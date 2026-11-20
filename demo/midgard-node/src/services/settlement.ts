@@ -1,6 +1,11 @@
 import "node:crypto";
 import "@al-ft/midgard-core/out-ref";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/da";
+import "@al-ft/midgard-sdk/users";
+import "@al-ft/midgard-sdk/deployment";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "@effect/sql";
 import "@lucid-evolution/lucid";
 import "effect";

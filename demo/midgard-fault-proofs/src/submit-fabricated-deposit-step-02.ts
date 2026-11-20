@@ -1,6 +1,12 @@
 /** Capture authenticated current history facts. Pointer references are discovered
  * afresh; the retained payload and original funds survive later list mutations. */
 import {
+  requireInputIndex,
+  requireOwnSpendPurpose,
+  requireReferenceInputIndex,
+  requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
   type FabricatedDepositEvidence,
   type FabricatedDepositEvidenceVerdict,
   FabricatedDepositStep02Datum,
@@ -8,11 +14,7 @@ import {
   type FabricatedDepositStep02State,
   FabricatedDepositStep03Datum,
   fabricatedDepositStep03State,
-  requireInputIndex,
-  requireOwnSpendPurpose,
-  requireReferenceInputIndex,
-  requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

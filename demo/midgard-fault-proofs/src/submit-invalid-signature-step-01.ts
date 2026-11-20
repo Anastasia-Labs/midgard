@@ -32,16 +32,18 @@
  */
 import {
   HUB_ORACLE_ASSET_NAME,
-  InvalidSignatureStep01SpendRedeemer,
-  InvalidSignatureStep02Datum,
-  invalidSignatureStep02StateFromBadTx,
-  invalidSignatureWitnessSetCommitment,
   type NativeTxWitnessSetCompact,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  InvalidSignatureStep01SpendRedeemer,
+  InvalidSignatureStep02Datum,
+  invalidSignatureStep02StateFromBadTx,
+  invalidSignatureWitnessSetCommitment,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   credentialToAddress,

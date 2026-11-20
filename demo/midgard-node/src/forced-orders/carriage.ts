@@ -31,10 +31,11 @@ import {
   type RedeemerSummary,
   type TxSummary,
 } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { Data } from "@lucid-evolution/lucid";
 
-export type TxOrderPayload = SDK.TxOrderUTxOV1["datum"]["event"]["tx"];
+export type TxOrderPayload = SDKUsers.TxOrderUTxOV1["datum"]["event"]["tx"];
 
 /** The nine-field proof source a payload commits to. */
 export const payloadSource = (payload: TxOrderPayload) => ({
@@ -87,8 +88,8 @@ export const carriageVector = (
   (
     Data.from(
       redeemerCbor.toString("hex"),
-      SDK.TxOrderMintRedeemer,
-    ) as SDK.TxOrderMintRedeemer
+      SDKUsers.TxOrderMintRedeemer,
+    ) as SDKUsers.TxOrderMintRedeemer
   ).material_carriage.map((entry): MidgardFieldCarriage => {
     if ("Inline" in entry)
       return {

@@ -3,7 +3,7 @@
  * resume points, each mint policy's declared asset count, and the entry
  * units of a bound transaction in the producer's fold order. */
 import { decodeMidgardLedgerOutputCommitment } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
 import { DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_LABEL as LABEL } from "./contracts.js";

@@ -3,7 +3,8 @@ import {
   midgardFieldCommitment,
 } from "@al-ft/midgard-core";
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
@@ -132,7 +133,7 @@ export const prepareObserverOrderInvalidAcceptedArtifact = async (
     throw new Error("observerOrderInvalid selected field 3 disappeared");
   const evidence = prepareObserverOrderInvalidEvidence({
     finding: {
-      subject: SDK.acceptedVerdictSubject(transaction.nodeTxId),
+      subject: SDKFraudProof.acceptedVerdictSubject(transaction.nodeTxId),
       observerIndex: detection.observerIndex,
     },
     fieldPreimage: field,
@@ -187,7 +188,7 @@ export const prepareObserverOrderInvalidForcedArtifact = async (
   });
   const evidence = prepareObserverOrderInvalidEvidence({
     finding: {
-      subject: SDK.forcedVerdictSubject({
+      subject: SDKFraudProof.forcedVerdictSubject({
         transactionId: transaction.value.tx_id,
         sourceKey: transaction.key,
         rejectionReason: verdict.ForcedTxInvalid.reason,

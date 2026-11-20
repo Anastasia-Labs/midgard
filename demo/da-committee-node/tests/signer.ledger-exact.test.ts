@@ -1,5 +1,5 @@
 import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
-import { daAvailabilityAttestationMessage } from "@al-ft/midgard-sdk";
+import { daAvailabilityAttestationMessage } from "@al-ft/midgard-sdk/da";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { beforeAll, describe, expect, it } from "vitest";
 

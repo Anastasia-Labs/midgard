@@ -1,4 +1,6 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -38,15 +40,15 @@ export const signedIntentContinuationChildEvents = (utxosRoot: string) => {
     withdrawals: [
       [
         Data.to(CHILD_WITHDRAWAL_ID, SDK.OutputReference),
-        SDK.committedWithdrawalValueBytes(CHILD_WITHDRAWAL_INFO),
+        SDKFraudProof.committedWithdrawalValueBytes(CHILD_WITHDRAWAL_INFO),
       ],
-    ] as SDK.DaPayloadEntry[],
+    ] as SDKDa.DaPayloadEntry[],
     event_to_step: [
       [
         Data.to(eventKey, SDK.EventKey),
         Data.to({ step_index: 0n, phase: "Withdrawal" }, SDK.EventToStepValue),
       ],
-    ] as SDK.DaPayloadEntry[],
+    ] as SDKDa.DaPayloadEntry[],
     transition_trace: [
       [
         Data.to(0n),
@@ -62,13 +64,13 @@ export const signedIntentContinuationChildEvents = (utxosRoot: string) => {
           SDK.TransitionStep,
         ),
       ],
-    ] as SDK.DaPayloadEntry[],
+    ] as SDKDa.DaPayloadEntry[],
   };
 };
 
 const entriesRoot = (
   domain: SDK.RootDomain,
-  entries: readonly SDK.DaPayloadEntry[],
+  entries: readonly SDKDa.DaPayloadEntry[],
 ) =>
   buildAuthenticatedRootFromEncodedEntries(
     domain,

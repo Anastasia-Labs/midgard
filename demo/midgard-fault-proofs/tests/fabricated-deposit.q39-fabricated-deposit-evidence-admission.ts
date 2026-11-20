@@ -1,4 +1,6 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDK from "@al-ft/midgard-sdk/users";
 import {
   credentialToAddress,
   Data,
@@ -56,7 +58,7 @@ export const depositEventDatum = ({
   paymentKeyByte = 0x1c,
   inclusionTime = AUTHENTIC_INCLUSION_TIME,
 }: {
-  readonly id?: SDK.OutputReference;
+  readonly id?: SDKCore.OutputReference;
   readonly paymentKeyByte?: number;
   readonly inclusionTime?: bigint;
 } = {}): SDK.DepositDatum => ({
@@ -135,7 +137,7 @@ export const historyLucid = (nodes: readonly UTxO[]): LucidEvolution =>
 // Built from the Aiken constants rather than from a local block, so the step-04
 // handoff bytes can be compared against the Aiken scenarios' exact CBOR.
 
-export const historyAssets: SDK.Value = new Map([
+export const historyAssets: SDKCore.Value = new Map([
   ["", new Map([["", 3_000_000n]])],
 ]);
 
@@ -154,7 +156,7 @@ export const historyOpening = (
         original_assets: assets,
       },
     },
-    SDK.FabricatedDepositAuthenticContentOpening,
+    SDKFraudProof.FabricatedDepositAuthenticContentOpening,
   );
 
 export const historyCommitment = SDK.eventHistoryCommitment(
@@ -168,7 +170,7 @@ export const historyCommitment = SDK.eventHistoryCommitment(
   historyAssets,
 );
 
-export const fiStep03State: SDK.FabricatedDepositStep03State = {
+export const fiStep03State: SDKFraudProof.FabricatedDepositStep03State = {
   state_queue_policy: "bb".repeat(28),
   challenged_header_hash: FI_HEADER_HASH,
   header_start_time: HEADER_START_TIME,
@@ -179,7 +181,7 @@ export const fiStep03State: SDK.FabricatedDepositStep03State = {
   verdict: "DepositIdentityAbsent",
 };
 
-export const mmStep03State: SDK.FabricatedDepositStep03State = {
+export const mmStep03State: SDKFraudProof.FabricatedDepositStep03State = {
   state_queue_policy: "bb".repeat(28),
   challenged_header_hash: MM_HEADER_HASH,
   header_start_time: HEADER_START_TIME,
@@ -231,7 +233,7 @@ describe("Q39 fabricated-deposit evidence admission", () => {
           diagnosticLabel: "operator diagnostic",
         },
       }),
-    ).rejects.toBeInstanceOf(SDK.CanonicalEvidenceRejection);
+    ).rejects.toBeInstanceOf(SDKFraudProof.CanonicalEvidenceRejection);
   });
 
   it("refuses a payload whose embedded header is not the observed one", async () => {

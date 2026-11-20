@@ -11,7 +11,8 @@ import {
   type TxSummary,
 } from "@al-ft/midgard-l1-follower";
 import type { ForkStep } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { WatcherProjectionDeployment } from "../../src/l1-follower/projection.js";
@@ -135,7 +136,7 @@ export const modelQueue = (
       continue;
     const name = [...names.keys()][0] as string;
     const header =
-      name === SDK.STATE_QUEUE_ROOT_ASSET_NAME
+      name === SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME
         ? null
         : name.slice(SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX.length);
     const datum = Data.from(

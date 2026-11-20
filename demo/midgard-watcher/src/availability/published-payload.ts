@@ -1,6 +1,8 @@
 import type { RetainedDaPayloadSource } from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
 import type { FraudProofRawL1Transaction } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   CML,
   coreToTxOutput,
@@ -72,7 +74,7 @@ export const reconstructWatcherAvailabilityPublishedPayload = async (input: {
   availabilityAddress: string;
   availabilityPolicyId: string;
   stateQueuePolicyId: string;
-  parameters: SDK.DaAvailabilityParameters;
+  parameters: SDKDa.DaAvailabilityParameters;
   readHistory(unit: string): Promise<readonly FraudProofRawL1Transaction[]>;
   slotToUnixTime(slot: number): number;
 }): Promise<Buffer> => {
@@ -90,7 +92,7 @@ export const reconstructWatcherAvailabilityPublishedPayload = async (input: {
     | {
         transaction: FraudProofRawL1Transaction;
         output: UTxO;
-        record: SDK.DaAvailabilityChallengeRecord;
+        record: SDKDa.DaAvailabilityChallengeRecord;
       }
     | undefined;
   for (const transaction of history) {
@@ -100,12 +102,12 @@ export const reconstructWatcherAvailabilityPublishedPayload = async (input: {
         output.datum == null ||
         !Object.keys(output.assets).some((unit) =>
           unit.startsWith(
-            policy + SDK.DA_AVAILABILITY_CHALLENGE_ASSET_NAME_PREFIX,
+            policy + SDKDa.DA_AVAILABILITY_CHALLENGE_ASSET_NAME_PREFIX,
           ),
         )
       )
         continue;
-      const record = SDK.parseDaAvailabilityChallengeRecordCbor(
+      const record = SDKDa.parseDaAvailabilityChallengeRecordCbor(
         output.datum,
         input.parameters,
       );
@@ -126,7 +128,7 @@ export const reconstructWatcherAvailabilityPublishedPayload = async (input: {
   const record = opened.record;
   if (
     record.commitment.deployment_identity !== input.deploymentIdentity ||
-    SDK.daAvailabilityPublishedTerminalCommitment(record.commitment) !==
+    SDKDa.daAvailabilityPublishedTerminalCommitment(record.commitment) !==
       input.terminalCommitment
   ) {
     throw new Error(
@@ -138,7 +140,7 @@ export const reconstructWatcherAvailabilityPublishedPayload = async (input: {
   const fundingInputs = spentOutRefs(opened.transaction).filter((outRef) => {
     const [transactionId, outputIndex] = outRef.split("#");
     return (
-      SDK.daAvailabilityChallengeAssetName({
+      SDKDa.daAvailabilityChallengeAssetName({
         transactionId: transactionId!,
         outputIndex: BigInt(outputIndex!),
       }) === record.challenge_asset_name
@@ -149,7 +151,7 @@ export const reconstructWatcherAvailabilityPublishedPayload = async (input: {
       "Challenge history has no unique challenger funding input for its DACH identity",
     );
   const [transactionId, outputIndex] = fundingInputs[0]!.split("#");
-  const challengeRecord: SDK.DaAvailabilityChallengeRecordEvidence = {
+  const challengeRecord: SDKDa.DaAvailabilityChallengeRecordEvidence = {
     datumCborHex: opened.output.datum!,
     challengerFundingOutRef: {
       transactionId: transactionId!,
@@ -157,11 +159,11 @@ export const reconstructWatcherAvailabilityPublishedPayload = async (input: {
     },
     recordOutputOutRef: SDK.outputReferenceFromUTxO(opened.output),
   };
-  const tranches: SDK.DaAvailabilityTrancheEvidence[] = [];
+  const tranches: SDKDa.DaAvailabilityTrancheEvidence[] = [];
   for (const descriptor of record.commitment.tranche_descriptors) {
     const unit =
       policy +
-      SDK.daAvailabilityTrancheAssetName({
+      SDKDa.daAvailabilityTrancheAssetName({
         challengeAssetName: record.challenge_asset_name,
         trancheIndex: Number(descriptor.tranche_index),
       });
@@ -172,14 +174,14 @@ export const reconstructWatcherAvailabilityPublishedPayload = async (input: {
     if (initial.length !== 1)
       throw new Error("Challenge has no unique initial tranche output");
     let thread = initial[0]!;
-    const publications: SDK.DaAvailabilityTrancheEvidence["publications"][number][] =
+    const publications: SDKDa.DaAvailabilityTrancheEvidence["publications"][number][] =
       [];
     const visited = new Set<string>();
     while (true) {
       if (thread.datum == null || visited.has(ref(thread)))
         throw new Error("L1 tranche history is malformed or cyclic");
       visited.add(ref(thread));
-      const state = SDK.parseDaAvailabilityTrancheDatumCbor(thread.datum);
+      const state = SDKDa.parseDaAvailabilityTrancheDatumCbor(thread.datum);
       if ("Receipt" in state) break;
       const successors = transactions.filter((transaction) =>
         spentOutRefs(transaction).includes(ref(thread)),
@@ -197,7 +199,9 @@ export const reconstructWatcherAvailabilityPublishedPayload = async (input: {
           "Published tranche was settled without complete public bytes",
         );
       thread = next[0]!;
-      const nextDatum = SDK.parseDaAvailabilityTrancheDatumCbor(thread.datum!);
+      const nextDatum = SDKDa.parseDaAvailabilityTrancheDatumCbor(
+        thread.datum!,
+      );
       const carrierIndex =
         "Active" in nextDatum
           ? nextDatum.Active.latest_carrier_output_index
@@ -220,7 +224,7 @@ export const reconstructWatcherAvailabilityPublishedPayload = async (input: {
       if (ttl === undefined || ttl > BigInt(Number.MAX_SAFE_INTEGER))
         throw new Error("Canonical publication lacks bounded validity");
       publications.push({
-        publication: SDK.parseDaAvailabilityPublicationDatumCbor(
+        publication: SDKDa.parseDaAvailabilityPublicationDatumCbor(
           carrier.datum,
           record.commitment.response_geometry,
           descriptor,
@@ -235,7 +239,7 @@ export const reconstructWatcherAvailabilityPublishedPayload = async (input: {
     tranches.push({ descriptor, publications });
   }
   return Buffer.from(
-    SDK.reconstructDaAvailabilityPayload({
+    SDKDa.reconstructDaAvailabilityPayload({
       challengeRecord,
       parameters: input.parameters,
       tranches,
@@ -251,12 +255,12 @@ export const reconstructWatcherAvailabilityPublishedPayload = async (input: {
  */
 export const createWatcherL1AvailabilityPayloadSource = (input: {
   identity: VerifiedWatcherDeploymentIdentity;
-  deployment: SDK.DaAvailabilityDeployment;
+  deployment: SDKDa.DaAvailabilityDeployment;
   l1: WatcherAvailabilityL1;
   minimumConfirmationDepth: number;
   lucid: Pick<LucidEvolution, "slotToUnixTime">;
   currentObservation(): WatcherAuthenticatedStateQueueObservation | null;
-  scope?: SDK.DaAvailabilityReadScope;
+  scope?: SDKDa.DaAvailabilityReadScope;
 }): RetainedDaPayloadSource => {
   assertVerifiedWatcherDeploymentIdentity(input.identity);
   const { minimumConfirmationDepth } = input;
@@ -353,8 +357,8 @@ export const createWatcherL1AvailabilityPayloadSource = (input: {
         sourcePeerId,
         payloadEnvelopeCbor: Buffer.from(payload),
         attempts: [],
-        provenance: SDK.assertSecurityGradeEvidence(
-          SDK.admitEvidenceProvenance({
+        provenance: SDKFraudProof.assertSecurityGradeEvidence(
+          SDKFraudProof.admitEvidenceProvenance({
             provenance: {
               trustClass: "public_or_permissionless_da",
               sourceId: `${sourceId}/${sourcePeerId}`,

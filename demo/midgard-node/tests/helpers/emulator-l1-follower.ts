@@ -20,7 +20,7 @@
  * The deployment is bound once per emulator (`bindNodeFollower`), from the
  * fixture's contracts when nothing bound it earlier.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import { Emulator, type LucidEvolution } from "@lucid-evolution/lucid";
 import { Duration, Effect, Ref, Schedule } from "effect";
 

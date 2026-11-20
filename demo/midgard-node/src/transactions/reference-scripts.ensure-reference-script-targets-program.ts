@@ -1,10 +1,11 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import {
   assertReferenceScriptAuthUnexpired,
   type ReferenceScriptAuthMintingPolicy,
   type ReferenceScriptAuthPolicyRef,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import { type LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -195,7 +196,7 @@ export const ensureReferenceScriptTargetsProgram = (
 ): Effect.Effect<
   readonly ReferenceScriptResolved[],
   | SDK.StateQueueError
-  | SDK.LucidError
+  | SDKCore.LucidError
   | TxConfirmError
   | TxExpiredError
   | TxSignError
@@ -319,7 +320,7 @@ export const ensureReferenceScriptTargetsProgram = (
 
 export const deployReferenceScriptCommandProgram = (
   referenceScriptsLucid: LucidEvolution,
-  contracts: SDK.MidgardValidators,
+  contracts: SDKCore.MidgardValidators,
   commandName: ReferenceScriptCommandName,
   authPolicy: ReferenceScriptAuthMintingPolicy,
   fundingLucid: LucidEvolution = referenceScriptsLucid,
@@ -327,7 +328,7 @@ export const deployReferenceScriptCommandProgram = (
 ): Effect.Effect<
   readonly ReferenceScriptResolved[],
   | SDK.StateQueueError
-  | SDK.LucidError
+  | SDKCore.LucidError
   | TxConfirmError
   | TxExpiredError
   | TxSignError
@@ -346,7 +347,7 @@ export const deployReferenceScriptCommandProgram = (
 
 export const planReferenceScriptCommandProgram = (
   referenceScriptsLucid: LucidEvolution,
-  contracts: SDK.MidgardValidators,
+  contracts: SDKCore.MidgardValidators,
   commandName: ReferenceScriptCommandName,
   authPolicy: ReferenceScriptAuthMintingPolicy,
   referenceScriptsAddress?: string,
@@ -420,14 +421,14 @@ export const referenceScriptWalletStatusProgram = (
 
 export const ensureNodeRuntimeReferenceScriptsProgram = (
   referenceScriptsLucid: LucidEvolution,
-  contracts: SDK.MidgardValidators,
+  contracts: SDKCore.MidgardValidators,
   authPolicy: ReferenceScriptAuthMintingPolicy,
   fundingLucid: LucidEvolution = referenceScriptsLucid,
   referenceScriptsAddress?: string,
 ): Effect.Effect<
   readonly ReferenceScriptResolved[],
   | SDK.StateQueueError
-  | SDK.LucidError
+  | SDKCore.LucidError
   | TxConfirmError
   | TxExpiredError
   | TxSignError

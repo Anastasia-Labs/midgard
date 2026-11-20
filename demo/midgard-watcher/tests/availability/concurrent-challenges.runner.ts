@@ -1,4 +1,4 @@
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/da";
 
 export const stubRunner = async (
   context: SDK.DaAvailabilityOperationContext,

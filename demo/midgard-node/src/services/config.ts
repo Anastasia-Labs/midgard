@@ -4,7 +4,7 @@ import "@al-ft/midgard-core/cek-proof";
 import "@al-ft/midgard-core/consensus-profile";
 import "@al-ft/midgard-core/deployment-manifest-identity";
 import "@al-ft/midgard-core/deployment-profile";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/state-queue";
 import "@lucid-evolution/lucid";
 import "effect";
 import "../artifact-schema.js";

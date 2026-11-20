@@ -1,4 +1,4 @@
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
 import "@lucid-evolution/lucid";
 import "effect";
 import "../../mpf/index.js";

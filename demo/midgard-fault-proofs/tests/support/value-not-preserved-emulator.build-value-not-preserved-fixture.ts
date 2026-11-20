@@ -15,11 +15,8 @@ import {
   type MidgardTxOutput,
 } from "@al-ft/midgard-core";
 import type { MidgardValue } from "@al-ft/midgard-core/codec";
-import {
-  encodeMidgardTxInputCanonical,
-  type MidgardTxInput,
-  Proof,
-} from "@al-ft/midgard-sdk";
+import { type MidgardTxInput, Proof } from "@al-ft/midgard-sdk/core";
+import { encodeMidgardTxInputCanonical } from "@al-ft/midgard-sdk/fraud-proof";
 import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { Data } from "@lucid-evolution/lucid";
 

@@ -14,14 +14,16 @@ import {
   deriveMidgardNativeTxFaultEvidenceMaterial,
 } from "@al-ft/midgard-core";
 import {
-  type CommittedFieldClaim,
   type FieldCarriage,
-  isMidgardWitnessSetField,
   type L2TransactionSource,
   L2TransactionSourceSchema,
   Proof,
   type Proof as SDKProof,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  type CommittedFieldClaim,
+  isMidgardWitnessSetField,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import { requireTransactionsRootMatch } from "../prepare-double-spend.prepare-double-spend-from-transactions.js";

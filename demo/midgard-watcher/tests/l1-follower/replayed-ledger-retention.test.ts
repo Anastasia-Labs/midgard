@@ -4,7 +4,7 @@ import {
   EVENT_WAIT_DURATION_MS,
   MAX_EVENT_VALIDITY_RANGE_LENGTH_MS,
   MAX_VALIDITY_RANGE_LENGTH_MS,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import { describe, expect, it } from "vitest";
 
 import { createWatcherReplayRetention } from "../../src/l1-follower/replay-retention.js";

@@ -1,4 +1,4 @@
-import { type NativeScriptPushdownFrame } from "@al-ft/midgard-sdk";
+import { type NativeScriptPushdownFrame } from "@al-ft/midgard-sdk/da";
 
 import {
   hash32,

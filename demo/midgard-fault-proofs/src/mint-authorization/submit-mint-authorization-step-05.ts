@@ -7,7 +7,14 @@
  * The validator's closed-verdict shape gate is re-checked locally first:
  * the thread state must carry a direction in the family's {0, 1} domain.
  */
-import type { MintAuthorizationStep05State } from "@al-ft/midgard-sdk";
+import {
+  requireInputIndex,
+  requireMintRedeemerIndex,
+  requireOwnMintPurpose,
+  requireOwnSpendPurpose,
+  requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import type { MintAuthorizationStep05State } from "@al-ft/midgard-sdk/fraud-proof";
 import {
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
@@ -16,12 +23,7 @@ import {
   MINT_AUTHORIZATION_DIRECTION_SCRIPT_UNSATISFIED,
   MintAuthorizationStep05Datum,
   MintAuthorizationStep05SpendRedeemer,
-  requireInputIndex,
-  requireMintRedeemerIndex,
-  requireOwnMintPurpose,
-  requireOwnSpendPurpose,
-  requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

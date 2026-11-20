@@ -15,9 +15,9 @@ import {
 } from "@al-ft/midgard-core";
 import {
   commitCountedRootProgram,
-  EMPTY_SPEND_INPUTS_HASH,
   ROOT_DOMAINS,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { EMPTY_SPEND_INPUTS_HASH } from "@al-ft/midgard-sdk/fraud-proof";
 import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";

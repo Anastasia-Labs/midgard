@@ -15,7 +15,7 @@ import {
   type MidgardCekStagingRun,
   midgardCekStagingRunChunks,
   planMidgardCekStaging,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import type { MidgardCekCoreStepWitness } from "@al-ft/midgard-validation/cek-machine";
 import { midgardCekSemanticGroup } from "@al-ft/midgard-validation/cek-semantic-group";
 import {

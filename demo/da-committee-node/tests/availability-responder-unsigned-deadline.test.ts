@@ -8,7 +8,7 @@ import {
   type DaAvailabilityOperationContext,
   planDaAvailabilityPublications,
   runDaAvailabilityOperation,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/da";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 import {
   CML,

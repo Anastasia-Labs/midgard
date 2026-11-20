@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
@@ -12,26 +13,26 @@ import {
 } from "./reserve-payout-builders.submit-with-wallet.js";
 
 type RetirementLayout = {
-  readonly witness: SDK.EventHistoryRetirementWitness;
+  readonly witness: SDKUsers.EventHistoryRetirementWitness;
   readonly hubRefInputIndex: bigint;
   readonly retirementWithdrawalRedeemerIndex: bigint;
   readonly listWithdrawalRedeemerIndex: bigint;
 };
 
 export const expectRetirementLayout = (
-  built: SDK.BuiltReservePayoutTx<RetirementLayout>,
+  built: SDKUsers.BuiltReservePayoutTx<RetirementLayout>,
 ) => {
   const tx = built.tx.toTransaction();
   const pointers = getRedeemerPointersInContextOrder(tx);
-  const retirement = decodeRedeemer<SDK.EventHistoryRetirementArgs>(
+  const retirement = decodeRedeemer<SDKUsers.EventHistoryRetirementArgs>(
     tx,
     pointers[Number(built.layout.retirementWithdrawalRedeemerIndex)]!,
-    SDK.EventHistoryRetirementArgs,
+    SDKUsers.EventHistoryRetirementArgs,
   );
-  const observe = decodeRedeemer<SDK.EventHistoryObserve>(
+  const observe = decodeRedeemer<SDKUsers.EventHistoryObserve>(
     tx,
     pointers[Number(built.layout.listWithdrawalRedeemerIndex)]!,
-    SDK.EventHistoryObserve,
+    SDKUsers.EventHistoryObserve,
   );
   expect(retirement).toEqual({
     hub_reference_index: built.layout.hubRefInputIndex,
@@ -40,7 +41,7 @@ export const expectRetirementLayout = (
   expect(observe).toEqual({
     Apply: {
       hub_reference_index: built.layout.hubRefInputIndex,
-      operation: SDK.eventHistoryRetirementOperation(built.layout.witness),
+      operation: SDKUsers.eventHistoryRetirementOperation(built.layout.witness),
     },
   });
   const spendCbor = findRedeemerDataCbor(tx, {
@@ -58,7 +59,7 @@ export const expectRetirementLayout = (
 };
 
 export const expectAbsorbRedeemerLayout = (
-  built: SDK.BuiltReservePayoutTx<
+  built: SDKUsers.BuiltReservePayoutTx<
     RetirementLayout & { depositInputIndex: bigint; reserveOutputIndex: bigint }
   >,
 ) => {
@@ -73,7 +74,7 @@ export const expectAbsorbRedeemerLayout = (
 };
 
 export const expectInitializeRedeemerLayout = (
-  built: SDK.BuiltReservePayoutTx<
+  built: SDKUsers.BuiltReservePayoutTx<
     RetirementLayout & {
       withdrawalInputIndex: bigint;
       payoutOutputIndex: bigint;
@@ -110,7 +111,7 @@ export const expectInitializeRedeemerLayout = (
 };
 
 export const expectAddFundsRedeemerLayout = (
-  built: SDK.BuiltReservePayoutTx<{
+  built: SDKUsers.BuiltReservePayoutTx<{
     readonly payoutInputIndex: bigint;
     readonly reserveInputIndex: bigint;
     readonly payoutOutputIndex: bigint;
@@ -172,7 +173,7 @@ export const expectAddFundsRedeemerLayout = (
 };
 
 export const expectConcludeRedeemerLayout = (
-  built: SDK.BuiltReservePayoutTx<{
+  built: SDKUsers.BuiltReservePayoutTx<{
     readonly payoutInputIndex: bigint;
     readonly l1OutputIndex: bigint;
     readonly payoutSpendRedeemerIndex: bigint;
@@ -204,7 +205,7 @@ export const expectConcludeRedeemerLayout = (
 };
 
 export const expectRefundRedeemerLayout = (
-  built: SDK.BuiltReservePayoutTx<
+  built: SDKUsers.BuiltReservePayoutTx<
     RetirementLayout & {
       withdrawalInputIndex: bigint;
       refundOutputIndex: bigint;

@@ -11,7 +11,8 @@ import {
 } from "@al-ft/midgard-core";
 import type { MidgardVersionedScript } from "@al-ft/midgard-core/codec";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
   type EmulatorAccount,
   generateEmulatorAccount,
@@ -347,8 +348,8 @@ export const setUpScene = async (
   const forced = await commit("forced_failing");
 
   const [caseConfig] = await h.proverLucid.utxosAtWithUnit(
-    SDK.validationCaseConfigAddress(network, chain.caseConfig),
-    toUnit(chain.caseConfig.policyId, SDK.VALIDATION_CASE_CONFIG_ASSET_NAME),
+    SDKDa.validationCaseConfigAddress(network, chain.caseConfig),
+    toUnit(chain.caseConfig.policyId, SDKDa.VALIDATION_CASE_CONFIG_ASSET_NAME),
   );
   if (caseConfig === undefined)
     throw new Error("the case configuration was not initialized");
@@ -425,7 +426,7 @@ export const verifySource = (
   const { h, chain } = scene;
   const validFrom = h.emulator.now() + (presented.offsetMs ?? 0);
   const validTo = validFrom + MAX_RANGE_MS;
-  const { tx, opening } = SDK.appendValidationSourceVerification(
+  const { tx, opening } = SDKDa.appendValidationSourceVerification(
     (presented.lucid ?? h.proverLucid).newTx(),
     {
       contracts: {

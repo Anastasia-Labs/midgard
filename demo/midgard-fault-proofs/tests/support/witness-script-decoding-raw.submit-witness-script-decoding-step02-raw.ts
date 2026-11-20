@@ -3,24 +3,26 @@ import {
   encodeMidgardForcedTxCompact,
 } from "@al-ft/midgard-core";
 import {
-  type FieldOpening,
   type ForcedInclusionTxV1,
   forcedLeafMembershipV1,
   type Header,
-  MIDGARD_FIELD_INDEX,
   type OutputReference,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
   type RootMembershipProof,
+} from "@al-ft/midgard-sdk/core";
+import {
+  type FieldOpening,
+  MIDGARD_FIELD_INDEX,
   type WitnessScriptDecodingBound,
   type WitnessScriptDecodingScanState,
   WitnessScriptDecodingStep01RedeemerSchema,
   WitnessScriptDecodingStep02DatumSchema,
   WitnessScriptDecodingStep02RedeemerSchema,
   WitnessScriptDecodingStep03DatumSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

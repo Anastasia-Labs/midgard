@@ -1,17 +1,19 @@
 import { deploymentFamilyStepNames } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
+  FAULT_PROOF_SHARED_TITLES,
+  type FaultProofBlueprint,
+  type FraudProofCatalogueDeploymentInfo,
+} from "@al-ft/midgard-sdk/core";
+import {
   buildDoubleSpendFaultProofContracts,
   buildFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
   DOUBLE_SPEND_FAULT_PROOF_TITLES,
-  FAULT_PROOF_SHARED_TITLES,
-  type FaultProofBlueprint,
-  type FraudProofCatalogueDeploymentInfo,
   INVALID_RANGE_FAULT_PROOF_TITLES,
   TRANSITION_TRACE_FAULT_PROOF_TITLES,
   TRANSITION_TRACE_YIELD_TITLES,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";

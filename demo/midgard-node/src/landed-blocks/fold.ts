@@ -17,7 +17,7 @@
  *   holds the narrowed `confirmed_ledger_behind`.
  */
 import type { View } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Effect, Either } from "effect";
 
 import { ConfirmedLedgerDB } from "../database/index.js";

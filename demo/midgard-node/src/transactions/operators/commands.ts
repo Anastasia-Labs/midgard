@@ -7,7 +7,7 @@
  * instead of dumping a fiber trace. A verb whose transaction expired
  * unconfirmed re-plans from fresh chain state once (`rebuildOnTxExpiry`).
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/operators";
 import { Effect } from "effect";
 
 import { NodeConfig } from "../../services/index.js";

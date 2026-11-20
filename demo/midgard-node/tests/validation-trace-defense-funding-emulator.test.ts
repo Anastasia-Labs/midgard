@@ -28,7 +28,7 @@ import {
   VALIDATION_TRACE_POCKET_COLLATERAL_LOVELACE,
   VALIDATION_TRACE_THREAD_FLOOR_LOVELACE,
 } from "@al-ft/midgard-fault-proofs/validation-trace-dispute/defender";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { CML, Data, generateEmulatorAccount } from "@lucid-evolution/lucid";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 

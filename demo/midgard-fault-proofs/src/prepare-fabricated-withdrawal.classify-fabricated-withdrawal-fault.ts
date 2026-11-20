@@ -2,7 +2,8 @@ import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
   plutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -90,7 +91,7 @@ export const decodeCommittedWithdrawalLeaf = async (
     );
   }
   if (
-    SDK.committedWithdrawalKeyBytes(committedWithdrawalId) !==
+    SDKFraudProof.committedWithdrawalKeyBytes(committedWithdrawalId) !==
       committedWithdrawalIdCbor ||
     aikenSerialisedPlutusDataCborPreservingMapOrder(
       committedWithdrawalInfoCbor,
@@ -102,7 +103,7 @@ export const decodeCommittedWithdrawalLeaf = async (
     );
   }
   const committedWithdrawalContentHash = await Effect.runPromise(
-    SDK.withdrawalContentCommitmentCbor(committedWithdrawalInfoCbor),
+    SDKFraudProof.withdrawalContentCommitmentCbor(committedWithdrawalInfoCbor),
   );
   return {
     index,
@@ -119,8 +120,8 @@ export const decodeCommittedWithdrawalLeaf = async (
 export type FabricatedWithdrawalL1Witness = FabricatedHistoryWitness;
 
 export type ClassifiedFabricatedWithdrawalFault = {
-  readonly verdict: SDK.FabricatedWithdrawalEvidenceVerdict;
-  readonly fault: SDK.FabricatedWithdrawalFault;
+  readonly verdict: SDKFraudProof.FabricatedWithdrawalEvidenceVerdict;
+  readonly fault: SDKFraudProof.FabricatedWithdrawalFault;
   readonly stateQueuePolicyId: string;
   readonly openingCbor: string | null;
   readonly authenticWithdrawalContentHash?: string;
@@ -173,7 +174,7 @@ export const classifyFabricatedWithdrawalFault = async ({
       "Wrong authenticated event kind",
     );
   const authenticWithdrawalContentHash = await Effect.runPromise(
-    SDK.withdrawalContentCommitmentCbor(
+    SDKFraudProof.withdrawalContentCommitmentCbor(
       plutusConstrFieldCbor(captured.payloadCbor, [0, 1]),
     ),
   );
@@ -233,8 +234,8 @@ export type PreparedFabricatedWithdrawalStateJson = {
 
 export type PreparedFabricatedWithdrawalOutput = {
   readonly schemaVersion: typeof FABRICATED_WITHDRAWAL_EVIDENCE_SCHEMA_VERSION;
-  readonly violationId: typeof SDK.FABRICATED_WITHDRAWAL_VIOLATION_ID;
-  readonly fraudCategoryId: typeof SDK.FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID;
+  readonly violationId: typeof SDKFraudProof.FABRICATED_WITHDRAWAL_VIOLATION_ID;
+  readonly fraudCategoryId: typeof SDKFraudProof.FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID;
   readonly headerHash: string;
   readonly threadTokenAssetName: string;
   readonly withdrawalCount: number;

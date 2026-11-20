@@ -4,7 +4,7 @@
  * reference-script addresses, and the protocol validators' payment
  * credentials.
  */
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import { credentialToAddress, getAddressDetails } from "@lucid-evolution/lucid";
 
 import type { NodeConfigDep } from "./config.js";

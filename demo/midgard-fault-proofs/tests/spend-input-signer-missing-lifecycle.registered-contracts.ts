@@ -20,9 +20,9 @@ import {
 import {
   AddressData,
   addressDataFromBech32,
-  missingSignatureVkeyHash,
   Proof,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { missingSignatureVkeyHash } from "@al-ft/midgard-sdk/fraud-proof";
 import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";

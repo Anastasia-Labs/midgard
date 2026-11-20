@@ -5,7 +5,7 @@ import {
   decodeMidgardAddressBytes,
   decodeMidgardLedgerOutputCommitment,
 } from "@al-ft/midgard-core";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { DirectPurposeSourceEvidence } from "../direct-purpose-family/source-walk.js";
 import type { DirectScriptMaterial } from "../direct-script-derivation/index.js";

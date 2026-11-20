@@ -3,7 +3,8 @@ import {
   deriveMidgardNativeTxFaultEvidenceMaterial,
 } from "@al-ft/midgard-core";
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import { eventLedgerBeforeStep } from "../event-ledger.js";
@@ -80,7 +81,7 @@ export const prepareDirectScriptMaterial = async ({
       material.proofSource.fieldPreimageLengthsCbor.toString("hex")
   )
     throw new Error("direct script derivation: exact committed source differs");
-  let subject: SDK.VerdictSubject;
+  let subject: SDKFraudProof.VerdictSubject;
   if (source.phase === "L2Transaction") {
     if (
       source.entry.validity !== "TxIsValid" ||
@@ -90,7 +91,7 @@ export const prepareDirectScriptMaterial = async ({
       throw new Error(
         "direct script derivation: accepted source custody differs",
       );
-    subject = SDK.acceptedVerdictSubject(transactionId);
+    subject = SDKFraudProof.acceptedVerdictSubject(transactionId);
   } else {
     if (
       source.entry.value.tx_id !== transactionId ||
@@ -100,7 +101,7 @@ export const prepareDirectScriptMaterial = async ({
         "direct script derivation: forced source custody differs",
       );
     const verdict = source.entry.value.verdict;
-    subject = SDK.forcedVerdictSubject({
+    subject = SDKFraudProof.forcedVerdictSubject({
       transactionId,
       sourceKey: source.entry.key,
       rejectionReason:
@@ -109,16 +110,16 @@ export const prepareDirectScriptMaterial = async ({
   }
   if (material.fieldPreimages.length !== 9)
     throw new Error("direct script derivation: exact field roster differs");
-  const bound: SDK.DirectScriptBound = {
+  const bound: SDKFraudProof.DirectScriptBound = {
     subject,
     compact_cbor: compactCbor,
-    network_order_context: SDK.networkOrderContext(
+    network_order_context: SDKFraudProof.networkOrderContext(
       forcedTxFromCoreCompact(material.compact),
       current.header,
     ),
     event_pre_root: step.pre_utxos_root,
   };
-  const sourceBound: SDK.DirectScriptSourceBound = {
+  const sourceBound: SDKFraudProof.DirectScriptSourceBound = {
     subject,
     header: current.header,
     compact_cbor: compactCbor,

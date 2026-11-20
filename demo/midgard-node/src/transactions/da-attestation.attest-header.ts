@@ -1,5 +1,7 @@
 import { ledgerTipStartMs } from "@al-ft/midgard-core/ogmios-slot";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -62,18 +64,18 @@ export const attestHeader = ({
   readonly contracts: SDK.MidgardValidators;
   readonly nodeConfig: OperatorDaConfig;
   readonly daParamsUtxo: UTxO;
-  readonly daParamsDatum: SDK.DaParamsDatum;
-  readonly target: SDK.DaAttestationStateQueueTarget;
-  readonly referenceScripts: SDK.DaAttestationReferenceScripts;
-  readonly availabilityCommitment: SDK.DaAvailabilityCommitment;
-  readonly availabilityParameters: SDK.DaAvailabilityParameters;
+  readonly daParamsDatum: SDKDa.DaParamsDatum;
+  readonly target: SDKDa.DaAttestationStateQueueTarget;
+  readonly referenceScripts: SDKDa.DaAttestationReferenceScripts;
+  readonly availabilityCommitment: SDKDa.DaAvailabilityCommitment;
+  readonly availabilityParameters: SDKDa.DaAvailabilityParameters;
   /** S5: the round's plan, opened before its first L1 read. */
   readonly plan: IntentPlan;
 }): Effect.Effect<
   AttestStateQueueHeaderResult,
   | SDK.LucidError
-  | SDK.DaAttestationBuildError
-  | SDK.StateQueueError
+  | SDKDa.DaAttestationBuildError
+  | SDKStateQueue.StateQueueError
   | TxConfirmError
   | TxExpiredError
   | TxSignError
@@ -108,7 +110,7 @@ export const attestHeader = ({
             }),
         ),
       );
-      const initTx = yield* SDK.incompleteInitDaAttestationTxProgram(
+      const initTx = yield* SDKDa.incompleteInitDaAttestationTxProgram(
         lucid,
         contracts,
         {
@@ -120,7 +122,7 @@ export const attestHeader = ({
             lucid,
             {
               attestationAddress: contracts.daAttestation.spendingScriptAddress,
-              attestationUnit: SDK.daAttestationUnit(
+              attestationUnit: SDKDa.daAttestationUnit(
                 contracts.daAttestation,
                 target.headerHash,
               ),
@@ -168,7 +170,7 @@ export const attestHeader = ({
       // after the wrong problem.
       if (localWitnesses.length === 0) {
         return yield* Effect.fail(
-          new SDK.StateQueueError({
+          new SDKStateQueue.StateQueueError({
             message:
               "No locally held DA key is a member of the on-chain DA committee",
             cause: `outRef=${outRefLabel(initializedAttestation.utxo)},committee_members=${(daParamsDatum.committee.length / 64).toString()},threshold=${initializedAttestation.datum.da_threshold.toString()}`,
@@ -177,14 +179,14 @@ export const attestHeader = ({
       }
       const pendingWitnesses = localWitnesses.filter(
         (witness) =>
-          !SDK.signerIndexIsDaAttested(
+          !SDKDa.signerIndexIsDaAttested(
             initializedAttestation.datum.attested_signers,
             witness.signerIndex,
           ),
       );
       if (pendingWitnesses.length === 0) {
         return yield* Effect.fail(
-          new SDK.StateQueueError({
+          new SDKStateQueue.StateQueueError({
             message:
               "Selected DA attestation UTxO already includes every locally held DA signature but has not reached threshold",
             cause: `outRef=${outRefLabel(initializedAttestation.utxo)},local_signers=${localWitnesses.length.toString()},attestation_count=${initializedAttestation.datum.attestation_count.toString()},threshold=${initializedAttestation.datum.da_threshold.toString()}`,
@@ -192,7 +194,7 @@ export const attestHeader = ({
         );
       }
       const addSignaturesTx =
-        yield* SDK.incompleteAddDaAttestationSignaturesTxProgram(
+        yield* SDKDa.incompleteAddDaAttestationSignaturesTxProgram(
           lucid,
           contracts,
           {
@@ -243,17 +245,16 @@ export const attestHeader = ({
               cause,
             }),
         );
-        const validityRange = yield* SDK.daAttestationApplyValidityRangeProgram(
-          {
+        const validityRange =
+          yield* SDKDa.daAttestationApplyValidityRangeProgram({
             currentTime: BigInt(ledgerTipStartMs(lucid, tip)),
             blockTime: target.stateQueueNode.block_time,
-          },
-        );
+          });
         // The SDK re-reads the pool immediately before assembling the
         // transaction and refuses a Withdrawing or under-backed pool with a
         // typed `DaAttestationBuildError`.
         const applyTx =
-          yield* SDK.incompleteApplyDaAttestationToStateQueueTxProgram(
+          yield* SDKDa.incompleteApplyDaAttestationToStateQueueTxProgram(
             lucid,
             contracts,
             {

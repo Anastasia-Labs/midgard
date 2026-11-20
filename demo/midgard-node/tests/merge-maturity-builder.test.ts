@@ -1,6 +1,7 @@
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import type { SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Effect, Layer } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -25,8 +26,9 @@ const poisonedHeaders = vi.hoisted(() => ({ value: new Set<string>() }));
 
 import { withoutFollowerJournal } from "./helpers/intent-journal.js";
 
-vi.mock("@al-ft/midgard-sdk", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@al-ft/midgard-sdk")>();
+vi.mock("@al-ft/midgard-sdk/core", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@al-ft/midgard-sdk/core")>();
   return {
     ...actual,
     getStateQueueNodeFromStateQueueDatum:
@@ -36,6 +38,13 @@ vi.mock("@al-ft/midgard-sdk", async (importOriginal) => {
     // What a ready merge reads before its wallet view, and its build.
     fetchCorrectionLockUTxOProgram: () =>
       Effect.succeed({ txHash: "dd".repeat(32), outputIndex: 0 }),
+  };
+});
+vi.mock("@al-ft/midgard-sdk/state-queue", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@al-ft/midgard-sdk/state-queue")>();
+  return {
+    ...actual,
     buildMergeToConfirmedStateTxProgram: buildMergeTxMock,
   };
 });
@@ -112,23 +121,7 @@ import { buildAndSubmitMergeTx } from "../src/transactions/state-queue/merge-to-
 import { mergeNoInlineSubmitDueWorkFromDefer } from "../src/transactions/state-queue/merge-to-confirmed-state.capture-merge-local-ledger-gate.js";
 import type { MergeTxResult } from "../src/transactions/state-queue/merge-to-confirmed-state.fetch-canonical-merge-candidate-readiness.js";
 import { NoInlineSubmitDefer } from "../src/transactions/utils.await-required-output-visibility.js";
-
-const fetchConfig: SDK.StateQueueFetchConfig = {
-  stateQueueAddress: "addr_test1statequeue",
-  stateQueuePolicyId: "00".repeat(28),
-};
-
-const contracts = {
-  daAttestation: {
-    policyId: "22".repeat(28),
-  },
-  stateQueue: {
-    mintingScriptCBOR: "",
-  },
-  settlement: { policyId: "33".repeat(28) },
-  hubOracle: { policyId: "44".repeat(28) },
-  correctionLock: { spendingScriptAddress: "addr_test1correctionlock" },
-} as unknown as SDK.MidgardValidators;
+import { contracts, fetchConfig } from "./merge-maturity-builder.fixture.js";
 
 const headerHash = "aa".repeat(28);
 
@@ -161,7 +154,7 @@ const makeLink = () =>
       data: {},
     },
     assetName: "",
-  }) as SDK.StateQueueUTxO;
+  }) as SDKStateQueue.StateQueueUTxO;
 
 // The root node at genesis: no earlier merge exists for the builder to
 // finalize before it builds.
@@ -182,8 +175,8 @@ const genesisConfirmed = {
       protocolVersion: 0n,
     }),
   },
-  assetName: SDK.STATE_QUEUE_ROOT_ASSET_NAME,
-} as SDK.StateQueueUTxO;
+  assetName: SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME,
+} as SDKStateQueue.StateQueueUTxO;
 
 const configureCandidate = ({
   daAttestation,

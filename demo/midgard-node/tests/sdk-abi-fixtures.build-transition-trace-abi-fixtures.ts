@@ -1,4 +1,6 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
@@ -46,13 +48,13 @@ export const buildTransitionTraceAbiFixtures = (): Record<
     l2_network_id: 0n,
     l2_datum: null,
   };
-  const ledgerDeleteWitness: SDK.LedgerDeleteWitness = {
+  const ledgerDeleteWitness: SDKFraudProof.LedgerDeleteWitness = {
     key: "aa",
     value: "bb",
     opening: "",
     delete_proof: proof,
   };
-  const ledgerInsertWitness: SDK.LedgerInsertWitness = {
+  const ledgerInsertWitness: SDKFraudProof.LedgerInsertWitness = {
     key: "cc",
     value: "dd",
     insert_proof: proof,
@@ -118,7 +120,7 @@ export const buildTransitionTraceAbiFixtures = (): Record<
       SDK.ForcedInclusionTxV1,
     ),
   };
-  const l2SourceMembership: SDK.L2TransactionSourceMembershipProof = {
+  const l2SourceMembership: SDKFraudProof.L2TransactionSourceMembershipProof = {
     domain: SDK.ROOT_DOMAINS.transactionsV1,
     root: headerFixture.transactionsRoot,
     phas_root: "71".repeat(32),
@@ -136,7 +138,7 @@ export const buildTransitionTraceAbiFixtures = (): Record<
     value: Data.to(depositInfo, SDK.DepositInfo),
     proof,
   };
-  const withdrawalSourceNonMembership: SDK.WithdrawalSourceNonMembershipProof =
+  const withdrawalSourceNonMembership: SDKFraudProof.WithdrawalSourceNonMembershipProof =
     {
       domain: SDK.ROOT_DOMAINS.withdrawals,
       root: headerFixture.withdrawalsRoot,
@@ -145,7 +147,7 @@ export const buildTransitionTraceAbiFixtures = (): Record<
       key: outputReference,
       proof,
     };
-  const forcedSourceNonMembership: SDK.ForcedTransactionSourceNonMembershipProof =
+  const forcedSourceNonMembership: SDKFraudProof.ForcedTransactionSourceNonMembershipProof =
     {
       domain: SDK.ROOT_DOMAINS.forcedTransactionsV1,
       root: headerFixture.forcedTransactionsRoot,
@@ -154,14 +156,15 @@ export const buildTransitionTraceAbiFixtures = (): Record<
       key: outputReference,
       proof,
     };
-  const depositSourceNonMembership: SDK.DepositSourceNonMembershipProof = {
-    domain: SDK.ROOT_DOMAINS.deposits,
-    root: headerFixture.depositsRoot,
-    phas_root: "70".repeat(32),
-    count: 1n,
-    key: outputReference,
-    proof,
-  };
+  const depositSourceNonMembership: SDKFraudProof.DepositSourceNonMembershipProof =
+    {
+      domain: SDK.ROOT_DOMAINS.deposits,
+      root: headerFixture.depositsRoot,
+      phas_root: "70".repeat(32),
+      count: 1n,
+      key: outputReference,
+      proof,
+    };
   const sourceMemberships = sourceKeyOpeningFixtures(
     withdrawalSourceMembership,
     depositSourceMembership,
@@ -172,25 +175,25 @@ export const buildTransitionTraceAbiFixtures = (): Record<
         non_membership: withdrawalSourceNonMembership,
       },
     },
-  } satisfies Record<string, SDK.TransitionSourceNonMembershipProof>;
-  const transitionFaults: Record<string, SDK.TransitionFault> = {
-    "transition-fault.trace-boundary": SDK.traceBoundaryFault({
+  } satisfies Record<string, SDKFraudProof.TransitionSourceNonMembershipProof>;
+  const transitionFaults: Record<string, SDKFraudProof.TransitionFault> = {
+    "transition-fault.trace-boundary": SDKFraudProof.traceBoundaryFault({
       side: "TraceStart",
       traceProof,
     }),
-    "transition-fault.trace-link": SDK.traceLinkFault({
+    "transition-fault.trace-link": SDKFraudProof.traceLinkFault({
       lower: traceProof,
       upper: secondTraceProof,
     }),
     "transition-fault.event-to-step-mismatch-membership":
-      SDK.eventToStepMismatchFault({
+      SDKFraudProof.eventToStepMismatchFault({
         traceProof,
         eventToStep: {
           EventToStepMembership: { membership: eventToStepMembership },
         },
       }),
     "transition-fault.event-to-step-mismatch-non-membership":
-      SDK.eventToStepMismatchFault({
+      SDKFraudProof.eventToStepMismatchFault({
         traceProof,
         eventToStep: {
           EventToStepNonMembership: {
@@ -199,7 +202,7 @@ export const buildTransitionTraceAbiFixtures = (): Record<
         },
       }),
     "transition-fault.source-mapped-event-missing-from-source":
-      SDK.sourceMembershipMismatchFault({
+      SDKFraudProof.sourceMembershipMismatchFault({
         MappedEventMissingFromSource: {
           trace_proof: traceProof,
           event_to_step: eventToStepMembership,
@@ -207,22 +210,21 @@ export const buildTransitionTraceAbiFixtures = (): Record<
         },
       }),
     "transition-fault.source-event-missing-trace":
-      SDK.sourceMembershipMismatchFault({
+      SDKFraudProof.sourceMembershipMismatchFault({
         SourceEventMissingTrace: {
           source_membership: sourceMemberships.withdrawal,
           event_to_step_non_membership: eventToStepNonMembership,
         },
       }),
-    "transition-fault.source-phase-mismatch": SDK.sourceMembershipMismatchFault(
-      {
+    "transition-fault.source-phase-mismatch":
+      SDKFraudProof.sourceMembershipMismatchFault({
         SourcePhaseMismatch: {
           trace_proof: traceProof,
           source_membership: sourceMemberships.deposit,
         },
-      },
-    ),
+      }),
     "transition-fault.valid-withdrawal-transition":
-      SDK.invalidOneStepTransitionFault({
+      SDKFraudProof.invalidOneStepTransitionFault({
         ValidWithdrawalTransition: {
           trace_proof: traceProof,
           event_to_step: eventToStepMembership,
@@ -231,22 +233,23 @@ export const buildTransitionTraceAbiFixtures = (): Record<
         },
       }),
     "transition-fault.invalid-withdrawal-no-op":
-      SDK.invalidOneStepTransitionFault({
+      SDKFraudProof.invalidOneStepTransitionFault({
         InvalidWithdrawalNoOpTransition: {
           trace_proof: traceProof,
           event_to_step: eventToStepMembership,
           source_membership: withdrawalSourceMembership,
         },
       }),
-    "transition-fault.invalid-forced-no-op": SDK.invalidOneStepTransitionFault({
-      InvalidForcedTransactionNoOpTransition: {
-        trace_proof: traceProof,
-        event_to_step: eventToStepMembership,
-        source_membership: forcedSourceMembership,
-      },
-    }),
+    "transition-fault.invalid-forced-no-op":
+      SDKFraudProof.invalidOneStepTransitionFault({
+        InvalidForcedTransactionNoOpTransition: {
+          trace_proof: traceProof,
+          event_to_step: eventToStepMembership,
+          source_membership: forcedSourceMembership,
+        },
+      }),
     "transition-fault.valid-deposit-transition":
-      SDK.invalidOneStepTransitionFault({
+      SDKFraudProof.invalidOneStepTransitionFault({
         ValidDepositTransition: {
           trace_proof: traceProof,
           event_to_step: eventToStepMembership,
@@ -255,7 +258,7 @@ export const buildTransitionTraceAbiFixtures = (): Record<
         },
       }),
     "transition-fault.l2-transaction-transition":
-      SDK.invalidOneStepTransitionFault({
+      SDKFraudProof.invalidOneStepTransitionFault({
         L2TransactionTransition: {
           trace_proof: traceProof,
           event_to_step: eventToStepMembership,
@@ -263,24 +266,26 @@ export const buildTransitionTraceAbiFixtures = (): Record<
         },
       }),
     "transition-fault.valid-forced-transaction-transition":
-      SDK.invalidOneStepTransitionFault({
+      SDKFraudProof.invalidOneStepTransitionFault({
         ValidForcedTransactionTransition: {
           trace_proof: traceProof,
           event_to_step: eventToStepMembership,
           source_membership: forcedRawSourceMembership,
         },
       }),
-    "transition-fault.omitted-deposit": SDK.omittedDueL1EventFault({
+    "transition-fault.omitted-deposit": SDKFraudProof.omittedDueL1EventFault({
       OmittedDueDeposit: {
         source_non_membership: depositSourceNonMembership,
       },
     }),
-    "transition-fault.omitted-withdrawal": SDK.omittedDueL1EventFault({
-      OmittedDueWithdrawal: {
-        source_non_membership: withdrawalSourceNonMembership,
+    "transition-fault.omitted-withdrawal": SDKFraudProof.omittedDueL1EventFault(
+      {
+        OmittedDueWithdrawal: {
+          source_non_membership: withdrawalSourceNonMembership,
+        },
       },
-    }),
-    "transition-fault.omitted-forced": SDK.omittedDueL1EventFault({
+    ),
+    "transition-fault.omitted-forced": SDKFraudProof.omittedDueL1EventFault({
       OmittedDueForcedTransaction: {
         event_ref_input_index: 2n,
         event_asset_name: "cc",
@@ -294,42 +299,45 @@ export const buildTransitionTraceAbiFixtures = (): Record<
         source_non_membership: forcedSourceNonMembership,
       },
     }),
-    "transition-fault.duplicate-trace-event": SDK.duplicateTraceEventFault({
-      leftTrace: traceProof,
-      rightTrace: secondTraceProof,
-    }),
-    "transition-fault.out-of-window-deposit": SDK.outOfWindowSourceEventFault({
-      OutOfWindowDeposit: {
-        source_membership: depositSourceMembership,
-      },
-    }),
+    "transition-fault.duplicate-trace-event":
+      SDKFraudProof.duplicateTraceEventFault({
+        leftTrace: traceProof,
+        rightTrace: secondTraceProof,
+      }),
+    "transition-fault.out-of-window-deposit":
+      SDKFraudProof.outOfWindowSourceEventFault({
+        OutOfWindowDeposit: {
+          source_membership: depositSourceMembership,
+        },
+      }),
     "transition-fault.out-of-window-withdrawal":
-      SDK.outOfWindowSourceEventFault({
+      SDKFraudProof.outOfWindowSourceEventFault({
         OutOfWindowWithdrawal: {
           source_membership: withdrawalSourceMembership,
         },
       }),
-    "transition-fault.out-of-window-forced": SDK.outOfWindowSourceEventFault({
-      OutOfWindowForcedTransaction: {
-        event_ref_input_index: 2n,
-        event_asset_name: "cc",
-        validity_override: {
-          ForcedTxInvalid: {
-            reason: {
-              PlutusExecutionFailed: { purpose_kind: 0n, purpose_index: 0n },
+    "transition-fault.out-of-window-forced":
+      SDKFraudProof.outOfWindowSourceEventFault({
+        OutOfWindowForcedTransaction: {
+          event_ref_input_index: 2n,
+          event_asset_name: "cc",
+          validity_override: {
+            ForcedTxInvalid: {
+              reason: {
+                PlutusExecutionFailed: { purpose_kind: 0n, purpose_index: 0n },
+              },
             },
           },
+          source_membership: forcedSourceMembership,
         },
-        source_membership: forcedSourceMembership,
-      },
-    }),
-    "transition-fault.count-header-total": SDK.countFault(
+      }),
+    "transition-fault.count-header-total": SDKFraudProof.countFault(
       "HeaderTotalCountMismatch",
     ),
-    "transition-fault.count-header-transition-step": SDK.countFault(
+    "transition-fault.count-header-transition-step": SDKFraudProof.countFault(
       "HeaderTransitionStepCountMismatch",
     ),
-    "transition-fault.count-source-root": SDK.countFault({
+    "transition-fault.count-source-root": SDKFraudProof.countFault({
       SourceRootCountMismatch: {
         proof: rootCountProof(
           SDK.ROOT_DOMAINS.withdrawals,
@@ -339,7 +347,7 @@ export const buildTransitionTraceAbiFixtures = (): Record<
         ),
       },
     }),
-    "transition-fault.count-event-to-step-root": SDK.countFault({
+    "transition-fault.count-event-to-step-root": SDKFraudProof.countFault({
       EventToStepRootCountMismatch: {
         proof: rootCountProof(
           SDK.ROOT_DOMAINS.eventToStep,
@@ -349,7 +357,7 @@ export const buildTransitionTraceAbiFixtures = (): Record<
         ),
       },
     }),
-    "transition-fault.count-transition-trace-root": SDK.countFault({
+    "transition-fault.count-transition-trace-root": SDKFraudProof.countFault({
       TransitionTraceRootCountMismatch: {
         proof: rootCountProof(
           SDK.ROOT_DOMAINS.transitionTrace,
@@ -360,15 +368,17 @@ export const buildTransitionTraceAbiFixtures = (): Record<
       },
     }),
   };
-  const proofFor = (fault: SDK.TransitionFault): SDK.TransitionFaultProof =>
-    SDK.makeTransitionFaultProof({
+  const proofFor = (
+    fault: SDKFraudProof.TransitionFault,
+  ): SDKFraudProof.TransitionFaultProof =>
+    SDKFraudProof.makeTransitionFaultProof({
       challengedHeaderHash: h28,
       header: headerFixture,
       fault,
     });
   const routeArgsFor = (
-    fault: SDK.TransitionFault,
-  ): SDK.TransitionTraceRouteArgs => ({
+    fault: SDKFraudProof.TransitionFault,
+  ): SDKFraudProof.TransitionTraceRouteArgs => ({
     input_index: 0n,
     output_index: 1n,
     proof: proofFor(fault),
@@ -418,7 +428,7 @@ export const buildTransitionTraceAbiFixtures = (): Record<
     DaPayloadBodyV1: {
       schemaName: "DaPayloadBody",
       value: daPayloadBodyFixture,
-      schema: SDK.DaPayloadBody,
+      schema: SDKDa.DaPayloadBody,
     },
     // The descriptor the node commits as Plutus Data. Fields of one type all
     // differ, so the Aiken test that decodes these bytes field by field
@@ -445,8 +455,8 @@ export const buildTransitionTraceAbiFixtures = (): Record<
           input_index: 0n,
           computation_thread_mint_redeemer_index: 1n,
         },
-      } satisfies SDK.TransitionTraceRouteSpendRedeemer,
-      schema: SDK.TransitionTraceRouteSpendRedeemer,
+      } satisfies SDKFraudProof.TransitionTraceRouteSpendRedeemer,
+      schema: SDKFraudProof.TransitionTraceRouteSpendRedeemer,
     },
     TransitionTraceFinalSpendRedeemerContinue: {
       schemaName: "TransitionTraceFinalSpendRedeemer",
@@ -459,8 +469,8 @@ export const buildTransitionTraceAbiFixtures = (): Record<
             fraud_proof_mint_redeemer_index: 3n,
           },
         ],
-      } satisfies SDK.TransitionTraceFinalSpendRedeemer,
-      schema: SDK.TransitionTraceFinalSpendRedeemer,
+      } satisfies SDKFraudProof.TransitionTraceFinalSpendRedeemer,
+      schema: SDKFraudProof.TransitionTraceFinalSpendRedeemer,
     },
   };
 
@@ -468,19 +478,19 @@ export const buildTransitionTraceAbiFixtures = (): Record<
     fixtures[`${name}.fault`] = {
       schemaName: "TransitionFault",
       value: fault,
-      schema: SDK.TransitionFault,
+      schema: SDKFraudProof.TransitionFault,
     };
     fixtures[`${name}.proof`] = {
       schemaName: "TransitionFaultProof",
       value: proofFor(fault),
-      schema: SDK.TransitionFaultProof,
+      schema: SDKFraudProof.TransitionFaultProof,
     };
     fixtures[`${name}.continue-redeemer`] = {
       schemaName: "TransitionTraceRouteSpendRedeemer",
       value: {
         Continue: [routeArgsFor(fault)],
-      } satisfies SDK.TransitionTraceRouteSpendRedeemer,
-      schema: SDK.TransitionTraceRouteSpendRedeemer,
+      } satisfies SDKFraudProof.TransitionTraceRouteSpendRedeemer,
+      schema: SDKFraudProof.TransitionTraceRouteSpendRedeemer,
     };
   }
 

@@ -1,7 +1,5 @@
-import {
-  REGISTRATION_DURATION_MS,
-  USER_EVENT_TX_TTL_MS,
-} from "@al-ft/midgard-sdk";
+import { REGISTRATION_DURATION_MS } from "@al-ft/midgard-sdk/core";
+import { USER_EVENT_TX_TTL_MS } from "@al-ft/midgard-sdk/users";
 import { protectedPredecessorHoldMs } from "midgard-watcher/tests/support/history-predecessor-hold";
 
 import { stackUserEventFloorOffsetMs } from "./stack-user-event-floor.js";

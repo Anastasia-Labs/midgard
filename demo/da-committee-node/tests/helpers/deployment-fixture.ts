@@ -4,7 +4,7 @@ import "@al-ft/midgard-core/consensus-profile";
 import "@al-ft/midgard-core/da-transport";
 import "@al-ft/midgard-core/deployment-manifest-identity";
 import "@al-ft/midgard-core/deployment-profile";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
 import "@lucid-evolution/lucid";
 import "@noble/hashes/blake2.js";
 import "@noble/hashes/utils.js";

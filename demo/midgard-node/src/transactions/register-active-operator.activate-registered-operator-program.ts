@@ -1,6 +1,7 @@
 import "./register-active-operator.to-lifecycle-result.js";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -34,7 +35,7 @@ export const registerAndActivateOperatorProgram = (
   referenceScriptsAddress?: string,
 ): Effect.Effect<
   ActivationTxHashes,
-  | SDK.StateQueueError
+  | SDKStateQueue.StateQueueError
   | SDK.LucidError
   | OperatorFundingShortfall
   | OperatorWalletInputsEmpty
@@ -68,7 +69,7 @@ export const registerOperatorProgram = (
   referenceScriptsAddress?: string,
 ): Effect.Effect<
   RegistrationTxHashes,
-  | SDK.StateQueueError
+  | SDKStateQueue.StateQueueError
   | SDK.LucidError
   | OperatorFundingShortfall
   | OperatorWalletInputsEmpty
@@ -99,7 +100,7 @@ export const activateOperatorProgram = (
   referenceScriptsAddress?: string,
 ): Effect.Effect<
   ActivationTxHashes,
-  | SDK.StateQueueError
+  | SDKStateQueue.StateQueueError
   | SDK.LucidError
   | OperatorFundingShortfall
   | OperatorWalletInputsEmpty
@@ -137,7 +138,7 @@ export const activateRegisteredOperatorProgram = (
   referenceScriptsAddress?: string,
 ): Effect.Effect<
   ActivationTxHashes,
-  | SDK.StateQueueError
+  | SDKStateQueue.StateQueueError
   | SDK.LucidError
   | OperatorFundingShortfall
   | OperatorWalletInputsEmpty
@@ -170,7 +171,7 @@ export const deregisterOperatorProgram = (
   referenceScriptsAddress?: string,
 ): Effect.Effect<
   DeregistrationTxHashes,
-  | SDK.StateQueueError
+  | SDKStateQueue.StateQueueError
   | SDK.LucidError
   | OperatorFundingShortfall
   | OperatorWalletInputsEmpty

@@ -3,7 +3,8 @@
  * terminal convicts a forced rejection whose recorded reason is a native
  * script decoding arm. An honest leaf is refused before any transaction is
  * spent. */
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { DirectPurposeTransition } from "../direct-purpose-family/custody.js";
 import { directPurposeBindTransitions } from "../direct-purpose-family/source-walk.js";
@@ -61,7 +62,7 @@ export const requireConvictingExecutionSourceScriptDecodingProof = (
  */
 export const executionSourceScriptDecodingDetection = (
   material: DirectScriptMaterial,
-): { readonly reason: SDK.RejectionReason } | null => {
+): { readonly reason: SDKCore.RejectionReason } | null => {
   try {
     const { subject } = directBindingStates(material).selected;
     return subject.rejection_reason !== null &&

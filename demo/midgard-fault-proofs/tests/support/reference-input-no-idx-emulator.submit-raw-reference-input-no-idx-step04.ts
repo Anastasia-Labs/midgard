@@ -1,4 +1,11 @@
 import {
+  requireInputIndex,
+  requireMintRedeemerIndex,
+  requireOwnMintPurpose,
+  requireOwnSpendPurpose,
+  requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
   encodeMidgardTxOutputCanonical,
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
@@ -7,12 +14,7 @@ import {
   type MidgardTxOutput,
   ReferenceInputNoIdxStep04Datum,
   ReferenceInputNoIdxStep04SpendRedeemer,
-  requireInputIndex,
-  requireMintRedeemerIndex,
-  requireOwnMintPurpose,
-  requireOwnSpendPurpose,
-  requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { type BuildTxWithRedeemer, Data, toUnit } from "@lucid-evolution/lucid";
 
 import { planFaultProofFieldOpening } from "../../src/field-opening.plan-fault-proof-field-opening.js";

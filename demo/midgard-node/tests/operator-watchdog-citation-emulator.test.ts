@@ -16,7 +16,8 @@
 import "./helpers/follower-emulator-installed.js";
 
 import { eventProjectionConfigFromContracts } from "@al-ft/midgard-l1-follower/events";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/operators";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { generateSeedPhrase, walletFromSeed } from "@lucid-evolution/lucid";
 import { Effect, Layer, Ref } from "effect";
 import { describe, expect, it } from "vitest";
@@ -68,7 +69,7 @@ describe("operator watchdog strike evidence", () => {
     // The read's admission mirrors the strike validator's.
     const sources = neglectedEventSourcesOf(
       eventProjectionConfigFromContracts(
-        SDK.requireEventHistoryContracts(fixture.contracts),
+        SDKUsers.requireEventHistoryContracts(fixture.contracts),
         0,
       ),
       forcedOrderConfigFromContracts(fixture.contracts),

@@ -2,7 +2,7 @@ import { normalizeDaDeploymentFingerprintHex } from "@al-ft/midgard-core/da-tran
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueCategoryName,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 
 import {
   freezeRegistration,

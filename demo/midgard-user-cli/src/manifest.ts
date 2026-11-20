@@ -18,10 +18,12 @@ import {
 import {
   type AuthenticatedValidator,
   authenticatedValidatorFromManifest,
+} from "@al-ft/midgard-sdk/core";
+import {
   type UserHistoryContracts,
   userHistoryContractsFromDeploymentManifest,
   type UserHistoryReferenceScripts,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/users";
 import { type Network } from "@lucid-evolution/lucid";
 
 import { refuse } from "./options.js";

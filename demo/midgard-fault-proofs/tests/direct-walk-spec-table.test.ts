@@ -6,7 +6,8 @@
  * kit derives from the walk. The table covers exactly the walks the
  * direct-walk application records are built from.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import { DIRECT_PURPOSE_FIELDS } from "../src/direct-purpose-family/custody.js";
@@ -71,7 +72,7 @@ const ROWS: readonly Row[] = [
     walk: MISSING_REDEEMER_DIRECT_WALK,
     category: "missingRedeemer",
     stepCount: 39,
-    roleOrder: SDK.MISSING_REDEEMER_ROLE_ORDER,
+    roleOrder: SDKFraudProof.MISSING_REDEEMER_ROLE_ORDER,
     fields: [0, 1, 2, 3, 5, 6, 8],
     proofChunk: true,
     terminal: "verdict",
@@ -82,7 +83,7 @@ const ROWS: readonly Row[] = [
     walk: MISSING_SCRIPT_SOURCE_DIRECT_WALK,
     category: "missingScriptSource",
     stepCount: 37,
-    roleOrder: SDK.MISSING_SCRIPT_SOURCE_ROLE_ORDER,
+    roleOrder: SDKFraudProof.MISSING_SCRIPT_SOURCE_ROLE_ORDER,
     fields: [0, 1, 2, 3, 5, 6, 8],
     proofChunk: true,
     terminal: "verdict",
@@ -93,7 +94,7 @@ const ROWS: readonly Row[] = [
     walk: UNUSED_REDEEMER_DIRECT_WALK,
     category: "unusedRedeemer",
     stepCount: 25,
-    roleOrder: SDK.UNUSED_REDEEMER_ROLE_ORDER,
+    roleOrder: SDKFraudProof.UNUSED_REDEEMER_ROLE_ORDER,
     fields: [0, 1, 2, 3, 5, 6, 8],
     proofChunk: true,
     terminal: "verdict",
@@ -104,7 +105,7 @@ const ROWS: readonly Row[] = [
     walk: RECEIVE_PURPOSE_LANGUAGE_DIRECT_WALK,
     category: "receivePurposeLanguage",
     stepCount: 21,
-    roleOrder: SDK.RECEIVE_PURPOSE_LANGUAGE_ROLE_ORDER,
+    roleOrder: SDKFraudProof.RECEIVE_PURPOSE_LANGUAGE_ROLE_ORDER,
     fields: [0, 1, 2, 3, 5, 6, 8],
     proofChunk: true,
     terminal: "verdict",
@@ -115,7 +116,7 @@ const ROWS: readonly Row[] = [
     walk: EXECUTION_SOURCE_SCRIPT_DECODING_DIRECT_WALK,
     category: "executionSourceScriptDecoding",
     stepCount: 3,
-    roleOrder: SDK.EXECUTION_SOURCE_SCRIPT_DECODING_ROLE_ORDER,
+    roleOrder: SDKFraudProof.EXECUTION_SOURCE_SCRIPT_DECODING_ROLE_ORDER,
     fields: [],
     proofChunk: false,
     terminal: "verdict",
@@ -127,7 +128,7 @@ const ROWS: readonly Row[] = [
     walk: DISTINCT_ASSET_ACCUMULATION_LIMIT_DIRECT_WALK,
     category: "distinctAssetAccumulationLimit",
     stepCount: 12,
-    roleOrder: SDK.DISTINCT_ASSET_ACCUMULATION_LIMIT_ROLE_ORDER,
+    roleOrder: SDKFraudProof.DISTINCT_ASSET_ACCUMULATION_LIMIT_ROLE_ORDER,
     fields: [0, 1, 2, 5],
     proofChunk: true,
     terminal: "verdict",
@@ -139,7 +140,7 @@ const ROWS: readonly Row[] = [
     walk: EXECUTION_NATIVE_SCRIPT_INVALID_DIRECT_WALK,
     category: "executionNativeScriptInvalid",
     stepCount: 28,
-    roleOrder: SDK.EXECUTION_NATIVE_SCRIPT_INVALID_ROLE_ORDER,
+    roleOrder: SDKFraudProof.EXECUTION_NATIVE_SCRIPT_INVALID_ROLE_ORDER,
     fields: [0, 1, 2, 3, 5, 6, 7, 8],
     proofChunk: true,
     terminal: "verdict",
@@ -151,7 +152,7 @@ const ROWS: readonly Row[] = [
     walk: SCRIPT_INTEGRITY_HASH_MISMATCH_DIRECT_WALK,
     category: "scriptIntegrityHashMismatch",
     stepCount: 21,
-    roleOrder: SDK.SCRIPT_INTEGRITY_HASH_MISMATCH_ROLE_ORDER,
+    roleOrder: SDKFraudProof.SCRIPT_INTEGRITY_HASH_MISMATCH_ROLE_ORDER,
     fields: [0, 1, 2, 3, 5, 6],
     proofChunk: true,
     terminal: "derived",
@@ -163,7 +164,7 @@ const ROWS: readonly Row[] = [
     walk: UNUSED_SCRIPT_WITNESS_DIRECT_WALK,
     category: "unusedScriptWitness",
     stepCount: 24,
-    roleOrder: SDK.UNUSED_SCRIPT_WITNESS_ROLE_ORDER,
+    roleOrder: SDKFraudProof.UNUSED_SCRIPT_WITNESS_ROLE_ORDER,
     fields: [0, 1, 2, 3, 5, 6],
     proofChunk: true,
     terminal: "derived",

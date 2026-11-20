@@ -12,7 +12,8 @@ import {
   plutusConstrFieldCbor,
   replacePlutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   type Assets,
   CML,
@@ -37,7 +38,7 @@ const validity = (fixture: Fixture) => {
   const validFrom = fixture.lucid.slotToUnixTime(fixture.lucid.currentSlot());
   return {
     validFrom,
-    validTo: SDK.resolveUserEventValidTo(
+    validTo: SDKUsers.resolveUserEventValidTo(
       fixture.lucid,
       undefined,
       () => validFrom,
@@ -60,7 +61,7 @@ const EXTERNAL_L2_DATUM = Data.to("ab".repeat(600));
 const prepare = (
   fixture: Fixture,
   group: Group,
-  options: SDK.UserHistoryBuildOptions,
+  options: SDKUsers.UserHistoryBuildOptions,
   row: Pick<Row, "l2Datum" | "withdrawal"> = {},
 ) =>
   Effect.runPromise(
@@ -70,7 +71,7 @@ const prepare = (
           const address = yield* SDK.addressDataFromBech32(
             fixture.beneficiary.address,
           );
-          return yield* SDK.prepareWithdrawalSubmissionProgram(
+          return yield* SDKUsers.prepareWithdrawalSubmissionProgram(
             fixture.lucid,
             fixture.contracts,
             {
@@ -81,7 +82,7 @@ const prepare = (
                   outputIndex: withdrawal.outputIndex ?? 0n,
                 },
                 l2_owner: "44".repeat(28),
-                l2_value: SDK.assetsToValue(
+                l2_value: SDKUsers.assetsToValue(
                   withdrawal.l2Assets ?? { lovelace: 7_000_000n },
                 ),
                 l1_address: address,
@@ -97,13 +98,17 @@ const prepare = (
             },
           );
         })
-      : SDK.prepareDepositSubmissionProgram(fixture.lucid, fixture.contracts, {
-          ...depositConfig(
-            fixture,
-            row.l2Datum ?? (group === "deposit" ? null : EXTERNAL_L2_DATUM),
-          ),
-          ...options,
-        }),
+      : SDKUsers.prepareDepositSubmissionProgram(
+          fixture.lucid,
+          fixture.contracts,
+          {
+            ...depositConfig(
+              fixture,
+              row.l2Datum ?? (group === "deposit" ? null : EXTERNAL_L2_DATUM),
+            ),
+            ...options,
+          },
+        ),
   );
 
 type ChainVerdict = Readonly<{ admitted: boolean; orderDatum?: string }>;
@@ -178,7 +183,7 @@ const buildRow = async (
     );
     expect(publishing.plan.kind).toBe("External");
     const publication = await withSdkReading(row.swap, () =>
-      SDK.buildEventHistoryPublication(
+      SDKUsers.buildEventHistoryPublication(
         publishing.context,
         publishing.plan.payloadCbor,
         publishing.request.reclaimAuth,
@@ -200,7 +205,7 @@ const buildRow = async (
   const payloadCbor = withFields(prepared.request.payloadCbor, row.fields);
   const chain = await chainVerdict(() =>
     withSdkReading(row.swap, () =>
-      SDK.buildEventHistoryAdmission(prepared.context, {
+      SDKUsers.buildEventHistoryAdmission(prepared.context, {
         ...prepared.request,
         payloadCbor,
         ...validity(fixture),
@@ -319,8 +324,8 @@ describe("event-history admission agrees with the node's decoder (emulator)", ()
   );
 
   it("external deposit with a datum nested to the deployed node bound: admitted true", async () => {
-    const bound = SDK.requireEventHistoryContracts(fixture.contracts).deposit
-      .recipe.maxPayloadNodes;
+    const bound = SDKUsers.requireEventHistoryContracts(fixture.contracts)
+      .deposit.recipe.maxPayloadNodes;
     // The payload's nodes besides a one-node datum, from the SDK's own
     // payload for this deposit.
     const shallow = await prepare(
@@ -332,7 +337,7 @@ describe("event-history admission agrees with the node's decoder (emulator)", ()
       },
     );
     const others =
-      SDK.countHistoryDataNodesCbor(shallow.plan.payloadCbor, bound) - 1n;
+      SDKUsers.countHistoryDataNodesCbor(shallow.plan.payloadCbor, bound) - 1n;
     const depth = Number(bound - others) - 1;
     // `depth` nested lists around one integer.
     const l2Datum = `${"9f".repeat(depth)}00${"ff".repeat(depth)}`;
@@ -344,9 +349,9 @@ describe("event-history admission agrees with the node's decoder (emulator)", ()
         l2Datum,
       },
     );
-    expect(SDK.countHistoryDataNodesCbor(deep.plan.payloadCbor, bound)).toBe(
-      bound,
-    );
+    expect(
+      SDKUsers.countHistoryDataNodesCbor(deep.plan.payloadCbor, bound),
+    ).toBe(bound);
     expect(
       await verdicts({
         group: "external deposit",

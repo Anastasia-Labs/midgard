@@ -1,5 +1,5 @@
 import type { View } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { CML, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import { type CommitteeConfig } from "../config.js";

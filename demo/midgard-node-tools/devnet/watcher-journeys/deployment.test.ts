@@ -8,7 +8,7 @@ import {
   closeSharedL1NodeTransports,
   sharedL1NodeTransport,
 } from "@al-ft/l1-node-transport";
-import { referenceScriptAuthUnit } from "@al-ft/midgard-sdk";
+import { referenceScriptAuthUnit } from "@al-ft/midgard-sdk/state-queue";
 import { generateSeedPhrase, walletFromSeed } from "@lucid-evolution/lucid";
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 import { cardanoProtocolParametersIdentityFromLedger } from "midgard-node/commands/contract-deployment-info";

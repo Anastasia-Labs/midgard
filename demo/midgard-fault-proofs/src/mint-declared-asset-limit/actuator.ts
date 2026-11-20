@@ -1,5 +1,5 @@
 import { decodeMidgardNativeTxCompact } from "@al-ft/midgard-core";
-import { Proof } from "@al-ft/midgard-sdk";
+import { Proof } from "@al-ft/midgard-sdk/core";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import { type FaultProofTurn } from "../fault-proof-turn.js";

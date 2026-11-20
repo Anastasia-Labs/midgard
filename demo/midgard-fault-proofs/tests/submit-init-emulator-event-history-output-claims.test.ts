@@ -8,17 +8,19 @@ import {
   ConfirmedState,
   DepositInfo,
   EMPTY_MERKLE_TREE_ROOT,
+  OutputReference,
+  parseFaultProofBlueprint,
+  WithdrawalInfo,
+} from "@al-ft/midgard-sdk/core";
+import { SettlementDatum } from "@al-ft/midgard-sdk/state-queue";
+import {
   EventHistoryNode,
   EventHistoryObserve,
   type EventHistoryOperation,
   type EventHistoryPayload,
   eventHistoryRetirementOperation,
   EventHistoryRetirementWitness,
-  OutputReference,
-  parseFaultProofBlueprint,
-  SettlementDatum,
-  WithdrawalInfo,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/users";
 import {
   Constr,
   credentialToAddress,

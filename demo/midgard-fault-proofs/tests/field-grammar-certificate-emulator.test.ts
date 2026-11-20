@@ -11,14 +11,14 @@ import {
   planMidgardFieldCarriage,
 } from "@al-ft/midgard-core";
 import { deriveMidgardFieldGrammarCertificate } from "@al-ft/midgard-core/codec/native-tx-field-access";
+import { parseFaultProofBlueprint } from "@al-ft/midgard-sdk/core";
 import {
   buildFieldGrammarCertificateValidator,
   buildUnsignedFieldGrammarCertificateOpenProgram,
   buildUnsignedFieldGrammarCertificateReclaimProgram,
   fieldGrammarCertificateDatumCbor,
   fieldGrammarCertificateUnit,
-  parseFaultProofBlueprint,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   CML,
   Emulator,

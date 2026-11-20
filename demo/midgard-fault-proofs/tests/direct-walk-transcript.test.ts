@@ -6,7 +6,7 @@
  * kit must leave this transcript byte-identical; a drift is a behaviour
  * change, never a reason to rewrite the snapshot.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

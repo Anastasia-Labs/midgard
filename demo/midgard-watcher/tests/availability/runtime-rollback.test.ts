@@ -32,8 +32,8 @@ vi.mock(
     };
   },
 );
-vi.mock("@al-ft/midgard-sdk", async (original) => ({
-  ...(await original<typeof import("@al-ft/midgard-sdk")>()),
+vi.mock("@al-ft/midgard-sdk/da", async (original) => ({
+  ...(await original<typeof import("@al-ft/midgard-sdk/da")>()),
   daAvailabilityOperationLimits: () => ({}),
   reconcileDaAvailabilityOperations: io.reconcile,
 }));

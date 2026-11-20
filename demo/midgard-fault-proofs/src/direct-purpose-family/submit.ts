@@ -1,7 +1,7 @@
 /** Submits one direct purpose custody transition: the thread moves from
  * its role to the next role with the exact next datum, the fields it opens
  * carried by reference, and a PHAS membership withdrawal where it binds. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import {
   type BuildTxWithRedeemer,
   type LucidEvolution,

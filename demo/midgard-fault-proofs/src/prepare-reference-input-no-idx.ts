@@ -20,7 +20,8 @@
 import "node:fs/promises";
 import "node:path";
 import "@al-ft/midgard-core";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "effect";
 import "./evidence/index.js";
 import "./json-file.js";

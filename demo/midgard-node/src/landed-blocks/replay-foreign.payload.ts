@@ -7,7 +7,8 @@
  * retained copy that does not rebuild it is such a copy, and a fetched one
  * must rebuild it.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Effect, Option } from "effect";
 
 import {
@@ -176,10 +177,10 @@ export const payloadOf = (
     )
       return yield* corrupt("its body is not the block's");
     const bound =
-      binding !== undefined && SDK.daAvailabilityStatusBinds(binding.status);
+      binding !== undefined && SDKDa.daAvailabilityStatusBinds(binding.status);
     if (
       bound &&
-      SDK.daPayloadAvailabilityBinding({
+      SDKDa.daPayloadAvailabilityBinding({
         status: binding.status,
         authority: yield* Effect.try({
           try: () => binding.authority(),

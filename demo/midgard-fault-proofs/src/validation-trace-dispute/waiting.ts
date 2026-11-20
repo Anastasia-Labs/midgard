@@ -21,7 +21,7 @@ import {
   MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS,
   MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS,
 } from "@al-ft/midgard-core";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/da";
 
 import { VALIDATION_DISPUTE_WALLET_MOVE_UNFUNDED } from "../workflow/funding-reservation-permit.validation-dispute-wallet-move-reserve.js";
 import type {

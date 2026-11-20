@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import type { L1Origin } from "@al-ft/midgard-core/l1-origin";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import {
   CML,
   coreToTxOutput,

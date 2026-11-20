@@ -8,8 +8,9 @@ import { randomUUID } from "node:crypto";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
-import * as SDK from "@al-ft/midgard-sdk";
-import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
+import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk/state-queue";
+import type * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { loadOrCreateRunSharedFixture } from "@al-ft/midgard-test-support/run-shared-fixtures";
 import {
   Emulator,
@@ -70,8 +71,8 @@ export const EMULATOR_DEPLOYMENT_IDENTITY = ContractDeploymentIdentity.make({
 
 export type DepositFlowReferenceScripts = {
   readonly init: AtomicProtocolInitReferenceScripts;
-  readonly deposit: SDK.SubmitDepositReferenceScripts;
-  readonly withdrawal: SDK.SubmitWithdrawalReferenceScripts;
+  readonly deposit: SDKUsers.SubmitDepositReferenceScripts;
+  readonly withdrawal: SDKUsers.SubmitWithdrawalReferenceScripts;
 };
 
 export type EmulatorFixture = {

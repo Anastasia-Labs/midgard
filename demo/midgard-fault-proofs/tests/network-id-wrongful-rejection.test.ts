@@ -7,7 +7,7 @@ import {
   encodeMidgardForcedTxCanonical,
 } from "@al-ft/midgard-core/codec/forced";
 import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
-import { forcedVerdictSubject } from "@al-ft/midgard-sdk";
+import { forcedVerdictSubject } from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, expectTypeOf, it } from "vitest";
 
 import {

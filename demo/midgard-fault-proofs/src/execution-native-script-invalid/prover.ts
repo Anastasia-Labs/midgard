@@ -9,7 +9,7 @@
  * convicts on an earlier native script that evaluates false, else at its own
  * coordinate when nothing executes there or the native script there is
  * satisfied. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { DirectPurposeTransition } from "../direct-purpose-family/custody.js";
 import type {

@@ -1,6 +1,6 @@
 import { Worker } from "node:worker_threads";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 
 import { resolveWorkerEntry } from "../../fibers/resolve-worker-entry.js";
 import type {

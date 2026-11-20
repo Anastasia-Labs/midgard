@@ -4,7 +4,6 @@
  */
 import { planMidgardFieldCarriage } from "@al-ft/midgard-core";
 import {
-  CanonicalDecodabilityStep01SpendRedeemer,
   commitCountedRootProgram,
   getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
@@ -17,7 +16,8 @@ import {
   requireUniqueOutputIndex,
   requireWithdrawalRedeemerIndex,
   ROOT_DOMAINS,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { CanonicalDecodabilityStep01SpendRedeemer } from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   credentialToAddress,

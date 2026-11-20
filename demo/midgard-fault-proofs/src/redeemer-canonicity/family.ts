@@ -9,7 +9,7 @@ import {
   terminalVerdictContradiction,
   type VerdictSubject,
   verdictSubjectIsCanonical,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import { claimedItem } from "../evidence/claimed-coordinate.js";
 import { planRedeemerData, type RedeemerDataPlan } from "./data-plan.js";

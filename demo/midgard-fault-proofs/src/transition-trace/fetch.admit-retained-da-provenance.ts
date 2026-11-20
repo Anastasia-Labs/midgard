@@ -4,7 +4,7 @@ import {
   admitEvidenceProvenance,
   assertSecurityGradeEvidence,
   type EvidenceProvenance,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 export type RetainedDaLibp2pPeer = {
   readonly peerId: string;

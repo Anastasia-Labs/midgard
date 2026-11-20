@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { CML } from "@lucid-evolution/lucid";
 import { loadPhasMembershipWithdrawalScript } from "midgard-node/phas-membership";
 import { describe, expect, it } from "vitest";

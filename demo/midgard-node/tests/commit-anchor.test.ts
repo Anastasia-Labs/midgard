@@ -5,7 +5,7 @@
  * the follower's prune boundary.
  */
 import type { View } from "@al-ft/midgard-l1-follower";
-import { EVENT_WAIT_DURATION_MS } from "@al-ft/midgard-sdk";
+import { EVENT_WAIT_DURATION_MS } from "@al-ft/midgard-sdk/core";
 import { SqlClient } from "@effect/sql";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect, Either } from "effect";

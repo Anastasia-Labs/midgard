@@ -11,7 +11,7 @@ import {
 import {
   parseFaultProofBlueprint,
   verifyBlueprintDeploymentRegistry,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 
 /** Checks actual applied bytes, ordered parameters, complete raw census and references. */
 export const verifyDeploymentReleaseParameterRegistry = (

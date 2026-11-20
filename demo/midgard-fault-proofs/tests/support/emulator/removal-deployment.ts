@@ -1,4 +1,5 @@
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
 import "../../../src/runtime.fraud-proof-deployment-entries-by-category.js";
 import "../../../src/transition-trace/yield-references.js";
 import "./header-fixtures.js";

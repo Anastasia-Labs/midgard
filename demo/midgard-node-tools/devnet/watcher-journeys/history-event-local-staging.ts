@@ -7,7 +7,11 @@ import {
   buildCountedRoot,
   keyValuePhasProof,
 } from "@al-ft/midgard-fault-proofs/transition-trace/phas";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   type CML,
   Data,
@@ -78,12 +82,12 @@ export type LocalHistoryEventStage = {
   /** Retire an actual source leaf against its merged settlement and current frontier. */
   retire(
     event: StagedLocalHistoryEvent,
-    settled: VerifiableJourneyBlock & { payload: SDK.DaPayload },
+    settled: VerifiableJourneyBlock & { payload: SDKDa.DaPayload },
     settlement: UTxO,
   ): Promise<{
     txHash: string;
     signedCbor: string;
-    witness: SDK.EventHistoryWitness;
+    witness: SDKUsers.EventHistoryWitness;
   }>;
   close(): void;
 };
@@ -133,10 +137,10 @@ export const openLocalHistoryEventStage =
           throw new Error("No ordinary funding inputs for event publication");
         // Respect actual predecessor protection before using the SDK's
         // 60-second validity backoff. Tests synchronize Date with this advance.
-        const history = SDK.eventHistoryDeploymentFromContracts(
-          SDK.requireEventHistoryContracts(deployment.contracts)[kind],
+        const history = SDKUsers.eventHistoryDeploymentFromContracts(
+          SDKUsers.requireEventHistoryContracts(deployment.contracts)[kind],
         );
-        const nodes = SDK.authenticateHistoryNodes(
+        const nodes = SDKUsers.authenticateHistoryNodes(
           await lucid.utxosAt(history.address),
           history,
         );
@@ -192,7 +196,7 @@ export const openLocalHistoryEventStage =
       const { contracts, chain } = deployment;
       const rootUnit = toUnit(
         contracts.stateQueue.policyId,
-        SDK.STATE_QUEUE_ROOT_ASSET_NAME,
+        SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME,
       );
       const one = async (scriptAddress: string, unit: string) => {
         const found = await lucid.utxosAtWithUnit(scriptAddress, unit);
@@ -212,7 +216,7 @@ export const openLocalHistoryEventStage =
           rootUnit,
         );
         const confirmed = await Effect.runPromise(
-          SDK.getConfirmedStateFromStateQueueDatum(
+          SDKStateQueue.getConfirmedStateFromStateQueueDatum(
             await Effect.runPromise(SDK.getLinkedListNodeViewFromUTxO(root)),
           ),
         );
@@ -247,7 +251,7 @@ export const openLocalHistoryEventStage =
         // so the chain clock must first reach the block's closing minute.
         await awaitTime(Number(block.header.endTime) - 59_999);
         const queue = await Effect.runPromise(
-          SDK.fetchSortedStateQueueUTxOsProgram(lucid, {
+          SDKStateQueue.fetchSortedStateQueueUTxOsProgram(lucid, {
             stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
             stateQueuePolicyId: contracts.stateQueue.policyId,
           }),
@@ -286,7 +290,10 @@ export const openLocalHistoryEventStage =
           stateQueuePolicyId: contracts.stateQueue.policyId,
         };
         const queue = await Effect.runPromise(
-          SDK.fetchConfirmedStateAndItsLinkProgram(lucid, fetchConfig),
+          SDKStateQueue.fetchConfirmedStateAndItsLinkProgram(
+            lucid,
+            fetchConfig,
+          ),
         );
         if (
           queue.link.datum.key === "Empty" ||
@@ -317,7 +324,7 @@ export const openLocalHistoryEventStage =
           throw new Error("Settlement has no ordinary funding input");
         lucid.overrideUTxOs(funding);
         const merged = await Effect.runPromise(
-          SDK.buildMergeToConfirmedStateTxProgram({
+          SDKStateQueue.buildMergeToConfirmedStateTxProgram({
             lucid,
             contracts,
             fetchConfig,
@@ -341,7 +348,10 @@ export const openLocalHistoryEventStage =
           contracts.settlement.spendingScriptAddress,
           contracts.settlement.policyId + block.headerHash,
         );
-        const datum = Data.from(settlement.datum!, SDK.SettlementDatum);
+        const datum = Data.from(
+          settlement.datum!,
+          SDKStateQueue.SettlementDatum,
+        );
         if (
           datum.deposits_root !== block.header.depositsRoot ||
           datum.withdrawals_root !== block.header.withdrawalsRoot
@@ -362,8 +372,8 @@ export const openLocalHistoryEventStage =
           ? settled.payload.block_body.deposits
           : settled.payload.block_body.withdrawals;
         const key = deposit
-          ? SDK.committedDepositKeyBytes(order.event.id)
-          : SDK.committedWithdrawalKeyBytes(order.event.id);
+          ? SDKFraudProof.committedDepositKeyBytes(order.event.id)
+          : SDKFraudProof.committedWithdrawalKeyBytes(order.event.id);
         const captured = captureStagedHistoryEvent(event);
         const value = canonical(
           plutusConstrFieldCbor(captured.openingCbor, [0, 0, 1]),
@@ -426,14 +436,14 @@ export const openLocalHistoryEventStage =
         const built = await (
           order.kind === "Deposit"
             ? Effect.runPromise(
-                SDK.buildAbsorbConfirmedDepositToReserveTxProgram(
+                SDKUsers.buildAbsorbConfirmedDepositToReserveTxProgram(
                   lucid,
                   contracts,
                   { ...config, deposit: order },
                 ),
               )
             : Effect.runPromise(
-                SDK.buildInitializePayoutTxProgram(lucid, contracts, {
+                SDKUsers.buildInitializePayoutTxProgram(lucid, contracts, {
                   ...config,
                   withdrawal: order,
                 }),
@@ -443,10 +453,10 @@ export const openLocalHistoryEventStage =
         const txHash = await signed.submit();
         await lucid.awaitTx(txHash, 200);
         // Re-read the complete authenticated list after the retirement lands.
-        const witness = await SDK.fetchEventHistoryWitness(
+        const witness = await SDKUsers.fetchEventHistoryWitness(
           { utxosAt: (address) => lucid.utxosAt(address) },
-          SDK.eventHistoryDeploymentFromContracts(
-            SDK.requireEventHistoryContracts(contracts)[name],
+          SDKUsers.eventHistoryDeploymentFromContracts(
+            SDKUsers.requireEventHistoryContracts(contracts)[name],
           ),
           order.event.id,
         );

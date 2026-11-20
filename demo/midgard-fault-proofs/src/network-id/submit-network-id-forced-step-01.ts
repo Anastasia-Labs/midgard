@@ -1,11 +1,13 @@
-import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
 import {
-  NetworkIdForcedStepDatum,
-  NetworkIdStep01SpendRedeemerSchema,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk/fraud-proof";
+import {
+  NetworkIdForcedStepDatum,
+  NetworkIdStep01SpendRedeemerSchema,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

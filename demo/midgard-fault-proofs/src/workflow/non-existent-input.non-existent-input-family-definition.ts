@@ -3,7 +3,7 @@ import {
   NonExistentInputStep02ThreadDatum,
   NonExistentInputStep03ThreadDatum,
   NonExistentInputStep04ThreadDatum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import { NON_EXISTENT_INPUT_KIND } from "../non-existent-input/wrongful-rejection.js";
 import { NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.detect-double-withdraws.js";

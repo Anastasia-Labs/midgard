@@ -17,7 +17,9 @@ import {
   MIDGARD_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/consensus-profile";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { inject } from "vitest";
 
@@ -104,7 +106,7 @@ export const makePayloadFixture = async (
     Pick<Header, "prevHeaderHash" | "prevUtxosRoot" | "utxosRoot">
   > = {},
 ): Promise<{
-  readonly payload: SDK.DaPayload;
+  readonly payload: SDKDa.DaPayload;
   readonly innerPayloadCbor: Buffer;
   readonly payloadCbor: Buffer;
   readonly header: Header;
@@ -134,7 +136,7 @@ export const makePayloadFixture = async (
   const validationTraces = sourceEvents.map((eventKey, index) =>
     fixtureValidationTrace(eventKey, transactions[index]!.txId),
   );
-  const counts: SDK.DaPayloadCounts = {
+  const counts: SDKDa.DaPayloadCounts = {
     withdrawalCount: 0n,
     forcedTransactionCount: 0n,
     l2TransactionCount: BigInt(transactionCount),
@@ -152,8 +154,8 @@ export const makePayloadFixture = async (
     depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
     withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
   };
-  const payloadWithoutHash: SDK.DaPayload = {
-    version: SDK.DA_PAYLOAD_VERSION,
+  const payloadWithoutHash: SDKDa.DaPayload = {
+    version: SDKDa.DA_PAYLOAD_VERSION,
     block_body: {
       header_hash: "00".repeat(28),
       header: placeholderHeader,
@@ -236,11 +238,11 @@ export const withHeaderFields = async (
   withHeader(fixture.payload, { ...fixture.header, ...fields });
 
 const withHeader = async (
-  payloadWithoutHash: SDK.DaPayload,
+  payloadWithoutHash: SDKDa.DaPayload,
   header: Header,
 ) => {
-  const headerHash = SDK.stateQueueHeaderHash(header);
-  const payload: SDK.DaPayload = {
+  const headerHash = SDKStateQueue.stateQueueHeaderHash(header);
+  const payload: SDKDa.DaPayload = {
     ...payloadWithoutHash,
     block_body: {
       ...payloadWithoutHash.block_body,
@@ -248,7 +250,7 @@ const withHeader = async (
       header,
     },
   };
-  const innerPayloadCbor = SDK.encodeDaPayload(payload);
+  const innerPayloadCbor = SDKDa.encodeDaPayload(payload);
   return {
     payload,
     innerPayloadCbor,
@@ -259,8 +261,8 @@ const withHeader = async (
 };
 
 const sortedEntries = (
-  entries: readonly SDK.DaPayloadEntry[],
-): SDK.DaPayloadEntry[] =>
+  entries: readonly SDKDa.DaPayloadEntry[],
+): SDKDa.DaPayloadEntry[] =>
   [...entries].sort(([left], [right]) =>
     left < right ? -1 : left > right ? 1 : 0,
   );
@@ -280,7 +282,7 @@ const eventPhase = (eventKey: SDK.EventKey): SDK.TransitionPhase => {
 
 const transitionTraceEntries = (
   sourceEvents: readonly SDK.EventKey[],
-): SDK.DaPayloadEntry[] =>
+): SDKDa.DaPayloadEntry[] =>
   sourceEvents.map((eventKey, index) => {
     const step: SDK.TransitionStep = {
       schema_version: 1n,
@@ -298,7 +300,7 @@ const transitionTraceEntries = (
 
 const eventToStepEntriesFor = (
   sourceEvents: readonly SDK.EventKey[],
-): SDK.DaPayloadEntry[] =>
+): SDKDa.DaPayloadEntry[] =>
   sortedEntries(
     sourceEvents.map((eventKey, index) => [
       LucidData.to(eventKey as never, SDK.EventKeySchema as never),

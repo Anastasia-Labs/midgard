@@ -3,6 +3,7 @@ import {
   decodeMidgardScriptWitnessFieldPreimage,
   hashMidgardVersionedScript,
 } from "@al-ft/midgard-core";
+import { requireReferenceInputIndex } from "@al-ft/midgard-sdk/core";
 import {
   MIDGARD_FIELD_INDEX,
   MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT,
@@ -10,8 +11,7 @@ import {
   type MintAuthorizationStep04State,
   MintAuthorizationWitnessScanDatum,
   type MintAuthorizationWitnessScanState,
-  requireReferenceInputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 
 import {

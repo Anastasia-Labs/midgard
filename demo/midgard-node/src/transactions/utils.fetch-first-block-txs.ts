@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { fromHex } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -16,7 +17,7 @@ import { type BlockTxPayload } from "./utils.submit-recovery-options.js";
  *          header hash.
  */
 export const fetchFirstBlockTxs = (
-  firstBlockUTxO: SDK.StateQueueUTxO,
+  firstBlockUTxO: SDKStateQueue.StateQueueUTxO,
 ): Effect.Effect<
   {
     txs: readonly BlockTxPayload[];

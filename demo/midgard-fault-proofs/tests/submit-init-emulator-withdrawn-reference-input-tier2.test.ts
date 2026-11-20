@@ -23,7 +23,8 @@ import {
   MIDGARD_CHUNK_BYTES_K,
   MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { describe, expect, it } from "vitest";
 
 import { buildWithdrawnReferenceInputInit } from "../src/withdrawn-reference-input/submit-withdrawn-reference-input-init.js";
@@ -60,7 +61,9 @@ describe("withdrawn-reference-input emulator tier-2 carriage", () => {
     // The size, not any flag, is what selects tier 2: past the tier-1
     // redeemer bound, within one publication.
     const preimage = encodeMidgardFieldPreimage(
-      scenario.prepared.referenceInputs.map(SDK.encodeMidgardTxInputCanonical),
+      scenario.prepared.referenceInputs.map(
+        SDKFraudProof.encodeMidgardTxInputCanonical,
+      ),
     );
     expect(preimage.length).toBeGreaterThan(
       MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,

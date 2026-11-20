@@ -1,5 +1,6 @@
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Effect } from "effect";
 
 import { opaqueForcedLengthMismatchFixture } from "./field-preimage-length-evidence.fixture.js";
@@ -35,7 +36,7 @@ export const opaqueForcedLifecycleDaFixture: NonNullable<
     header,
     headerHash,
     payload,
-    payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(payload), {
+    payloadEnvelopeCbor: await wrapDaPayload(SDKDa.encodeDaPayload(payload), {
       mode: "identity",
     }),
   };

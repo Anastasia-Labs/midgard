@@ -1,6 +1,9 @@
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import { normalizeOutRef } from "@al-ft/midgard-core/out-ref";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKDeployment from "@al-ft/midgard-sdk/deployment";
+import * as SDK from "@al-ft/midgard-sdk/users";
 import {
   credentialToAddress,
   Network,
@@ -19,8 +22,8 @@ export type HubOracleOneShotOutRef = {
 };
 
 export type RealContractDeploymentParameters = {
-  readonly referenceScriptAuth: SDK.MintingValidator;
-  readonly availabilityChallengeParameters: SDK.DaAvailabilityParameters;
+  readonly referenceScriptAuth: SDKCore.MintingValidator;
+  readonly availabilityChallengeParameters: SDKDa.DaAvailabilityParameters;
   readonly eventHistoryBounds: SDK.EventHistoryPayloadBounds;
   readonly eventHistoryProtectionDurationMs: bigint;
   /** The deployment's L1 slot mapping, a validation-trace validator parameter. */
@@ -50,7 +53,7 @@ export const normalizeHubOracleOneShotOutRef = (
 export const buildRealHubOracleValidator = (
   network: Network,
   oneShotOutRef: HubOracleOneShotOutRef,
-): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
+): Effect.Effect<SDKCore.AuthenticatedValidator, Error> =>
   Effect.gen(function* () {
     const blueprint = yield* loadRealBlueprint();
     const { mintingScriptCBOR, mintingScript, policyId } = yield* Effect.try({
@@ -77,25 +80,30 @@ export const buildRealHubOracleValidator = (
 
 export const buildRealFraudProofCatalogueValidator = (
   network: Network,
-  contracts: SDK.MidgardValidators,
-): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
+  contracts: SDKCore.MidgardValidators,
+): Effect.Effect<SDKCore.AuthenticatedValidator, Error> =>
   Effect.gen(function* () {
     const blueprint = yield* loadRealBlueprint();
     return yield* Effect.try({
       try: () =>
-        SDK.buildFraudProofCatalogueValidator(blueprint, network, contracts),
+        SDKDeployment.buildFraudProofCatalogueValidator(
+          blueprint,
+          network,
+          contracts,
+        ),
       catch: (cause) =>
         new Error("Failed to build FraudProofCatalogueValidator", { cause }),
     });
   });
 
 export const buildRealComputationThreadValidator = (
-  contracts: SDK.MidgardValidators,
-): Effect.Effect<SDK.MintingValidator, Error> =>
+  contracts: SDKCore.MidgardValidators,
+): Effect.Effect<SDKCore.MintingValidator, Error> =>
   Effect.gen(function* () {
     const blueprint = yield* loadRealBlueprint();
     return yield* Effect.try({
-      try: () => SDK.buildComputationThreadValidator(blueprint, contracts),
+      try: () =>
+        SDKDeployment.buildComputationThreadValidator(blueprint, contracts),
       catch: (cause) =>
         new Error("Failed to build ComputationThreadValidator", { cause }),
     });
@@ -103,13 +111,17 @@ export const buildRealComputationThreadValidator = (
 
 export const buildRealFraudProofValidator = (
   network: Network,
-  computationThread: SDK.MintingValidator,
-): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
+  computationThread: SDKCore.MintingValidator,
+): Effect.Effect<SDKCore.AuthenticatedValidator, Error> =>
   Effect.gen(function* () {
     const blueprint = yield* loadRealBlueprint();
     return yield* Effect.try({
       try: () =>
-        SDK.buildFraudProofValidator(blueprint, network, computationThread),
+        SDKDeployment.buildFraudProofValidator(
+          blueprint,
+          network,
+          computationThread,
+        ),
       catch: (cause) =>
         new Error("Failed to build FraudProofValidator", { cause }),
     });
@@ -117,15 +129,16 @@ export const buildRealFraudProofValidator = (
 
 export const buildRealFraudProofSharedWithdrawalValidators = (): Effect.Effect<
   Readonly<{
-    chunkedVerify: SDK.WithdrawalValidator;
-    pexcludes: SDK.WithdrawalValidator;
+    chunkedVerify: SDKCore.WithdrawalValidator;
+    pexcludes: SDKCore.WithdrawalValidator;
   }>,
   Error
 > =>
   Effect.gen(function* () {
     const blueprint = yield* loadRealBlueprint();
     return yield* Effect.try({
-      try: () => SDK.buildFraudProofSharedWithdrawalValidators(blueprint),
+      try: () =>
+        SDKDeployment.buildFraudProofSharedWithdrawalValidators(blueprint),
       catch: (cause) =>
         new Error("Failed to build FraudProofSharedWithdrawalValidators", {
           cause,
@@ -138,12 +151,12 @@ export const buildRealDaParamsGovernorValidator = (
   initOutRef: HubOracleOneShotOutRef,
   maxCommitteeSize: number,
   maxOwnerCount: number,
-): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
+): Effect.Effect<SDKCore.AuthenticatedValidator, Error> =>
   Effect.gen(function* () {
     const blueprint = yield* loadRealBlueprint();
     return yield* Effect.try({
       try: () =>
-        SDK.buildDaParamsGovernorValidator(
+        SDKDeployment.buildDaParamsGovernorValidator(
           blueprint,
           network,
           initOutRef,
@@ -157,15 +170,15 @@ export const buildRealDaParamsGovernorValidator = (
 
 export const buildRealDaAttestationValidator = (
   network: Network,
-  contracts: SDK.MidgardValidators,
+  contracts: SDKCore.MidgardValidators,
   referenceScriptAuthPolicyId: string,
-  availabilityParameters: SDK.DaAvailabilityParameters,
-): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
+  availabilityParameters: SDKDa.DaAvailabilityParameters,
+): Effect.Effect<SDKCore.AuthenticatedValidator, Error> =>
   Effect.gen(function* () {
     const blueprint = yield* loadRealBlueprint();
     return yield* Effect.try({
       try: () =>
-        SDK.buildDaAttestationValidator(
+        SDKDeployment.buildDaAttestationValidator(
           blueprint,
           network,
           contracts,
@@ -182,13 +195,13 @@ export const buildRealDaBondPoolValidator = (
   initOutRef: HubOracleOneShotOutRef,
   hubOraclePolicyId: string,
   daParamsPolicyId: string,
-  parameters: SDK.DaAvailabilityParameters,
-): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
+  parameters: SDKDa.DaAvailabilityParameters,
+): Effect.Effect<SDKCore.AuthenticatedValidator, Error> =>
   Effect.gen(function* () {
     const blueprint = yield* loadRealBlueprint();
     return yield* Effect.try({
       try: () =>
-        SDK.buildDaBondPoolValidator(
+        SDKDeployment.buildDaBondPoolValidator(
           blueprint,
           network,
           initOutRef,

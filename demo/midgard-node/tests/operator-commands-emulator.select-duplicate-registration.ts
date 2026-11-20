@@ -4,7 +4,8 @@
  * runs: which registration a duplicate slash removes, and which membership
  * proves it.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/operators";
 import { describe, expect, it } from "vitest";
 
 import { selectDuplicateRegistration } from "../src/transactions/operators/exit.slash-duplicate-operator-program.js";
@@ -24,7 +25,7 @@ describe("selectDuplicateRegistration", () => {
     datum: {
       key: { Key: { key } },
       next: "Empty",
-      data: data as SDK.LinkedListNodeView["data"],
+      data: data as SDKCore.LinkedListNodeView["data"],
     },
     assetName: key,
   });

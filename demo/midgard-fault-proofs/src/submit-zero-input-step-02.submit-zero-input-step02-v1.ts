@@ -1,4 +1,7 @@
-import { FraudProofTokenDatum, MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk";
+import {
+  FraudProofTokenDatum,
+  MIDGARD_FIELD_INDEX,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   Data,
   type LucidEvolution,

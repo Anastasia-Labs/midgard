@@ -12,11 +12,11 @@ import {
   planMidgardFieldCarriage,
 } from "@al-ft/midgard-core";
 import { decodeMidgardForcedTxCompact } from "@al-ft/midgard-core/codec/forced";
+import { type NativeTxWitnessSetCompact } from "@al-ft/midgard-sdk/core";
 import {
   isMidgardWitnessSetField,
   MIDGARD_FIELD_INDEX,
-  type NativeTxWitnessSetCompact,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import { parseHex, requireRecord } from "./json-file.js";
 

@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -40,7 +41,7 @@ describe("real unattested timeout suffix lifecycle", () => {
     const root = await f.one(f.rootUnit);
     for (const descendant of f.hashes.slice(2)) {
       await f.submit(
-        SDK.incompletePruneUnattestedBlockDescendantTxProgram(
+        SDKStateQueue.incompletePruneUnattestedBlockDescendantTxProgram(
           f.lucid,
           f.config,
           {
@@ -76,11 +77,15 @@ describe("real unattested timeout suffix lifecycle", () => {
     const f = await setup(1, false, { lockAtIdleMinimum: true });
     const idleLock = await f.one(f.lockUnit);
     await f.submit(
-      SDK.incompletePruneUnattestedBlockDescendantTxProgram(f.lucid, f.config, {
-        ...(await f.common()),
-        predecessorRefInput: await f.node(f.hashes[0]!),
-        removedDescendantUTxO: await f.node(f.hashes[2]!),
-      }),
+      SDKStateQueue.incompletePruneUnattestedBlockDescendantTxProgram(
+        f.lucid,
+        f.config,
+        {
+          ...(await f.common()),
+          predecessorRefInput: await f.node(f.hashes[0]!),
+          removedDescendantUTxO: await f.node(f.hashes[2]!),
+        },
+      ),
     );
     const lockedLock = await f.one(f.lockUnit);
     expect(Data.from(lockedLock.datum!, SDK.CorrectionLockDatum)).toEqual({
@@ -103,7 +108,7 @@ describe("real unattested timeout suffix lifecycle", () => {
   it("refuses premature and already-attested targets in the applied validators", async () => {
     const premature = await setup(0);
     const deadline =
-      premature.headers[1]!.endTime + SDK.DA_ATTESTATION_TIMEOUT_MS;
+      premature.headers[1]!.endTime + SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS;
     await expectOnchainRefusal(async () =>
       (await premature.terminal(deadline - 1000n)).complete({
         localUPLCEval: true,
@@ -120,7 +125,7 @@ describe("real unattested timeout suffix lifecycle", () => {
     const common = await f.common();
     // Alter only the builder's parsed view. The consumed datum remains the
     // original on-chain datum linking to a descendant, so UPLC must refuse it.
-    const tx = SDK.incompleteRemoveLastUnattestedBlockTxProgram(
+    const tx = SDKStateQueue.incompleteRemoveLastUnattestedBlockTxProgram(
       f.lucid,
       f.config,
       {
@@ -143,7 +148,8 @@ describe("unattested timeout at a deadline that is not on a slot boundary", () =
   // early and the validator's `lower >= end_time + timeout` refuses it.
   const liveFixture = async (descendantCount: number) => {
     const f = await setup(descendantCount, false, { liveBlockEndTimes: true });
-    const deadline = f.headers[1]!.endTime + SDK.DA_ATTESTATION_TIMEOUT_MS;
+    const deadline =
+      f.headers[1]!.endTime + SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS;
     const deadlineSlot = f.lucid.unixTimeToSlot(Number(deadline));
     const deadlineSlotStart = BigInt(f.lucid.slotToUnixTime(deadlineSlot));
     expect(deadline - deadlineSlotStart).toBe(999n);
@@ -198,11 +204,15 @@ describe("unattested timeout at a deadline that is not on a slot boundary", () =
     );
     expect(range.validFrom).toBe(f.deadline + 1n);
     await f.submit(
-      SDK.incompletePruneUnattestedBlockDescendantTxProgram(f.lucid, f.config, {
-        ...(await f.common(range.validFrom, range.validTo)),
-        predecessorRefInput: await f.node(f.hashes[0]!),
-        removedDescendantUTxO: await f.node(f.hashes[2]!),
-      }),
+      SDKStateQueue.incompletePruneUnattestedBlockDescendantTxProgram(
+        f.lucid,
+        f.config,
+        {
+          ...(await f.common(range.validFrom, range.validTo)),
+          predecessorRefInput: await f.node(f.hashes[0]!),
+          removedDescendantUTxO: await f.node(f.hashes[2]!),
+        },
+      ),
     );
     await f.submit(await f.terminal(range.validFrom, range.validTo));
     await f.expectTargetRemoved();
@@ -216,7 +226,7 @@ describe("unattested timeout at a deadline that is not on a slot boundary", () =
     const prematureNow = BigInt(f.emulator.now());
     expect(prematureNow).toBeLessThan(f.deadline);
     const queue = await Effect.runPromise(
-      SDK.fetchSortedStateQueueUTxOsProgram(f.lucid, f.config),
+      SDKStateQueue.fetchSortedStateQueueUTxOsProgram(f.lucid, f.config),
     );
     const selected = await selectTimeoutCorrectionTarget(
       queue,

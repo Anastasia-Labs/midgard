@@ -6,6 +6,12 @@ import {
  * Pointer churn cannot change the retained facts. No operator archive supplies
  * authority: every opening must match the commitment in the authentic thread. */
 import {
+  OutputReference,
+  requireInputIndex,
+  requireOwnSpendPurpose,
+  requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
   FabricatedWithdrawalAuthenticContentOpening,
   type FabricatedWithdrawalFault,
   FabricatedWithdrawalStep03Datum,
@@ -15,13 +21,9 @@ import {
   type FabricatedWithdrawalStep04State,
   fabricatedWithdrawalStep04State,
   isFabricatedWithdrawalFault,
-  opensEventHistoryCommitmentCbor,
-  OutputReference,
-  requireInputIndex,
-  requireOwnSpendPurpose,
-  requireUniqueOutputIndex,
   withdrawalContentCommitmentCbor,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
+import { opensEventHistoryCommitmentCbor } from "@al-ft/midgard-sdk/users";
 import {
   type BuildTxWithRedeemer,
   Data,

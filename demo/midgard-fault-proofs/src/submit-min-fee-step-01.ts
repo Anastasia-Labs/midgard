@@ -1,16 +1,18 @@
 /** Bind the disputed transaction and header fee schedule into step-02 state. */
 import {
-  acceptedVerdictSubject,
   getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
   HUB_ORACLE_ASSET_NAME,
-  MinFeeStep01SpendRedeemer,
-  MinFeeStep02Datum,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  acceptedVerdictSubject,
+  MinFeeStep01SpendRedeemer,
+  MinFeeStep02Datum,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   credentialToAddress,

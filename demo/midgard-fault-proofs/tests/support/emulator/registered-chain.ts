@@ -1,11 +1,11 @@
 import {
   AddressData,
   addressDataFromBech32,
-  type BuildFaultProofContractsParams,
   type FraudProofCatalogueCategoryDeploymentInfo,
   parseFaultProofBlueprint,
   type SpendingValidator as SdkSpendingValidator,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { type BuildFaultProofContractsParams } from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type Script } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";

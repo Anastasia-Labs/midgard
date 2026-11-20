@@ -1,6 +1,6 @@
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import {
   nativeFaultContext,
   nativeFaultFixture,

@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 
 import { DaLibp2pProofProtocolHandlers } from "../src/da/libp2p/proof-protocols.js";
 import { computeDaPayloadRoots } from "../src/da/payload.js";
@@ -40,7 +41,7 @@ export const saveVerifiedPayload = async ({
   rootSummary,
 }: {
   readonly store: PostgresCommitteeStore;
-  readonly payload: SDK.DaPayload;
+  readonly payload: SDKDa.DaPayload;
   readonly payloadCbor: Buffer;
   readonly payloadHash: Buffer;
   readonly header: Header;
@@ -93,5 +94,5 @@ export const stateQueueHeaderRecord = ({
 // A verified payload stores the roots computed from its body, whose
 // validation-trace root is the built one rather than the header's empty tree.
 export const verifiedRootSummary = (
-  payload: SDK.DaPayload,
+  payload: SDKDa.DaPayload,
 ): Promise<DaStoredPayloadRootSet> => computeDaPayloadRoots(payload);

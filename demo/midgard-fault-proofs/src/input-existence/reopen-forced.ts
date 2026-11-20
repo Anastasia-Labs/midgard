@@ -2,7 +2,8 @@
  * Derived subject/selection fields are reconstructed, never trusted from a caller. */
 import { computeHash32 } from "@al-ft/midgard-core";
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
@@ -82,7 +83,7 @@ export const forcedInputExistenceMaterial = (
         tx_order_id: evidence.forcedSource.membership.key,
       },
     },
-    subject: SDK.forcedVerdictSubject({
+    subject: SDKFraudProof.forcedVerdictSubject({
       transactionId: leaf.tx_id,
       sourceKey: evidence.forcedSource.membership.key,
       rejectionReason:

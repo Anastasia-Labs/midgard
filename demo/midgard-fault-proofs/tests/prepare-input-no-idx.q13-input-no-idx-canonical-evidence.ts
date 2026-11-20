@@ -4,7 +4,7 @@ import {
   midgardFieldCommitment,
   selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { h28 } from "@al-ft/midgard-test-support/hex";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";

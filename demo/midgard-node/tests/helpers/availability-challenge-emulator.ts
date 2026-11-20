@@ -1,7 +1,9 @@
 import "node:fs";
 import "node:path";
 import "@al-ft/midgard-core/deployment-profile";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/da";
 import "@al-ft/midgard-test-support/hex";
 import "@lucid-evolution/lucid";
 import "@lucid-evolution/scalus-uplc";

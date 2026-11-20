@@ -22,7 +22,7 @@ import {
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
   ROOT_DOMAINS,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import {
   type BuildTxWithRedeemer,
   Data,

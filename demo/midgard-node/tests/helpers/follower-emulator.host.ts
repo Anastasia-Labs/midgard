@@ -45,7 +45,7 @@ import {
   resetToOrigin,
   type TrackedSet,
 } from "@al-ft/midgard-l1-follower";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import {
   type Emulator,
   getAddressDetails,

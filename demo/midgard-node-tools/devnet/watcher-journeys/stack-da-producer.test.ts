@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { loadDaLibp2pIdentity } from "@al-ft/midgard-core/da-libp2p-identity";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { createDaLibp2pProducerTransport } from "midgard-node/da/libp2p-producer";
 import {
   manifestFixture,

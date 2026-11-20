@@ -18,7 +18,7 @@ import type {
   StoredTx,
   View,
 } from "@al-ft/midgard-l1-follower";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/da";
 import type { ProtocolParameters } from "@lucid-evolution/lucid";
 
 import { AvailabilityResponderAwaitingScanError } from "../../availability/awaiting-scan-error.js";

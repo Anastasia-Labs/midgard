@@ -11,7 +11,8 @@ import {
 } from "@al-ft/midgard-core";
 import { deriveMidgardTxFieldPreimages } from "@al-ft/midgard-core/consensus-validation";
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
   buildTraceAtStepCountV1,
   DirectValidationTraceUnavailable,
@@ -73,7 +74,7 @@ export const buildValidationClaimWitness = async ({
 }: {
   readonly reconstruction: TransitionTraceReconstruction;
   readonly eventKey: SDK.EventKey;
-}): Promise<SDK.ValidationClaimWitness> => {
+}): Promise<SDKDa.ValidationClaimWitness> => {
   const eventToStep = await buildEventToStepMembershipProof({
     reconstruction,
     eventKey,
@@ -83,7 +84,7 @@ export const buildValidationClaimWitness = async ({
     stepIndex: eventToStep.value.step_index,
   });
   const event = sourceEventOrThrow(reconstruction, eventKey);
-  let source: SDK.ValidationClaimWitness["source_membership"];
+  let source: SDKDa.ValidationClaimWitness["source_membership"];
   if (event.phase === "ForcedTransaction")
     source = {
       ForcedValidationSource: {
@@ -120,7 +121,7 @@ export const buildValidationClaimWitness = async ({
 };
 
 export type ValidationTraceClaimMaterial = {
-  readonly claimWitness: SDK.ValidationClaimWitness;
+  readonly claimWitness: SDKDa.ValidationClaimWitness;
   /** The challenger's trace root over states `0..stepCount`. */
   readonly challengerRoot: string;
   readonly stepCount: bigint;

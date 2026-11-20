@@ -6,7 +6,7 @@ import {
   midgardFieldCommitment,
 } from "@al-ft/midgard-core";
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
-import { acceptedVerdictSubject } from "@al-ft/midgard-sdk";
+import { acceptedVerdictSubject } from "@al-ft/midgard-sdk/fraud-proof";
 import { type Script } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

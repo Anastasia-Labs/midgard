@@ -13,8 +13,10 @@ import { prepareMinFeeWorkflow } from "@al-ft/midgard-fault-proofs/prepare-min-f
 import { replayBlock } from "@al-ft/midgard-fault-proofs/block-replay";
 // ok: midgard/no-cross-package-root
 import { runPhaseAValidation } from "@al-ft/midgard-validation/phase-a";
-// ok: midgard/no-cross-package-root
+// ruleid: midgard/no-cross-package-root
 import * as SDK from "@al-ft/midgard-sdk";
+// ok: midgard/no-cross-package-root
+import { hashBlockHeader } from "@al-ft/midgard-sdk/core";
 
 export const loaded = async (candidate: ValidationCandidate) => {
   // ruleid: midgard/no-cross-package-root
@@ -27,5 +29,6 @@ export const loaded = async (candidate: ValidationCandidate) => {
     replayBlock,
     runPhaseAValidation,
     SDK,
+    hashBlockHeader,
   ];
 };

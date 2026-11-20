@@ -2,7 +2,7 @@ import {
   type AllowList,
   SELECTED_DEPLOYMENT_PROFILE,
 } from "@al-ft/midgard-core/deployment-profile";
-import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "@al-ft/midgard-sdk";
+import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "@al-ft/midgard-sdk/core";
 import {
   generateSeedPhrase,
   Lucid,

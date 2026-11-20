@@ -1,6 +1,10 @@
 import "@al-ft/midgard-core";
 import "@al-ft/midgard-core/codec/forced";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/da";
+import "@al-ft/midgard-sdk/users";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "../field-opening.js";
 import "../inspect-contracts.js";
 import "../publish-proof-chunks.js";

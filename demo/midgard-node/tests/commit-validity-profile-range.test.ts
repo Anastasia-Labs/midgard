@@ -19,10 +19,13 @@ const { PROFILE_MAX_VALIDITY_RANGE_MS } = vi.hoisted(() => ({
   PROFILE_MAX_VALIDITY_RANGE_MS: 300_000,
 }));
 
-vi.mock("@al-ft/midgard-sdk", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@al-ft/midgard-sdk")>()),
-  COMMIT_MAX_VALIDITY_RANGE_MS: PROFILE_MAX_VALIDITY_RANGE_MS,
+vi.mock("@al-ft/midgard-sdk/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@al-ft/midgard-sdk/core")>()),
   MAX_VALIDITY_RANGE_LENGTH_MS: BigInt(PROFILE_MAX_VALIDITY_RANGE_MS),
+}));
+vi.mock("@al-ft/midgard-sdk/state-queue", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@al-ft/midgard-sdk/state-queue")>()),
+  COMMIT_MAX_VALIDITY_RANGE_MS: PROFILE_MAX_VALIDITY_RANGE_MS,
 }));
 
 const secondSlotLucid = {

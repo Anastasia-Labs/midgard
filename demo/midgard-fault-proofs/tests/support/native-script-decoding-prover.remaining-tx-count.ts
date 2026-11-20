@@ -5,7 +5,7 @@ import {
 import {
   NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE,
   NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import { type NativeScriptDecodingFinding } from "../../src/native-script-decoding/finding.js";
 import { type NativeScriptDecodingScanPlan } from "../../src/native-script-decoding/scan-plan.js";

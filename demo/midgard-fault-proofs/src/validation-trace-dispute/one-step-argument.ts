@@ -6,7 +6,7 @@
 import type { MidgardValidationMachineState } from "@al-ft/midgard-core";
 import type { MidgardFieldCarriage } from "@al-ft/midgard-core/codec/native-tx-field-access";
 import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import type { buildValidationOneStepArgument } from "@al-ft/midgard-validation/validation-machine-data";
 import { Effect } from "effect";
 

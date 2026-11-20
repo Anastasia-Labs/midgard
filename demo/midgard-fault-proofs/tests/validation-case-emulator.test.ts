@@ -7,11 +7,8 @@ import {
   MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS,
   type MidgardValidationMachineState,
 } from "@al-ft/midgard-core";
-import {
-  CaseRedeemer,
-  EMPTY_MERKLE_TREE_ROOT,
-  ReceiptRedeemer,
-} from "@al-ft/midgard-sdk";
+import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk/core";
+import { CaseRedeemer, ReceiptRedeemer } from "@al-ft/midgard-sdk/da";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

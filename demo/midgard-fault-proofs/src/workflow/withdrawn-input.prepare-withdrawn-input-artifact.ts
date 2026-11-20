@@ -1,7 +1,5 @@
-import {
-  committedWithdrawalKeyBytes,
-  WithdrawalSourceMembershipProof,
-} from "@al-ft/midgard-sdk";
+import { WithdrawalSourceMembershipProof } from "@al-ft/midgard-sdk/core";
+import { committedWithdrawalKeyBytes } from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";

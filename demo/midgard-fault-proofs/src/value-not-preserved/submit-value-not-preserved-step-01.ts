@@ -26,8 +26,8 @@ import {
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
   requireWithdrawalRedeemerIndex,
-} from "@al-ft/midgard-sdk";
-import { HUB_ORACLE_ASSET_NAME } from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { HUB_ORACLE_ASSET_NAME } from "@al-ft/midgard-sdk/core";
 import {
   type BuildTxWithRedeemer,
   credentialToAddress,

@@ -9,7 +9,8 @@
  * the deployment's finalized manifest; an honest block whose script passes
  * is never attacked.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { credentialToAddress, Data, type UTxO } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -267,7 +268,8 @@ describe("validation-trace dispute through the installed watcher application", (
       );
       expect(recorded!.assets[proofUnit]).toBe(1n);
       expect(
-        Data.from(recorded!.datum!, SDK.FraudProofTokenDatum).fraud_prover,
+        Data.from(recorded!.datum!, SDKFraudProof.FraudProofTokenDatum)
+          .fraud_prover,
       ).toBe(h.proverSigner.paymentKeyHash);
       // Each removal peels one block against our record: the two
       // descendants, then the convicted block.

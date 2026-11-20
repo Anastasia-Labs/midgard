@@ -11,7 +11,7 @@ import {
   midgardEnvelopeVerdict,
   PROOF_THREAD_SOURCE_KIND_FORCED,
   type VerdictSubject,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type { CanonicalViolationDetection } from "../workflow/classification.js";

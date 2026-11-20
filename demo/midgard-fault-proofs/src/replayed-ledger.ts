@@ -23,7 +23,8 @@
  * is not refused that way: its copy is released and the read waits.
  */
 import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Cause, Effect, Exit } from "effect";
 
 import { isReplayLocalFault, ReplayLocalFault } from "./block-replay.faults.js";
@@ -52,10 +53,10 @@ export type ReplayedLedgerSource = {
    */
   readonly payloadAt: (
     headerHash: string,
-  ) => Promise<SDK.DaPayload | undefined>;
+  ) => Promise<SDKDa.DaPayload | undefined>;
   /** Throws when the facts are not available yet (the caller retries). */
   readonly materialFor: (
-    payload: SDK.DaPayload,
+    payload: SDKDa.DaPayload,
   ) => Promise<BlockReplayMaterial>;
   readonly l1SlotConfig: L1SlotConfig;
   /**
@@ -205,7 +206,7 @@ export const createReplayedLedger = ({
 
   const replay = async (
     headerHash: string,
-    payload: SDK.DaPayload,
+    payload: SDKDa.DaPayload,
     parent: CheckedLedger,
     source: ReplayedLedgerSource,
   ): Promise<Replayed> => {
@@ -277,7 +278,7 @@ export const createReplayedLedger = ({
   const payloadAt = async (
     source: ReplayedLedgerSource,
     headerHash: string,
-  ): Promise<SDK.DaPayload | undefined> => {
+  ): Promise<SDKDa.DaPayload | undefined> => {
     const payload = await source.payloadAt(headerHash);
     if (payload === undefined) return undefined;
     const hash = await Effect.runPromise(
@@ -298,7 +299,7 @@ export const createReplayedLedger = ({
     const hit = kept(headerHash);
     if (hit !== undefined) return hit.entries;
     // Walk back to a kept ledger, then replay forward.
-    const chain: { headerHash: string; payload: SDK.DaPayload }[] = [];
+    const chain: { headerHash: string; payload: SDKDa.DaPayload }[] = [];
     let cursor = headerHash;
     let base: CheckedLedger | undefined;
     while (base === undefined) {

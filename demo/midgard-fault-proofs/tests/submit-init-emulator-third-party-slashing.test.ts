@@ -1,5 +1,6 @@
 import { outRefLabel } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   credentialToAddress,
   Data,
@@ -33,7 +34,10 @@ it("a distinct caller prunes active and retired rotated descendants and pays the
     });
     const { contracts, emulator, funderLucid } = fixture;
     expect(
-      Data.from(fixture.fraudProofUtxo.datum!, SDK.FraudProofTokenDatum),
+      Data.from(
+        fixture.fraudProofUtxo.datum!,
+        SDKFraudProof.FraudProofTokenDatum,
+      ),
     ).toEqual({
       fraud_prover: fixture.proverPaymentKeyHash,
     });

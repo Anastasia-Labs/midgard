@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   credentialToAddress,
   type LucidEvolution,
@@ -21,7 +22,7 @@ const address = credentialToAddress("Preprod", {
 const parent = "a1".repeat(28);
 const newer = "b2".repeat(28);
 const older = "e5".repeat(28);
-const rootUnit = toUnit(policyId, SDK.STATE_QUEUE_ROOT_ASSET_NAME);
+const rootUnit = toUnit(policyId, SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME);
 const nodeUnit = (headerHash: string) =>
   toUnit(policyId, SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + headerHash);
 const key = (headerHash: string | null): SDK.LinkedListNodeView["next"] =>

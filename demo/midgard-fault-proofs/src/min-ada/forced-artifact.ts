@@ -1,7 +1,8 @@
 import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
 import { computeHash28 } from "@al-ft/midgard-core";
-import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
@@ -53,14 +54,16 @@ export const admitMinAdaForcedArtifact = async (
     throw new Error("minAda: invalid forced index");
   const source = Data.from(
     artifact.forcedSourceCbor as string,
-    SDK.MinAdaForcedSourcePayloadSchema as never,
+    SDKFraudProof.MinAdaForcedSourcePayloadSchema as never,
   ) as {
     header: SDK.Header;
     membership: SDK.ForcedTransactionSourceMembershipProof;
   };
   if (
-    Data.to(source as never, SDK.MinAdaForcedSourcePayloadSchema as never) !==
-    artifact.forcedSourceCbor
+    Data.to(
+      source as never,
+      SDKFraudProof.MinAdaForcedSourcePayloadSchema as never,
+    ) !== artifact.forcedSourceCbor
   )
     throw new Error("minAda: noncanonical forced source");
   const { membership, header } = source;
@@ -187,7 +190,7 @@ export const prepareMinAdaForcedArtifact = async ({
     headerHash: prepared.headerHash,
     forcedSourceCbor: Data.to(
       prepared.forcedSource as never,
-      SDK.MinAdaForcedSourcePayloadSchema as never,
+      SDKFraudProof.MinAdaForcedSourcePayloadSchema as never,
     ),
     fullTransactionCbor: Buffer.from(forced.fullTransactionCbor).toString(
       "hex",

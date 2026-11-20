@@ -2,14 +2,16 @@ import {
   buildMidgardBoundedItem,
   MIDGARD_LEDGER_OUTPUT_FIELD_INDEX,
 } from "@al-ft/midgard-core";
-import type { NativeScriptDecodingScanThreadState } from "@al-ft/midgard-sdk";
 import {
-  NATIVE_SCRIPT_DECODING_CLASS_PENDING,
-  NativeScriptDecodingStep03OpenSubjectDatum,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import type { NativeScriptDecodingScanThreadState } from "@al-ft/midgard-sdk/fraud-proof";
+import {
+  NATIVE_SCRIPT_DECODING_CLASS_PENDING,
+  NativeScriptDecodingStep03OpenSubjectDatum,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

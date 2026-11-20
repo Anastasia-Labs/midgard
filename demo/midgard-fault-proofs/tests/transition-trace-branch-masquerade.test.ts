@@ -1,6 +1,7 @@
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { computeHash32 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import { detectTransitionTraceFaults } from "../src/transition-trace/detect.detect-single-ledger-transitions.js";
@@ -53,7 +54,7 @@ const merkle = (hashes: readonly Buffer[]): Buffer => {
   return merkle(next);
 };
 
-const masquerade = (spent: SDK.LedgerDeleteWitness) => {
+const masquerade = (spent: SDKFraudProof.LedgerDeleteWitness) => {
   const [step] = spent.delete_proof;
   if (
     spent.delete_proof.length !== 1 ||
@@ -188,13 +189,13 @@ describe("transition-trace terminal Branch masquerade", () => {
         ],
       }),
     );
-    const spent: SDK.LedgerDeleteWitness = {
+    const spent: SDKFraudProof.LedgerDeleteWitness = {
       key: key.toString("hex"),
       value: value.toString("hex"),
       opening: "",
       delete_proof: sdkProof(await pre.prove(key)),
     };
-    const detect = (spentUtxo: SDK.LedgerDeleteWitness) =>
+    const detect = (spentUtxo: SDKFraudProof.LedgerDeleteWitness) =>
       detectTransitionTraceFaults(reconstruction, {
         withdrawalTransitions: [{ stepIndex: 0n, spentUtxo }],
       });

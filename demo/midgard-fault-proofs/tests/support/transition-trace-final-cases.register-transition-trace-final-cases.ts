@@ -7,8 +7,10 @@ import {
   encodeMidgardFieldPreimage,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core/codec";
-import * as SDK from "@al-ft/midgard-sdk";
-import { FraudProofTokenDatum } from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import { FraudProofTokenDatum } from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   assetsToValue,
   CML,
@@ -398,18 +400,18 @@ export const transitionTraceFinalCaseRunner = (
         l2_network_id: 0n,
         l2_datum: datumBytes > 0 ? "ab".repeat(datumBytes) : null,
       };
-      const payload: SDK.EventHistoryPayload = {
+      const payload: SDKUsers.EventHistoryPayload = {
         DepositPayload: { event: { id, info } },
       };
       const reclaimKey = getAddressDetails(await proverLucid.wallet().address())
         .paymentCredential!.hash;
-      const plan = SDK.prepareEventHistoryPayload(
+      const plan = SDKUsers.prepareEventHistoryPayload(
         payload,
         { PublicKeyCredential: [reclaimKey] },
         historyBounds,
       );
       const unit = contracts.deposit.policyId + plan.key;
-      const retention = SDK.applyEventHistoryRetentionValidator(
+      const retention = SDKUsers.applyEventHistoryRetentionValidator(
         SDK.parseFaultProofBlueprint(realBlueprint),
         "Custom",
         contracts.hubOracle.policyId,
@@ -438,7 +440,7 @@ export const transitionTraceFinalCaseRunner = (
         );
         proverLucid.selectWallet.fromSeed(depositor.seedPhrase);
       }
-      const node: SDK.EventHistoryNode = {
+      const node: SDKUsers.EventHistoryNode = {
         position: { Key: [plan.key] },
         next: null,
         protected_until: BigInt(headerStartTime + 120_000),
@@ -454,7 +456,7 @@ export const transitionTraceFinalCaseRunner = (
           },
         },
       };
-      const datum = Data.to(node, SDK.EventHistoryNode);
+      const datum = Data.to(node, SDKUsers.EventHistoryNode);
       let admission = proverLucid.newTx().collectFrom([nonce]);
       if (additionalReferenceInputs.length > 0)
         admission = admission.readFrom(additionalReferenceInputs);
@@ -494,7 +496,7 @@ export const transitionTraceFinalCaseRunner = (
           unit,
         ),
       );
-      const witness = await SDK.fetchEventHistoryWitness(
+      const witness = await SDKUsers.fetchEventHistoryWitness(
         { utxosAt: (address) => proverLucid.utxosAt(address) },
         {
           policyId: contracts.deposit.policyId,
@@ -507,7 +509,7 @@ export const transitionTraceFinalCaseRunner = (
       if (witness.kind !== "Present")
         throw new Error("Missing stress fixture Order");
       depositOpening = transitionDepositOpening(
-        SDK.captureEventHistoryWitness(
+        SDKUsers.captureEventHistoryWitness(
           witness,
           contracts.deposit.policyId,
           "Deposit",
@@ -655,7 +657,7 @@ export const transitionTraceFinalCaseRunner = (
       for (let hop = 0; hop < 6; hop++) {
         const state = Data.from(
           checkpoint.datum!,
-          SDK.TransitionTraceProofCommitmentDatum,
+          SDKFraudProof.TransitionTraceProofCommitmentDatum,
         ).data!;
         if (state.phase === BigInt(cancelAt)) break;
         const captured = await captureFinal(outRefLabel(checkpoint));
@@ -668,8 +670,10 @@ export const transitionTraceFinalCaseRunner = (
         );
       }
       expect(
-        Data.from(checkpoint.datum!, SDK.TransitionTraceProofCommitmentDatum)
-          .data!.phase,
+        Data.from(
+          checkpoint.datum!,
+          SDKFraudProof.TransitionTraceProofCommitmentDatum,
+        ).data!.phase,
       ).toBe(BigInt(cancelAt));
       const final =
         contracts.fraudProofContracts.transitionTrace.finals[route.finalIndex]!;
@@ -776,7 +780,7 @@ export const transitionTraceFinalCaseRunner = (
             if (entry.depositSourceCbor === undefined) return entry;
             const source = Data.from(
               entry.depositSourceCbor,
-              SDK.EventHistoryCommitment,
+              SDKUsers.EventHistoryCommitment,
             );
             return {
               ...entry,
@@ -788,7 +792,7 @@ export const transitionTraceFinalCaseRunner = (
                     outputIndex: 0n,
                   },
                 },
-                SDK.EventHistoryCommitment,
+                SDKUsers.EventHistoryCommitment,
               ),
             };
           }),

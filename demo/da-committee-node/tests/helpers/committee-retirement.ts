@@ -2,7 +2,9 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 
 import { openAvailabilityOperationJournal } from "@al-ft/midgard-core/availability-operation-journal";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   CML,
   credentialToAddress,
@@ -114,7 +116,7 @@ export const retentionFixture = async (
         spendingScriptAddress: "availability",
       },
     },
-  } as SDK.DaAvailabilityDeployment;
+  } as SDKDa.DaAvailabilityDeployment;
   const output = (
     index: number,
     address: string,
@@ -130,7 +132,8 @@ export const retentionFixture = async (
   const root = output(
     0,
     "queue",
-    deployment.contracts.stateQueue.policyId + SDK.STATE_QUEUE_ROOT_ASSET_NAME,
+    deployment.contracts.stateQueue.policyId +
+      SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME,
     SDK.encodeLinkedListNodeView({
       key: "Empty",
       next: "Empty",
@@ -203,7 +206,7 @@ export const retentionFixture = async (
         ? variant.toString(16).padStart(56, "0")
         : base.header.operatorVkey,
     };
-    const headerHash = SDK.stateQueueHeaderHash(h);
+    const headerHash = SDKStateQueue.stateQueueHeaderHash(h);
     return {
       deploymentFingerprint,
       headerHash,
@@ -254,7 +257,7 @@ export const retentionFixture = async (
     const { wrapDaPayload } = await import(
       "@al-ft/midgard-core/da-payload-envelope"
     );
-    const bytes = await wrapDaPayload(SDK.encodeDaPayload(payload), {
+    const bytes = await wrapDaPayload(SDKDa.encodeDaPayload(payload), {
       mode: "identity",
     });
     const verified = await verifyDaPayloadAgainstHeader(
@@ -424,7 +427,7 @@ export const retentionFixture = async (
     vkeys.add(CML.make_vkey_witness(CML.hash_transaction(body), key));
     witnesses.set_vkeywitnesses(vkeys);
     const tx = CML.Transaction.new(body, witnesses, true);
-    const intent = SDK.inspectDaAvailabilitySignedIntent({
+    const intent = SDKDa.inspectDaAvailabilitySignedIntent({
       deploymentIdentity: contractManifestId,
       actor: actorId,
       headerHash,
@@ -437,7 +440,7 @@ export const retentionFixture = async (
     return intent;
   };
   const scope = () =>
-    SDK.createDaAvailabilityReadScope({ attemptTimeoutMs: 100000 });
+    SDKDa.createDaAvailabilityReadScope({ attemptTimeoutMs: 100000 });
   const compact = async () => {
     const s = scope();
     try {

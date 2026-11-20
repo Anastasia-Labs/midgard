@@ -3,7 +3,7 @@
  * the shape the accumulation fold reads has an earlier first fault: the
  * accumulation member finds nothing in it, and the union still returns the
  * canonicality family's finding for the block. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";

@@ -1,6 +1,5 @@
 import {
   ActiveOperatorMintRedeemer,
-  appendValidationCaseConfigInitialization,
   ConfirmedState,
   CorrectionLockDatum,
   EMPTY_MERKLE_TREE_ROOT,
@@ -13,15 +12,18 @@ import {
   Header,
   HubOracleDatum,
   makeHubOracleDatum,
-  type NodeWithDatum,
   RegisteredOperatorMintRedeemer,
   RetiredOperatorMintRedeemer,
   SchedulerDatum,
   SchedulerMintRedeemer,
   scriptRewardAddress,
+} from "@al-ft/midgard-sdk/core";
+import { appendValidationCaseConfigInitialization } from "@al-ft/midgard-sdk/da";
+import { type NodeWithDatum } from "@al-ft/midgard-sdk/operators";
+import {
   STATE_QUEUE_NODE_MIN_LOVELACE,
   StateQueueRedeemer,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import {
   credentialToAddress,
   Data,

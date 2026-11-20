@@ -13,7 +13,7 @@ import {
   type MidgardNativeTxFull,
   sortMidgardMintItems,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Effect } from "effect";
 
 // ---------------------------------------------------------------------------

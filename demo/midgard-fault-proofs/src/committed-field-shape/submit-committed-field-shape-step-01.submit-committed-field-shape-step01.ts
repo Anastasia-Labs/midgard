@@ -1,19 +1,21 @@
 import { planMidgardFieldCarriage } from "@al-ft/midgard-core";
 import {
-  type CommittedFieldClaim,
-  committedFieldShapeEvidenceFromCommittedField,
-  CommittedFieldShapeStep01SpendRedeemer,
-  type CommittedFieldShapeStep02State,
   type FieldCarriage,
   HUB_ORACLE_ASSET_NAME,
-  isCommittedFieldShapeViolation,
   type NativeTxInclusionCarriage,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
   requireWithdrawalRedeemerIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  type CommittedFieldClaim,
+  committedFieldShapeEvidenceFromCommittedField,
+  CommittedFieldShapeStep01SpendRedeemer,
+  type CommittedFieldShapeStep02State,
+  isCommittedFieldShapeViolation,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   credentialToAddress,

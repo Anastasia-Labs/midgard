@@ -3,7 +3,7 @@
  * validation-trace pair: the header pins the pair to the empty tree, and the
  * DA table requires the row's count to equal its forced and L2 counts.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Effect, Option } from "effect";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 

@@ -2,7 +2,7 @@ import {
   FraudProofComputationThreadStepDatum,
   WithdrawnReferenceInputStep02Datum,
   WithdrawnReferenceInputStep03Datum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import { WITHDRAWN_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.create-complete-canonical-replay-union.js";
 import { defineLinearFamily } from "./family-definition.family-definition.js";

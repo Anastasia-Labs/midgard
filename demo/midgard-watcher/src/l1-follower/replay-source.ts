@@ -9,7 +9,8 @@ import {
   protocolInitIn,
   type SqlTx,
 } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data } from "@lucid-evolution/lucid";
 
 import { assertWatcherStateQueueObservation } from "../indexers/authenticated-state-queue-observation.js";
@@ -111,7 +112,7 @@ export type WatcherFollowerReplaySource = Readonly<{
   ): Promise<
     Readonly<{ state: SDK.ConfirmedState | null; current(): boolean }>
   >;
-  materialFor(payload: SDK.DaPayload): Promise<BlockReplayMaterial>;
+  materialFor(payload: SDKDa.DaPayload): Promise<BlockReplayMaterial>;
   /** The availability status the block's latest state-queue node carries. */
   availabilityStatus(
     headerHash: string,
@@ -148,7 +149,7 @@ export const createWatcherFollowerReplaySource = (
     if (rewound.reset === true) input.retention.reset();
   });
   const headerFor = async (
-    payload: SDK.DaPayload,
+    payload: SDKDa.DaPayload,
   ): Promise<WatcherStateQueueHeaderObservation> => {
     const hash = payload.block_body.header_hash;
     const row = (

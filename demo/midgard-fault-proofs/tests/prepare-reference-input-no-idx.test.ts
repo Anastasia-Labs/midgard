@@ -13,7 +13,8 @@ import {
   MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -172,7 +173,7 @@ describe("prepare-reference-input-no-idx", () => {
     // canonical per-input CBOR; the prepared preimage must reproduce exactly the
     // hash step-01 forwards.
     expect(
-      SDK.referenceInputNoIdxReferenceInputsCommitment(
+      SDKFraudProof.referenceInputNoIdxReferenceInputsCommitment(
         output.referenceInputsPreimage.map((entry) => ({
           tx_id: entry.txId,
           output_index: BigInt(entry.index),
@@ -180,7 +181,7 @@ describe("prepare-reference-input-no-idx", () => {
       ),
     ).toBe(output.badTxInclusion.nativeTx.body.reference_inputs_hash);
     expect(
-      SDK.isReferenceInputNoIdxViolation({
+      SDKFraudProof.isReferenceInputNoIdxViolation({
         badReferenceInputOutputIndex: output.badReferenceInput.output_index,
         producingTxOutputCount: output.producingTxOutputCount,
       }),

@@ -1,6 +1,9 @@
 import "@al-ft/midgard-core/da-payload-envelope";
 import "@al-ft/midgard-core/da-transport";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/da";
+import "@al-ft/midgard-sdk/users";
 import "@lucid-evolution/lucid";
 import "effect";
 import "../da/local-signers.js";

@@ -5,10 +5,8 @@
  * ever minted.
  */
 import { decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
-import {
-  FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX,
-  forcedVerdictSubject,
-} from "@al-ft/midgard-sdk";
+import { FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX } from "@al-ft/midgard-sdk/core";
+import { forcedVerdictSubject } from "@al-ft/midgard-sdk/fraud-proof";
 import { getAddressDetails } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

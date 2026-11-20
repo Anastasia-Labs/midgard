@@ -2,7 +2,8 @@ import "./fabricated-deposit.q39-fabricated-deposit-proof-plan.js";
 
 import { createHash } from "node:crypto";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   credentialToAddress,
   Data,
@@ -310,12 +311,12 @@ describe("Q39 fabricated-deposit production evidence authority", () => {
 
 it("authenticates an equal-key filler as absence without counting its funds or using nonce liveness", async () => {
   const anchor = depositEventUtxoFixture();
-  const node = Data.from(anchor.datum!, SDK.EventHistoryNode);
+  const node = Data.from(anchor.datum!, SDKUsers.EventHistoryNode);
   const filler = {
     ...anchor,
     datum: Data.to(
       { ...node, payload: { Filler: { refund_key: h28(0x44) } } },
-      SDK.EventHistoryNode,
+      SDKUsers.EventHistoryNode,
     ),
   };
   const result = await authenticateFabricatedHistoryWitness(

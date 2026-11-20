@@ -48,7 +48,7 @@
  * run.
  */
 import type { View } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { Effect } from "effect";
 
 import type { NamedEvents } from "../database/follower-events.named.js";

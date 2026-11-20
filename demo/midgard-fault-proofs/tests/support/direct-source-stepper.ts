@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   CML,
@@ -11,7 +12,7 @@ import { expect } from "vitest";
 
 type SourceRedeemerBuilder = (
   indices: { input_index: bigint; output_index: bigint },
-  open: (field: number) => SDK.FieldOpening,
+  open: (field: number) => SDKFraudProof.FieldOpening,
 ) => string;
 
 import { createDirectFieldPlan } from "../../src/direct-script-derivation/field-plan.js";

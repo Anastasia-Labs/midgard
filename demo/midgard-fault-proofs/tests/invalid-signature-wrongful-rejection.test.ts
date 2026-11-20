@@ -8,7 +8,7 @@ import {
   acceptedVerdictSubject,
   forcedVerdictSubject,
   invalidSignatureTerminalContradiction,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import {

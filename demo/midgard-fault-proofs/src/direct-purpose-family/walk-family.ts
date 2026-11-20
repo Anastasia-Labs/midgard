@@ -2,7 +2,7 @@
  * and replay. The kit derives the rest of its family definition: the step
  * datum schemas and contract names, the transaction port, a field-carriage
  * requirement per opened field, and the step-01 proof chunk. */
-import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk";
+import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk/fraud-proof";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";

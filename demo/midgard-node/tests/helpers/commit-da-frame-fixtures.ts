@@ -11,7 +11,7 @@ import {
   encodeTransitionIntegerCbor,
   encodeTransitionStepCbor,
 } from "@al-ft/midgard-fault-proofs/block-replay";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Effect, Either, Logger } from "effect";
 
 import {

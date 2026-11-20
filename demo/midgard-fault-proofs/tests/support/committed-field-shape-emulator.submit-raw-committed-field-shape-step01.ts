@@ -1,17 +1,19 @@
 import {
-  type CommittedFieldClaim,
-  CommittedFieldShapeStep01Datum,
-  CommittedFieldShapeStep01SpendRedeemer,
-  CommittedFieldShapeStep02Datum,
-  type CommittedFieldShapeStep02State,
-  type CommittedFieldShapeWalkState,
   HUB_ORACLE_ASSET_NAME,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
   requireWithdrawalRedeemerIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  type CommittedFieldClaim,
+  CommittedFieldShapeStep01Datum,
+  CommittedFieldShapeStep01SpendRedeemer,
+  CommittedFieldShapeStep02Datum,
+  type CommittedFieldShapeStep02State,
+  type CommittedFieldShapeWalkState,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   credentialToAddress,

@@ -3,7 +3,7 @@
  * cannot be read, or holds nothing to fund the merge, is a merge failure:
  * both count on `mergeFailureCounter`, which `MidgardMergeFailures` watches.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 import { Effect, Metric } from "effect";
 

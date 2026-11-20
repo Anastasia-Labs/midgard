@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   CML,
@@ -21,7 +22,7 @@ type ComponentTransition = {
   readonly fields?: readonly number[];
   readonly redeemer: (
     indices: { input_index: bigint; output_index: bigint },
-    open: (field: number) => SDK.FieldOpening,
+    open: (field: number) => SDKFraudProof.FieldOpening,
   ) => string;
 };
 
@@ -41,7 +42,7 @@ export const createDirectComponentStepper = ({
   readonly opening: (
     field: number,
     references: readonly UTxO[],
-  ) => SDK.FieldOpening;
+  ) => SDKFraudProof.FieldOpening;
 }) => {
   let thread = initialThread;
   let outputIndex: bigint | undefined;

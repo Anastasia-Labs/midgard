@@ -2,9 +2,9 @@ import { computeHash28, computeHash32 } from "@al-ft/midgard-core";
 import {
   countedRootPreimageHex,
   encodeHeaderCbor,
-  forcedVerdictSubject,
   ROOT_DOMAINS,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { forcedVerdictSubject } from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { PreparedNetworkIdAcceptedForced } from "./accepted-forced.js";

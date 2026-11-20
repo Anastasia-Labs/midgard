@@ -4,7 +4,7 @@ import {
 } from "@al-ft/midgard-core";
 import { deploymentDaRetentionDays } from "@al-ft/midgard-core/da-transport";
 import { heightAtDepth } from "@al-ft/midgard-l1-follower/heads";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { SqlClient } from "@effect/sql";
 import {
   Cause,

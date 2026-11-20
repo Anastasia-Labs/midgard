@@ -17,7 +17,7 @@
  * `l1-follower-intent-predicates-wallet.test.ts`.
  */
 import type { FactStore } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { eventIdOf, listEvent } from "./helpers/intent-predicates-commit.js";

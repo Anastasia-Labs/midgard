@@ -2,7 +2,9 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDeployment from "@al-ft/midgard-sdk/deployment";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   CML,
   Emulator,
@@ -82,7 +84,7 @@ const setup = async () => {
     { txHash: split, outputIndex: 0 },
   ]);
   if (nonce === undefined) throw new Error("Missing reserved nonce");
-  const contracts = SDK.buildEventHistoryDeployments({
+  const contracts = SDKUsers.buildEventHistoryDeployments({
     blueprint,
     network: "Custom",
     hubOraclePolicyId: "ab".repeat(28),
@@ -167,7 +169,7 @@ it("initializes both genuine lists with one nonce after composition and wallet c
   const h = await setup();
   await h.register();
   const params = h.params();
-  const tx = SDK.appendEventHistoryInitialization(
+  const tx = SDKDeployment.appendEventHistoryInitialization(
     h.lucid,
     h.lucid
       .newTx()
@@ -184,7 +186,7 @@ it("initializes both genuine lists with one nonce after composition and wallet c
   );
   for (const name of ["deposit", "withdrawal"] as const) {
     const { list, retention, recipe } = h.contracts[name];
-    const nodes = SDK.authenticateHistoryNodes(
+    const nodes = SDKUsers.authenticateHistoryNodes(
       await h.lucid.utxosAt(list.spendingScriptAddress),
       {
         policyId: list.policyId,
@@ -205,7 +207,7 @@ it("initializes both genuine lists with one nonce after composition and wallet c
     });
     expect(nodes[0]!.utxo.outputIndex).toBe(name === "deposit" ? 1 : 2);
     expect(nodes[0]!.utxo.assets.lovelace).toBeGreaterThanOrEqual(
-      SDK.eventHistoryMinimumNodeLovelace(
+      SDKUsers.eventHistoryMinimumNodeLovelace(
         nodes[0]!.utxo.assets,
         nodes[0]!.node,
       ),
@@ -230,7 +232,7 @@ it("requires the configured shared nonce for both list recipes", async () => {
     },
   };
   expect(() =>
-    SDK.appendEventHistoryInitialization(h.lucid, h.lucid.newTx(), {
+    SDKDeployment.appendEventHistoryInitialization(h.lucid, h.lucid.newTx(), {
       ...params,
       contracts,
     }),
@@ -241,7 +243,7 @@ it("requires the configured shared nonce for both list recipes", async () => {
 it("refuses bootstrap when the reserved nonce is absent from final inputs", async () => {
   const h = await setup();
   await h.register();
-  const tx = SDK.appendEventHistoryInitialization(
+  const tx = SDKDeployment.appendEventHistoryInitialization(
     h.lucid,
     h.lucid.newTx().collectFrom(await h.funding()),
     h.params(),

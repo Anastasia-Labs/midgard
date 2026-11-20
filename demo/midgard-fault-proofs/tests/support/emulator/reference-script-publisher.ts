@@ -1,7 +1,5 @@
-import {
-  createReferenceScriptAuthPolicy,
-  type MidgardValidators,
-} from "@al-ft/midgard-sdk";
+import { type MidgardValidators } from "@al-ft/midgard-sdk/core";
+import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk/state-queue";
 import {
   type Emulator,
   type EmulatorAccount,

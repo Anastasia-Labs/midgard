@@ -10,7 +10,7 @@ import {
   MintAuthorizationClaimEvidence,
   MintAuthorizationStep04Datum,
   type MintAuthorizationStep04State,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import {

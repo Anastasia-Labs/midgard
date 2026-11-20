@@ -6,7 +6,7 @@
  * never landed is built again and publication completes.
  */
 import { L1SubmitOutcomeUnknownError } from "@al-ft/midgard-l1-follower/provider";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import {
   CML,
   Emulator,

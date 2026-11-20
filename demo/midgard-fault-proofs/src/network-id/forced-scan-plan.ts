@@ -17,7 +17,7 @@
  */
 
 import "@al-ft/midgard-core";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "../staged-field-walk/index.js";
 import "./submit-common.js";
 import "./forced-scan-plan.advance-grammar-by.js";

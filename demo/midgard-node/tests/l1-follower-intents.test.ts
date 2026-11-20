@@ -25,7 +25,7 @@ import {
   type FactStore,
   WALLET_SEED_PENDING,
 } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import {

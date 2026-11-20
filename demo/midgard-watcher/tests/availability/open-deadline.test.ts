@@ -1,5 +1,6 @@
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
@@ -44,7 +45,7 @@ describe("Open deadline through actual watcher reconciliation", () => {
       );
       expect(io.attestedCommitment).toHaveBeenCalledTimes(1);
       expect(io.sourceSignals[0]!.reason).toBeInstanceOf(
-        SDK.DaAvailabilityReadScopeExpiredError,
+        SDKDa.DaAvailabilityReadScopeExpiredError,
       );
       expect(watcher.status()).toMatchObject({
         action: "close",
@@ -64,10 +65,10 @@ describe("Open deadline through actual watcher reconciliation", () => {
     const started = new Promise<void>((resolve) => {
       began = resolve;
     });
-    let finish!: (commitment: SDK.DaAvailabilityCommitment) => void;
+    let finish!: (commitment: SDKDa.DaAvailabilityCommitment) => void;
     io.attestedCommitment.mockImplementationOnce(async () => {
       began();
-      return await new Promise<SDK.DaAvailabilityCommitment>((resolve) => {
+      return await new Promise<SDKDa.DaAvailabilityCommitment>((resolve) => {
         finish = resolve;
       });
     });
@@ -107,7 +108,7 @@ describe("Open deadline through actual watcher reconciliation", () => {
     try {
       await watcher.reconcile(observation([withheldHeader.attested]), true);
       const operation: Pick<
-        Parameters<typeof SDK.runDaAvailabilityOperation>[1],
+        Parameters<typeof SDKDa.runDaAvailabilityOperation>[1],
         "action" | "unsignedDeadlineMs" | "preparationScope"
       > = io.run.mock.calls[0]![1];
       const node = Data.castFrom(

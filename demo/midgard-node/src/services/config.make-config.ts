@@ -1,5 +1,6 @@
 import { resolveL1ViewFatalMs } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import type { UTxO } from "@lucid-evolution/lucid";
 import { Config, Context, Data, Effect, Layer, Option } from "effect";
 
@@ -92,7 +93,7 @@ export class NodeConfig extends Context.Tag("NodeConfig")<
  * Tagged configuration error enriched with the relevant field/value pairs.
  */
 export class ConfigError extends Data.TaggedError("ConfigError")<
-  SDK.GenericErrorFields & {
+  SDKCore.GenericErrorFields & {
     readonly fieldsAndValues: [string, string][];
   }
 > {}

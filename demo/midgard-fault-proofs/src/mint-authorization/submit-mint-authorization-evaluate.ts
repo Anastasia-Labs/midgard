@@ -1,15 +1,17 @@
 import { computeHash32, encodeMidgardFieldPreimage } from "@al-ft/midgard-core";
 import {
+  requireInputIndex,
+  requireOwnSpendPurpose,
+  requireReferenceInputIndex,
+  requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
   MintAuthorizationEvaluateDatum,
   type MintAuthorizationEvaluateSpendRedeemer as EvaluateRedeemer,
   MintAuthorizationEvaluateSpendRedeemer,
   type MintAuthorizationEvaluateState,
   MintAuthorizationStep05Datum,
-  requireInputIndex,
-  requireOwnSpendPurpose,
-  requireReferenceInputIndex,
-  requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

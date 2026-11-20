@@ -1,5 +1,6 @@
 import { computeHash28 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   credentialToAddress,
   Data,
@@ -63,7 +64,7 @@ export const driveDirectReceiveLifecycle = async (
   const plan = createDirectFieldPlan(material, 2, prover);
   const sourcePlan = createDirectFieldPlan(material, 6, prover);
   const sourceEvidence = await buildDirectSourceIndexEvidence(material);
-  const sourceReceipt: SDK.DirectSourceBoundIndex = {
+  const sourceReceipt: SDKFraudProof.DirectSourceBoundIndex = {
     bound: material.bound,
     source_index: sourceEvidence.index,
   };
@@ -86,7 +87,7 @@ export const driveDirectReceiveLifecycle = async (
     ),
   );
   const roles = await Effect.runPromise(
-    SDK.buildDirectReceiveContracts({
+    SDKFraudProof.buildDirectReceiveContracts({
       blueprint,
       network,
       computationThreadPolicyId: policy,
@@ -95,7 +96,7 @@ export const driveDirectReceiveLifecycle = async (
     }),
   );
   const sourceRoles = await Effect.runPromise(
-    SDK.buildDirectSourceContracts({
+    SDKFraudProof.buildDirectSourceContracts({
       blueprint,
       network,
       computationThreadPolicyId: policy,
@@ -109,17 +110,17 @@ export const driveDirectReceiveLifecycle = async (
     computeHash28(SDK.encodeHeaderCbor(material.sourceBound.header)).toString(
       "hex",
     );
-  let state: SDK.DirectReceiveOutputState = {
+  let state: SDKFraudProof.DirectReceiveOutputState = {
     cursor: plan.position("Certifying", 0).cursor,
     source_index: sourceReceipt.source_index,
     credential_root: SDK.EMPTY_MERKLE_TREE_ROOT,
     credential_count: 0n,
     complete: false,
   };
-  const datum = (value: SDK.DirectReceiveOutputState) =>
+  const datum = (value: SDKFraudProof.DirectReceiveOutputState) =>
     Data.to(
       { fraud_prover: prover, data: value },
-      SDK.DirectReceiveOutputDatum,
+      SDKFraudProof.DirectReceiveOutputDatum,
     );
   const emulator = new Emulator(
     [
@@ -143,7 +144,7 @@ export const driveDirectReceiveLifecycle = async (
                 complete: true,
               },
             },
-            SDK.DirectSourceScanDatum,
+            SDKFraudProof.DirectSourceScanDatum,
           ),
         },
       },
@@ -200,7 +201,7 @@ export const driveDirectReceiveLifecycle = async (
     roles.start.spendingScriptAddress,
     Data.to(
       { fraud_prover: prover, data: sourceReceipt },
-      SDK.DirectReceiveStartDatum,
+      SDKFraudProof.DirectReceiveStartDatum,
     ),
     ({ opening, ...indices }) =>
       Data.to(
@@ -214,7 +215,7 @@ export const driveDirectReceiveLifecycle = async (
             },
           ],
         },
-        SDK.DirectSourceFinishRedeemer,
+        SDKFraudProof.DirectSourceFinishRedeemer,
       ),
     {
       fieldIndex: 6,
@@ -224,7 +225,7 @@ export const driveDirectReceiveLifecycle = async (
             fraud_prover: prover,
             data: { ...sourceReceipt, source_index },
           },
-          SDK.DirectReceiveStartDatum,
+          SDKFraudProof.DirectReceiveStartDatum,
         ),
       ),
     },
@@ -237,7 +238,7 @@ export const driveDirectReceiveLifecycle = async (
     ({ opening, ...indices }) =>
       Data.to(
         { Continue: [{ ...indices, outputs_opening: opening }] },
-        SDK.DirectReceiveStartRedeemer,
+        SDKFraudProof.DirectReceiveStartRedeemer,
       ),
     {
       refusedDatums: substitutedIndexes.map((source_index) =>
@@ -271,7 +272,7 @@ export const driveDirectReceiveLifecycle = async (
               },
             ],
           },
-          SDK.DirectReceiveGrammarRedeemer,
+          SDKFraudProof.DirectReceiveGrammarRedeemer,
         ),
     );
     state = advanced;
@@ -309,7 +310,7 @@ export const driveDirectReceiveLifecycle = async (
               },
             ],
           },
-          SDK.DirectReceiveOutputRedeemer,
+          SDKFraudProof.DirectReceiveOutputRedeemer,
         ),
     );
     state = advanced;
@@ -331,10 +332,10 @@ export const driveDirectReceiveLifecycle = async (
             },
           ],
         },
-        SDK.DirectReceiveOutputRedeemer,
+        SDKFraudProof.DirectReceiveOutputRedeemer,
       ),
   );
-  const declaration: SDK.DirectReceiveDeclarationState = {
+  const declaration: SDKFraudProof.DirectReceiveDeclarationState = {
     bound: material.bound,
     source_index: sourceReceipt.source_index,
     output_root: evidence.outputRoot,
@@ -345,10 +346,12 @@ export const driveDirectReceiveLifecycle = async (
     target_ordinal: BigInt(targetOrdinal),
     selected: null,
   };
-  const declarationDatum = (value: SDK.DirectReceiveDeclarationState) =>
+  const declarationDatum = (
+    value: SDKFraudProof.DirectReceiveDeclarationState,
+  ) =>
     Data.to(
       { fraud_prover: prover, data: value },
-      SDK.DirectReceiveDeclarationDatum,
+      SDKFraudProof.DirectReceiveDeclarationDatum,
     );
   await step(
     "independent output exhaustion",
@@ -368,12 +371,12 @@ export const driveDirectReceiveLifecycle = async (
             },
           ],
         },
-        SDK.DirectReceiveFinishRedeemer,
+        SDKFraudProof.DirectReceiveFinishRedeemer,
       ),
   );
   const target = evidence.entries[targetOrdinal];
   if (target === undefined) throw new Error("N6 fixture target ordinal absent");
-  const selected: SDK.DirectReceivePurpose = {
+  const selected: SDKFraudProof.DirectReceivePurpose = {
     purpose: {
       coordinate: { kind: 3n, index: BigInt(targetOrdinal) },
       script_hash: target.script_hash,
@@ -408,19 +411,22 @@ export const driveDirectReceiveLifecycle = async (
               },
             ],
           },
-          SDK.DirectReceiveDeclarationRedeemer,
+          SDKFraudProof.DirectReceiveDeclarationRedeemer,
         ),
     );
     declared = advanced;
   }
-  const selection: SDK.DirectPurposeSelection = {
+  const selection: SDKFraudProof.DirectPurposeSelection = {
     bound: material.bound,
     source_index: sourceReceipt.source_index,
     coordinate: { kind: 3n, index: BigInt(targetOrdinal) },
     purpose: selected.purpose,
   };
-  const selectionDatum = (data: SDK.DirectPurposeSelection) =>
-    Data.to({ fraud_prover: prover, data }, SDK.DirectPurposeSelectionDatum);
+  const selectionDatum = (data: SDKFraudProof.DirectPurposeSelection) =>
+    Data.to(
+      { fraud_prover: prover, data },
+      SDKFraudProof.DirectPurposeSelectionDatum,
+    );
   const finalDatum = selectionDatum(selection);
   await step(
     "selected sorted receive ordinal",
@@ -439,7 +445,7 @@ export const driveDirectReceiveLifecycle = async (
             },
           ],
         },
-        SDK.DirectReceiveDeclarationRedeemer,
+        SDKFraudProof.DirectReceiveDeclarationRedeemer,
       ),
     {
       refusedDatums: substitutedIndexes.map((source_index) =>

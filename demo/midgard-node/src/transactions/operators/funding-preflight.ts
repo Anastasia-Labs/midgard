@@ -4,7 +4,7 @@
  * shortfall figure instead of a failed transaction build. It measures the
  * wallet view (plan §8.5) the build selects from and the signature covers.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import {
   type Assets,
   calculateMinLovelaceFromUTxO,

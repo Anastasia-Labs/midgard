@@ -6,7 +6,7 @@ import {
   deriveMidgardNativeTxWitnessSetCompact,
   encodeMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core";
-import { type CommittedFieldClaim } from "@al-ft/midgard-sdk";
+import { type CommittedFieldClaim } from "@al-ft/midgard-sdk/fraud-proof";
 import { type UTxO } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 

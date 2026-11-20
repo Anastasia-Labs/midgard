@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   Data,
   type Script,
@@ -47,7 +49,7 @@ export const deployment = (h: Harness, kind: Kind) => {
 };
 
 export const fetchWitness = (h: Harness, kind: Kind, id: SDK.OutputReference) =>
-  SDK.fetchEventHistoryWitness(
+  SDKUsers.fetchEventHistoryWitness(
     { utxosAt: (address) => h.lucid.utxosAt(address) },
     deployment(h, kind),
     id,
@@ -56,11 +58,11 @@ export const fetchWitness = (h: Harness, kind: Kind, id: SDK.OutputReference) =>
 // Divide precisely the gap containing the selected identity, or change an
 // Order's own successor. Both cases consume the challenger's exact reference.
 export const nextChurnKey = async (
-  w: SDK.EventHistoryWitness,
+  w: SDKUsers.EventHistoryWitness,
   id: SDK.OutputReference,
 ) => {
   const target = BigInt(
-    "0x" + (await Effect.runPromise(SDK.eventHistoryKey(id))),
+    "0x" + (await Effect.runPromise(SDKUsers.eventHistoryKey(id))),
   );
   const lower = BigInt("0x" + (w.anchor.key ?? "00".repeat(32)));
   const upper =
@@ -73,7 +75,10 @@ export const nextChurnKey = async (
   return key.toString(16).padStart(64, "0");
 };
 
-export const waitForMutation = (h: Harness, w: SDK.EventHistoryWitness) => {
+export const waitForMutation = (
+  h: Harness,
+  w: SDKUsers.EventHistoryWitness,
+) => {
   const remaining = w.anchor.node.protected_until - BigInt(h.emulator.now());
   if (remaining > 0n) h.emulator.awaitSlot(Number((remaining + 999n) / 1000n));
 };
@@ -156,7 +161,7 @@ export const setupProof = async (
               committed_deposit_info_hash: committedHash,
             },
           },
-          SDK.FabricatedDepositStep02Datum,
+          SDKFraudProof.FabricatedDepositStep02Datum,
         )
       : Data.to(
           {
@@ -167,13 +172,13 @@ export const setupProof = async (
               committed_withdrawal_content_hash: committedHash,
             },
           },
-          SDK.FabricatedWithdrawalStep02Datum,
+          SDKFraudProof.FabricatedWithdrawalStep02Datum,
         );
   const unit =
     h.hubPolicy +
     (kind === "Deposit"
-      ? SDK.FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID
-      : SDK.FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID) +
+      ? SDKFraudProof.FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID
+      : SDKFraudProof.FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID) +
     common.challenged_header_hash;
   const txHash = await h.submit(
     `fixture-issue-${kind}-step02`,

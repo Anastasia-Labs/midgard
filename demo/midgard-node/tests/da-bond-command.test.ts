@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
   generateEmulatorAccountFromPrivateKey,
   generateSeedPhrase,
@@ -279,7 +280,7 @@ beforeAll(async () => {
     parameters: f.parameters,
     daParamsGovernor: {
       address: f.contracts.daParamsGovernor.spendingScriptAddress,
-      unit: SDK.daParamsUnit(f.contracts.daParamsGovernor),
+      unit: SDKDa.daParamsUnit(f.contracts.daParamsGovernor),
     },
     withdrawDelayMs: f.timing.daBondWithdrawDelayMs,
     now: () => f.emulator.now(),
@@ -385,7 +386,7 @@ describe("da-bond CLI on an emulator pool", { shuffle: false }, () => {
       expect(unsigned.feePayerKeyHash).toBe(f.responderKey);
       expect(unsigned.poolOutRef).toBe(await poolOutRef());
       expect(unsigned.txBodyHash).toBe(
-        SDK.daBondPoolTxBodyHash(unsigned.txCbor),
+        SDKDa.daBondPoolTxBodyHash(unsigned.txCbor),
       );
       expect(result.submitted).toBe(false);
       expect(result.unlockAt).toBe(
@@ -426,7 +427,9 @@ describe("da-bond CLI on an emulator pool", { shuffle: false }, () => {
       const before = await poolOutRef();
       await expect(
         daBondAssembleCommand(ctx, buildUnsigned, [responder.out]),
-      ).rejects.toThrow(new Error(SDK.daBondPoolQuorumShortfallMessage(1, 2n)));
+      ).rejects.toThrow(
+        new Error(SDKDa.daBondPoolQuorumShortfallMessage(1, 2n)),
+      );
       expect(submitted).not.toHaveBeenCalled();
       expect(await poolOutRef()).toBe(before);
       begin = { unsigned: buildUnsigned, responderWitness: responder.out };
@@ -530,7 +533,7 @@ describe("da-bond CLI on an emulator pool", { shuffle: false }, () => {
   it(
     "withdraw complete before unlock_at is refused with unlock_at and the lower bound",
     async () => {
-      const pool = SDK.decodeDaBondPoolDatum((await f.getPool()).datum!);
+      const pool = SDKDa.decodeDaBondPoolDatum((await f.getPool()).datum!);
       if (pool === "Bonded") throw new Error("expected a Withdrawing pool");
       const unlockAt = pool.Withdrawing.unlock_at;
       // An operator clock half a slot ahead: the refusal reports the lower

@@ -1,12 +1,14 @@
 import {
   addressDataFromBech32,
   EVENT_WAIT_DURATION_MS,
+} from "@al-ft/midgard-sdk/core";
+import {
   EventHistoryNode,
   EventHistoryObserve,
   type EventHistoryPayload,
   type EventHistoryWitness,
   prepareEventHistoryPayload,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/users";
 import {
   CML,
   credentialToAddress,

@@ -28,7 +28,8 @@ import {
   walkLinkedQueue,
 } from "@al-ft/midgard-l1-follower";
 import { toLucidUtxo } from "@al-ft/midgard-l1-follower/provider";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 
 import type { StateQueueProjectionConfig } from "./config.js";
 
@@ -37,7 +38,7 @@ export type LandedStateQueueElement = Readonly<{
   /** `<tx hash hex>#<index>`. */
   outRef: string;
   /** The element as the SDK's builders take it. */
-  element: SDK.StateQueueUTxO;
+  element: SDKStateQueue.StateQueueUTxO;
   /** A node: its header hash. The root: the confirmed header hash. */
   headerHash: string;
   /** A node: its header's end time. The root: the confirmed state's. */
@@ -47,7 +48,7 @@ export type LandedStateQueueElement = Readonly<{
   /** A node's DA status identity; null for the root. */
   daStatus: string | null;
   /** A node's key and asset-name mismatches (it is still walked). */
-  problems: readonly SDK.StateQueueOutputProblem[];
+  problems: readonly SDKStateQueue.StateQueueOutputProblem[];
   /** Where the output was created (null for a seeded row). */
   created: Readonly<{ slot: number; txIndex: number }> | null;
 }>;
@@ -93,7 +94,10 @@ const entryOf = (
   stored: StoredOutput,
   config: StateQueueProjectionConfig,
 ): Entry | null => {
-  const decoded = SDK.decodeStateQueueOutput(stored.output, config.policyId);
+  const decoded = SDKStateQueue.decodeStateQueueOutput(
+    stored.output,
+    config.policyId,
+  );
   if (decoded === null) return null;
   const id = outRefText(stored);
   if (

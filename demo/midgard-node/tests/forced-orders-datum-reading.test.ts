@@ -14,7 +14,7 @@ import {
 } from "@al-ft/midgard-core/plutus-data-cbor";
 import type { FactStore } from "@al-ft/midgard-l1-follower";
 import type { SimTx } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/da";
 import {
   CANONICAL_MAX_DEPTHS,
   canonicalDeepPlutusDataCbor,

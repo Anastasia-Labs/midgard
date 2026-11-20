@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKOperators from "@al-ft/midgard-sdk/operators";
 import { type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -31,9 +32,12 @@ export const requirePrimaryOperator = (
 
 export const fetchInactivityDirectorySnapshot = (
   fixture: OperatorInactivityFixture,
-): Promise<SDK.OperatorDirectorySnapshot> =>
+): Promise<SDKOperators.OperatorDirectorySnapshot> =>
   Effect.runPromise(
-    SDK.fetchOperatorDirectorySnapshotProgram(fixture.lucid, fixture.contracts),
+    SDKOperators.fetchOperatorDirectorySnapshotProgram(
+      fixture.lucid,
+      fixture.contracts,
+    ),
   );
 
 /**
@@ -42,10 +46,10 @@ export const fetchInactivityDirectorySnapshot = (
  */
 export const fetchNeglectedUserEvent = (
   fixture: OperatorInactivityFixture,
-  snapshot: SDK.OperatorDirectorySnapshot,
-): Promise<SDK.NeglectedUserEventClaim | null> =>
+  snapshot: SDKOperators.OperatorDirectorySnapshot,
+): Promise<SDKOperators.NeglectedUserEventClaim | null> =>
   Effect.runPromise(
-    SDK.fetchNeglectedUserEventProgram(
+    SDKOperators.fetchNeglectedUserEventProgram(
       fixture.lucid,
       fixture.contracts,
       snapshot.stateQueueTail.endTime,
@@ -106,8 +110,8 @@ export const appointFirstSchedulerOperator = async (
   if (snapshot.scheduler.datum !== "NoActiveOperators") {
     throw new Error("The scheduler already has an appointed operator");
   }
-  const activeTail = SDK.findTailNode(snapshot.active);
-  const registeredWitness = SDK.findTailNode(snapshot.registered);
+  const activeTail = SDKOperators.findTailNode(snapshot.active);
+  const registeredWitness = SDKOperators.findTailNode(snapshot.registered);
   if (activeTail === undefined || activeTail.datum.key === "Empty") {
     throw new Error("The active-operators list has no appointable tail node");
   }
@@ -156,13 +160,13 @@ export type StrikeAttemptOptions = {
    * The event the strike cites. Omitted, the strike cites the earliest
    * undelivered user event on the ledger, and there must be one.
    */
-  readonly neglectedEvent?: SDK.NeglectedUserEventClaim;
+  readonly neglectedEvent?: SDKOperators.NeglectedUserEventClaim;
   /**
    * Timing parameters for the plan only. Passing a set that differs from the
    * deployment's compiled-in constants is how a negative test reaches an
    * on-chain check the honest planner refuses to plan towards.
    */
-  readonly params?: SDK.InactivityTimingParameters;
+  readonly params?: SDKOperators.InactivityTimingParameters;
   /**
    * Plans against a hypothetical instant instead of the emulator clock, so a
    * scenario can obtain the witnesses for a strike it then deliberately dates
@@ -171,17 +175,20 @@ export type StrikeAttemptOptions = {
   readonly planNowMs?: bigint;
   /** Skips the wait that moves the emulator past the inactivity threshold. */
   readonly skipThresholdWait?: boolean;
-  readonly validity?: SDK.InactivityTakeoverValidity;
+  readonly validity?: SDKOperators.InactivityTakeoverValidity;
   readonly newStartTime?: bigint;
   readonly newOperatorKeyHash?: string;
-  readonly witnesses?: SDK.InactivityTakeoverWitnesses;
-  readonly adversarialOverrides?: SDK.StrikeInactiveOperatorAdversarialOverrides;
+  readonly witnesses?: SDKOperators.InactivityTakeoverWitnesses;
+  readonly adversarialOverrides?: SDKOperators.StrikeInactiveOperatorAdversarialOverrides;
 };
 
 export type PreparedStrike = {
-  readonly plan: Extract<SDK.InactivityTakeoverPlan, { kind: "ready" }>;
-  readonly config: SDK.BuildStrikeInactiveOperatorTxConfig;
-  readonly snapshot: SDK.OperatorDirectorySnapshot;
+  readonly plan: Extract<
+    SDKOperators.InactivityTakeoverPlan,
+    { kind: "ready" }
+  >;
+  readonly config: SDKOperators.BuildStrikeInactiveOperatorTxConfig;
+  readonly snapshot: SDKOperators.OperatorDirectorySnapshot;
 };
 
 /**
@@ -193,7 +200,9 @@ export const prepareInactivityStrike = async (
   options: StrikeAttemptOptions = {},
 ): Promise<PreparedStrike> => {
   const plannedSnapshot = await fetchInactivityDirectorySnapshot(fixture);
-  const current = SDK.schedulerCurrentOperator(plannedSnapshot.scheduler);
+  const current = SDKOperators.schedulerCurrentOperator(
+    plannedSnapshot.scheduler,
+  );
   if (current === null) {
     throw new Error("The scheduler holds no active operator to strike");
   }
@@ -206,7 +215,7 @@ export const prepareInactivityStrike = async (
     );
   }
   if (options.skipThresholdWait !== true) {
-    const threshold = SDK.computeInactivityThreshold({
+    const threshold = SDKOperators.computeInactivityThreshold({
       shiftStartMs: current.startTime,
       stateQueueTailEndTimeMs: plannedSnapshot.stateQueueTail.endTime,
       neglectedEvent,
@@ -222,7 +231,7 @@ export const prepareInactivityStrike = async (
   // Re-read after the clock moved: awaiting slots does not change the ledger,
   // but the snapshot is what the plan's witnesses point at.
   const snapshot = await fetchInactivityDirectorySnapshot(fixture);
-  const plan = SDK.planInactivityTakeover({
+  const plan = SDKOperators.planInactivityTakeover({
     snapshot,
     nowMs: options.planNowMs ?? BigInt(fixture.emulator.now()),
     neglectedEvent,
@@ -267,8 +276,11 @@ export const prepareInactivityStrike = async (
 };
 
 export type StrikeSubmission = {
-  readonly plan: Extract<SDK.InactivityTakeoverPlan, { kind: "ready" }>;
-  readonly result: SDK.StrikeInactiveOperatorTxResult;
+  readonly plan: Extract<
+    SDKOperators.InactivityTakeoverPlan,
+    { kind: "ready" }
+  >;
+  readonly result: SDKOperators.StrikeInactiveOperatorTxResult;
   readonly txHash: string;
 };
 
@@ -278,7 +290,7 @@ export const submitInactivityStrike = async (
 ): Promise<StrikeSubmission> => {
   const prepared = await prepareInactivityStrike(fixture, options);
   const result = await Effect.runPromise(
-    SDK.buildStrikeInactiveOperatorTxProgram(prepared.config),
+    SDKOperators.buildStrikeInactiveOperatorTxProgram(prepared.config),
   );
   const signed = await result.tx.sign.withWallet().complete();
   const txHash = await signed.submit();

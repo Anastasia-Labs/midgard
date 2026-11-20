@@ -18,15 +18,17 @@ import {
   getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
   HUB_ORACLE_ASSET_NAME,
-  InputNoIdxStep03Datum,
-  InputNoIdxStep03SpendRedeemer,
-  InputNoIdxStep04Datum,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
   ROOT_DOMAINS,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  InputNoIdxStep03Datum,
+  InputNoIdxStep03SpendRedeemer,
+  InputNoIdxStep04Datum,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   credentialToAddress,

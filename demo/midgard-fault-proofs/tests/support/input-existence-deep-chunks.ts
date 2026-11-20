@@ -9,7 +9,7 @@
  * lifecycle does. Indexed by step: step 1 opens the event, step 2 the
  * transition; the source and ledger steps carry their own proofs.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { PublishedProofChunk } from "../../src/proof-chunk-carriage.js";

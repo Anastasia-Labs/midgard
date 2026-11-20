@@ -1,4 +1,4 @@
-import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
+import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 
 import { WorkflowActionChangedError } from "./action-changed.js";
 import { type JournalJsonObject } from "./journal.js";

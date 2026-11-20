@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { type LucidEvolution } from "@lucid-evolution/lucid";
 
 import { availabilityValidityWindow } from "./availability-challenge.availability-validity-window.js";
@@ -18,9 +19,9 @@ import {
  */
 export const prepareAvailabilityOpeningInput = async (input: {
   readonly lucid: LucidEvolution;
-  readonly deployment: SDK.DaAvailabilityDeployment;
-  readonly snapshot: SDK.DaAvailabilityChallengeSnapshot;
-  readonly context: SDK.DaAvailabilityOperationContext;
+  readonly deployment: SDKDa.DaAvailabilityDeployment;
+  readonly snapshot: SDKDa.DaAvailabilityChallengeSnapshot;
+  readonly context: SDKDa.DaAvailabilityOperationContext;
   readonly headerHash: string;
   readonly reservedOutRefs: ReadonlySet<string>;
 }) => {
@@ -53,7 +54,7 @@ export const prepareAvailabilityOpeningInput = async (input: {
     walletAddress: await lucid.wallet().address(),
     remainingRemovalSteps: liveQueue.length - targetIndex,
   });
-  const result = await SDK.runDaAvailabilityOperation(input.context, {
+  const result = await SDKDa.runDaAvailabilityOperation(input.context, {
     headerHash: input.headerHash,
     action: "prepare",
     build: async (_signal, scope) => {
@@ -61,7 +62,7 @@ export const prepareAvailabilityOpeningInput = async (input: {
         lucid,
         "Availability prepare",
       );
-      return SDK.buildDaAvailabilityFundingPreparationTx(
+      return SDKDa.buildDaAvailabilityFundingPreparationTx(
         lucid,
         {
           outputLovelace: amounts.openingLovelace,

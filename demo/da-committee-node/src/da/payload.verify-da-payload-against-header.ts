@@ -1,7 +1,8 @@
 import { MIDGARD_PROTOCOL_VERSION } from "@al-ft/midgard-core/consensus-profile";
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { sha256 } from "@noble/hashes/sha2.js";
 
 import type { PayloadCountSet, PayloadRootSet } from "../domain.js";
@@ -29,7 +30,7 @@ import {
 } from "./payload.validate-proof-trace-coverage.js";
 
 const computeDaPayloadRootsForForcedDomain = async (
-  payload: SDK.DaPayload,
+  payload: SDKDa.DaPayload,
 ): Promise<PayloadRootSet> => {
   const body = payload.block_body;
   const transactionValues: Buffer[] = [];
@@ -80,7 +81,7 @@ const computeDaPayloadRootsForForcedDomain = async (
 };
 
 export const computeDaPayloadRoots = async (
-  payload: SDK.DaPayload,
+  payload: SDKDa.DaPayload,
 ): Promise<DaPayloadRootSet> => {
   const proofRoots = await computeDaPayloadRootsForForcedDomain(payload);
   return {
@@ -98,10 +99,10 @@ export const verifyDaPayloadAgainstHeader = async (
   header: SDK.Header,
   options: PayloadVerificationOptions,
 ): Promise<VerifiedDaPayload> => {
-  if (options.payloadSchemaVersion !== Number(SDK.DA_PAYLOAD_VERSION)) {
+  if (options.payloadSchemaVersion !== Number(SDKDa.DA_PAYLOAD_VERSION)) {
     throw new DaPayloadValidationError(
       "wrong_version",
-      `expected DA payload schema version ${SDK.DA_PAYLOAD_VERSION.toString()}, got ${String(options.payloadSchemaVersion)}`,
+      `expected DA payload schema version ${SDKDa.DA_PAYLOAD_VERSION.toString()}, got ${String(options.payloadSchemaVersion)}`,
     );
   }
   const storedPayloadBuffer = Buffer.from(storedPayloadCbor);

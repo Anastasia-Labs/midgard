@@ -4,7 +4,7 @@ import {
   type MidgardFieldCarriagePlan,
   planMidgardFieldCarriage,
 } from "@al-ft/midgard-core";
-import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
+import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 import { type MintingPolicy, type UTxO } from "@lucid-evolution/lucid";
 
 import { type FaultProofFieldOpeningPlan } from "../field-opening.js";

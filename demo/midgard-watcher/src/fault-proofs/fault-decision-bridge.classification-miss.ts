@@ -11,7 +11,7 @@ import {
   validationTraceCaseOpenWindowEndMs,
 } from "@al-ft/midgard-fault-proofs/validation-trace-dispute/stage-unbuilt";
 import { isFraudProofL1WaitError } from "@al-ft/midgard-fault-proofs/workflow/l1-source";
-import { StateQueueNode } from "@al-ft/midgard-sdk";
+import { StateQueueNode } from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 
 import type {

@@ -1,4 +1,4 @@
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/da";
 import { beforeEach, vi } from "vitest";
 
 import { createWatcherAvailabilityObservation } from "../../src/availability/observation.js";
@@ -13,8 +13,8 @@ import { deferredAvailabilityRead } from "../support/availability-operation-inte
 const sdk = vi.hoisted(() => ({
   snapshot: vi.fn<(...args: any[]) => any>(),
 }));
-vi.mock("@al-ft/midgard-sdk", async (original) => ({
-  ...(await original<typeof import("@al-ft/midgard-sdk")>()),
+vi.mock("@al-ft/midgard-sdk/da", async (original) => ({
+  ...(await original<typeof import("@al-ft/midgard-sdk/da")>()),
   daAvailabilityChallengeSnapshotFromUtxos: sdk.snapshot,
 }));
 // Observation admission is a separate tested boundary. This fixture keeps

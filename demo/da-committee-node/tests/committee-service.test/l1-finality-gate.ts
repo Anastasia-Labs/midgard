@@ -1,4 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { L1_STATE_QUEUE_UNHEALTHY } from "../../src/committee-service.l1-tick.js";

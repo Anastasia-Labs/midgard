@@ -1,8 +1,8 @@
+import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 import type {
   AuthenticatedStateQueueHeaderObservation,
   EvidenceProvenance,
-  FraudProofCatalogueCategoryName,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import { MAX_COMPUTATION_THREAD_STEPS } from "./computation-thread-steps.js";
 import {

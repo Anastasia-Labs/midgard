@@ -8,7 +8,8 @@ import {
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
   type MidgardValidationMachineState,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
   encodeMidgardCekValidationWitness,
   initialMidgardCekContextControl,
@@ -239,8 +240,8 @@ describe("CEK selection final reference-input composition", () => {
       expect(reordered.yield_ref_input_indices).toEqual([3n, 1n]);
       expect(
         Data.from(
-          Data.to(action, SDK.ValidationCekExecutionSelectionAction),
-          SDK.ValidationCekExecutionSelectionAction,
+          Data.to(action, SDKDa.ValidationCekExecutionSelectionAction),
+          SDKDa.ValidationCekExecutionSelectionAction,
         ),
       ).toEqual(action);
     },

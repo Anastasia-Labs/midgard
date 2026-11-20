@@ -1,7 +1,7 @@
 /** The four-stage proof's single event-relative preparation for spend and
  * reference inputs, normal and forced sources, acceptance and rejection. */
 import { computeHash32 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 
 import { eventLedgerBefore } from "../event-ledger.js";

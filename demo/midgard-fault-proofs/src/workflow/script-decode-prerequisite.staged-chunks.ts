@@ -4,7 +4,7 @@
  * read by its out-ref. Nothing else at the staging address is ever taken
  * for a chunk.
  */
-import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
+import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 import { scriptDecodeStagingDatums } from "../script-decode/submit.js";

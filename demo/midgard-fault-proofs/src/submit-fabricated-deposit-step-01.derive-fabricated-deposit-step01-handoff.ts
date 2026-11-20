@@ -2,14 +2,16 @@ import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-
 import {
   commitCountedRootProgram,
   DepositInfo,
-  depositInfoCommitmentCbor,
-  type FabricatedDepositStep02State,
   type Header,
   OutputReference,
   Proof,
   ROOT_DOMAINS,
   type RootMembershipProof,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  depositInfoCommitmentCbor,
+  type FabricatedDepositStep02State,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type Script } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

@@ -17,7 +17,8 @@ import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
   plutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -236,7 +237,7 @@ export const prepareWithdrawalMistag = async ({
   await verifyCountedMembership({
     witness: committedWithdrawal,
     expectedDomain: "WithdrawalsRootDomain",
-    keyCbor: SDK.committedWithdrawalKeyBytes(committedWithdrawal.key),
+    keyCbor: SDKFraudProof.committedWithdrawalKeyBytes(committedWithdrawal.key),
     valueCbor: infoCbor,
     label: "withdrawal source",
   });

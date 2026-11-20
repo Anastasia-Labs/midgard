@@ -3,7 +3,7 @@ import {
   acceptedVerdictSubject,
   NativeScriptInvalidStep01SpendRedeemerSchema,
   NativeScriptInvalidStep02DatumSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   Data,
   type LucidEvolution,

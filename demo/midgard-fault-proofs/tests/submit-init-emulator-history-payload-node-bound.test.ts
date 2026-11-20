@@ -8,7 +8,8 @@ import { readFileSync } from "node:fs";
 
 import { DEPLOYMENT_MANIFEST_MAX_PAYLOAD_NODES } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { replacePlutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { expect, it } from "vitest";
 
@@ -24,7 +25,7 @@ const blueprint = SDK.parseFaultProofBlueprint(
 );
 
 /** The deployed payload bounds: the manifest's largest node bound. */
-const BOUNDS: SDK.EventHistoryPayloadBounds = {
+const BOUNDS: SDKUsers.EventHistoryPayloadBounds = {
   inlineLimitBytes: 512n,
   maxPayloadBytes: 15_000n,
   maxPayloadNodes: DEPLOYMENT_MANIFEST_MAX_PAYLOAD_NODES,
@@ -80,7 +81,7 @@ const depositPayloadCbor = (
   };
   payload.DepositPayload.event.info.l2_datum = 0n;
   return replacePlutusConstrFieldCbor(
-    Data.to(payload, SDK.EventHistoryPayload),
+    Data.to(payload, SDKUsers.EventHistoryPayload),
     [0, 1, 2, 0],
     datum,
   );
@@ -88,7 +89,7 @@ const depositPayloadCbor = (
 
 /** Payload nodes besides the datum, from the SDK's own count. */
 const nodesAroundDatum = (payloadCbor: string) =>
-  Number(SDK.countHistoryDataNodesCbor(payloadCbor, 1_000_000n)) - 1;
+  Number(SDKUsers.countHistoryDataNodesCbor(payloadCbor, 1_000_000n)) - 1;
 
 type Row = {
   readonly name: string;
@@ -181,7 +182,10 @@ it.each(ROWS)(
       nonce,
       DATUMS[row.shape](datumNodes),
     );
-    const payloadNodes = SDK.countHistoryDataNodesCbor(payloadCbor, 1_000_000n);
+    const payloadNodes = SDKUsers.countHistoryDataNodesCbor(
+      payloadCbor,
+      1_000_000n,
+    );
     expect(payloadNodes).toBe(BigInt(datumNodes + others));
     if (row.inline !== true)
       expect(payloadNodes).toBe(BOUNDS.maxPayloadNodes + BigInt(row.over));
@@ -201,7 +205,7 @@ it.each(ROWS)(
       fundingInputs: await h.funding(),
     };
     const reclaimAuth: SDK.CredentialD = { PublicKeyCredential: [h.owner] };
-    const plan = SDK.prepareEventHistoryPayloadCbor(
+    const plan = SDKUsers.prepareEventHistoryPayloadCbor(
       payloadCbor,
       reclaimAuth,
       recipe,
@@ -209,7 +213,7 @@ it.each(ROWS)(
     expect(plan.kind).toBe(row.inline === true ? "Inline" : "External");
     let externalData: UTxO | undefined;
     if (plan.kind === "External") {
-      const publication = await SDK.buildEventHistoryPublication(
+      const publication = await SDKUsers.buildEventHistoryPublication(
         context,
         payloadCbor,
         reclaimAuth,
@@ -224,7 +228,7 @@ it.each(ROWS)(
     context.fundingInputs = await h.funding();
     const listBefore = await h.lucid.utxosAt(applied.address);
     const request = () =>
-      SDK.buildEventHistoryAdmission(context, {
+      SDKUsers.buildEventHistoryAdmission(context, {
         payloadCbor,
         reclaimAuth,
         nonce,
@@ -251,7 +255,7 @@ it.each(ROWS)(
       .at(-1)!.measurement!;
     expect(measured.executionMemory).toBeLessThanOrEqual(MEMORY_BASIS);
     expect(measured.executionSteps).toBeLessThanOrEqual(CPU_BASIS);
-    const witness = await SDK.fetchEventHistoryWitness(
+    const witness = await SDKUsers.fetchEventHistoryWitness(
       h.lucid,
       {
         policyId: applied.policyId,
@@ -263,7 +267,7 @@ it.each(ROWS)(
     );
     if (witness.kind !== "Present") throw new Error("Admitted order missing");
     expect(
-      SDK.captureEventHistoryWitness(witness, applied.policyId, "Deposit")
+      SDKUsers.captureEventHistoryWitness(witness, applied.policyId, "Deposit")
         .payloadCbor,
     ).toBe(plan.payloadCbor);
     expect(await h.lucid.utxosByOutRef([nonce])).toHaveLength(0);

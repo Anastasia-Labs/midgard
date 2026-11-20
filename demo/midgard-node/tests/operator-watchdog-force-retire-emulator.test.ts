@@ -16,7 +16,7 @@
  */
 import "./helpers/follower-emulator-installed.js";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/operators";
 import { SqlClient } from "@effect/sql";
 import { generateSeedPhrase, walletFromSeed } from "@lucid-evolution/lucid";
 import { Effect, Layer, Ref } from "effect";

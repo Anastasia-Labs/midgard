@@ -6,7 +6,8 @@ import {
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { makeForcedOrderSettlementScenario } from "@al-ft/midgard-fault-proofs/test-support/forced-order-settlement";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   makeNativeTx,
   makeOutput,
@@ -99,7 +100,7 @@ describe("forced submission under real order and settlement validators", () => {
       twoOrders: true,
     });
     const datums = s.orders.map((order) =>
-      Data.from(order.datum!, SDK.TxOrderDatum),
+      Data.from(order.datum!, SDKUsers.TxOrderDatum),
     );
     expect(datums[0]!.event.id).not.toEqual(datums[1]!.event.id);
     expect(datums[0]!.event.tx).toEqual(datums[1]!.event.tx);

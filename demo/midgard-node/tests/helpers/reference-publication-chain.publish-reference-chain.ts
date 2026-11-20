@@ -1,4 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { selectPlainFundingUtxos } from "@al-ft/midgard-test-support/reference-script-funding";
 import {
   type LucidEvolution,

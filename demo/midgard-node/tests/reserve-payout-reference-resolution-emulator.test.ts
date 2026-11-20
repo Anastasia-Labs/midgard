@@ -8,7 +8,8 @@
 import "./helpers/follower-emulator-installed.js";
 
 import { compareOutRefs, outRefLabel } from "@al-ft/midgard-core/out-ref";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   credentialToAddress,
   Data,
@@ -74,7 +75,7 @@ const makeFixture = async ({ genuine }: { readonly genuine: boolean }) => {
     l1_datum: "NoDatum",
   };
   const foreignRoleUnit = (role: PayoutRole): string =>
-    SDK.referenceScriptAuthUnit(FOREIGN_POLICY, role);
+    SDKStateQueue.referenceScriptAuthUnit(FOREIGN_POLICY, role);
   // Genesis outputs share one transaction id and take their account's
   // position as output index, so these sort before every genuine holder.
   const imposters = payoutRoles.flatMap((role) => [
@@ -95,7 +96,7 @@ const makeFixture = async ({ genuine }: { readonly genuine: boolean }) => {
           address: operator.address,
           assets: {
             lovelace: 3_000_000n,
-            [SDK.referenceScriptAuthUnit(authPolicy, role)]: 1n,
+            [SDKStateQueue.referenceScriptAuthUnit(authPolicy, role)]: 1n,
           },
           scriptRef: scripts[role],
         }),
@@ -140,7 +141,8 @@ const makeFixture = async ({ genuine }: { readonly genuine: boolean }) => {
     );
   const holding = (role: PayoutRole) =>
     withScript(role).filter(
-      (utxo) => utxo.assets[SDK.referenceScriptAuthUnit(authPolicy, role)],
+      (utxo) =>
+        utxo.assets[SDKStateQueue.referenceScriptAuthUnit(authPolicy, role)],
     );
   // Effect values are lazy, so each run of `conclude()` reads the chain
   // afresh.
@@ -224,9 +226,9 @@ describe("payout conclusion reference-script resolution", () => {
     expect(fixture.holding("payout spending")).toHaveLength(0);
 
     const error = await Effect.runPromise(Effect.flip(fixture.conclude()));
-    expect(error).toBeInstanceOf(SDK.StateQueueError);
+    expect(error).toBeInstanceOf(SDKStateQueue.StateQueueError);
     expect(error.message).toBe("Missing reference script");
-    expect(String((error as SDK.StateQueueError).cause)).toMatch(
+    expect(String((error as SDKStateQueue.StateQueueError).cause)).toMatch(
       new RegExp(
         `^payout (spending|minting) at ${fixture.operator.address} with role token Payout(Spend|Mint)`,
         "u",

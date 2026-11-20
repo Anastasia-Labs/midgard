@@ -20,7 +20,8 @@
  * successor keeps the thread's single token and carries the state the next
  * holder checks as an inline datum. */
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import type { ValidationTraceSteps } from "@al-ft/midgard-validation/validation-machine";
 import {
   Data,
@@ -266,10 +267,10 @@ export const validationTraceHop = ({
     );
   switch (holder) {
     case "boundary": {
-      const thread = Data.from(datum, SDK.CaseThreadDatum).data;
+      const thread = Data.from(datum, SDKDa.CaseThreadDatum).data;
       if (thread === null)
         throw new Error("validation-trace boundary thread has no state");
-      const preState = SDK.validationMachineStateDataFromCore(plan.preState);
+      const preState = SDKDa.validationMachineStateDataFromCore(plan.preState);
       return {
         next:
           plan.kind === "canonicalDecode"
@@ -287,7 +288,7 @@ export const validationTraceHop = ({
               challenger_successor_hash: thread.challenger_high_hash,
             },
           },
-          SDK.ValidationResolutionDatum,
+          SDKDa.ValidationResolutionDatum,
         ),
         redeemer: (inputIndex, outputIndex) =>
           Data.to(
@@ -303,7 +304,7 @@ export const validationTraceHop = ({
                 },
               ],
             },
-            SDK.ValidationBoundarySpendRedeemer,
+            SDKDa.ValidationBoundarySpendRedeemer,
           ),
         proverOnly: true,
       };
@@ -351,7 +352,7 @@ export const validationTraceHop = ({
                 }),
               ],
             },
-            SDK.ValidationCekExecutionSelectionSpendRedeemer,
+            SDKDa.ValidationCekExecutionSelectionSpendRedeemer,
           ),
         proverOnly: false,
         reads: {

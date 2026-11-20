@@ -1,6 +1,7 @@
 /** A hand-built standalone record spend of a completed-fraud queue node, and
  * the state-queue spend's trace for each refused record. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   type BuildTxWithRedeemer,
   Data,
@@ -88,7 +89,7 @@ export const buildRawRecord = async (
               : SDK.requireReferenceInputIndex(ctx, cite, label),
         },
       },
-      SDK.StateQueueSpendRedeemer,
+      SDKStateQueue.StateQueueSpendRedeemer,
     )) satisfies BuildTxWithRedeemer;
   const references = [
     ...(cite === null ? [] : [cite]),

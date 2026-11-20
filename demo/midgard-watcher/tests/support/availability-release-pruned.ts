@@ -1,6 +1,7 @@
 import type { AvailabilityOperationJournal } from "@al-ft/midgard-core/availability-operation-journal";
 import type { SimTx, SimUtxo } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { expect } from "vitest";
 
 import { pinWatcherAvailabilityJournal } from "../../src/availability/journal-pins.js";
@@ -75,23 +76,23 @@ export const landOpen = async (
 ): Promise<string> => {
   const [funding, collateral] = await fund(fx, 2);
   const node = nodeOf(fx, header);
-  const challengeAsset = SDK.daAvailabilityChallengeAssetName({
+  const challengeAsset = SDKDa.daAvailabilityChallengeAssetName({
     transactionId: funding!.txHash.toString("hex"),
     outputIndex: BigInt(funding!.index),
   });
-  const record = SDK.encodeDaAvailabilityChallengeRecord({
-    commitment: SDK.buildDaAvailabilityCommitment({
+  const record = SDKDa.encodeDaAvailabilityChallengeRecord({
+    commitment: SDKDa.buildDaAvailabilityCommitment({
       deploymentIdentity: "11".repeat(28),
       headerHash: header,
       payload: Uint8Array.from({ length: 1024 }, (_, i) => i % 256),
-      responseGeometry: SDK.availabilityResponseGeometry(
-        SDK.DA_AVAILABILITY_RESPONSE_GEOMETRY_MEASUREMENT_CANDIDATE,
+      responseGeometry: SDKDa.availabilityResponseGeometry(
+        SDKDa.DA_AVAILABILITY_RESPONSE_GEOMETRY_MEASUREMENT_CANDIDATE,
       ),
     }),
     challenge_asset_name: challengeAsset,
     challenger: "33".repeat(28),
     opened_at: 1_000n,
-    response_deadline: SDK.daAvailabilityResponseDeadline({
+    response_deadline: SDKDa.daAvailabilityResponseDeadline({
       payloadByteLength: 1024,
       openedAt: 1_000n,
     }),

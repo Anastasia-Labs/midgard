@@ -2,15 +2,17 @@ import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   forcedLeafMembershipV1,
   type ForcedTransactionSourceMembershipProof,
-  proofThreadDirectionOfForcedLeaf,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import {
-  MinAdaStep01SpendRedeemerSchema,
-  MinAdaStep02DatumSchema,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk/fraud-proof";
+import {
+  MinAdaStep01SpendRedeemerSchema,
+  MinAdaStep02DatumSchema,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

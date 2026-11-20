@@ -2,7 +2,8 @@ import { existsSync, mkdirSync, renameSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { CONSUMPTION_INDEX_GRACE_MS } from "midgard-watcher/tests/support/published-block-actor.is-unanswered-submission";
@@ -38,7 +39,7 @@ import {
 const decodeStateQueueNode = (output: UTxO, stateQueuePolicyId: string) =>
   Effect.runPromise(
     Effect.flatMap(
-      SDK.utxoToStateQueueUTxO(output, stateQueuePolicyId),
+      SDKStateQueue.utxoToStateQueueUTxO(output, stateQueuePolicyId),
       (utxo) => SDK.getStateQueueNodeFromStateQueueDatum(utxo.datum),
     ),
   );
@@ -204,14 +205,14 @@ export const stackJourneyDa = (
   /** The stack's state queue: its root's confirmed state and its blocks. */
   const readQueue = async () => {
     const sorted = await Effect.runPromise(
-      SDK.fetchSortedStateQueueUTxOsProgram(lucid, {
+      SDKStateQueue.fetchSortedStateQueueUTxOsProgram(lucid, {
         stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
         stateQueuePolicyId: contracts.stateQueue.policyId,
       }),
     );
     if (sorted[0] === undefined) throw new Error("State queue has no root");
     const { data: root } = await Effect.runPromise(
-      SDK.getConfirmedStateFromStateQueueDatum(sorted[0].datum),
+      SDKStateQueue.getConfirmedStateFromStateQueueDatum(sorted[0].datum),
     );
     const blocks = sorted.flatMap((entry) =>
       entry.datum.key === "Empty"
@@ -269,7 +270,7 @@ export const stackJourneyDa = (
       consumptions,
       readConfirmedTransaction,
       slotToUnixTime: (slot) => lucid.slotToUnixTime(slot),
-      attestationTimeoutMs: SDK.DA_ATTESTATION_TIMEOUT_MS,
+      attestationTimeoutMs: SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS,
     });
   };
   const decodeQueueBlock = async (
@@ -309,7 +310,7 @@ export const stackJourneyDa = (
     }),
     now: () => chain.now(),
     pause,
-    attestationTimeoutMs: SDK.DA_ATTESTATION_TIMEOUT_MS,
+    attestationTimeoutMs: SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS,
     onStage: input.onStage,
   });
   const withPublicPayload = async (
@@ -335,7 +336,7 @@ export const stackJourneyDa = (
     readRemoval: () => readRemoval(headerHash),
     now: () => chain.now(),
     pause,
-    attestationTimeoutMs: SDK.DA_ATTESTATION_TIMEOUT_MS,
+    attestationTimeoutMs: SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS,
   });
   return {
     /**

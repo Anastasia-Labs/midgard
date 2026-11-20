@@ -13,11 +13,11 @@ import {
 } from "@al-ft/midgard-core";
 import {
   encodeMidgardTxOutputCanonical,
-  fieldPreimagePublicationDatumCbor,
   FraudProofTokenDatum,
   MIDGARD_FIELD_INDEX,
   referenceInputNoIdxOutputsCommitment,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
+import { fieldPreimagePublicationDatumCbor } from "@al-ft/midgard-sdk/state-queue";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

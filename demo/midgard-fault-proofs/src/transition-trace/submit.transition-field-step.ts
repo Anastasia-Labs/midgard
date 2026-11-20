@@ -4,8 +4,9 @@
  * tier 3, certified before the step is built; and, for an output replayed
  * whole, the two output-step verifiers the step must also withdraw from.
  */
-import type { TransitionTraceFaultProofContracts } from "@al-ft/midgard-sdk";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
+import type { TransitionTraceFaultProofContracts } from "@al-ft/midgard-sdk/fraud-proof";
+import type * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type LucidEvolution,
   type Network,
@@ -225,7 +226,7 @@ export const prepareTransitionFieldStep = async ({
   readonly deploymentInfo: ContractDeploymentInfo;
   readonly contracts: TransitionTraceFaultProofContracts;
   readonly proof: TransitionProofInput;
-  readonly state: SDK.TransitionTraceFinalState;
+  readonly state: SDKFraudProof.TransitionTraceFinalState;
   readonly yields: ReturnType<typeof transitionTraceYieldData>;
   readonly outputCbors: readonly string[] | undefined;
   readonly publish: boolean;

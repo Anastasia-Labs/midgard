@@ -8,7 +8,7 @@
  * accumulation-limit reason convicts unless it names the derived crossing; a
  * rejection recording another reason convicts when a crossing holds and that
  * reason ranks after it. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { DirectPurposeTransition } from "../direct-purpose-family/custody.js";
 import type {

@@ -1,6 +1,10 @@
 import "@aiken-lang/merkle-patricia-forestry";
 import "@al-ft/midgard-core";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/da";
+import "@al-ft/midgard-sdk/users";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "../field-opening.js";
 import "../prepare-input-no-idx.js";
 import "../remove-fraudulent-block.js";

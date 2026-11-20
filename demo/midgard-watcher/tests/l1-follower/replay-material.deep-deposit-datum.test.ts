@@ -10,7 +10,7 @@ import { decodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import type { ProjectedEvent } from "@al-ft/midgard-l1-follower/events";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { replaceCborItemOnce } from "@al-ft/midgard-test-support/deep-plutus-data";
 import { runPhaseBValidationWithPatch } from "@al-ft/midgard-validation/phase-b";
 import {

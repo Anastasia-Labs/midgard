@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Effect, Ref, Schedule } from "effect";
 
 import { StateQueueMutationLeasesDB } from "../database/index.js";
@@ -84,7 +85,7 @@ export const blockCommitmentAction: Effect.Effect<
   void,
   | WorkerError
   | SDK.LucidError
-  | SDK.StateQueueError
+  | SDKStateQueue.StateQueueError
   | SDK.DataCoercionError
   | SDK.HashingError
   | SDK.CmlUnexpectedError

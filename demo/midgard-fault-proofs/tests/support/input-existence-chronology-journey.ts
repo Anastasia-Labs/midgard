@@ -2,7 +2,7 @@
  * the prior deposit block and the chronology block are on the state queue,
  * the target event is prepared, the step scripts are published and the thread
  * is initialised. Each caller drives the steps and states its own verdict. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import type { Script, UTxO } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 

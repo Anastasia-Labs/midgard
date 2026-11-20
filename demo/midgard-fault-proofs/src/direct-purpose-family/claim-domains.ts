@@ -1,7 +1,7 @@
 /** Claim custody over the leaf's own purpose coordinate when it is valid and
  * distinct from the observed one: claim start through that kind's bounded
  * domain to the transition that pays adjudication the claimed purpose. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import { directPurposeAt } from "../direct-script-derivation/purposes.js";

@@ -14,11 +14,11 @@ import {
   bindFraudProofWorkflowDeployment,
   requireManifestBoundReferenceScriptUtxo,
 } from "@al-ft/midgard-fault-proofs/workflow/deployment-manifest-binding";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import {
   FraudProofComputationThreadStepDatum,
   NetworkIdStep02Datum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Lucid, paymentCredentialOf } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { afterAll, beforeAll, expect, it } from "vitest";

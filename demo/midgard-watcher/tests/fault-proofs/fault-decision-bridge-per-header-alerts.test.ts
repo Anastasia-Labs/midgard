@@ -7,7 +7,7 @@
  * until it is decided, and a `da_fetch_failure` stands while some DA fetcher
  * may still fetch its header.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { describe, expect, it } from "vitest";
 
 import type { PerHeaderAlert } from "../../src/fault-proofs/per-header-alert.js";

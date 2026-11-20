@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core/codec";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { SqlClient, Statement } from "@effect/sql";
 import { it } from "@effect/vitest";
 import { Data as LucidData } from "@lucid-evolution/lucid";

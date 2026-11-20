@@ -1,6 +1,6 @@
 import type { HeaderDecision } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
 import type { FraudProofWorkflowJournalEntry } from "@al-ft/midgard-fault-proofs/workflow/journal";
-import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
+import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 
 import type { JourneyWorkflowStore } from "./correction.js";
 import type { JourneyBlock, JourneyFixture, StagedJourney } from "./fixture.js";

@@ -29,7 +29,7 @@ import {
   VALIDATION_TRACE_POCKET_COLLATERAL_LOVELACE,
   VALIDATION_TRACE_THREAD_FLOOR_LOVELACE,
 } from "@al-ft/midgard-fault-proofs/validation-trace-dispute/defender";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect, Metric } from "effect";
 

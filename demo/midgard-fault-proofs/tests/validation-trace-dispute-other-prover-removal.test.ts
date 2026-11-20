@@ -4,7 +4,8 @@
  * its record minted. It then reads the block as removed against another
  * record and, past rollback recovery, ends resolved by that record: never
  * as our conviction, with no removal of ours and no terminal. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, generateEmulatorAccount, Lucid } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -176,7 +177,8 @@ describe("validation-trace dispute runner: another prover convicts the block and
         parseOwnOutRef(close.outputs[0]!.outRef),
       ]);
       expect(
-        Data.from(ourRecord!.datum!, SDK.FraudProofTokenDatum).fraud_prover,
+        Data.from(ourRecord!.datum!, SDKFraudProof.FraudProofTokenDatum)
+          .fraud_prover,
       ).toBe(h.proverSigner.paymentKeyHash);
 
       h.emulator.awaitBlock(

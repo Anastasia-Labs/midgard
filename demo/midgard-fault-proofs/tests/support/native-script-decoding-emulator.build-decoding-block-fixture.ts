@@ -13,7 +13,8 @@ import {
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -79,8 +80,8 @@ export const buildDecodingBlockFixture = async ({
    * ones. The header and payload commit whatever this returns.
    */
   readonly commitEventToStep?: (
-    entries: readonly SDK.DaPayloadEntry[],
-  ) => readonly SDK.DaPayloadEntry[];
+    entries: readonly SDKDa.DaPayloadEntry[],
+  ) => readonly SDKDa.DaPayloadEntry[];
   /**
    * The order the trace steps the events in (subject first, then the L2
    * transactions). The event_to_step entries follow the same order.
@@ -106,10 +107,10 @@ export const buildDecodingBlockFixture = async ({
       ? encodeMidgardNativeTxCompact(subject.nativeTx.compact)
       : encodeMidgardForcedTxCompact(submitted.compact);
 
-  let transactions: SDK.DaPayloadEntry[] = [];
-  let transactionPreimages: SDK.DaPayloadEntry[] = [];
-  let forcedTransactions: SDK.DaPayloadEntry[] = [];
-  let forcedTransactionPreimages: SDK.DaPayloadEntry[] = [];
+  let transactions: SDKDa.DaPayloadEntry[] = [];
+  let transactionPreimages: SDKDa.DaPayloadEntry[] = [];
+  let forcedTransactions: SDKDa.DaPayloadEntry[] = [];
+  let forcedTransactionPreimages: SDKDa.DaPayloadEntry[] = [];
   let eventKey: SDK.EventKey;
   const phase: SDK.TransitionPhase =
     subject.kind === "normal" ? "L2Transaction" : "ForcedTransaction";
@@ -225,9 +226,9 @@ export const buildDecodingBlockFixture = async ({
     });
   }
 
-  const transitionTrace: SDK.DaPayloadEntry[] = [];
-  const eventToStep: SDK.DaPayloadEntry[] = [];
-  const validationTraces: SDK.DaPayloadEntry[] = [];
+  const transitionTrace: SDKDa.DaPayloadEntry[] = [];
+  const eventToStep: SDKDa.DaPayloadEntry[] = [];
+  const validationTraces: SDKDa.DaPayloadEntry[] = [];
   for (const [stepIndex, event] of orderEvents(events).entries()) {
     const stepPhase = committedPhase(event);
     const step: SDK.TransitionStep = {
@@ -333,8 +334,8 @@ export const buildDecodingBlockFixture = async ({
     protocolVersion: BigInt(MIDGARD_PROTOCOL_VERSION),
   };
   const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
-  const payload: SDK.DaPayload = {
-    version: SDK.DA_PAYLOAD_VERSION,
+  const payload: SDKDa.DaPayload = {
+    version: SDKDa.DA_PAYLOAD_VERSION,
     block_body: {
       header_hash: headerHash,
       header,
@@ -352,7 +353,7 @@ export const buildDecodingBlockFixture = async ({
     },
   };
   const payloadEnvelopeCbor = await wrapDaPayload(
-    SDK.encodeDaPayload(payload),
+    SDKDa.encodeDaPayload(payload),
     { mode: "identity" },
   );
   const reconstruction = await reconstructDaPayload({

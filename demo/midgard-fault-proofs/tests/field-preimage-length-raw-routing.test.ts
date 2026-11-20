@@ -7,7 +7,7 @@ import {
   encodeMidgardNativeTxProofFieldLengths,
 } from "@al-ft/midgard-core/codec";
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 import { expect, it, vi } from "vitest";
 

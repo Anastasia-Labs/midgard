@@ -4,7 +4,7 @@
  * transactions by their own outputs and treats a changed selection as a
  * changed action.
  */
-import { Proof } from "@al-ft/midgard-sdk";
+import { Proof } from "@al-ft/midgard-sdk/core";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

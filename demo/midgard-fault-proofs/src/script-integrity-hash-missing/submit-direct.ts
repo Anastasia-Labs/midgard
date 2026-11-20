@@ -1,14 +1,16 @@
 import {
-  acceptedVerdictSubject,
   type FieldCarriage,
   type ForcedInclusionTxV1,
   forcedLeafMembershipV1,
-  forcedVerdictSubject,
   type Header,
   type NativeTxWitnessSetCompact,
   type OutputReference,
   type RootMembershipProof,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  acceptedVerdictSubject,
+  forcedVerdictSubject,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   Data,
   type LucidEvolution,

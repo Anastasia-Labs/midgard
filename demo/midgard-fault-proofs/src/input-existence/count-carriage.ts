@@ -1,6 +1,6 @@
 /** One actual counted claim per physical step. The existing verifier and
  * final transaction context determine every withdrawal/reference index. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import {
   type BuildTxWithRedeemer,
   Data,

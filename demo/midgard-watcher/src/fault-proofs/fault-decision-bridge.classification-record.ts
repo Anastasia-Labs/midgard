@@ -1,6 +1,6 @@
 import { isRetainedDaPayloadUnavailableError } from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
 import type { HeaderDecision } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
-import { Header } from "@al-ft/midgard-sdk";
+import { Header } from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 
 import type {

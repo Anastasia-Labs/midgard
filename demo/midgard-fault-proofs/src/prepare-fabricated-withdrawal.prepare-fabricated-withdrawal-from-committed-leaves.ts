@@ -6,7 +6,9 @@ import {
   computeDaSha256Hash,
   DA_TRANSPORT_LIMITS,
 } from "@al-ft/midgard-core/da-transport";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Effect } from "effect";
 
 import { stringifyJson } from "./json-file.js";
@@ -116,12 +118,13 @@ export const prepareFabricatedWithdrawalFromCommittedLeaves = async ({
   };
   const output: PreparedFabricatedWithdrawalOutput = {
     schemaVersion: FABRICATED_WITHDRAWAL_EVIDENCE_SCHEMA_VERSION,
-    violationId: SDK.FABRICATED_WITHDRAWAL_VIOLATION_ID,
-    fraudCategoryId: SDK.FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID,
+    violationId: SDKFraudProof.FABRICATED_WITHDRAWAL_VIOLATION_ID,
+    fraudCategoryId: SDKFraudProof.FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID,
     headerHash: headerHash.toLowerCase(),
-    threadTokenAssetName: SDK.fabricatedWithdrawalThreadTokenAssetName(
-      headerHash.toLowerCase(),
-    ),
+    threadTokenAssetName:
+      SDKFraudProof.fabricatedWithdrawalThreadTokenAssetName(
+        headerHash.toLowerCase(),
+      ),
     withdrawalCount: Number(withdrawalCount),
     withdrawalsPhasRoot: phas.root,
     committedWithdrawalsRoot: countedRoot,
@@ -181,10 +184,10 @@ export const prepareFabricatedWithdrawalFromCommittedLeaves = async ({
 };
 
 export type FabricatedWithdrawalBlockEvidence = {
-  readonly grade: SDK.EvidenceGrade;
+  readonly grade: SDKFraudProof.EvidenceGrade;
   readonly provenance: {
-    readonly l1: SDK.EvidenceProvenance;
-    readonly da: SDK.EvidenceProvenance;
+    readonly l1: SDKFraudProof.EvidenceProvenance;
+    readonly da: SDKFraudProof.EvidenceProvenance;
   };
   readonly headerHash: string;
   readonly payloadEnvelopeSha256: string;
@@ -208,21 +211,21 @@ export const fabricatedWithdrawalBlockEvidenceFromVerifiedPayload = async ({
   daProvenance,
   minimumConfirmationDepth,
 }: {
-  readonly observation: SDK.AuthenticatedStateQueueHeaderObservation;
+  readonly observation: SDKFraudProof.AuthenticatedStateQueueHeaderObservation;
   readonly payloadEnvelopeCbor: Uint8Array;
-  readonly daProvenance: SDK.EvidenceProvenance;
+  readonly daProvenance: SDKFraudProof.EvidenceProvenance;
   readonly minimumConfirmationDepth?: number;
 }): Promise<FabricatedWithdrawalBlockEvidence> => {
   const admittedObservation =
-    await SDK.admitAuthenticatedStateQueueHeaderObservation({
+    await SDKFraudProof.admitAuthenticatedStateQueueHeaderObservation({
       observation,
       ...(minimumConfirmationDepth === undefined
         ? {}
         : { minimumConfirmationDepth }),
     });
-  const admittedDa = SDK.assertSecurityGradeEvidence(daProvenance);
+  const admittedDa = SDKFraudProof.assertSecurityGradeEvidence(daProvenance);
   if (admittedDa.trustClass !== "public_or_permissionless_da") {
-    throw new SDK.CanonicalEvidenceRejection(
+    throw new SDKFraudProof.CanonicalEvidenceRejection(
       "da_evidence_wrong_trust_class",
       `expected=public_or_permissionless_da actual=${admittedDa.trustClass}`,
     );
@@ -243,25 +246,25 @@ export const fabricatedWithdrawalBlockEvidenceFromVerifiedPayload = async ({
       `failed to decode the mandatory DaPayloadEnvelopeV1: ${String(cause)}`,
     );
   }
-  let payload: SDK.DaPayload;
+  let payload: SDKDa.DaPayload;
   try {
-    payload = SDK.decodeDaPayload(payloadCbor);
+    payload = SDKDa.decodeDaPayload(payloadCbor);
   } catch (cause) {
     throw new FabricatedWithdrawalRejection(
       "malformed_da_payload",
       `failed to decode DaPayloadV1 canonical CBOR: ${String(cause)}`,
     );
   }
-  if (!SDK.encodeDaPayload(payload).equals(payloadCbor)) {
+  if (!SDKDa.encodeDaPayload(payload).equals(payloadCbor)) {
     throw new FabricatedWithdrawalRejection(
       "non_canonical_da_payload",
       "DA payload CBOR is not canonical for DaPayloadV1",
     );
   }
-  if (payload.version !== SDK.DA_PAYLOAD_VERSION) {
+  if (payload.version !== SDKDa.DA_PAYLOAD_VERSION) {
     throw new FabricatedWithdrawalRejection(
       "wrong_da_payload_version",
-      `expected=${SDK.DA_PAYLOAD_VERSION.toString()} actual=${payload.version.toString()}`,
+      `expected=${SDKDa.DA_PAYLOAD_VERSION.toString()} actual=${payload.version.toString()}`,
     );
   }
   const body = payload.block_body;
@@ -279,7 +282,7 @@ export const fabricatedWithdrawalBlockEvidenceFromVerifiedPayload = async ({
   }
 
   return {
-    grade: SDK.combineEvidenceGrade([
+    grade: SDKFraudProof.combineEvidenceGrade([
       admittedObservation.provenance,
       admittedDa,
     ]),

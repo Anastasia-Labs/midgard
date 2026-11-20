@@ -1,6 +1,6 @@
 /** Authenticated retained-DA preparation for the Q35 network-id family. */
 import { decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
-import { type NetworkIdFault } from "@al-ft/midgard-sdk";
+import { type NetworkIdFault } from "@al-ft/midgard-sdk/fraud-proof";
 
 import {
   admitCanonicalEvidenceForProofBuild,

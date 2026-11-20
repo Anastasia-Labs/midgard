@@ -6,7 +6,7 @@ import {
   encodeDaProofBundleByHeaderResponseCbor,
   encodeDaTraceStepByIndexResponseCbor,
 } from "@al-ft/midgard-core/da-transport";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import {

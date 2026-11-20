@@ -15,7 +15,7 @@
  * length material. Compact-only membership is not admitted as an alternate
  * convention.
  */
-import { assertTransactionSourceInclusionRootAuthenticated } from "@al-ft/midgard-sdk";
+import { assertTransactionSourceInclusionRootAuthenticated } from "@al-ft/midgard-sdk/fraud-proof";
 
 import { type CheckedLedger } from "../ledger-at.js";
 import type { PreparedDoubleSpendOutput } from "../prepare-double-spend.encode-l2-transaction-source-value.js";

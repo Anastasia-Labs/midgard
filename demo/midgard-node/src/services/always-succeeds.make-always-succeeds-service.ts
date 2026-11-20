@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { Effect } from "effect";
 
 import {
@@ -15,7 +16,7 @@ import {
 /**
  * Resolves the full always-succeeds validator set used by test environments.
  */
-export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
+export const makeAlwaysSucceedsService: Effect.Effect<SDKCore.MidgardValidators> =
   Effect.gen(function* () {
     // Helpers
     /**
@@ -44,12 +45,12 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
     // state-queue spend/mint pair. Reuse that same untyped Plutus script for
     // the dev/test withdrawal roles instead of looking up a validator title
     // that the fixture does not contain.
-    const stateQueueYield: SDK.WithdrawalValidator = {
+    const stateQueueYield: SDKCore.WithdrawalValidator = {
       withdrawalScriptCBOR: stateQueueAuthenticated.spendingScriptCBOR,
       withdrawalScript: stateQueueAuthenticated.spendingScript,
       withdrawalScriptHash: stateQueueAuthenticated.spendingScriptHash,
     };
-    const stateQueue: SDK.StateQueueValidator = {
+    const stateQueue: SDKCore.StateQueueValidator = {
       ...stateQueueAuthenticated,
       yields: {
         commit: stateQueueYield,
@@ -63,7 +64,7 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
     const daParamsGovernor = stateQueue;
     const daAttestation = stateQueue;
     const daBondPool = stateQueue;
-    const availabilityChallenge: SDK.AvailabilityChallengeValidator = {
+    const availabilityChallenge: SDKCore.AvailabilityChallengeValidator = {
       ...stateQueueAuthenticated,
       yields: {
         open: stateQueueYield,
@@ -130,7 +131,7 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
     const invalidRange = yield* mkFP("invalid_range");
     const transitionTrace = yield* mkFP("transition_trace");
     const zeroInput = yield* mkFP("zero_input");
-    const validationTraceDispute: SDK.ValidationTraceDisputeValidators = {
+    const validationTraceDispute: SDKCore.ValidationTraceDisputeValidators = {
       ...transitionTrace,
       source: transitionTrace,
       game: transitionTrace,
@@ -158,7 +159,7 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
     // The case and the award mint as well as spend. The compact blueprint has
     // no dedicated stub for either, so each pairs the `transition_trace`
     // spend stub with the always-succeeds fraud-proof mint.
-    const validationTraceAuthenticated: SDK.AuthenticatedValidator = {
+    const validationTraceAuthenticated: SDKCore.AuthenticatedValidator = {
       ...fraudProof,
       ...transitionTrace,
     };

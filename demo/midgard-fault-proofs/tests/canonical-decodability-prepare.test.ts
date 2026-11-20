@@ -8,7 +8,7 @@ import {
   MIDGARD_ENVELOPE_VERDICT_MISSING_ARRAY_HEADER,
   MIDGARD_ENVELOPE_VERDICT_TRAILING_BYTES,
   miscountedMidgardFieldPreimage,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import { prepareCanonicalDecodability } from "../src/canonical-decodability/prepare-canonical-decodability.js";

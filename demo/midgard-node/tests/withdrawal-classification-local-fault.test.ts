@@ -5,7 +5,8 @@ import {
   createReplayedLedger,
   type ReplayedLedgerRefusal,
 } from "@al-ft/midgard-fault-proofs/replayed-ledger";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   CANONICAL_MAX_DEPTHS,
   deepPlutusDataCbor,
@@ -51,8 +52,9 @@ const base = vi.hoisted(() => ({
 }));
 const fault = vi.hoisted(() => ({ on: false }));
 
-vi.mock("@al-ft/midgard-sdk", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@al-ft/midgard-sdk")>();
+vi.mock("@al-ft/midgard-sdk/core", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@al-ft/midgard-sdk/core")>();
   const { Effect: E } = await import("effect");
   return {
     ...actual,
@@ -314,7 +316,7 @@ describe("a withdrawal classifier runtime fault", { timeout: 120_000 }, () => {
         ...payload.block_body,
         withdrawals: payload.block_body.withdrawals.map(([key]) => [
           key,
-          SDK.committedWithdrawalValueBytes({
+          SDKFraudProof.committedWithdrawalValueBytes({
             ...info,
             validity: "WithdrawalIsValid",
           }),

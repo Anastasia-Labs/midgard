@@ -1,4 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { describe, expect, it } from "vitest";
 
 import { promiseAdmissionFixture } from "./helpers/promise-admission.js";

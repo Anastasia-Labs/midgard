@@ -1,13 +1,13 @@
+import { type MidgardTxInput } from "@al-ft/midgard-sdk/core";
 import {
   encodeMidgardTxInputCanonical,
   type FieldOpening,
-  type MidgardTxInput,
   NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION,
   NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_MALFORMED,
   nativeScriptDecodingOpenedSubjectState,
   type NativeScriptDecodingScanThreadState,
   NativeScriptDecodingStep03OpenSubjectSpendRedeemer,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   Data,
   type LucidEvolution,

@@ -17,7 +17,7 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { screenMidgardForcedTxAdmission } from "@al-ft/midgard-core/consensus-validation";
 import { outRefLabel } from "@al-ft/midgard-core/out-ref";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/users";
 import { CML, type UTxO } from "@lucid-evolution/lucid";
 import { Effect, Either } from "effect";
 

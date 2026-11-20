@@ -1,7 +1,8 @@
 import "./transition-trace-challenger.transition-trace-challenger-tooling.js";
 
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { h32 } from "@al-ft/midgard-test-support/hex";
 import { describe, expect, it } from "vitest";
 
@@ -56,13 +57,16 @@ describe("transition trace single ledger mutation replay", () => {
             depositTransitions: [
               {
                 stepIndex: 0n,
-                projectedUtxo: mutation as SDK.LedgerInsertWitness,
+                projectedUtxo: mutation as SDKFraudProof.LedgerInsertWitness,
               },
             ],
           }
         : {
             withdrawalTransitions: [
-              { stepIndex: 0n, spentUtxo: mutation as SDK.LedgerDeleteWitness },
+              {
+                stepIndex: 0n,
+                spentUtxo: mutation as SDKFraudProof.LedgerDeleteWitness,
+              },
             ],
           };
       const make = async (honest: boolean) =>

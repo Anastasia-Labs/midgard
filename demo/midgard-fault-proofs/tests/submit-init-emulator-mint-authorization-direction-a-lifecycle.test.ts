@@ -24,7 +24,9 @@ import {
   decodeMidgardLedgerOutputCommitment,
   outRefLabel,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Data, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -55,7 +57,8 @@ import {
 } from "./support/submit-unjournaled.mint-authorization.js";
 
 const ACCUSED_POLICY_INDEX = 0n;
-const DIRECTION_SCRIPT_ABSENT = SDK.MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT;
+const DIRECTION_SCRIPT_ABSENT =
+  SDKFraudProof.MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT;
 
 describe("mint-authorization direction-A emulator lifecycle", () => {
   it("proves an absent mint policy end to end, mints the permanent fraud-proof token, and removes the fraudulent commitment", async () => {
@@ -210,7 +213,7 @@ describe("mint-authorization direction-A emulator lifecycle", () => {
     expect(outRefLabel(fraudProofUtxo)).toBe(step05.fraudProofOutRef);
     expect(fraudProofUtxo.assets[step05.fraudProofUnit]).toBe(1n);
     expect(
-      Data.from(fraudProofUtxo.datum!, SDK.FraudProofTokenDatum),
+      Data.from(fraudProofUtxo.datum!, SDKFraudProof.FraudProofTokenDatum),
     ).toStrictEqual({ fraud_prover: proverSigner.paymentKeyHash });
 
     // ——— Removal leg: the minted token takes the fraudulent commitment off
@@ -256,7 +259,7 @@ describe("mint-authorization direction-A emulator lifecycle", () => {
       throw new Error("Removal did not preserve the state-queue root");
     }
     const finalRoot = await Effect.runPromise(
-      SDK.utxoToStateQueueUTxO(
+      SDKStateQueue.utxoToStateQueueUTxO(
         finalRootUtxo,
         harness.contracts.stateQueue.policyId,
       ),

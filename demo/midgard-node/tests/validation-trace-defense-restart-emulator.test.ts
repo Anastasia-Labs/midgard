@@ -20,7 +20,7 @@ import {
   landWith,
   openFalseClaim,
 } from "@al-ft/midgard-fault-proofs/test-support/validation-trace-defender-scene";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { Data } from "@lucid-evolution/lucid";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 

@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
   credentialToAddress,
   Data,
@@ -57,7 +58,7 @@ const fixture = async (schedulerStart: number) => {
         },
       ],
     ],
-    [toUnit(paramsPolicy, SDK.DA_PARAMS_ASSET_NAME), [output]],
+    [toUnit(paramsPolicy, SDKDa.DA_PARAMS_ASSET_NAME), [output]],
   ]);
   const lucid = {
     wallet: () => ({ address: async () => address }),

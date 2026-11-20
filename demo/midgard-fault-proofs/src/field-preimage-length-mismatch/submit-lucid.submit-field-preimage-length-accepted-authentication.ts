@@ -1,14 +1,16 @@
 import {
+  requireInputIndex,
+  requireOwnSpendPurpose,
+  requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
   acceptedVerdictSubject,
   type CommittedFieldClaim,
   FieldPreimageLengthStep01RedeemerSchema,
   FieldPreimageLengthStep02DatumSchema,
   FieldPreimageLengthStep02RedeemerSchema,
   FieldPreimageLengthStep03DatumSchema,
-  requireInputIndex,
-  requireOwnSpendPurpose,
-  requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

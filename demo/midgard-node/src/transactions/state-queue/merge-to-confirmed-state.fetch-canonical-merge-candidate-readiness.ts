@@ -1,5 +1,6 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import type { SqlClient } from "@effect/sql";
 import { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect, Metric, Ref } from "effect";
@@ -34,8 +35,8 @@ import {
 export type CanonicalMergeCandidateReadiness =
   | {
       readonly status: "candidate";
-      readonly confirmedUTxO: SDK.StateQueueUTxO;
-      readonly firstBlockUTxO: SDK.StateQueueUTxO;
+      readonly confirmedUTxO: SDKStateQueue.StateQueueUTxO;
+      readonly firstBlockUTxO: SDKStateQueue.StateQueueUTxO;
       readonly blockHeader: SDK.Header;
       readonly firstBlockNode: SDK.StateQueueNode;
       readonly readiness: OldestQueuedBlockCandidateReadiness;
@@ -73,8 +74,8 @@ const makeMergeStateQueueError = (
   errorCode: MergeErrorCode,
   message: string,
   cause: unknown,
-): SDK.StateQueueError =>
-  new SDK.StateQueueError({
+): SDKStateQueue.StateQueueError =>
+  new SDKStateQueue.StateQueueError({
     message: `${errorCode}: ${message}`,
     cause: {
       error_code: errorCode,
@@ -91,7 +92,7 @@ export const failMergeWithCode = (
   message: string,
   cause: unknown,
   options?: MergeFailureOptions,
-): Effect.Effect<never, SDK.StateQueueError> =>
+): Effect.Effect<never, SDKStateQueue.StateQueueError> =>
   Effect.gen(function* () {
     yield* Metric.increment(mergeFailureCounter);
     if (options?.missingBlockTxs === true) {
@@ -102,7 +103,9 @@ export const failMergeWithCode = (
     );
   });
 
-const firstBlockOutRef = (firstBlockUTxO: SDK.StateQueueUTxO): string =>
+const firstBlockOutRef = (
+  firstBlockUTxO: SDKStateQueue.StateQueueUTxO,
+): string =>
   `${firstBlockUTxO.utxo.txHash}#${firstBlockUTxO.utxo.outputIndex.toString()}`;
 
 /**
@@ -113,7 +116,7 @@ const firstBlockOutRef = (firstBlockUTxO: SDK.StateQueueUTxO): string =>
  */
 export const fetchCanonicalMergeCandidateReadiness = (
   lucid: LucidEvolution,
-  fetchConfig: SDK.StateQueueFetchConfig,
+  fetchConfig: SDKStateQueue.StateQueueFetchConfig,
   _contracts: SDK.MidgardValidators,
 ): Effect.Effect<
   CanonicalMergeCandidateReadiness,
@@ -121,7 +124,7 @@ export const fetchCanonicalMergeCandidateReadiness = (
   | SDK.HashingError
   | SDK.LinkedListError
   | SDK.LucidError
-  | SDK.StateQueueError,
+  | SDKStateQueue.StateQueueError,
   SqlClient.SqlClient
 > =>
   Effect.gen(function* () {
@@ -140,7 +143,7 @@ export const fetchCanonicalMergeCandidateReadiness = (
     }
     if (firstBlockUTxO.datum.key === "Empty") {
       return yield* Effect.fail(
-        new SDK.StateQueueError({
+        new SDKStateQueue.StateQueueError({
           message: "Failed to classify merge candidate",
           cause: "first queued block cannot be a root node",
         }),
@@ -157,7 +160,7 @@ export const fetchCanonicalMergeCandidateReadiness = (
     const recomputedHeaderHash = yield* SDK.hashBlockHeader(blockHeader);
     if (recomputedHeaderHash !== headerNodeKey) {
       return yield* Effect.fail(
-        new SDK.StateQueueError({
+        new SDKStateQueue.StateQueueError({
           message:
             "Failed to classify merge candidate: queued block key/hash mismatch",
           cause: `datumKey=${headerNodeKey},computed=${recomputedHeaderHash}`,
@@ -172,7 +175,7 @@ export const fetchCanonicalMergeCandidateReadiness = (
     const nowUnixTime = yield* l1NowUnixTimeMs(lucid).pipe(
       Effect.mapError(
         (cause) =>
-          new SDK.StateQueueError({
+          new SDKStateQueue.StateQueueError({
             message: "Merge paused until the L1 slot is known",
             cause,
           }),
@@ -181,7 +184,7 @@ export const fetchCanonicalMergeCandidateReadiness = (
     const poisoned = yield* readPoisonedOwnHeaders.pipe(
       Effect.mapError(
         (cause) =>
-          new SDK.StateQueueError({
+          new SDKStateQueue.StateQueueError({
             message:
               "Merge paused until the own landed blocks whose events left the chain are read",
             cause,
@@ -273,8 +276,12 @@ export const preflightDecodeBlockTxs = (
 
 /** Blocks in the healthy landed queue (P1), published to the queue gauges. */
 export const getStateQueueLength = (
-  fetchConfig: SDK.StateQueueFetchConfig,
-): Effect.Effect<number, SDK.StateQueueError, Globals | SqlClient.SqlClient> =>
+  fetchConfig: SDKStateQueue.StateQueueFetchConfig,
+): Effect.Effect<
+  number,
+  SDKStateQueue.StateQueueError,
+  Globals | SqlClient.SqlClient
+> =>
   Effect.gen(function* () {
     const globals = yield* Globals;
     const queue = yield* requireLandedStateQueue(
@@ -289,7 +296,7 @@ export const getStateQueueLength = (
 export const slotFromUnixTime = (
   lucid: LucidEvolution,
   unixTimeMs: number,
-): Effect.Effect<number, SDK.StateQueueError> =>
+): Effect.Effect<number, SDKStateQueue.StateQueueError> =>
   Effect.try({
     try: () => {
       const slot = Number(lucid.unixTimeToSlot(unixTimeMs));
@@ -299,7 +306,7 @@ export const slotFromUnixTime = (
       return slot;
     },
     catch: (cause) =>
-      new SDK.StateQueueError({
+      new SDKStateQueue.StateQueueError({
         message: "Failed to convert merge valid-from time to a slot",
         cause,
       }),

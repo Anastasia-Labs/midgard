@@ -1,11 +1,13 @@
 import { deriveMidgardNativeTxFaultEvidenceMaterial } from "@al-ft/midgard-core";
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import {
-  encodeProofThreadForcedSourceKey,
   type FraudProofCatalogueCategoryName,
-  PROOF_THREAD_SOURCE_KIND_ACCEPTED,
   RejectionReasonSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  encodeProofThreadForcedSourceKey,
+  PROOF_THREAD_SOURCE_KIND_ACCEPTED,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";

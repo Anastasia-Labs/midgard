@@ -1,5 +1,6 @@
 import { encodeMidgardFieldPreimage } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -40,10 +41,10 @@ type UncheckedScenario = Awaited<
 >;
 type BindScenario = {
   readonly setup: UncheckedScenario["setup"];
-  readonly header: SDK.Header;
+  readonly header: SDKCore.Header;
   readonly txInclusion: UncheckedScenario["txInclusion"];
-  readonly withdrawalMembership: SDK.WithdrawalSourceMembershipProof;
-  readonly referenceInputs: readonly SDK.MidgardTxInput[];
+  readonly withdrawalMembership: SDKCore.WithdrawalSourceMembershipProof;
+  readonly referenceInputs: readonly SDKCore.MidgardTxInput[];
 };
 
 const initAndBind = async ({
@@ -166,7 +167,7 @@ describe("withdrawn-reference-input adversarial emulator suite", () => {
       }),
     );
 
-    const forgedClaim: SDK.WithdrawalSourceMembershipProof = {
+    const forgedClaim: SDKCore.WithdrawalSourceMembershipProof = {
       ...scenario.withdrawalMembership,
       value: {
         ...scenario.withdrawalMembership.value,
@@ -269,7 +270,7 @@ describe("withdrawn-reference-input adversarial emulator suite", () => {
       scenario,
       refs,
     });
-    const injected: SDK.MidgardTxInput = {
+    const injected: SDKCore.MidgardTxInput = {
       tx_id: "34".repeat(32),
       output_index: 2n,
     };

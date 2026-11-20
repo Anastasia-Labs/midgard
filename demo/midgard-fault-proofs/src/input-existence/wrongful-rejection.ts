@@ -4,8 +4,9 @@ import {
   decodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
-import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import { eventLedgerBefore } from "../event-ledger.js";
@@ -28,7 +29,7 @@ export type PreparedInputExistenceWrongfulRejection = Readonly<{
   headerHash: string;
   forcedSource: InputExistenceForcedSource;
   fullTransactionCbor: string;
-  subject: SDK.VerdictSubject;
+  subject: SDKFraudProof.VerdictSubject;
   inputIndex: bigint;
   inputItems: readonly Buffer[];
   selectedInput: SDK.MidgardTxInput | null;
@@ -88,7 +89,7 @@ export const inputExistenceWrongfulRejection = <ViolationId extends string>({
         ? decodeMidgardSpendInputItem(inputItems[Number(inputIndex)]!)
         : null;
     return {
-      subject: SDK.forcedVerdictSubject({
+      subject: SDKFraudProof.forcedVerdictSubject({
         transactionId: leaf.tx_id,
         sourceKey: source.membership.key,
         rejectionReason: reason,

@@ -5,7 +5,7 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { type MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
 import type { ForcedRejectionStopped } from "@al-ft/midgard-fault-proofs/workflow/forced-rejection-reason";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import {
   applyValidationLedgerMutations,
   buildCanonicalTransitionEffect,

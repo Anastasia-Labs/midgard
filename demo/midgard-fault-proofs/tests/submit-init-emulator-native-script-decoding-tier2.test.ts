@@ -25,7 +25,8 @@ import {
   MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
   outRefLabel,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { Data, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -89,7 +90,9 @@ describe("native-script-decoding emulator tier-2 carriage", () => {
     // The size, not any flag, is what selects tier 2: past the tier-1
     // redeemer bound, within one publication.
     const preimage = encodeMidgardFieldPreimage(
-      scenario.subjectFieldInputs.map(SDK.encodeMidgardTxInputCanonical),
+      scenario.subjectFieldInputs.map(
+        SDKFraudProof.encodeMidgardTxInputCanonical,
+      ),
     );
     expect(preimage.length).toBeGreaterThan(
       MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
@@ -214,7 +217,7 @@ describe("native-script-decoding emulator tier-2 carriage", () => {
     );
     expect(outRefLabel(fraudProofUtxo)).toBe(outcome.fraudProofOutRef);
     expect(
-      Data.from(fraudProofUtxo.datum!, SDK.FraudProofTokenDatum),
+      Data.from(fraudProofUtxo.datum!, SDKFraudProof.FraudProofTokenDatum),
     ).toStrictEqual({ fraud_prover: proverSigner.paymentKeyHash });
   }, 600_000);
 });

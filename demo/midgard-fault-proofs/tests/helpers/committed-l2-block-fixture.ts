@@ -4,7 +4,8 @@
  * step's pre-state root and commits the last step's post-state root. The
  * predecessor block's ledger source answers with `predecessorEntries`. */
 import { computeHash28 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../../src/evidence/canonical-block-evidence.js";
 import type { LedgerEntry } from "../../src/ledger-at.js";
@@ -43,7 +44,7 @@ export const committedL2BlockFixture = async ({
   const headerHash = computeHash28(SDK.encodeHeaderCbor(header)).toString(
     "hex",
   );
-  const payload: SDK.DaPayload = {
+  const payload: SDKDa.DaPayload = {
     ...base.payload,
     block_body: {
       ...base.payload.block_body,

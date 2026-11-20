@@ -12,7 +12,7 @@
 import { writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { CML, Data, walletFromSeed } from "@lucid-evolution/lucid";
 
 export const DA_BOND_UNSIGNED_FORMAT = "midgard-da-bond-unsigned-v1";

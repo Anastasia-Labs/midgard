@@ -8,16 +8,18 @@ import {
   getHeaderFromStateQueueDatum,
   hashBlockHeader,
   Header,
-  incompleteEmulatorCommitBlockHeaderTxProgram,
   type MidgardValidators,
   requireInputIndex,
   requireMintRedeemerIndex,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
+} from "@al-ft/midgard-sdk/core";
+import {
+  incompleteEmulatorCommitBlockHeaderTxProgram,
   STATE_QUEUE_ROOT_ASSET_NAME,
   utxoToStateQueueUTxO,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import {
   type BuildTxWithRedeemer,
   Data,

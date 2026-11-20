@@ -1,7 +1,8 @@
 import { existsSync, mkdirSync, readdirSync, renameSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   type LucidEvolution,
   paymentCredentialOf,
@@ -95,7 +96,10 @@ export async function stageJourney(
   const describeQueueTail = async (): Promise<string> => {
     const outputs = await provider.getUtxosWithUnit(
       contracts.stateQueue.spendingScriptAddress,
-      toUnit(contracts.stateQueue.policyId, SDK.STATE_QUEUE_ROOT_ASSET_NAME),
+      toUnit(
+        contracts.stateQueue.policyId,
+        SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME,
+      ),
     );
     const root = outputs[0];
     if (outputs.length !== 1 || root === undefined) return "";

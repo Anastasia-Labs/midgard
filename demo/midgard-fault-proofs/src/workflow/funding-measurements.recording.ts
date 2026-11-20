@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { canonicalJson } from "@al-ft/midgard-core/canonical-json";
-import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
+import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 
 import { type evaluateWorkflowFundingTransaction } from "./funding-measurements.evaluate.js";
 import {

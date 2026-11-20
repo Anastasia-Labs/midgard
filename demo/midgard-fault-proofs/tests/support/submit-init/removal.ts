@@ -3,8 +3,8 @@ import {
   type MidgardValidators,
   SCHEDULER_ASSET_NAME,
   SchedulerDatum,
-  utxoToStateQueueUTxO,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { utxoToStateQueueUTxO } from "@al-ft/midgard-sdk/state-queue";
 import { Data, Emulator, Lucid, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";

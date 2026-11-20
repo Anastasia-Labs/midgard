@@ -1,4 +1,4 @@
-import { ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX } from "@al-ft/midgard-sdk";
+import { ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX } from "@al-ft/midgard-sdk/core";
 import { CML, Data, toUnit } from "@lucid-evolution/lucid";
 
 import {

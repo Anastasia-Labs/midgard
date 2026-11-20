@@ -5,7 +5,7 @@
  */
 import type { OutRef } from "@al-ft/midgard-l1-follower";
 import type { SimTx } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { expect } from "vitest";
 
 import {

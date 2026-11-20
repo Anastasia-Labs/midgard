@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { fromHex } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
@@ -93,7 +94,7 @@ export const submitDepositOnlyCommit = ({
   readonly deploymentMarker: NonNullable<
     ContractDeploymentIdentityValue["deploymentMarker"]
   >;
-  readonly latestBlock: SDK.StateQueueUTxO;
+  readonly latestBlock: SDKStateQueue.StateQueueUTxO;
   readonly endTime: Date;
   readonly blockTimeMs?: number;
   readonly includedDepositEntries: readonly DepositsDB.Entry[];

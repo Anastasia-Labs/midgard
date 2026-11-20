@@ -1,7 +1,8 @@
 import { Worker } from "node:worker_threads";
 
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { SqlClient } from "@effect/sql";
 import {
   credentialToAddress,
@@ -131,7 +132,7 @@ it("real driver epochs cross the compiled planning notifier and dispatcher lossl
             },
           },
           parent: {
-            assetName: SDK.STATE_QUEUE_ROOT_ASSET_NAME,
+            assetName: SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME,
             utxo: {
               txHash: "44".repeat(32),
               outputIndex: 0,
@@ -141,7 +142,8 @@ it("real driver epochs cross the compiled planning notifier and dispatcher lossl
               ),
               assets: {
                 lovelace: 2_000_000n,
-                ["bb".repeat(28) + SDK.STATE_QUEUE_ROOT_ASSET_NAME]: 1n,
+                ["bb".repeat(28) + SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME]:
+                  1n,
               },
             },
             datum: {

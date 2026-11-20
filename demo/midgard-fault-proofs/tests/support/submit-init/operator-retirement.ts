@@ -2,7 +2,6 @@ import {
   ActiveOperatorDatum,
   ActiveOperatorMintRedeemer,
   ActiveOperatorSpendRedeemer,
-  computeInactivityThreshold,
   encodeLinkedListNodeView,
   getProtocolParameters,
   outputReferenceFromUTxO,
@@ -19,8 +18,9 @@ import {
   SCHEDULER_ASSET_NAME,
   SchedulerDatum,
   SchedulerSpendRedeemer,
-  TxOrderDatum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { computeInactivityThreshold } from "@al-ft/midgard-sdk/operators";
+import { TxOrderDatum } from "@al-ft/midgard-sdk/users";
 import {
   type BuildTxWithRedeemer,
   Data,

@@ -1,7 +1,7 @@
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   type FraudProofCatalogueCategoryName,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import { Constr, Data, type UTxO, utxoToCore } from "@lucid-evolution/lucid";
 
 /** The lineage kind of thread custody proved from the chain alone. */

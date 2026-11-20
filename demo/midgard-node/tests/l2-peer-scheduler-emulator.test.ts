@@ -21,7 +21,7 @@
  * this test does not run; the operator twin covers that.
  */
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import {
   generateSeedPhrase,
   type LucidEvolution,

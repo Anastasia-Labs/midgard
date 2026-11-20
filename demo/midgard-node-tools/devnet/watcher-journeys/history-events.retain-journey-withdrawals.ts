@@ -9,7 +9,10 @@ import {
 import { buildCanonicalBlockFixture } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import { depositEventsRetainedBlock } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-retained";
 import { buildCountedRoot } from "@al-ft/midgard-fault-proofs/transition-trace/phas";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -30,7 +33,7 @@ export type HistoryEventBlockInput = {
 
 /** An event resolved by the shared authenticated history reader. */
 export type StagedHistoryEvent = {
-  order: SDK.DepositUTxO | SDK.WithdrawalUTxO;
+  order: SDKUsers.DepositUTxO | SDKUsers.WithdrawalUTxO;
   policyId: string;
 };
 
@@ -41,7 +44,7 @@ export type CapturedEventHistoryWitness = {
 };
 
 export const authenticateEvent = (input: StagedHistoryEvent) => {
-  const captured = SDK.captureEventHistoryWitness(
+  const captured = SDKUsers.captureEventHistoryWitness(
     input.order.history,
     input.policyId,
     input.order.kind,
@@ -68,8 +71,8 @@ export const authenticateEvent = (input: StagedHistoryEvent) => {
       "Staged history event content differs from its authenticated Order",
     );
   if (
-    !SDK.assetsEqual(
-      SDK.valueToAssets(captured.originalAssets),
+    !SDKUsers.assetsEqual(
+      SDKUsers.valueToAssets(captured.originalAssets),
       input.order.originalAssets,
     ) ||
     Data.to(captured.commitment.event_id, SDK.OutputReference) !==
@@ -88,13 +91,16 @@ export const captureStagedHistoryEvent = (
   input: StagedHistoryEvent,
 ): CapturedEventHistoryWitness => {
   authenticateEvent(input);
-  const captured = SDK.captureEventHistoryWitness(
+  const captured = SDKUsers.captureEventHistoryWitness(
     input.order.history,
     input.policyId,
     input.order.kind,
   );
   return {
-    commitmentCbor: Data.to(captured.commitment, SDK.EventHistoryCommitment),
+    commitmentCbor: Data.to(
+      captured.commitment,
+      SDKUsers.EventHistoryCommitment,
+    ),
     openingCbor: canonical(captured.openingCbor),
   };
 };
@@ -202,13 +208,13 @@ export const retainJourneyWithdrawals = async (
     throw new Error(
       "Withdrawal history does not open the predecessor ledger root",
     );
-  const withdrawals: SDK.DaPayloadEntry[] = [];
-  const mappings: SDK.DaPayloadEntry[] = [];
-  const transitions: SDK.DaPayloadEntry[] = [];
+  const withdrawals: SDKDa.DaPayloadEntry[] = [];
+  const mappings: SDKDa.DaPayloadEntry[] = [];
+  const transitions: SDKDa.DaPayloadEntry[] = [];
   const classifications: SDK.WithdrawalLedgerClassification[] = [];
   const claims = [...input.claims].sort((left, right) =>
-    SDK.committedWithdrawalKeyBytes(left.id).localeCompare(
-      SDK.committedWithdrawalKeyBytes(right.id),
+    SDKFraudProof.committedWithdrawalKeyBytes(left.id).localeCompare(
+      SDKFraudProof.committedWithdrawalKeyBytes(right.id),
     ),
   );
   for (const [index, claim] of claims.entries()) {
@@ -236,7 +242,10 @@ export const retainJourneyWithdrawals = async (
     const eventKey: SDK.EventKey = {
       WithdrawalEventKey: { withdrawal_id: claim.id },
     };
-    withdrawals.push([SDK.committedWithdrawalKeyBytes(claim.id), infoCbor]);
+    withdrawals.push([
+      SDKFraudProof.committedWithdrawalKeyBytes(claim.id),
+      infoCbor,
+    ]);
     mappings.push([
       Data.to(eventKey, SDK.EventKey),
       Data.to(
@@ -259,7 +268,7 @@ export const retainJourneyWithdrawals = async (
       ),
     ]);
   }
-  const root = (domain: SDK.RootDomain, entries: SDK.DaPayloadEntry[]) =>
+  const root = (domain: SDK.RootDomain, entries: SDKDa.DaPayloadEntry[]) =>
     buildCountedRoot(
       domain,
       entries.map(([key, value]) => ({
@@ -291,9 +300,9 @@ export const retainJourneyWithdrawals = async (
     transitionTraceRoot: transitionRoot.root,
   };
   const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
-  const sort = (entries: SDK.DaPayloadEntry[]) =>
+  const sort = (entries: SDKDa.DaPayloadEntry[]) =>
     entries.sort(([left], [right]) => left.localeCompare(right));
-  const payload: SDK.DaPayload = {
+  const payload: SDKDa.DaPayload = {
     ...base.payload,
     block_body: {
       ...base.payload.block_body,
@@ -310,7 +319,7 @@ export const retainJourneyWithdrawals = async (
       header,
       headerHash,
       payload,
-      payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(payload), {
+      payloadEnvelopeCbor: await wrapDaPayload(SDKDa.encodeDaPayload(payload), {
         mode: "identity",
       }),
       classifications,

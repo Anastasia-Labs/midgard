@@ -1,5 +1,5 @@
 import { decodeMidgardNativeTxCompact } from "@al-ft/midgard-core";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 
 /**
  * Whether a committed normal `transactions_root` leaf carries a non-zero

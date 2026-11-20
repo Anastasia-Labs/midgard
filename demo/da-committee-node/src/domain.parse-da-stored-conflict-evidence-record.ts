@@ -3,7 +3,7 @@ import {
   decodeDaConflictingSignatureHeaderEvidenceCbor,
   encodeDaConflictingSignatureHeaderEvidenceCbor,
 } from "@al-ft/midgard-core/da-transport";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 
 import { type DaStoredConflictEvidenceRecord } from "./domain.da-payload-record.js";
 import {

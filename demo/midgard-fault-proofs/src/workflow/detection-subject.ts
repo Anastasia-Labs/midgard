@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
@@ -102,11 +103,11 @@ export const forcedTransactionSubject = (
  * id, or the forced source by its order key.
  */
 export const verdictDetectionSubject = (
-  subject: SDK.VerdictSubject,
+  subject: SDKFraudProof.VerdictSubject,
 ): DetectionSubject => {
-  if (subject.source_kind === SDK.PROOF_THREAD_SOURCE_KIND_ACCEPTED)
+  if (subject.source_kind === SDKFraudProof.PROOF_THREAD_SOURCE_KIND_ACCEPTED)
     return acceptedTransactionSubject(subject.transaction_id);
-  if (subject.source_kind === SDK.PROOF_THREAD_SOURCE_KIND_FORCED)
+  if (subject.source_kind === SDKFraudProof.PROOF_THREAD_SOURCE_KIND_FORCED)
     return forcedTransactionSubject(
       Data.from(subject.source_key, SDK.OutputReference),
     );

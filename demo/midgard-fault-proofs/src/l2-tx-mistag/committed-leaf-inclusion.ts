@@ -1,6 +1,6 @@
 /** Inclusion material for a code-1 normal leaf, read from the committed
  * leaves alone. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

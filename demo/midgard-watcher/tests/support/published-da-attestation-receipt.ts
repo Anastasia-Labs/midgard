@@ -1,4 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { CML, coreToTxOutput } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

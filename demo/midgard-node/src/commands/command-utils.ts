@@ -9,7 +9,7 @@ import {
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { hexToBytes } from "@al-ft/midgard-core/hex";
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import {
   type Assets,
   CML,

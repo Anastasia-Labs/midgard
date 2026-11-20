@@ -1,5 +1,5 @@
-import { encodeProofThreadForcedSourceKey } from "@al-ft/midgard-sdk";
-import { type VerdictSubject } from "@al-ft/midgard-sdk";
+import { encodeProofThreadForcedSourceKey } from "@al-ft/midgard-sdk/fraud-proof";
+import { type VerdictSubject } from "@al-ft/midgard-sdk/fraud-proof";
 
 import { detectDistinctAssetAccumulationLimitReplay } from "../distinct-asset-accumulation-limit/replay.js";
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";

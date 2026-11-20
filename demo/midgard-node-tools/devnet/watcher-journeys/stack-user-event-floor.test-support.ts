@@ -2,7 +2,9 @@ import {
   DEPLOYMENT_PROFILES,
   SELECTED_DEPLOYMENT_PROFILE,
 } from "@al-ft/midgard-core/deployment-profile";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKOperators from "@al-ft/midgard-sdk/operators";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 import type {
   OperatorShiftAppointment,
@@ -20,7 +22,7 @@ export type ProfileName = "preprod-testing" | "preprod-rehearsal";
 export const eventTiming = (name: ProfileName): StackUserEventTiming => {
   const profile = DEPLOYMENT_PROFILES[name].timing;
   return {
-    eventTtlMs: SDK.USER_EVENT_TX_TTL_MS,
+    eventTtlMs: SDKUsers.USER_EVENT_TX_TTL_MS,
     eventWaitMs: profile.event_wait_ms,
     negligenceTimeoutMs: profile.user_events_negligence_timeout_ms,
     graceMs: profile.new_shift_inactivity_grace_period_ms,
@@ -34,7 +36,7 @@ export const strikeThreshold = (
   shiftStartMs: number,
   inclusionTimeMs: number,
 ) =>
-  SDK.computeInactivityThreshold({
+  SDKOperators.computeInactivityThreshold({
     shiftStartMs: BigInt(shiftStartMs),
     stateQueueTailEndTimeMs: 0n,
     neglectedEvent: {
@@ -42,7 +44,7 @@ export const strikeThreshold = (
       inclusionTimeMs: BigInt(inclusionTimeMs),
     },
     params: {
-      ...SDK.DEFAULT_INACTIVITY_TIMING_PARAMETERS,
+      ...SDKOperators.DEFAULT_INACTIVITY_TIMING_PARAMETERS,
       shiftDurationMs: BigInt(timing.shiftDurationMs),
       newShiftInactivityGracePeriodMs: BigInt(timing.graceMs),
       userEventsNegligenceTimeoutMs: BigInt(timing.negligenceTimeoutMs),
@@ -62,18 +64,18 @@ export const soonestDueOnGrid = (
   timing: StackUserEventTiming,
   builtMs: number,
 ) => {
-  const slotStartMs = SDK.slotToUnixTimeForLucid(lucid, 1_000)!;
-  const slotMs = SDK.slotToUnixTimeForLucid(lucid, 1_001)! - slotStartMs;
+  const slotStartMs = SDKUsers.slotToUnixTimeForLucid(lucid, 1_000)!;
+  const slotMs = SDKUsers.slotToUnixTimeForLucid(lucid, 1_001)! - slotStartMs;
   let soonestMs = Number.POSITIVE_INFINITY;
   for (let intoSlotMs = 0; intoSlotMs < slotMs; intoSlotMs++) {
     const nowMs = slotStartMs + intoSlotMs;
-    const validToMs = SDK.resolveUserEventValidTo(
+    const validToMs = SDKUsers.resolveUserEventValidTo(
       lucid,
       timing.eventTtlMs,
       () => nowMs,
     );
     const dueMs =
-      SDK.resolveEventInclusionTime(
+      SDKUsers.resolveEventInclusionTime(
         validToMs,
         SELECTED_DEPLOYMENT_PROFILE.network,
       ) -
@@ -100,7 +102,7 @@ export const gateOn = (
     /** How far the wall clock runs ahead of the ledger; none by default. */
     wallAheadMs?: number;
     commitAllowanceMs?: number;
-    undelivered?: SDK.NeglectedUserEventClaim | null;
+    undelivered?: SDKOperators.NeglectedUserEventClaim | null;
     /**
      * The scheduler refresh at the ledger time it is asked at; none by
      * default. Like operator-2's guarded wallet, the gate's refresh is

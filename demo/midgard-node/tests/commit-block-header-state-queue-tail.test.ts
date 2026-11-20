@@ -1,5 +1,6 @@
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { SqlClient } from "@effect/sql";
 import { type LucidEvolution, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -54,7 +55,7 @@ const makeTail = async ({
   readonly outputIndex?: number;
   readonly header?: SDK.Header;
   readonly next?: SDK.LinkedListNodeView["next"];
-} = {}): Promise<SDK.StateQueueUTxO> => {
+} = {}): Promise<SDKStateQueue.StateQueueUTxO> => {
   const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
   const assetName = SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + headerHash;
   const datum: SDK.LinkedListNodeView = {
@@ -80,7 +81,7 @@ const makeTail = async ({
   return { utxo, datum, assetName };
 };
 
-const config: SDK.StateQueueFetchConfig = {
+const config: SDKStateQueue.StateQueueFetchConfig = {
   stateQueueAddress,
   stateQueuePolicyId: policyId,
 };
@@ -99,7 +100,7 @@ const rootLinkingTo = (next: string): UTxO => ({
   address: stateQueueAddress,
   assets: {
     lovelace: 3_000_000n,
-    [toUnit(policyId, SDK.STATE_QUEUE_ROOT_ASSET_NAME)]: 1n,
+    [toUnit(policyId, SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME)]: 1n,
   },
   datum: SDK.encodeLinkedListNodeView({
     key: "Empty",
@@ -115,12 +116,12 @@ const rootLinkingTo = (next: string): UTxO => ({
   }),
 });
 
-const keyOf = (node: SDK.StateQueueUTxO): string =>
+const keyOf = (node: SDKStateQueue.StateQueueUTxO): string =>
   node.datum.key === "Empty" ? "" : node.datum.key.Key.key;
 
 /** `effect` over the landed queue: the root, then `nodes` in list order. */
 const overLandedQueue = <A, E>(
-  nodes: readonly SDK.StateQueueUTxO[],
+  nodes: readonly SDKStateQueue.StateQueueUTxO[],
   effect: Effect.Effect<A, E, SqlClient.SqlClient>,
   extra: readonly UTxO[] = [],
 ) =>
@@ -294,13 +295,13 @@ const submitSlotSnapshot = {
 
 /** The production commit guard against the block time `COMMIT_VALID_TO_MS - 1`. */
 const fitsBlockTime = (headerEndTimeMs: number, l2TransactionCount: bigint) =>
-  SDK.commitHeaderFitsBlockTime({
+  SDKStateQueue.commitHeaderFitsBlockTime({
     header: {
       startTime: 0n,
       endTime: BigInt(headerEndTimeMs),
       l2TransactionCount,
     },
-    blockTime: SDK.commitBlockTimeOfValidTo(COMMIT_VALID_TO_MS),
+    blockTime: SDKStateQueue.commitBlockTimeOfValidTo(COMMIT_VALID_TO_MS),
   });
 
 describe("commit-block header end_time is anchored to the commit validity bound", () => {
@@ -318,17 +319,18 @@ describe("commit-block header end_time is anchored to the commit validity bound"
     // This inclusive upper bound is the block time the builder hands to the
     // node, and a header ending at it satisfies the guard gating every
     // production commit.
-    expect(SDK.commitBlockTimeOfValidTo(interval.validToMs)).toBe(
+    expect(SDKStateQueue.commitBlockTimeOfValidTo(interval.validToMs)).toBe(
       BigInt(interval.inclusiveUpperBoundMs),
     );
     expect(fitsBlockTime(interval.inclusiveUpperBoundMs, 1n)).toBe(true);
   });
 
   it("accepts the maximum end_time the production validity guard allows", () => {
-    const validFrom = COMMIT_VALID_TO_MS - SDK.COMMIT_MAX_VALIDITY_RANGE_MS;
+    const validFrom =
+      COMMIT_VALID_TO_MS - SDKStateQueue.COMMIT_MAX_VALIDITY_RANGE_MS;
     expect(validFrom).toBe(1_700_000_000_001);
     expect(
-      SDK.isCommitValidityInterval({
+      SDKStateQueue.isCommitValidityInterval({
         validFrom,
         validTo: COMMIT_VALID_TO_MS,
       }),
@@ -352,7 +354,7 @@ describe("commit-block header end_time is anchored to the commit validity bound"
     // header end_time.
     for (const validFrom of [1_700_000_000_001, 1_700_000_479_001]) {
       expect(
-        SDK.isCommitValidityInterval({
+        SDKStateQueue.isCommitValidityInterval({
           validFrom,
           validTo: COMMIT_VALID_TO_MS,
         }),
@@ -374,13 +376,14 @@ describe("commit-block header end_time is anchored to the commit validity bound"
     // The case that separates `=== validTo - 1` from `<= validTo - 1` for a
     // block with L2 transactions; a block of user events alone (a catch-up
     // slice) may end there.
-    const validFrom = COMMIT_VALID_TO_MS - SDK.COMMIT_MAX_VALIDITY_RANGE_MS;
+    const validFrom =
+      COMMIT_VALID_TO_MS - SDKStateQueue.COMMIT_MAX_VALIDITY_RANGE_MS;
     expect(validFrom).toBe(WIDEST_COMMIT_VALID_FROM_MS);
 
     // The interval itself is admissible, so the rejection below is attributable
     // to the header guard rather than to the interval guard.
     expect(
-      SDK.isCommitValidityInterval({
+      SDKStateQueue.isCommitValidityInterval({
         validFrom,
         validTo: COMMIT_VALID_TO_MS,
       }),

@@ -1,5 +1,7 @@
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -29,7 +31,7 @@ const PLACEHOLDER_WITHDRAWAL_INFO: SDK.WithdrawalInfo = {
 
 const countedRoot = async (
   domain: SDK.RootDomain,
-  entries: readonly SDK.DaPayloadEntry[],
+  entries: readonly SDKDa.DaPayloadEntry[],
 ) =>
   (
     await buildCountedRoot(
@@ -51,7 +53,7 @@ export const withPlaceholderWithdrawalBlock = async <
   Fixture extends {
     readonly header: SDK.Header;
     readonly headerHash: string;
-    readonly payload: SDK.DaPayload;
+    readonly payload: SDKDa.DaPayload;
     readonly payloadEnvelopeCbor: Buffer;
   },
 >(
@@ -66,19 +68,19 @@ export const withPlaceholderWithdrawalBlock = async <
   const eventKey: SDK.EventKey = {
     WithdrawalEventKey: { withdrawal_id: PLACEHOLDER_WITHDRAWAL_ID },
   };
-  const withdrawals: SDK.DaPayloadEntry[] = [
+  const withdrawals: SDKDa.DaPayloadEntry[] = [
     [
       Data.to(PLACEHOLDER_WITHDRAWAL_ID, SDK.OutputReference),
-      SDK.committedWithdrawalValueBytes(PLACEHOLDER_WITHDRAWAL_INFO),
+      SDKFraudProof.committedWithdrawalValueBytes(PLACEHOLDER_WITHDRAWAL_INFO),
     ],
   ];
-  const eventToStep: SDK.DaPayloadEntry[] = [
+  const eventToStep: SDKDa.DaPayloadEntry[] = [
     [
       Data.to(eventKey, SDK.EventKey),
       Data.to({ step_index: 0n, phase: "Withdrawal" }, SDK.EventToStepValue),
     ],
   ];
-  const transitionTrace: SDK.DaPayloadEntry[] = [
+  const transitionTrace: SDKDa.DaPayloadEntry[] = [
     [
       Data.to(0n),
       Data.to(
@@ -117,7 +119,7 @@ export const withPlaceholderWithdrawalBlock = async <
     ),
   };
   const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
-  const payload: SDK.DaPayload = {
+  const payload: SDKDa.DaPayload = {
     ...fixture.payload,
     block_body: {
       ...body,
@@ -134,7 +136,7 @@ export const withPlaceholderWithdrawalBlock = async <
     header,
     headerHash,
     payload,
-    payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(payload), {
+    payloadEnvelopeCbor: await wrapDaPayload(SDKDa.encodeDaPayload(payload), {
       mode: "identity",
     }),
   };

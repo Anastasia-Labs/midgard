@@ -3,7 +3,7 @@ import {
   MPF_CHUNKED_VERIFY_WITHDRAW_TITLE,
   parsePhasMembershipBlueprint,
   phasMembershipWithdrawalScriptFromBlueprint,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import {
   type Emulator,
   type EmulatorAccount,

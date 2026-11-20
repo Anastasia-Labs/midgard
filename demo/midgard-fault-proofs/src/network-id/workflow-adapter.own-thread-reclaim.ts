@@ -3,7 +3,7 @@ import {
   NetworkIdForcedScanDatum,
   NetworkIdForcedStepDatum,
   NetworkIdStep02Datum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import type { UTxO } from "@lucid-evolution/lucid";
 
 import type { FraudProofFamilyWorkflowAdapter } from "../workflow/orchestrator.js";

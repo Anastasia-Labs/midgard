@@ -1,6 +1,10 @@
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import type { OutRefLike } from "@al-ft/midgard-core/out-ref";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDK from "@al-ft/midgard-sdk/deployment";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import type * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { Network } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -11,8 +15,8 @@ export const buildRealAvailabilityChallengeValidator = (
   hubOraclePolicyId: string,
   referenceScriptAuthPolicyId: string,
   daBondPoolPolicyId: string,
-  parameters: SDK.DaAvailabilityParameters,
-): Effect.Effect<SDK.AvailabilityChallengeValidator, Error> =>
+  parameters: SDKDa.DaAvailabilityParameters,
+): Effect.Effect<SDKCore.AvailabilityChallengeValidator, Error> =>
   Effect.gen(function* () {
     const blueprint = yield* loadRealBlueprint();
     return yield* Effect.try({
@@ -45,20 +49,21 @@ export const expectDerivedScriptHash = (
 
 export const buildRealFaultProofContracts = (
   network: Network,
-  contracts: SDK.MidgardValidators,
-  computationThread: SDK.MintingValidator,
-  fraudProof: SDK.AuthenticatedValidator,
-  eventHistoryBounds: SDK.EventHistoryPayloadBounds,
+  contracts: SDKCore.MidgardValidators,
+  computationThread: SDKCore.MintingValidator,
+  fraudProof: SDKCore.AuthenticatedValidator,
+  eventHistoryBounds: SDKUsers.EventHistoryPayloadBounds,
   l1SlotConfig: L1SlotConfig,
   disputeBondLovelace: bigint,
   caseConfigInitializationNonce: OutRefLike,
 ): Effect.Effect<
-  SDK.FaultProofContractChains & Pick<SDK.FaultProofContracts, "scriptDecode">,
+  SDKFraudProof.FaultProofContractChains &
+    Pick<SDKFraudProof.FaultProofContracts, "scriptDecode">,
   Error
 > =>
   Effect.gen(function* () {
     const blueprint = yield* loadRealBlueprint();
-    const derived = yield* SDK.buildFaultProofContracts({
+    const derived = yield* SDKFraudProof.buildFaultProofContracts({
       eventHistoryBounds,
       l1SlotConfig,
       disputeBondLovelace,

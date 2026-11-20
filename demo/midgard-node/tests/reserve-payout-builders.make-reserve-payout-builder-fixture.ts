@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   type Assets,
   CML,
@@ -56,10 +57,10 @@ export const expectAuthenticateMintRedeemerLayout = ({
     transaction,
   ).filter((pointer) => pointer.tag === CML.RedeemerTag.Reward);
   expect(withdrawPointers).toHaveLength(1);
-  const redeemer = decodeRedeemer<SDK.EventHistoryObserve>(
+  const redeemer = decodeRedeemer<SDKUsers.EventHistoryObserve>(
     transaction,
     withdrawPointers[0]!,
-    SDK.EventHistoryObserve,
+    SDKUsers.EventHistoryObserve,
   );
   if (!("Apply" in redeemer) || !("InsertOrder" in redeemer.Apply.operation))
     throw new Error("Expected history insertion");

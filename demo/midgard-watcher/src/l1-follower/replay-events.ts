@@ -1,7 +1,9 @@
 import { FraudProofL1UnavailableError } from "@al-ft/midgard-fault-proofs/workflow/l1-source";
 import type { FactStore } from "@al-ft/midgard-l1-follower";
 import { eventKeyOfId, EVENTS_TABLE } from "@al-ft/midgard-l1-follower/events";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { CML, Data } from "@lucid-evolution/lucid";
 
 import type { WatcherStateQueueHeaderObservation } from "../indexers/authenticated-state-queue-observation.js";
@@ -15,7 +17,7 @@ export const replayEventIds = async (
     store: FactStore;
     scripts: WatcherUserEventScripts;
     header: WatcherStateQueueHeaderObservation;
-    payload: SDK.DaPayload;
+    payload: SDKDa.DaPayload;
   }>,
 ) => {
   const commit = await input.store.txByHash(
@@ -81,7 +83,7 @@ export const replayEventIds = async (
       const datumCbor = output.datum()?.as_datum()?.to_cbor_hex();
       if (datumCbor === undefined)
         throw new Error("authenticated forced order has no inline datum");
-      const datum = Data.from(datumCbor, SDK.TxOrderDatum);
+      const datum = Data.from(datumCbor, SDKUsers.TxOrderDatum);
       const id = Data.to(datum.event.id, SDK.OutputReference);
       const name = eventKeyOfId(Buffer.from(id, "hex")).toString("hex");
       if (

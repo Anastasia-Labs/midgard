@@ -2,7 +2,7 @@ import {
   decodeMidgardVersionedScript,
   hashMidgardVersionedScript,
 } from "@al-ft/midgard-core";
-import { NATIVE_SCRIPT_INVALID_VIOLATION_ID } from "@al-ft/midgard-sdk";
+import { NATIVE_SCRIPT_INVALID_VIOLATION_ID } from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import type { CanonicalBlockClassification } from "../workflow/classification.js";

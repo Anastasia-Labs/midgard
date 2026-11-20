@@ -1,4 +1,8 @@
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/da";
+import "@al-ft/midgard-sdk/users";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "../double-withdraw/submit-double-withdraw-init.js";
 import "../double-withdraw/submit-double-withdraw-step-01.js";
 import "../double-withdraw/submit-double-withdraw-step-02.js";

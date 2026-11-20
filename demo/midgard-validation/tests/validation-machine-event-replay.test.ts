@@ -6,7 +6,7 @@ import {
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import { EventKey } from "@al-ft/midgard-sdk";
+import { EventKey } from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 import { Cause, Effect, Exit } from "effect";
 import { describe, expect, it, vi } from "vitest";

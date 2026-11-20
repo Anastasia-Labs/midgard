@@ -1,5 +1,6 @@
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Data } from "@lucid-evolution/lucid";
 
 import { watcherSameCanonicalJson } from "../storage/durable-store.canonical-json.js";
@@ -25,7 +26,7 @@ export const NATURAL = /^(?:0|[1-9][0-9]*)$/u;
 
 export const OUT_REF = /^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u;
 
-export type QueueNode = SDK.StateQueueTransitionNode;
+export type QueueNode = SDKStateQueue.StateQueueTransitionNode;
 
 export type DecodedQueueHeader = Readonly<{
   headerHash: string;
@@ -62,11 +63,11 @@ export type WatcherAuthenticatedStateQueueObservation = Readonly<{
   }>;
   sourceId: string;
   previousObservationDigest: string | null;
-  checkpoints: readonly SDK.StateQueueAuthenticatedReplayCheckpoint[];
+  checkpoints: readonly SDKStateQueue.StateQueueAuthenticatedReplayCheckpoint[];
   finalizedQueue: readonly QueueNode[];
   finalizedHeaders: readonly WatcherStateQueueHeaderObservation[];
   finalizedCorrectionLock: WatcherCorrectionLockObservation | null;
-  correctionLockWitnesses: readonly SDK.StateQueueCorrectionLockWitness[];
+  correctionLockWitnesses: readonly SDKStateQueue.StateQueueCorrectionLockWitness[];
   observationDigest: string;
 }>;
 

@@ -25,7 +25,7 @@ import {
   EVENTS_TABLE,
 } from "@al-ft/midgard-l1-follower/events";
 import { addressText, toLucidUtxo } from "@al-ft/midgard-l1-follower/provider";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/operators";
 
 import type { ForcedOrderConfig } from "../forced-orders/config.js";
 import {

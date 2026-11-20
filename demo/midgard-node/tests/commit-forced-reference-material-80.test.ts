@@ -10,7 +10,8 @@ import {
   deriveMidgardTxFieldPreimages,
   screenMidgardForcedTxAdmission,
 } from "@al-ft/midgard-core/consensus-validation";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 import { expect, it, vi } from "vitest";
@@ -75,7 +76,7 @@ it("admits a native-only order referencing a verified Flat script supplier", asy
     if (nonceInput === undefined)
       throw new Error("published wallet has no nonce");
     const orderBuild = await Effect.runPromise(
-      SDK.buildUnsignedTxOrderTxWithMetadataProgram(
+      SDKUsers.buildUnsignedTxOrderTxWithMetadataProgram(
         wallet,
         l1.fixture.contracts,
         {
@@ -94,7 +95,7 @@ it("admits a native-only order referencing a verified Flat script supplier", asy
     expect(await wallet.awaitTx(txHash)).toBe(true);
     const order = (
       await Effect.runPromise(
-        SDK.utxosToTxOrderUTxOs(
+        SDKUsers.utxosToTxOrderUTxOs(
           await wallet.utxosAt(
             l1.fixture.contracts.txOrder.spendingScriptAddress,
           ),

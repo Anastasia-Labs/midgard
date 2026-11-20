@@ -3,7 +3,7 @@ import {
   ReferenceInputNoIdxStep02Datum,
   ReferenceInputNoIdxStep03Datum,
   ReferenceInputNoIdxStep04Datum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import { requireFaultProofFieldGrammarDeployment } from "../field-grammar-certificate.resolve-fault-proof-field-grammar-deployment.js";
 import { REFERENCE_INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";

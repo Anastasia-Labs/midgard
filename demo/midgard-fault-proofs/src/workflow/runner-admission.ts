@@ -1,4 +1,4 @@
-import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
+import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 
 import type { WorkflowFundingRequirements } from "./funding-requirements.js";
 import { bindWorkflowFundingRequirementsToRunner } from "./funding-requirements-admission.js";

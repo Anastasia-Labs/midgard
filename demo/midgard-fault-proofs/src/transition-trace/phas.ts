@@ -1,5 +1,5 @@
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

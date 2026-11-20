@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 
 import {
   type DaAttestationExchange,
@@ -99,7 +100,7 @@ export const signatureRecord = ({
   source: "local",
   l1ChainPoint: {},
   validation: {
-    payloadVersion: Number(SDK.DA_PAYLOAD_VERSION),
+    payloadVersion: Number(SDKDa.DA_PAYLOAD_VERSION),
     rootsMatch: true,
     stateQueueOutRef: "tx#0",
     headerHash,

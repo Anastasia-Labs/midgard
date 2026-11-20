@@ -1,5 +1,5 @@
 import { computeHash32 } from "@al-ft/midgard-core";
-import { fieldPreimagePublicationDatumCbor } from "@al-ft/midgard-sdk";
+import { fieldPreimagePublicationDatumCbor } from "@al-ft/midgard-sdk/state-queue";
 
 import { structuredDataPublicationPlan } from "./structured-data-preimage.js";
 

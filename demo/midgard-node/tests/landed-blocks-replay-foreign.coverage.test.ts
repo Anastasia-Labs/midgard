@@ -17,7 +17,7 @@
  */
 import type { FactStore } from "@al-ft/midgard-l1-follower";
 import { simTxHash } from "@al-ft/midgard-l1-follower/testing";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/da";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { db } from "./helpers/forced-orders-node-store.js";

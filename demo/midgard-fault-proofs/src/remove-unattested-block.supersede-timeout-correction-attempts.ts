@@ -1,4 +1,4 @@
-import { type StateQueueUTxO } from "@al-ft/midgard-sdk";
+import { type StateQueueUTxO } from "@al-ft/midgard-sdk/state-queue";
 import { type UTxO } from "@lucid-evolution/lucid";
 
 import {

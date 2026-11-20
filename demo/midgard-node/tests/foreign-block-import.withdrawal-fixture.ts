@@ -8,7 +8,8 @@ import {
   encodeEventToStepValueCbor,
   encodeTransitionStepCbor,
 } from "@al-ft/midgard-fault-proofs/block-replay";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -84,7 +85,7 @@ export const withdrawalFixture = async (
   const id = { transactionId: "cd".repeat(32), outputIndex: 0n };
   const key = Data.to(id, SDK.OutputReference);
   const eventKey: SDK.EventKey = { WithdrawalEventKey: { withdrawal_id: id } };
-  const counts: SDK.DaPayloadCounts = {
+  const counts: SDKDa.DaPayloadCounts = {
     withdrawalCount: 1n,
     forcedTransactionCount: 0n,
     l2TransactionCount: 0n,
@@ -115,8 +116,8 @@ export const withdrawalFixture = async (
     operatorVkey: "22".repeat(28),
     protocolVersion: 1n,
   };
-  const payload: SDK.DaPayload = {
-    version: SDK.DA_PAYLOAD_VERSION,
+  const payload: SDKDa.DaPayload = {
+    version: SDKDa.DA_PAYLOAD_VERSION,
     block_body: {
       header_hash: "00".repeat(28),
       header,

@@ -31,7 +31,7 @@ import {
   encodeMidgardNativeTxCompact,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core/codec";
-import { type NativeTxWitnessSetCompact, Proof } from "@al-ft/midgard-sdk";
+import { type NativeTxWitnessSetCompact, Proof } from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

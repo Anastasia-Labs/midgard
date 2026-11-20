@@ -1,6 +1,7 @@
 /** Bind custody and the shared source walk of a direct purpose thread,
  * from the step-01 bound source to the family entry's bound source index. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
@@ -49,7 +50,11 @@ export const directPurposeBindTransitions = (
       label: "bind event",
       role: "bindEvent",
       next: "bindPreState",
-      datum: stepDatum(prover, states.selected, SDK.DirectBindPreStateDatum),
+      datum: stepDatum(
+        prover,
+        states.selected,
+        SDKFraudProof.DirectBindPreStateDatum,
+      ),
       fields: [],
       membership: {
         redeemer: membershipRedeemer(
@@ -73,7 +78,11 @@ export const directPurposeBindTransitions = (
       label: "bind pre-state",
       role: "bindPreState",
       next: "sourceStart",
-      datum: stepDatum(prover, states.bound, SDK.DirectScriptBoundDatum),
+      datum: stepDatum(
+        prover,
+        states.bound,
+        SDKFraudProof.DirectScriptBoundDatum,
+      ),
       fields: [],
       membership: {
         redeemer: membershipRedeemer(
@@ -116,14 +125,14 @@ export const directPurposeSourceTransitions = ({
   readonly batch?: number;
 }): readonly DirectPurposeTransition[] => {
   const out: DirectPurposeTransition[] = [];
-  const scan = (data: SDK.DirectSourceScanState) =>
-    stepDatum(prover, data, SDK.DirectSourceScanDatum);
+  const scan = (data: SDKFraudProof.DirectSourceScanState) =>
+    stepDatum(prover, data, SDKFraudProof.DirectSourceScanDatum);
   const steps = [...evidence.steps];
   const inputs = evidence.inputs.map((entry) => ({
     ...entry,
     step: entry.source === null ? null : steps.shift()!,
   }));
-  let state: SDK.DirectSourceScanState = {
+  let state: SDKFraudProof.DirectSourceScanState = {
     cursor: plan(0).position("Walking", 0).cursor,
     source_index: { root: SDK.EMPTY_MERKLE_TREE_ROOT, count: 0n },
     complete: plan(0).items.length === 0,
@@ -137,7 +146,7 @@ export const directPurposeSourceTransitions = ({
     redeemer: ({ indices, open }) =>
       Data.to(
         { Continue: [{ ...indices, opening: open(0) }] },
-        SDK.DirectSourceStartRedeemer,
+        SDKFraudProof.DirectSourceStartRedeemer,
       ),
   });
   /** One page of input field `field`: resolve the page's out-refs,
@@ -147,7 +156,7 @@ export const directPurposeSourceTransitions = ({
     start: number,
     budget: number,
     selected: typeof inputs,
-    stateAt: (position: number) => SDK.DirectSourceScanState,
+    stateAt: (position: number) => SDKFraudProof.DirectSourceScanState,
   ): readonly DirectPurposeTransition[] => {
     const page = selected.slice(start, start + budget);
     const advanced = {
@@ -171,7 +180,7 @@ export const directPurposeSourceTransitions = ({
                 .map((item) => item.toString("hex")),
             },
           },
-          SDK.DirectSourceResolvedDatum,
+          SDKFraudProof.DirectSourceResolvedDatum,
         ),
         fields: [field],
         redeemer: ({ indices, open }) =>
@@ -189,7 +198,7 @@ export const directPurposeSourceTransitions = ({
                 },
               ],
             },
-            SDK.DirectSourceResolveRedeemer,
+            SDKFraudProof.DirectSourceResolveRedeemer,
           ),
       },
       {
@@ -205,7 +214,7 @@ export const directPurposeSourceTransitions = ({
               candidates: page.map((entry) => entry.source?.descriptor ?? null),
             },
           },
-          SDK.DirectSourcePendingDatum,
+          SDKFraudProof.DirectSourcePendingDatum,
         ),
         fields: [],
         redeemer: ({ indices }) =>
@@ -215,7 +224,7 @@ export const directPurposeSourceTransitions = ({
                 { ...indices, witnesses: page.map((entry) => entry.witness) },
               ],
             },
-            SDK.DirectSourceAuthenticateRedeemer,
+            SDKFraudProof.DirectSourceAuthenticateRedeemer,
           ),
       },
       mapTransition(`field ${field.toString()}`, start, {
@@ -235,7 +244,9 @@ export const directPurposeSourceTransitions = ({
     const indexAt = [state.source_index];
     for (const entry of selected)
       indexAt.push(entry.step?.after ?? indexAt.at(-1)!);
-    const stateAt = (position: number): SDK.DirectSourceScanState => ({
+    const stateAt = (
+      position: number,
+    ): SDKFraudProof.DirectSourceScanState => ({
       cursor: plan(field).position("Walking", position).cursor,
       source_index: indexAt[position]!,
       complete: position === count,
@@ -259,13 +270,13 @@ export const directPurposeSourceTransitions = ({
       datum: stepDatum(
         prover,
         { resume_script_hash: resolvedScriptHash, state: resumed },
-        SDK.DirectSourceResumeDatum,
+        SDKFraudProof.DirectSourceResumeDatum,
       ),
       fields: [],
       redeemer: ({ indices }) =>
         Data.to(
           { Continue: [{ Advance: indices }] },
-          SDK.DirectSourceResolveRedeemer,
+          SDKFraudProof.DirectSourceResolveRedeemer,
         ),
     });
     const next = field === 0 ? 1 : 6;
@@ -294,7 +305,7 @@ export const directPurposeSourceTransitions = ({
               },
             ],
           },
-          SDK.DirectSourceInputFinishRedeemer,
+          SDKFraudProof.DirectSourceInputFinishRedeemer,
         ),
     });
   }
@@ -332,7 +343,7 @@ export const directPurposeSourceTransitions = ({
               },
             ],
           },
-          SDK.DirectSourceGrammarRedeemer,
+          SDKFraudProof.DirectSourceGrammarRedeemer,
         ),
     });
   }
@@ -340,7 +351,9 @@ export const directPurposeSourceTransitions = ({
     state.source_index,
     ...steps.map((entry) => entry.after),
   ];
-  const witnessStateAt = (position: number): SDK.DirectSourceScanState => ({
+  const witnessStateAt = (
+    position: number,
+  ): SDKFraudProof.DirectSourceScanState => ({
     cursor: plan(6).position("Walking", position).cursor,
     source_index: witnessIndexAt[position]!,
     complete: position === witnessCount,
@@ -371,7 +384,7 @@ export const directPurposeSourceTransitions = ({
                   candidates: page.map((entry) => entry.candidate.descriptor),
                 },
               },
-              SDK.DirectSourcePendingDatum,
+              SDKFraudProof.DirectSourcePendingDatum,
             ),
             fields: [6],
             redeemer: ({ indices, open }) =>
@@ -389,7 +402,7 @@ export const directPurposeSourceTransitions = ({
                     },
                   ],
                 },
-                SDK.DirectSourceWitnessRedeemer,
+                SDKFraudProof.DirectSourceWitnessRedeemer,
               ),
           },
           mapTransition("witness", start, {
@@ -416,7 +429,7 @@ export const directPurposeSourceTransitions = ({
     redeemer: ({ indices }) =>
       Data.to(
         { Continue: [{ Finish: indices }] },
-        SDK.DirectSourceWitnessRedeemer,
+        SDKFraudProof.DirectSourceWitnessRedeemer,
       ),
   });
   out.push({
@@ -426,7 +439,7 @@ export const directPurposeSourceTransitions = ({
     datum: stepDatum(
       prover,
       { bound: material.bound, source_index: evidence.index },
-      SDK.DirectSourceBoundIndexDatum,
+      SDKFraudProof.DirectSourceBoundIndexDatum,
     ),
     fields: [6],
     redeemer: ({ indices, open }) =>
@@ -441,7 +454,7 @@ export const directPurposeSourceTransitions = ({
             },
           ],
         },
-        SDK.DirectSourceFinishRedeemer,
+        SDKFraudProof.DirectSourceFinishRedeemer,
       ),
   });
   return out;
@@ -457,7 +470,7 @@ const mapTransition = (
   }: {
     readonly next: "sourceResolved" | "sourceWitnesses";
     readonly datum: string;
-    readonly admissions: (SDK.DirectSourceAdmission | null)[];
+    readonly admissions: (SDKFraudProof.DirectSourceAdmission | null)[];
   },
 ): DirectPurposeTransition => ({
   label: `${label} map ${start.toString()}`,
@@ -468,6 +481,6 @@ const mapTransition = (
   redeemer: ({ indices }) =>
     Data.to(
       { Continue: [{ ...indices, admissions }] },
-      SDK.DirectSourceMapRedeemer,
+      SDKFraudProof.DirectSourceMapRedeemer,
     ),
 });

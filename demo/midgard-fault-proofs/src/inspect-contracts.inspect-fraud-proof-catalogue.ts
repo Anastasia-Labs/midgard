@@ -4,7 +4,7 @@ import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueDeploymentInfo,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import { Effect } from "effect";
 
 import {

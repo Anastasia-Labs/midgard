@@ -17,7 +17,7 @@ import {
   pointStatusIn,
   type StoredOutput,
 } from "@al-ft/midgard-l1-follower";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/users";
 import type { UTxO } from "@lucid-evolution/lucid";
 
 import type { ForcedOrderConfig } from "./config.js";

@@ -3,7 +3,9 @@ import "node:path";
 import "@al-ft/midgard-core";
 import "@al-ft/midgard-core/codec/forced";
 import "@al-ft/midgard-core/da-payload-envelope";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/da";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "@al-ft/midgard-validation/ledger-output-descriptor";
 import "@al-ft/midgard-validation/validation-machine";
 import "effect";
@@ -23,7 +25,8 @@ import {
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
 } from "@al-ft/midgard-core";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -212,7 +215,7 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
     const badRootHeaderHash = await Effect.runPromise(
       SDK.hashBlockHeader(badRootHeader),
     );
-    const badRootPayload: SDK.DaPayload = {
+    const badRootPayload: SDKDa.DaPayload = {
       ...fixture.payload,
       block_body: {
         ...fixture.payload.block_body,
@@ -223,7 +226,7 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
     await expect(
       reconstructDaPayload({
         payloadEnvelopeCbor: await wrapDaPayload(
-          SDK.encodeDaPayload(badRootPayload),
+          SDKDa.encodeDaPayload(badRootPayload),
           { mode: "identity" },
         ),
         expectedHeaderHash: badRootHeaderHash,
@@ -235,7 +238,7 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
     // alone still reconstructs, against the header's counts. The declared
     // validation_trace_count is the exception: it must match the body's trie.
     const declaredCounts = fixture.payload.block_body.counts;
-    const declaredOnlyPayload: SDK.DaPayload = {
+    const declaredOnlyPayload: SDKDa.DaPayload = {
       ...fixture.payload,
       block_body: {
         ...fixture.payload.block_body,
@@ -247,7 +250,7 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
     };
     const declaredOnly = await reconstructDaPayload({
       payloadEnvelopeCbor: await wrapDaPayload(
-        SDK.encodeDaPayload(declaredOnlyPayload),
+        SDKDa.encodeDaPayload(declaredOnlyPayload),
         { mode: "identity" },
       ),
       expectedHeaderHash: fixture.headerHash,
@@ -261,7 +264,7 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
       ({ label }) => label === "mixed-size-balanced",
     )!.canonicalCborHex;
     expect(alternateCanonicalCborHex).not.toBe(canonicalCbor.toString("hex"));
-    const tamperedForcedPreimagePayload: SDK.DaPayload = {
+    const tamperedForcedPreimagePayload: SDKDa.DaPayload = {
       ...fixture.payload,
       block_body: {
         ...fixture.payload.block_body,
@@ -274,7 +277,7 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
     await expect(
       reconstructDaPayload({
         payloadEnvelopeCbor: await wrapDaPayload(
-          SDK.encodeDaPayload(tamperedForcedPreimagePayload),
+          SDKDa.encodeDaPayload(tamperedForcedPreimagePayload),
           { mode: "identity" },
         ),
         expectedHeaderHash: fixture.headerHash,
@@ -293,7 +296,7 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
       resolvedReferenceUtxos: boundary.resolvedReferenceUtxos,
     });
     expect(fixture.ledger.length).toBeGreaterThan(0);
-    const check = (entries: readonly SDK.DaPayloadEntry[]) =>
+    const check = (entries: readonly SDKDa.DaPayloadEntry[]) =>
       checkLedgerAgainstRoot({
         entries: entries.map(([outRef, output]) => ({
           outRef: Buffer.from(outRef, "hex"),

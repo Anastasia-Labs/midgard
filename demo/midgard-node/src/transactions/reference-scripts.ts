@@ -1,5 +1,6 @@
 import "@al-ft/midgard-core/error-format";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/users";
 import "effect";
 import "../deployable-scripts.js";
 import "../provider-retry.js";

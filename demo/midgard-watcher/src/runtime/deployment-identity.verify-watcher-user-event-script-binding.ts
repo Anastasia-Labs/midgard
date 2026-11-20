@@ -7,12 +7,14 @@ import {
 } from "@al-ft/midgard-l1-follower/events";
 import {
   type AuthenticatedValidator,
+  HUB_ORACLE_ASSET_NAME,
+  parseFaultProofBlueprint,
+} from "@al-ft/midgard-sdk/core";
+import {
   buildEventHistoryDeployments,
   buildHubOracleMintingValidator,
   buildTxOrderValidators,
-  HUB_ORACLE_ASSET_NAME,
-  parseFaultProofBlueprint,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/users";
 import {
   CML,
   credentialToAddress,

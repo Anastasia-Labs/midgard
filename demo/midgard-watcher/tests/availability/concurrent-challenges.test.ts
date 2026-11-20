@@ -1,10 +1,8 @@
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
-import * as SDK from "@al-ft/midgard-sdk";
-import {
-  assertDaAvailabilityOpenWithinChallengeWindow,
-  STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
-} from "@al-ft/midgard-sdk";
+import { STATE_QUEUE_NODE_ASSET_NAME_PREFIX } from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/da";
+import { assertDaAvailabilityOpenWithinChallengeWindow } from "@al-ft/midgard-sdk/da";
 import { CML, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
@@ -552,10 +550,9 @@ describe("a Timeout against a pool whose datum another spend re-encoded (P14(5))
 describe("a Timeout whose pool moved after it was built (P13(4)(b))", () => {
   it("expires the stranded Timeout through the partial-missing arm, then rebuilds it against the new tip pool and lands it", async () => {
     // The SDK's own runner and reconciliation, on real signed bytes.
-    const actual =
-      await vi.importActual<typeof import("@al-ft/midgard-sdk")>(
-        "@al-ft/midgard-sdk",
-      );
+    const actual = await vi.importActual<
+      typeof import("@al-ft/midgard-sdk/da")
+    >("@al-ft/midgard-sdk/da");
     io.run.mockImplementation(actual.runDaAvailabilityOperation);
     io.reconcile.mockImplementation(actual.reconcileDaAvailabilityOperations);
     const deployment = "d0".repeat(32);

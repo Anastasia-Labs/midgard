@@ -4,12 +4,12 @@ import {
   midgardFieldCommitment,
 } from "@al-ft/midgard-core";
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
+import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 import {
   acceptedVerdictSubject,
   forcedVerdictSubject,
-  type FraudProofCatalogueCategoryName,
   PROOF_THREAD_SOURCE_KIND_FORCED,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import {

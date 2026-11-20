@@ -10,16 +10,18 @@
  * step script, no withdrawal, no opening.
  */
 import {
+  requireInputIndex,
+  requireOwnSpendPurpose,
+  requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
   MissingSignatureStep03Datum,
   MissingSignatureStep03SpendRedeemer,
   type MissingSignatureStep03State,
   MissingSignatureStep04Datum,
   type MissingSignatureStep04State,
   missingSignatureVkeyHash,
-  requireInputIndex,
-  requireOwnSpendPurpose,
-  requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

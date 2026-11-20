@@ -1,6 +1,7 @@
 import "@aiken-lang/merkle-patricia-forestry";
 import "@al-ft/midgard-core";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "@lucid-evolution/lucid";
 import "effect";
 import "../../src/step-support.js";

@@ -1,6 +1,7 @@
 import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
 import { computeHash28, computeHash32 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   Data,
   Emulator,
@@ -48,7 +49,10 @@ export const runDirectSourceMaximumProof = async (
   const value =
     consumer === "authenticate"
       ? Buffer.from(entry.witness.descriptor_cbor, "hex")
-      : Buffer.from(Data.to(candidate, SDK.DirectScriptSource), "hex");
+      : Buffer.from(
+          Data.to(candidate, SDKFraudProof.DirectScriptSource),
+          "hex",
+        );
   const path = computeHash32(keyBytes).toString("hex");
   const steps = Array.from({ length: 64 }, (_, index) =>
     kind === "64Branch" || index === 63
@@ -75,7 +79,7 @@ export const runDirectSourceMaximumProof = async (
     cert = "77".repeat(28),
     returnHash = "ee".repeat(28);
   const roles = await Effect.runPromise(
-    SDK.buildDirectSourceContracts({
+    SDKFraudProof.buildDirectSourceContracts({
       blueprint,
       network,
       computationThreadPolicyId: policy,
@@ -92,7 +96,7 @@ export const runDirectSourceMaximumProof = async (
     computeHash28(SDK.encodeHeaderCbor(material.sourceBound.header)).toString(
       "hex",
     );
-  const state: SDK.DirectSourceScanState = {
+  const state: SDKFraudProof.DirectSourceScanState = {
     cursor: plan.position("Walking", entry.itemIndex + 1).cursor,
     source_index:
       consumer === "map"
@@ -102,7 +106,7 @@ export const runDirectSourceMaximumProof = async (
   };
   if (consumer === "authenticate")
     state.cursor.bound.event_pre_root = after.toString("hex");
-  const resolved: SDK.DirectSourceResolvedState = {
+  const resolved: SDKFraudProof.DirectSourceResolvedState = {
     resume_script_hash: roles.resolved.spendingScriptHash,
     resolved: {
       advanced: state,
@@ -110,7 +114,7 @@ export const runDirectSourceMaximumProof = async (
       out_refs: [plan.items[entry.itemIndex]!.toString("hex")],
     },
   };
-  const pending: SDK.DirectSourcePendingState = {
+  const pending: SDKFraudProof.DirectSourcePendingState = {
     resume_script_hash: roles.resolved.spendingScriptHash,
     pending: { advanced: state, candidates: [candidate] },
   };
@@ -118,11 +122,11 @@ export const runDirectSourceMaximumProof = async (
     consumer === "authenticate"
       ? Data.to(
           { fraud_prover: prover, data: resolved },
-          SDK.DirectSourceResolvedDatum,
+          SDKFraudProof.DirectSourceResolvedDatum,
         )
       : Data.to(
           { fraud_prover: prover, data: pending },
-          SDK.DirectSourcePendingDatum,
+          SDKFraudProof.DirectSourcePendingDatum,
         );
   const initialRole =
     consumer === "authenticate" ? roles.authenticate : roles.map;
@@ -174,7 +178,7 @@ export const runDirectSourceMaximumProof = async (
       roles.map.spendingScriptAddress,
       Data.to(
         { fraud_prover: prover, data: pending },
-        SDK.DirectSourcePendingDatum,
+        SDKFraudProof.DirectSourcePendingDatum,
       ),
       [],
       directSourceAuthenticationRedeemer([witness]),
@@ -197,7 +201,7 @@ export const runDirectSourceMaximumProof = async (
       roles.resolved.spendingScriptAddress,
       Data.to(
         { fraud_prover: prover, data: advanced },
-        SDK.DirectSourceScanDatum,
+        SDKFraudProof.DirectSourceScanDatum,
       ),
       [],
       directSourceAdmissionRedeemer([{ First: { proof: proofData } }]),

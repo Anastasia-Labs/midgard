@@ -33,7 +33,8 @@ import {
   protocolTreasury,
   type Scene,
 } from "@al-ft/midgard-fault-proofs/test-support/validation-trace-defender-scene";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { credentialToAddress, Data, type UTxO } from "@lucid-evolution/lucid";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
@@ -262,7 +263,8 @@ describe("the validation-trace defender against the challenger", () => {
       scene.h.contracts.fraudProof.spendingScriptAddress,
     );
     expect(
-      Data.from(record!.datum!, SDK.FraudProofTokenDatum).fraud_prover,
+      Data.from(record!.datum!, SDKFraudProof.FraudProofTokenDatum)
+        .fraud_prover,
     ).toBe(scene.h.proverSigner.paymentKeyHash);
     // The case convicted, so no thread was ever opened on it: its NFT is
     // locked beside the record.

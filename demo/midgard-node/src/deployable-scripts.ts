@@ -1,6 +1,6 @@
 /** Core owns member identity/order; SDK owns validator recipes and restoration. */
 import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "@al-ft/midgard-core/deployment-manifest-identity";
-import type { ReferenceScriptAuthTokenTarget } from "@al-ft/midgard-sdk";
+import type { ReferenceScriptAuthTokenTarget } from "@al-ft/midgard-sdk/state-queue";
 
 export {
   MANIFEST_ORDER,
@@ -16,7 +16,7 @@ export {
 export {
   type DeploymentScript as DeployableScript,
   type PublishedDeploymentScript as PublishedDeployableScript,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/deployment";
 
 const roleByContract: ReadonlyMap<string, ReferenceScriptAuthTokenTarget> =
   new Map(

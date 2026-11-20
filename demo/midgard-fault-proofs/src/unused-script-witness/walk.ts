@@ -3,7 +3,7 @@
  * observers, then protected-script receive outputs, folding whether any
  * execution reaches the probe, the audited witness's script hash. */
 import { decodeMidgardMintPolicyItem } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import {

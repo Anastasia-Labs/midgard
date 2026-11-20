@@ -3,7 +3,7 @@ import {
   type MidgardTxOutput,
   midgardValueToCmlValue,
 } from "@al-ft/midgard-core/codec";
-import { acceptedVerdictSubject } from "@al-ft/midgard-sdk";
+import { acceptedVerdictSubject } from "@al-ft/midgard-sdk/fraud-proof";
 import {
   MIDGARD_COINS_PER_UTXO_BYTE,
   minAdaLovelace,

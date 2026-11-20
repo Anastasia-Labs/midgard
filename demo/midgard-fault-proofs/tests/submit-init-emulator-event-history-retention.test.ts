@@ -10,13 +10,15 @@ import { inspect } from "node:util";
 
 import {
   addressDataFromBech32,
+  HubOracleDatum,
+  parseFaultProofBlueprint,
+} from "@al-ft/midgard-sdk/core";
+import {
   applyEventHistoryRetentionValidator,
   encodeEventHistoryData,
   EventHistoryData,
   eventHistoryDataHash,
-  HubOracleDatum,
-  parseFaultProofBlueprint,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/users";
 import {
   CML,
   Constr,

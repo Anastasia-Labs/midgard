@@ -7,7 +7,8 @@
  * to the settle reading the staging outputs, and spends them back once no
  * thread needs them. */
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { CML, coreToTxOutput, Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -308,9 +309,9 @@ describe("validation-trace dispute runner: staging the operands of a staged buil
     spent = first!.outRef;
     scene.h.proverSigner.selectWallet(lucid);
     const unsigned = await Effect.runPromise(
-      SDK.buildUnsignedMidgardCekStagingReclaimProgram(lucid, {
+      SDKFraudProof.buildUnsignedMidgardCekStagingReclaimProgram(lucid, {
         outputs: [(await drive.live(spent))!],
-        pins: new SDK.MidgardCekStagingPins(),
+        pins: new SDKFraudProof.MidgardCekStagingPins(),
       }),
     );
     await (await unsigned.sign.withWallet().complete()).submit();

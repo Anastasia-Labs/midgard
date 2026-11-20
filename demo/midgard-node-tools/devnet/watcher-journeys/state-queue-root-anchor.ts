@@ -13,7 +13,8 @@
  * header hash, UTxO root and end time (state-queue.ak:401-409), so a block
  * built on a block that has since merged commits unchanged on the root.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { CML, coreToUtxo, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import type { PublishedHeaderConsumption } from "midgard-watcher/tests/support/published-da-target-consumption";
@@ -46,7 +47,7 @@ const nodeUnitOf = (policyId: string, headerHash: string) =>
   toUnit(policyId, SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + headerHash);
 
 const rootUnitOf = (policyId: string) =>
-  toUnit(policyId, SDK.STATE_QUEUE_ROOT_ASSET_NAME);
+  toUnit(policyId, SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME);
 
 const outRefOf = (ref: { txHash: string; outputIndex: number }) =>
   `${ref.txHash}#${ref.outputIndex.toString()}`;
@@ -166,7 +167,7 @@ const mergedBy = async (
   );
   if (roots.length !== 1) return false;
   const { data } = await Effect.runPromise(
-    SDK.getConfirmedStateFromStateQueueDatum(
+    SDKStateQueue.getConfirmedStateFromStateQueueDatum(
       await Effect.runPromise(SDK.getLinkedListNodeViewFromUTxO(roots[0]!)),
     ),
   );

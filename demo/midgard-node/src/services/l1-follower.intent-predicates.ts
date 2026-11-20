@@ -18,7 +18,9 @@
  *   `l1-follower.intent-predicates.list-insert.ts`.
  */
 import { currentViewIn, type IntentState } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKOperators from "@al-ft/midgard-sdk/operators";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Effect } from "effect";
 
 import { commitAnchorCanonicalText } from "../database/commit-anchor.js";
@@ -130,7 +132,9 @@ const headAllowsAppend = (read: Read, queue: LandedStateQueue): boolean => {
   const { validToSlot } = read.state.intent;
   if (validToSlot === null) return false;
   const inclusiveUpper = BigInt(read.deps.slotToPosixMs(validToSlot)) - 1n;
-  return inclusiveUpper < node.block_time + SDK.DA_ATTESTATION_TIMEOUT_MS;
+  return (
+    inclusiveUpper < node.block_time + SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS
+  );
 };
 
 /**
@@ -197,18 +201,20 @@ const correction = async (read: Read): Promise<boolean> => {
     node !== undefined &&
     node.daStatus === "Unattested" &&
     node.blockTimeMs !== null &&
-    node.blockTimeMs + SDK.DA_ATTESTATION_TIMEOUT_MS <=
+    node.blockTimeMs + SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS <=
       BigInt(validFromMs(read))
   );
 };
 
 const registeredOf = (set: OperatorSet, operator: string) =>
   set.registered.filter(
-    (node) => SDK.registeredNodeOperator(node.datum) === operator,
+    (node) => SDKOperators.registeredNodeOperator(node.datum) === operator,
   );
 
 const activeOf = (set: OperatorSet, operator: string) =>
-  set.active.filter((node) => SDK.nodeKeyHex(node.datum.key) === operator);
+  set.active.filter(
+    (node) => SDKOperators.nodeKeyHex(node.datum.key) === operator,
+  );
 
 /** The operator-set transitions, by workflow-key prefix. */
 const operatorTransition = async (read: Read): Promise<boolean> => {
@@ -235,7 +241,7 @@ const operatorTransition = async (read: Read): Promise<boolean> => {
     case "exit":
       // `exit:slash_duplicate:<registered node key>`: that node is still listed.
       return set.registered.some(
-        (node) => SDK.nodeKeyHex(node.datum.key) === key,
+        (node) => SDKOperators.nodeKeyHex(node.datum.key) === key,
       );
     case "takeover": {
       // `takeover:<skipped operator>:<new start time>`.

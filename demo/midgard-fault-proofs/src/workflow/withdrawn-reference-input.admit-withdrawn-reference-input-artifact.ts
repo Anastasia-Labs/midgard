@@ -1,13 +1,15 @@
 import {
   commitCountedRootProgram,
-  committedWithdrawalKeyBytes,
-  encodeMidgardTxInputCanonical,
-  MIDGARD_FIELD_INDEX,
   ROOT_DOMAINS,
   WithdrawalSourceMembershipProof,
   type WithdrawalSourceMembershipProof as WithdrawalSourceMembershipProofV1,
+} from "@al-ft/midgard-sdk/core";
+import {
+  committedWithdrawalKeyBytes,
+  encodeMidgardTxInputCanonical,
+  MIDGARD_FIELD_INDEX,
   WITHDRAWN_REFERENCE_INPUT_VIOLATION_ID,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

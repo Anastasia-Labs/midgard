@@ -10,7 +10,7 @@ import {
   acceptedVerdictSubject,
   forcedVerdictSubject,
   PROOF_THREAD_SOURCE_KIND_FORCED,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { requireLinearFaultThreadUtxo } from "../linear-fault-family.js";

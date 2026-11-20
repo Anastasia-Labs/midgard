@@ -4,7 +4,9 @@ import {
 } from "@al-ft/midgard-core";
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import type * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import { daHashPreimageBlockEvidenceFromVerifiedPayload } from "../prepare-da-hash-preimage.js";
@@ -40,9 +42,9 @@ export const observersForbiddenRawBlockEvidenceFromVerifiedPayload = async ({
   daProvenance,
   minimumConfirmationDepth,
 }: {
-  readonly observation: SDK.AuthenticatedStateQueueHeaderObservation;
+  readonly observation: SDKFraudProof.AuthenticatedStateQueueHeaderObservation;
   readonly payloadEnvelopeCbor: Uint8Array;
-  readonly daProvenance: SDK.EvidenceProvenance;
+  readonly daProvenance: SDKFraudProof.EvidenceProvenance;
   readonly minimumConfirmationDepth?: number;
 }): Promise<ObserversForbiddenRawBlockEvidence> => {
   const raw = await daHashPreimageBlockEvidenceFromVerifiedPayload({
@@ -60,8 +62,8 @@ export const observersForbiddenRawBlockEvidenceFromVerifiedPayload = async ({
       })
     ).innerBytes,
   );
-  const payload = SDK.decodeDaPayload(payloadCbor);
-  if (!SDK.encodeDaPayload(payload).equals(payloadCbor))
+  const payload = SDKDa.decodeDaPayload(payloadCbor);
+  if (!SDKDa.encodeDaPayload(payload).equals(payloadCbor))
     throw new Error("observersForbidden DA payload is not canonical");
   const entries = raw.entries.map(([key, value]) => ({
     key: Buffer.from(key, "hex"),

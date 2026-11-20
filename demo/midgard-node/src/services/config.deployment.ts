@@ -1,6 +1,6 @@
 import type { DeploymentManifestEconomicsProfile } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { requireSelectedDeploymentProfile } from "@al-ft/midgard-core/deployment-profile";
-import { REFERENCE_SCRIPT_AUTH_TIMELOCK_MS } from "@al-ft/midgard-sdk";
+import { REFERENCE_SCRIPT_AUTH_TIMELOCK_MS } from "@al-ft/midgard-sdk/state-queue";
 import { Config, Option } from "effect";
 
 import {

@@ -8,7 +8,7 @@ import {
 import {
   EMPTY_MERKLE_TREE_ROOT,
   GENESIS_HEADER_HASH,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { describe, expect, it } from "vitest";
 

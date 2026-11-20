@@ -1,4 +1,4 @@
-import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
+import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 
 import type { WorkflowActuationPermit } from "./actuation-permit.js";
 import type { WorkflowFundingReservationPermit } from "./funding-reservation-permit.js";

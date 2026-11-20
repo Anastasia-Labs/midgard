@@ -5,7 +5,9 @@ import {
   type TimeoutCorrectionJournal,
 } from "@al-ft/midgard-fault-proofs/remove-unattested-block";
 import { depositEventsRetainedBlock } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-retained";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   CML,
   credentialToAddress,
@@ -110,7 +112,7 @@ export const stagePublishedDepositTrace = async (
   };
   const rootUnit = toUnit(
     contracts.stateQueue.policyId,
-    SDK.STATE_QUEUE_ROOT_ASSET_NAME,
+    SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME,
   );
   const { nodeUnit, readQueueEnds, ledgerPairs, readBase, commitAfterParent } =
     publishedDepositTraceQueue({ contracts, lucid: () => lucid, liveTail });
@@ -192,10 +194,10 @@ export const stagePublishedDepositTrace = async (
   };
   const readDeposits = () =>
     Effect.runPromise(
-      SDK.fetchDepositUTxOsProgram(
+      SDKUsers.fetchDepositUTxOsProgram(
         lucid,
-        SDK.eventHistoryDeploymentFromContracts(
-          SDK.requireEventHistoryContracts(contracts).deposit,
+        SDKUsers.eventHistoryDeploymentFromContracts(
+          SDKUsers.requireEventHistoryContracts(contracts).deposit,
         ),
       ),
     );
@@ -302,7 +304,7 @@ export const stagePublishedDepositTrace = async (
     const deposit = await buildPastProtectedPredecessor(
       () =>
         Effect.runPromise(
-          SDK.buildUnsignedDepositTxWithMetadataProgram(lucid, contracts, {
+          SDKUsers.buildUnsignedDepositTxWithMetadataProgram(lucid, contracts, {
             l2Address,
             l2Datum: null,
             lovelace: 10_000_000n,

@@ -23,7 +23,7 @@ import {
   forkScenarioArbitrary,
   runForkScenario,
 } from "@al-ft/midgard-l1-follower/testing";
-import { EVENT_WAIT_DURATION_MS } from "@al-ft/midgard-sdk";
+import { EVENT_WAIT_DURATION_MS } from "@al-ft/midgard-sdk/core";
 import fc from "fast-check";
 import { afterAll, describe, expect, it } from "vitest";
 

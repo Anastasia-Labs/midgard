@@ -1,7 +1,7 @@
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueCategoryName,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import { CML } from "@lucid-evolution/lucid";
 
 import { outputValue } from "./funding-requirements.canonical-transaction.js";

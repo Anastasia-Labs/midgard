@@ -1,5 +1,5 @@
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
-import { stateQueueHeaderHash } from "@al-ft/midgard-sdk";
+import { stateQueueHeaderHash } from "@al-ft/midgard-sdk/state-queue";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { expect, it } from "vitest";
 

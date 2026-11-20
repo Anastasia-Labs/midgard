@@ -1,5 +1,5 @@
 import { outRefLabel } from "@al-ft/midgard-core";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import { expect } from "vitest";
 
 import { buildInit } from "../src/submit-init.submit-init.js";

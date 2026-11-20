@@ -18,7 +18,8 @@ import type {
   PruneResult,
 } from "@al-ft/midgard-l1-follower";
 import { type SimOutput, simTxHash } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { stateQueueProjection } from "../src/l1-state-queue/projection.js";
@@ -81,7 +82,7 @@ const nodeHeader = (
   prev: string,
   start: bigint,
   end: bigint,
-): SDK.Header => ({
+): SDKCore.Header => ({
   ...simHeader(nonce, prev),
   startTime: start,
   endTime: end,
@@ -147,7 +148,7 @@ const bench = async () => {
       queue.push({ outRef: { txHash, index: 0 }, output });
     },
     /** Appends `header` after the queue's tail; returns its hash. */
-    append: async (header: SDK.Header) => {
+    append: async (header: SDKCore.Header) => {
       const hash = SDK.stateQueueHeaderHash(header);
       const tail = queue.pop()!;
       const output = (link: string | null) =>

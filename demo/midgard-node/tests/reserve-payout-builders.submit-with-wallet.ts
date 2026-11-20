@@ -1,5 +1,6 @@
 import { compareOutRefs } from "@al-ft/midgard-core/out-ref";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   type Assets,
   CML,
@@ -94,8 +95,8 @@ export const loadRealContracts: typeof loadRealMidgardContractsForTest = async (
   ...args
 ) => {
   const contracts = await loadRealMidgardContractsForTest(...args);
-  const pair = SDK.requireEventHistoryContracts(contracts);
-  const historyIdentity = (history: SDK.EventHistoryContracts) => ({
+  const pair = SDKUsers.requireEventHistoryContracts(contracts);
+  const historyIdentity = (history: SDKUsers.EventHistoryContracts) => ({
     recipe: history.recipe,
     listPolicyId: history.list.policyId,
     listAddress: history.list.spendingScriptAddress,

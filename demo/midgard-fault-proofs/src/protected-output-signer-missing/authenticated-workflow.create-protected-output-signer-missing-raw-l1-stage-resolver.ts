@@ -1,7 +1,5 @@
-import {
-  type FraudProofCatalogueCategoryName,
-  PROOF_THREAD_SOURCE_KIND_FORCED,
-} from "@al-ft/midgard-sdk";
+import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
+import { PROOF_THREAD_SOURCE_KIND_FORCED } from "@al-ft/midgard-sdk/fraud-proof";
 
 import { requireLinearFaultThreadUtxo } from "../linear-fault-family.js";
 import { type FraudProofFamilyL1ObservationPort } from "../workflow/family-l1-observation.js";

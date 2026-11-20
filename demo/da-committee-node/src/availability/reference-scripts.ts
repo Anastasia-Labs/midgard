@@ -1,4 +1,4 @@
-import { referenceScriptAuthUnit } from "@al-ft/midgard-sdk";
+import { referenceScriptAuthUnit } from "@al-ft/midgard-sdk/state-queue";
 import {
   type LucidEvolution,
   type UTxO,

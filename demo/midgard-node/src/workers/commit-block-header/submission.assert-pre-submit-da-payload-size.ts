@@ -6,7 +6,8 @@ import {
 } from "@al-ft/midgard-core/da-payload-sizing";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { Effect } from "effect";
 
 import {
@@ -61,7 +62,7 @@ export const commitDaPayloadForSizing = ({
   validationTraceMembers,
 }: DaPayloadBlockContent & {
   readonly headerHash: string;
-  readonly header: SDK.Header;
+  readonly header: SDKCore.Header;
 }): Effect.Effect<SDK.DaPayload, DatabaseError> =>
   Effect.gen(function* () {
     const transactionSources = yield* Effect.try({
@@ -169,7 +170,7 @@ export const assertPreSubmitDaPayloadSize = ({
   ...content
 }: DaPayloadBlockContent & {
   readonly headerHash: string;
-  readonly header: SDK.Header;
+  readonly header: SDKCore.Header;
 }): Effect.Effect<number, DatabaseError, NodeConfig> =>
   Effect.gen(function* () {
     const envelopeMode = (yield* NodeConfig).MIDGARD_DA_PAYLOAD_ENVELOPE;

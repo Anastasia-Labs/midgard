@@ -10,7 +10,7 @@
  * The category is not installed until its defender exists; this file
  * stands in for that install so the production classifier mints the
  * objective's actuation permit. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import type { UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

@@ -3,7 +3,7 @@ import "./prepare-input-no-idx.q13-input-no-idx-canonical-evidence.js";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { describe, expect, it } from "vitest";
 

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 
 const blueprint = SDK.parseFaultProofBlueprint(
   JSON.parse(
@@ -18,7 +19,7 @@ export const withRealEventHistoryForTest = (
   contracts: SDK.MidgardValidators,
   nonce: { txHash: string; outputIndex: number },
 ): SDK.MidgardValidators => {
-  const eventHistory = SDK.buildEventHistoryDeployments({
+  const eventHistory = SDKUsers.buildEventHistoryDeployments({
     blueprint,
     network: "Preprod",
     hubOraclePolicyId: contracts.hubOracle.policyId,

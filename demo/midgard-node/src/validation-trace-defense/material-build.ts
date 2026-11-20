@@ -15,7 +15,8 @@ import {
   buildPortableValidationTraceDefenseMaterial,
   type PortableValidationTraceDefense,
 } from "@al-ft/midgard-fault-proofs/validation-trace-dispute/defender";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 import { decodeStoredPayload } from "../da/stored-payload.js";
 
@@ -32,7 +33,7 @@ export type DefenseMaterialJob = Readonly<{
     outRef: Uint8Array;
     output: Uint8Array;
   }>[];
-  eventKey: SDK.EventKey;
+  eventKey: SDKCore.EventKey;
   stepCount: number;
   l1SlotConfig: L1SlotConfig;
 }>;

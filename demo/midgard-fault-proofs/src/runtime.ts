@@ -1,7 +1,9 @@
 import "@al-ft/midgard-core/hex";
 import "@al-ft/midgard-core/lucid-data";
 import "@al-ft/midgard-core/out-ref";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "@lucid-evolution/lucid";
 import "effect";
 import "./inspect-contracts.parse-contract-deployment-info.js";

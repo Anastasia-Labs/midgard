@@ -11,7 +11,7 @@ import {
   NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION,
   NATIVE_SCRIPT_DECODING_SOURCE_KIND_FORCED,
   NATIVE_SCRIPT_DECODING_SOURCE_KIND_NORMAL,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import { nativeScriptDecodingSubmitError } from "./submit-common.js";
 

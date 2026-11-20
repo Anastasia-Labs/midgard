@@ -6,7 +6,8 @@
  * never runs here) and serve a set queue history.
  */
 import type { View } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -115,7 +116,7 @@ export const block = (
     startTime: parent.endTime,
     endTime: parent.endTime + 1_000n,
   };
-  return { hash: SDK.stateQueueHeaderHash(header), header };
+  return { hash: SDKStateQueue.stateQueueHeaderHash(header), header };
 };
 
 /** The landed queue: the root's confirmed state, then `nodes` in order. */

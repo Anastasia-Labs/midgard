@@ -3,10 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { DEPLOYMENT_PROFILES } from "@al-ft/midgard-core/deployment-profile";
-import {
-  REGISTRATION_DURATION_MS,
-  USER_EVENT_TX_TTL_MS,
-} from "@al-ft/midgard-sdk";
+import { REGISTRATION_DURATION_MS } from "@al-ft/midgard-sdk/core";
+import { USER_EVENT_TX_TTL_MS } from "@al-ft/midgard-sdk/users";
 import { describe, expect, it } from "vitest";
 
 import { DEPLOYMENT_PARAMETERS } from "../../src/devnet-stack/node-env.js";

@@ -20,7 +20,7 @@
 import {
   VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES,
   type ValidationTraceDisputeFaultProofContracts,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   Emulator,
   generateEmulatorAccount,

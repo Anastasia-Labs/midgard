@@ -1,12 +1,12 @@
 import {
-  fieldPreimagePublicationDatumCbor,
   HUB_ORACLE_ASSET_NAME,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
   requireWithdrawalRedeemerIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { fieldPreimagePublicationDatumCbor } from "@al-ft/midgard-sdk/state-queue";
 import {
   type BuildTxWithRedeemer,
   credentialToAddress,

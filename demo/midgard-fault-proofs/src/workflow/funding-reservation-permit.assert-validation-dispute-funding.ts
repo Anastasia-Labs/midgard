@@ -20,7 +20,7 @@ import {
   PendingValidationClaimDatum,
   validationCaseBondMarkerName,
   validationCaseId,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/da";
 import {
   CML,
   coreToTxOutput,

@@ -5,7 +5,7 @@ import {
 import {
   MIN_FEE_VIOLATION_ID,
   minimumFeeFromProofSource,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 import {

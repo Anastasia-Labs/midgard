@@ -1,7 +1,7 @@
 import {
   FraudProofComputationThreadStepDatum,
   MinFeeStep02Datum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import { MIN_FEE_FORCED_ARTIFACT } from "../min-fee-forced-artifact.js";
 import { MIN_FEE_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";

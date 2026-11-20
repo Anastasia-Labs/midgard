@@ -6,7 +6,7 @@
  * without a fraud-proof token. `finish` then continues from that checkpoint
  * with honest steps and must prove the fault.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
 import { expect, vi } from "vitest";
 

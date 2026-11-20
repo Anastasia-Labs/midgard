@@ -1,6 +1,6 @@
 import { alignUnixTimeToSlotBoundary } from "@al-ft/midgard-core/ogmios-slot";
-import * as SDK from "@al-ft/midgard-sdk";
-import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
+import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk/state-queue";
 import { loadOrCreateRunSharedFixture } from "@al-ft/midgard-test-support/run-shared-fixtures";
 import {
   Emulator,

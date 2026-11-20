@@ -1,14 +1,16 @@
 import "./replay-prerequisite.complete-replay-proof-prerequisites.js";
 
 import {
+  type OutputReference,
+  WITHDRAWAL_MISTAG_VIOLATION_ID,
+  type WithdrawalInfo,
+} from "@al-ft/midgard-sdk/core";
+import {
   committedWithdrawalKeyBytes,
   committedWithdrawalValueBytes,
   FABRICATED_DEPOSIT_VIOLATION_ID,
   FABRICATED_WITHDRAWAL_VIOLATION_ID,
-  type OutputReference,
-  WITHDRAWAL_MISTAG_VIOLATION_ID,
-  type WithdrawalInfo,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import { type CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";

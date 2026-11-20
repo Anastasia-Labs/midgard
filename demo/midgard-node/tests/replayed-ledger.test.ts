@@ -15,7 +15,8 @@ import {
   type ReplayedLedgerSource,
 } from "@al-ft/midgard-fault-proofs/replayed-ledger";
 import { fileLedgerCheckpointStore } from "@al-ft/midgard-fault-proofs/replayed-ledger.checkpoint-file";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -49,7 +50,7 @@ const parentEntries = (lovelace = 3_000_000n) => {
 };
 
 const source = (
-  payloads: readonly SDK.DaPayload[],
+  payloads: readonly SDKDa.DaPayload[],
   asked: string[] = [],
 ): ReplayedLedgerSource => ({
   payloadAt: async (headerHash) => {
@@ -67,7 +68,7 @@ const source = (
   l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
 });
 
-const rehashed = async (payload: SDK.DaPayload, header: SDK.Header) => {
+const rehashed = async (payload: SDKDa.DaPayload, header: SDK.Header) => {
   const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
   return {
     ...payload,

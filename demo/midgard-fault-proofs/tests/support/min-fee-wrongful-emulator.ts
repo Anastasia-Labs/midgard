@@ -12,7 +12,8 @@ import {
   deriveMidgardForcedTxProofSource,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   CML,
   Data,
@@ -179,7 +180,7 @@ export const makeMinFeeWrongfulRejectionScenario = async (
   const minFeeA = scaledMinimum ? 1n : 0n;
   const minFeeB = scaledMinimum
     ? 1_000n -
-      SDK.minimumFeeFromProofSource({
+      SDKFraudProof.minimumFeeFromProofSource({
         sourceKind: "forced",
         source: proofSource,
         minFeeA: 1n,
@@ -205,8 +206,8 @@ export const makeMinFeeWrongfulRejectionScenario = async (
     header: header,
     membership,
   };
-  const state: SDK.MinFeeStep02State = {
-    subject: SDK.forcedVerdictSubject({
+  const state: SDKFraudProof.MinFeeStep02State = {
+    subject: SDKFraudProof.forcedVerdictSubject({
       transactionId,
       sourceKey,
       rejectionReason: "FeeBelowMinimum",
@@ -428,7 +429,7 @@ export const makeMinFeeWrongfulRejectionScenario = async (
     forcedIndex: 0,
     forcedSourceCbor: Data.to(
       forcedSource as never,
-      SDK.MinFeeForcedSourcePayloadSchema as never,
+      SDKFraudProof.MinFeeForcedSourcePayloadSchema as never,
     ),
     fullTransactionCbor: encodeMidgardForcedTxCanonical(tx).toString("hex"),
   };

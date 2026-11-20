@@ -60,7 +60,7 @@ import {
   InputNoIdxStep02Datum,
   InputNoIdxStep03Datum,
   InputNoIdxStep04Datum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   CML,
   coreToTxOutput,

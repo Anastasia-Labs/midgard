@@ -9,12 +9,12 @@ import {
 } from "@al-ft/midgard-core/codec/forced";
 import {
   ForcedInclusionTxV1Schema,
-  forcedVerdictSubject,
   OutputReference,
   Proof,
   ROOT_DOMAINS,
-} from "@al-ft/midgard-sdk";
-import * as SDK from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { forcedVerdictSubject } from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, getAddressDetails } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 

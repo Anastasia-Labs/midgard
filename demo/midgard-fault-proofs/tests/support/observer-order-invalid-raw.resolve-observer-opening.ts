@@ -14,13 +14,13 @@ import {
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
 import {
-  type FieldOpening,
   ForcedInclusionTxV1Schema,
   OutputReference,
   Proof,
   type RejectionReason,
   ROOT_DOMAINS,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { type FieldOpening } from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import { resolveFaultProofFieldPreimageCertificate } from "../../src/field-opening.certify-fault-proof-field-carriage.js";

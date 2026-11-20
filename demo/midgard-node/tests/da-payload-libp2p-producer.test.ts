@@ -2,7 +2,7 @@ import "@al-ft/midgard-core/consensus-profile";
 import "@al-ft/midgard-core/da-libp2p-identity";
 import "@al-ft/midgard-core/da-stream-codec";
 import "@al-ft/midgard-core/da-transport";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
 import "node:fs/promises";
 import "node:net";
 import "node:os";

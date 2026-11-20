@@ -3,7 +3,8 @@
  * applied withdrawal list, and the authenticated list read feeds the node's
  * own ingestion, classification, root-entry, event-key and transition-effect
  * code, so the committed event is exactly what block production derives. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { canonicalCommittedWithdrawalTransitionEffect } from "@al-ft/midgard-validation/transition-effect";
 import { Effect } from "effect";
 import { withdrawalDataToEntry } from "midgard-node/database/user-event-entries";
@@ -32,9 +33,9 @@ type FamilyHistory = Awaited<ReturnType<typeof prepareFamilyHistory>>;
 /** The applied lists as the public user-event builders address them. */
 const userHistoryContracts = (
   family: FamilyHistory,
-): SDK.UserHistoryContracts => {
+): SDKUsers.UserHistoryContracts => {
   const histories = family.applied.map(
-    (a, i): SDK.EventHistoryContracts => ({
+    (a, i): SDKUsers.EventHistoryContracts => ({
       recipe: family.recipes[i]!,
       list: {
         ...SDK.makeAuthenticatedValidator(
@@ -74,7 +75,7 @@ export const submitChronologyWithdrawal = async ({
   readonly family: FamilyHistory;
   readonly l2OutRef: SDK.OutputReference;
   readonly validTo: number;
-}): Promise<SDK.WithdrawalUTxO> => {
+}): Promise<SDKUsers.WithdrawalUTxO> => {
   const owner: SDK.AddressData = {
     paymentCredential: { PublicKeyCredential: [CHRONOLOGY_OWNER_KEY_HASH] },
     stakeCredential: null,
@@ -89,21 +90,25 @@ export const submitChronologyWithdrawal = async ({
   const contracts = userHistoryContracts(family);
   const nonce = family.nonce("Withdrawal");
   const built = await Effect.runPromise(
-    SDK.buildUnsignedWithdrawalTxWithMetadataProgram(h.proverLucid, contracts, {
-      body,
-      signature: signChronologyWithdrawal(body),
-      refundAddress: owner,
-      refundDatum: "NoDatum",
-      nonceInput: nonce,
-      validity: { validFrom: h.emulator.now() - 60_000, validTo },
-      referenceScripts: { withdrawalMinting: family.scripts[1]! },
-    }),
+    SDKUsers.buildUnsignedWithdrawalTxWithMetadataProgram(
+      h.proverLucid,
+      contracts,
+      {
+        body,
+        signature: signChronologyWithdrawal(body),
+        refundAddress: owner,
+        refundDatum: "NoDatum",
+        nonceInput: nonce,
+        validity: { validFrom: h.emulator.now() - 60_000, validTo },
+        referenceScripts: { withdrawalMinting: family.scripts[1]! },
+      },
+    ),
   );
   const txHash = await family.submit("admit-chronology-withdrawal", built.tx);
   const orders = await Effect.runPromise(
-    SDK.fetchWithdrawalUTxOsProgram(
+    SDKUsers.fetchWithdrawalUTxOsProgram(
       h.proverLucid,
-      SDK.eventHistoryDeploymentFromContracts(
+      SDKUsers.eventHistoryDeploymentFromContracts(
         contracts.eventHistory!.withdrawal,
       ),
     ),
@@ -126,7 +131,7 @@ export const submitChronologyWithdrawal = async ({
  * withdrawals-root entry, transition event key and ledger effect.
  */
 export const commitChronologyWithdrawal = (
-  order: SDK.WithdrawalUTxO,
+  order: SDKUsers.WithdrawalUTxO,
   baseLedger: readonly LedgerEntry[],
 ): Promise<
   CommittedChronologyWithdrawal &

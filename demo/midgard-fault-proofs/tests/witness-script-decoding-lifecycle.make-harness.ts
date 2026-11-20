@@ -2,7 +2,8 @@ import {
   encodeMidgardForcedTxCompact as forcedCompact,
   materializeMidgardForcedTxFromCanonical as forcedView,
 } from "@al-ft/midgard-core/codec/forced";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";
@@ -449,7 +450,7 @@ export const makeHarness = async ({
   const publishField = async (shape: Shape, prefix: string | null) => {
     const planned = planFaultProofFieldOpening({
       anchorSourceKind: 0n,
-      fieldIndex: SDK.MIDGARD_FIELD_INDEX.scriptWitnesses,
+      fieldIndex: SDKFraudProof.MIDGARD_FIELD_INDEX.scriptWitnesses,
       anchorTxId: shape.txId,
       nativeTxCompactCbor: shape.carriage.compactCbor,
       itemCbors: shape.items,
@@ -522,7 +523,7 @@ export const makeHarness = async ({
     });
     const planned: FaultProofFieldOpeningPlan = {
       sourceKind: 0n,
-      fieldIndex: SDK.MIDGARD_FIELD_INDEX.scriptWitnesses,
+      fieldIndex: SDKFraudProof.MIDGARD_FIELD_INDEX.scriptWitnesses,
       nativeTxId: shape.txId,
       nativeTxCompactCbor: shape.carriage.compactCbor,
       preimage,
@@ -613,7 +614,7 @@ export const makeHarness = async ({
   const scanStateAt = async (
     threadOutRef: string,
     stepIndex: 2 | 3,
-  ): Promise<SDK.WitnessScriptDecodingScanState> => {
+  ): Promise<SDKFraudProof.WitnessScriptDecodingScanState> => {
     const [txHash, index] = threadOutRef.split("#");
     const [utxo] = await lucid.utxosByOutRef([
       { txHash: txHash!, outputIndex: Number(index) },
@@ -622,9 +623,9 @@ export const makeHarness = async ({
     const datum = Data.from(
       utxo.datum,
       (stepIndex === 2
-        ? SDK.WitnessScriptDecodingStep03DatumSchema
-        : SDK.WitnessScriptDecodingStep04DatumSchema) as never,
-    ) as { data: SDK.WitnessScriptDecodingScanState };
+        ? SDKFraudProof.WitnessScriptDecodingStep03DatumSchema
+        : SDKFraudProof.WitnessScriptDecodingStep04DatumSchema) as never,
+    ) as { data: SDKFraudProof.WitnessScriptDecodingScanState };
     return datum.data;
   };
 

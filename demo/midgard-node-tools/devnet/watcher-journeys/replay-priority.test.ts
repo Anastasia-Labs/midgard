@@ -9,7 +9,8 @@ import { authenticatedHeaderObservation } from "@al-ft/midgard-fault-proofs/test
 import { detectTransitionTraceFaults } from "@al-ft/midgard-fault-proofs/transition-trace/detect";
 import { buildCountedRoot } from "@al-ft/midgard-fault-proofs/transition-trace/phas";
 import { DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY } from "@al-ft/midgard-fault-proofs/workflow/complete-replay";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { readPublishedDepositHistory } from "midgard-watcher/tests/support/published-deposit-history";
@@ -87,7 +88,7 @@ it.skipIf(stagedPath === undefined || !existsSync(stagedPath))(
     // exact retained machine traces. Every trace link and final root agrees,
     // so only semantic replay can expose the earlier transition fault.
     const transitions = retained.payload.block_body.transition_trace.map(
-      ([key, value]): SDK.DaPayloadEntry => [
+      ([key, value]): SDKDa.DaPayloadEntry => [
         key,
         Data.to(
           {
@@ -112,7 +113,7 @@ it.skipIf(stagedPath === undefined || !existsSync(stagedPath))(
       transitionTraceRoot: transitionRoot.root,
     };
     const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
-    const payload: SDK.DaPayload = {
+    const payload: SDKDa.DaPayload = {
       ...retained.payload,
       block_body: {
         ...retained.payload.block_body,
@@ -124,7 +125,7 @@ it.skipIf(stagedPath === undefined || !existsSync(stagedPath))(
     const block = {
       header,
       headerHash,
-      payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(payload), {
+      payloadEnvelopeCbor: await wrapDaPayload(SDKDa.encodeDaPayload(payload), {
         mode: "identity",
       }),
     };

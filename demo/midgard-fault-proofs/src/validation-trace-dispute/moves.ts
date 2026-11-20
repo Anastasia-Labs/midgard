@@ -4,7 +4,7 @@
  * it there into the case with the defender's lost-defense receipt (builders
  * in move-builders.ts). Each signed move carries the funding permit's move
  * authority and names the outputs it leaves. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { Data, type TxSignBuilder, type UTxO } from "@lucid-evolution/lucid";
 
 import { WorkflowActionChangedError } from "../workflow/action-changed.js";

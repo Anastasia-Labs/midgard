@@ -6,7 +6,8 @@ import {
   type AvailabilityOperationJournal,
   openAvailabilityOperationJournal,
 } from "@al-ft/midgard-core/availability-operation-journal";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { afterEach, beforeEach, vi } from "vitest";
 
@@ -51,15 +52,17 @@ const io = vi.hoisted(() => ({
   walletAddress: "availability",
   queuePolicy: "policy",
   limits: undefined as
-    | SDK.DaAvailabilityOperationLimits
-    | typeof SDK.daAvailabilityOperationLimits
+    | SDKDa.DaAvailabilityOperationLimits
+    | typeof SDKDa.daAvailabilityOperationLimits
     | undefined,
   lucidAllocated: undefined as ((lucid: LucidEvolution) => void) | undefined,
   closeBuild: undefined as
-    | (() => ReturnType<typeof SDK.buildCloseDaAvailabilityChallengeTxProgram>)
+    | (() => ReturnType<
+        typeof SDKDa.buildCloseDaAvailabilityChallengeTxProgram
+      >)
     | undefined,
   openBuild: undefined as
-    | (() => ReturnType<typeof SDK.buildOpenDaAvailabilityChallengeTxProgram>)
+    | (() => ReturnType<typeof SDKDa.buildOpenDaAvailabilityChallengeTxProgram>)
     | undefined,
   minimumAda: undefined as
     | typeof import("@lucid-evolution/lucid").calculateMinLovelaceFromUTxO
@@ -69,15 +72,15 @@ const io = vi.hoisted(() => ({
   tipLagMs: 0,
 }));
 export type TimeoutInput = Parameters<
-  typeof SDK.buildTimeoutDaAvailabilityChallengeTxProgram
+  typeof SDKDa.buildTimeoutDaAvailabilityChallengeTxProgram
 >[2];
-vi.mock("@al-ft/midgard-sdk", async (original) => {
+vi.mock("@al-ft/midgard-sdk/da", async (original) => {
   const { Effect } = await import("effect");
-  const actual = await original<typeof import("@al-ft/midgard-sdk")>();
+  const actual = await original<typeof import("@al-ft/midgard-sdk/da")>();
   return {
     ...actual,
     daAvailabilityOperationLimits: (
-      ...args: Parameters<typeof SDK.daAvailabilityOperationLimits>
+      ...args: Parameters<typeof SDKDa.daAvailabilityOperationLimits>
     ) =>
       typeof io.limits === "function" ? io.limits(...args) : (io.limits ?? {}),
     reconcileDaAvailabilityOperations: io.reconcile,
@@ -122,6 +125,12 @@ vi.mock("@al-ft/midgard-sdk", async (original) => {
       if (io.tipPool === undefined) throw new Error("no DA bond pool at tip");
       return { utxo: io.tipPool, datum: "Bonded" };
     },
+  };
+});
+vi.mock("@al-ft/midgard-sdk/state-queue", async (original) => {
+  const { Effect } = await import("effect");
+  return {
+    ...(await original<typeof import("@al-ft/midgard-sdk/state-queue")>()),
     fetchSortedStateQueueUTxOsProgram: () => Effect.succeed([{ utxo: {} }]),
   };
 });
@@ -197,7 +206,7 @@ vi.mock("../../src/availability/deployment.js", async () => {
 vi.mock("../../src/availability/observation.js", () => ({
   // An attempt's reads are bound to its own scope; record its signal.
   createWatcherAvailabilityObservation: (input: {
-    scope?: SDK.DaAvailabilityReadScope;
+    scope?: SDKDa.DaAvailabilityReadScope;
   }) => {
     if (input.scope !== undefined) io.sourceSignals.push(input.scope.signal);
     return {
@@ -384,7 +393,7 @@ export const runtime = (
   });
 
 export const observation = (
-  snapshots: readonly SDK.DaAvailabilityChallengeSnapshot[],
+  snapshots: readonly SDKDa.DaAvailabilityChallengeSnapshot[],
 ): WatcherAuthenticatedStateQueueObservation => {
   io.snapshot.mockImplementation(async (_observation, headerHash: string) =>
     snapshots.find((snapshot) => snapshot.headerHash === headerHash),
@@ -429,7 +438,7 @@ export const liveChallenge = (headerByte: string) => {
   return fixture(headerByte, now, now);
 };
 /** A live challenge whose every tranche was answered: its next step is close. */
-export const answered = (snapshot: SDK.DaAvailabilityChallengeSnapshot) => ({
+export const answered = (snapshot: SDKDa.DaAvailabilityChallengeSnapshot) => ({
   ...snapshot,
   terminalDatum: {
     ...snapshot.terminalDatum!,
@@ -440,7 +449,7 @@ export const answered = (snapshot: SDK.DaAvailabilityChallengeSnapshot) => ({
   },
 });
 /** An expired challenge at the queue head: its next step is Timeout. */
-export const timedOut = (snapshot: SDK.DaAvailabilityChallengeSnapshot) => ({
+export const timedOut = (snapshot: SDKDa.DaAvailabilityChallengeSnapshot) => ({
   ...snapshot,
   pool: { ...utxo(8, 100_000n * ADA), address: "pool" },
   terminalDatum: {
@@ -461,7 +470,7 @@ export { io };
 
 vi.mock("../../src/storage/retained-da-runtime.read-scope.js", () => ({
   withWatcherRetainedDaReadScope: async (
-    input: { scope: SDK.DaAvailabilityReadScope },
+    input: { scope: SDKDa.DaAvailabilityReadScope },
     read: () => Promise<unknown>,
   ) => input.scope.read(read),
 }));

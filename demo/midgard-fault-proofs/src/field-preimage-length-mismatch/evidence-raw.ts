@@ -7,7 +7,9 @@ import {
   computeDaSha256Hash,
   DA_TRANSPORT_LIMITS,
 } from "@al-ft/midgard-core/da-transport";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import type * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -46,7 +48,7 @@ export const exactFieldPreimageLengthRawFinding = async ({
   payloadEnvelopeCbor,
   orderOf = (transactionIndex) => transactionIndex,
 }: {
-  readonly observation: SDK.AuthenticatedStateQueueHeaderObservation;
+  readonly observation: SDKFraudProof.AuthenticatedStateQueueHeaderObservation;
   readonly payloadEnvelopeCbor: Uint8Array;
   readonly orderOf?: (transactionIndex: number) => number;
 }): Promise<RoutedFieldPreimageLengthEvidence> => {
@@ -57,8 +59,8 @@ export const exactFieldPreimageLengthRawFinding = async ({
       })
     ).innerBytes,
   );
-  const payload = SDK.decodeDaPayload(payloadCbor);
-  if (!SDK.encodeDaPayload(payload).equals(payloadCbor)) {
+  const payload = SDKDa.decodeDaPayload(payloadCbor);
+  if (!SDKDa.encodeDaPayload(payload).equals(payloadCbor)) {
     throw new Error("fieldPreimageLengthMismatch DA payload is not canonical");
   }
   const body = payload.block_body;

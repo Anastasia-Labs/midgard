@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Constr,
@@ -54,7 +55,7 @@ export const createDirectReceiveStepper = ({
     redeemer: (indices: {
       input_index: bigint;
       output_index: bigint;
-      opening: SDK.FieldOpening;
+      opening: SDKFraudProof.FieldOpening;
     }) => string,
     {
       fieldIndex = 2,

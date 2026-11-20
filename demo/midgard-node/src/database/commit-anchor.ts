@@ -22,7 +22,7 @@
  */
 import type { View } from "@al-ft/midgard-l1-follower";
 import { heightAtDepth } from "@al-ft/midgard-l1-follower/heads";
-import { EVENT_WAIT_DURATION_MS } from "@al-ft/midgard-sdk";
+import { EVENT_WAIT_DURATION_MS } from "@al-ft/midgard-sdk/core";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 

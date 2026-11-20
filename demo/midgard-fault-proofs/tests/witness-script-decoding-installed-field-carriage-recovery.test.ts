@@ -53,7 +53,7 @@ vi.mock("../src/workflow/family-l1-observation.js", async (load) => {
 });
 
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { retireFieldPreimageCertificateRedeemer } from "@al-ft/midgard-sdk";
+import { retireFieldPreimageCertificateRedeemer } from "@al-ft/midgard-sdk/state-queue";
 import { Data } from "@lucid-evolution/lucid";
 
 import {

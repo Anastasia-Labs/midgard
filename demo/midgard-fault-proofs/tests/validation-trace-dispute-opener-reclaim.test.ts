@@ -7,7 +7,7 @@
  * rollback recovery (one block short of it, the run still waits), and only
  * then ends resolved by their record: never as our conviction, with no
  * removal of ours. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import {
   CML,
   Data,

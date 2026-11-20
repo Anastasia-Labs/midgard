@@ -8,7 +8,7 @@ import {
   encodeMidgardAddressText,
 } from "@al-ft/midgard-core/codec";
 import type { LedgerAt } from "@al-ft/midgard-fault-proofs/ledger-at";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/users";
 import { paymentCredentialOf } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

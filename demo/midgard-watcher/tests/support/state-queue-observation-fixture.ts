@@ -1,5 +1,7 @@
 import "@al-ft/midgard-core/codec/hash";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/users";
 import "@lucid-evolution/lucid";
 import "../../src/indexers/authenticated-state-queue-observation.parse-persisted-header.js";
 import "../../src/runtime/deployment-identity.verify-watcher-user-event-script-binding.js";

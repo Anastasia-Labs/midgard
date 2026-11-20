@@ -7,7 +7,7 @@
  * the stranger, and the honest prover's own transition then lands on the
  * untouched thread and the thread convicts.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import {
   type BuildTxWithRedeemer,
   generateEmulatorAccount,

@@ -9,7 +9,8 @@
  * is checked; a fetched payload is kept only after the block replayed.
  */
 import type { FactStore } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import { SqlClient } from "@effect/sql";
 import { Clock, Effect, Option } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -83,7 +84,7 @@ afterEach(async () => {
 });
 
 /** Drops the node's retained copy of `payload`. */
-const forget = (payload: SDK.DaPayload) =>
+const forget = (payload: SDKDa.DaPayload) =>
   db(
     Effect.flatMap(
       SqlClient.SqlClient,
@@ -93,7 +94,7 @@ const forget = (payload: SDK.DaPayload) =>
   );
 
 /** Retains `payload` and replays it at the chain's view. */
-const replayed = async (store: FactStore, payload: SDK.DaPayload) => {
+const replayed = async (store: FactStore, payload: SDKDa.DaPayload) => {
   await retain(await retainedRow(payload));
   return replay(store, payload);
 };
@@ -347,7 +348,7 @@ describe("foreign replay: the view's horizon and the DA payload", () => {
     };
     // One replayer across runs, as the follower keeps one.
     const replayer = replayerFor(store);
-    const run = async (payload: SDK.DaPayload) =>
+    const run = async (payload: SDKDa.DaPayload) =>
       inNode(
         replayer(await inputFor(store, payload)).pipe(
           Effect.withClock(clockAt),

@@ -2,7 +2,7 @@
  * from the family entry to claim start or the terminal: grammar
  * certification, then the pointer walk up to the named redeemer. */
 import { readCborUnsigned } from "@al-ft/midgard-core/codec/cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import {

@@ -9,7 +9,7 @@
  * spend, a native mint and a native receive reach the spend, mint and
  * receive claim domains.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { afterAll, describe, expect, it } from "vitest";
 

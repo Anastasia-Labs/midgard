@@ -17,7 +17,9 @@ import {
   encodeDaProofBundleByHeaderResponseCbor,
   encodeDaTraceStepByIndexResponseCbor,
 } from "@al-ft/midgard-core/da-transport";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -90,7 +92,7 @@ describe("transition-trace challenger tooling", () => {
     const info = withdrawalInfo(2);
     info.body.l2_value.set(h28(8), new Map([["01", 5n]]));
     const key = Data.to(outRef(4), SDK.OutputReference);
-    const encoded = SDK.committedWithdrawalValueBytes(info);
+    const encoded = SDKFraudProof.committedWithdrawalValueBytes(info);
     const lucidEncoded = Data.to(info, SDK.WithdrawalInfo);
     expect(encoded).not.toBe(lucidEncoded);
     const eventKey = withdrawalEventKey(outRef(4));
@@ -200,7 +202,7 @@ describe("transition-trace challenger tooling", () => {
     const badHeaderHash = await Effect.runPromise(
       SDK.hashBlockHeader(badHeader),
     );
-    const badPayload: SDK.DaPayload = {
+    const badPayload: SDKDa.DaPayload = {
       ...fixture.payload,
       block_body: {
         ...fixture.payload.block_body,
@@ -211,7 +213,7 @@ describe("transition-trace challenger tooling", () => {
     await expect(
       reconstructDaPayload({
         payloadEnvelopeCbor: await wrapDaPayload(
-          SDK.encodeDaPayload(badPayload),
+          SDKDa.encodeDaPayload(badPayload),
           { mode: "identity" },
         ),
         expectedHeaderHash: badHeaderHash,
@@ -353,7 +355,7 @@ describe("transition-trace challenger tooling", () => {
       reconstruction,
       stepIndex: 0n,
     });
-    const invalidNoOp = SDK.invalidOneStepTransitionFault(
+    const invalidNoOp = SDKFraudProof.invalidOneStepTransitionFault(
       await buildInvalidForcedTransactionNoOpWitness({
         reconstruction: await reconstruct(
           await buildPayloadFixture({
@@ -405,7 +407,7 @@ describe("transition-trace challenger tooling", () => {
       reconstruction,
       evidence: outOfWindowEvidence,
     });
-    const count = SDK.countFault("HeaderTotalCountMismatch");
+    const count = SDKFraudProof.countFault("HeaderTotalCountMismatch");
 
     for (const fault of [
       boundary,
@@ -419,8 +421,8 @@ describe("transition-trace challenger tooling", () => {
       const proof = buildTransitionFaultProof({ reconstruction, fault });
       expect(() =>
         Data.from(
-          Data.to(proof as never, SDK.TransitionFaultProof as never),
-          SDK.TransitionFaultProof as never,
+          Data.to(proof as never, SDKFraudProof.TransitionFaultProof as never),
+          SDKFraudProof.TransitionFaultProof as never,
         ),
       ).not.toThrow();
     }
@@ -481,7 +483,7 @@ describe("transition-trace challenger tooling", () => {
     expect(
       Data.to(
         witness as never,
-        SDK.InvalidOneStepTransitionWitnessSchema as never,
+        SDKFraudProof.InvalidOneStepTransitionWitnessSchema as never,
       ),
     ).toMatch(/^d87d/);
 
@@ -922,7 +924,7 @@ describe("transition-trace challenger tooling", () => {
       matchingCommittedRoot: false,
     });
     const spent = fixture.evidence.spentUtxos[0]!;
-    const malformed: SDK.LedgerDeleteWitness = {
+    const malformed: SDKFraudProof.LedgerDeleteWitness = {
       ...spent,
       delete_proof: [
         {
@@ -1729,8 +1731,8 @@ describe("transition-trace challenger tooling", () => {
       });
       expect(() =>
         Data.from(
-          Data.to(fault as never, SDK.TransitionFault as never),
-          SDK.TransitionFault as never,
+          Data.to(fault as never, SDKFraudProof.TransitionFault as never),
+          SDKFraudProof.TransitionFault as never,
         ),
       ).not.toThrow();
     }

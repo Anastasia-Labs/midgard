@@ -4,7 +4,7 @@ import {
   DoubleSpendStep03Datum,
   DoubleSpendStep04Datum,
   FraudProofComputationThreadStepDatum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   Data,
   type Emulator,

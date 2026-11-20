@@ -10,7 +10,8 @@ import {
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { type Script, type UTxO } from "@lucid-evolution/lucid";
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 
@@ -35,9 +36,8 @@ import type { DecodingBlockFixture } from "./native-script-decoding-emulator.bui
 
 export const MISSING_SIGNATURE_TARGET_VKEY = "11".repeat(32);
 
-export const MISSING_SIGNATURE_TARGET_HASH = SDK.missingSignatureVkeyHash(
-  MISSING_SIGNATURE_TARGET_VKEY,
-);
+export const MISSING_SIGNATURE_TARGET_HASH =
+  SDKFraudProof.missingSignatureVkeyHash(MISSING_SIGNATURE_TARGET_VKEY);
 
 /** First field-7 vector that is too large for tier 1 and must publish. */
 export const MISSING_SIGNATURE_FIRST_RAW_WITNESS_COUNT =
@@ -107,7 +107,8 @@ export const buildMissingSignatureSubject = ({
       networkId: MIDGARD_NATIVE_NETWORK_ID_NONE,
     },
     witnessSet: {
-      addrTxWitsPreimageCbor: SDK.encodeAddressWitnessPreimage(addrTxWits),
+      addrTxWitsPreimageCbor:
+        SDKFraudProof.encodeAddressWitnessPreimage(addrTxWits),
       scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
       redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
     },
@@ -255,7 +256,7 @@ export const missingSignatureFinding = (
     5 +
     Math.floor(
       Math.max(0, scenario.subject.addrTxWits.length - 1) /
-        SDK.MISSING_SIGNATURE_WITNESS_SCAN_BATCH_SIZE,
+        SDKFraudProof.MISSING_SIGNATURE_WITNESS_SCAN_BATCH_SIZE,
     ),
 });
 

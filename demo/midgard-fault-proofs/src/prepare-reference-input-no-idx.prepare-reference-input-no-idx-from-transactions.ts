@@ -5,7 +5,7 @@ import {
   commitCountedRootProgram,
   type MidgardTxInput,
   ROOT_DOMAINS,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import { Effect } from "effect";
 
 import { parseHex, stringifyJson } from "./json-file.js";

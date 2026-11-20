@@ -13,7 +13,8 @@ import {
   eventProjection,
   eventProjectionConfigFromContracts,
 } from "@al-ft/midgard-l1-follower/events";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/users";
 import type { Effect } from "effect";
 
 import { forcedOrderConfigFromContracts } from "../../src/forced-orders/config.js";
@@ -34,7 +35,7 @@ import { availabilityParametersFromExplicitEnvironment } from "../../src/service
 import type { EmulatorLandedBlocks } from "./emulator-l1-follower.driver.js";
 
 export const openLandedBlocks = async (args: {
-  readonly contracts: SDK.MidgardValidators;
+  readonly contracts: SDKCore.MidgardValidators;
   readonly nodeConfig: NodeConfigDep;
   /** k, the follower's security parameter. */
   readonly securityParameter: number;

@@ -2,7 +2,7 @@ import {
   ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX,
   RETIRED_OPERATOR_NODE_ASSET_NAME_PREFIX,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import { CML, coreToTxOutput, toUnit } from "@lucid-evolution/lucid";
 
 import { fraudSlashFeeLovelace } from "../remove-fraudulent-block.assert-exact-fraud-slash-lovelace-conservation.js";

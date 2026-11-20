@@ -1,7 +1,8 @@
 import "@al-ft/midgard-core/cek-proof";
 import "@al-ft/midgard-core/consensus-profile";
 import "@al-ft/midgard-core/da-payload-envelope";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/da";
 import "@lucid-evolution/lucid";
 import "effect";
 import "../../da/hardening-config.js";

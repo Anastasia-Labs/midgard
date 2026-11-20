@@ -11,7 +11,8 @@
  * and the deployment's reserved initialization nonces are left out of the
  * view before planning, so neither a strip input nor a fee input is one.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   CML,
   getAddressDetails,
@@ -77,7 +78,7 @@ export type OperatorWalletScriptRefStripResult = {
 };
 
 type OperatorWalletScriptRefStripError =
-  | SDK.StateQueueError
+  | SDKStateQueue.StateQueueError
   | SDK.LucidError
   | WalletViewUnavailable
   | TxConfirmError
@@ -85,8 +86,8 @@ type OperatorWalletScriptRefStripError =
   | TxSignError
   | TxSubmitError;
 
-const planningError = (cause: unknown): SDK.StateQueueError =>
-  new SDK.StateQueueError({
+const planningError = (cause: unknown): SDKStateQueue.StateQueueError =>
+  new SDKStateQueue.StateQueueError({
     message:
       cause instanceof Error
         ? cause.message

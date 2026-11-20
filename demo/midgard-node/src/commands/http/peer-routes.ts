@@ -6,7 +6,7 @@
  * workers, and are admitted with source `peer`; this node's own validation
  * decides their fate.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/operators";
 import {
   HttpIncomingMessage,
   HttpServerRequest,

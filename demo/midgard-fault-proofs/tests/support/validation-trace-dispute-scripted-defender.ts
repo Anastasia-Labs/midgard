@@ -12,7 +12,7 @@ import {
   type MidgardValidationTraceProof,
   validationTraceDepthForStepCount,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { Data, type TxSignBuilder, type UTxO } from "@lucid-evolution/lucid";
 
 import type { ValidationTraceClaimMaterial } from "../../src/validation-trace-dispute/claim-material.js";

@@ -3,7 +3,7 @@
  * Keeping response shaping here prevents route handlers from each inventing
  * their own failure formatting and status-code behavior.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { HttpServerResponse } from "@effect/platform";
 import type { HttpBodyError } from "@effect/platform/HttpBody";
 import { Effect } from "effect";

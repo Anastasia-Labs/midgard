@@ -34,12 +34,12 @@ import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import {
   completeReferenceScriptPublicationTxProgram,
   createReferenceScriptAuthPolicy,
   referenceScriptPublicationFundingTarget,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import { selectPlainFundingUtxos } from "@al-ft/midgard-test-support/reference-script-funding";
 import { Emulator, generateEmulatorAccount } from "@lucid-evolution/lucid";
 import { Effect } from "effect";

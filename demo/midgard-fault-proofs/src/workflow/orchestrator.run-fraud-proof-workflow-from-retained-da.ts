@@ -2,7 +2,7 @@ import { normalizeDaDeploymentFingerprintHex } from "@al-ft/midgard-core/da-tran
 import {
   admitAuthenticatedStateQueueHeaderObservation,
   type AuthenticatedStateQueueHeaderObservation,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { canonicalDecodabilityArtifactFromRawEvidence } from "../evidence/canonical-decodability-raw-evidence.js";

@@ -1,7 +1,7 @@
 /** The script purposes a direct purpose leaf carries, as the purpose phase
  * walks them: every purpose whose credential is a script and whose
  * membership the bound source can show. */
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
 import {

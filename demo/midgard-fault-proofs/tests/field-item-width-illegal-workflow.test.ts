@@ -10,7 +10,7 @@ import {
   deriveMidgardForcedTxFaultEvidenceMaterial,
   encodeMidgardForcedTxCanonical,
 } from "@al-ft/midgard-core/codec/forced";
-import { acceptedVerdictSubject } from "@al-ft/midgard-sdk";
+import { acceptedVerdictSubject } from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type Script,
   type UTxO,

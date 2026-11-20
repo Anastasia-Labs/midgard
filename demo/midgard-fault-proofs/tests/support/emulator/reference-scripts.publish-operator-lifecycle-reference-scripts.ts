@@ -1,7 +1,5 @@
-import {
-  type MidgardValidators,
-  type ReferenceScriptPublication,
-} from "@al-ft/midgard-sdk";
+import { type MidgardValidators } from "@al-ft/midgard-sdk/core";
+import { type ReferenceScriptPublication } from "@al-ft/midgard-sdk/operators";
 import {
   CML,
   credentialToAddress,

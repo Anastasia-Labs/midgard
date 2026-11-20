@@ -11,12 +11,14 @@ import {
   encodeMidgardForcedTxCompact,
 } from "@al-ft/midgard-core/codec/forced";
 import {
-  deriveFieldPreimageCertification,
   FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX,
+  type FraudProofCatalogueCategoryName,
+} from "@al-ft/midgard-sdk/core";
+import {
+  deriveFieldPreimageCertification,
   fieldPreimagePublicationBytes,
   fieldPreimagePublicationDatumCbor,
-  type FraudProofCatalogueCategoryName,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
 
 import { boundDataPublicationPlan } from "./bound-data-publication.js";

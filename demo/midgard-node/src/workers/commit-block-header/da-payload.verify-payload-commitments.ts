@@ -1,5 +1,6 @@
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -46,7 +47,7 @@ const countMismatches = (
       : "validation_trace_count",
   ].filter((field): field is string => field !== null);
 
-const payloadMemberCounts = (payload: SDK.DaPayload): PayloadCountSet => ({
+const payloadMemberCounts = (payload: SDKDa.DaPayload): PayloadCountSet => ({
   withdrawalCount: BigInt(payload.block_body.withdrawals.length),
   forcedTransactionCount: BigInt(payload.block_body.forced_transactions.length),
   l2TransactionCount: BigInt(payload.block_body.transactions.length),
@@ -60,7 +61,7 @@ const payloadMemberCounts = (payload: SDK.DaPayload): PayloadCountSet => ({
   validationTraceCount: BigInt(payload.block_body.validation_traces.length),
 });
 
-const payloadDeclaredCounts = (payload: SDK.DaPayload): PayloadCountSet =>
+const payloadDeclaredCounts = (payload: SDKDa.DaPayload): PayloadCountSet =>
   payload.block_body.counts;
 
 export const decodeHeader = (
@@ -88,7 +89,7 @@ export const verifyPayloadCommitments = ({
 }: {
   readonly record: PendingBlockFinalizationsDB.Record;
   readonly header: SDK.Header;
-  readonly payload: SDK.DaPayload;
+  readonly payload: SDKDa.DaPayload;
   readonly roots: PayloadRootSet;
 }): Effect.Effect<void, DatabaseError> =>
   Effect.gen(function* () {
@@ -97,7 +98,7 @@ export const verifyPayloadCommitments = ({
     if (
       record[PendingBlockFinalizationsDB.Columns.CONSENSUS_PROFILE_ID] !==
         MIDGARD_CONSENSUS_PROFILE.profileId ||
-      payload.version !== SDK.DA_PAYLOAD_VERSION
+      payload.version !== SDKDa.DA_PAYLOAD_VERSION
     ) {
       return yield* Effect.fail(
         new DatabaseError({

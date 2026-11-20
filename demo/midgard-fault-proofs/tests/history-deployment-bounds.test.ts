@@ -3,7 +3,9 @@ import { readFileSync } from "node:fs";
 
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   credentialToAddress,
   Data,
@@ -34,7 +36,7 @@ const policy = scriptFromNative({ type: "sig", keyHash: "11".repeat(28) });
 const referenceScriptAuthPolicy = {
   policyId: mintingPolicyToId(policy),
   nativeScript: { type: "Native", cborHex: policy.script },
-  tokenNames: SDK.REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
+  tokenNames: SDKStateQueue.REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
 };
 
 for (const category of [
@@ -63,14 +65,16 @@ for (const category of [
       const built =
         category === "fabricatedDeposit"
           ? await Effect.runPromise(
-              SDK.buildFabricatedDepositFaultProofContracts(params),
+              SDKFraudProof.buildFabricatedDepositFaultProofContracts(params),
             )
           : category === "fabricatedWithdrawal"
             ? await Effect.runPromise(
-                SDK.buildFabricatedWithdrawalFaultProofContracts(params),
+                SDKFraudProof.buildFabricatedWithdrawalFaultProofContracts(
+                  params,
+                ),
               )
             : await Effect.runPromise(
-                SDK.buildTransitionTraceFaultProofContracts(params),
+                SDKFraudProof.buildTransitionTraceFaultProofContracts(params),
               );
       const chain =
         "fabricatedDeposit" in built

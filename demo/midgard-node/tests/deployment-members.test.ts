@@ -1,10 +1,12 @@
 import { DEPLOYMENT_MEMBERS } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   cekContextItemReferenceScripts,
-  restoreValidationTraceDisputeScripts,
   VALIDATION_TRACE_DISPUTE_STEP_COUNT,
+} from "@al-ft/midgard-sdk/core";
+import {
+  restoreValidationTraceDisputeScripts,
   verifyDeploymentScriptBindings,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/deployment";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { faultProofMemberFromManifest } from "../src/services/midgard-contracts.linear-fault-proof-chain-from-manifest.js";

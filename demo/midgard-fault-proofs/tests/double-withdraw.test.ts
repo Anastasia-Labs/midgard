@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
@@ -37,8 +38,11 @@ const PAYABLE_INFO: SDK.WithdrawalInfo = {
 };
 
 const entry = (id: SDK.OutputReference) => ({
-  key: Buffer.from(SDK.committedWithdrawalKeyBytes(id), "hex"),
-  value: Buffer.from(SDK.committedWithdrawalValueBytes(PAYABLE_INFO), "hex"),
+  key: Buffer.from(SDKFraudProof.committedWithdrawalKeyBytes(id), "hex"),
+  value: Buffer.from(
+    SDKFraudProof.committedWithdrawalValueBytes(PAYABLE_INFO),
+    "hex",
+  ),
 });
 
 const entries = [entry(FIRST_ID), entry(SECOND_ID)] as const;
@@ -111,11 +115,11 @@ describe("production double-withdraw workflow evidence", () => {
     expect(decision.launchScope).toEqual(["doubleWithdraw"]);
     expect(decision.detections).toHaveLength(1);
     expect(decision.detections[0]).toMatchObject({
-      violationId: SDK.DOUBLE_WITHDRAW_VIOLATION_ID,
+      violationId: SDKFraudProof.DOUBLE_WITHDRAW_VIOLATION_ID,
       position: 1n,
     });
     expect(decision.detections[0]!.detectionId).toContain(
-      SDK.committedWithdrawalKeyBytes(FIRST_ID),
+      SDKFraudProof.committedWithdrawalKeyBytes(FIRST_ID),
     );
   });
 });

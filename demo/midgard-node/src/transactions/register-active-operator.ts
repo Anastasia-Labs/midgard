@@ -4,7 +4,13 @@
  * composes the shared layout and clock helpers extracted from the monolith.
  */
 
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/da";
+import "@al-ft/midgard-sdk/operators";
+import "@al-ft/midgard-sdk/users";
+import "@al-ft/midgard-sdk/deployment";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "@lucid-evolution/lucid";
 import "effect";
 import "../services/index.js";

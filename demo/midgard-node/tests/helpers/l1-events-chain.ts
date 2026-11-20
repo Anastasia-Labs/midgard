@@ -12,7 +12,8 @@ import type {
   EventProjectionConfig,
 } from "@al-ft/midgard-l1-follower/events";
 import type { SimOutput, SimTx } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/users";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -39,7 +40,7 @@ export const ELSEWHERE = Buffer.from(`70${repeat("ee", 28)}`, "hex");
 
 const owner = repeat("cd", 28);
 const auth = { PublicKeyCredential: [owner] as [string] };
-const address: SDK.AddressData = {
+const address: SDKCore.AddressData = {
   paymentCredential: auth,
   stakeCredential: null,
 };
@@ -49,7 +50,7 @@ const BOUNDS = {
   maxPayloadNodes: 1_024n,
 };
 
-export const eventIdOf = (nonce: OutRef): SDK.OutputReference => ({
+export const eventIdOf = (nonce: OutRef): SDKCore.OutputReference => ({
   transactionId: nonce.txHash.toString("hex"),
   outputIndex: BigInt(nonce.index),
 });
@@ -60,10 +61,10 @@ export const eventKeyOf = (nonce: OutRef): string =>
 
 const payloadOf = (
   kind: EventKind,
-  id: SDK.OutputReference,
+  id: SDKCore.OutputReference,
   external: boolean,
   l2NetworkId: bigint,
-  l2Address: SDK.AddressData,
+  l2Address: SDKCore.AddressData,
 ): SDK.EventHistoryPayload => {
   const data = external ? "ab".repeat(600) : "ab";
   return kind === "deposit"
@@ -122,7 +123,7 @@ export const eventOrder = (
     /** A deposit's L2 network id; 0 unless set. */
     l2NetworkId?: bigint;
     /** A deposit's L2 address; the owner's enterprise address unless set. */
-    l2Address?: SDK.AddressData;
+    l2Address?: SDKCore.AddressData;
   }> = {},
 ): EventOrder => {
   const config = listOf(kind);

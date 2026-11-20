@@ -1,5 +1,6 @@
 import { alignUnixTimeToSlotBoundary } from "@al-ft/midgard-core/ogmios-slot";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKOperators from "@al-ft/midgard-sdk/operators";
 import {
   Emulator,
   type LucidEvolution,
@@ -47,8 +48,10 @@ export const submitSigned = async (
 export const fetchDirectorySnapshot = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
-): Promise<SDK.OperatorDirectorySnapshot> =>
-  runProgram(SDK.fetchOperatorDirectorySnapshotProgram(lucid, contracts));
+): Promise<SDKOperators.OperatorDirectorySnapshot> =>
+  runProgram(
+    SDKOperators.fetchOperatorDirectorySnapshotProgram(lucid, contracts),
+  );
 
 export const keyHashOf = async (lucid: LucidEvolution): Promise<string> => {
   const credential = paymentCredentialOf(await lucid.wallet().address());
@@ -174,8 +177,11 @@ export const appointFirstOperator = async ({
 }): Promise<void> => {
   const { contracts, emulator, scriptRefs } = fixture;
   const snapshot = await fetchDirectorySnapshot(operatorLucid, contracts);
-  const activeNode = SDK.findNodeByKey(snapshot.active, operatorKeyHash);
-  const registeredWitnessNode = SDK.findTailNode(snapshot.registered);
+  const activeNode = SDKOperators.findNodeByKey(
+    snapshot.active,
+    operatorKeyHash,
+  );
+  const registeredWitnessNode = SDKOperators.findTailNode(snapshot.registered);
   if (activeNode === undefined || registeredWitnessNode === undefined) {
     throw new Error("Missing witnesses for the first scheduler appointment");
   }
@@ -202,7 +208,7 @@ export const appointFirstOperator = async ({
   await submitSigned(operatorLucid, tx);
 };
 
-type RetireOverrides = Partial<SDK.RetireOperatorTxConfig>;
+type RetireOverrides = Partial<SDKOperators.RetireOperatorTxConfig>;
 
 /** What the retirement builders need from a fixture, exit or inactivity. */
 export type RetireFixture = {
@@ -222,18 +228,18 @@ export const buildRetireTx = async ({
   readonly fixture: RetireFixture;
   readonly submitterLucid: LucidEvolution;
   readonly operatorKeyHash: string;
-  readonly mode: SDK.RetirementMode;
+  readonly mode: SDKOperators.RetirementMode;
   readonly validity?: {
     readonly validFrom: bigint;
     readonly validTo: bigint;
   };
   readonly overrides?: RetireOverrides;
-}): Promise<SDK.RetireOperatorTxResult> => {
+}): Promise<SDKOperators.RetireOperatorTxResult> => {
   const { contracts, emulator, scriptRefs } = fixture;
   const snapshot = await fetchDirectorySnapshot(submitterLucid, contracts);
   const { validFrom, validTo } =
     validity ?? exitValidityWindow(submitterLucid, emulator);
-  const witnesses = SDK.deriveRetireOperatorWitnesses({
+  const witnesses = SDKOperators.deriveRetireOperatorWitnesses({
     snapshot,
     contracts,
     operatorKeyHash,
@@ -241,7 +247,7 @@ export const buildRetireTx = async ({
     schedulerSpendingScriptRef: scriptRefs.schedulerSpending,
   });
   return runProgram(
-    SDK.buildUnsignedRetireOperatorTxProgram({
+    SDKOperators.buildUnsignedRetireOperatorTxProgram({
       lucid: submitterLucid,
       contracts,
       operatorKeyHash,
@@ -254,7 +260,7 @@ export const buildRetireTx = async ({
       activeNodeUnit: witnesses.activeNodeUnit,
       retiredNodeUnit: witnesses.retiredNodeUnit,
       bondUnlockTime: witnesses.bondUnlockTime,
-      retiredNodeLovelace: SDK.retiredOperatorBondTranche(
+      retiredNodeLovelace: SDKOperators.retiredOperatorBondTranche(
         mode,
         BOND_PARAMETERS,
       ),
@@ -272,7 +278,7 @@ export const retireOperator = async (input: {
   readonly fixture: RetireFixture;
   readonly submitterLucid: LucidEvolution;
   readonly operatorKeyHash: string;
-  readonly mode: SDK.RetirementMode;
+  readonly mode: SDKOperators.RetirementMode;
   readonly overrides?: RetireOverrides;
 }): Promise<string> => {
   const { tx } = await buildRetireTx(input);
@@ -288,18 +294,18 @@ export const recoverOperatorBond = async ({
   readonly fixture: OperatorExitFixture;
   readonly submitterLucid: LucidEvolution;
   readonly operatorKeyHash: string;
-  readonly overrides?: Partial<SDK.RecoverOperatorBondTxConfig>;
+  readonly overrides?: Partial<SDKOperators.RecoverOperatorBondTxConfig>;
 }): Promise<string> => {
   const { contracts, emulator, scriptRefs } = fixture;
   const snapshot = await fetchDirectorySnapshot(submitterLucid, contracts);
-  const witnesses = SDK.deriveRecoverOperatorBondWitnesses({
+  const witnesses = SDKOperators.deriveRecoverOperatorBondWitnesses({
     snapshot,
     contracts,
     operatorKeyHash,
   });
   const { validFrom, validTo } = exitValidityWindow(submitterLucid, emulator);
   const { tx } = await runProgram(
-    SDK.buildUnsignedRecoverOperatorBondTxProgram({
+    SDKOperators.buildUnsignedRecoverOperatorBondTxProgram({
       lucid: submitterLucid,
       contracts,
       operatorKeyHash,

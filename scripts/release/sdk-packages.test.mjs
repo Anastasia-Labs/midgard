@@ -456,6 +456,31 @@ test("the type probe reports errors in the probe, the publish set and no file, n
   );
 });
 
+test("the type probe requires only the exports a CommonJS consumer can require", () => {
+  const { root, installRoot } = typesFixture(fakeTsc("", 0));
+  const manifest = {
+    exports: {
+      ".": {
+        import: { types: "./dist/index.d.ts", default: "./dist/index.js" },
+        require: { types: "./dist/index.d.cts", default: "./dist/index.cjs" },
+      },
+      "./esm-only": {
+        import: { types: "./dist/esm.d.ts", default: "./dist/esm.js" },
+      },
+    },
+  };
+  assert.deepEqual(
+    typesCheck(root, installRoot, [{ name: "@al-ft/a", manifest }]),
+    [],
+  );
+  const probe = (file) =>
+    readFileSync(join(installRoot, "types-probe", file), "utf8");
+  assert.match(probe("esm.mts"), /from "@al-ft\/a";/u);
+  assert.match(probe("esm.mts"), /from "@al-ft\/a\/esm-only";/u);
+  assert.match(probe("cjs.cts"), /require\("@al-ft\/a"\);/u);
+  assert.doesNotMatch(probe("cjs.cts"), /esm-only/u);
+});
+
 test("the type probe reports an @types/node it cannot link", () => {
   const { root, installRoot } = typesFixture(fakeTsc("", 0), {
     typesNode: false,

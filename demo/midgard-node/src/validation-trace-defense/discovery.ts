@@ -37,7 +37,7 @@ import {
   txByHashIn,
 } from "@al-ft/midgard-l1-follower";
 import { toLucidUtxo } from "@al-ft/midgard-l1-follower/provider";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 
 /** The dispute contracts a defense reads, by hash. */

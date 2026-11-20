@@ -6,7 +6,8 @@ import {
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data } from "@lucid-evolution/lucid";
 import {
   computeDaPayloadRoots,
@@ -68,7 +69,7 @@ const nodeTracedForcedPayload = async () => {
     l2TransactionCount: 0n,
     forcedTransactionCount: 1n,
   };
-  const unhashed: SDK.DaPayload = {
+  const unhashed: SDKDa.DaPayload = {
     ...base.payload,
     block_body: {
       ...base.payload.block_body,
@@ -117,7 +118,7 @@ const nodeTracedForcedPayload = async () => {
     validationTraceCount: 0n,
   };
   const headerHash = Effect.runSync(SDK.hashBlockHeader(header));
-  const payload: SDK.DaPayload = {
+  const payload: SDKDa.DaPayload = {
     ...unhashed,
     block_body: { ...unhashed.block_body, header, header_hash: headerHash },
   };
@@ -130,7 +131,7 @@ describe("node-produced validation traces pass DA committee admission", () => {
       await nodeTracedForcedPayload();
     expect(member.value.step_count).toBe(1n);
     const verified = await verifyDaPayloadAgainstHeader(
-      await wrapDaPayload(SDK.encodeDaPayload(payload), { mode: "identity" }),
+      await wrapDaPayload(SDKDa.encodeDaPayload(payload), { mode: "identity" }),
       headerHash,
       header,
       {
@@ -165,7 +166,7 @@ describe("node-produced validation traces pass DA committee admission", () => {
     );
     expect(() =>
       decodeDaPayloadStrict(
-        SDK.encodeDaPayload({
+        SDKDa.encodeDaPayload({
           ...payload,
           block_body: {
             ...payload.block_body,

@@ -11,7 +11,7 @@
  * twice, a count its header or body does not commit) is judged `invalid`
  * before the parent's entries are checked, on any parent ledger.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Effect, Metric } from "effect";
 import { describe, expect, it } from "vitest";
 

@@ -23,7 +23,7 @@ import {
   eventTrackedSet,
   type ProjectedEvent,
 } from "@al-ft/midgard-l1-follower/events";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import { runPhaseBValidationWithPatch } from "@al-ft/midgard-validation/phase-b";
 import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { SqlClient } from "@effect/sql";

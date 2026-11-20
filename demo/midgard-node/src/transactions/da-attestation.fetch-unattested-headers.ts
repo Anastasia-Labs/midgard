@@ -1,4 +1,6 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import type { SqlClient } from "@effect/sql";
 import {
   calculateMinLovelaceFromUTxO,
@@ -17,8 +19,8 @@ export const fetchUnattestedHeaders = (
   contracts: SDK.MidgardValidators,
   headerHash?: string,
 ): Effect.Effect<
-  readonly SDK.DaAttestationStateQueueTarget[],
-  SDK.DataCoercionError | SDK.HashingError | SDK.StateQueueError,
+  readonly SDKDa.DaAttestationStateQueueTarget[],
+  SDK.DataCoercionError | SDK.HashingError | SDKStateQueue.StateQueueError,
   SqlClient.SqlClient
 > =>
   Effect.gen(function* () {
@@ -26,7 +28,7 @@ export const fetchUnattestedHeaders = (
       contracts.stateQueue,
       "DA attestation",
     );
-    const matches: SDK.DaAttestationStateQueueTarget[] = [];
+    const matches: SDKDa.DaAttestationStateQueueTarget[] = [];
     for (const stateQueueUtxo of stateQueueUtxos) {
       if (stateQueueUtxo.datum.key === "Empty") {
         continue;
@@ -41,7 +43,7 @@ export const fetchUnattestedHeaders = (
       const datumHeaderHash = stateQueueUtxo.datum.key.Key.key;
       if (recomputedHeaderHash !== datumHeaderHash) {
         return yield* Effect.fail(
-          new SDK.StateQueueError({
+          new SDKStateQueue.StateQueueError({
             message:
               "Failed to select DA attestation target: state-queue key/hash mismatch",
             cause: `outRef=${outRefLabel(stateQueueUtxo.utxo)},datumKey=${datumHeaderHash},computed=${recomputedHeaderHash}`,
@@ -59,7 +61,7 @@ export const fetchUnattestedHeaders = (
     }
     if (headerHash !== undefined && matches.length === 0) {
       return yield* Effect.fail(
-        new SDK.StateQueueError({
+        new SDKStateQueue.StateQueueError({
           message:
             "Requested state-queue header is not available for DA attestation",
           cause: `header=${headerHash}`,
@@ -84,12 +86,12 @@ export const fetchUnattestedHeaders = (
  * indexed, and the attestation validator would reject them.
  */
 export const localDaSignatureWitnesses = (
-  availabilityCommitment: SDK.DaAvailabilityCommitment,
+  availabilityCommitment: SDKDa.DaAvailabilityCommitment,
   nodeConfig: OperatorDaConfig,
   committeeHex: string,
-): readonly SDK.DaAttestationSignatureWitness[] => {
+): readonly SDKDa.DaAttestationSignatureWitness[] => {
   const message = Buffer.from(
-    SDK.daAvailabilityAttestationMessage(availabilityCommitment),
+    SDKDa.daAvailabilityAttestationMessage(availabilityCommitment),
   );
   return daLocalSigners(nodeConfig)
     .flatMap((signer) => {
@@ -132,8 +134,8 @@ export const daAttestationInitOutputLovelace = (
     readonly attestationAddress: string;
     readonly attestationUnit: string;
     readonly headerHash: string;
-    readonly availabilityCommitment: SDK.DaAvailabilityCommitment;
-    readonly daParamsDatum: SDK.DaParamsDatum;
+    readonly availabilityCommitment: SDKDa.DaAvailabilityCommitment;
+    readonly daParamsDatum: SDKDa.DaParamsDatum;
     readonly rescueBeneficiary: SDK.AddressData;
   },
 ): Effect.Effect<bigint, SDK.LucidError> =>
@@ -149,13 +151,13 @@ export const daAttestationInitOutputLovelace = (
         }),
       );
     }
-    const widestDatum: SDK.DaAttestationDatum = {
+    const widestDatum: SDKDa.DaAttestationDatum = {
       header_hash: headerHash,
       availability_commitment: availabilityCommitment,
       da_threshold: daParamsDatum.da_threshold,
       committee_signers_hash: daParamsDatum.committee_signers_hash,
       rescue_beneficiary: rescueBeneficiary,
-      attested_signers: SDK.EMPTY_ATTESTED_SIGNER_BITMAP,
+      attested_signers: SDKDa.EMPTY_ATTESTED_SIGNER_BITMAP,
       attestation_count: DA_ATTESTATION_WIDEST_COUNT,
     };
     return calculateMinLovelaceFromUTxO(coinsPerUtxoByte, {
@@ -163,17 +165,17 @@ export const daAttestationInitOutputLovelace = (
       outputIndex: 0,
       address: attestationAddress,
       assets: { lovelace: 0n, [attestationUnit]: 1n },
-      datum: Data.to(widestDatum as never, SDK.DaAttestationDatum as never),
+      datum: Data.to(widestDatum as never, SDKDa.DaAttestationDatum as never),
     });
   });
 
 /** The Apply refusals that mean "the DA bond pool cannot back this now". */
 export type DaBondPoolAttestationSkipReason = Extract<
-  SDK.DaAttestationBuildFailureReason,
+  SDKDa.DaAttestationBuildFailureReason,
   "pool-under-backed" | "pool-unavailable" | "pool-withdrawing"
 >;
 
-const DA_BOND_POOL_SKIP_REASONS: ReadonlySet<SDK.DaAttestationBuildFailureReason> =
+const DA_BOND_POOL_SKIP_REASONS: ReadonlySet<SDKDa.DaAttestationBuildFailureReason> =
   new Set<DaBondPoolAttestationSkipReason>([
     "pool-under-backed",
     "pool-unavailable",
@@ -182,10 +184,10 @@ const DA_BOND_POOL_SKIP_REASONS: ReadonlySet<SDK.DaAttestationBuildFailureReason
 
 export const isDaBondPoolAttestationSkip = (
   error: unknown,
-): error is SDK.DaAttestationBuildError & {
+): error is SDKDa.DaAttestationBuildError & {
   readonly reason: DaBondPoolAttestationSkipReason;
 } =>
-  error instanceof SDK.DaAttestationBuildError &&
+  error instanceof SDKDa.DaAttestationBuildError &&
   DA_BOND_POOL_SKIP_REASONS.has(error.reason);
 
 /** The `event` log annotation every pool skip carries. */
@@ -204,18 +206,18 @@ export const DA_ATTESTATION_POOL_SKIP_EVENT = "da_attestation_skipped_pool";
 export const daBondPoolBackingAttestationProgram = (
   lucid: LucidEvolution,
   contracts: Pick<SDK.MidgardValidators, "daBondPool">,
-  parameters: SDK.DaAvailabilityParameters,
-): Effect.Effect<string, SDK.DaAttestationBuildError> =>
+  parameters: SDKDa.DaAvailabilityParameters,
+): Effect.Effect<string, SDKDa.DaAttestationBuildError> =>
   Effect.gen(function* () {
     const pool = yield* Effect.tryPromise({
       try: () =>
-        SDK.fetchDaBondPool(lucid, {
+        SDKDa.fetchDaBondPool(lucid, {
           policyId: contracts.daBondPool.policyId,
           address: contracts.daBondPool.spendingScriptAddress,
           parameters,
         }),
       catch: (cause) =>
-        new SDK.DaAttestationBuildError({
+        new SDKDa.DaAttestationBuildError({
           reason: "pool-unavailable",
           message: "Could not fetch the authentic DA bond pool",
           cause,
@@ -223,7 +225,7 @@ export const daBondPoolBackingAttestationProgram = (
     });
     if (pool.datum !== "Bonded") {
       return yield* Effect.fail(
-        new SDK.DaAttestationBuildError({
+        new SDKDa.DaAttestationBuildError({
           reason: "pool-withdrawing",
           message:
             "The DA bond pool is withdrawing and backs no new attestation until the withdrawal is cancelled",
@@ -234,7 +236,7 @@ export const daBondPoolBackingAttestationProgram = (
     const backing = pool.backing ?? 0n;
     if (backing < parameters.da_bond_lovelace) {
       return yield* Effect.fail(
-        new SDK.DaAttestationBuildError({
+        new SDKDa.DaAttestationBuildError({
           reason: "pool-under-backed",
           message:
             "The DA bond pool backs less than one DA bond above its floor",
@@ -269,12 +271,12 @@ export const applyWithDaBondPoolChurnRetry = <A, E, R, R2>({
   readonly headerHash: string;
   readonly readPoolOutRef: Effect.Effect<
     string,
-    SDK.DaAttestationBuildError,
+    SDKDa.DaAttestationBuildError,
     R2
   >;
   readonly apply: Effect.Effect<A, E, R>;
   readonly maxAttempts?: number;
-}): Effect.Effect<A, E | SDK.DaAttestationBuildError, R | R2> =>
+}): Effect.Effect<A, E | SDKDa.DaAttestationBuildError, R | R2> =>
   Effect.gen(function* () {
     for (let attempt = 1; ; attempt += 1) {
       const poolBefore = yield* readPoolOutRef;

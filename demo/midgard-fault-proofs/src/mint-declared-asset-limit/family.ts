@@ -1,5 +1,5 @@
 import "@al-ft/midgard-core";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "@lucid-evolution/lucid";
 import "./family.begin-mint-declared-policy.js";
 import "./family.advance-mint-declared-fold.js";

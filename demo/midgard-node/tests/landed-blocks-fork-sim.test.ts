@@ -53,7 +53,7 @@ import {
   forkScenarioArbitrary,
   runForkScenario,
 } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Effect, Runtime } from "effect";
 import fc from "fast-check";
 import { Level } from "level";

@@ -13,7 +13,8 @@ import {
   encodeMidgardTxOutput,
   type MidgardVersionedScript,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   generateEmulatorAccount,
@@ -223,7 +224,7 @@ describe("execution-native-script-invalid steps against a stranger key", () => {
   afterAll(() => {
     expect(covered).toStrictEqual(
       new Set(
-        SDK.EXECUTION_NATIVE_SCRIPT_INVALID_ROLE_ORDER.filter(
+        SDKFraudProof.EXECUTION_NATIVE_SCRIPT_INVALID_ROLE_ORDER.filter(
           (role) => role !== "step01" && role !== "terminal",
         ),
       ),

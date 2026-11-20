@@ -6,7 +6,7 @@ import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/
 import {
   encodeProofThreadForcedSourceKey,
   FraudProofComputationThreadStepDatum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";

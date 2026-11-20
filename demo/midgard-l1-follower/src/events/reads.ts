@@ -4,7 +4,7 @@
  * store and answers from the temporal rows as of that point, in one
  * transaction, so it never mixes two chain states.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/users";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { SlotClock } from "../heads.js";

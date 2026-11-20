@@ -1,5 +1,6 @@
 import type { FraudProofRawL1Transaction } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   CML,
   credentialToAddress,
@@ -132,7 +133,7 @@ const availabilityLockWitness = ({
               },
       },
     },
-    SDK.StateQueueRedeemer,
+    SDKStateQueue.StateQueueRedeemer,
   );
   return {
     unavailableHeaderHash,

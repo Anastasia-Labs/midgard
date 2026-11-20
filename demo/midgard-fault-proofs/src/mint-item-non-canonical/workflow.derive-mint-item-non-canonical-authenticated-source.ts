@@ -3,9 +3,11 @@ import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/
 import {
   type FraudProofCatalogueCategoryName,
   OutputReferenceSchema,
+} from "@al-ft/midgard-sdk/core";
+import {
   PROOF_THREAD_SOURCE_KIND_ACCEPTED,
   PROOF_THREAD_SOURCE_KIND_FORCED,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";

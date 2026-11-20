@@ -1,4 +1,4 @@
-import type { EvidenceProvenance } from "@al-ft/midgard-sdk";
+import type { EvidenceProvenance } from "@al-ft/midgard-sdk/fraud-proof";
 
 import {
   CURSOR_FAMILY_TRANSACTION_PORT,

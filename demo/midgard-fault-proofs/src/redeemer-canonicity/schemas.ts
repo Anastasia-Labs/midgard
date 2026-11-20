@@ -1,14 +1,16 @@
 import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
-  FieldOpeningSchema,
   ForcedTransactionSourceMembershipProofSchema,
   HeaderSchema,
   NativeTxInclusionCarriageSchema,
-  ProofThreadSubjectSourceSchema,
   StreamFrameSchema,
+} from "@al-ft/midgard-sdk/core";
+import {
+  FieldOpeningSchema,
+  ProofThreadSubjectSourceSchema,
   VerdictSubjectSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 export const RedeemerCanonicityVerdictSubjectSchema = VerdictSubjectSchema;

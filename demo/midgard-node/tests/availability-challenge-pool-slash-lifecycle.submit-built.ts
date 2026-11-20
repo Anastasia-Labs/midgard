@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { CML, Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";
@@ -54,7 +55,7 @@ const measure = (cbor: string): Measurement => {
  */
 export const submitBuilt = async (
   f: AvailabilityFixture,
-  built: SDK.BuiltDaAvailabilityTransaction,
+  built: SDKDa.BuiltDaAvailabilityTransaction,
 ) => {
   const signed = await built.tx.sign.withWallet().complete();
   const measurement = measure(signed.toCBOR());
@@ -87,7 +88,7 @@ export const resources = async (
   feeLovelace: bigint,
   /** A publication's range must close by the challenge's response deadline. */
   responseDeadline?: bigint,
-): Promise<SDK.DaAvailabilityTransactionResources> => {
+): Promise<SDKDa.DaAvailabilityTransactionResources> => {
   const collateralInputs = await f.collateralInputs();
   const validFrom = BigInt(f.emulator.now());
   const validTo =
@@ -124,10 +125,11 @@ const fundChallenger = async (f: AvailabilityFixture) => {
 
 export const snapshot = (
   f: AvailabilityFixture,
-  d: SDK.DaAvailabilityDeployment,
-) => SDK.fetchDaAvailabilityChallengeSnapshot(f.lucid, d, f.target.headerHash);
+  d: SDKDa.DaAvailabilityDeployment,
+) =>
+  SDKDa.fetchDaAvailabilityChallengeSnapshot(f.lucid, d, f.target.headerHash);
 
-export const recordOf = (s: SDK.DaAvailabilityChallengeSnapshot) => {
+export const recordOf = (s: SDKDa.DaAvailabilityChallengeSnapshot) => {
   if (!s.recordDatum) throw new Error("Expected a challenge record");
   return s.recordDatum;
 };
@@ -141,14 +143,14 @@ export const nodeOf = (queue: UTxO) =>
 /** Attests the fixture block and opens a challenge with the SDK builder. */
 export const attestAndOpen = async (
   f: AvailabilityFixture,
-  d: SDK.DaAvailabilityDeployment,
+  d: SDKDa.DaAvailabilityDeployment,
 ) => {
   const attested = await attestAvailability(f);
   const challengerFunding = await fundChallenger(f);
   await submitBuilt(
     f,
     await Effect.runPromise(
-      SDK.buildOpenDaAvailabilityChallengeTxProgram(f.lucid, d, {
+      SDKDa.buildOpenDaAvailabilityChallengeTxProgram(f.lucid, d, {
         ...(await resources(f, parameters.max_open_fee_lovelace)),
         commitment: attested.commitment,
         queue: attested.queue,
@@ -164,15 +166,15 @@ export const attestAndOpen = async (
 /** Lets every tranche expire unanswered and settles it: `has_timed_out`. */
 export const expireAndSettle = async (
   f: AvailabilityFixture,
-  d: SDK.DaAvailabilityDeployment,
-  s: SDK.DaAvailabilityChallengeSnapshot,
+  d: SDKDa.DaAvailabilityDeployment,
+  s: SDKDa.DaAvailabilityChallengeSnapshot,
 ) => {
   f.advanceToMs(recordOf(s).response_deadline + 1_000n);
   f.lucid.selectWallet.fromPrivateKey(f.challenger.privateKey);
   const { outputs } = await submitBuilt(
     f,
     await Effect.runPromise(
-      SDK.buildSettleDaAvailabilityTrancheTxProgram(f.lucid, d, {
+      SDKDa.buildSettleDaAvailabilityTrancheTxProgram(f.lucid, d, {
         ...(await resources(f, parameters.max_settlement_fee_lovelace)),
         record: s.record!,
         terminal: s.terminal!,
@@ -186,10 +188,10 @@ export const expireAndSettle = async (
 /** The production timeout builder's parameters for the head-only fixture. */
 export const timeoutParams = async (
   f: AvailabilityFixture,
-  s: SDK.DaAvailabilityChallengeSnapshot,
+  s: SDKDa.DaAvailabilityChallengeSnapshot,
   terminal: UTxO,
   pool: UTxO,
-): Promise<SDK.TimeoutDaAvailabilityChallengeParams> => ({
+): Promise<SDKDa.TimeoutDaAvailabilityChallengeParams> => ({
   ...(await timeoutResources(f)),
   record: s.record!,
   terminal,
@@ -204,8 +206,8 @@ export const timeoutParams = async (
 
 /** The SDK error a program fails with (never a success). */
 export const refusalOf = async <A>(
-  program: Effect.Effect<A, SDK.DaAvailabilityTransactionError>,
-): Promise<SDK.DaAvailabilityTransactionError> => {
+  program: Effect.Effect<A, SDKDa.DaAvailabilityTransactionError>,
+): Promise<SDKDa.DaAvailabilityTransactionError> => {
   const result = await Effect.runPromise(Effect.either(program));
   if (result._tag === "Right")
     throw new Error("Expected the SDK builder to refuse, but it built");
@@ -213,7 +215,7 @@ export const refusalOf = async <A>(
 };
 
 export const backingOf = (pool: UTxO) =>
-  SDK.daBondPoolBacking({ lovelace: pool.assets.lovelace, parameters });
+  SDKDa.daBondPoolBacking({ lovelace: pool.assets.lovelace, parameters });
 
 /** The min-UTxO of a lone plain-ADA output to `address` (stabilised). */
 export const plainOutputMinAda = (address: string) => {

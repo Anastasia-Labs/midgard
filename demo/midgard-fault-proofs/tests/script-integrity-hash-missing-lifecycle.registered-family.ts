@@ -9,7 +9,8 @@ import {
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Effect } from "effect";
 import { expect } from "vitest";
 
@@ -111,7 +112,7 @@ export const registeredFamily = async (harness: Harness) => {
     harness.contracts.fraudProofContracts.scriptIntegrityHashMissing;
   const category = harness.catalogue.categories.scriptIntegrityHashMissing!;
   const applied = await Effect.runPromise(
-    SDK.buildScriptIntegrityHashMissingFaultProofContracts({
+    SDKFraudProof.buildScriptIntegrityHashMissingFaultProofContracts({
       blueprint: SDK.parseFaultProofBlueprint(
         structuredClone(harness.realBlueprint),
       ),

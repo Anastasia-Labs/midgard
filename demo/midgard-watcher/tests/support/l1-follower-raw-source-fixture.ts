@@ -13,7 +13,7 @@ import {
   type SimTx,
   simTxHash,
 } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { scriptHashToCredential } from "@lucid-evolution/lucid";
 import { credentialToAddress } from "@lucid-evolution/lucid";
 

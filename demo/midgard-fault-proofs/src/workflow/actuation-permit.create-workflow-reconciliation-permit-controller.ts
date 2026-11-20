@@ -1,4 +1,4 @@
-import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
+import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 
 import type { HeaderFaultDecision } from "./header-classifier.authenticated-state-queue-observation-digest.js";
 import { requireRunnableHeaderFault } from "./header-classifier.require-runnable-header-fault.js";

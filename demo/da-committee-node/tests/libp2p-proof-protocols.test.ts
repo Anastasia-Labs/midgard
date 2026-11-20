@@ -1,6 +1,8 @@
 import "@al-ft/midgard-core/da-stream-codec";
 import "@al-ft/midgard-core/da-transport";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/da";
 import "@lucid-evolution/lucid";
 import "vitest";
 import "../src/da/libp2p/DaPeerRegistry.js";
@@ -24,7 +26,7 @@ import {
   encodeDaProofBundleByHeaderRequestCbor,
   encodeDaTraceStepByIndexRequestCbor,
 } from "@al-ft/midgard-core/da-transport";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

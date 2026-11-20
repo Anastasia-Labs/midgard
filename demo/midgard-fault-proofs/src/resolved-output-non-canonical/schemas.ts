@@ -2,14 +2,16 @@ import {
   BoundedItemChunkProofSchema,
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
-  FieldOpeningSchema,
-  FrontierPeakSchema,
   MembershipCarriageSchema,
   OutputReferenceSchema,
-  ProofThreadSubjectSourceSchema,
   StreamFrameSchema,
+} from "@al-ft/midgard-sdk/core";
+import { FrontierPeakSchema } from "@al-ft/midgard-sdk/da";
+import {
+  FieldOpeningSchema,
+  ProofThreadSubjectSourceSchema,
   VerdictSubjectSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 export const ResolvedOutputBoundInputSchema = Data.Object({

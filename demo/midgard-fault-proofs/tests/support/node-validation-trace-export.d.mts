@@ -1,9 +1,9 @@
 import type { MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
 import type {
-  DaPayloadEntry,
   EventKey,
   ValidationTraceDescriptor,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import type { DaPayloadEntry } from "@al-ft/midgard-sdk/da";
 import type { buildDeterministicValidationMachineTrace } from "@al-ft/midgard-validation/validation-machine";
 import type { Effect } from "effect";
 

@@ -3,8 +3,8 @@ import {
   encodeLinkedListNodeView,
   makeGenesisConfirmedState,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
-  STATE_QUEUE_ROOT_ASSET_NAME,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { STATE_QUEUE_ROOT_ASSET_NAME } from "@al-ft/midgard-sdk/state-queue";
 import { CML, toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

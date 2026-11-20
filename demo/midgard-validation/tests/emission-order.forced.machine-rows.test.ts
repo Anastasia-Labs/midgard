@@ -1,4 +1,5 @@
-import { type RejectionReason, rejectionReasonPhase } from "@al-ft/midgard-sdk";
+import { type RejectionReason } from "@al-ft/midgard-sdk/core";
+import { rejectionReasonPhase } from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import {

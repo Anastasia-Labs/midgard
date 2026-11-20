@@ -1,6 +1,7 @@
 import { type DaPayloadEnvelopeTimingStage } from "@al-ft/midgard-core/da-payload-envelope";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 
 import type {
@@ -64,7 +65,7 @@ export const headerCommittedCounts = <
 ): Counts => ({ ...counts, validationTraceCount: 0n });
 
 export type VerifiedDaPayload = {
-  readonly payload: SDK.DaPayload;
+  readonly payload: SDKDa.DaPayload;
   readonly storedPayloadCbor: Buffer;
   readonly innerPayloadCbor: Buffer;
   readonly payloadSha256: string;
@@ -142,7 +143,7 @@ export const recordTiming = (
 
 export const validateEntries = (
   fieldName: string,
-  entries: readonly SDK.DaPayloadEntry[],
+  entries: readonly SDKDa.DaPayloadEntry[],
 ): void => {
   let previousKey: string | undefined;
   for (const [index, [key, value]] of entries.entries()) {
@@ -170,7 +171,7 @@ export const validateEntries = (
   }
 };
 
-const validateCounts = (counts: SDK.DaPayloadCounts): void => {
+const validateCounts = (counts: SDKDa.DaPayloadCounts): void => {
   const fields = [
     ["withdrawal_count", counts.withdrawalCount],
     ["forced_transaction_count", counts.forcedTransactionCount],
@@ -206,7 +207,9 @@ const validateCounts = (counts: SDK.DaPayloadCounts): void => {
   }
 };
 
-export const validateDaPayloadCounts = (counts: SDK.DaPayloadCounts): void => {
+export const validateDaPayloadCounts = (
+  counts: SDKDa.DaPayloadCounts,
+): void => {
   validateCounts(counts);
   if (counts.validationTraceCount < 0n) {
     throw new DaPayloadValidationError(

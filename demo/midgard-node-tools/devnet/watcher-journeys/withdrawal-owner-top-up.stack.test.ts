@@ -10,7 +10,7 @@ import {
   buildCanonicalBlockFixture,
   outRefCbor,
 } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import {
   CML,
   generateEmulatorAccount,

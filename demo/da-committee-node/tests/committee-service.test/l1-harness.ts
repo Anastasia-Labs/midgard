@@ -15,7 +15,8 @@ import {
   type SimTx,
   simUniverse,
 } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { credentialToAddress, getAddressDetails } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { expect } from "vitest";
@@ -145,7 +146,7 @@ export const harness = async () => {
       inputs: [chain.outsideInput()],
       outputs: [
         queueOutput(
-          SDK.STATE_QUEUE_ROOT_ASSET_NAME,
+          SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME,
           rootDatum(SDK.GENESIS_HEADER_HASH, 0, null),
         ),
       ],
@@ -233,7 +234,9 @@ export const harness = async () => {
     header: async (transactionCount: number): Promise<Committed> => {
       const fixture = await makePayloadFixture(transactionCount);
       payloads.set(fixture.headerHash, fixture.payloadCbor);
-      expect(SDK.stateQueueHeaderHash(fixture.header)).toBe(fixture.headerHash);
+      expect(SDKStateQueue.stateQueueHeaderHash(fixture.header)).toBe(
+        fixture.headerHash,
+      );
       return { header: fixture.header, headerHash: fixture.headerHash };
     },
     /** The commit of `committed` as the first node after the root. */
@@ -241,7 +244,7 @@ export const harness = async () => {
       inputs: [rootOutRef],
       outputs: [
         queueOutput(
-          SDK.STATE_QUEUE_ROOT_ASSET_NAME,
+          SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME,
           rootDatum(SDK.GENESIS_HEADER_HASH, 0, headerHash),
         ),
         queueOutput(

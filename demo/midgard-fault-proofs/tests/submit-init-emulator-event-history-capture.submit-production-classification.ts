@@ -1,4 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/users";
 import { CML, type UTxO } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 

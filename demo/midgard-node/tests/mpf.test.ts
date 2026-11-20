@@ -1,5 +1,5 @@
 import "@aiken-lang/merkle-patricia-forestry";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
 import "@effect/vitest";
 import "@lucid-evolution/lucid";
 import "blake2b";
@@ -14,7 +14,7 @@ import "./midgard-output-helpers.js";
 import "./mpf.build-deep-shared-mpf-dag.js";
 
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { it } from "@effect/vitest";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";

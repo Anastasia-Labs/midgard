@@ -4,7 +4,8 @@ import {
   MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
   outRefLabel,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { Data, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -80,9 +81,9 @@ describe("missing-signature positive emulator lifecycle", () => {
       outcome.fraudProofUnit,
     );
     expect(outRefLabel(proofUtxo)).toBe(outcome.fraudProofOutRef);
-    expect(Data.from(proofUtxo.datum!, SDK.FraudProofTokenDatum)).toStrictEqual(
-      { fraud_prover: harness.proverSigner.paymentKeyHash },
-    );
+    expect(
+      Data.from(proofUtxo.datum!, SDKFraudProof.FraudProofTokenDatum),
+    ).toStrictEqual({ fraud_prover: harness.proverSigner.paymentKeyHash });
 
     await expect(
       Effect.runPromise(proveMissingSignatureFault(finding, deps)),
@@ -264,7 +265,7 @@ describe("missing-signature positive emulator lifecycle", () => {
       harness,
       decoyWitnessCount: TIER2_DECOY_WITNESS_COUNT,
     });
-    const preimageBytes = SDK.encodeAddressWitnessPreimage(
+    const preimageBytes = SDKFraudProof.encodeAddressWitnessPreimage(
       scenario.subject.addrTxWits,
     ).length;
     expect(preimageBytes).toBeGreaterThan(

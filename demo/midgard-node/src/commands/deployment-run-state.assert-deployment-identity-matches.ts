@@ -1,6 +1,6 @@
 import { resolve as resolvePath } from "node:path";
 
-import { type ReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
+import { type ReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk/state-queue";
 
 import {
   type DeploymentRunIdentity,

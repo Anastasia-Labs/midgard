@@ -44,7 +44,9 @@ import { prepareValueConservationArtifact } from "@al-ft/midgard-fault-proofs/va
 import { classifyCanonicalBlockViolations } from "@al-ft/midgard-fault-proofs/workflow/classification";
 import { INPUT_SET_UNIQUENESS_COMPLETE_CANONICAL_REPLAY } from "@al-ft/midgard-fault-proofs/workflow/complete-replay";
 import { prepareInputSetUniquenessArtifact } from "@al-ft/midgard-fault-proofs/workflow/input-set-uniqueness";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { verifyJourneyFixture } from "./fixture-verification.js";
 import type { JourneyTransactionCategory } from "./transaction-cases.js";
@@ -60,14 +62,14 @@ export const prepareJourneyTransactionProof = async (input: {
     | JourneyForcedTransactionCategory
     | JourneyTransactionSourceCategory;
   block: {
-    header: SDK.Header;
+    header: SDKCore.Header;
     headerHash: string;
     payloadEnvelopeCbor: Uint8Array;
-    payload: SDK.DaPayload;
+    payload: SDKDa.DaPayload;
   };
   verified: Verification;
   predecessor: {
-    header: SDK.Header;
+    header: SDKCore.Header;
     headerHash: string;
     payloadEnvelopeCbor: Uint8Array;
   };

@@ -6,7 +6,7 @@
  * route reaches a fraud-proof token; under an earlier reason the plan is
  * refused and the terminal returns false.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import { describe, expect, it } from "vitest";
 
 import {

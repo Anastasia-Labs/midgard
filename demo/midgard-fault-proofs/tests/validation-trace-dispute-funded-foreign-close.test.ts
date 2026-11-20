@@ -15,7 +15,8 @@
  * stands in for that install so the production classifier mints the
  * objective's actuation permit. */
 import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { credentialToAddress, Data, type UTxO } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -167,7 +168,8 @@ describe("validation-trace dispute close of our case after another party verifie
       expect(record.address).toBe(h.contracts.fraudProof.spendingScriptAddress);
       expect(record.assets).toEqual({ lovelace: 2_000_000n, [proofUnit]: 1n });
       expect(
-        Data.from(record.datum!, SDK.FraudProofTokenDatum).fraud_prover,
+        Data.from(record.datum!, SDKFraudProof.FraudProofTokenDatum)
+          .fraud_prover,
       ).toBe(h.proverSigner.paymentKeyHash);
       const ours = credentialToAddress(network, {
         type: "Key",

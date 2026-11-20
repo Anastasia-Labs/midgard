@@ -9,7 +9,9 @@
  * anchor, rather than tx2's field-0 commitment.
  */
 
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "@lucid-evolution/lucid";
 import "../field-opening.js";
 import "../runtime.js";

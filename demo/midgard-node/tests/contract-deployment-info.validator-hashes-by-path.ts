@@ -11,11 +11,11 @@ import {
   normalizeDeploymentManifestJsonValue,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
+import { type MidgardValidators } from "@al-ft/midgard-sdk/core";
 import {
-  type MidgardValidators,
   REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
   type ReferenceScriptAuthPolicyDeploymentInfo,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

@@ -1,6 +1,6 @@
 import { computeFraudProofRawL1PointId } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
 import type { SqlRow, SqlTx } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 
 import type { WatcherQueueTransition } from "./checkpoints.js";
 import { WATCHER_QUEUE_CHECKPOINTS_TABLE } from "./tables.js";

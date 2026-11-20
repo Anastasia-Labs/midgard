@@ -1,9 +1,9 @@
 import {
-  type DoubleSpendFaultProofContracts,
   type FraudProofCatalogueCategoryDeploymentInfo,
   type ParsedFaultProofBlueprint,
   parseFaultProofBlueprint,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { type DoubleSpendFaultProofContracts } from "@al-ft/midgard-sdk/fraud-proof";
 import { type Network } from "@lucid-evolution/lucid";
 
 import type { ContractDeploymentInfo } from "./inspect-contracts.inspect-contracts-output.js";

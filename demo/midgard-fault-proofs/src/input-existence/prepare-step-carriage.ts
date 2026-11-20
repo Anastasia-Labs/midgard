@@ -1,6 +1,7 @@
 /** Synchronous per-step event/transition/ledger-carriage planning.
  * The caller keeps accepted-source awaits and its missing-reference refusal. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,
@@ -60,7 +61,7 @@ export const inputExistenceStates = (prepared: PreparedInputExistence) =>
     {
       subject: prepared.source.subject,
       compact: prepared.compact,
-      network_order_context: SDK.networkOrderContext(
+      network_order_context: SDKFraudProof.networkOrderContext(
         prepared.compact,
         prepared.source.header,
       ),
@@ -185,7 +186,7 @@ export const prepareInputExistenceStepCarriage = ({
       ...validator.referenceInputs,
     ];
     const keyBytes =
-      SDK.encodeMidgardTxInputCanonical(selected).toString("hex");
+      SDKFraudProof.encodeMidgardTxInputCanonical(selected).toString("hex");
     const proofCbor = Data.to(prepared.ledgerEvidence.Absent.proof, SDK.Proof);
     const address = absenceAddress;
     candidates.push({

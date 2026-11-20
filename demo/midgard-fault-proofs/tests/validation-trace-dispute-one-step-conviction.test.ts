@@ -9,7 +9,7 @@
  * runner resolves and closes its thread, closes the case Convicted with our
  * bond back, and, once the L1 view has seen the record, removes the block;
  * only then does it slash the successor by its lost-defense receipt. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import {
   CML,
   credentialToAddress,

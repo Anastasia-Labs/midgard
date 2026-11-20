@@ -2,7 +2,7 @@ import {
   encodeMidgardForcedTxCompact as forcedCompact,
   materializeMidgardForcedTxFromCanonical as forcedView,
 } from "@al-ft/midgard-core/codec/forced";
-import { AddressData, addressDataFromBech32 } from "@al-ft/midgard-sdk";
+import { AddressData, addressDataFromBech32 } from "@al-ft/midgard-sdk/core";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";

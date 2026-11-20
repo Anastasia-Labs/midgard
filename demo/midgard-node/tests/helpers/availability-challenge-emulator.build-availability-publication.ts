@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
   calculateMinLovelaceFromUTxO,
   Data,
@@ -24,11 +25,11 @@ import {
 export const buildAvailabilityPublication = (
   f: AvailabilityFixture,
   thread: UTxO,
-  publication: SDK.DaAvailabilityPublicationDatum,
+  publication: SDKDa.DaAvailabilityPublicationDatum,
   previousCarrier?: UTxO,
   options: { badChunk?: boolean } = {},
 ) => {
-  const datum = Data.from(thread.datum!, SDK.DaAvailabilityTrancheDatum);
+  const datum = Data.from(thread.datum!, SDKDa.DaAvailabilityTrancheDatum);
   const parameters = f.parameters;
   if (!("Active" in datum))
     throw new Error("Only an active tranche accepts a publication");
@@ -44,12 +45,12 @@ export const buildAvailabilityPublication = (
   const deadlineUpper = datum.Active.response_deadline + 1n;
   const validTo =
     validFrom + 60_000n < deadlineUpper ? validFrom + 60_000n : deadlineUpper;
-  const geometry = SDK.availabilityResponseGeometry({
+  const geometry = SDKDa.availabilityResponseGeometry({
     chunkByteLength: Number(parameters.response_geometry.chunk_byte_length),
     trancheByteLength: Number(parameters.response_geometry.tranche_byte_length),
     maxTrancheCount: Number(parameters.response_geometry.max_tranche_count),
   });
-  const next = SDK.advanceDaAvailabilityTranche({
+  const next = SDKDa.advanceDaAvailabilityTranche({
     active: datum,
     publication,
     responseGeometry: geometry,
@@ -65,7 +66,7 @@ export const buildAvailabilityPublication = (
         outputIndex: 1,
         address: thread.address,
         assets: { lovelace: 0n },
-        datum: Data.to(publication, SDK.DaAvailabilityPublicationDatum),
+        datum: Data.to(publication, SDKDa.DaAvailabilityPublicationDatum),
       },
     ) + 100_000n;
   const nextLovelace =
@@ -93,17 +94,17 @@ export const buildAvailabilityPublication = (
               : null,
           },
         },
-        SDK.DaAvailabilitySpendRedeemer,
+        SDKDa.DaAvailabilitySpendRedeemer,
       ),
     )
     .pay.ToContract(
       thread.address,
-      inline(SDK.encodeDaAvailabilityTrancheDatum(next)),
+      inline(SDKDa.encodeDaAvailabilityTrancheDatum(next)),
       { ...thread.assets, lovelace: nextLovelace },
     )
     .pay.ToContract(
       thread.address,
-      inline(Data.to(mutated, SDK.DaAvailabilityPublicationDatum)),
+      inline(Data.to(mutated, SDKDa.DaAvailabilityPublicationDatum)),
       { lovelace: carrierLovelace },
     );
   if (previousCarrier)
@@ -115,7 +116,7 @@ export const buildAvailabilityPublication = (
             thread_spend_redeemer_index: spendAt(ctx, thread),
           },
         },
-        SDK.DaAvailabilitySpendRedeemer,
+        SDKDa.DaAvailabilitySpendRedeemer,
       ),
     );
   return tx;
@@ -133,12 +134,15 @@ export const buildAvailabilitySettlement = (
 ) => {
   const terminalDatum = Data.from(
     terminal.datum!,
-    SDK.DaAvailabilityTerminalAccumulatorDatum,
+    SDKDa.DaAvailabilityTerminalAccumulatorDatum,
   );
-  const threadDatum = Data.from(thread.datum!, SDK.DaAvailabilityTrancheDatum);
+  const threadDatum = Data.from(
+    thread.datum!,
+    SDKDa.DaAvailabilityTrancheDatum,
+  );
   const lower = options.validityLower ?? BigInt(f.emulator.now());
   const fee = f.parameters.max_settlement_fee_lovelace;
-  const settlement = SDK.planDaAvailabilitySettlement({
+  const settlement = SDKDa.planDaAvailabilitySettlement({
     commitment: open.attested.commitment,
     terminalAccumulator: terminalDatum,
     tranche: threadDatum,
@@ -168,7 +172,7 @@ export const buildAvailabilitySettlement = (
     .mintAssets(
       {
         [open.policy +
-        SDK.daAvailabilityTrancheAssetName({
+        SDKDa.daAvailabilityTrancheAssetName({
           challengeAssetName: open.plan.challengeAssetName,
           trancheIndex,
         })]: -1n,
@@ -188,13 +192,13 @@ export const buildAvailabilitySettlement = (
               carrier_input_index: carrier ? inputAt(ctx, carrier) : null,
             },
           },
-          SDK.DaAvailabilityMintRedeemer,
+          SDKDa.DaAvailabilityMintRedeemer,
         ),
     )
     .pay.ToContract(
       open.address,
       inline(
-        SDK.encodeDaAvailabilityTerminalAccumulatorDatum(
+        SDKDa.encodeDaAvailabilityTerminalAccumulatorDatum(
           settlement.nextTerminalAccumulator,
         ),
       ),
@@ -234,7 +238,7 @@ export const buildAvailabilityClose = (
       ...node,
       da_attestation: {
         Published: {
-          terminal_commitment: SDK.daAvailabilityPublishedTerminalCommitment(
+          terminal_commitment: SDKDa.daAvailabilityPublishedTerminalCommitment(
             open.attested.commitment,
           ),
         },
@@ -268,7 +272,7 @@ export const buildAvailabilityClose = (
               challenger_refund_output_index: 1n,
             },
           },
-          SDK.DaAvailabilityMintRedeemer,
+          SDKDa.DaAvailabilityMintRedeemer,
         ),
     )
     .pay.ToContract(queue.address, inline(queueDatum), queue.assets)

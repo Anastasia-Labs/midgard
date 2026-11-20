@@ -19,7 +19,7 @@ import {
   Proof,
   ProofChunkDatum,
   requireReferenceInputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import {
   Data,
   type RedeemerContext,

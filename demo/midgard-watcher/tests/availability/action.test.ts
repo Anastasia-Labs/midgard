@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -105,12 +106,12 @@ describe("watcher availability lifecycle action selection", () => {
   it("preserves a partial response until the deadline, then settles the timed-out tranche", () => {
     const { challenged, plan, bytes, parameters } = fixture();
     const record = plan.record;
-    const publications = SDK.planDaAvailabilityPublications({
+    const publications = SDKDa.planDaAvailabilityPublications({
       commitment: record.commitment,
       payload: bytes,
       challengeAssetName: record.challenge_asset_name,
     });
-    const partial = SDK.advanceDaAvailabilityTranche({
+    const partial = SDKDa.advanceDaAvailabilityTranche({
       active: challenged.tranches[0]!.datum,
       publication: publications[0]!.publications[0]!,
       responseGeometry: parameters.response_geometry,
@@ -263,7 +264,7 @@ describe("watcher availability concurrency (spec #685 E3)", () => {
     // The second header follows the first in the queue. Its Open is never
     // deferred to the ancestor's Timeout: if the ancestor settles, the
     // descendant would merge unchallenged (DECISIONS P9(5)).
-    const descendant: SDK.DaAvailabilityChallengeSnapshot = {
+    const descendant: SDKDa.DaAvailabilityChallengeSnapshot = {
       ...second.attested,
       confirmedState: first.challenged.confirmedState,
     };

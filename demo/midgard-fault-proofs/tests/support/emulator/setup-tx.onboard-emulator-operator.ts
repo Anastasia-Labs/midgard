@@ -1,8 +1,6 @@
 import { type AllowList } from "@al-ft/midgard-core/deployment-profile";
 import {
   ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX,
-  buildActivateOperatorTx,
-  buildRegisterOperatorTx,
   getProtocolParameters,
   Header,
   HUB_ORACLE_ASSET_NAME,
@@ -10,7 +8,11 @@ import {
   REGISTERED_OPERATORS_ROOT_ASSET_NAME,
   RegisteredOperatorDatum,
   REGISTRATION_DURATION_MS,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  buildActivateOperatorTx,
+  buildRegisterOperatorTx,
+} from "@al-ft/midgard-sdk/operators";
 import {
   credentialToAddress,
   Data,

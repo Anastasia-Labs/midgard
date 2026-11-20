@@ -13,7 +13,8 @@ import {
   MIDGARD_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/consensus-profile";
 import { validateMidgardConsensusTxCbor } from "@al-ft/midgard-core/consensus-validation";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 
 import { hexToBytes, normalizeHex } from "../utils/hex.js";
@@ -23,7 +24,7 @@ import {
   decodeCanonicalData,
 } from "./payload.da-payload-validation-error.js";
 
-export const validateDaPayloadConsensus = (body: SDK.DaPayloadBody): void => {
+export const validateDaPayloadConsensus = (body: SDKDa.DaPayloadBody): void => {
   if (body.header.protocolVersion !== BigInt(MIDGARD_PROTOCOL_VERSION)) {
     throw new DaPayloadValidationError(
       "version_mismatch",

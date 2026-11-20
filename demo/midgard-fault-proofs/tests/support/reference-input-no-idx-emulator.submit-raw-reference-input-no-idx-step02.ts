@@ -1,15 +1,17 @@
 import {
+  type MidgardTxInput,
+  requireInputIndex,
+  requireOwnSpendPurpose,
+  requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
   encodeMidgardTxInputCanonical,
   MIDGARD_FIELD_INDEX,
-  type MidgardTxInput,
   ReferenceInputNoIdxStep02Datum,
   ReferenceInputNoIdxStep02SpendRedeemer,
   ReferenceInputNoIdxStep03Datum,
   referenceInputNoIdxStep03StateFromBadInput,
-  requireInputIndex,
-  requireOwnSpendPurpose,
-  requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

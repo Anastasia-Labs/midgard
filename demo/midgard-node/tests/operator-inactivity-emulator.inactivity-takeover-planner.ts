@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKOperators from "@al-ft/midgard-sdk/operators";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -12,7 +13,7 @@ const fakeNode = (
   key: string | null,
   next: string | null,
   active: SDK.ActiveOperatorDatum | null,
-): SDK.ActiveOperatorNode => ({
+): SDKOperators.ActiveOperatorNode => ({
   utxo: fakeUtxo(label),
   assetName: label,
   datum: {
@@ -37,12 +38,12 @@ const fakeSnapshot = ({
   readonly operators: readonly string[];
   readonly currentOperator: string;
   readonly strikes?: bigint;
-}): SDK.InactivityDirectoryView => {
+}): SDKOperators.InactivityDirectoryView => {
   const datumFor = (key: string): SDK.ActiveOperatorDatum => ({
     bond_unlock_time: null,
     inactivity_strikes: key === currentOperator ? strikes : 0n,
   });
-  const active: SDK.ActiveOperatorNode[] = [
+  const active: SDKOperators.ActiveOperatorNode[] = [
     fakeNode("root", null, operators[0] ?? null, null),
     ...operators.map((key, index) =>
       fakeNode(
@@ -76,7 +77,7 @@ const fakeSnapshot = ({
       endTime: FAKE_TAIL_END_TIME,
       isRoot: true,
     },
-  } as unknown as SDK.InactivityDirectoryView;
+  } as unknown as SDKOperators.InactivityDirectoryView;
 };
 
 /**
@@ -84,8 +85,8 @@ const fakeSnapshot = ({
  * grace period ends, so the grace period is the binding term.
  */
 const graceBoundEvent = (
-  params: SDK.InactivityTimingParameters,
-): SDK.NeglectedUserEventClaim => ({
+  params: SDKOperators.InactivityTimingParameters,
+): SDKOperators.NeglectedUserEventClaim => ({
   kind: "Deposit",
   utxo: fakeUtxo("event"),
   inclusionTimeMs:
@@ -95,13 +96,13 @@ const graceBoundEvent = (
 });
 
 describe("inactivity threshold", () => {
-  const params = SDK.DEFAULT_INACTIVITY_TIMING_PARAMETERS;
+  const params = SDKOperators.DEFAULT_INACTIVITY_TIMING_PARAMETERS;
 
   it("takes the later of the new-shift grace period and the event's negligence timeout", () => {
     const event = graceBoundEvent(params);
     expect(event.inclusionTimeMs).toBeGreaterThan(FAKE_TAIL_END_TIME);
     expect(
-      SDK.computeInactivityThreshold({
+      SDKOperators.computeInactivityThreshold({
         shiftStartMs: FAKE_SHIFT_START,
         stateQueueTailEndTimeMs: FAKE_TAIL_END_TIME,
         neglectedEvent: event,
@@ -112,7 +113,7 @@ describe("inactivity threshold", () => {
       thresholdMs: FAKE_SHIFT_START + params.newShiftInactivityGracePeriodMs,
     });
     expect(
-      SDK.computeInactivityThreshold({
+      SDKOperators.computeInactivityThreshold({
         shiftStartMs: FAKE_SHIFT_START,
         stateQueueTailEndTimeMs: FAKE_TAIL_END_TIME,
         neglectedEvent: {
@@ -137,7 +138,7 @@ describe("inactivity threshold", () => {
       params.userEventsNegligenceTimeoutMs;
     for (const kind of ["Deposit", "Withdrawal", "TxOrder"] as const) {
       expect(
-        SDK.computeInactivityThreshold({
+        SDKOperators.computeInactivityThreshold({
           shiftStartMs: FAKE_SHIFT_START,
           stateQueueTailEndTimeMs: FAKE_TAIL_END_TIME,
           neglectedEvent: { kind, inclusionTimeMs },
@@ -154,7 +155,7 @@ describe("inactivity threshold", () => {
     // A block covers `start_time < inclusion_time <= end_time`, so an event
     // at the tail's end time is delivered.
     expect(
-      SDK.computeInactivityThreshold({
+      SDKOperators.computeInactivityThreshold({
         shiftStartMs: FAKE_SHIFT_START,
         stateQueueTailEndTimeMs: FAKE_TAIL_END_TIME,
         neglectedEvent: {
@@ -167,7 +168,7 @@ describe("inactivity threshold", () => {
       reason: "neglected-event-delivered",
     });
     expect(
-      SDK.computeInactivityThreshold({
+      SDKOperators.computeInactivityThreshold({
         shiftStartMs: FAKE_SHIFT_START,
         stateQueueTailEndTimeMs: FAKE_TAIL_END_TIME,
         neglectedEvent: {
@@ -180,7 +181,7 @@ describe("inactivity threshold", () => {
 
   it("rejects a threshold that does not fall before the end of the shift", () => {
     expect(
-      SDK.computeInactivityThreshold({
+      SDKOperators.computeInactivityThreshold({
         shiftStartMs: FAKE_SHIFT_START,
         stateQueueTailEndTimeMs: FAKE_TAIL_END_TIME,
         neglectedEvent: {
@@ -197,9 +198,9 @@ describe("inactivity threshold", () => {
 
 describe("neglected user event selection", () => {
   const claim = (
-    kind: SDK.NeglectedUserEventKind,
+    kind: SDKOperators.NeglectedUserEventKind,
     inclusionTimeMs: bigint,
-  ): SDK.NeglectedUserEventClaim => ({
+  ): SDKOperators.NeglectedUserEventClaim => ({
     kind,
     utxo: fakeUtxo(`${kind}-${inclusionTimeMs.toString()}`),
     inclusionTimeMs,
@@ -210,7 +211,7 @@ describe("neglected user event selection", () => {
     const earliest = claim("TxOrder", FAKE_TAIL_END_TIME + 5n);
     const later = claim("Withdrawal", FAKE_TAIL_END_TIME + 9n);
     expect(
-      SDK.selectNeglectedUserEvent(
+      SDKOperators.selectNeglectedUserEvent(
         [later, delivered, earliest],
         FAKE_TAIL_END_TIME,
       ),
@@ -218,9 +219,11 @@ describe("neglected user event selection", () => {
   });
 
   it("finds nothing on an idle network", () => {
-    expect(SDK.selectNeglectedUserEvent([], FAKE_TAIL_END_TIME)).toBeNull();
     expect(
-      SDK.selectNeglectedUserEvent(
+      SDKOperators.selectNeglectedUserEvent([], FAKE_TAIL_END_TIME),
+    ).toBeNull();
+    expect(
+      SDKOperators.selectNeglectedUserEvent(
         [
           claim("Deposit", FAKE_TAIL_END_TIME - 1n),
           claim("TxOrder", FAKE_TAIL_END_TIME),
@@ -232,7 +235,7 @@ describe("neglected user event selection", () => {
 });
 
 describe("inactivity takeover planner", () => {
-  const params = SDK.DEFAULT_INACTIVITY_TIMING_PARAMETERS;
+  const params = SDKOperators.DEFAULT_INACTIVITY_TIMING_PARAMETERS;
   const thresholdMs = FAKE_SHIFT_START + params.newShiftInactivityGracePeriodMs;
   const neglectedEvent = graceBoundEvent(params);
 
@@ -242,13 +245,13 @@ describe("inactivity takeover planner", () => {
       currentOperator: OP_A,
     });
     expect(
-      SDK.planInactivityTakeover({
+      SDKOperators.planInactivityTakeover({
         snapshot: {
           ...snapshot,
           scheduler: {
             ...snapshot.scheduler,
             datum: "NoActiveOperators",
-          } as SDK.OperatorDirectorySnapshot["scheduler"],
+          } as SDKOperators.OperatorDirectorySnapshot["scheduler"],
         },
         nowMs: thresholdMs + 1n,
         neglectedEvent,
@@ -259,7 +262,7 @@ describe("inactivity takeover planner", () => {
   it("reports no neglected event for an idle shift below the strike cap, however late", () => {
     for (const strikes of [0n, SDK.MAX_INACTIVITY_STRIKES - 1n]) {
       expect(
-        SDK.planInactivityTakeover({
+        SDKOperators.planInactivityTakeover({
           snapshot: fakeSnapshot({
             operators: [OP_A, OP_B, OP_C],
             currentOperator: OP_C,
@@ -275,14 +278,14 @@ describe("inactivity takeover planner", () => {
   it("reports strikes-exhausted at the cap with or without a neglected event, at any time", () => {
     // Forced retirement checks only the strike count, so neither the event
     // nor the clock may hold it back.
-    const unsatisfiable: SDK.NeglectedUserEventClaim = {
+    const unsatisfiable: SDKOperators.NeglectedUserEventClaim = {
       ...neglectedEvent,
       inclusionTimeMs: FAKE_SHIFT_START + params.shiftDurationMs,
     };
     for (const cited of [null, neglectedEvent, unsatisfiable])
       for (const nowMs of [FAKE_SHIFT_START, thresholdMs + 1n])
         expect(
-          SDK.planInactivityTakeover({
+          SDKOperators.planInactivityTakeover({
             snapshot: fakeSnapshot({
               operators: [OP_A, OP_B, OP_C],
               currentOperator: OP_C,
@@ -306,7 +309,7 @@ describe("inactivity takeover planner", () => {
       currentOperator: OP_C,
     });
     expect(
-      SDK.planInactivityTakeover({
+      SDKOperators.planInactivityTakeover({
         snapshot,
         nowMs: thresholdMs,
         neglectedEvent,
@@ -316,7 +319,7 @@ describe("inactivity takeover planner", () => {
       thresholdMs,
       thresholdSource: "new-shift-grace-period",
     });
-    const ready = SDK.planInactivityTakeover({
+    const ready = SDKOperators.planInactivityTakeover({
       snapshot,
       nowMs: thresholdMs + 1n,
       neglectedEvent,
@@ -329,7 +332,7 @@ describe("inactivity takeover planner", () => {
     // means `threshold < valid_from`.
     expect(ready.validity.validFrom).toBe(thresholdMs + 1n);
     expect(ready.validity.validTo).toBe(
-      thresholdMs + 1n + SDK.DEFAULT_STRIKE_VALIDITY_WINDOW_MS,
+      thresholdMs + 1n + SDKOperators.DEFAULT_STRIKE_VALIDITY_WINDOW_MS,
     );
     expect(ready.newStartTime).toBe(ready.validity.validTo - 1n);
     expect(ready.newStartTime - ready.validity.validFrom).toBeLessThanOrEqual(
@@ -339,7 +342,7 @@ describe("inactivity takeover planner", () => {
 
   it("starts the validity range before the planner's clock once the threshold allows it", () => {
     const nowMs = thresholdMs + 90_000n;
-    const ready = SDK.planInactivityTakeover({
+    const ready = SDKOperators.planInactivityTakeover({
       snapshot: fakeSnapshot({
         operators: [OP_A, OP_B, OP_C],
         currentOperator: OP_C,
@@ -358,7 +361,7 @@ describe("inactivity takeover planner", () => {
     expect(ready.validity.validFrom).toBeGreaterThan(thresholdMs);
     // The submission still has the whole window ahead of the planner's clock.
     expect(ready.validity.validTo).toBe(
-      nowMs + SDK.DEFAULT_STRIKE_VALIDITY_WINDOW_MS,
+      nowMs + SDKOperators.DEFAULT_STRIKE_VALIDITY_WINDOW_MS,
     );
     expect(ready.newStartTime).toBe(ready.validity.validTo - 1n);
     expect(ready.newStartTime - ready.validity.validFrom).toBeLessThanOrEqual(
@@ -368,7 +371,7 @@ describe("inactivity takeover planner", () => {
 
   it("picks GoToNext for a non-head operator and Rewind for the head", () => {
     const operators = [OP_A, OP_B, OP_C];
-    const goToNext = SDK.planInactivityTakeover({
+    const goToNext = SDKOperators.planInactivityTakeover({
       snapshot: fakeSnapshot({ operators, currentOperator: OP_C }),
       nowMs: thresholdMs + 1n,
       neglectedEvent,
@@ -381,7 +384,7 @@ describe("inactivity takeover planner", () => {
 
     // `OP_A` is the element the root links to, so its shift rewinds to the
     // tail.
-    const rewind = SDK.planInactivityTakeover({
+    const rewind = SDKOperators.planInactivityTakeover({
       snapshot: fakeSnapshot({ operators, currentOperator: OP_A }),
       nowMs: thresholdMs + 1n,
       neglectedEvent,
@@ -397,7 +400,7 @@ describe("inactivity takeover planner", () => {
   });
 
   it("rewinds a sole operator onto itself without referencing its own node", () => {
-    const plan = SDK.planInactivityTakeover({
+    const plan = SDKOperators.planInactivityTakeover({
       snapshot: fakeSnapshot({ operators: [OP_A], currentOperator: OP_A }),
       nowMs: thresholdMs + 1n,
       neglectedEvent,
@@ -413,7 +416,7 @@ describe("inactivity takeover planner", () => {
   });
 
   it("reports strikes-exhausted instead of planning a sixth strike", () => {
-    const plan = SDK.planInactivityTakeover({
+    const plan = SDKOperators.planInactivityTakeover({
       snapshot: fakeSnapshot({
         operators: [OP_A, OP_B, OP_C],
         currentOperator: OP_C,
@@ -432,7 +435,7 @@ describe("inactivity takeover planner", () => {
 
   it("refuses an alignment hook that moves the lower bound backwards", () => {
     expect(
-      SDK.planInactivityTakeover({
+      SDKOperators.planInactivityTakeover({
         snapshot: fakeSnapshot({
           operators: [OP_A, OP_B, OP_C],
           currentOperator: OP_C,

@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -76,7 +77,7 @@ export const makeRetentionL1Queue = async ({
       ? { Key: { key: liveHeaderHashes[index]! } }
       : "Empty";
   put(
-    SDK.STATE_QUEUE_ROOT_ASSET_NAME,
+    SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME,
     {
       key: "Empty",
       next: keyOf(0),

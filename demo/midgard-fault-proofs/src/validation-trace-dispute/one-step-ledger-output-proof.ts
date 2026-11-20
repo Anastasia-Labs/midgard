@@ -7,7 +7,7 @@
  * successor controls; a finalize names the descriptor yields of the fact
  * group it attaches (`descriptor_role`), or none at the thin terminal. */
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
-import { ValidationOneStepWitness } from "@al-ft/midgard-sdk";
+import { ValidationOneStepWitness } from "@al-ft/midgard-sdk/da";
 import { Constr, Data } from "@lucid-evolution/lucid";
 
 import {

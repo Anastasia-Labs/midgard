@@ -1,7 +1,10 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { cekCoreFailureRoute, cekCoreGroup } from "@al-ft/midgard-sdk";
+import {
+  cekCoreFailureRoute,
+  cekCoreGroup,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import { midgardCekSemanticGroup } from "../src/cek-semantic-group.js";

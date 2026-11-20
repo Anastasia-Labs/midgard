@@ -1,4 +1,4 @@
-import { FraudProofTokenDatum } from "@al-ft/midgard-sdk";
+import { FraudProofTokenDatum } from "@al-ft/midgard-sdk/fraud-proof";
 import { CML, Data, type UTxO } from "@lucid-evolution/lucid";
 
 import type { FraudSlashFundingAuthority } from "../remove-fraudulent-block.js";

@@ -2,7 +2,7 @@
  * alarm names when our wallet cannot fund the move: the case's expiry, and
  * for a move on our own clock (a reveal, or the entry into the one-step
  * resolution) the end of that clock if it comes first. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 
 import type { ValidationTraceStage } from "./actions.js";

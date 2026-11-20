@@ -15,7 +15,7 @@ import {
   type FraudProofCatalogueDeploymentInfo,
   Proof,
   ScriptHashSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import { Data, Network } from "@lucid-evolution/lucid";
 
 import {

@@ -1,10 +1,10 @@
 import {
   type ForcedInclusionTxV1,
-  FraudProofComputationThreadStepDatum,
   type Header,
   type OutputReference,
   type RootMembershipProof,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk/fraud-proof";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import { resolveFaultProofFieldGrammarDeployment } from "../field-grammar-certificate.resolve-fault-proof-field-grammar-deployment.js";

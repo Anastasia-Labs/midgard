@@ -2,7 +2,8 @@ import type {
   FraudProofRawL1Transaction,
   FraudProofRawL1Utxo,
 } from "@al-ft/midgard-fault-proofs/workflow/raw-l1-snapshot";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
   CML,
   credentialToAddress,
@@ -87,11 +88,11 @@ export const historyFixture = (
     finalTtlPastDeadlineMs?: bigint;
   } = {},
 ) => {
-  const parameters = SDK.daAvailabilityParameters({
-    responseGeometry: SDK.availabilityResponseGeometry(
-      SDK.DA_AVAILABILITY_RESPONSE_GEOMETRY_MEASUREMENT_CANDIDATE,
+  const parameters = SDKDa.daAvailabilityParameters({
+    responseGeometry: SDKDa.availabilityResponseGeometry(
+      SDKDa.DA_AVAILABILITY_RESPONSE_GEOMETRY_MEASUREMENT_CANDIDATE,
     ),
-    ...SDK.DA_AVAILABILITY_PROFILE_BOND_AMOUNTS,
+    ...SDKDa.DA_AVAILABILITY_PROFILE_BOND_AMOUNTS,
     challengerBondLovelace: 10_000_000_000n,
     maxOpenFeeLovelace: 500_000n,
     maxPublicationFeeLovelace: 500_000n,
@@ -100,7 +101,7 @@ export const historyFixture = (
     maxTimeoutFeeLovelace: 1_200_000n,
   });
   const bytes = Uint8Array.from({ length: 16_000 }, (_, index) => index % 251);
-  const commitment = SDK.buildDaAvailabilityCommitment({
+  const commitment = SDKDa.buildDaAvailabilityCommitment({
     deploymentIdentity: deployment,
     headerHash,
     payload: bytes,
@@ -120,7 +121,7 @@ export const historyFixture = (
   // The open lands in block 1: its inclusive upper validity bound, the ttl
   // slot's start less one millisecond, anchors the response window.
   const openedAt = (2_000n + 1n) * 1_000n - 1n;
-  const plan = SDK.buildDaAvailabilityChallengeDatumPlan({
+  const plan = SDKDa.buildDaAvailabilityChallengeDatumPlan({
     commitment,
     challengerFundingOutRef: SDK.outputReferenceFromUTxO(funding),
     challenger: "22".repeat(28),
@@ -129,7 +130,7 @@ export const historyFixture = (
   });
   const unit =
     policy +
-    SDK.daAvailabilityTrancheAssetName({
+    SDKDa.daAvailabilityTrancheAssetName({
       challengeAssetName: plan.challengeAssetName,
       trancheIndex: 0,
     });
@@ -142,17 +143,17 @@ export const historyFixture = (
           lovelace: plan.recordLovelace,
           [policy + plan.challengeAssetName]: 1n,
         },
-        SDK.encodeDaAvailabilityChallengeRecord(plan.record, parameters),
+        SDKDa.encodeDaAvailabilityChallengeRecord(plan.record, parameters),
       ),
       out(
         1,
         { lovelace: plan.trancheFunding[0]!.initialLovelace, [unit]: 1n },
-        SDK.encodeDaAvailabilityTrancheDatum(plan.trancheThreads[0]!),
+        SDKDa.encodeDaAvailabilityTrancheDatum(plan.trancheThreads[0]!),
       ),
     ],
     1,
   );
-  const publications = SDK.planDaAvailabilityPublications({
+  const publications = SDKDa.planDaAvailabilityPublications({
     commitment,
     challengeAssetName: plan.challengeAssetName,
     payload: bytes,
@@ -173,7 +174,7 @@ export const historyFixture = (
         ? Number(finalTtlMs / 1_000n)
         : 2_000 + index + 2;
     const inclusiveValidityUpper = BigInt(ttlSlot) * 1_000n - 1n;
-    state = SDK.advanceDaAvailabilityTranche({
+    state = SDKDa.advanceDaAvailabilityTranche({
       active: state,
       publication,
       responseGeometry: parameters.response_geometry,
@@ -189,11 +190,11 @@ export const historyFixture = (
     const published = transaction(
       [thread],
       [
-        out(0, thread.assets, SDK.encodeDaAvailabilityTrancheDatum(state)),
+        out(0, thread.assets, SDKDa.encodeDaAvailabilityTrancheDatum(state)),
         out(
           1,
           { lovelace: 2_000_000n },
-          SDK.encodeDaAvailabilityPublicationDatum(
+          SDKDa.encodeDaAvailabilityPublicationDatum(
             publication,
             parameters.response_geometry,
             commitment.tranche_descriptors[0]!,
@@ -209,7 +210,7 @@ export const historyFixture = (
   const input = {
     headerHash,
     terminalCommitment:
-      SDK.daAvailabilityPublishedTerminalCommitment(commitment),
+      SDKDa.daAvailabilityPublishedTerminalCommitment(commitment),
     deploymentIdentity: deployment,
     availabilityAddress: address,
     availabilityPolicyId: policy,

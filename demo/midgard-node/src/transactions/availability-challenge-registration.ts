@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   type LucidEvolution,
   validatorToRewardAddress,
@@ -28,13 +29,13 @@ export const assertAvailabilityChallengeRewardAccountsRegisteredProgram = (
   ],
 ): Effect.Effect<
   void,
-  SDK.StateQueueError | AvailabilityRewardAccountUnregisteredError
+  SDKStateQueue.StateQueueError | AvailabilityRewardAccountUnregisteredError
 > =>
   Effect.gen(function* () {
     const network = lucid.config().network;
     if (network === undefined) {
       return yield* Effect.fail(
-        new SDK.StateQueueError({
+        new SDKStateQueue.StateQueueError({
           message:
             "Availability challenge reward-account readiness requires a configured network",
           cause: "lucid.config().network is undefined",
@@ -50,7 +51,7 @@ export const assertAvailabilityChallengeRewardAccountsRegisteredProgram = (
       const account = yield* Effect.tryPromise({
         try: () => lucid.rewardAccountAt(rewardAddress),
         catch: (cause) =>
-          new SDK.StateQueueError({
+          new SDKStateQueue.StateQueueError({
             message: `Failed to inspect availability challenge ${action} reward-account readiness`,
             cause,
           }),

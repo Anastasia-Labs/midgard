@@ -9,7 +9,7 @@
  * only then stops under its own named state with nothing more to sign. While that close does not build,
  * the runner raises the one-step alarm naming the case's expiry, the
  * deadline the close must land by, and builds it again at its next run. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { Data } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 

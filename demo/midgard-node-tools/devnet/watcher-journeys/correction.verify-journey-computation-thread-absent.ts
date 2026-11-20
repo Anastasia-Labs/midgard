@@ -1,5 +1,5 @@
 import type { FraudProofWorkflowJournalEntry } from "@al-ft/midgard-fault-proofs/workflow/journal";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { expect } from "vitest";
 
 import { journeyIntentRecovery } from "./correction.verify-journey-corrected-scheduler.js";

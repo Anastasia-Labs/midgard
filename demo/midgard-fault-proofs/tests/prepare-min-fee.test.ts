@@ -4,7 +4,8 @@ import { join } from "node:path";
 
 import { deriveMidgardNativeTxProofSourceFromCanonicalCbor } from "@al-ft/midgard-core";
 import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -52,7 +53,7 @@ describe("prepare-min-fee", () => {
     const source = deriveMidgardNativeTxProofSourceFromCanonicalCbor(
       tx.canonicalCbor,
     );
-    const boundary = SDK.minimumFeeFromProofSource({
+    const boundary = SDKFraudProof.minimumFeeFromProofSource({
       sourceKind: "normal",
       source,
       minFeeA: 2n,
@@ -95,7 +96,7 @@ describe("prepare-min-fee", () => {
       ).rejects.toThrow(/satisfying exact minimum 1000/u);
     }
     expect(
-      SDK.minimumFeeFromProofSource({
+      SDKFraudProof.minimumFeeFromProofSource({
         sourceKind: "normal",
         source,
         minFeeA: 0n,
@@ -125,7 +126,7 @@ describe("prepare-min-fee", () => {
       }),
     ).rejects.toThrow(/--min-fee-a must be non-negative/u);
     expect(() =>
-      SDK.hasMinFeeViolation({
+      SDKFraudProof.hasMinFeeViolation({
         fee: -1n,
         minFeeA: 1n,
         minFeeB: 0n,
@@ -147,8 +148,8 @@ describe("prepare-min-fee", () => {
         categoryId: CATEGORY_ID,
         outputDir: dir,
       });
-      const state: SDK.MinFeeStep02State = {
-        subject: SDK.acceptedVerdictSubject(output.tx.nodeTxId),
+      const state: SDKFraudProof.MinFeeStep02State = {
+        subject: SDKFraudProof.acceptedVerdictSubject(output.tx.nodeTxId),
         bad_tx: {
           body: output.tx.nativeTx.body,
           witness_set_hash: output.tx.nativeTx.witness_set_hash,
@@ -159,7 +160,7 @@ describe("prepare-min-fee", () => {
         min_fee_b: output.minFeeB,
       };
       const manualStateSchema = Data.Object({
-        subject: SDK.MinFeeVerdictSubjectSchema,
+        subject: SDKFraudProof.MinFeeVerdictSubjectSchema,
         bad_tx: Data.Object({
           body: SDK.NativeTxBodyCompactSchema,
           witness_set_hash: SDK.H32Schema,
@@ -169,7 +170,7 @@ describe("prepare-min-fee", () => {
         min_fee_a: Data.Integer(),
         min_fee_b: Data.Integer(),
       });
-      expect(Data.to(state, SDK.MinFeeStep02State)).toBe(
+      expect(Data.to(state, SDKFraudProof.MinFeeStep02State)).toBe(
         Data.to(state, asLucidSchema(manualStateSchema)),
       );
 
@@ -180,9 +181,9 @@ describe("prepare-min-fee", () => {
             asLucidSchema(Data.Array(Data.Bytes())),
           ),
         },
-      })) as unknown as SDK.MinFeeStep02Args["field_carriages"];
+      })) as unknown as SDKFraudProof.MinFeeStep02Args["field_carriages"];
       expect(carriages).toHaveLength(9);
-      const args: SDK.MinFeeStep02Args = {
+      const args: SDKFraudProof.MinFeeStep02Args = {
         input_index: 0n,
         output_index: 1n,
         fraud_proof_mint_redeemer_index: 2n,
@@ -208,11 +209,14 @@ describe("prepare-min-fee", () => {
           SDK.FieldCarriageSchema,
         ]),
       });
-      expect(Data.to(args, SDK.MinFeeStep02Args)).toBe(
+      expect(Data.to(args, SDKFraudProof.MinFeeStep02Args)).toBe(
         Data.to(args, asLucidSchema(manualArgsSchema)),
       );
       expect(
-        Data.from(Data.to(args, SDK.MinFeeStep02Args), SDK.MinFeeStep02Args),
+        Data.from(
+          Data.to(args, SDKFraudProof.MinFeeStep02Args),
+          SDKFraudProof.MinFeeStep02Args,
+        ),
       ).toStrictEqual(args);
 
       for (const path of Object.values(output.files!)) {

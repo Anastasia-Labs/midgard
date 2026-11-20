@@ -1,18 +1,20 @@
 import { decodeMidgardVersionedScript } from "@al-ft/midgard-core";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
+  type NativeTxWitnessSetCompact,
+  requireInputIndex,
+  requireOwnSpendPurpose,
+  requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
   type FieldOpening,
   MIDGARD_FIELD_INDEX,
   NativeScriptInvalidStep02DatumSchema,
   NativeScriptInvalidStep02SpendRedeemerSchema,
   NativeScriptInvalidStep03DatumSchema,
   nativeScriptItemCommitment,
-  type NativeTxWitnessSetCompact,
   PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
-  requireInputIndex,
-  requireOwnSpendPurpose,
-  requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

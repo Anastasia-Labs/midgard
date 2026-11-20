@@ -1,4 +1,4 @@
-import type { EvidenceProvenance } from "@al-ft/midgard-sdk";
+import type { EvidenceProvenance } from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it, vi } from "vitest";
 
 import {

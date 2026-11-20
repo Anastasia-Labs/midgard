@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,
@@ -81,7 +82,7 @@ export const submitRawWithdrawnReferenceInputCancel = async ({
           burning_token_asset_name: threadToken.assetName,
         },
       },
-      SDK.FraudProofComputationThreadRedeemer,
+      SDKFraudProof.FraudProofComputationThreadRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
   const reference = requireWithdrawnReferenceInputReferenceScript({

@@ -19,12 +19,10 @@ import {
   materializeMidgardForcedTxFromCanonical,
   type MidgardForcedTxFull,
 } from "@al-ft/midgard-core/codec/forced";
-import * as SDK from "@al-ft/midgard-sdk";
-import {
-  AddressData,
-  addressDataFromBech32,
-  missingSignatureVkeyHash,
-} from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
+import { AddressData, addressDataFromBech32 } from "@al-ft/midgard-sdk/core";
+import type * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import { missingSignatureVkeyHash } from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -224,7 +222,7 @@ const fixtureBytes = (
       );
 
 export const evidenceFor = (
-  subject: SDK.VerdictSubject,
+  subject: SDKFraudProof.VerdictSubject,
   nativeTx: MidgardNativeTxFull | MidgardForcedTxFull,
 ): ProtectedOutputSignerMissingEvidence =>
   prepareProtectedOutputSignerMissingEvidence({
@@ -240,8 +238,8 @@ export const evidenceFor = (
  * its datum from the subject, so the chain sees exactly the honest claim.
  */
 export const honestEvidenceFor = (
-  honestSubject: SDK.VerdictSubject,
-  closingSubject: SDK.VerdictSubject,
+  honestSubject: SDKFraudProof.VerdictSubject,
+  closingSubject: SDKFraudProof.VerdictSubject,
   nativeTx: MidgardNativeTxFull | MidgardForcedTxFull,
 ): ProtectedOutputSignerMissingEvidence =>
   Object.freeze({

@@ -2,7 +2,7 @@ import {
   encodeLinkedListNodeView,
   REGISTERED_OPERATOR_NODE_ASSET_NAME_PREFIX,
   REGISTERED_OPERATORS_ROOT_ASSET_NAME,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import { credentialToAddress, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

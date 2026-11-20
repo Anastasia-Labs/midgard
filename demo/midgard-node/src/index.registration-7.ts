@@ -3,7 +3,7 @@ import "./index.registration-6.js";
 import {
   assertReferenceScriptAuthUnexpired,
   type ReferenceScriptAuthPolicy,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import { Effect } from "effect";
 
 import {

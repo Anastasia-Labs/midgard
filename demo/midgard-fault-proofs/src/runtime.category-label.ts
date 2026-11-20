@@ -1,4 +1,4 @@
-import { type FaultProofContracts } from "@al-ft/midgard-sdk";
+import { type FaultProofContracts } from "@al-ft/midgard-sdk/fraud-proof";
 
 import { type SupportedFaultProofCategoryName } from "./runtime.require-fault-proof-step-reference-script.js";
 

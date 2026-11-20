@@ -5,7 +5,7 @@
  * The forged Walk chains its links and its successor exactly, so the run's
  * spend accepts it and only the staker can refuse.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { scriptDecodeScriptHash } from "@al-ft/midgard-validation/script-decode.step";
 import {
   nextScriptDecodeChainedWalk,

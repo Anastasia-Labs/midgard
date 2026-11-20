@@ -40,7 +40,8 @@ import {
   type SimTx,
   simUniverse,
 } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import { stateQueueTrackedSet } from "../src/l1-state-queue/config.js";
@@ -183,7 +184,10 @@ const chainWithIntents = async (store: FactStore) => {
     {
       inputs: [chain.outsideInput()],
       outputs: [
-        queueOutput(SDK.STATE_QUEUE_ROOT_ASSET_NAME, rootDatum(GENESIS, null)),
+        queueOutput(
+          SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME,
+          rootDatum(GENESIS, null),
+        ),
         plain,
         plain,
       ],
@@ -191,13 +195,13 @@ const chainWithIntents = async (store: FactStore) => {
     },
   ]);
   const first = simHeader(1, GENESIS);
-  const firstHash = SDK.stateQueueHeaderHash(first);
+  const firstHash = SDKStateQueue.stateQueueHeaderHash(first);
   await forward([
     {
       inputs: [{ txHash: rootTx!, index: 0 }],
       outputs: [
         queueOutput(
-          SDK.STATE_QUEUE_ROOT_ASSET_NAME,
+          SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME,
           rootDatum(GENESIS, firstHash),
         ),
         queueOutput(

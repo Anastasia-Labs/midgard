@@ -20,8 +20,9 @@ import {
   encodeMidgardForcedTxCanonical,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
-import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { MIDGARD_COINS_PER_UTXO_BYTE } from "@al-ft/midgard-validation/value-accounting";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
@@ -180,7 +181,7 @@ describe("minimum-Ada detection over accepted forced transactions", () => {
       expect(finding.evidence.state.direction).toBe(0n);
       expect(finding.evidence.state.source_kind).toBe(1n);
       expect(finding.evidence.subject).toStrictEqual(
-        SDK.forcedVerdictSubject({
+        SDKFraudProof.forcedVerdictSubject({
           transactionId: txId,
           sourceKey: key,
           rejectionReason: null,
@@ -204,7 +205,7 @@ describe("minimum-Ada detection over accepted forced transactions", () => {
     // rejected leaf verdict) is refused against the committed verdict.
     const retained = Data.from(
       artifact.forcedSourceCbor,
-      SDK.MinAdaForcedSourcePayloadSchema as never,
+      SDKFraudProof.MinAdaForcedSourcePayloadSchema as never,
     ) as { membership: SDK.ForcedTransactionSourceMembershipProof };
     const reason = { OutputBelowMinAda: { output_index: 2n } };
     const value = {
@@ -214,7 +215,7 @@ describe("minimum-Ada detection over accepted forced transactions", () => {
     const membership = { ...retained.membership, value };
     const flipped = Data.to(
       { ...retained, membership } as never,
-      SDK.MinAdaForcedSourcePayloadSchema as never,
+      SDKFraudProof.MinAdaForcedSourcePayloadSchema as never,
     );
     await expect(
       admitMinAdaForcedArtifact({ ...artifact, forcedSourceCbor: flipped }),
@@ -279,7 +280,7 @@ describe("network-id detection over accepted forced transactions", () => {
       proofThreadDirectionOfForcedLeaf(body.forcedSource.membership.value),
     ).toBe(0n);
     expect(body.subject).toStrictEqual(
-      SDK.forcedVerdictSubject({
+      SDKFraudProof.forcedVerdictSubject({
         transactionId: txId,
         sourceKey: key,
         rejectionReason: null,

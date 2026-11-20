@@ -1,5 +1,8 @@
 import { outRefLabel } from "@al-ft/midgard-core";
-import { FraudProofTokenDatum, NetworkIdStep02Datum } from "@al-ft/midgard-sdk";
+import {
+  FraudProofTokenDatum,
+  NetworkIdStep02Datum,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, getAddressDetails, toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

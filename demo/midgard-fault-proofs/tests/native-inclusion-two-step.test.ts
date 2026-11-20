@@ -9,7 +9,8 @@ import {
   encodeMidgardForcedTxCanonical,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -230,7 +231,7 @@ describe("production invalid-range/zero-input public-evidence artifacts V1", () 
     const boundHeaderHash = await Effect.runPromise(
       SDK.hashBlockHeader(header),
     );
-    const subject = SDK.forcedVerdictSubject({
+    const subject = SDKFraudProof.forcedVerdictSubject({
       transactionId,
       sourceKey: key,
       rejectionReason: "EmptyInputs",
@@ -289,7 +290,7 @@ describe("production invalid-range/zero-input public-evidence artifacts V1", () 
       admitNativeInclusionTwoStepArtifact({
         ...artifact,
         subjectCbor: Data.to(
-          SDK.acceptedVerdictSubject(transactionId) as never,
+          SDKFraudProof.acceptedVerdictSubject(transactionId) as never,
           ZeroInputVerdictSubjectSchema as never,
         ),
       }),

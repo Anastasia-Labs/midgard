@@ -14,7 +14,8 @@ import {
   type View,
 } from "@al-ft/midgard-l1-follower";
 import { toLucidUtxo } from "@al-ft/midgard-l1-follower/provider";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDKOperators from "@al-ft/midgard-sdk/operators";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { Effect, Either } from "effect";
 
 import type {
@@ -40,13 +41,13 @@ import type { StateQueueStrikeFacts } from "./strike-facts.js";
 export type PublishedOperatorSet = Readonly<{
   set: OperatorSet;
   membership: OperatorMembership;
-  stateQueueTail: SDK.StateQueueTail | null;
+  stateQueueTail: SDKOperators.StateQueueTail | null;
   /** The same queue's strike facts (B7); null when the tail is. */
   stateQueueStrikeFacts: StateQueueStrikeFacts | null;
   /** The retired insertion anchor of a key, read at the follower's tip. */
   retiredInsertionAnchor: (
     operatorKey: string,
-  ) => Promise<SDK.RetiredOperatorNode | null>;
+  ) => Promise<SDKOperators.RetiredOperatorNode | null>;
   /**
    * The undelivered user event a strike against a tail ending at
    * `tailEndMs` cites, read at the follower's tip and passing over the
@@ -55,7 +56,7 @@ export type PublishedOperatorSet = Readonly<{
   neglectedUserEvent: (
     tailEndMs: bigint,
     excluded?: ReadonlySet<string>,
-  ) => Promise<SDK.NeglectedUserEventClaim | null>;
+  ) => Promise<SDKOperators.NeglectedUserEventClaim | null>;
 }>;
 
 /**
@@ -65,7 +66,7 @@ export type PublishedOperatorSet = Readonly<{
 export const publishedOperatorSetOf = (input: {
   readonly set: OperatorSet;
   readonly membership: OperatorMembership;
-  readonly stateQueueTail: SDK.StateQueueTail | null;
+  readonly stateQueueTail: SDKOperators.StateQueueTail | null;
   readonly stateQueueStrikeFacts: StateQueueStrikeFacts | null;
   readonly store: Pick<FactStore, "dialect" | "transaction">;
   readonly retired: OperatorListContract;
@@ -99,7 +100,7 @@ export const publishedOperatorSetOf = (input: {
 /** The state-queue tail as the SDK planners take it, from the landed queue. */
 export const stateQueueTailOf = (
   queue: LandedStateQueue,
-): SDK.StateQueueTail | null => {
+): SDKOperators.StateQueueTail | null => {
   if (!queue.healthy) return null;
   const tail: LandedStateQueueElement | null = landedTail(queue);
   if (tail === null) return null;
@@ -114,13 +115,13 @@ export const stateQueueTailOf = (
 const retiredNodeOf = (
   contract: OperatorListContract,
   stored: StoredOutput,
-): SDK.RetiredOperatorNode | null => {
+): SDKOperators.RetiredOperatorNode | null => {
   const names = stored.output.assets.get(contract.policyId);
   const name = names === undefined ? undefined : [...names.keys()][0];
   if (name === undefined || names?.size !== 1) return null;
   const decoded = Effect.runSync(
     Effect.either(
-      SDK.retiredOperatorNodeFromUTxO(
+      SDKOperators.retiredOperatorNodeFromUTxO(
         toLucidUtxo(stored.outRef, stored.output),
         name,
       ),
@@ -139,7 +140,7 @@ export const retiredInsertionAnchorIn = async (
   dialect: Dialect,
   contract: OperatorListContract,
   operatorKey: string,
-): Promise<SDK.RetiredOperatorNode | null> => {
+): Promise<SDKOperators.RetiredOperatorNode | null> => {
   const policyId = Buffer.from(contract.policyId, "hex");
   const before = await liveUnitBeforeIn(tx, dialect, {
     policyId,
@@ -168,7 +169,7 @@ export const publishedDirectoryOf = (
 ):
   | Readonly<{
       kind: "ok";
-      snapshot: SDK.OperatorDirectorySnapshot;
+      snapshot: SDKOperators.OperatorDirectorySnapshot;
       view: View;
     }>
   | Readonly<{ kind: "unavailable"; reason: string; detail: string }> => {
@@ -218,7 +219,7 @@ export const publishedDirectoryOf = (
 export const publishedRetiredAnchorProgram = (
   published: PublishedOperatorSet | undefined,
   operatorKey: string,
-): Effect.Effect<SDK.RetiredOperatorNode, SDK.StateQueueError> =>
+): Effect.Effect<SDKOperators.RetiredOperatorNode, SDK.StateQueueError> =>
   Effect.tryPromise({
     try: async () => {
       const anchor =
@@ -246,7 +247,10 @@ export const publishedNeglectedUserEventProgram = (
   published: PublishedOperatorSet | undefined,
   tailEndMs: bigint,
   excluded?: ReadonlySet<string>,
-): Effect.Effect<SDK.NeglectedUserEventClaim | null, SDK.StateQueueError> =>
+): Effect.Effect<
+  SDKOperators.NeglectedUserEventClaim | null,
+  SDK.StateQueueError
+> =>
   Effect.tryPromise({
     try: async () => {
       if (published === undefined)

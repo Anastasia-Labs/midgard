@@ -6,7 +6,7 @@ import {
   acceptedVerdictSubject,
   buildTransactionOutputNonCanonicalFaultProofContracts,
   forcedVerdictSubject,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import {

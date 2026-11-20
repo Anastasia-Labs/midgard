@@ -4,7 +4,8 @@ export {
   planCommitDaFrameStepDown,
 } from "./commit-block-planner.da-frame-decision.js";
 import { canonicalCborArgumentSize } from "@al-ft/midgard-core/da-payload-sizing";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { Effect } from "effect";
 
 import {
@@ -89,7 +90,7 @@ const UINT64_MAX = 2n ** 64n - 1n;
 const WIDEST_HASH = "ff".repeat(64);
 
 /** The longest-encoding header, for sizing a block before its header exists. */
-export const DA_PAYLOAD_UPPER_BOUND_HEADER: SDK.Header = {
+export const DA_PAYLOAD_UPPER_BOUND_HEADER: SDKCore.Header = {
   prevUtxosRoot: WIDEST_HASH,
   utxosRoot: WIDEST_HASH,
   withdrawalsRoot: WIDEST_HASH,

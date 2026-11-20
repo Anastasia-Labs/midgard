@@ -41,7 +41,7 @@ import "./witness-script-decoding-lifecycle.authentication-seams.js";
 import "./witness-script-decoding-lifecycle.make-harness.js";
 import "./witness-script-decoding-lifecycle.scan-honest-accepted-to-close.js";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";

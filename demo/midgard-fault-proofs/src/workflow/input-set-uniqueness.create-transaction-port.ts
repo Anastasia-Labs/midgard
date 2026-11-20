@@ -1,4 +1,4 @@
-import { InputSetUniquenessStep04DatumSchema } from "@al-ft/midgard-sdk";
+import { InputSetUniquenessStep04DatumSchema } from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { InputSetUniquenessContracts } from "../input-set-uniqueness/contracts.js";

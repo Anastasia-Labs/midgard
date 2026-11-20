@@ -1,16 +1,18 @@
 import {
-  acceptedVerdictSubject,
   HUB_ORACLE_ASSET_NAME,
-  nativeTxBodyHasZeroInputViolation,
   type NativeTxInclusionCarriage,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
   requireWithdrawalRedeemerIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
+  acceptedVerdictSubject,
+  nativeTxBodyHasZeroInputViolation,
   ZeroInputStep01SpendRedeemer,
   ZeroInputStep02Datum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   credentialToAddress,

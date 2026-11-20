@@ -7,7 +7,7 @@ import {
   MidgardScriptHashPrefixes,
 } from "@al-ft/midgard-core";
 import { encodeCborUnsigned } from "@al-ft/midgard-core/codec/cbor";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 import { retainedOutputReferenceScript } from "../evidence/retained-ledger-output.js";
 import { keyValuePhasMembershipProofs } from "../transition-trace/phas.js";

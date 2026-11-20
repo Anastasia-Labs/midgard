@@ -9,7 +9,8 @@
  * through the shared removal, keeping the record, and completes on the
  * authenticated terminal. A close whose lower bound is not yet past the
  * deadline is refused by the case validator. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   credentialToAddress,
   Data,
@@ -221,7 +222,8 @@ describe("validation-trace dispute runner: conviction of an undefended case", ()
       [proofUnit]: 1n,
     });
     expect(
-      Data.from(recorded!.datum!, SDK.FraudProofTokenDatum).fraud_prover,
+      Data.from(recorded!.datum!, SDKFraudProof.FraudProofTokenDatum)
+        .fraud_prover,
     ).toBe(h.proverSigner.paymentKeyHash);
 
     // The bond and the case are spent; the bond comes back in full at

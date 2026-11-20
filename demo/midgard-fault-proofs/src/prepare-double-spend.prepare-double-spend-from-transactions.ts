@@ -1,7 +1,10 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { commitCountedRootProgram, ROOT_DOMAINS } from "@al-ft/midgard-sdk";
+import {
+  commitCountedRootProgram,
+  ROOT_DOMAINS,
+} from "@al-ft/midgard-sdk/core";
 import { Effect } from "effect";
 
 import { parseHex, stringifyJson } from "./json-file.js";

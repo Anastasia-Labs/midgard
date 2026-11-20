@@ -7,7 +7,7 @@ import {
   forcedVerdictSubject,
   type MinFeeStep02State,
   minimumFeeFromProofSource,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { CanonicalBlockEvidence } from "./evidence/canonical-block-evidence.js";
 import { forcedTxFromCoreCompact } from "./step-support.js";

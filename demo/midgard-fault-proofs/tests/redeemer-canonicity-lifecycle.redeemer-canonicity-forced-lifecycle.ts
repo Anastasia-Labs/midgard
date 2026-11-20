@@ -4,7 +4,7 @@ import {
   decodeMidgardForcedTxCompact,
   midgardFieldCommitment,
 } from "@al-ft/midgard-core";
-import { forcedVerdictSubject } from "@al-ft/midgard-sdk";
+import { forcedVerdictSubject } from "@al-ft/midgard-sdk/fraud-proof";
 import { getAddressDetails } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

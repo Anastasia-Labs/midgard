@@ -10,7 +10,8 @@ import {
   type ScriptDecodeStake,
   scriptDecodeWalkStakes,
 } from "@al-ft/midgard-fault-proofs/script-decode";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import type { ScriptDecodeChainedWalk } from "@al-ft/midgard-validation/script-decode.step-walk";
 import {
   type LucidEvolution,
@@ -28,7 +29,7 @@ import { buildRewardRegistrationsTx } from "../src/transactions/utils.reward-reg
  * A withdraw-zero script outside the family that accepts anything: the
  * PlutusV3 flat program 1.1.0 `(lam x (con unit ()))`.
  */
-export const OUTSIDE_STAKER: SDK.WithdrawalValidator = (() => {
+export const OUTSIDE_STAKER: SDKCore.WithdrawalValidator = (() => {
   const withdrawalScript: Script = {
     type: "PlutusV3",
     script: "450101002499",

@@ -6,7 +6,7 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { encodeTransitionStepCbor } from "@al-ft/midgard-fault-proofs/block-replay";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import {
   encodeRecomputedNativeTx,
   FUNDED_OUTPUT_LOVELACE,

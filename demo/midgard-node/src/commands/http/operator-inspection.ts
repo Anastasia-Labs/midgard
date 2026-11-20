@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { HttpServerResponse } from "@effect/platform";
 import { ParsedSearchParams } from "@effect/platform/HttpServerRequest";
 import { SqlClient } from "@effect/sql";
@@ -52,7 +53,7 @@ export const getStateQueueHandler = Effect.gen(function* () {
   const read = yield* readLandedStateQueue(contracts.stateQueue);
   if (read.kind !== "ok") {
     return yield* Effect.fail(
-      new SDK.StateQueueError({
+      new SDKStateQueue.StateQueueError({
         message: "The landed state queue is unavailable",
         cause: `${read.kind}: ${read.detail}`,
       }),

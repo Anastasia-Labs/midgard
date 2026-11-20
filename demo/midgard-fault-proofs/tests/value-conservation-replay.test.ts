@@ -1,5 +1,7 @@
 import { computeHash28, computeMidgardNativeTxId } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -41,7 +43,9 @@ const fixture = async (forced: boolean, balanced: boolean) => {
   const predecessorFixture = await buildCanonicalBlockFixture({
     transactions: [],
     utxos: value.ledger.spentInputs.map((spent) => ({
-      key: Buffer.from(SDK.encodeMidgardTxInputCanonical(spent.input)),
+      key: Buffer.from(
+        SDKFraudProof.encodeMidgardTxInputCanonical(spent.input),
+      ),
       value: Buffer.from(spent.outputCbor, "hex"),
     })),
   });
@@ -67,7 +71,7 @@ const fixture = async (forced: boolean, balanced: boolean) => {
   const headerHash = computeHash28(SDK.encodeHeaderCbor(header)).toString(
     "hex",
   );
-  const payload: SDK.DaPayload = {
+  const payload: SDKDa.DaPayload = {
     ...base.reconstruction.payload,
     block_body: {
       ...base.reconstruction.payload.block_body,
@@ -164,7 +168,9 @@ it.each([true, false])(
       await buildCanonicalBlockFixture({
         transactions: [],
         utxos: value.ledger.spentInputs.map((spent) => ({
-          key: Buffer.from(SDK.encodeMidgardTxInputCanonical(spent.input)),
+          key: Buffer.from(
+            SDKFraudProof.encodeMidgardTxInputCanonical(spent.input),
+          ),
           value: Buffer.from(spent.outputCbor, "hex"),
         })),
       });
@@ -205,9 +211,9 @@ it.each([true, false])(
       const a = first.reconstruction.payload.block_body;
       const b = second.reconstruction.payload.block_body;
       const merge = (
-        left: readonly SDK.DaPayloadEntry[],
-        right: readonly SDK.DaPayloadEntry[],
-      ): SDK.DaPayloadEntry[] =>
+        left: readonly SDKDa.DaPayloadEntry[],
+        right: readonly SDKDa.DaPayloadEntry[],
+      ): SDKDa.DaPayloadEntry[] =>
         [...left, ...right].sort(([l], [r]) => l.localeCompare(r));
       const firstStep = Data.from(
         a.transition_trace[0]![1],
@@ -217,7 +223,7 @@ it.each([true, false])(
         b.transition_trace[0]![1],
         SDK.TransitionStepSchema,
       );
-      const transition_trace: SDK.DaPayloadEntry[] = [
+      const transition_trace: SDKDa.DaPayloadEntry[] = [
         [
           Data.to(0n),
           Data.to(
@@ -252,7 +258,7 @@ it.each([true, false])(
       const validation_traces = merge(a.validation_traces, b.validation_traces);
       const root = async (
         domain: Parameters<typeof buildCountedRoot>[0],
-        entries: readonly SDK.DaPayloadEntry[],
+        entries: readonly SDKDa.DaPayloadEntry[],
       ) =>
         (
           await buildCountedRoot(
@@ -290,7 +296,7 @@ it.each([true, false])(
       const headerHash = computeHash28(SDK.encodeHeaderCbor(header)).toString(
         "hex",
       );
-      const payload: SDK.DaPayload = {
+      const payload: SDKDa.DaPayload = {
         ...second.reconstruction.payload,
         block_body: {
           ...b,

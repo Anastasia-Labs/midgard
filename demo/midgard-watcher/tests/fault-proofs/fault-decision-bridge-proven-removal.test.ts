@@ -1,4 +1,4 @@
-import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "@al-ft/midgard-sdk";
+import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "@al-ft/midgard-sdk/core";
 import { describe, expect, it } from "vitest";
 
 import type { BridgeDependencies } from "../../src/fault-proofs/fault-decision-bridge.selected-target.js";

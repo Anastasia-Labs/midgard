@@ -35,7 +35,6 @@ import {
 } from "@al-ft/midgard-core";
 import {
   encodeMidgardTxInputCanonical,
-  fieldPreimagePublicationDatumCbor,
   FraudProofTokenDatum,
   MIDGARD_FIELD_INDEX,
   referenceInputNoIdxOutputsCommitment,
@@ -43,7 +42,8 @@ import {
   ReferenceInputNoIdxStep02Datum,
   ReferenceInputNoIdxStep03Datum,
   ReferenceInputNoIdxStep04Datum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
+import { fieldPreimagePublicationDatumCbor } from "@al-ft/midgard-sdk/state-queue";
 import { Data, toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

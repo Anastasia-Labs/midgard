@@ -1,4 +1,5 @@
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 
 import type { CommitAnchor } from "../../database/commit-anchor.js";
 import type {
@@ -27,7 +28,7 @@ export type SubmitTxBackedCommitInput = CommitSubmissionHooks & {
   readonly deploymentMarker: NonNullable<
     ContractDeploymentIdentityValue["deploymentMarker"]
   >;
-  readonly latestBlock: SDK.StateQueueUTxO;
+  readonly latestBlock: SDKStateQueue.StateQueueUTxO;
   readonly endTime: Date;
   readonly blockTimeMs?: number;
   readonly includedDepositEntries: readonly DepositsDB.Entry[];

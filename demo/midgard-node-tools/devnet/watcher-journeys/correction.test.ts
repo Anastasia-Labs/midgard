@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   CML,
   credentialToAddress,
@@ -62,7 +63,7 @@ const transactionWithRoot = (
     address,
     assets: {
       lovelace: 5_000_000n,
-      [toUnit(policyId, SDK.STATE_QUEUE_ROOT_ASSET_NAME)]: 1n,
+      [toUnit(policyId, SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME)]: 1n,
     },
     datum: SDK.encodeLinkedListNodeView({
       key: "Empty",

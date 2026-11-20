@@ -1,7 +1,7 @@
 import type { AvailabilityOperationJournal } from "@al-ft/midgard-core/availability-operation-journal";
 import { computeDaSha256Hash } from "@al-ft/midgard-core/da-transport";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 import type { CommitteeL1ClientConfig } from "../config.js";

@@ -8,7 +8,8 @@ import {
   encodeMidgardForcedTxCanonical,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import {
   CML,
@@ -70,7 +71,7 @@ const heldInput = inputs[0]!;
 /** `{0: enterprise key address of the owner, 1: [0, {}]}`. */
 const heldOutput = Buffer.concat([
   Buffer.from("a200581d60", "hex"),
-  Buffer.from(SDK.missingSignatureVkeyHash(ownerVkey), "hex"),
+  Buffer.from(SDKFraudProof.missingSignatureVkeyHash(ownerVkey), "hex"),
   Buffer.from("018200a0", "hex"),
 ]);
 
@@ -83,7 +84,7 @@ const native = (() => {
     ...unsigned,
     witnessSet: {
       ...unsigned.witnessSet,
-      addrTxWitsPreimageCbor: SDK.encodeAddressWitnessPreimage([
+      addrTxWitsPreimageCbor: SDKFraudProof.encodeAddressWitnessPreimage([
         {
           verification_key: ownerVkey,
           signature: Buffer.from(

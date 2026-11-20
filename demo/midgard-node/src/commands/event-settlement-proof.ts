@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Data as LucidData, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect, Option } from "effect";
 
@@ -30,7 +31,7 @@ export type EventSettlementProofResolution =
       readonly eventId: string;
       readonly headerHash: string;
       readonly settlementRefInput: UTxO;
-      readonly settlementDatum: SDK.SettlementDatum;
+      readonly settlementDatum: SDKStateQueue.SettlementDatum;
       readonly root: string;
       readonly proof: SDK.RawRootMembershipProof;
       readonly proofCbor: string;
@@ -42,7 +43,7 @@ export type EventSettlementProofResolution =
       readonly eventId: string;
       readonly headerHash: string;
       readonly settlementRefInput: UTxO;
-      readonly settlementDatum: SDK.SettlementDatum;
+      readonly settlementDatum: SDKStateQueue.SettlementDatum;
       readonly root: string;
       readonly proof: SDK.RawRootMembershipProof;
       readonly proofCbor: string;
@@ -55,7 +56,7 @@ export type EventSettlementProofResolution =
       readonly eventId: string;
       readonly headerHash: string;
       readonly settlementRefInput: UTxO;
-      readonly settlementDatum: SDK.SettlementDatum;
+      readonly settlementDatum: SDKStateQueue.SettlementDatum;
       readonly root: string;
       readonly proof: SDK.RawRootMembershipProof;
       readonly proofCbor: string;
@@ -122,7 +123,7 @@ const requireProjectedHeaderHash = (
 const fetchSettlementRefInput = (
   headerHash: Buffer,
 ): Effect.Effect<
-  { readonly utxo: UTxO; readonly datum: SDK.SettlementDatum },
+  { readonly utxo: UTxO; readonly datum: SDKStateQueue.SettlementDatum },
   EventSettlementProofError | SDK.LucidError,
   Lucid | MidgardContracts
 > =>
@@ -167,7 +168,10 @@ const fetchSettlementRefInput = (
     }
     const datum = yield* Effect.try({
       try: () =>
-        LucidData.from(utxo.datum!, SDK.SettlementDatum) as SDK.SettlementDatum,
+        LucidData.from(
+          utxo.datum!,
+          SDKStateQueue.SettlementDatum,
+        ) as SDKStateQueue.SettlementDatum,
       catch: (cause) =>
         new EventSettlementProofError({
           message: "Failed to decode settlement datum",

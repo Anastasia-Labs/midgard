@@ -41,7 +41,7 @@ import "./observers-forbidden-on-untagged-network-lifecycle.forced-block.js";
 import {
   acceptedVerdictSubject,
   forcedVerdictSubject,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it, vi } from "vitest";
 
 import { createObserversForbiddenActuator } from "../src/observers-forbidden-on-untagged-network/actuator.js";

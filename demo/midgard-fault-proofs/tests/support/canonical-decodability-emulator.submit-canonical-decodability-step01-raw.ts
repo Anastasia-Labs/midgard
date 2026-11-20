@@ -1,17 +1,19 @@
 import {
-  CanonicalDecodabilityStep01Datum,
-  CanonicalDecodabilityStep01SpendRedeemer,
-  CanonicalDecodabilityStep02Datum,
-  type CanonicalDecodabilityStep02State,
-  type CanonicalDecodabilityWalkState,
-  type CommittedFieldClaim,
   HUB_ORACLE_ASSET_NAME,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
   requireWithdrawalRedeemerIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  CanonicalDecodabilityStep01Datum,
+  CanonicalDecodabilityStep01SpendRedeemer,
+  CanonicalDecodabilityStep02Datum,
+  type CanonicalDecodabilityStep02State,
+  type CanonicalDecodabilityWalkState,
+  type CommittedFieldClaim,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   credentialToAddress,

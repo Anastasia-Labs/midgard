@@ -1,12 +1,12 @@
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   faultProofStepDatumSchema,
-  FieldOpening,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { FieldOpening } from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Constr,

@@ -9,7 +9,8 @@ import {
   openSqliteFactStore,
 } from "@al-ft/midgard-l1-follower";
 import { simStoreOptions } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { WatcherAuthenticatedStateQueueObservation } from "../../src/indexers/authenticated-state-queue-observation.parse-persisted-header.js";
@@ -53,7 +54,7 @@ const burn = (...headers: string[]) =>
   ]);
 
 const entry = (
-  value: SDK.StateQueueRedeemer | null,
+  value: SDKStateQueue.StateQueueRedeemer | null,
   mint: Map<string, Map<string, bigint>>,
   rootOut = 1n,
 ): Entry =>
@@ -64,14 +65,17 @@ const entry = (
       outputs: [
         {
           assets: new Map([
-            [POLICY, new Map([[SDK.STATE_QUEUE_ROOT_ASSET_NAME, rootOut]])],
+            [
+              POLICY,
+              new Map([[SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME, rootOut]]),
+            ],
           ]),
         },
       ],
     },
   }) as unknown as Entry;
 
-const merge = (header: string): SDK.StateQueueRedeemer => ({
+const merge = (header: string): SDKStateQueue.StateQueueRedeemer => ({
   MergeToConfirmedStateV1: {
     yield_to_ref_input_index: 0n,
     header_node_key: header,
@@ -98,7 +102,7 @@ const merge = (header: string): SDK.StateQueueRedeemer => ({
 const removals: Readonly<
   Record<
     Exclude<WatcherDepartureKind, "merged" | "other">,
-    SDK.StateQueueRedeemer
+    SDKStateQueue.StateQueueRedeemer
   >
 > = {
   RemoveFraudulentBlockHeader: {

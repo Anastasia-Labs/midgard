@@ -1,22 +1,24 @@
 import {
-  FraudProofComputationThreadRedeemer,
-  FraudProofTokenDatum,
-  FraudProofTokenMintRedeemer,
   type MidgardAddressWitness,
-  MISSING_SIGNATURE_WITNESS_SCAN_BATCH_SIZE,
-  missingSignatureFieldWalkCheckpoint,
-  missingSignatureRequiredSignerIsPresent,
-  MissingSignatureStep04Datum,
-  MissingSignatureStep04SpendRedeemer,
-  type MissingSignatureStep04State,
   type NativeTxWitnessSetCompact,
   requireInputIndex,
   requireMintRedeemerIndex,
   requireOwnMintPurpose,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
+  FraudProofComputationThreadRedeemer,
+  FraudProofTokenDatum,
+  FraudProofTokenMintRedeemer,
+  MISSING_SIGNATURE_WITNESS_SCAN_BATCH_SIZE,
+  missingSignatureFieldWalkCheckpoint,
+  missingSignatureRequiredSignerIsPresent,
+  MissingSignatureStep04Datum,
+  MissingSignatureStep04SpendRedeemer,
+  type MissingSignatureStep04State,
   resolveMissingSignatureFieldWalkCheckpoint,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

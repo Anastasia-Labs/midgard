@@ -1,4 +1,4 @@
-import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "@al-ft/midgard-sdk";
+import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "@al-ft/midgard-sdk/core";
 import type { UTxO } from "@lucid-evolution/lucid";
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
 

@@ -1,4 +1,6 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   credentialToAddress,
   type LucidEvolution,
@@ -54,7 +56,7 @@ export const authenticatedManifestReference = async (
     utxos.length !== 1 ||
     !utxo?.scriptRef ||
     validatorToScriptHash(utxo.scriptRef) !== contract.scriptHash ||
-    utxo.assets[SDK.referenceScriptAuthUnit(authPolicy, role)] !== 1n
+    utxo.assets[SDKStateQueue.referenceScriptAuthUnit(authPolicy, role)] !== 1n
   ) {
     throw new Error(`Missing or unauthenticated deployment reference ${role}`);
   }
@@ -64,10 +66,10 @@ export const authenticatedManifestReference = async (
 /** The DA availability parameters a verified manifest records. */
 export const availabilityParametersFromManifest = (
   manifest: DeploymentManifest,
-): SDK.DaAvailabilityParameters => {
+): SDKDa.DaAvailabilityParameters => {
   const p = manifest.availabilityChallenge;
-  return SDK.daAvailabilityParameters({
-    responseGeometry: SDK.availabilityResponseGeometry(p.responseGeometry),
+  return SDKDa.daAvailabilityParameters({
+    responseGeometry: SDKDa.availabilityResponseGeometry(p.responseGeometry),
     daBondLovelace: BigInt(p.daBondLovelace),
     daSlashPenaltyLovelace: BigInt(p.daSlashPenaltyLovelace),
     daBondMinTopUpLovelace: BigInt(p.daBondMinTopUpLovelace),
@@ -128,7 +130,7 @@ const hubOracleUtxo = async (
 export const availabilityDeploymentFromManifest = async (
   lucid: LucidEvolution,
   manifest: DeploymentManifest,
-): Promise<SDK.DaAvailabilityDeployment> => {
+): Promise<SDKDa.DaAvailabilityDeployment> => {
   const network = lucid.config().network;
   if (network === undefined || network !== manifest.network)
     throw new Error(

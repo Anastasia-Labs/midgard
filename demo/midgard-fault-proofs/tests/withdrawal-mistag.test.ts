@@ -10,7 +10,8 @@ import {
   plutusConstrFieldCbor,
   replacePlutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -89,9 +90,9 @@ const makeEvidence = async ({
   };
   const infoCbor =
     l1DatumCbor === undefined
-      ? SDK.committedWithdrawalValueBytes(typedInfo)
+      ? SDKFraudProof.committedWithdrawalValueBytes(typedInfo)
       : replacePlutusConstrFieldCbor(
-          SDK.committedWithdrawalValueBytes(typedInfo),
+          SDKFraudProof.committedWithdrawalValueBytes(typedInfo),
           [0, 4],
           l1DatumCbor,
         );
@@ -118,7 +119,7 @@ const makeEvidence = async ({
   );
 
   const sourceKey = Buffer.from(
-    SDK.committedWithdrawalKeyBytes(withdrawalId),
+    SDKFraudProof.committedWithdrawalKeyBytes(withdrawalId),
     "hex",
   );
   const sourceValue = Buffer.from(infoCbor, "hex");

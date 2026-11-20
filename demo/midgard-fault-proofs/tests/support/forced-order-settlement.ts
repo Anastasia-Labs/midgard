@@ -6,7 +6,9 @@ import {
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   type BuildTxWithRedeemer,
   Data,
@@ -64,8 +66,8 @@ export const publishForcedOrderCarriage = async (
     getAddressDetails(publisherAddress).paymentCredential!.hash,
     "hex",
   );
-  const material = SDK.deriveTxOrderMaterial({ submittedTxCbor, owner });
-  const plan = SDK.planTxOrderMaterialCarriage({ material, owner });
+  const material = SDKUsers.deriveTxOrderMaterial({ submittedTxCbor, owner });
+  const plan = SDKUsers.planTxOrderMaterialCarriage({ material, owner });
   const published: UTxO[] = [];
   const publish = async (stage: string, tx: TxSignBuilder) => {
     const signed = await tx.sign.withWallet().complete();
@@ -79,11 +81,13 @@ export const publishForcedOrderCarriage = async (
   };
   let certificatePolicyReferenceUtxo: UTxO | undefined;
   for (const field of plan.referenced) {
-    for (const publication of SDK.fieldPreimagePublicationOutputs(field.plan)) {
+    for (const publication of SDKStateQueue.fieldPreimagePublicationOutputs(
+      field.plan,
+    )) {
       await publish(
         `field-${field.fieldIndex}-publication`,
         await Effect.runPromise(
-          SDK.buildUnsignedFieldPreimagePublicationProgram(lucid, {
+          SDKStateQueue.buildUnsignedFieldPreimagePublicationProgram(lucid, {
             publication,
             publisherAddress,
           }),
@@ -101,7 +105,7 @@ export const publishForcedOrderCarriage = async (
       await publish(
         `field-${field.fieldIndex}-certificate`,
         await Effect.runPromise(
-          SDK.buildUnsignedFieldPreimageCertificationProgram(lucid, {
+          SDKStateQueue.buildUnsignedFieldPreimageCertificationProgram(lucid, {
             sourceKind: 1n,
             plan: field.plan,
             certificatePolicyId: h.contracts.fieldPreimageCertificate.policyId,
@@ -277,7 +281,7 @@ export const makeForcedOrderSettlementScenario = async (
             rewrite,
           );
     const mint = Effect.runPromise(
-      SDK.buildUnsignedTxOrderTxWithMetadataProgram(builder, h.contracts, {
+      SDKUsers.buildUnsignedTxOrderTxWithMetadataProgram(builder, h.contracts, {
         nonceInput: nonces[index]!,
         submittedTxCbor: bytes.toString("hex"),
         carriageReferenceInputs: carriage[index]!.referenceInputs,
@@ -324,7 +328,7 @@ export const makeForcedOrderSettlementScenario = async (
   }
   const orders = minted.filter((order) => order !== undefined);
   const order = orders[0]!;
-  const datum = Data.from(order.datum!, SDK.TxOrderDatum);
+  const datum = Data.from(order.datum!, SDKUsers.TxOrderDatum);
   await runEmulatorLifecycleStage("forced.settlement-mint", () =>
     settleOldestCrossBlockHeader(h),
   );
@@ -379,7 +383,7 @@ export const makeForcedOrderSettlementScenario = async (
     const unit = Object.keys(order.assets).find((unit) => unit !== "lovelace")!;
     const assetName = unit.slice(56);
     const certificate =
-      SDK.buildUserEventWitnessCertificateValidator(assetName);
+      SDKUsers.buildUserEventWitnessCertificateValidator(assetName);
     const spend: BuildTxWithRedeemer = (ctx) =>
       Data.to(
         {
@@ -405,7 +409,7 @@ export const makeForcedOrderSettlementScenario = async (
             SDK.requireWithdrawalRedeemerIndex(ctx, phasAddress, "membership"),
           validity_override: claimedVerdict,
         },
-        SDK.TxOrderSpendRedeemer,
+        SDKUsers.TxOrderSpendRedeemer,
       );
     const burn: BuildTxWithRedeemer = (ctx) =>
       Data.to(
@@ -419,7 +423,7 @@ export const makeForcedOrderSettlementScenario = async (
           },
           material_carriage: [],
         },
-        SDK.TxOrderMintRedeemer,
+        SDKUsers.TxOrderMintRedeemer,
       );
     const proofData = Data.to([
       root.phasRoot,
@@ -438,7 +442,7 @@ export const makeForcedOrderSettlementScenario = async (
       .mintAssets({ [unit]: -1n }, burn)
       .deregister.Stake(
         SDK.scriptRewardAddress("Custom", certificate),
-        SDK.encodeUserEventWitnessMintOrBurnRedeemer(
+        SDKUsers.encodeUserEventWitnessMintOrBurnRedeemer(
           h.contracts.txOrder.policyId,
         ),
       )

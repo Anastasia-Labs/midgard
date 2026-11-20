@@ -1,6 +1,6 @@
 import { confirmedValidationTraceStages } from "@al-ft/midgard-fault-proofs/validation-trace-dispute/actions";
 import type { FraudProofWorkflowJournalEntry } from "@al-ft/midgard-fault-proofs/workflow/journal";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { CML, coreToTxOutput, Data } from "@lucid-evolution/lucid";
 
 import type { JourneyTransactions } from "./correction.verify-journey-correction.js";

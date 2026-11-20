@@ -4,7 +4,7 @@ import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
   NativeTxInclusionCarriageSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 
 export const L2TxMistagStep01DatumSchema = faultProofStepDatumSchema(

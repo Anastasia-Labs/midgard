@@ -5,7 +5,7 @@ import {
   type Header,
   NO_DA_ATTESTATION,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import { CML, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

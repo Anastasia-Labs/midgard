@@ -8,7 +8,7 @@ import {
   readCborMapHeader,
   readCborUnsigned,
 } from "@al-ft/midgard-core/codec/cbor";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { DirectScriptMaterial } from "./material.js";
 

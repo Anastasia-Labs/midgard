@@ -7,7 +7,8 @@
  * validator refuses the stranger, and the honest prover's own transition then
  * lands on the untouched thread.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   generateEmulatorAccount,
@@ -189,7 +190,7 @@ describe("unused-script-witness steps against a stranger key", () => {
     }
     expect(new Set(refused)).toStrictEqual(
       new Set(
-        SDK.UNUSED_SCRIPT_WITNESS_ROLE_ORDER.filter(
+        SDKFraudProof.UNUSED_SCRIPT_WITNESS_ROLE_ORDER.filter(
           (role) => role !== "step01" && role !== "terminal",
         ),
       ),

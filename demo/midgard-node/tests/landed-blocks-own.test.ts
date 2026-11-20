@@ -19,7 +19,7 @@
  * origin is too late for the blocks after the landed frontier is fatal.
  */
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { SqlClient } from "@effect/sql";
 import { Effect, Metric } from "effect";
 import { describe, expect, it } from "vitest";

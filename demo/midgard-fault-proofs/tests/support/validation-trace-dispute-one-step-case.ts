@@ -5,7 +5,8 @@
  * a CEK machine step. The runner records each transaction it signs and, when
  * asked, observes the convicted block's removal over the recorded L1. */
 import { parseOutRefLabel as outRef } from "@al-ft/midgard-core/out-ref";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
   Constr,
   credentialToAddress,
@@ -394,7 +395,7 @@ export const defenderClosesItsWin = async ({
   const { lucid } = defender;
   const { references } = deployment;
   const caseConfig = await caseConfigUtxo(lucid, deployment);
-  const caseDatum = Data.from(caseUtxo.datum!, SDK.Case);
+  const caseDatum = Data.from(caseUtxo.datum!, SDKDa.Case);
   const { validFrom, validTo } = validationTraceMoveWindow(lucid);
   const caseRedeemer = (ctx: Parameters<typeof SDK.requireInputIndex>[0]) =>
     Data.to(
@@ -406,7 +407,7 @@ export const defenderClosesItsWin = async ({
           defender_vkh: defender.vkey,
         },
       },
-      SDK.CaseRedeemer,
+      SDKDa.CaseRedeemer,
     );
   return await signSubmit(
     lucid,
@@ -423,7 +424,7 @@ export const defenderClosesItsWin = async ({
                 input_index: SDK.requireInputIndex(ctx, thread, "thread"),
                 case_input_index: SDK.requireInputIndex(ctx, caseUtxo, "case"),
               },
-              SDK.ValidationTimeoutSpendRedeemer,
+              SDKDa.ValidationTimeoutSpendRedeemer,
             ),
           )
           .collectFrom([caseUtxo], caseRedeemer)
@@ -439,7 +440,7 @@ export const defenderClosesItsWin = async ({
                   open_threads: caseDatum.open_threads - 1n,
                   defender_won: true,
                 },
-                SDK.Case,
+                SDKDa.Case,
               ),
             },
             caseUtxo.assets,

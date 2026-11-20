@@ -3,11 +3,13 @@ import { createHash } from "node:crypto";
 import { outRefLabel } from "@al-ft/midgard-core";
 import { parseDeploymentManifestEconomics } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
-  type EmulatorStateQueueRemoveSlashingParams,
   type OutputReference,
   type SlashingReason,
+} from "@al-ft/midgard-sdk/core";
+import {
+  type EmulatorStateQueueRemoveSlashingParams,
   type StateQueueUTxO,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import {
   CML,
   type Script,

@@ -4,7 +4,7 @@ import {
   attributeWithdrawalClassificationFault,
   isReplayLocalFault,
 } from "@al-ft/midgard-fault-proofs/block-replay";
-import { classifyWithdrawalFromLedger } from "@al-ft/midgard-sdk";
+import { classifyWithdrawalFromLedger } from "@al-ft/midgard-sdk/core";
 import { awaitLedgerEd25519SignatureReady } from "@al-ft/midgard-validation/ledger-ed25519-ready";
 import { Data, Effect, Option } from "effect";
 

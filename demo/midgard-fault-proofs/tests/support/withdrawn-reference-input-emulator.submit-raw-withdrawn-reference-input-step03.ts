@@ -1,7 +1,8 @@
 import "./withdrawn-reference-input-emulator.setup-withdrawn-reference-input-unchecked-scenario.js";
 
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,
@@ -156,7 +157,7 @@ export const submitRawWithdrawnReferenceInputStep03 = async ({
   );
   const fraudProofDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash },
-    SDK.FraudProofTokenDatum,
+    SDKFraudProof.FraudProofTokenDatum,
   );
   const outputMatches = outputWithDatumAndUnitPredicate({
     address: contracts.fraudProof.spendingScriptAddress,
@@ -188,7 +189,7 @@ export const submitRawWithdrawnReferenceInputStep03 = async ({
           },
         ],
       },
-      SDK.WithdrawnReferenceInputStep03SpendRedeemer,
+      SDKFraudProof.WithdrawnReferenceInputStep03SpendRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
   const threadBurn = ((ctx) => {
@@ -199,7 +200,7 @@ export const submitRawWithdrawnReferenceInputStep03 = async ({
     );
     return Data.to(
       { Success: { burning_token_asset_name: threadToken.assetName } },
-      SDK.FraudProofComputationThreadRedeemer,
+      SDKFraudProof.FraudProofComputationThreadRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
   const fraudMint = ((ctx) =>
@@ -212,7 +213,7 @@ export const submitRawWithdrawnReferenceInputStep03 = async ({
           "raw withdrawn step 03 thread burn",
         ),
       },
-      SDK.FraudProofTokenMintRedeemer,
+      SDKFraudProof.FraudProofTokenMintRedeemer,
     )) satisfies BuildTxWithRedeemer;
   const reference = requireWithdrawnReferenceInputReferenceScript({
     utxo: referenceScriptUtxo,

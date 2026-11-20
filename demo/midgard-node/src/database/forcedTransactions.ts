@@ -3,7 +3,7 @@ import "@al-ft/midgard-core/codec/cbor";
 import "@al-ft/midgard-core/consensus-profile";
 import "@al-ft/midgard-core/consensus-validation";
 import "@al-ft/midgard-core/plutus-data-cbor";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
 import "@effect/sql";
 import "@lucid-evolution/lucid";
 import "effect";

@@ -2,7 +2,7 @@
  * from a step's input state and its batch, the state the validator requires
  * it to write. */
 import { decodeMidgardLedgerOutputCommitment } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { DirectScriptMaterial } from "../direct-script-derivation/material.js";
 import { DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_LABEL as LABEL } from "./contracts.js";

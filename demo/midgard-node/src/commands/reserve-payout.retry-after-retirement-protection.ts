@@ -3,8 +3,10 @@ import {
   alignedUnixTimeStrictlyAfter,
   SUBMIT_SLOT_LENGTH_MS,
 } from "@al-ft/midgard-core/ogmios-slot";
-import * as SDK from "@al-ft/midgard-sdk";
-import { mergeReferenceScripts } from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
+import { mergeReferenceScripts } from "@al-ft/midgard-sdk/users";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { Clock, Effect, Option } from "effect";
 
@@ -77,9 +79,9 @@ export const retryAfterRetirementProtection = <A, E, R>(
 ): Effect.Effect<A, E | Error, R> => {
   const protection = (
     error: E,
-  ): SDK.HistoryRetirementProtectedError | undefined =>
-    error instanceof SDK.ReservePayoutTxError &&
-    error.cause instanceof SDK.HistoryRetirementProtectedError
+  ): SDKUsers.HistoryRetirementProtectedError | undefined =>
+    error instanceof SDKUsers.ReservePayoutTxError &&
+    error.cause instanceof SDKUsers.HistoryRetirementProtectedError
       ? error.cause
       : undefined;
   const stillProtected = (until: bigint, cause: unknown) =>
@@ -161,7 +163,7 @@ export const fetchReferenceScripts = (
   targets: readonly ReferenceScriptTarget[],
 ): Effect.Effect<
   ReservePayoutReferenceScripts,
-  SDK.StateQueueError,
+  SDKStateQueue.StateQueueError,
   Lucid | MidgardContracts
 > =>
   Effect.gen(function* () {
@@ -195,7 +197,7 @@ const readEventOrderById = (
   Effect.gen(function* () {
     const contracts = yield* MidgardContracts;
     const policyId =
-      SDK.requireEventHistoryContracts(contracts)[kind].list.policyId;
+      SDKUsers.requireEventHistoryContracts(contracts)[kind].list.policyId;
     const read = yield* inFollowerSnapshot((tx) =>
       eventOrderOrPrunedByIdIn(tx, { kind, policyId }, eventId),
     ).pipe(
@@ -232,21 +234,21 @@ const eventDeployment = (
   contracts: SDK.MidgardValidators,
   kind: "deposit" | "withdrawal",
 ) =>
-  SDK.eventHistoryDeploymentFromContracts(
-    SDK.requireEventHistoryContracts(contracts)[kind],
+  SDKUsers.eventHistoryDeploymentFromContracts(
+    SDKUsers.requireEventHistoryContracts(contracts)[kind],
   );
 
 const fetchDepositUtxoByEventId = (
   eventId: Buffer,
 ): Effect.Effect<
-  SDK.DepositUTxO,
+  SDKUsers.DepositUTxO,
   SDK.LucidError | Error,
   Database | MidgardContracts
 > =>
   Effect.gen(function* () {
     const contracts = yield* MidgardContracts;
     const { order, retained } = yield* readEventOrderById("deposit", eventId);
-    return yield* SDK.orderToDepositUTxO(
+    return yield* SDKUsers.orderToDepositUTxO(
       order,
       retained,
       eventDeployment(contracts, "deposit"),
@@ -256,7 +258,7 @@ const fetchDepositUtxoByEventId = (
 export const fetchWithdrawalUtxoByEventId = (
   eventId: Buffer,
 ): Effect.Effect<
-  SDK.WithdrawalUTxO,
+  SDKUsers.WithdrawalUTxO,
   SDK.LucidError | Error,
   Database | MidgardContracts
 > =>
@@ -266,7 +268,7 @@ export const fetchWithdrawalUtxoByEventId = (
       "withdrawal",
       eventId,
     );
-    return yield* SDK.orderToWithdrawalUTxO(
+    return yield* SDKUsers.orderToWithdrawalUTxO(
       order,
       retained,
       eventDeployment(contracts, "withdrawal"),
@@ -310,7 +312,7 @@ export const absorbConfirmedDepositToReserveProgram = (
       "deposit",
     );
     const deposit = yield* fetchDepositUtxoByEventId(eventId);
-    const history = SDK.requireEventHistoryContracts(contracts);
+    const history = SDKUsers.requireEventHistoryContracts(contracts);
     const refs = yield* fetchReferenceScripts([
       { name: "deposit spending", script: history.deposit.list.spendingScript },
       {

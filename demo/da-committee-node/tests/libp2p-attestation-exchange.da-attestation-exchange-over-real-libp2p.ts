@@ -6,7 +6,7 @@ import {
   DaGossipTopic,
   daGossipTopic,
 } from "@al-ft/midgard-core/da-transport";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { createLibp2p } from "libp2p";
 import { describe, expect, it, vi } from "vitest";

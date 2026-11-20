@@ -3,13 +3,13 @@ import {
   verifyMidgardNativeScript,
 } from "@al-ft/midgard-core";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
+import { type NativeTxWitnessSetCompact } from "@al-ft/midgard-sdk/core";
 import {
   MIDGARD_FIELD_INDEX,
   missingSignatureVkeyHash,
   NativeScriptInvalidStep03DatumSchema,
   NativeScriptInvalidStep03SpendRedeemerSchema,
-  type NativeTxWitnessSetCompact,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import { isPrerequisiteTurn } from "../fault-proof-turn.js";

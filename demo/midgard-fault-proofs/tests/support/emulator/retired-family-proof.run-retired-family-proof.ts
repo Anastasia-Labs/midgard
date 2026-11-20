@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";
@@ -32,8 +33,8 @@ export const runRetiredFamilyProof = async (
     p.init.computationThreadUnit,
   );
   const fourthDatum = p.deposit
-    ? Data.from(fourth.datum!, SDK.FabricatedDepositStep04Datum)
-    : Data.from(fourth.datum!, SDK.FabricatedWithdrawalStep04Datum);
+    ? Data.from(fourth.datum!, SDKFraudProof.FabricatedDepositStep04Datum)
+    : Data.from(fourth.datum!, SDKFraudProof.FabricatedWithdrawalStep04Datum);
   expect(fourthDatum).toEqual({
     fraud_prover: input.signer.paymentKeyHash,
     data: {
@@ -82,7 +83,7 @@ export const runRetiredFamilyProof = async (
   await p.spent(thirdResult.nextThreadOutRef);
   const proof = await p.byOutRef(last.fraudProofOutRef);
   expect(proof.assets[last.fraudProofUnit]).toBe(1n);
-  expect(Data.from(proof.datum!, SDK.FraudProofTokenDatum)).toEqual({
+  expect(Data.from(proof.datum!, SDKFraudProof.FraudProofTokenDatum)).toEqual({
     fraud_prover: input.signer.paymentKeyHash,
   });
   const marked = await input.lucid.utxoByUnit(p.queueUnit);

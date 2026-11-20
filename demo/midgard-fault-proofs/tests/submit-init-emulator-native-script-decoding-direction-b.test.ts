@@ -23,7 +23,7 @@
  * every script evaluation and vitest isolates per FILE; that leak is fixed
  * upstream, and the split is kept so each file runs in its own fresh process.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";

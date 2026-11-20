@@ -4,7 +4,8 @@ import { join } from "node:path";
 
 import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { CML, Data, walletFromSeed } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -130,7 +131,7 @@ describe("withdrawal CLI parsers", () => {
       SDK.OutputReference,
     );
     expect(
-      SDK.withdrawalEventIdFromBuildMetadata({
+      SDKUsers.withdrawalEventIdFromBuildMetadata({
         withdrawalAddress:
           "addr_test1vqz4js6k2c6un3h8y8sh2nmkg7u9s8w7up0psd4w6zv6r9usknpxf",
         withdrawalEventIdCbor: expectedEventId,

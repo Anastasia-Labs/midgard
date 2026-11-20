@@ -17,7 +17,8 @@ import { createHash } from "node:crypto";
 
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/da";
 
 import type {
   RetainedDaPayloadFetchResult,
@@ -33,7 +34,9 @@ const RELEASED_PER_HEADER = 64;
 
 export type RetainedPayloadAvailability = Readonly<{
   /** The availability status of the block's state-queue node. */
-  status: (headerHash: string) => Promise<SDK.DaAvailabilityStateQueueStatus>;
+  status: (
+    headerHash: string,
+  ) => Promise<SDKCore.DaAvailabilityStateQueueStatus>;
   /** The deployment's commitment authority. */
   authority: () => SDK.DaPayloadAvailabilityAuthority;
   /** The digests of unbound copies a replay refused, by header. */

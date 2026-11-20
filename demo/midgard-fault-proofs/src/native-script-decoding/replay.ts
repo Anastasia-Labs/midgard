@@ -13,7 +13,8 @@ import {
   decodeMidgardForcedTxFullFromCanonicalCbor,
   deriveMidgardForcedTxFaultEvidenceMaterial,
 } from "@al-ft/midgard-core/codec/forced";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import { eventLedgerBeforeStep } from "../event-ledger.js";
@@ -284,7 +285,7 @@ export const detectNativeScriptDecodingReplay = async ({
           ...eventSubject(prepared.eventKey),
           detectionId: nativeScriptDecodingDetectionId(coordinate),
           headerHash: block.headerHash,
-          violationId: SDK.NATIVE_SCRIPT_DECODING_VIOLATION_ID,
+          violationId: SDKFraudProof.NATIVE_SCRIPT_DECODING_VIOLATION_ID,
           position: BigInt(coordinate.sourceIndex),
           prepared,
         };

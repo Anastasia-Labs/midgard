@@ -2,7 +2,7 @@
  * with the redeemer to walk, and the verdict its forced rows record.
  * Subjects are the direct purpose subjects of
  * `missing-redeemer-emulator.subject.ts`. */
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 
 import type { DirectPurposeRole } from "../../src/direct-purpose-family/index.js";
 import {

@@ -4,7 +4,8 @@ import {
   computeDaSha256Hash,
   type DaProofBundleByHeaderResponse,
 } from "@al-ft/midgard-core/da-transport";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -195,7 +196,7 @@ export const decodeTypedEntries = <K, V>({
   valueSchema,
 }: {
   readonly fieldName: string;
-  readonly entries: readonly SDK.DaPayloadEntry[];
+  readonly entries: readonly SDKDa.DaPayloadEntry[];
   readonly keySchema: DataSchema;
   readonly valueSchema: DataSchema;
 }): readonly DecodedRootEntry<K, V>[] =>
@@ -212,7 +213,7 @@ export const decodeTypedEntries = <K, V>({
 
 export const rawEntries = (
   fieldName: string,
-  entries: readonly SDK.DaPayloadEntry[],
+  entries: readonly SDKDa.DaPayloadEntry[],
 ): readonly KeyValuePhasEntry[] =>
   canonicalizeKeyValuePhasEntries(
     entries.map(([key, value], index) => ({

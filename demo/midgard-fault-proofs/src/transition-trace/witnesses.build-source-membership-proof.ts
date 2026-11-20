@@ -1,5 +1,6 @@
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 
 import { transitionTraceError } from "./errors.js";
 import {
@@ -218,7 +219,7 @@ export const buildSourceMembershipProof = async ({
 }: {
   readonly reconstruction: TransitionTraceReconstruction;
   readonly eventKey: SDK.EventKey;
-}): Promise<SDK.SourceKeyOpening> => {
+}): Promise<SDKFraudProof.SourceKeyOpening> => {
   const event = sourceEventOrThrow(reconstruction, eventKey);
   const root =
     reconstruction.rootData[
@@ -230,7 +231,7 @@ export const buildSourceMembershipProof = async ({
             ? "deposits"
             : "transactions"
     ];
-  const fields: SDK.SourceKeyOpeningFields = {
+  const fields: SDKFraudProof.SourceKeyOpeningFields = {
     value_hash: computeHash32(event.entry.valueBytes).toString("hex"),
     phas_root: root.phasRoot,
     proof: await keyValuePhasProof(

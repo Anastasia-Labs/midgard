@@ -1,16 +1,9 @@
 import {
   commitCountedRootProgram,
-  committedWithdrawalKeyBytes,
-  committedWithdrawalValueBytes,
-  DoubleWithdrawStep01SpendRedeemer,
-  DoubleWithdrawStep02Datum,
-  type DoubleWithdrawStep02State,
-  doubleWithdrawStep02State,
   getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
   type Header,
   HUB_ORACLE_ASSET_NAME,
-  isPayableWithdrawalLeaf,
   OutputReference,
   Proof,
   requireInputIndex,
@@ -20,7 +13,16 @@ import {
   ROOT_DOMAINS,
   type RootMembershipProof,
   WithdrawalInfo,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  committedWithdrawalKeyBytes,
+  committedWithdrawalValueBytes,
+  DoubleWithdrawStep01SpendRedeemer,
+  DoubleWithdrawStep02Datum,
+  type DoubleWithdrawStep02State,
+  doubleWithdrawStep02State,
+  isPayableWithdrawalLeaf,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   credentialToAddress,

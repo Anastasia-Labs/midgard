@@ -1,12 +1,14 @@
 /** Raw synthetic history outputs for exact-byte golden tests, not admission evidence. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { credentialToAddress, Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 export const historyWitnessFixture = async (
-  payload: SDK.EventHistoryPayload,
+  payload: SDKUsers.EventHistoryPayload,
   inclusionTime: bigint,
-  observation: SDK.AuthenticatedL1Observation,
+  observation: SDKFraudProof.AuthenticatedL1Observation,
 ) => {
   const policy = "18".repeat(28);
   const hubPolicy = "16".repeat(28);
@@ -46,8 +48,8 @@ export const historyWitnessFixture = async (
     "DepositPayload" in payload
       ? payload.DepositPayload.event
       : payload.WithdrawalPayload.event;
-  const key = await Effect.runPromise(SDK.eventHistoryKey(event.id));
-  const node: SDK.EventHistoryNode = {
+  const key = await Effect.runPromise(SDKUsers.eventHistoryKey(event.id));
+  const node: SDKUsers.EventHistoryNode = {
     position: { Key: [key] },
     next: null,
     protected_until: 0n,
@@ -68,7 +70,7 @@ export const historyWitnessFixture = async (
     outputIndex: 0,
     address: credentialToAddress("Preview", { type: "Script", hash: policy }),
     assets: { lovelace: 5_000_000n, [policy + key]: 1n },
-    datum: Data.to(node, SDK.EventHistoryNode),
+    datum: Data.to(node, SDKUsers.EventHistoryNode),
   };
   const hubOracleUtxo: UTxO = {
     txHash: "a3".repeat(32),

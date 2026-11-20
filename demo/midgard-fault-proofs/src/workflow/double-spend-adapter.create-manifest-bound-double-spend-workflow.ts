@@ -5,7 +5,7 @@ import {
   DoubleSpendStep03Datum,
   DoubleSpendStep04Datum,
   FraudProofComputationThreadStepDatum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import type { UTxO } from "@lucid-evolution/lucid";
 
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";

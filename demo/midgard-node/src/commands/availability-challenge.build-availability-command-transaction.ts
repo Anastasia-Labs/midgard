@@ -1,6 +1,8 @@
 import { readFile, stat } from "node:fs/promises";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -24,10 +26,10 @@ import {
  */
 export const buildAvailabilityCommandTransaction = async (
   lucid: LucidEvolution,
-  deployment: SDK.DaAvailabilityDeployment,
+  deployment: SDKDa.DaAvailabilityDeployment,
   context: AvailabilityCommandBuildContext,
-  snapshot: SDK.DaAvailabilityChallengeSnapshot,
-  action: SDK.DaAvailabilityTransactionAction,
+  snapshot: SDKDa.DaAvailabilityChallengeSnapshot,
+  action: SDKDa.DaAvailabilityTransactionAction,
   options: Pick<
     AvailabilityCommandOptions,
     | "headerHash"
@@ -38,7 +40,7 @@ export const buildAvailabilityCommandTransaction = async (
   >,
   actor: string,
   reservedOutRefs: ReadonlySet<string>,
-): Promise<SDK.BuiltDaAvailabilityTransaction> => {
+): Promise<SDKDa.BuiltDaAvailabilityTransaction> => {
   const p = deployment.parameters;
   const feeLovelace =
     action === "open"
@@ -70,7 +72,7 @@ export const buildAvailabilityCommandTransaction = async (
     action === "timeout" ||
     action === "prune" ||
     action === "remove"
-      ? await SDK.fetchSortedStateQueueUTxOs(lucid, {
+      ? await SDKStateQueue.fetchSortedStateQueueUTxOs(lucid, {
           stateQueueAddress:
             deployment.contracts.stateQueue.spendingScriptAddress,
           stateQueuePolicyId: deployment.contracts.stateQueue.policyId,
@@ -125,7 +127,7 @@ export const buildAvailabilityCommandTransaction = async (
     throw new Error(
       "Active availability tranches cannot settle before the strict response deadline",
     );
-  const validityWindow = (limits?: SDK.DaAvailabilityValidityLimits) =>
+  const validityWindow = (limits?: SDKDa.DaAvailabilityValidityLimits) =>
     availabilityValidityWindow(lucid, `Availability ${action}`, limits);
   const queue = () =>
     required(snapshot.queue, "the authenticated queue header").utxo;
@@ -157,7 +159,7 @@ export const buildAvailabilityCommandTransaction = async (
       commitmentHash: status.Attested.commitment_hash,
     });
     return Effect.runPromise(
-      SDK.buildOpenDaAvailabilityChallengeTxProgram(lucid, deployment, {
+      SDKDa.buildOpenDaAvailabilityChallengeTxProgram(lucid, deployment, {
         collateralInputs: [collateral],
         feeLovelace,
         validFrom,
@@ -205,7 +207,7 @@ export const buildAvailabilityCommandTransaction = async (
         "Availability payload file length differs from the frozen commitment",
       );
     const payload = await readFile(path);
-    const plans = SDK.planDaAvailabilityPublications({
+    const plans = SDKDa.planDaAvailabilityPublications({
       commitment: active.commitment,
       payload,
       challengeAssetName: active.challenge_asset_name,
@@ -233,7 +235,7 @@ export const buildAvailabilityCommandTransaction = async (
       "the next committed chunk",
     );
     return Effect.runPromise(
-      SDK.buildPublishDaAvailabilityChunkTxProgram(lucid, deployment, {
+      SDKDa.buildPublishDaAvailabilityChunkTxProgram(lucid, deployment, {
         ...resources,
         thread: tranche.utxo,
         previousCarrier: tranche.carrier,
@@ -251,7 +253,7 @@ export const buildAvailabilityCommandTransaction = async (
       "the next unsettled tranche",
     );
     return Effect.runPromise(
-      SDK.buildSettleDaAvailabilityTrancheTxProgram(lucid, deployment, {
+      SDKDa.buildSettleDaAvailabilityTrancheTxProgram(lucid, deployment, {
         ...resources,
         record: challengeRecord(),
         terminal: terminal(),
@@ -262,7 +264,7 @@ export const buildAvailabilityCommandTransaction = async (
   }
   if (action === "close")
     return Effect.runPromise(
-      SDK.buildCloseDaAvailabilityChallengeTxProgram(lucid, deployment, {
+      SDKDa.buildCloseDaAvailabilityChallengeTxProgram(lucid, deployment, {
         ...resources,
         record: challengeRecord(),
         terminal: terminal(),
@@ -299,7 +301,7 @@ export const buildAvailabilityCommandTransaction = async (
     // Exact fee, paid by the pool's slash and the challenger reserve: no
     // wallet input and no change output. The wallet backs collateral only.
     return Effect.runPromise(
-      SDK.buildTimeoutDaAvailabilityChallengeTxProgram(lucid, deployment, {
+      SDKDa.buildTimeoutDaAvailabilityChallengeTxProgram(lucid, deployment, {
         ...removal,
         rentRefundAddress: availabilityTimeoutRentRefundAddress(
           required(lucid.config().network, "the Lucid network"),
@@ -321,13 +323,13 @@ export const buildAvailabilityCommandTransaction = async (
   };
   if (action === "prune")
     return Effect.runPromise(
-      SDK.buildPruneDaUnavailableBlockDescendantTxProgram(
+      SDKDa.buildPruneDaUnavailableBlockDescendantTxProgram(
         lucid,
         deployment,
         followUp,
       ),
     );
   return Effect.runPromise(
-    SDK.buildRemoveDaUnavailableHeadTxProgram(lucid, deployment, followUp),
+    SDKDa.buildRemoveDaUnavailableHeadTxProgram(lucid, deployment, followUp),
   );
 };

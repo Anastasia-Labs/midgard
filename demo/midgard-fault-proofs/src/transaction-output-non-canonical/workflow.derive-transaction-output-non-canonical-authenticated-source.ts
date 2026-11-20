@@ -5,16 +5,18 @@ import {
 } from "@al-ft/midgard-core";
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import {
-  acceptedVerdictSubject,
-  encodeProofThreadForcedSourceKey,
   type ForcedInclusionTxV1,
-  forcedVerdictSubject,
   type Header,
   type OutputReference,
-  PROOF_THREAD_SOURCE_KIND_ACCEPTED,
   RejectionReasonSchema,
   type RootMembershipProof,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  acceptedVerdictSubject,
+  encodeProofThreadForcedSourceKey,
+  forcedVerdictSubject,
+  PROOF_THREAD_SOURCE_KIND_ACCEPTED,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";

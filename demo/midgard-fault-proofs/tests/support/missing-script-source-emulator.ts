@@ -2,7 +2,8 @@
  * driver with the purpose to observe, and the verdict its forced rows
  * record. Subjects are the direct purpose subjects of
  * `missing-redeemer-emulator.subject.ts`. */
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 
 import type { DirectPurposeRole } from "../../src/direct-purpose-family/index.js";
 import {
@@ -29,7 +30,7 @@ export const driveMissingScriptSourceThread = ({
   readonly harness: DirectWalkHarness;
   readonly scenario: MissingRedeemerScenario;
   readonly references: ReadonlyMap<DirectPurposeRole, RoleReference>;
-  readonly observed?: SDK.DirectPurposeCoordinate;
+  readonly observed?: SDKFraudProof.DirectPurposeCoordinate;
   /** Replaces the planned custody (e.g. a prefix for refusal rows). */
   readonly transitions?: (
     prepared: MissingScriptSourceProofPlan,

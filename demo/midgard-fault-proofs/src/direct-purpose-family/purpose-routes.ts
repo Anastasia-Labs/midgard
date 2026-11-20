@@ -1,7 +1,7 @@
 /** Observed purpose selection for each purpose kind: the purpose-select door
  * through the kind's bounded domain pass, ending at the transition that pays
  * the source lookup the authenticated selection. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import { directPurposeAt } from "../direct-script-derivation/purposes.js";

@@ -15,7 +15,8 @@ import {
   postgresDialect,
 } from "@al-ft/midgard-l1-follower";
 import { eventProjectionConfigFromContracts } from "@al-ft/midgard-l1-follower/events";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/users";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect, Ref, Runtime } from "effect";
 
@@ -47,7 +48,7 @@ export const nodeFactStore = Effect.map(
 
 export const publishEmulatorOperatorSet = (
   lucid: LucidEvolution,
-  contracts: SDK.MidgardValidators,
+  contracts: SDKCore.MidgardValidators,
   ownKey: string,
 ) =>
   Effect.gen(function* () {

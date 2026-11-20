@@ -2,7 +2,7 @@
  * accepted or forced-valid transaction, and every forced rejection whose
  * reason ranks in or after the value phase, is planned through the prover's
  * verdict. */
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 
 import { directPurposeArtifactFamily } from "../direct-purpose-family/artifact-family.js";
 import {

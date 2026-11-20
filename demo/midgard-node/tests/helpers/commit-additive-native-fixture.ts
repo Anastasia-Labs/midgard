@@ -9,7 +9,8 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { encodeMidgardCekCardanoFlatProgram } from "@al-ft/midgard-validation/cek-program";
 import {
   Delay,
@@ -150,8 +151,8 @@ export const openNativeFrameFixture = async (
     ]),
   );
   await native.promote(initialHandle);
-  const parent = (root: string): SDK.StateQueueUTxO => ({
-    assetName: SDK.STATE_QUEUE_ROOT_ASSET_NAME,
+  const parent = (root: string): SDKStateQueue.StateQueueUTxO => ({
+    assetName: SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME,
     utxo: {
       txHash: "11".repeat(32),
       outputIndex: 0,

@@ -5,7 +5,7 @@ import {
   encodeDaConflictEvidenceCbor,
   encodeDaConflictingSignatureHeaderEvidenceCbor,
 } from "@al-ft/midgard-core/da-transport";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { vi } from "vitest";
 
 import { createDaConflictEvidenceGossipHandler } from "../src/committee-service.js";

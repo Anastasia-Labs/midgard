@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { parseDeploymentManifestEconomics } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
+import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 import {
   validatorToAddress,
   validatorToScriptHash,

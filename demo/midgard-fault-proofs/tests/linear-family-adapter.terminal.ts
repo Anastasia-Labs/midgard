@@ -1,4 +1,4 @@
-import type { EvidenceProvenance } from "@al-ft/midgard-sdk";
+import type { EvidenceProvenance } from "@al-ft/midgard-sdk/fraud-proof";
 
 import {
   FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT,

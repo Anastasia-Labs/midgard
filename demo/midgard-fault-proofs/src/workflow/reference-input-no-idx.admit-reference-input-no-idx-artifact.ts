@@ -3,7 +3,7 @@ import {
   encodeMidgardTxOutputCanonical,
   MIDGARD_FIELD_INDEX,
   REFERENCE_INPUT_NO_IDX_VIOLATION_ID,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import {
   type FaultProofFieldOpeningPlan,

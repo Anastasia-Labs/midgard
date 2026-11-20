@@ -13,7 +13,8 @@ import {
 } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import { retainedTransactionFixture } from "@al-ft/midgard-fault-proofs/test-support/retained-transaction";
 import { buildCountedRoot } from "@al-ft/midgard-fault-proofs/transition-trace/phas";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { type CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -123,7 +124,7 @@ export const retainHistoryTransactions = async (
   const descriptors = retained.flatMap(
     (block) => block.payload.block_body.validation_traces,
   );
-  const transitions: SDK.DaPayloadEntry[] = retained.map((block, index) => {
+  const transitions: SDKDa.DaPayloadEntry[] = retained.map((block, index) => {
     const source = block.payload.block_body.transition_trace[0];
     if (source === undefined)
       throw new Error("Retained transaction has no transition");
@@ -140,7 +141,7 @@ export const retainHistoryTransactions = async (
   });
   const root = (
     domain: SDK.RootDomain,
-    entries: readonly SDK.DaPayloadEntry[],
+    entries: readonly SDKDa.DaPayloadEntry[],
   ) =>
     buildCountedRoot(
       domain,
@@ -161,9 +162,9 @@ export const retainHistoryTransactions = async (
     transitionStepCount: BigInt(transitions.length),
   };
   const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
-  const sorted = (entries: SDK.DaPayloadEntry[]) =>
+  const sorted = (entries: SDKDa.DaPayloadEntry[]) =>
     entries.sort(([left], [right]) => left.localeCompare(right));
-  const payload: SDK.DaPayload = {
+  const payload: SDKDa.DaPayload = {
     ...base.payload,
     block_body: {
       ...base.payload.block_body,
@@ -183,7 +184,7 @@ export const retainHistoryTransactions = async (
       header,
       headerHash,
       payload,
-      payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(payload), {
+      payloadEnvelopeCbor: await wrapDaPayload(SDKDa.encodeDaPayload(payload), {
         mode: "identity",
       }),
       transactions: input.transactions,

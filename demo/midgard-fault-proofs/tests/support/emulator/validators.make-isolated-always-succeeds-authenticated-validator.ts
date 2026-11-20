@@ -1,14 +1,14 @@
 import { deploymentFamilyStepNames } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   type AuthenticatedValidator,
-  type FaultProofContractChains,
   type FraudProofCatalogueCategoryName,
   makeAuthenticatedValidator as makeSdkAuthenticatedValidator,
   makeMintingPolicy,
   makeSpendingValidator as makeSdkSpendingValidator,
   makeWithdrawalValidator as makeSdkWithdrawalValidator,
   type SpendingValidator as SdkSpendingValidator,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { type FaultProofContractChains } from "@al-ft/midgard-sdk/fraud-proof";
 import { applyDoubleCborEncoding } from "@lucid-evolution/lucid";
 
 import { type Blueprint, getCompiledScript, network } from "./blueprints.js";

@@ -2,7 +2,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   Emulator,
   generateEmulatorAccount,
@@ -59,7 +60,7 @@ const openStage = async () => {
   const outputs = new Map<string, UTxO>([
     [unit(predecessor.headerHash), queueOutput(predecessor, attested)],
   ]);
-  const rootUnit = toUnit(policyId, SDK.STATE_QUEUE_ROOT_ASSET_NAME);
+  const rootUnit = toUnit(policyId, SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME);
   outputs.set(rootUnit, {
     txHash: "33".repeat(32),
     outputIndex: 0,

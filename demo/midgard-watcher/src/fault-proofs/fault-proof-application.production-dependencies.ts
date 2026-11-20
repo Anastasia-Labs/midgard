@@ -25,10 +25,10 @@ import {
   type ValidationTraceReplayHold,
 } from "@al-ft/midgard-fault-proofs";
 import {
-  type AuthenticatedStateQueueHeaderObservation,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueCategoryName,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { type AuthenticatedStateQueueHeaderObservation } from "@al-ft/midgard-sdk/fraud-proof";
 import {
   Lucid,
   type LucidEvolution,

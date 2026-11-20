@@ -1,4 +1,4 @@
-import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk";
+import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk/fraud-proof";
 import {
   credentialToAddress,
   type UTxO,

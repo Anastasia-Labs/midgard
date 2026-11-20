@@ -1,6 +1,8 @@
 import "./fabricated-withdrawal.q40-fabricated-withdrawal-proof-plan.js";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDK from "@al-ft/midgard-sdk/users";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -147,14 +149,16 @@ describe("Q40 fabricated-withdrawal L1 witness authentication", () => {
     // control of every withdrawal fixture: it must survive this family with the
     // verdict it actually earned, and a wrong verdict belongs to
     // `withdrawalMistag`.
-    const revalidated: SDK.WithdrawalInfo = {
+    const revalidated: SDKCore.WithdrawalInfo = {
       ...authenticWithdrawalInfo(),
       validity: "NonExistentWithdrawalUtxo",
     };
-    const value = SDK.committedWithdrawalValueBytes(revalidated);
+    const value = SDKFraudProof.committedWithdrawalValueBytes(revalidated);
     expect(value).not.toBe(VALUE_AUTHENTIC_WITHDRAWAL_INFO);
     expect(
-      await Effect.runPromise(SDK.withdrawalContentCommitment(revalidated)),
+      await Effect.runPromise(
+        SDKFraudProof.withdrawalContentCommitment(revalidated),
+      ),
     ).toBe(HASH_AUTHENTIC_WITHDRAWAL_CONTENT);
     const fixture = await buildWithdrawalsBlockFixture({
       leaves: [{ key: KEY_AUTHENTIC_WITHDRAWAL_ID, value }],

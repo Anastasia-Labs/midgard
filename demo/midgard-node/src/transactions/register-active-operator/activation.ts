@@ -2,7 +2,9 @@ import {
   alignedUnixTimeStrictlyAfter,
   ledgerTipBackdatedValidFromMs,
 } from "@al-ft/midgard-core/ogmios-slot";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKOperators from "@al-ft/midgard-sdk/operators";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { type LucidEvolution, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -26,7 +28,7 @@ const ACTIVATION_IMMEDIATE_BACKDATE_MS = 60_000;
  * The caller authenticates the registered node against the registered policy.
  */
 export const canActivateRegisteredOperatorImmediately = (
-  activeRoot: Pick<SDK.NodeWithDatum, "utxo" | "datum">,
+  activeRoot: Pick<SDKOperators.NodeWithDatum, "utxo" | "datum">,
   registeredNode: SDK.LinkedListNodeView,
   activeOperators: Pick<
     SDK.MidgardValidators["activeOperators"],
@@ -63,7 +65,7 @@ export const activationValidityWindowAtTip = (
   }: { readonly activationTime: bigint; readonly immediateActivation: boolean },
 ): Effect.Effect<
   () => { readonly validFrom: bigint; readonly validTo?: bigint },
-  SDK.StateQueueError
+  SDKStateQueue.StateQueueError
 > =>
   Effect.gen(function* () {
     const usesWallClockTime = lucid.config().network === "Custom";
@@ -84,7 +86,7 @@ export const activationValidityWindowAtTip = (
             "operator activation",
           ),
       (cause) =>
-        new SDK.StateQueueError({
+        new SDKStateQueue.StateQueueError({
           message: "Operator activation needs the observed L1 ledger tip",
           cause,
         }),

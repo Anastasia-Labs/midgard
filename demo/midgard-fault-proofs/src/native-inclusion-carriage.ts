@@ -11,7 +11,7 @@
 import {
   type NativeTxInclusionCarriage,
   requireWithdrawalRedeemerIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import {
   type BuildTxWithRedeemer,
   type Network,

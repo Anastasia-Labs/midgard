@@ -1,7 +1,7 @@
 /** The `executionSourceScriptDecoding` direct family the submitters and
  * prover read: the shared step 01 and event selection, then a terminal that
  * decides from the selected leaf's recorded reason alone. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 import type {
   DirectPurposeContracts,

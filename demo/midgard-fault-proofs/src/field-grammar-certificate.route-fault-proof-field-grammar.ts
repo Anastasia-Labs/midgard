@@ -1,9 +1,7 @@
 import type { MidgardFieldCarriagePlan } from "@al-ft/midgard-core";
 import { compareOutRefs, findOutRefIndex } from "@al-ft/midgard-core/out-ref";
-import type {
-  FieldGrammarCertificateSource,
-  SpendingValidator,
-} from "@al-ft/midgard-sdk";
+import type { SpendingValidator } from "@al-ft/midgard-sdk/core";
+import type { FieldGrammarCertificateSource } from "@al-ft/midgard-sdk/fraud-proof";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import { reuseOrCertifyFaultProofFieldGrammar } from "./field-grammar-certificate.certify-fault-proof-field-grammar.js";

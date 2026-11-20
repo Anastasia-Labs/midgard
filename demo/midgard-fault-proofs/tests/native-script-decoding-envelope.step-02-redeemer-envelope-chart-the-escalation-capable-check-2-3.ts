@@ -1,6 +1,6 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
-import { NativeScriptDecodingStep02SpendRedeemer } from "@al-ft/midgard-sdk";
+import { NativeScriptDecodingStep02SpendRedeemer } from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

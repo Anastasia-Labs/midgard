@@ -5,7 +5,8 @@ import {
   encodeMidgardTxOutput,
   type MidgardTxOutput,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/users";
 import {
   outputCborMeetsMinAda,
   outputCborMinAdaLovelace,
@@ -64,12 +65,12 @@ export const withdrawalFundingShape = (
  * either (`assertEventHistoryAdmissionFunding`).
  */
 export type WithdrawalQuote = (
-  body: SDK.WithdrawalBody,
+  body: SDKCore.WithdrawalBody,
 ) => Promise<{ orderLovelace: bigint; targetMinimum: bigint }>;
 
 /** The header fields a split prices and signs against. */
 export type SplitHeader = Pick<
-  SDK.Header,
+  SDKCore.Header,
   "minFeeA" | "minFeeB" | "expectedNetworkId"
 >;
 

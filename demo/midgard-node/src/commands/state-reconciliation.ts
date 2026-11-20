@@ -25,7 +25,9 @@
 import "node:fs/promises";
 import "node:os";
 import "node:path";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/users";
 import "@effect/sql";
 import "@lucid-evolution/lucid";
 import "effect";

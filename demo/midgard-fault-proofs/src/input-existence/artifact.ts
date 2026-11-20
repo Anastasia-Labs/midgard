@@ -9,7 +9,8 @@ import {
 } from "@al-ft/midgard-core";
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import { deriveMidgardNativeTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/native";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import { eventKeyPhase } from "../transition-trace/reconstruct.transition-trace-reconstruction.js";
@@ -269,7 +270,7 @@ export const admitInputExistenceArtifact = (
       headerHash,
       inclusion,
       eventKey: { L2TransactionEventKey: { tx_id: inclusion.nativeTxId } },
-      subject: SDK.acceptedVerdictSubject(inclusion.nativeTxId),
+      subject: SDKFraudProof.acceptedVerdictSubject(inclusion.nativeTxId),
       compactCbor: inclusion.nativeTxCompactCbor,
       witnessSetCompactCbor:
         material.proofSource.witnessSetCompactCbor.toString("hex"),
@@ -315,7 +316,7 @@ export const admitInputExistenceArtifact = (
       headerHash,
       membership,
       eventKey: { ForcedTransactionEventKey: { tx_order_id: membership.key } },
-      subject: SDK.forcedVerdictSubject({
+      subject: SDKFraudProof.forcedVerdictSubject({
         transactionId: leaf.tx_id,
         sourceKey: membership.key,
         rejectionReason:

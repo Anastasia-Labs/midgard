@@ -1,7 +1,7 @@
 import "@al-ft/midgard-core";
 import "@al-ft/midgard-core/codec/hash";
 import "@al-ft/midgard-fault-proofs";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
 import "@lucid-evolution/lucid";
 import "vitest";
 import "../../src/fault-proofs/fault-decision-bridge.create-watcher-fault-decision-bridge.js";
@@ -12,7 +12,7 @@ import "./fault-decision-bridge.observation.js";
 import "./fault-decision-bridge.harness.js";
 
 import { FraudProofL1CheckpointChangedError } from "@al-ft/midgard-fault-proofs/workflow/l1-source";
-import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "@al-ft/midgard-sdk";
+import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "@al-ft/midgard-sdk/core";
 import { describe, expect, it, vi } from "vitest";
 
 import type { WatcherFaultProofSupervisor } from "../../src/fault-proofs/fault-proof-supervisor.js";

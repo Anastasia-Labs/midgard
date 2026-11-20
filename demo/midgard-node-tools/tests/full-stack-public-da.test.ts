@@ -5,14 +5,16 @@ import type {
   RetainedDaFetchAttemptStatus,
   RetainedDaPayloadSource,
 } from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import type * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { h28 } from "@al-ft/midgard-test-support/hex";
 import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { fetchCommittedPublicDa } from "../src/full-stack/public-da.js";
 
-const DA_PROVENANCE: SDK.EvidenceProvenance = {
+const DA_PROVENANCE: SDKFraudProof.EvidenceProvenance = {
   trustClass: "public_or_permissionless_da",
   sourceId: "watcher-da-peer-1",
   grade: "security",
@@ -57,8 +59,8 @@ const emptyBlock = async () => {
   };
   const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
   const envelope = await wrapDaPayload(
-    SDK.encodeDaPayload({
-      version: SDK.DA_PAYLOAD_VERSION,
+    SDKDa.encodeDaPayload({
+      version: SDKDa.DA_PAYLOAD_VERSION,
       block_body: {
         header_hash: headerHash,
         header,

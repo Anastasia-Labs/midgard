@@ -10,7 +10,8 @@ import {
   encodeTransitionStepCbor,
 } from "@al-ft/midgard-fault-proofs/block-replay";
 import { forcedVerdictForRejection } from "@al-ft/midgard-fault-proofs/workflow/forced-rejection-reason";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -105,8 +106,8 @@ export const fixture = async (
     }),
   );
   if (member === undefined) throw new Error("missing fixture trace");
-  const payload: SDK.DaPayload = {
-    version: SDK.DA_PAYLOAD_VERSION,
+  const payload: SDKDa.DaPayload = {
+    version: SDKDa.DA_PAYLOAD_VERSION,
     block_body: {
       header_hash: "00".repeat(28),
       header,
@@ -146,7 +147,7 @@ export const fixture = async (
   return rebind(payload);
 };
 
-export const rebind = async (payload: SDK.DaPayload) => {
+export const rebind = async (payload: SDKDa.DaPayload) => {
   const roots = await Effect.runPromise(computeDaPayloadRoots(payload));
   const header = {
     ...payload.block_body.header,
@@ -160,7 +161,7 @@ export const rebind = async (payload: SDK.DaPayload) => {
   return withHeader(payload, header);
 };
 
-const withHeader = async (payload: SDK.DaPayload, header: SDK.Header) => {
+const withHeader = async (payload: SDKDa.DaPayload, header: SDK.Header) => {
   const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
   return {
     ...payload,
@@ -169,7 +170,7 @@ const withHeader = async (payload: SDK.DaPayload, header: SDK.Header) => {
 };
 
 /** The payload under a header that commits its built validation-trace pair. */
-export const withBuiltValidationTracePair = async (payload: SDK.DaPayload) =>
+export const withBuiltValidationTracePair = async (payload: SDKDa.DaPayload) =>
   withHeader(payload, {
     ...payload.block_body.header,
     validationTracesRoot: (
@@ -179,7 +180,7 @@ export const withBuiltValidationTracePair = async (payload: SDK.DaPayload) =>
   });
 
 const imported = (
-  payload: SDK.DaPayload,
+  payload: SDKDa.DaPayload,
   overrides: Partial<Parameters<typeof verifyAndImportBlock>[0]> = {},
 ) =>
   verifyAndImportBlock({
@@ -217,6 +218,6 @@ const imported = (
   });
 
 export const verdict = (
-  payload: SDK.DaPayload,
+  payload: SDKDa.DaPayload,
   overrides: Partial<Parameters<typeof verifyAndImportBlock>[0]> = {},
 ) => Effect.runPromise(Effect.either(imported(payload, overrides)));

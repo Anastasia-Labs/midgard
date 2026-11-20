@@ -4,7 +4,10 @@ import "node:url";
 import "@aiken-lang/merkle-patricia-forestry";
 import "@al-ft/midgard-core";
 import "@al-ft/midgard-core/codec/forced";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/da";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "@lucid-evolution/lucid";
 import "vitest";
 import "../src/field-opening.publish-fault-proof-field-carriage.js";
@@ -39,7 +42,7 @@ import "./native-script-invalid-wrongful-rejection-lifecycle.setup.js";
 import "./native-script-invalid-wrongful-rejection-lifecycle.run.js";
 
 import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 

@@ -24,7 +24,8 @@ import {
   type MidgardNativeTxBodyCanonical,
 } from "@al-ft/midgard-core/codec";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { CML, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -45,7 +46,7 @@ import {
 
 /** The producer refuses an asset entry once this many precede it. */
 export const ENTRY_BOUND = Number(
-  SDK.DISTINCT_ASSET_ACCUMULATION_LIMIT_MAX_ENTRIES,
+  SDKFraudProof.DISTINCT_ASSET_ACCUMULATION_LIMIT_MAX_ENTRIES,
 );
 
 /** Most assets a policy holds here: one-byte names, `00` to `ff`. */

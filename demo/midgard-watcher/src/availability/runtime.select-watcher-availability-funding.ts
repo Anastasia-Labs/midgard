@@ -1,4 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { type UTxO } from "@lucid-evolution/lucid";
 
 import { type WatcherAvailabilityAction } from "./action.js";

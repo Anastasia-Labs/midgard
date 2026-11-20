@@ -37,7 +37,8 @@ import {
   simTxHash,
   type SimUtxo,
 } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { ForcedOrderConfig } from "../../src/forced-orders/index.js";
@@ -149,11 +150,11 @@ export const spendingTransactionCbor = (fills: readonly number[]): Buffer =>
  * reference input.
  */
 export const publishedOrderMaterial = (submittedTxCbor: Buffer) => {
-  const material = SDK.deriveTxOrderMaterial({
+  const material = SDKUsers.deriveTxOrderMaterial({
     submittedTxCbor,
     owner: OWNER,
   });
-  const plan = SDK.planTxOrderMaterialCarriage({
+  const plan = SDKUsers.planTxOrderMaterialCarriage({
     material,
     owner: OWNER,
     inlineReserveBytes: 0,
@@ -221,7 +222,7 @@ const ORDER_NAME = Buffer.from("order").toString("hex");
  */
 export const orderTx = (input: {
   material: Pick<
-    SDK.TxOrderMaterial,
+    SDKUsers.TxOrderMaterial,
     "transactionId" | "transactionCommitment" | "submitted_source"
   >;
   nonceInput: OutRef;
@@ -241,7 +242,7 @@ export const orderTx = (input: {
         (other) => outRefKey(other) === outRefKey(outRef),
       ),
     );
-  const datum: SDK.TxOrderDatum = {
+  const datum: SDKUsers.TxOrderDatum = {
     event: {
       id: {
         transactionId: input.nonceInput.txHash.toString("hex"),
@@ -263,7 +264,7 @@ export const orderTx = (input: {
     },
     refund_datum: "NoDatum",
   };
-  const redeemer: SDK.TxOrderMintRedeemer = {
+  const redeemer: SDKUsers.TxOrderMintRedeemer = {
     event: {
       AuthenticateEvent: {
         nonce_input_index: 0n,
@@ -292,7 +293,7 @@ export const orderTx = (input: {
         address: Buffer.from(FORCED_CONFIG.orderAddress, "hex"),
         lovelace: 3_000_000n,
         assets: token,
-        datum: SDK.encodeTxOrderDatumCbor(datum),
+        datum: SDKUsers.encodeTxOrderDatumCbor(datum),
       },
     ],
     mint: token,
@@ -300,7 +301,10 @@ export const orderTx = (input: {
       {
         purpose: "mint",
         index: 0,
-        data: Buffer.from(Data.to(redeemer, SDK.TxOrderMintRedeemer), "hex"),
+        data: Buffer.from(
+          Data.to(redeemer, SDKUsers.TxOrderMintRedeemer),
+          "hex",
+        ),
       },
     ],
     nonce: input.nonce,

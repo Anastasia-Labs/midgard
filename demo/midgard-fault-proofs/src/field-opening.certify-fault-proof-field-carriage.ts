@@ -1,5 +1,5 @@
 import { type MidgardFieldCarriagePlan } from "@al-ft/midgard-core";
-import { buildUnsignedFieldPreimageCertificationProgram } from "@al-ft/midgard-sdk";
+import { buildUnsignedFieldPreimageCertificationProgram } from "@al-ft/midgard-sdk/state-queue";
 import {
   credentialToAddress,
   type LucidEvolution,

@@ -1,4 +1,6 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   Data,
   type LucidEvolution,
@@ -53,7 +55,7 @@ export type LucidDaAttestationSubmitterDeps = {
   readonly lucid: LucidEvolution;
   readonly contracts: DaAttestationValidatorSet;
   readonly referenceScripts: DaAttestationReferenceScripts;
-  readonly availabilityParameters: SDK.DaAvailabilityParameters;
+  readonly availabilityParameters: SDKDa.DaAvailabilityParameters;
   readonly signSubmit?: (tx: TxSignBuilder) => Promise<string>;
   readonly refreshFundingUtxos?: () => Promise<
     L1SubmitterReadinessSummary | undefined
@@ -133,7 +135,7 @@ export class LucidDaAttestationSubmitter
       target,
       referenceScripts: this.deps.referenceScripts,
       rescueBeneficiary,
-      availabilityCommitment: SDK.parseDaAvailabilityCommitmentCbor(
+      availabilityCommitment: SDKDa.parseDaAvailabilityCommitmentCbor(
         record.availabilityCommitmentCbor,
       ),
     });
@@ -293,12 +295,12 @@ export class LucidDaAttestationSubmitter
   async checkDaBondPool(): Promise<DaBondPoolCheck> {
     let check: DaBondPoolCheck;
     try {
-      const pool = await SDK.fetchDaBondPool(this.deps.lucid, {
+      const pool = await SDKDa.fetchDaBondPool(this.deps.lucid, {
         policyId: this.deps.contracts.daBondPool.policyId,
         address: this.deps.contracts.daBondPool.spendingScriptAddress,
       });
       check = daBondPoolCheckFromStatus(
-        SDK.daBondPoolStatus({
+        SDKDa.daBondPoolStatus({
           lovelace: pool.utxo.assets.lovelace ?? 0n,
           datum: pool.datum,
           parameters: this.deps.availabilityParameters,
@@ -351,9 +353,9 @@ export class LucidDaAttestationSubmitter
 
   private async fetchDaParamsUtxo(): Promise<{
     readonly utxo: UTxO;
-    readonly datum: SDK.DaParamsDatum;
+    readonly datum: SDKDa.DaParamsDatum;
   }> {
-    const unit = SDK.daParamsUnit(this.deps.contracts.daParamsGovernor);
+    const unit = SDKDa.daParamsUnit(this.deps.contracts.daParamsGovernor);
     const utxos = await this.deps.lucid.utxosAtWithUnit(
       this.deps.contracts.daParamsGovernor.spendingScriptAddress,
       unit,
@@ -365,9 +367,9 @@ export class LucidDaAttestationSubmitter
     }
     return {
       utxo: utxos[0]!,
-      datum: decodeInlineDatum<SDK.DaParamsDatum>(
+      datum: decodeInlineDatum<SDKDa.DaParamsDatum>(
         utxos[0]!,
-        SDK.DaParamsDatum as never,
+        SDKDa.DaParamsDatum as never,
         "DA params",
       ),
     };
@@ -392,7 +394,7 @@ export class LucidDaAttestationSubmitter
   private async findStateQueueHeader(
     headerHash: string,
   ): Promise<DaAttestationTarget> {
-    const stateQueueUtxos = await SDK.fetchSortedStateQueueUTxOs(
+    const stateQueueUtxos = await SDKStateQueue.fetchSortedStateQueueUTxOs(
       this.deps.lucid,
       {
         stateQueueAddress: this.deps.contracts.stateQueue.spendingScriptAddress,
@@ -439,7 +441,10 @@ export class LucidDaAttestationSubmitter
 
   private async fetchCandidateUtxo(
     candidate: DaAttestationCandidateRecord,
-  ): Promise<{ readonly utxo: UTxO; readonly datum: SDK.DaAttestationDatum }> {
+  ): Promise<{
+    readonly utxo: UTxO;
+    readonly datum: SDKDa.DaAttestationDatum;
+  }> {
     const outRef = parseOutRef(candidate.outRef);
     const utxos = await this.deps.lucid.utxosByOutRef([outRef]);
     if (utxos.length !== 1) {
@@ -448,9 +453,9 @@ export class LucidDaAttestationSubmitter
       );
     }
     const utxo = utxos[0]!;
-    const datum = decodeInlineDatum<SDK.DaAttestationDatum>(
+    const datum = decodeInlineDatum<SDKDa.DaAttestationDatum>(
       utxo,
-      SDK.DaAttestationDatum as never,
+      SDKDa.DaAttestationDatum as never,
       "DA attestation",
     );
     if (datum.header_hash !== candidate.headerHash) {

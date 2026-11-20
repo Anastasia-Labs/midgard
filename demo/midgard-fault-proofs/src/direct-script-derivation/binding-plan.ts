@@ -1,5 +1,6 @@
 import { canonicalPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type RedeemerContext, type UTxO } from "@lucid-evolution/lucid";
 
 import { carriedCountedMembership } from "../input-existence/counted-membership-carriage.js";
@@ -15,7 +16,7 @@ type CarriageOptions = Readonly<{
 /** Both states are prepared from the same authenticated retained event. The
  * physical validators reauthenticate the counted openings independently. */
 export const directBindingStates = (material: DirectScriptMaterial) => {
-  const selected: SDK.DirectEventSelected = {
+  const selected: SDKFraudProof.DirectEventSelected = {
     ...material.sourceBound,
     step_index: material.eventMembership.value.step_index,
   };
@@ -81,13 +82,13 @@ export const directBindEventRedeemer = ({
     thread,
     Data.to(
       { fraud_prover: fraudProver, data: states.source },
-      SDK.DirectBindEventDatum,
+      SDKFraudProof.DirectBindEventDatum,
     ),
     "direct event",
   );
   const datum = Data.to(
     { fraud_prover: fraudProver, data: states.selected },
-    SDK.DirectBindPreStateDatum,
+    SDKFraudProof.DirectBindPreStateDatum,
   );
   return Data.to(
     {
@@ -110,7 +111,7 @@ export const directBindEventRedeemer = ({
         },
       ],
     },
-    SDK.DirectBindEventRedeemer,
+    SDKFraudProof.DirectBindEventRedeemer,
   );
 };
 
@@ -136,13 +137,13 @@ export const directBindPreStateRedeemer = ({
     thread,
     Data.to(
       { fraud_prover: fraudProver, data: states.selected },
-      SDK.DirectBindPreStateDatum,
+      SDKFraudProof.DirectBindPreStateDatum,
     ),
     "direct transition",
   );
   const datum = Data.to(
     { fraud_prover: fraudProver, data: states.bound },
-    SDK.DirectScriptBoundDatum,
+    SDKFraudProof.DirectScriptBoundDatum,
   );
   return Data.to(
     {
@@ -165,6 +166,6 @@ export const directBindPreStateRedeemer = ({
         },
       ],
     },
-    SDK.DirectBindPreStateRedeemer,
+    SDKFraudProof.DirectBindPreStateRedeemer,
   );
 };

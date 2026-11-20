@@ -3,7 +3,7 @@
  * entries feed the committed prior deposit block and the checked predecessor
  * ledger; no held root is invented. */
 import { computeHash28 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { deriveCanonicalOriginalDepositTransitionEffect } from "@al-ft/midgard-validation/transition-effect";
 import { CML } from "@lucid-evolution/lucid";
 

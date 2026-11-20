@@ -9,7 +9,7 @@
  * those locks; prepare B must wait on a lock, never reach its own insert,
  * and, once A commits, be refused by the live check.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { SqlClient } from "@effect/sql";
 import { Deferred, Duration, Effect, Either, Fiber } from "effect";
 import { describe, expect, it } from "vitest";

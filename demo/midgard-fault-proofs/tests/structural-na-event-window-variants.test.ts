@@ -20,13 +20,15 @@
  * These tests assert encoding agreement, not file existence.
  */
 
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "@lucid-evolution/lucid";
 import "vitest";
 import "./structural-na-event-window-variants.expect-arm-matches-blueprint.js";
 import "./structural-na-event-window-variants.omitted-withdrawal-fault.js";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -192,7 +194,7 @@ describe("Q47 omitted / out-of-window event-window variants", () => {
   ] as const)(
     "rejects obsolete pointer-bearing %s witness bytes",
     (_name, fixture) => {
-      const raw = Data.from(Data.to(fixture(), SDK.TransitionFault));
+      const raw = Data.from(Data.to(fixture(), SDKFraudProof.TransitionFault));
       if (!(raw instanceof Constr) || !(raw.fields[0] instanceof Constr))
         throw new Error("Expected a timed fault and its witness constructor");
       const witness = raw.fields[0];
@@ -200,7 +202,9 @@ describe("Q47 omitted / out-of-window event-window variants", () => {
       witness.fields.unshift(999n, "00");
       if (raw.index === 7 && witness.index === 1)
         witness.fields.splice(2, 0, new Constr(0, []));
-      expect(() => Data.from(Data.to(raw), SDK.TransitionFault)).toThrow();
+      expect(() =>
+        Data.from(Data.to(raw), SDKFraudProof.TransitionFault),
+      ).toThrow();
     },
   );
 
@@ -209,7 +213,9 @@ describe("Q47 omitted / out-of-window event-window variants", () => {
     // differs, the root and count are identical, yet the difference must land
     // on the blueprint's `domain` leaf of the non-membership proof so the
     // on-chain domain equality check cannot be bypassed.
-    const proofFields = (fault: SDK.TransitionFault): readonly unknown[] => {
+    const proofFields = (
+      fault: SDKFraudProof.TransitionFault,
+    ): readonly unknown[] => {
       const proof = encodedFault(fault).witnessFields[0];
       if (!(proof instanceof Constr)) {
         throw new Error("source_non_membership must encode as a constructor.");
@@ -234,7 +240,9 @@ describe("Q47 omitted / out-of-window event-window variants", () => {
 
   it("keeps the event id a load-bearing discriminator off-chain", () => {
     // Twin of the Aiken selector q47_wrong_event_id_rejects.
-    const proofFields = (fault: SDK.TransitionFault): readonly unknown[] => {
+    const proofFields = (
+      fault: SDKFraudProof.TransitionFault,
+    ): readonly unknown[] => {
       const proof = encodedFault(fault).witnessFields[0];
       if (!(proof instanceof Constr)) {
         throw new Error("source_non_membership must encode as a constructor.");

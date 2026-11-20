@@ -31,7 +31,8 @@ import {
   encodeMidgardNativeTxCompact,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { type Script, type UTxO } from "@lucid-evolution/lucid";
 
 import {
@@ -62,7 +63,7 @@ export const NO_REFERENCE_INPUT_ABSENT_PRODUCER_TX_ID = "aa".repeat(32);
 export const noReferenceInputOutRef = (
   txId: string,
   outputIndex: number,
-): SDK.MidgardTxInput => ({
+): SDKCore.MidgardTxInput => ({
   tx_id: txId,
   output_index: BigInt(outputIndex),
 });
@@ -97,13 +98,13 @@ export type NoReferenceInputFixture = {
   readonly inclusion: SubmitStep01TxInclusion;
   readonly nativeTxCompactCbor: string;
   /** §2.5 field 1, in committed order. */
-  readonly referenceInputs: readonly SDK.MidgardTxInput[];
+  readonly referenceInputs: readonly SDKCore.MidgardTxInput[];
   readonly referenceInputsPreimage: readonly NoReferenceInputPreimageEntry[];
   readonly referenceInputItemCbors: readonly Buffer[];
   /** §5.1's envelope over the item bytes — what §8.4 partitions on. */
   readonly fieldPreimage: Buffer;
   readonly badReferenceInputIndex: bigint;
-  readonly missingReferenceInput: SDK.MidgardTxInput;
+  readonly missingReferenceInput: SDKCore.MidgardTxInput;
   /** Non-membership of the challenged out-ref in the empty `prev_utxos_root`. */
   readonly ledgerNonMembershipProofCbor: string;
   readonly txsEntries: readonly TrieEntry[];
@@ -144,7 +145,7 @@ export const buildNoReferenceInputFixture = async ({
 }: {
   readonly buildReferenceInputs: (
     companionTxId: string,
-  ) => readonly SDK.MidgardTxInput[];
+  ) => readonly SDKCore.MidgardTxInput[];
   readonly badReferenceInputIndex: number;
   readonly subjectFee?: bigint;
   readonly companionFee?: bigint;
@@ -279,7 +280,7 @@ export const publishNoReferenceInputReferenceScripts = async ({
   readonly lucid: Parameters<
     typeof publishPlainReferenceScriptUtxo
   >[0]["lucid"];
-  readonly steps: readonly SDK.SpendingValidator[];
+  readonly steps: readonly SDKCore.SpendingValidator[];
 }): Promise<readonly [UTxO, UTxO, UTxO, UTxO]> => {
   if (steps.length !== 4) {
     throw new Error(

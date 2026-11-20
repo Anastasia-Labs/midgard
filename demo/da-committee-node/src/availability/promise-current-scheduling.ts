@@ -1,6 +1,8 @@
 import { canonicalJson } from "@al-ft/midgard-core/canonical-json";
 import { computeDaSha256Hash } from "@al-ft/midgard-core/da-transport";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -11,7 +13,7 @@ import type { PromiseCanonicalPointReader } from "./promise-cutoff-source.js";
 
 export type PromiseSchedulingLiability = Readonly<{
   header: StateQueueHeaderRecord;
-  commitment: SDK.DaAvailabilityCommitment;
+  commitment: SDKDa.DaAvailabilityCommitment;
   commitmentDigest: string;
 }>;
 
@@ -21,7 +23,7 @@ export const promiseCurrentSchedulingDigest = (
     rollbackGeneration: number;
     current: ReadonlySet<string>;
     liabilities: readonly PromiseSchedulingLiability[];
-    rawSnapshot: SDK.DaAvailabilitySnapshotUtxos;
+    rawSnapshot: SDKDa.DaAvailabilitySnapshotUtxos;
   }>,
 ): string => {
   const rows = (utxos: readonly UTxO[]) =>
@@ -77,11 +79,11 @@ export const promiseCurrentSchedulingDigest = (
  * protected restoration allocation. Each later admission re-proves this view. */
 export const currentPromiseScheduling = async (
   args: Readonly<{
-    deployment: SDK.DaAvailabilityDeployment;
+    deployment: SDKDa.DaAvailabilityDeployment;
     boundary: PromiseCapacityPoint;
     canonicalTimeMs: number;
     openWindowMs: number;
-    rawSnapshot: SDK.DaAvailabilitySnapshotUtxos;
+    rawSnapshot: SDKDa.DaAvailabilitySnapshotUtxos;
     complete: boolean;
     liabilities: readonly PromiseSchedulingLiability[];
     readCanonicalPoint: PromiseCanonicalPointReader;
@@ -97,13 +99,15 @@ export const currentPromiseScheduling = async (
   )
     throw new Error("Complete current scheduling source is unavailable");
   // Authentication is still required when there are no existing signatures.
-  const rootSnapshot = await SDK.daAvailabilityChallengeSnapshotFromUtxos(
+  const rootSnapshot = await SDKDa.daAvailabilityChallengeSnapshotFromUtxos(
     args.deployment,
     SDK.makeGenesisConfirmedState(0n).headerHash,
     args.rawSnapshot,
   );
   await Effect.runPromise(
-    SDK.getConfirmedStateFromStateQueueDatum(rootSnapshot.confirmedState.datum),
+    SDKStateQueue.getConfirmedStateFromStateQueueDatum(
+      rootSnapshot.confirmedState.datum,
+    ),
   );
   if (
     rootSnapshot.correctionLock.datum === undefined ||
@@ -118,25 +122,27 @@ export const currentPromiseScheduling = async (
   for (const liability of args.liabilities) {
     const { header, commitment, commitmentDigest } = liability;
     const digest = computeDaSha256Hash(
-      Buffer.from(SDK.encodeDaAvailabilityCommitment(commitment), "hex"),
+      Buffer.from(SDKDa.encodeDaAvailabilityCommitment(commitment), "hex"),
     ).toString("hex");
     if (
       digest !== commitmentDigest ||
       commitment.header_hash !== header.headerHash ||
-      SDK.stateQueueHeaderHash(header.header) !== header.headerHash ||
+      SDKStateQueue.stateQueueHeaderHash(header.header) !== header.headerHash ||
       commitment.deployment_identity !== args.deployment.hubOraclePolicyId
     )
       throw new Error(
         "Scheduling certificate changed its signed header or commitment",
       );
-    const snapshot = await SDK.daAvailabilityChallengeSnapshotFromUtxos(
+    const snapshot = await SDKDa.daAvailabilityChallengeSnapshotFromUtxos(
       args.deployment,
       header.headerHash,
       args.rawSnapshot,
     );
     // The SDK authenticates the root NFT/address; also decode its root domain.
     await Effect.runPromise(
-      SDK.getConfirmedStateFromStateQueueDatum(snapshot.confirmedState.datum),
+      SDKStateQueue.getConfirmedStateFromStateQueueDatum(
+        snapshot.confirmedState.datum,
+      ),
     );
     if (
       snapshot.correctionLock.datum === undefined ||
@@ -156,7 +162,7 @@ export const currentPromiseScheduling = async (
       (snapshot.queue.datum.key === "Empty" ||
         snapshot.queue.datum.key.Key.key !== header.headerHash ||
         node === undefined ||
-        SDK.stateQueueHeaderHash(node.header) !== header.headerHash)
+        SDKStateQueue.stateQueueHeaderHash(node.header) !== header.headerHash)
     )
       throw new Error(
         "Scheduling state-queue identity differs from signed header",
@@ -166,7 +172,7 @@ export const currentPromiseScheduling = async (
       typeof node.da_attestation === "object" &&
       "Attested" in node.da_attestation &&
       node.da_attestation.Attested.commitment_hash !==
-        SDK.daAvailabilityCommitmentHash(commitment)
+        SDKDa.daAvailabilityCommitmentHash(commitment)
     )
       throw new Error("Scheduling node attests another commitment");
     const cutoff =

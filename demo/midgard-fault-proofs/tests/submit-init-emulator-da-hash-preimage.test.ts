@@ -23,7 +23,7 @@ import { computeMidgardNativeTxId, outRefLabel } from "@al-ft/midgard-core";
 import {
   DaHashPreimageStep02Datum,
   FraudProofTokenDatum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, getAddressDetails, toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

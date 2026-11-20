@@ -1,7 +1,8 @@
 import { inspect } from "node:util";
 
 import { computeHash32 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { CML, Data, type UTxO } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
@@ -237,9 +238,12 @@ export const measureDirectSourceResourcePath = async (
     }
   };
 
-  const scanDatum = (data: SDK.DirectSourceScanState) =>
-    Data.to({ fraud_prover: prover, data }, SDK.DirectSourceScanDatum);
-  let state: SDK.DirectSourceScanState = {
+  const scanDatum = (data: SDKFraudProof.DirectSourceScanState) =>
+    Data.to(
+      { fraud_prover: prover, data },
+      SDKFraudProof.DirectSourceScanDatum,
+    );
+  let state: SDKFraudProof.DirectSourceScanState = {
     cursor: plan.position("Walking", 0).cursor,
     source_index: { root: SDK.EMPTY_MERKLE_TREE_ROOT, count: 0n },
     complete: false,
@@ -273,7 +277,7 @@ export const measureDirectSourceResourcePath = async (
       headerCbor: SDK.encodeHeaderCbor(material.sourceBound.header).toString(
         "hex",
       ),
-      boundCbor: Data.to(material.bound, SDK.DirectScriptBound),
+      boundCbor: Data.to(material.bound, SDKFraudProof.DirectScriptBound),
       initialDatum,
       compactCbor: material.bound.compact_cbor,
       witnessSetCompactCbor:
@@ -284,11 +288,17 @@ export const measureDirectSourceResourcePath = async (
         fieldIndex: entry.fieldIndex,
         itemIndex: entry.itemIndex,
         witness: entry.witness,
-        witnessCbor: Data.to(entry.witness, SDK.DirectResolvedSourceWitness),
+        witnessCbor: Data.to(
+          entry.witness,
+          SDKFraudProof.DirectResolvedSourceWitness,
+        ),
         source: entry.source.descriptor,
         sourceItemCbor: entry.source.item.toString("hex"),
         admission: entry.step.admission,
-        admissionCbor: Data.to(entry.step.admission, SDK.DirectSourceAdmission),
+        admissionCbor: Data.to(
+          entry.step.admission,
+          SDKFraudProof.DirectSourceAdmission,
+        ),
         indexBefore: entry.step.before,
         indexAfter: entry.step.after,
       })),
@@ -341,19 +351,19 @@ export const measureDirectSourceResourcePath = async (
     redeemer: (indices, open) =>
       Data.to(
         { Continue: [{ ...indices, opening: open(0) }] },
-        SDK.DirectSourceStartRedeemer,
+        SDKFraudProof.DirectSourceStartRedeemer,
       ),
   });
   if (start.status !== "accepted") return result("start-refused-inconclusive");
   for (let first = 0; first < count; first += budget) {
     const end = Math.min(first + budget, count);
     const selected = inputs.slice(first, end);
-    const advanced: SDK.DirectSourceScanState = {
+    const advanced: SDKFraudProof.DirectSourceScanState = {
       ...state,
       cursor: plan.position("Walking", end).cursor,
       complete: end === count,
     };
-    const resolved: SDK.DirectSourceResolvedState = {
+    const resolved: SDKFraudProof.DirectSourceResolvedState = {
       resume_script_hash: roles.resolved.spendingScriptHash,
       resolved: {
         advanced,
@@ -369,7 +379,7 @@ export const measureDirectSourceResourcePath = async (
       destination: roles.authenticate.spendingScriptAddress,
       datum: Data.to(
         { fraud_prover: prover, data: resolved },
-        SDK.DirectSourceResolvedDatum,
+        SDKFraudProof.DirectSourceResolvedDatum,
       ),
       fields: [0],
       redeemer: (indices, open) =>
@@ -386,11 +396,11 @@ export const measureDirectSourceResourcePath = async (
               },
             ],
           },
-          SDK.DirectSourceResolveRedeemer,
+          SDKFraudProof.DirectSourceResolveRedeemer,
         ),
     });
     if (selection.status !== "accepted") return stopped("select", selection);
-    const pending: SDK.DirectSourcePendingState = {
+    const pending: SDKFraudProof.DirectSourcePendingState = {
       resume_script_hash: roles.resolved.spendingScriptHash,
       pending: {
         advanced,
@@ -403,7 +413,7 @@ export const measureDirectSourceResourcePath = async (
       destination: roles.map.spendingScriptAddress,
       datum: Data.to(
         { fraud_prover: prover, data: pending },
-        SDK.DirectSourcePendingDatum,
+        SDKFraudProof.DirectSourcePendingDatum,
       ),
       redeemer: directSourceAuthenticationRedeemer(
         selected.map((entry) => entry.witness),
@@ -444,7 +454,7 @@ export const measureDirectSourceResourcePath = async (
     );
     if (authentication.status !== "accepted")
       return stopped("authenticate", authentication);
-    const next: SDK.DirectSourceScanState = {
+    const next: SDKFraudProof.DirectSourceScanState = {
       ...advanced,
       source_index: selected.at(-1)!.step.after,
     };

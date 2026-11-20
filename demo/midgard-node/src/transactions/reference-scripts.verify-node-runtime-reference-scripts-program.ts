@@ -1,5 +1,6 @@
-import * as SDK from "@al-ft/midgard-sdk";
-import { type ReferenceScriptAuthPolicyRef } from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
+import { type ReferenceScriptAuthPolicyRef } from "@al-ft/midgard-sdk/state-queue";
 import { type LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -13,7 +14,7 @@ import {
 export const verifyNodeRuntimeReferenceScriptsProgram = (
   lucid: LucidEvolution,
   referenceScriptsAddress: string,
-  contracts: SDK.MidgardValidators,
+  contracts: SDKCore.MidgardValidators,
   authPolicy: ReferenceScriptAuthPolicyRef,
 ): Effect.Effect<readonly ReferenceScriptResolved[], SDK.StateQueueError> =>
   Effect.gen(function* () {

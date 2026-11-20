@@ -2,7 +2,7 @@
  * terminal's input: the spent inputs (taken, then resolved under the event
  * pre-root), the outputs and the mint, each variable field certified before
  * it is counted. Every step's datum is the one its validator requires. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import {

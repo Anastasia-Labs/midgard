@@ -1,5 +1,6 @@
 import "node:timers/promises";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
 import "@lucid-evolution/lucid";
 import "effect";
 import "./utils.js";

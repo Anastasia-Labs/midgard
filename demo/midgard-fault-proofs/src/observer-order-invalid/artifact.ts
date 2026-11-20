@@ -1,6 +1,6 @@
 import { midgardFieldCommitment } from "@al-ft/midgard-core";
-import type { VerdictSubject } from "@al-ft/midgard-sdk";
-import { ProofThreadForcedSourcePayloadSchema } from "@al-ft/midgard-sdk";
+import type { VerdictSubject } from "@al-ft/midgard-sdk/fraud-proof";
+import { ProofThreadForcedSourcePayloadSchema } from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import {

@@ -1,7 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { FraudProofTokenDatum, SchedulerDatum } from "@al-ft/midgard-sdk";
+import { SchedulerDatum } from "@al-ft/midgard-sdk/core";
+import { FraudProofTokenDatum } from "@al-ft/midgard-sdk/fraud-proof";
 import {
   CML,
   coreToTxOutput,

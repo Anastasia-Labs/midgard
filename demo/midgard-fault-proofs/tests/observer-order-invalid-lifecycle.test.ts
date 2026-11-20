@@ -49,7 +49,7 @@ import { midgardFieldCommitment } from "@al-ft/midgard-core";
 import {
   acceptedVerdictSubject,
   forcedVerdictSubject,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it, vi } from "vitest";
 
 import { createObserverOrderInvalidActuator } from "../src/observer-order-invalid/actuator.js";

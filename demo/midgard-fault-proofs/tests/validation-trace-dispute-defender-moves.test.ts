@@ -6,7 +6,7 @@
  * is never played. Each thread's standing for its operator is read at every
  * turn, and every thread still open past its case's duration expires to its
  * operator's key, from whichever validator holds it. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import {
   Constr,
   credentialToAddress,

@@ -1,4 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 
 /** Owns one aggregate cursor/source attempt through the final signing fence.
  * The cursor stage reads the committee follower's view (it throws while the

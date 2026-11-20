@@ -10,7 +10,7 @@
 import {
   acceptedVerdictSubject,
   fieldGrammarCertificateUnit,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import { fieldGrammarCertificateAddress } from "../src/field-grammar-certificate.certify-fault-proof-field-grammar.js";

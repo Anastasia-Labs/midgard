@@ -1,10 +1,10 @@
 import {
   castConfirmedStateToData,
   encodeLinkedListNodeView,
-  FraudProofTokenDatum,
   makeGenesisConfirmedState,
-  STATE_QUEUE_ROOT_ASSET_NAME,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { FraudProofTokenDatum } from "@al-ft/midgard-sdk/fraud-proof";
+import { STATE_QUEUE_ROOT_ASSET_NAME } from "@al-ft/midgard-sdk/state-queue";
 import { Data, toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

@@ -6,7 +6,7 @@
  * that owns the reason: the coordinate may be negative, at or past the item
  * count of the field it names, past 2^53, or at either bound of the codec.
  */
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import { describe, expect, it } from "vitest";
 
 import {

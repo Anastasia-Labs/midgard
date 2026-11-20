@@ -1,5 +1,7 @@
 import "@al-ft/midgard-core/plutus-data-cbor";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "@lucid-evolution/lucid";
 import "../runtime.js";
 import "../step-support.js";

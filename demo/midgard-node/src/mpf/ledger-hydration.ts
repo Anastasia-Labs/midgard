@@ -3,7 +3,7 @@
  */
 
 import { encodeMidgardTxOutput, outRefToCbor } from "@al-ft/lucid-midgard";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import type { UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import * as FS from "fs";

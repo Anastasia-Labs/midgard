@@ -4,7 +4,7 @@ import { normalizeDaDeploymentFingerprintHex } from "@al-ft/midgard-core/da-tran
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueCategoryName,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 
 export const FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION =
   "midgard-fraud-proof-workflow-identity-v1" as const;

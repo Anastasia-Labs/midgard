@@ -2,7 +2,7 @@ import {
   decodeAddressWitnessPreimage,
   MISSING_SIGNATURE_VIOLATION_ID,
   missingSignatureVkeyHash,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import {

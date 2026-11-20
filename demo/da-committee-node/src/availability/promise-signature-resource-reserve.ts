@@ -1,4 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 
 import type { CommitteeL1ClientConfig } from "../config.js";
 import { signatureKey } from "../store.committee-store.js";

@@ -16,7 +16,8 @@ import {
   spendableAt,
 } from "@al-ft/midgard-l1-follower/events";
 import { createSlotClock } from "@al-ft/midgard-l1-follower/heads";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
@@ -127,7 +128,7 @@ describe.each(["sqlite", "postgres"] as const)(
       expect(external[0]!.admission.txHash).toBe(withdrawalTx!.toString("hex"));
       expect(
         "WithdrawalPayload" in
-          Data.from(external[0]!.payloadCbor, SDK.EventHistoryPayload),
+          Data.from(external[0]!.payloadCbor, SDKUsers.EventHistoryPayload),
       ).toBe(true);
 
       // A continuation moves the Order; it admits nothing new.
@@ -155,7 +156,7 @@ describe.each(["sqlite", "postgres"] as const)(
         txHash: retiredBy!.toString("hex"),
         witnessCbor: Data.to(
           retirementWitness("absorbed"),
-          SDK.EventHistoryRetirementWitness,
+          SDKUsers.EventHistoryRetirementWitness,
         ),
       });
       expect(retired.location.txHash.equals(moved!)).toBe(true);
@@ -397,7 +398,7 @@ describe.each(["sqlite", "postgres"] as const)(
         depositDataToEntry(
           {
             ...depositBase,
-            originalAssets: SDK.valueToAssets(
+            originalAssets: SDKUsers.valueToAssets(
               Data.from(projectedDeposit.originalAssetsCbor, SDK.Value),
             ),
           },

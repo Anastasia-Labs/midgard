@@ -1,7 +1,7 @@
 import { createRequire } from "node:module";
 import { parentPort } from "node:worker_threads";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Effect } from "effect";
 
 export type MpfRootBuilderRequest = {

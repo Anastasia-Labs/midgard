@@ -1,8 +1,8 @@
+import { FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX } from "@al-ft/midgard-sdk/core";
 import {
   deriveFieldPreimageCertification,
-  FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX,
   fieldPreimagePublicationDatumCbor,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import type { MintingPolicy, OutRef, UTxO } from "@lucid-evolution/lucid";
 
 import { fieldPreimageCertificateAddress } from "../../src/field-opening.certify-fault-proof-field-carriage.js";

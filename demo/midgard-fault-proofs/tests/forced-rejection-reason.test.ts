@@ -1,4 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import type { RejectSubject } from "@al-ft/midgard-validation/reject-subject";
 import {
   REJECTION_REASON_ARMS_BY_CODE,

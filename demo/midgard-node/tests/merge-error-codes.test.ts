@@ -6,7 +6,7 @@ import {
   computeMidgardNativeTxId,
   decodeMidgardNativeTxFullFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { HttpServerResponse } from "@effect/platform";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";

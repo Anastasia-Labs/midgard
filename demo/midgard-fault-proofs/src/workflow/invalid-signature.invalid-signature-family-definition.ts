@@ -1,7 +1,7 @@
 import {
   FraudProofComputationThreadStepDatum,
   InvalidSignatureStep02Datum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import { INVALID_SIGNATURE_FORCED_ARTIFACT } from "../invalid-signature/artifact.js";
 import { INVALID_SIGNATURE_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.resolved-output-non-canonical-complete-canonical-replay.js";

@@ -8,7 +8,7 @@
  * and count) of the plan the prerequisite required from the artifact, and no
  * builder asks `publishFaultProofFieldCarriage` for anything.
  */
-import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk";
+import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk/fraud-proof";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { mintAuthorizationStepLabel } from "../src/mint-authorization/submit-common.js";

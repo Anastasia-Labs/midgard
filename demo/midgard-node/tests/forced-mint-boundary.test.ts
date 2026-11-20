@@ -5,7 +5,9 @@ import {
 } from "@al-ft/midgard-core";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { hashMidgardValidationRejectionReasonV1 } from "@al-ft/midgard-core/validation-trace";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { replayValidationVerdictEvent } from "@al-ft/midgard-validation/validation-machine";
 import { Data } from "@lucid-evolution/lucid";
@@ -44,7 +46,7 @@ describe("forced admission at the tx-order mint", () => {
         )?.check,
       ).toBe(check);
       expect(() =>
-        SDK.deriveTxOrderMaterial({
+        SDKUsers.deriveTxOrderMaterial({
           submittedTxCbor: tx,
           owner: Buffer.alloc(28),
         }),
@@ -62,7 +64,7 @@ describe("forced admission at the tx-order mint", () => {
         ),
       ).toBeNull();
       expect(
-        SDK.deriveTxOrderMaterial({
+        SDKUsers.deriveTxOrderMaterial({
           submittedTxCbor: tx,
           owner: Buffer.alloc(28),
         }).transactionId,
@@ -184,7 +186,7 @@ describe("forced admission at the tx-order mint", () => {
         protocolVersion: 1n,
         ...counts,
       };
-      const payload: SDK.DaPayload = {
+      const payload: SDKDa.DaPayload = {
         version: 1n,
         block_body: {
           header,
@@ -233,7 +235,7 @@ describe("forced admission at the tx-order mint", () => {
         },
       };
       expect(
-        decodeDaPayloadStrict(SDK.encodeDaPayload(payload)).block_body
+        decodeDaPayloadStrict(SDKDa.encodeDaPayload(payload)).block_body
           .forced_transactions,
       ).toEqual(payload.block_body.forced_transactions);
       // A ForcedTxValid claim for the same transaction is refused.
@@ -247,7 +249,7 @@ describe("forced admission at the tx-order mint", () => {
         ],
       ];
       expect(() =>
-        decodeDaPayloadStrict(SDK.encodeDaPayload(payload)),
+        decodeDaPayloadStrict(SDKDa.encodeDaPayload(payload)),
       ).toThrow();
     },
   );

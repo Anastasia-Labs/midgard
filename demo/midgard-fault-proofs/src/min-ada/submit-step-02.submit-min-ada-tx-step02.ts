@@ -1,13 +1,15 @@
 import {
-  type FieldOpening,
-  MIDGARD_FIELD_INDEX,
-  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
   scriptRewardAddress,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  type FieldOpening,
+  MIDGARD_FIELD_INDEX,
+  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   MIDGARD_COINS_PER_UTXO_BYTE,
   outputMeetsMinAda,

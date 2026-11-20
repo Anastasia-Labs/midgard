@@ -30,7 +30,7 @@
  * an output the provider does not show may still be live. A spend back that
  * does not build is the run's alarm, and is tried again every run. */
 import { parseOutRefLabel } from "@al-ft/midgard-core/out-ref";
-import { MidgardCekStagingPins } from "@al-ft/midgard-sdk";
+import { MidgardCekStagingPins } from "@al-ft/midgard-sdk/fraud-proof";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import type { FraudProofSignedTransactionRecovery } from "../workflow/l1-source.js";

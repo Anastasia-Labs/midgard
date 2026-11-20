@@ -9,7 +9,7 @@ import {
   type VerdictSubject,
   verdictSubjectIsCanonical,
   VerdictSubjectSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 export const ZERO_INPUT_CATEGORY_ID = "00000005" as const;

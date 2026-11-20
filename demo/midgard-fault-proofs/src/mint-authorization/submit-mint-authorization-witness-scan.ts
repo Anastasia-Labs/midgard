@@ -6,17 +6,19 @@ import {
   hashMidgardVersionedScript,
 } from "@al-ft/midgard-core";
 import {
+  requireInputIndex,
+  requireOwnSpendPurpose,
+  requireReferenceInputIndex,
+  requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
   MIDGARD_FIELD_INDEX,
   MintAuthorizationStep04Datum,
   MintAuthorizationWitnessScanDatum,
   MintAuthorizationWitnessScanSpendRedeemer,
   type MintAuthorizationWitnessScanSpendRedeemer as WitnessScanRedeemer,
   type MintAuthorizationWitnessScanState,
-  requireInputIndex,
-  requireOwnSpendPurpose,
-  requireReferenceInputIndex,
-  requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

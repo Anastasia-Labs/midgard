@@ -8,11 +8,8 @@ import {
   type EventCutoff,
   eventKeyOfId,
 } from "@al-ft/midgard-l1-follower/events";
-import {
-  OutputReference,
-  TxOrderDatum,
-  TxOrderEvent,
-} from "@al-ft/midgard-sdk";
+import { OutputReference, TxOrderEvent } from "@al-ft/midgard-sdk/core";
+import { TxOrderDatum } from "@al-ft/midgard-sdk/users";
 import { CML, Data } from "@lucid-evolution/lucid";
 
 import type { WatcherStateQueueHeaderObservation } from "../indexers/authenticated-state-queue-observation.js";

@@ -14,7 +14,8 @@
 import { validationTraceDepthForStepCount } from "@al-ft/midgard-core";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import type { MidgardVersionedScript } from "@al-ft/midgard-core/codec/versioned-script";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { plutusV3ScriptWitness } from "@al-ft/midgard-validation/tests/validation-fixtures";
 import {
   CML,
@@ -147,13 +148,13 @@ const DRIVEN = {
   12: {},
   13: {},
   14: {},
-} as const satisfies Partial<Record<CekCoreGroup, SDK.CekCoreChoice>>;
+} as const satisfies Partial<Record<CekCoreGroup, SDKFraudProof.CekCoreChoice>>;
 
 /** The holders each driven CEK core group's arm chain visits, in order. */
 const ARMS_OF = Object.fromEntries(
   Object.entries(DRIVEN).map(([group, choice]) => [
     group,
-    SDK.cekCoreRoute(Number(group), choice)!,
+    SDKFraudProof.cekCoreRoute(Number(group), choice)!,
   ]),
 ) as Readonly<Record<keyof typeof DRIVEN, readonly ValidationTraceArmHolder[]>>;
 

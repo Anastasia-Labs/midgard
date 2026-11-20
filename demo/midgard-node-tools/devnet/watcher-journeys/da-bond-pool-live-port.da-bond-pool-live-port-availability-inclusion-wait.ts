@@ -1,6 +1,6 @@
 import "./da-bond-pool-live-port.da-bond-pool-live-port-parameters-and-funding.js";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/da";
 import { describe, expect, it } from "vitest";
 
 import {

@@ -26,17 +26,19 @@
  * step-01 output datum, never from the file.
  */
 import {
-  encodeMidgardTxInputCanonical,
-  type FieldOpening,
-  MIDGARD_FIELD_INDEX,
   type MidgardTxInput,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
+  encodeMidgardTxInputCanonical,
+  type FieldOpening,
+  MIDGARD_FIELD_INDEX,
   WithdrawnReferenceInputStep02Datum,
   WithdrawnReferenceInputStep02SpendRedeemer,
   WithdrawnReferenceInputStep03Datum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

@@ -1,4 +1,4 @@
-import { FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-sdk";
+import { FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-sdk/core";
 import { describe, expect, it } from "vitest";
 
 import { main } from "../src/bin.js";

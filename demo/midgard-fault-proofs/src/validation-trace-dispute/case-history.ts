@@ -8,7 +8,8 @@
  * still in it), and it survives any restart. Each thread a Defend opened is
  * re-read by its token until the history shows a close of the case burned
  * it. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
   CML,
   coreToTxOutput,
@@ -93,8 +94,8 @@ const threadDefender = (output: TxOutput): string | undefined => {
   if (typeof output.datum !== "string") return;
   try {
     return (
-      Data.from(output.datum, SDK.CaseThreadDatum).data?.header.defender_vkh ??
-      undefined
+      Data.from(output.datum, SDKDa.CaseThreadDatum).data?.header
+        .defender_vkh ?? undefined
     );
   } catch {
     return;

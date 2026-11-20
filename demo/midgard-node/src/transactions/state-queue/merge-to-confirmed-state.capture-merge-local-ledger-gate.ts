@@ -3,7 +3,7 @@ import {
   submitLowerBoundSlot,
   type SubmitSlotSnapshot,
 } from "@al-ft/midgard-core/ogmios-slot";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

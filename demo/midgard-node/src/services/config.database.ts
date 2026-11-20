@@ -1,4 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { Config, Option } from "effect";
 
 import { validateRetentionDays } from "../database/retention-policy.js";

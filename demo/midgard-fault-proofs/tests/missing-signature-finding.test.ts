@@ -1,4 +1,4 @@
-import { missingSignatureVkeyHash } from "@al-ft/midgard-sdk";
+import { missingSignatureVkeyHash } from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import {

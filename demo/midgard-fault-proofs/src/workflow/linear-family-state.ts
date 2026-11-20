@@ -1,7 +1,7 @@
 import {
   assertSecurityGradeEvidence,
   type EvidenceProvenance,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import {
   LINEAR_FAMILY_SPEC,

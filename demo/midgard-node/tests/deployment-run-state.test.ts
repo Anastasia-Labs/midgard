@@ -1,7 +1,12 @@
 import "node:fs/promises";
 import "node:path";
 import "@al-ft/midgard-core/deployment-manifest-identity";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/da";
+import "@al-ft/midgard-sdk/users";
+import "@al-ft/midgard-sdk/deployment";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "@al-ft/midgard-test-support/temp-files";
 import "@lucid-evolution/lucid";
 import "effect";

@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/users";
 
 import { utxoOutRefKey } from "./reference-scripts.fetch-reference-script-utxos-program.js";
 
@@ -10,7 +11,7 @@ import { utxoOutRefKey } from "./reference-scripts.fetch-reference-script-utxos-
  * here and nowhere else.
  */
 export const deploymentInitializationNonceOutRefKeys = (
-  contracts: Pick<SDK.MidgardValidators, "eventHistory">,
+  contracts: Pick<SDKCore.MidgardValidators, "eventHistory">,
 ): ReadonlySet<string> =>
   new Set(
     Object.values(SDK.requireEventHistoryContracts(contracts)).map(

@@ -10,11 +10,11 @@ import {
 } from "@al-ft/midgard-core/codec/forced";
 import {
   EMPTY_MERKLE_TREE_ROOT,
-  forcedVerdictSubject,
   hashBlockHeader,
   Proof,
   type RejectionReason,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { forcedVerdictSubject } from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";

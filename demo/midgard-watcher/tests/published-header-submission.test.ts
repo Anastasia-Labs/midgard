@@ -25,7 +25,7 @@ import {
   type PublishedWatcherDeployment,
 } from "./support/published-block-actor.is-unanswered-submission.js";
 
-vi.mock("@al-ft/midgard-sdk", async (importOriginal) => {
+vi.mock("@al-ft/midgard-sdk/state-queue", async (importOriginal) => {
   const actual = await importOriginal<typeof SDK>();
   return {
     ...actual,

@@ -1,6 +1,7 @@
 import { midgardFieldCommitment } from "@al-ft/midgard-core";
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
@@ -81,7 +82,7 @@ export const detectObserversForbiddenAcceptedRawReplay = (
     try {
       const evidence = prepareObserversForbiddenEvidence({
         finding: {
-          subject: SDK.acceptedVerdictSubject(transaction.nodeTxId),
+          subject: SDKFraudProof.acceptedVerdictSubject(transaction.nodeTxId),
           networkId,
           scriptIntegrityHash,
         },
@@ -149,7 +150,7 @@ export const detectObserversForbiddenForcedReplay = (
       );
       const evidence = prepareObserversForbiddenEvidence({
         finding: {
-          subject: SDK.forcedVerdictSubject({
+          subject: SDKFraudProof.forcedVerdictSubject({
             transactionId: transaction.value.tx_id,
             sourceKey: transaction.key,
             rejectionReason: verdict.ForcedTxInvalid.reason,
@@ -217,7 +218,7 @@ export const prepareObserversForbiddenAcceptedArtifact = async (
     throw new Error("observersForbidden selected field 3 disappeared");
   const evidence = prepareObserversForbiddenEvidence({
     finding: {
-      subject: SDK.acceptedVerdictSubject(transaction.nodeTxId),
+      subject: SDKFraudProof.acceptedVerdictSubject(transaction.nodeTxId),
       networkId: detection.networkId,
       scriptIntegrityHash: detection.scriptIntegrityHash,
     },
@@ -277,7 +278,7 @@ export const prepareObserversForbiddenForcedArtifact = async (
   });
   const evidence = prepareObserversForbiddenEvidence({
     finding: {
-      subject: SDK.forcedVerdictSubject({
+      subject: SDKFraudProof.forcedVerdictSubject({
         transactionId: transaction.value.tx_id,
         sourceKey: transaction.key,
         rejectionReason: reason,

@@ -1,7 +1,9 @@
 import "node:crypto";
 import "@al-ft/midgard-core";
 import "@al-ft/midgard-core/consensus-profile";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/da";
 import "pg";
 import "vitest";
 import "../src/committee-service.js";

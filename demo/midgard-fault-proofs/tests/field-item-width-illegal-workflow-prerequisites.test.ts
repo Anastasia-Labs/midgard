@@ -8,7 +8,9 @@ import {
   encodeMidgardForcedTxCanonical,
 } from "@al-ft/midgard-core/codec/forced";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -51,11 +53,11 @@ const admittedForcedSubjects = async (
   }[],
 ) => {
   const base = await buildCanonicalBlockFixture({ transactions: [] });
-  const forced: SDK.DaPayloadEntry[] = [];
-  const preimages: SDK.DaPayloadEntry[] = [];
-  const steps: SDK.DaPayloadEntry[] = [];
-  const events: SDK.DaPayloadEntry[] = [];
-  const validations: SDK.DaPayloadEntry[] = [];
+  const forced: SDKDa.DaPayloadEntry[] = [];
+  const preimages: SDKDa.DaPayloadEntry[] = [];
+  const steps: SDKDa.DaPayloadEntry[] = [];
+  const events: SDKDa.DaPayloadEntry[] = [];
+  const validations: SDKDa.DaPayloadEntry[] = [];
   const subjects = sources.map(({ bytes, verdict }, index) => {
     const material = deriveMidgardForcedTxFaultEvidenceMaterial(bytes);
     const key = { transactionId: "42".repeat(32), outputIndex: BigInt(index) };
@@ -115,9 +117,12 @@ const admittedForcedSubjects = async (
     ]);
     return { key, eventCbor, leaf };
   });
-  const sorted = (entries: SDK.DaPayloadEntry[]) =>
+  const sorted = (entries: SDKDa.DaPayloadEntry[]) =>
     entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-  const root = async (domain: SDK.RootDomain, entries: SDK.DaPayloadEntry[]) =>
+  const root = async (
+    domain: SDK.RootDomain,
+    entries: SDKDa.DaPayloadEntry[],
+  ) =>
     (
       await buildCountedRoot(
         domain,
@@ -150,7 +155,7 @@ const admittedForcedSubjects = async (
     validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
   };
   const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
-  const payload: SDK.DaPayload = {
+  const payload: SDKDa.DaPayload = {
     ...base.payload,
     block_body: {
       ...base.payload.block_body,
@@ -166,7 +171,7 @@ const admittedForcedSubjects = async (
   };
   const block = await canonicalBlockEvidenceFromVerifiedPayload({
     observation: authenticatedHeaderObservation({ header, headerHash }),
-    payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(payload), {
+    payloadEnvelopeCbor: await wrapDaPayload(SDKDa.encodeDaPayload(payload), {
       mode: "identity",
     }),
     daProvenance: {
@@ -297,7 +302,7 @@ describe("FIWI independent retained-DA subjects", () => {
             ...recovered.evidence,
             subject: {
               ...recovered.evidence.subject,
-              source_key: SDK.encodeProofThreadForcedSourceKey({
+              source_key: SDKFraudProof.encodeProofThreadForcedSourceKey({
                 ...independent.key,
                 outputIndex: 99n,
               }).toString("hex"),

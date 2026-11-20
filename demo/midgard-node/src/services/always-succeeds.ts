@@ -1,4 +1,4 @@
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "@lucid-evolution/lucid";
 import "effect";
 import "../../blueprints/always-succeeds/plutus.json" with { type: "json" };

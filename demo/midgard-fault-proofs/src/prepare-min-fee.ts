@@ -9,12 +9,14 @@ import {
 } from "@al-ft/midgard-core";
 import {
   commitCountedRootProgram,
-  minFeeThreadTokenAssetName,
-  minimumFeeFromProofSource,
   type NativeTxCompact,
   type NativeTxWitnessSetCompact,
   ROOT_DOMAINS,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  minFeeThreadTokenAssetName,
+  minimumFeeFromProofSource,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Effect } from "effect";
 
 import { parseHex, parseSignedInteger, stringifyJson } from "./json-file.js";

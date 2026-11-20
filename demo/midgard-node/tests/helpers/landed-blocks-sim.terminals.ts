@@ -15,7 +15,7 @@ import type {
   FactStore,
   OutputSummary,
 } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 
 import { QUEUE_TERMINALS_TABLE } from "../../src/l1-queue-terminals/schema.js";
 import { SIM_QUEUE_CONFIG } from "./state-queue-sim.fixtures.js";

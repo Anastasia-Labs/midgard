@@ -4,12 +4,14 @@ import {
   encodeMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core";
 import {
-  canonicalDecodabilityEvidenceFromCommittedField,
   type L2TransactionSource,
   L2TransactionSource as L2TransactionSourceCodec,
-  MIDGARD_FIRST_WITNESS_SET_FIELD_INDEX,
   type NativeTxWitnessSetCompact,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  canonicalDecodabilityEvidenceFromCommittedField,
+  MIDGARD_FIRST_WITNESS_SET_FIELD_INDEX,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import {

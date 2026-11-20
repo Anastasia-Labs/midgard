@@ -7,7 +7,7 @@ import {
   encodeMidgardTxOutput,
   midgardAddressFromText,
 } from "@al-ft/midgard-core/codec";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { SqlClient } from "@effect/sql";
 import { CML, Data, walletFromSeed } from "@lucid-evolution/lucid";
 import { Effect, Logger } from "effect";

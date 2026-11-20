@@ -2,7 +2,7 @@
  * The forged datum walk case: a prover whose phase-8 witnesses restore stack
  * entries other than the ones the walk pushed.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
 import { expect, vi } from "vitest";
 

@@ -6,12 +6,14 @@ import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile"
 import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
 import { inspectContracts } from "@al-ft/midgard-fault-proofs/inspect-contracts";
 import {
-  createReferenceScriptAuthPolicy,
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueDeploymentInfo,
+} from "@al-ft/midgard-sdk/core";
+import {
+  createReferenceScriptAuthPolicy,
   referenceScriptAuthPolicyDeploymentInfo,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import {
   Emulator,
   generateEmulatorAccount,

@@ -11,7 +11,8 @@ import {
   encodeTransitionIntegerCbor,
   encodeTransitionStepCbor,
 } from "@al-ft/midgard-fault-proofs/block-replay";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 
 import { encodeTransactionRootValue } from "../../mpf/ledger-hydration.js";
@@ -24,7 +25,7 @@ const UINT64_MAX = 0xffff_ffff_ffff_ffffn;
 const HASH32 = "ff".repeat(32);
 export const daEntryTupleBytes = (key: Uint8Array, value: Uint8Array): bigint =>
   BigInt(
-    SDK.daPayloadEntryEncodedSize([
+    SDKDa.daPayloadEntryEncodedSize([
       Buffer.from(key).toString("hex"),
       Buffer.from(value).toString("hex"),
     ]),
@@ -34,8 +35,8 @@ export const daEntryTupleBytes = (key: Uint8Array, value: Uint8Array): bigint =>
  * and one extra byte for each of the nine possibly nonempty entry lists. */
 export const additiveDaFixedBytes = (): bigint => {
   const header = DA_PAYLOAD_UPPER_BOUND_HEADER;
-  const payload: SDK.DaPayload = {
-    version: SDK.DA_PAYLOAD_VERSION,
+  const payload: SDKDa.DaPayload = {
+    version: SDKDa.DA_PAYLOAD_VERSION,
     block_body: {
       header_hash: DA_PAYLOAD_UPPER_BOUND_HEADER_HASH,
       header,
@@ -60,7 +61,7 @@ export const additiveDaFixedBytes = (): bigint => {
       },
     },
   };
-  return BigInt(SDK.daPayloadEncodedSize(payload) + 9);
+  return BigInt(SDKDa.daPayloadEncodedSize(payload) + 9);
 };
 
 export const additiveEventTraceBytes = (

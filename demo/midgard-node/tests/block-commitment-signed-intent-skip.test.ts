@@ -1,6 +1,6 @@
 import { inspect } from "node:util";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { SqlClient } from "@effect/sql";
 import { Effect, Logger, Option } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";

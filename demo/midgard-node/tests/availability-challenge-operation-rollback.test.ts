@@ -5,7 +5,7 @@ import {
   type DaAvailabilityOperationObservation,
   reconcileDaAvailabilityOperations,
   runDaAvailabilityOperation,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/da";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {

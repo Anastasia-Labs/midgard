@@ -1,4 +1,6 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
+import type * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   CML,
   type EmulatorAccount,
@@ -80,7 +82,7 @@ export const describeExpectation = (
 /** The reference-script roles the availability, DA and pool flows read. */
 export const availabilityReferenceScriptTargets = (
   contracts: SDK.MidgardValidators,
-): readonly SDK.ReferenceScriptTarget[] => [
+): readonly SDKStateQueue.ReferenceScriptTarget[] => [
   {
     name: "availability-challenge spending",
     script: contracts.availabilityChallenge.spendingScript,
@@ -162,7 +164,7 @@ export type AvailabilityFixtureOptions = {
     | false
     | {
         readonly lovelace?: bigint;
-        readonly datum?: SDK.DaBondPoolDatum;
+        readonly datum?: SDKDa.DaBondPoolDatum;
       };
   /**
    * The DA availability parameters the contracts are applied with. Default:
@@ -177,13 +179,13 @@ export type AvailabilityFixtureOptions = {
   /** Further reference scripts the fixture publishes. */
   readonly referenceScriptTargets?: (
     contracts: SDK.MidgardValidators,
-  ) => readonly SDK.ReferenceScriptTarget[];
+  ) => readonly SDKStateQueue.ReferenceScriptTarget[];
 };
 
 /** Reference-script roles only a commit fixture publishes. */
 export const availabilityCommitReferenceScriptTargets = (
   contracts: SDK.MidgardValidators,
-): readonly SDK.ReferenceScriptTarget[] => [
+): readonly SDKStateQueue.ReferenceScriptTarget[] => [
   {
     name: "state-queue commit withdrawal",
     script: contracts.stateQueue.yields.commit.withdrawalScript,

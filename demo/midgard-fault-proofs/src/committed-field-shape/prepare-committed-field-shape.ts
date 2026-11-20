@@ -13,7 +13,7 @@ import {
   isCommittedFieldShapeViolation,
   MIDGARD_COMMITTED_FIELD_COUNT,
   MIDGARD_FIRST_WITNESS_SET_FIELD_INDEX,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 export const COMMITTED_FIELD_SHAPE_PREPARE_ERROR_CODES = {
   FieldIndexOutOfRange: "fieldIndexOutOfRange",

@@ -5,7 +5,7 @@ import {
   type CommittedFieldShapeEvidence,
   type CommittedFieldShapeStep02State,
   MIDGARD_FIRST_WITNESS_SET_FIELD_INDEX,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import {
   type LocallyEvaluatedTransaction,

@@ -2,7 +2,7 @@ import "./helpers/follower-emulator-installed.js";
 
 import { inspect } from "node:util";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import {
   type Assets,
   calculateMinLovelaceFromUTxO,

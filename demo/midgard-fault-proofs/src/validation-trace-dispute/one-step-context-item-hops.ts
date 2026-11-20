@@ -15,7 +15,7 @@
  * or a script-sources redeemer normalization step's, whose entry wrote its
  * prepared resolution there. */
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { CML, coreToTxOutput, Data } from "@lucid-evolution/lucid";
 
 import { deriveCekRedeemerItemPlan } from "../redeemer-item-plan.js";

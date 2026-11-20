@@ -1,5 +1,5 @@
 import type { SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import {
   type LucidEvolution,
   type Script,

@@ -28,7 +28,7 @@
  * holds) is not a retry and does not run here.
  */
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import { Cause, Clock, Data, Duration, Effect, FiberRef } from "effect";
 
 /** A Lucid client's construction (its protocol-parameter read) failed with

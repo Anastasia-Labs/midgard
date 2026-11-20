@@ -16,7 +16,7 @@ import {
   MIDGARD_WALK_DERIVED_STRIDE,
   midgardFieldStride,
 } from "@al-ft/midgard-core/codec/native-tx-field-access";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import {
   Data,
   type LucidEvolution,

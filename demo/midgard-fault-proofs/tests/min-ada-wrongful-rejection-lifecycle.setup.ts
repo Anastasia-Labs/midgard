@@ -12,7 +12,8 @@ import {
   deriveMidgardForcedTxProofSource,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { MIDGARD_COINS_PER_UTXO_BYTE } from "@al-ft/midgard-validation/value-accounting";
 import { Data, getAddressDetails } from "@lucid-evolution/lucid";
@@ -260,7 +261,7 @@ export const setup = async ({
       encodeMidgardForcedTxCanonical(submitted).toString("hex"),
     outputItemCbors: outputs.map((item) => item.toString("hex")),
     fault: state.fault,
-    subject: SDK.forcedVerdictSubject({
+    subject: SDKFraudProof.forcedVerdictSubject({
       transactionId: txId,
       sourceKey: key,
       rejectionReason: accepted ? null : reason,
@@ -274,7 +275,7 @@ export const setup = async ({
     detectionId: `min-ada:forced:0:${txId}:${outputIndex}`,
     forcedSourceCbor: Data.to(
       source as never,
-      SDK.MinAdaForcedSourcePayloadSchema as never,
+      SDKFraudProof.MinAdaForcedSourcePayloadSchema as never,
     ),
     fullTransactionCbor:
       encodeMidgardForcedTxCanonical(submitted).toString("hex"),

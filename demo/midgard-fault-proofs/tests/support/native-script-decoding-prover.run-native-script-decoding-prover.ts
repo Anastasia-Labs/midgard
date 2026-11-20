@@ -1,11 +1,11 @@
+import { OutputReference } from "@al-ft/midgard-sdk/core";
 import {
   encodeMidgardTxInputCanonical,
   FraudProofComputationThreadStepDatum,
   NATIVE_SCRIPT_DECODING_CLASS_PENDING,
   NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE,
   NATIVE_SCRIPT_DECODING_SOURCE_KIND_NORMAL,
-  OutputReference,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, toUnit } from "@lucid-evolution/lucid";
 
 import {

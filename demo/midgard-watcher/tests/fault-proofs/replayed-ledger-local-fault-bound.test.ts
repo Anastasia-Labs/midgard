@@ -18,7 +18,8 @@ import type { LedgerCheckpoint } from "@al-ft/midgard-fault-proofs/replayed-ledg
 import { buildCanonicalBlockFixture } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import type { RetainedDaPayloadSource } from "@al-ft/midgard-fault-proofs/transition-trace/fetch";
 import { SIM_ORIGIN } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -44,7 +45,7 @@ import { observation } from "./fault-decision-bridge.observation.js";
 
 const availabilityAuthority = () => ({
   deploymentIdentity: "c7".repeat(28),
-  responseGeometry: SDK.availabilityResponseGeometry({
+  responseGeometry: SDKDa.availabilityResponseGeometry({
     chunkByteLength: 4096,
     trancheByteLength: 64 * 1024,
     maxTrancheCount: 1024,

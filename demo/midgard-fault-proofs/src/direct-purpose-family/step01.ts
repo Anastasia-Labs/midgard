@@ -2,7 +2,8 @@
  * transaction's inclusion; the forced door authenticates the forced leaf
  * under the challenged header. Both pay the bound source to `bindEvent`. */
 import { computeHash28 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,
@@ -51,7 +52,7 @@ export const directPurposeStep01Datum = (
 ) =>
   Data.to(
     { fraud_prover: prover, data: material.sourceBound },
-    SDK.DirectBindEventDatum,
+    SDKFraudProof.DirectBindEventDatum,
   );
 
 const initialThread = async (common: Step01Common) => {
@@ -91,7 +92,8 @@ export const buildDirectPurposeStep01Accepted = async ({
 }) => {
   const { material, signer } = common;
   if (
-    material.bound.subject.source_kind !== SDK.PROOF_THREAD_SOURCE_KIND_ACCEPTED
+    material.bound.subject.source_kind !==
+    SDKFraudProof.PROOF_THREAD_SOURCE_KIND_ACCEPTED
   )
     throw new Error(`${common.family.label}: subject is not accepted`);
   if (txInclusion.nativeTxId !== material.bound.subject.transaction_id)
@@ -113,7 +115,7 @@ export const buildDirectPurposeStep01Accepted = async ({
     ...(publishedProofChunks === undefined ? {} : { publishedProofChunks }),
     nextDatum: directPurposeStep01Datum(material, signer.paymentKeyHash),
     spendRedeemerSchema:
-      common.family.step01Redeemer ?? SDK.DirectStep01Redeemer,
+      common.family.step01Redeemer ?? SDKFraudProof.DirectStep01Redeemer,
     wrapInclusionCarriage: (inclusion) => ({
       source: { AcceptedSource: { inclusion } },
     }),
@@ -133,7 +135,7 @@ export const buildDirectPurposeStep01Forced = async ({
   const eventKey = material.eventKey;
   if (
     material.bound.subject.source_kind !==
-      SDK.PROOF_THREAD_SOURCE_KIND_FORCED ||
+      SDKFraudProof.PROOF_THREAD_SOURCE_KIND_FORCED ||
     !("ForcedTransactionEventKey" in eventKey)
   )
     throw new Error(`${common.family.label}: subject is not forced`);
@@ -181,7 +183,7 @@ export const buildDirectPurposeStep01Forced = async ({
           },
         ],
       },
-      common.family.step01Redeemer ?? SDK.DirectStep01Redeemer,
+      common.family.step01Redeemer ?? SDKFraudProof.DirectStep01Redeemer,
     );
   }) satisfies BuildTxWithRedeemer;
   const transaction = await buildLinearFaultContinue({

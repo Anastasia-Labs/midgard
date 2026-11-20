@@ -1,4 +1,4 @@
-import { createDaAvailabilityReadScope } from "@al-ft/midgard-sdk";
+import { createDaAvailabilityReadScope } from "@al-ft/midgard-sdk/da";
 import { describe, expect, it } from "vitest";
 
 import { parseWatcherConfig } from "../../src/runtime/config.parse-watcher-config.js";

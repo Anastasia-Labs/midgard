@@ -1,4 +1,6 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { LucidDaAttestationSubmitter } from "da-committee-node/coordinator/lucid-submitter";
 import { buildApplyAttestationTx } from "da-committee-node/coordinator/tx-builders";
@@ -16,7 +18,7 @@ const thresholdAttestation = async (
 ) => {
   const { lucid, contracts } = f;
   const init = await Effect.runPromise(
-    SDK.incompleteInitDaAttestationTxProgram(lucid, contracts, {
+    SDKDa.incompleteInitDaAttestationTxProgram(lucid, contracts, {
       daParamsUtxo: f.daParamsUtxo,
       daParamsDatum: f.daParamsDatum,
       target: f.target,
@@ -29,20 +31,20 @@ const thresholdAttestation = async (
     }),
   );
   await f.submit("attestation init", init, true);
-  const unit = SDK.daAttestationUnit(
+  const unit = SDKDa.daAttestationUnit(
     contracts.daAttestation,
     f.target.headerHash,
   );
-  const current = async (): Promise<SDK.DaAttestationUtxo> => {
+  const current = async (): Promise<SDKDa.DaAttestationUtxo> => {
     const [utxo] = await lucid.utxosAtWithUnit(
       contracts.daAttestation.spendingScriptAddress,
       unit,
     );
     if (!utxo?.datum) throw new Error("Missing real attestation output");
-    return { utxo, datum: Data.from(utxo.datum, SDK.DaAttestationDatum) };
+    return { utxo, datum: Data.from(utxo.datum, SDKDa.DaAttestationDatum) };
   };
   const add = await Effect.runPromise(
-    SDK.incompleteAddDaAttestationSignaturesTxProgram(lucid, contracts, {
+    SDKDa.incompleteAddDaAttestationSignaturesTxProgram(lucid, contracts, {
       daParamsUtxo: f.daParamsUtxo,
       daParamsDatum: f.daParamsDatum,
       attestation: await current(),
@@ -50,7 +52,7 @@ const thresholdAttestation = async (
         signerIndex,
         signatureHex: Buffer.from(
           key
-            .sign(SDK.daAvailabilityAttestationMessage(f.commitment))
+            .sign(SDKDa.daAvailabilityAttestationMessage(f.commitment))
             .to_raw_bytes(),
         ).toString("hex"),
       })),
@@ -73,11 +75,11 @@ describe("DA apply validity at production cadence", () => {
       const f = await createAvailabilityFixture(1, 0, HEADER_END_TIME_LEAD_MS);
       const attestation = await thresholdAttestation(f);
       const headerEndTime = f.target.stateQueueNode.block_time;
-      const deadline = headerEndTime + SDK.DA_ATTESTATION_TIMEOUT_MS;
+      const deadline = headerEndTime + SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS;
       // Unclipped, the full range from validFrom fits before the deadline.
       expect(deadline - BigInt(f.emulator.now())).toBeGreaterThan(
         SDK.MAX_VALIDITY_RANGE_LENGTH_MS -
-          SDK.DA_ATTESTATION_APPLY_SLOT_LAG_ALLOWANCE_MS,
+          SDKDa.DA_ATTESTATION_APPLY_SLOT_LAG_ALLOWANCE_MS,
       );
       if (nearDeadline)
         f.emulator.awaitSlot(
@@ -85,7 +87,7 @@ describe("DA apply validity at production cadence", () => {
         );
       const currentTime = BigInt(f.emulator.now());
       const validityRange = await Effect.runPromise(
-        SDK.daAttestationApplyValidityRangeProgram({
+        SDKDa.daAttestationApplyValidityRangeProgram({
           currentTime,
           blockTime: headerEndTime,
         }),
@@ -118,7 +120,7 @@ describe("DA apply validity at production cadence", () => {
         ],
       ] as const) {
         const result = await Effect.runPromise(
-          SDK.incompleteApplyDaAttestationToStateQueueTxProgram(
+          SDKDa.incompleteApplyDaAttestationToStateQueueTxProgram(
             f.lucid,
             f.contracts,
             {
@@ -130,7 +132,7 @@ describe("DA apply validity at production cadence", () => {
         expect(result).toMatchObject({ _tag: "Left", left: { reason } });
       }
       const builder = await Effect.runPromise(
-        SDK.incompleteApplyDaAttestationToStateQueueTxProgram(
+        SDKDa.incompleteApplyDaAttestationToStateQueueTxProgram(
           f.lucid,
           f.contracts,
           config,
@@ -174,9 +176,10 @@ describe("DA apply validity at production cadence", () => {
     async (elapsed) => {
       const headerEndTime = 1_000_000n;
       const result = await Effect.runPromise(
-        SDK.daAttestationApplyValidityRangeProgram({
+        SDKDa.daAttestationApplyValidityRangeProgram({
           blockTime: headerEndTime,
-          currentTime: headerEndTime + SDK.DA_ATTESTATION_TIMEOUT_MS + elapsed,
+          currentTime:
+            headerEndTime + SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS + elapsed,
         }).pipe(Effect.either),
       );
       expect(result).toMatchObject({
@@ -209,7 +212,7 @@ describe("DA apply carries the node's block_time", () => {
     const blockTime = f.target.stateQueueNode.block_time;
     for (const rewritten of [blockTime - 1n, blockTime + 1n]) {
       const builder = await Effect.runPromise(
-        SDK.incompleteApplyDaAttestationToStateQueueTxProgram(
+        SDKDa.incompleteApplyDaAttestationToStateQueueTxProgram(
           f.lucid,
           f.contracts,
           {
@@ -234,7 +237,7 @@ describe("DA apply carries the node's block_time", () => {
     const honest = await (
       await (
         await Effect.runPromise(
-          SDK.incompleteApplyDaAttestationToStateQueueTxProgram(
+          SDKDa.incompleteApplyDaAttestationToStateQueueTxProgram(
             f.lucid,
             f.contracts,
             config,
@@ -270,7 +273,8 @@ describe("DA committee apply against an L1 tip that trails the submitter's clock
     const f = await createAvailabilityFixture(1, 0, HEADER_END_TIME_LEAD_MS);
     const attestation = await thresholdAttestation(f);
     const deadline =
-      f.target.stateQueueNode.header.endTime + SDK.DA_ATTESTATION_TIMEOUT_MS;
+      f.target.stateQueueNode.header.endTime +
+      SDKStateQueue.DA_ATTESTATION_TIMEOUT_MS;
     const submitterClock = () =>
       BigInt(f.emulator.now()) + CLOCK_AHEAD_OF_TIP_MS;
     expect(deadline - submitterClock()).toBeGreaterThan(
@@ -346,7 +350,7 @@ describe("DA committee apply against an L1 tip that trails the submitter's clock
     expect(submittedIntervals).toHaveLength(1);
     const [interval] = submittedIntervals;
     const validFrom =
-      clockAtSubmit - SDK.DA_ATTESTATION_APPLY_SLOT_LAG_ALLOWANCE_MS;
+      clockAtSubmit - SDKDa.DA_ATTESTATION_APPLY_SLOT_LAG_ALLOWANCE_MS;
     expect(interval!.start).toBe(
       BigInt(f.lucid.unixTimeToSlot(Number(validFrom))),
     );

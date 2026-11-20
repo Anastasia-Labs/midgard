@@ -1,7 +1,7 @@
 import "./family-application-registry.bundle-cursor-family-application-record.js";
 
 import { deploymentFamilyStepNames } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
+import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 
 import {
   createManifestBoundNetworkIdWorkflow,

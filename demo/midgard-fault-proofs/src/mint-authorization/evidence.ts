@@ -19,8 +19,8 @@
  * whose root is not the thread's `prior_ledger_root`, an outpoint tx id that
  * is not 32 bytes.
  */
-import type * as SDK from "@al-ft/midgard-sdk";
-import { Proof } from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
+import { Proof } from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";

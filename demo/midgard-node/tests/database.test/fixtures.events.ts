@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 
 import {
   DaPayloadsDB,

@@ -20,6 +20,13 @@
  *   and the authentic event was due for the challenged block.
  */
 import {
+  requireInputIndex,
+  requireMintRedeemerIndex,
+  requireOwnMintPurpose,
+  requireOwnSpendPurpose,
+  requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
   FabricatedWithdrawalStep04Datum,
   FabricatedWithdrawalStep04SpendRedeemer,
   type FabricatedWithdrawalStep04State,
@@ -27,12 +34,7 @@ import {
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
   isFabricatedWithdrawalFault,
-  requireInputIndex,
-  requireMintRedeemerIndex,
-  requireOwnMintPurpose,
-  requireOwnSpendPurpose,
-  requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

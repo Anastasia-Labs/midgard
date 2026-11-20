@@ -1,8 +1,5 @@
 import {
   commitCountedRootProgram,
-  daHashPreimageEvidenceFromCommittedLeaf,
-  DaHashPreimageStep01SpendRedeemer,
-  DaHashPreimageStep02Datum,
   getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
   HUB_ORACLE_ASSET_NAME,
@@ -12,7 +9,12 @@ import {
   requireUniqueOutputIndex,
   requireWithdrawalRedeemerIndex,
   ROOT_DOMAINS,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  daHashPreimageEvidenceFromCommittedLeaf,
+  DaHashPreimageStep01SpendRedeemer,
+  DaHashPreimageStep02Datum,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   credentialToAddress,

@@ -12,7 +12,7 @@ import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/cod
 import {
   acceptedVerdictSubject,
   forcedVerdictSubject,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, expectTypeOf, it } from "vitest";
 

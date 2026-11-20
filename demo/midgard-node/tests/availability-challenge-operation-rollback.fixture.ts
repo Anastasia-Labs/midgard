@@ -9,7 +9,7 @@ import {
   type DaAvailabilityOperationObservation,
   reconcileDaAvailabilityOperations,
   runDaAvailabilityOperation,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/da";
 import {
   CML,
   Emulator,

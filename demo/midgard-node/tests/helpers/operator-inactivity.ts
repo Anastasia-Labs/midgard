@@ -8,7 +8,12 @@
  * Both the inactivity-strike tests and the forced-retire tests build on this
  * module: `strikeOperatorToMaxStrikes` is the setup a forced retirement needs.
  */
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/da";
+import "@al-ft/midgard-sdk/operators";
+import "@al-ft/midgard-sdk/users";
+import "@al-ft/midgard-sdk/deployment";
 import "@lucid-evolution/lucid";
 import "effect";
 import "../../src/transactions/initialization.fetch-protocol-deployment-status.js";

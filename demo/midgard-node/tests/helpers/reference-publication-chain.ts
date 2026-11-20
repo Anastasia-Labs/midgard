@@ -1,6 +1,6 @@
 import "node:fs/promises";
 import "node:path";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/state-queue";
 import "@lucid-evolution/lucid";
 import "effect";
 import "./publication-journal-lock.js";

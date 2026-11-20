@@ -1,6 +1,7 @@
 import { MIDGARD_TRANSITION_STEP_SCHEMA_VERSION } from "@al-ft/midgard-core/consensus-profile";
 import { type MidgardValidationTraceDescriptor } from "@al-ft/midgard-core/validation-trace";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 
 import type { PayloadCountSet } from "../domain.js";
@@ -26,7 +27,7 @@ import {
  * the event-key variant, and a repeated event key.
  */
 export const parseEventToStep = (
-  body: SDK.DaPayloadBody,
+  body: SDKDa.DaPayloadBody,
 ): ReadonlyMap<string, SDK.EventToStepValue> => {
   const eventToStep = new Map<string, SDK.EventToStepValue>();
   for (const [index, [keyHex, valueHex]] of body.event_to_step.entries()) {
@@ -78,7 +79,7 @@ export const parseEventToStep = (
   return eventToStep;
 };
 
-export const validateTraceCoverage = (payload: SDK.DaPayload): void => {
+export const validateTraceCoverage = (payload: SDKDa.DaPayload): void => {
   const body = payload.block_body;
   const counts = body.counts;
   const expectedTransitionStepSchemaVersion =
@@ -229,11 +230,11 @@ export const decodeCommittedValidationTraceDescriptor = (
 ): MidgardValidationTraceDescriptor => {
   const normalized = normalizeHex(valueHex, { fieldName });
   try {
-    return SDK.decodeCanonicalValidationTraceDescriptorData(normalized);
+    return SDKDa.decodeCanonicalValidationTraceDescriptorData(normalized);
   } catch (cause) {
     throw new DaPayloadValidationError(
       "malformed_trace",
-      cause instanceof SDK.ValidationTraceDescriptorDecodeError &&
+      cause instanceof SDKDa.ValidationTraceDescriptorDecodeError &&
       cause.stage === "data"
         ? `failed to decode ${fieldName}`
         : `${fieldName} is not a canonical bounded descriptor`,

@@ -3,10 +3,10 @@ import { type DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest
 import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import {
   type FraudProofCatalogueDeploymentInfo,
-  FraudProofTokenDatum,
   Header,
   type MidgardValidators,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { FraudProofTokenDatum } from "@al-ft/midgard-sdk/fraud-proof";
 import {
   Data,
   Emulator,

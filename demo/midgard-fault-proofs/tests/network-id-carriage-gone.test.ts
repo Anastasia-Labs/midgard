@@ -6,7 +6,7 @@
 import {
   deriveFieldPreimageCertification,
   fieldPreimagePublicationDatumCbor,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import { type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

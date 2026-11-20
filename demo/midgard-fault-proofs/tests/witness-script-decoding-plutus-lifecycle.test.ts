@@ -1,5 +1,5 @@
 import { compareOutRefs } from "@al-ft/midgard-core/out-ref";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import { describe, expect, it } from "vitest";
 
 import { WitnessScriptDecodingResultClasses } from "../src/witness-script-decoding/witness-script-decoding.js";

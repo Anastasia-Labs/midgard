@@ -6,7 +6,7 @@
  * and signs it from the reserved funding; `reconcile` settles a submitted one
  * from its signed bytes on authenticated L1, or else from its exact output.
  */
-import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
+import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 import {
   scriptDecodeWalkRecord,
   startScriptDecodeWalk,

@@ -4,7 +4,7 @@ import {
   isFinal,
   isSafe,
 } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 
 import type { CommitteeTickResult } from "./committee-service.ingest-da-conflict-evidence.js";
 import type { CommitteeConfig } from "./config.js";

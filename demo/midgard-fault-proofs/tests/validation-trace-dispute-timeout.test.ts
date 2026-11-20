@@ -14,7 +14,7 @@
  * cap is paid by its thread, one over it by our wallet alone, its successor
  * keeping all the thread's lovelace; game-v1 refuses one keeping less. */
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import {
   CML,
   Constr,

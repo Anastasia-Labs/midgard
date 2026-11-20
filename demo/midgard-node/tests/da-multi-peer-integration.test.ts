@@ -13,7 +13,8 @@ import {
   decodeDaPayloadSubmitRequestCbor,
   encodeDaPayloadSubmitResponseCbor,
 } from "@al-ft/midgard-core/da-transport";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import type {
   Libp2pDaPeerConfig,
   Libp2pDaTransportConfig,
@@ -257,7 +258,7 @@ describe("real multi-peer DA publication", () => {
       const secondHeaderHash = Effect.runSync(
         SDK.hashBlockHeader(secondHeader),
       );
-      const secondPayloadCbor = SDK.encodeDaPayload({
+      const secondPayloadCbor = SDKDa.encodeDaPayload({
         ...fixture.payload,
         block_body: {
           ...fixture.payload.block_body,

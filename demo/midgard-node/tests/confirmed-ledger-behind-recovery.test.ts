@@ -7,7 +7,7 @@
  * lineage again, the next run folds through it, and the commit base on the
  * merged confirmed state is `confirmed_ledger` at its root.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Effect, Either } from "effect";
 import { describe, expect, it } from "vitest";
 

@@ -16,6 +16,13 @@
  *   state, so an inconsistent fault classification is never made permanent.
  */
 import {
+  requireInputIndex,
+  requireMintRedeemerIndex,
+  requireOwnMintPurpose,
+  requireOwnSpendPurpose,
+  requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
   FabricatedDepositStep04Datum,
   FabricatedDepositStep04SpendRedeemer,
   type FabricatedDepositStep04State,
@@ -23,12 +30,7 @@ import {
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
   isFabricatedDepositFault,
-  requireInputIndex,
-  requireMintRedeemerIndex,
-  requireOwnMintPurpose,
-  requireOwnSpendPurpose,
-  requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 import { transitionTraceError } from "./errors.js";
 import { type TransitionTraceReconstruction } from "./reconstruct.js";
@@ -161,23 +162,23 @@ export const buildValidForcedTransactionTransitionWitness = async ({
 export type OmittedDueL1EventEvidence =
   | {
       readonly kind: "deposit";
-      readonly depositId: SDK.OutputReference;
+      readonly depositId: SDKCore.OutputReference;
     }
   | {
       readonly kind: "withdrawal";
-      readonly withdrawalId: SDK.OutputReference;
+      readonly withdrawalId: SDKCore.OutputReference;
     }
   | {
       readonly kind: "forcedTransaction";
-      readonly txOrderId: SDK.OutputReference;
+      readonly txOrderId: SDKCore.OutputReference;
       readonly eventRefInputIndex: bigint;
       readonly eventAssetName: string;
-      readonly validityOverride: SDK.OperatorVerdict;
+      readonly validityOverride: SDKCore.OperatorVerdict;
     };
 
 export const eventKeyFromOmittedEvidence = (
   evidence: OmittedDueL1EventEvidence,
-): SDK.EventKey => {
+): SDKCore.EventKey => {
   switch (evidence.kind) {
     case "deposit":
       return { DepositEventKey: { deposit_id: evidence.depositId } };
@@ -252,23 +253,23 @@ export const buildOmittedDueL1EventFault = async ({
 export type OutOfWindowSourceEventEvidence =
   | {
       readonly kind: "deposit";
-      readonly depositId: SDK.OutputReference;
+      readonly depositId: SDKCore.OutputReference;
     }
   | {
       readonly kind: "withdrawal";
-      readonly withdrawalId: SDK.OutputReference;
+      readonly withdrawalId: SDKCore.OutputReference;
     }
   | {
       readonly kind: "forcedTransaction";
-      readonly txOrderId: SDK.OutputReference;
+      readonly txOrderId: SDKCore.OutputReference;
       readonly eventRefInputIndex: bigint;
       readonly eventAssetName: string;
-      readonly validityOverride: SDK.OperatorVerdict;
+      readonly validityOverride: SDKCore.OperatorVerdict;
     };
 
 export const eventKeyFromOutOfWindowEvidence = (
   evidence: OutOfWindowSourceEventEvidence,
-): SDK.EventKey => {
+): SDKCore.EventKey => {
   switch (evidence.kind) {
     case "deposit":
       return { DepositEventKey: { deposit_id: evidence.depositId } };

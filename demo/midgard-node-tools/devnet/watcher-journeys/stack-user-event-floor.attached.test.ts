@@ -3,7 +3,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKOperators from "@al-ft/midgard-sdk/operators";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { Effect } from "effect";
 import {
   createPublishedWorkflowDeploymentAccounts,
@@ -26,7 +28,7 @@ const OPERATOR_2 = "02".repeat(28);
 
 /** The deployment's user-event timing, as the SDK compiles it. */
 const timing = {
-  eventTtlMs: SDK.USER_EVENT_TX_TTL_MS,
+  eventTtlMs: SDKUsers.USER_EVENT_TX_TTL_MS,
   eventWaitMs: SDK.EVENT_WAIT_DURATION_MS,
   negligenceTimeoutMs: Number(SDK.USER_EVENTS_NEGLIGENCE_TIMEOUT_MS),
   graceMs: Number(SDK.NEW_SHIFT_INACTIVITY_GRACE_PERIOD_MS),
@@ -49,7 +51,7 @@ it("publishes an attached family's deposit no earlier than operator-2's floor, a
   expect(floorMs).toBeGreaterThan(0);
   const readUndeliveredEvent = (tailEndTimeMs: bigint) =>
     Effect.runPromise(
-      SDK.fetchNeglectedUserEventProgram(
+      SDKOperators.fetchNeglectedUserEventProgram(
         operatorLucid,
         deployment.contracts,
         tailEndTimeMs,
@@ -105,10 +107,10 @@ it("publishes an attached family's deposit no earlier than operator-2's floor, a
 
   // Operator-2's shift starts once the deposit history's protection has
   // passed, so that nothing but the floor holds the drill's deposit back.
-  const history = SDK.eventHistoryDeploymentFromContracts(
-    SDK.requireEventHistoryContracts(deployment.contracts).deposit,
+  const history = SDKUsers.eventHistoryDeploymentFromContracts(
+    SDKUsers.requireEventHistoryContracts(deployment.contracts).deposit,
   );
-  const protectedUntilMs = SDK.authenticateHistoryNodes(
+  const protectedUntilMs = SDKUsers.authenticateHistoryNodes(
     await operatorLucid.utxosAt(history.address),
     history,
   ).reduce(
@@ -128,7 +130,7 @@ it("publishes an attached family's deposit no earlier than operator-2's floor, a
   const deposit = await readUndeliveredEvent(0n);
   expect(deposit?.kind).toBe("Deposit");
   expect(
-    SDK.computeInactivityThreshold({
+    SDKOperators.computeInactivityThreshold({
       shiftStartMs: BigInt(shiftStartMs),
       stateQueueTailEndTimeMs: 0n,
       neglectedEvent: deposit!,

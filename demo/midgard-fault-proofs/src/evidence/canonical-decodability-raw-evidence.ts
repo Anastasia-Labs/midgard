@@ -4,7 +4,9 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
@@ -53,7 +55,7 @@ export type AuthenticatedCanonicalDecodabilityTransaction = Readonly<{
 
 export type CanonicalDecodabilityRawBlockEvidence = Readonly<{
   schemaVersion: typeof CANONICAL_DECODABILITY_RAW_EVIDENCE;
-  grade: SDK.EvidenceGrade;
+  grade: SDKFraudProof.EvidenceGrade;
   provenance: DaHashPreimageBlockEvidence["provenance"];
   headerHash: string;
   payloadEnvelopeSha256: string;
@@ -120,9 +122,9 @@ export const canonicalDecodabilityRawBlockEvidenceFromVerifiedPayload = async ({
   minimumConfirmationDepth,
   orderOf = (transactionIndex) => transactionIndex,
 }: {
-  readonly observation: SDK.AuthenticatedStateQueueHeaderObservation;
+  readonly observation: SDKFraudProof.AuthenticatedStateQueueHeaderObservation;
   readonly payloadEnvelopeCbor: Uint8Array;
-  readonly daProvenance: SDK.EvidenceProvenance;
+  readonly daProvenance: SDKFraudProof.EvidenceProvenance;
   readonly minimumConfirmationDepth?: number;
   readonly orderOf?: (transactionIndex: number) => number;
 }): Promise<CanonicalDecodabilityRawBlockEvidence> => {
@@ -141,8 +143,8 @@ export const canonicalDecodabilityRawBlockEvidenceFromVerifiedPayload = async ({
       })
     ).innerBytes,
   );
-  const payload = SDK.decodeDaPayload(payloadCbor);
-  if (!SDK.encodeDaPayload(payload).equals(payloadCbor)) {
+  const payload = SDKDa.decodeDaPayload(payloadCbor);
+  if (!SDKDa.encodeDaPayload(payload).equals(payloadCbor)) {
     throw new Error("canonical-decodability DA payload is not canonical");
   }
 
@@ -227,11 +229,12 @@ export const canonicalDecodabilityRawBlockEvidenceFromVerifiedPayload = async ({
         fieldIndex,
         committedPreimage,
       ] of material.fieldPreimages.entries()) {
-        const field = SDK.canonicalDecodabilityEvidenceFromCommittedField({
-          badTxId: key,
-          fieldIndex,
-          committedPreimage,
-        });
+        const field =
+          SDKFraudProof.canonicalDecodabilityEvidenceFromCommittedField({
+            badTxId: key,
+            fieldIndex,
+            committedPreimage,
+          });
         if (field.isViolation) {
           selected = Object.freeze({
             transactionIndex: index,

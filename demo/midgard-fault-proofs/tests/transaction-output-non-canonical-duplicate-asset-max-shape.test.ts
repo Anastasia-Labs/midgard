@@ -16,7 +16,7 @@
  * and a leaf accepting it is convicted and removed.
  */
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core";
-import { acceptedVerdictSubject } from "@al-ft/midgard-sdk";
+import { acceptedVerdictSubject } from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import { maximumAssetOutput } from "./support/duplicate-asset-output.js";

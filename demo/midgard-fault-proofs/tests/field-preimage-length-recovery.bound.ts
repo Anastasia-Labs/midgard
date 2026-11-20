@@ -2,7 +2,7 @@ import {
   decodeMidgardNativeTxProofFieldLengths,
   encodeMidgardNativeTxProofFieldLengths,
 } from "@al-ft/midgard-core/codec";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { CML, Data, Lucid, type TxSigned } from "@lucid-evolution/lucid";
 import { vi } from "vitest";
 

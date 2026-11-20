@@ -1,7 +1,5 @@
 import { replacePlutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
-  FabricatedDepositStep01SpendRedeemer,
-  FabricatedDepositStep02Datum,
   getLinkedListNodeViewFromUTxO,
   getStateQueueNodeFromStateQueueDatum,
   HUB_ORACLE_ASSET_NAME,
@@ -9,7 +7,11 @@ import {
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  FabricatedDepositStep01SpendRedeemer,
+  FabricatedDepositStep02Datum,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   credentialToAddress,

@@ -2,9 +2,9 @@ import {
   type ForcedInclusionTxV1,
   type Header,
   type OutputReference,
-  PROOF_THREAD_SOURCE_KIND_FORCED,
   type RootMembershipProof,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { PROOF_THREAD_SOURCE_KIND_FORCED } from "@al-ft/midgard-sdk/fraud-proof";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import { resolveFaultProofFieldGrammarDeployment } from "../field-grammar-certificate.resolve-fault-proof-field-grammar-deployment.js";

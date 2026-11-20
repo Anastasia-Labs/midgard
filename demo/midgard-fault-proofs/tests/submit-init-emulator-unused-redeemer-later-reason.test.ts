@@ -8,7 +8,7 @@
  * audit, and an UnusedRedeemer naming the first unused redeemer, reach the
  * terminal and are refused.
  */
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

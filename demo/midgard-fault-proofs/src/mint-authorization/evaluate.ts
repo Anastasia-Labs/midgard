@@ -12,7 +12,7 @@ import type {
   MintAuthorizationEvaluateOperation,
   MintAuthorizationEvaluateState,
   MintAuthorizationFrame,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 export const mintAuthorizationEvaluationPreimage = (
   script: Buffer,

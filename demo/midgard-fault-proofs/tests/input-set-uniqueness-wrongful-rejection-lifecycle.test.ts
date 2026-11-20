@@ -1,5 +1,9 @@
 import "@aiken-lang/merkle-patricia-forestry";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/da";
+import "@al-ft/midgard-sdk/operators";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "@lucid-evolution/lucid";
 import "vitest";
 import "../src/field-opening.plan-fault-proof-field-opening.js";

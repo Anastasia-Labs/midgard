@@ -4,7 +4,7 @@ import {
   encodeMidgardNativeTxCanonical,
   materializeMidgardNativeTxFromCanonical,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import {
   Data,
   type Script,

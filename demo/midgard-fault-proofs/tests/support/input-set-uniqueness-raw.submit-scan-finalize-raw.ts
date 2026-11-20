@@ -1,4 +1,4 @@
-import { InputSetUniquenessStep04SpendRedeemerSchema } from "@al-ft/midgard-sdk";
+import { InputSetUniquenessStep04SpendRedeemerSchema } from "@al-ft/midgard-sdk/fraud-proof";
 import type { UTxO } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 

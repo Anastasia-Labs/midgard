@@ -8,7 +8,7 @@
  * before the slash raises the slash's alarm, naming the bond unlock. A
  * slash another watcher lands while our process is stopped at our own
  * submit is found after the restart, and the run stops cleanly. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

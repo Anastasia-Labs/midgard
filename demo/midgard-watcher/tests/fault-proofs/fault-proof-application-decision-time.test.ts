@@ -12,12 +12,12 @@ import type { HeaderDecision } from "@al-ft/midgard-fault-proofs/workflow/header
 import { MemoryFraudProofWorkflowJournalStore } from "@al-ft/midgard-fault-proofs/workflow/journal";
 import type { FraudProofL1Source } from "@al-ft/midgard-fault-proofs/workflow/l1-source";
 import {
-  type AuthenticatedStateQueueHeaderObservation,
   EMPTY_MERKLE_TREE_ROOT,
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   Header,
   type Header as HeaderType,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { type AuthenticatedStateQueueHeaderObservation } from "@al-ft/midgard-sdk/fraud-proof";
 import {
   Data,
   type Provider,

@@ -1,14 +1,14 @@
 import { outRefLabel } from "@al-ft/midgard-core";
+import { type MidgardValidators } from "@al-ft/midgard-sdk/core";
+import { type ReferenceScriptPublication } from "@al-ft/midgard-sdk/operators";
 import {
   completeReferenceScriptPublicationTxProgram,
   createReferenceScriptAuthPolicy,
-  type MidgardValidators,
   referenceScriptAuthPolicyDeploymentInfo,
   type ReferenceScriptAuthTokenTarget,
   referenceScriptAuthUnit,
-  type ReferenceScriptPublication,
   referenceScriptPublicationFundingTarget,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import { selectPlainFundingUtxos } from "@al-ft/midgard-test-support/reference-script-funding";
 import { Lucid, type Script, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";

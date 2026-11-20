@@ -15,11 +15,13 @@ import {
 } from "@al-ft/midgard-core";
 import {
   commitCountedRootProgram,
-  invalidSignatureAddressWitnessesCommitment,
-  invalidSignatureWitnessSetCommitment,
   type MidgardAddressWitness,
   ROOT_DOMAINS,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  invalidSignatureAddressWitnessesCommitment,
+  invalidSignatureWitnessSetCommitment,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";

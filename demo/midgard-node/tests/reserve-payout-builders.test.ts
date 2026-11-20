@@ -1,7 +1,9 @@
 import "node:crypto";
 import "node:fs";
 import "@al-ft/midgard-core/out-ref";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/users";
 import "@lucid-evolution/lucid";
 import "effect";
 import "vitest";
@@ -20,7 +22,9 @@ import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 
 import { compareOutRefs } from "@al-ft/midgard-core/out-ref";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   type Assets,
   coreToTxOutput,
@@ -202,7 +206,7 @@ describe("reserve/payout transaction builder primitives", () => {
     } = await makeUserEventBuilderFixture();
 
     const built = await Effect.runPromise(
-      SDK.buildUnsignedDepositTxWithMetadataProgram(lucid, contracts, {
+      SDKUsers.buildUnsignedDepositTxWithMetadataProgram(lucid, contracts, {
         additionalAssets: {},
         l2Address: beneficiary.address,
         l2Datum: null,
@@ -236,7 +240,7 @@ describe("reserve/payout transaction builder primitives", () => {
     );
 
     const built = await Effect.runPromise(
-      SDK.buildUnsignedWithdrawalTxWithMetadataProgram(lucid, contracts, {
+      SDKUsers.buildUnsignedWithdrawalTxWithMetadataProgram(lucid, contracts, {
         body: {
           l2_outref: {
             transactionId: "33".repeat(32),
@@ -362,11 +366,11 @@ describe("reserve/payout transaction builder primitives", () => {
     );
     expect(refused.message).toMatch(/failed script execution\s+Spend\[\d+\]/);
 
-    const selected = SDK.selectReserveFundingInput(
+    const selected = SDKUsers.selectReserveFundingInput(
       reserveUtxos,
-      SDK.subtractAssets(
+      SDKUsers.subtractAssets(
         { lovelace: 7_000_000n },
-        SDK.removeAssetUnit(payoutInput.assets, payoutUnit, 1n),
+        SDKUsers.removeAssetUnit(payoutInput.assets, payoutUnit, 1n),
       ),
       lucid.config().protocolParameters!.coinsPerUtxoByte,
     );
@@ -625,7 +629,7 @@ describe("reserve/payout transaction builder primitives", () => {
           : "WithdrawalIsValid",
         scriptOwner: kind === "Withdrawal",
       });
-      const reclaimConfig: SDK.ReclaimEventHistoryDataConfig = {
+      const reclaimConfig: SDKUsers.ReclaimEventHistoryDataConfig = {
         kind,
         retainedInput: f.retainedInput!,
         hubOracleRefInput: f.hubOracleRefInput,
@@ -640,7 +644,7 @@ describe("reserve/payout transaction builder primitives", () => {
       };
       const live = await Effect.runPromise(
         Effect.either(
-          SDK.buildReclaimEventHistoryDataTxProgram(
+          SDKUsers.buildReclaimEventHistoryDataTxProgram(
             f.lucid,
             f.contracts,
             reclaimConfig,
@@ -690,10 +694,14 @@ describe("reserve/payout transaction builder primitives", () => {
       if (kind === "Withdrawal") {
         const unauthorized = await Effect.runPromise(
           Effect.either(
-            SDK.buildReclaimEventHistoryDataTxProgram(f.lucid, f.contracts, {
-              ...reclaimConfig,
-              scriptAuthorization: undefined,
-            }),
+            SDKUsers.buildReclaimEventHistoryDataTxProgram(
+              f.lucid,
+              f.contracts,
+              {
+                ...reclaimConfig,
+                scriptAuthorization: undefined,
+              },
+            ),
           ),
         );
         expect(String(expectLeft(unauthorized).cause)).toContain(
@@ -701,7 +709,7 @@ describe("reserve/payout transaction builder primitives", () => {
         );
       }
       const reclaimed = await Effect.runPromise(
-        SDK.buildReclaimEventHistoryDataTxProgram(
+        SDKUsers.buildReclaimEventHistoryDataTxProgram(
           f.lucid,
           f.contracts,
           reclaimConfig,
@@ -730,7 +738,7 @@ describe("reserve/payout transaction builder primitives", () => {
       f.feeInputs.map(async (nonce) => ({
         nonce,
         key: await Effect.runPromise(
-          SDK.eventHistoryKey({
+          SDKUsers.eventHistoryKey({
             transactionId: nonce.txHash,
             outputIndex: BigInt(nonce.outputIndex),
           }),
@@ -743,7 +751,7 @@ describe("reserve/payout transaction builder primitives", () => {
     if (following === undefined)
       throw new Error("Fixture has no insertion nonce after the deposit");
     const inserted = await Effect.runPromise(
-      SDK.buildUnsignedDepositTxWithMetadataProgram(f.lucid, f.contracts, {
+      SDKUsers.buildUnsignedDepositTxWithMetadataProgram(f.lucid, f.contracts, {
         nonceInput: following.nonce,
         l2Address: f.beneficiary.address,
         l2Datum: null,
@@ -759,9 +767,9 @@ describe("reserve/payout transaction builder primitives", () => {
     await f.lucid.awaitTx(await submitWithWallet(inserted.tx));
     const moved = (
       await Effect.runPromise(
-        SDK.fetchDepositUTxOsProgram(
+        SDKUsers.fetchDepositUTxOsProgram(
           f.lucid,
-          SDK.eventHistoryDeploymentFromContracts(f.history.deposit),
+          SDKUsers.eventHistoryDeploymentFromContracts(f.history.deposit),
         ),
       )
     ).find((event) => event.assetName === f.deposit.assetName)!;
@@ -796,16 +804,18 @@ describe("reserve/payout transaction builder primitives", () => {
         .get(Number(retired.layout.witness.predecessor_output_index)),
     );
     expect(continued.assets).toEqual(rootBefore.assets);
-    expect(Data.from(continued.datum!, SDK.EventHistoryNode)).toMatchObject({
+    expect(
+      Data.from(continued.datum!, SDKUsers.EventHistoryNode),
+    ).toMatchObject({
       position: "Root",
       next: following.key,
       payload: "RootContent",
     });
     await f.lucid.awaitTx(await submitWithWallet(retired.tx));
     const remaining = await Effect.runPromise(
-      SDK.fetchDepositUTxOsProgram(
+      SDKUsers.fetchDepositUTxOsProgram(
         f.lucid,
-        SDK.eventHistoryDeploymentFromContracts(f.history.deposit),
+        SDKUsers.eventHistoryDeploymentFromContracts(f.history.deposit),
       ),
     );
     expect(remaining.map((event) => event.assetName)).toEqual([following.key]);
@@ -828,11 +838,11 @@ describe("reserve/payout transaction builder primitives", () => {
       };
       const program: Effect.Effect<
         unknown,
-        | SDK.ReservePayoutTxError
+        | SDKUsers.ReservePayoutTxError
         | SDK.HubOracleError
         | SDK.LucidError
         | SDK.Bech32DeserializationError
-        | SDK.StateQueueError
+        | SDKStateQueue.StateQueueError
       > =
         purpose === "absorb"
           ? buildAbsorbConfirmedDepositToReserveTxProgram(
@@ -922,12 +932,15 @@ describe("reserve/payout transaction builder primitives", () => {
     const protectedCause = expectLeft(protectedResult).cause;
     expect(String(protectedCause)).toContain("still protected");
     // Callers wait on the exact bound the builder refused below.
-    expect(protectedCause).toBeInstanceOf(SDK.HistoryRetirementProtectedError);
+    expect(protectedCause).toBeInstanceOf(
+      SDKUsers.HistoryRetirementProtectedError,
+    );
     expect(
-      (protectedCause as SDK.HistoryRetirementProtectedError).protectedUntilMs,
+      (protectedCause as SDKUsers.HistoryRetirementProtectedError)
+        .protectedUntilMs,
     ).toBe(protectedUntil);
     expect(
-      (protectedCause as SDK.HistoryRetirementProtectedError)
+      (protectedCause as SDKUsers.HistoryRetirementProtectedError)
         .protectionDurationMs,
     ).toBe(protectedFixture.history.deposit.recipe.protectionDurationMs);
   });

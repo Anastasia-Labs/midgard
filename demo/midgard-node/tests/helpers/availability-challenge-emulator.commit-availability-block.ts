@@ -1,4 +1,6 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { h32 } from "@al-ft/midgard-test-support/hex";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -152,7 +154,7 @@ export const commitAvailabilityBlock = async (
     .sort((a, b) => (a.assets.lovelace > b.assets.lovelace ? -1 : 1));
   if (!funding) throw new Error("The responder holds no funding coin");
   const { tx, newHeaderHash } = await Effect.runPromise(
-    SDK.buildCommitBlockHeaderTxProgram({
+    SDKStateQueue.buildCommitBlockHeaderTxProgram({
       lucid,
       contracts,
       latestBlock: {
@@ -223,11 +225,11 @@ export const commitAvailabilityBlock = async (
     { length: payloadBytes },
     (_, i) => (i * 17 + 3) % 256,
   );
-  const commitment = SDK.buildDaAvailabilityCommitment({
+  const commitment = SDKDa.buildDaAvailabilityCommitment({
     deploymentIdentity: contracts.hubOracle.policyId,
     headerHash: newHeaderHash,
     payload,
-    responseGeometry: SDK.availabilityResponseGeometry({
+    responseGeometry: SDKDa.availabilityResponseGeometry({
       chunkByteLength: Number(f.parameters.response_geometry.chunk_byte_length),
       trancheByteLength: Number(
         f.parameters.response_geometry.tranche_byte_length,

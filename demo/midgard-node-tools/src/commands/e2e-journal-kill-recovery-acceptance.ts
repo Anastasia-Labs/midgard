@@ -4,7 +4,7 @@ import "node:fs";
 import "node:fs/promises";
 import "node:path";
 import "node:url";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
 import "@lucid-evolution/lucid";
 import "effect";
 import "midgard-node/artifact-schema";

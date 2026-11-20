@@ -2,7 +2,7 @@ import {
   decodeMidgardFieldPreimage,
   decodeMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core";
-import { PROOF_THREAD_SOURCE_KIND_ACCEPTED } from "@al-ft/midgard-sdk";
+import { PROOF_THREAD_SOURCE_KIND_ACCEPTED } from "@al-ft/midgard-sdk/fraud-proof";
 
 import { isPrerequisiteTurn } from "../fault-proof-turn.js";
 import { buildRemoveFraudulentBlock } from "../remove-fraudulent-block.build-remove-fraudulent-block.js";

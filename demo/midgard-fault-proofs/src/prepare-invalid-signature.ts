@@ -44,15 +44,17 @@ import {
 } from "@al-ft/midgard-core";
 import {
   commitCountedRootProgram,
-  decodeAddressWitnessPreimage,
-  findInvalidAddressWitnessIndex,
-  invalidSignatureAddressWitnessesCommitment,
-  invalidSignatureWitnessSetCommitment,
   type MidgardAddressWitness,
   type NativeTxCompact as NativeTxCompactData,
   type NativeTxWitnessSetCompact,
   ROOT_DOMAINS,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  decodeAddressWitnessPreimage,
+  findInvalidAddressWitnessIndex,
+  invalidSignatureAddressWitnessesCommitment,
+  invalidSignatureWitnessSetCommitment,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Effect } from "effect";
 
 import { parseHex, stringifyJson } from "./json-file.js";

@@ -2,7 +2,7 @@
  * by the family's walk: the harness, the published role scripts, field
  * carriage, and a driver from a genuine Init through step-01 and the planned
  * custody to the terminal. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import type { UTxO } from "@lucid-evolution/lucid";
 
 import { directPurposeArtifactPaging } from "../../src/direct-purpose-family/artifact.js";

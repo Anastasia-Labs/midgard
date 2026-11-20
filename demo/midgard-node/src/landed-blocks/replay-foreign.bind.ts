@@ -8,7 +8,8 @@
  * fetched and retained in its place. The block's verdict and landed row are
  * not touched: the commitment covers the bytes, not the replay.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Effect, Option } from "effect";
 
 import {
@@ -61,12 +62,12 @@ export const bindRetainedForeignPayloads = (deps: {
   const bindOne = (
     headerHash: string,
     node: SDK.StateQueueNode,
-    authority: SDK.DaPayloadAvailabilityAuthority,
+    authority: SDKDa.DaPayloadAvailabilityAuthority,
   ) =>
     Effect.gen(function* () {
       const status = node.da_attestation;
       const binds = (payload: Uint8Array) =>
-        SDK.daPayloadAvailabilityBinding({
+        SDKDa.daPayloadAvailabilityBinding({
           status,
           authority,
           headerHash,
@@ -134,7 +135,7 @@ export const bindRetainedForeignPayloads = (deps: {
         );
         if (
           node._tag === "Left" ||
-          !SDK.daAvailabilityStatusBinds(node.right.da_attestation)
+          !SDKDa.daAvailabilityStatusBinds(node.right.da_attestation)
         )
           continue;
         const done = yield* bindOne(

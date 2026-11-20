@@ -6,7 +6,7 @@
  * the deployed scripts; the removal builder's own choice of these shapes is
  * exercised by the validation-trace dispute conviction suites. */
 import { outRefLabel } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import {
   generateEmulatorAccount,
   mintingPolicyToId,

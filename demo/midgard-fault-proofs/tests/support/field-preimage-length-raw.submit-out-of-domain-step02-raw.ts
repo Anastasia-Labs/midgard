@@ -1,16 +1,18 @@
 import {
-  FieldPreimageLengthStep02RedeemerSchema,
-  FieldPreimageLengthStep03DatumSchema,
   type ForcedInclusionTxV1,
   forcedLeafMembershipV1,
-  forcedVerdictSubject,
   type Header,
   type OutputReference,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
   type RootMembershipProof,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  FieldPreimageLengthStep02RedeemerSchema,
+  FieldPreimageLengthStep03DatumSchema,
+  forcedVerdictSubject,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { type BuildTxWithRedeemer, Data } from "@lucid-evolution/lucid";
 
 import type { ManifestBoundFieldPreimageLengthConfig } from "../../src/field-preimage-length-mismatch/config.js";

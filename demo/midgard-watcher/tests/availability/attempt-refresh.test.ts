@@ -1,4 +1,4 @@
-import { createDaAvailabilityReadScope } from "@al-ft/midgard-sdk";
+import { createDaAvailabilityReadScope } from "@al-ft/midgard-sdk/da";
 import { Emulator, Lucid } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

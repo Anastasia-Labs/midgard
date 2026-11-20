@@ -14,7 +14,8 @@ import {
   encodeMidgardForcedTxCanonical,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data } from "@lucid-evolution/lucid";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../../src/evidence/canonical-block-evidence.js";
@@ -95,12 +96,12 @@ export const plutusExecutionSeedDeposit = (
   honest: true,
 });
 
-const sorted = (rows: SDK.DaPayloadEntry[]): SDK.DaPayloadEntry[] =>
+const sorted = (rows: SDKDa.DaPayloadEntry[]): SDKDa.DaPayloadEntry[] =>
   rows.sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
 
 const countedRoot = async (
   domain: SDK.RootDomain,
-  rows: SDK.DaPayloadEntry[],
+  rows: SDKDa.DaPayloadEntry[],
 ) =>
   (
     await buildCountedRoot(
@@ -234,8 +235,8 @@ export const plutusExecutionBlockFixture = async (
         ];
   const utxosRoot = await ledgerEntriesRoot(postEntries);
 
-  const forcedRows: SDK.DaPayloadEntry[] = [];
-  const forcedPreimages: SDK.DaPayloadEntry[] = [];
+  const forcedRows: SDKDa.DaPayloadEntry[] = [];
+  const forcedPreimages: SDKDa.DaPayloadEntry[] = [];
   if (forced) {
     const full = materializeMidgardForcedTxFromCanonical(
       decodeMidgardNativeTxFullFromCanonicalCbor(tx.canonicalCbor),
@@ -264,7 +265,7 @@ export const plutusExecutionBlockFixture = async (
       encodeMidgardForcedTxCanonical(full).toString("hex"),
     ]);
   }
-  const trace: SDK.DaPayloadEntry[] = [
+  const trace: SDKDa.DaPayloadEntry[] = [
     [
       Data.to(0n),
       Data.to(
@@ -280,7 +281,7 @@ export const plutusExecutionBlockFixture = async (
       ),
     ],
   ];
-  const events: SDK.DaPayloadEntry[] = [
+  const events: SDKDa.DaPayloadEntry[] = [
     [
       Data.to(eventKey, SDK.EventKey),
       Data.to({ step_index: 0n, phase }, SDK.EventToStepValue),
@@ -312,7 +313,7 @@ export const plutusExecutionBlockFixture = async (
     "hex",
   );
   const body = base.payload.block_body;
-  const payload: SDK.DaPayload = {
+  const payload: SDKDa.DaPayload = {
     ...base.payload,
     block_body: {
       ...body,

@@ -1,7 +1,7 @@
 import { PLUTUS_V3_CANONICAL_COST_MODEL_VIEW } from "@al-ft/midgard-core";
 import { readCborBytes } from "@al-ft/midgard-core/codec/cbor";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import type { MidgardUplcEvalProgram } from "@al-ft/midgard-validation/plutus-script-evaluator";
 import { Constr, Data, fromHex } from "@lucid-evolution/lucid";
 import { eval_program_raw } from "@lucid-evolution/uplc";

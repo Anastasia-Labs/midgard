@@ -11,7 +11,8 @@
  */
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -27,17 +28,17 @@ import type { RetainedDaPayloadSource } from "../src/transition-trace/fetch.admi
 import { RetainedDaPayloadUnavailableError } from "../src/transition-trace/fetch.retained-da-payload-unavailable.js";
 import { buildCanonicalBlockFixture } from "./helpers/canonical-block-evidence-fixture.js";
 
-const AUTHORITY: SDK.DaPayloadAvailabilityAuthority = {
+const AUTHORITY: SDKDa.DaPayloadAvailabilityAuthority = {
   deploymentIdentity: "c7".repeat(28),
-  responseGeometry: SDK.availabilityResponseGeometry({
+  responseGeometry: SDKDa.availabilityResponseGeometry({
     chunkByteLength: 4096,
     trancheByteLength: 64 * 1024,
     maxTrancheCount: 1024,
   }),
 };
 
-const envelope = (payload: SDK.DaPayload) =>
-  wrapDaPayload(SDK.encodeDaPayload(payload), { mode: "identity" });
+const envelope = (payload: SDKDa.DaPayload) =>
+  wrapDaPayload(SDKDa.encodeDaPayload(payload), { mode: "identity" });
 
 /** An empty block on genesis, its envelope, and copies of its header. */
 const blocks = async () => {
@@ -47,7 +48,7 @@ const blocks = async () => {
     prevHeaderHash: SDK.GENESIS_HEADER_HASH,
   });
   /** The block's header over a body with `alter` applied. */
-  const tampered = (alter: Partial<SDK.DaPayload["block_body"]>) =>
+  const tampered = (alter: Partial<SDKDa.DaPayload["block_body"]>) =>
     envelope({
       ...honest.payload,
       block_body: { ...honest.payload.block_body, ...alter },
@@ -79,21 +80,21 @@ const blocks = async () => {
 };
 
 const commitment = (headerHash: string, bytes: Uint8Array) =>
-  SDK.buildDaAvailabilityCommitment({
+  SDKDa.buildDaAvailabilityCommitment({
     ...AUTHORITY,
     headerHash,
     payload: bytes,
   });
 const attested = (headerHash: string, bytes: Uint8Array) => ({
   Attested: {
-    commitment_hash: SDK.daAvailabilityCommitmentHash(
+    commitment_hash: SDKDa.daAvailabilityCommitmentHash(
       commitment(headerHash, bytes),
     ),
   },
 });
 const published = (headerHash: string, bytes: Uint8Array) => ({
   Published: {
-    terminal_commitment: SDK.daAvailabilityPublishedTerminalCommitment(
+    terminal_commitment: SDKDa.daAvailabilityPublishedTerminalCommitment(
       commitment(headerHash, bytes),
     ),
   },

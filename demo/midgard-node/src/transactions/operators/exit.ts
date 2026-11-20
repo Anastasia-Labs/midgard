@@ -6,7 +6,13 @@
  * and submits through the SDK builder.
  */
 
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/da";
+import "@al-ft/midgard-sdk/operators";
+import "@al-ft/midgard-sdk/users";
+import "@al-ft/midgard-sdk/deployment";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "@lucid-evolution/lucid";
 import "effect";
 import "../../commands/contract-deployment-info.js";

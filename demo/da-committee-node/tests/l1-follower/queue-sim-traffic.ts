@@ -12,7 +12,8 @@ import {
   type SimTx,
   simUniverse,
 } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
@@ -54,7 +55,7 @@ export const commitInvalidAfter = (endTimeMs: number): number =>
   (endTimeMs + 1 - SIM_SLOT_TIME.zeroTime) / SIM_SLOT_TIME.slotLength +
   SIM_SLOT_TIME.zeroSlot;
 
-const ROOT_ASSET = SDK.STATE_QUEUE_ROOT_ASSET_NAME;
+const ROOT_ASSET = SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME;
 const GENESIS_HASH = "00".repeat(28);
 
 const hex32 = (n: number): string => n.toString(16).padStart(64, "0");
@@ -195,7 +196,7 @@ export const decodeElement = (outRef: OutRef, output: SimOutput): Element => {
     output,
     assetName,
     datum,
-    headerHash: SDK.stateQueueHeaderHash(node.header),
+    headerHash: SDKStateQueue.stateQueueHeaderHash(node.header),
     header: node.header,
     status: node.da_attestation,
     rootEndTimeMs: 0,
@@ -282,7 +283,7 @@ export const queueTraffic = (
       rng.chance(options.orphanChance)
     ) {
       const header = simHeader(nonce, GENESIS_HASH, endTimeMs);
-      const hash = SDK.stateQueueHeaderHash(header);
+      const hash = SDKStateQueue.stateQueueHeaderHash(header);
       return [
         {
           inputs: [chain.outsideInput()],
@@ -309,7 +310,7 @@ export const queueTraffic = (
     const roll = rng.next();
     if (roll < 0.5 || list.nodes.length === 0) {
       const header = simHeader(nonce, tail.headerHash, endTimeMs);
-      const hash = SDK.stateQueueHeaderHash(header);
+      const hash = SDKStateQueue.stateQueueHeaderHash(header);
       const commit: SimTx = {
         inputs: [tail.outRef],
         outputs: [

@@ -1,5 +1,7 @@
-import * as SDK from "@al-ft/midgard-sdk";
-import { valueToAssets } from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
+import { valueToAssets } from "@al-ft/midgard-sdk/users";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect, Either } from "effect";
 
@@ -34,9 +36,9 @@ import {
   toHex,
 } from "./state-reconciliation.walk-merged-chain.js";
 
-const decodeQueueHeader = (node: SDK.StateQueueUTxO) =>
+const decodeQueueHeader = (node: SDKStateQueue.StateQueueUTxO) =>
   Effect.gen(function* () {
-    const headerHash = (yield* SDK.headerHashFromStateQueueUTxO(
+    const headerHash = (yield* SDKStateQueue.headerHashFromStateQueueUTxO(
       node,
     )).toLowerCase();
     const decoded = yield* Effect.either(
@@ -115,15 +117,15 @@ export const collectL1StateView: Effect.Effect<
       new Error("L1 state queue has no confirmed-state root node"),
     );
   }
-  const confirmed = yield* SDK.getConfirmedStateFromStateQueueDatum(
+  const confirmed = yield* SDKStateQueue.getConfirmedStateFromStateQueueDatum(
     rootNode.datum,
   );
   const unmerged = yield* Effect.forEach(queue.slice(1), decodeQueueHeader, {
     concurrency: 1,
   });
-  const eventHistory = SDK.requireEventHistoryContracts(contracts);
-  const depositUtxos = yield* SDK.fetchDepositUTxOsProgram(lucid, {
-    ...SDK.eventHistoryDeploymentFromContracts(eventHistory.deposit),
+  const eventHistory = SDKUsers.requireEventHistoryContracts(contracts);
+  const depositUtxos = yield* SDKUsers.fetchDepositUTxOsProgram(lucid, {
+    ...SDKUsers.eventHistoryDeploymentFromContracts(eventHistory.deposit),
   });
   const deposits = yield* Effect.forEach(depositUtxos, (utxo) =>
     Effect.either(depositDataToEntry(utxo, nodeConfig.NETWORK)).pipe(
@@ -140,8 +142,8 @@ export const collectL1StateView: Effect.Effect<
       ),
     ),
   );
-  const withdrawalUtxos = yield* SDK.fetchWithdrawalUTxOsProgram(lucid, {
-    ...SDK.eventHistoryDeploymentFromContracts(eventHistory.withdrawal),
+  const withdrawalUtxos = yield* SDKUsers.fetchWithdrawalUTxOsProgram(lucid, {
+    ...SDKUsers.eventHistoryDeploymentFromContracts(eventHistory.withdrawal),
   });
   const withdrawals = yield* Effect.forEach(withdrawalUtxos, (utxo) =>
     Effect.either(
@@ -211,8 +213,8 @@ export const collectL1StateView: Effect.Effect<
           throw new Error("settlement UTxO has no inline datum");
         const datum = LucidData.from(
           utxo.datum,
-          SDK.SettlementDatum,
-        ) as SDK.SettlementDatum;
+          SDKStateQueue.SettlementDatum,
+        ) as SDKStateQueue.SettlementDatum;
         return {
           outRef: outRefOf(utxo),
           tokens,

@@ -4,13 +4,13 @@
  * family's auxiliary references, which the manifest binding has already
  * checked against the deployment's published script hashes.
  */
+import { parseFaultProofBlueprint } from "@al-ft/midgard-sdk/core";
 import {
   buildScriptDecodeValidator,
-  parseFaultProofBlueprint,
   SCRIPT_DECODE_STAKER_CLASS_NAMES,
   SCRIPT_DECODE_STAKER_MEMBERS,
   type ScriptDecodeStakerClassName,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type Network,
   type UTxO,

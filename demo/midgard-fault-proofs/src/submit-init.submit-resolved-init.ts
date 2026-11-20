@@ -1,14 +1,16 @@
 import {
   FRAUD_PROOF_CATALOGUE_ASSET_NAME,
-  FraudProofComputationThreadRedeemer,
-  FraudProofComputationThreadStepDatum,
   HUB_ORACLE_ASSET_NAME,
   Proof,
   requireOwnMintPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
   requireWithdrawalRedeemerIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  FraudProofComputationThreadRedeemer,
+  FraudProofComputationThreadStepDatum,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   credentialToAddress,

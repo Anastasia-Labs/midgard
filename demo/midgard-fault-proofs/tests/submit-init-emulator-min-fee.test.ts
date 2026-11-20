@@ -28,7 +28,8 @@ import {
   MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
   outRefLabel,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { Data, toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -212,9 +213,9 @@ describe("min-fee emulator lifecycle", () => {
       finalized.fraudProofUnit,
     );
     expect(outRefLabel(proofUtxo)).toBe(finalized.fraudProofOutRef);
-    expect(Data.from(proofUtxo.datum!, SDK.FraudProofTokenDatum)).toStrictEqual(
-      { fraud_prover: harness.proverSigner.paymentKeyHash },
-    );
+    expect(
+      Data.from(proofUtxo.datum!, SDKFraudProof.FraudProofTokenDatum),
+    ).toStrictEqual({ fraud_prover: harness.proverSigner.paymentKeyHash });
 
     const removalReferences = await publishRemovalReferenceScripts({
       lucid: harness.proverLucid,

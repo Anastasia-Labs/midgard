@@ -1,7 +1,7 @@
 /** The case table of the event-history admission agreement test: every order
  * shape admission must refuse because the node cannot decode or process it,
  * each next to an accepted control. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { type Assets, Constr, Data } from "@lucid-evolution/lucid";
 
 import type { Group } from "./event-admission-agreement-emulator.node-decodes.js";

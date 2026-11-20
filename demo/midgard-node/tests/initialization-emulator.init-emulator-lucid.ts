@@ -1,5 +1,6 @@
-import * as SDK from "@al-ft/midgard-sdk";
-import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
+import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk/state-queue";
 import {
   Emulator,
   type EmulatorAccount,
@@ -64,7 +65,7 @@ export const TEST_DA_COSIGNER_SEED_PHRASE =
  * sorted-unique because `valid_datum` measures them with its `sorted_unique_*`
  * walkers.
  */
-export const TEST_DA_PARAMS: SDK.DaParamsDatum = {
+export const TEST_DA_PARAMS: SDKDa.DaParamsDatum = {
   committee: "00".repeat(32) + "01".repeat(32),
   committee_signers_hash: "11".repeat(32),
   da_threshold: 2n,

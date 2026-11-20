@@ -8,7 +8,7 @@
  * genesis state while `confirmed_ledger` is empty.
  */
 import type { View } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import type { UTxO } from "@lucid-evolution/lucid";
 import { Effect, Either } from "effect";
 import { beforeEach, describe, expect, it } from "vitest";

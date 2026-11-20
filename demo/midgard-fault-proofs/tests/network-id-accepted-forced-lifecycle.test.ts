@@ -11,7 +11,8 @@
  * an honest commitment binds at the door and is refused at the step-02
  * network predicate.
  */
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "vitest";
 import "../src/network-id/prepare.js";
 import "../src/network-id/submit-network-id-accepted-forced-bind.js";
@@ -25,7 +26,10 @@ import "../src/network-id/forced-scan-plan.plan-network-id-forced-scan.js";
 import "./network-id-wrongful-rejection-lifecycle.commit-forced-block.js";
 import "./network-id-wrongful-rejection-lifecycle.make-stages.js";
 
-import { forcedVerdictSubject, type NetworkIdFault } from "@al-ft/midgard-sdk";
+import {
+  forcedVerdictSubject,
+  type NetworkIdFault,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import type { PreparedNetworkIdAcceptedForced } from "../src/network-id/accepted-forced.js";

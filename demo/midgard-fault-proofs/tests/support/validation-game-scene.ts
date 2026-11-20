@@ -6,7 +6,7 @@ import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-prof
 import {
   CaseThreadDatum,
   validationCaseThreadDataFromCore,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/da";
 import {
   type Assets,
   type BuildTxWithRedeemer,

@@ -8,7 +8,8 @@ import {
   forcedRejectionReason,
   forcedVerdictForRejection,
 } from "@al-ft/midgard-fault-proofs/workflow/forced-rejection-reason";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
   placeholderValidationTraceDescriptorV1,
   replayValidationVerdictEvent,
@@ -104,7 +105,7 @@ it("replays a catch-up forced verdict at its authenticated commit clock instead 
     await validationMachineLedgerRoot(ledgerWitnessEntries)
   ).toString("hex");
   const step = Data.from(body.transition_trace[0]![1], SDK.TransitionStep);
-  const descriptor = SDK.validationTraceDescriptorDataFromCore(
+  const descriptor = SDKDa.validationTraceDescriptorDataFromCore(
     placeholderValidationTraceDescriptorV1(
       {
         eventKeyCbor: Buffer.from(body.validation_traces[0]![0], "hex"),

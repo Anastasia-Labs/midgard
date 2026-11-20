@@ -11,7 +11,8 @@ import {
   encodeMidgardForcedTxCanonical as forcedFullBytes,
   materializeMidgardForcedTxFromCanonical as forcedView,
 } from "@al-ft/midgard-core/codec/forced";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { Constr, Data, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
@@ -488,7 +489,9 @@ export const registerValueConservationCases = (
         proof: Data.from(
           (
             await fixture.ledger.trie.prove(
-              Buffer.from(SDK.encodeMidgardTxInputCanonical(spent.input)),
+              Buffer.from(
+                SDKFraudProof.encodeMidgardTxInputCanonical(spent.input),
+              ),
             )
           ).toString("hex"),
           SDK.Proof,
@@ -505,7 +508,7 @@ export const registerValueConservationCases = (
     if (proofMaximum) {
       const ledger = syntheticDeepMembershipProof({
         key: Buffer.from(
-          SDK.encodeMidgardTxInputCanonical(
+          SDKFraudProof.encodeMidgardTxInputCanonical(
             fixture.ledger.spentInputs[0]!.input,
           ),
         ),

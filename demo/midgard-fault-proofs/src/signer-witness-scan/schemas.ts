@@ -1,9 +1,11 @@
 import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
+} from "@al-ft/midgard-sdk/core";
+import {
   FieldOpeningSchema,
   VerdictSubjectSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 /** `signer_witness_scan_v1/state.ScanV1`: `checkpoint_hash` is empty before

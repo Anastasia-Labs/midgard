@@ -1,5 +1,6 @@
 import { normalizeHex } from "@al-ft/midgard-core/hex";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data } from "@lucid-evolution/lucid";
 
 import { transitionTraceError } from "./errors.js";
@@ -79,7 +80,7 @@ export type SourceEventRecord =
     };
 
 export type TransitionTraceReconstruction = {
-  readonly payload: SDK.DaPayload;
+  readonly payload: SDKDa.DaPayload;
   readonly payloadEnvelopeCbor: Buffer;
   readonly payloadCbor: Buffer;
   readonly header: SDK.Header;
@@ -195,7 +196,7 @@ export const sourceEventKey = (source: SourceEventRecord): SDK.EventKey =>
 
 export const validatePayloadEntryArray = (
   fieldName: string,
-  entries: readonly SDK.DaPayloadEntry[],
+  entries: readonly SDKDa.DaPayloadEntry[],
 ): void => {
   let previousKey: string | undefined;
   for (const [index, [key, value]] of entries.entries()) {
@@ -228,7 +229,7 @@ export const validatePayloadEntryArray = (
  * validation_trace_count, which the header pins to 0: reconstruction checks it
  * against the body's own validation-trace trie instead.
  */
-export const validateDeclaredCounts = (payload: SDK.DaPayload): void => {
+export const validateDeclaredCounts = (payload: SDKDa.DaPayload): void => {
   const counts = payload.block_body.counts;
   const fields = [
     ["withdrawal_count", counts.withdrawalCount],
@@ -247,7 +248,7 @@ export const validateDeclaredCounts = (payload: SDK.DaPayload): void => {
 };
 
 export const payloadMemberCounts = (
-  payload: SDK.DaPayload,
+  payload: SDKDa.DaPayload,
 ): PayloadCountSet => ({
   withdrawalCount: BigInt(payload.block_body.withdrawals.length),
   forcedTransactionCount: BigInt(payload.block_body.forced_transactions.length),

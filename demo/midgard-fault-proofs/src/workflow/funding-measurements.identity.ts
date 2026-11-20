@@ -11,7 +11,7 @@ import {
   type FraudProofCatalogueCategoryName,
   parseFaultProofBlueprint,
   verifyBlueprintDeploymentRegistry,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 
 import {
   digestField,

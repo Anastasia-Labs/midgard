@@ -1,4 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import { committeeFollowerRetirementReads } from "../src/availability/promise-retirement-runtime.js";

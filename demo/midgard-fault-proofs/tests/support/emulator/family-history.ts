@@ -3,7 +3,9 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   type Assets,
   CML,
@@ -119,7 +121,7 @@ type Harness = Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>;
 export const prepareFamilyHistory = async (
   h: Harness,
   records: unknown[],
-  bounds: SDK.EventHistoryPayloadBounds = {
+  bounds: SDKUsers.EventHistoryPayloadBounds = {
     inlineLimitBytes: 512n,
     maxPayloadBytes: 5000n,
     maxPayloadNodes: 512n,
@@ -176,7 +178,7 @@ export const prepareFamilyHistory = async (
         u.datum == null,
     );
   const recipes = (["Deposit", "Withdrawal"] as const).map(
-    (kind, i): SDK.EventHistoryRecipe => ({
+    (kind, i): SDKUsers.EventHistoryRecipe => ({
       kind,
       hubPolicyId: h.contracts.hubOracle.policyId,
       initializationNonce: {
@@ -188,7 +190,7 @@ export const prepareFamilyHistory = async (
     }),
   );
   const applied = recipes.map((recipe) =>
-    SDK.applyEventHistoryValidators(
+    SDKUsers.applyEventHistoryValidators(
       SDK.parseFaultProofBlueprint(h.realBlueprint),
       "Custom",
       recipe,
@@ -244,7 +246,7 @@ export const prepareFamilyHistory = async (
     .validTo(validTo);
   for (let i = 0; i < 2; i++) {
     const a = applied[i]!;
-    const root: SDK.EventHistoryNode = {
+    const root: SDKUsers.EventHistoryNode = {
       position: "Root",
       next: null,
       protected_until: BigInt(validTo - 1) + recipes[i]!.protectionDurationMs,
@@ -259,13 +261,13 @@ export const prepareFamilyHistory = async (
               root_output_index: BigInt(i),
             },
           },
-          SDK.EventHistoryObserve,
+          SDKUsers.EventHistoryObserve,
         ),
       )
       .mintAssets({ [a.policyId]: 1n }, Data.void())
       .pay.ToContract(
         a.address,
-        { kind: "inline", value: Data.to(root, SDK.EventHistoryNode) },
+        { kind: "inline", value: Data.to(root, SDKUsers.EventHistoryNode) },
         { lovelace: 3_000_000n, [a.policyId]: 1n },
       );
   }
@@ -297,11 +299,11 @@ export const prepareFamilyHistory = async (
     applied,
     scripts,
     submit,
-    nonce: (kind: SDK.EventHistoryKind) =>
+    nonce: (kind: SDKUsers.EventHistoryKind) =>
       reserved[kind === "Deposit" ? 2 : 3]!,
     admit: async (
       hub: UTxO,
-      payload: SDK.EventHistoryPayload,
+      payload: SDKUsers.EventHistoryPayload,
       header: SDK.Header,
       lockedAssets?: Assets,
     ) => {
@@ -320,10 +322,14 @@ export const prepareFamilyHistory = async (
       const reclaimAuth: SDK.CredentialD = {
         PublicKeyCredential: [h.proverSigner.paymentKeyHash],
       };
-      const plan = SDK.prepareEventHistoryPayload(payload, reclaimAuth, recipe);
+      const plan = SDKUsers.prepareEventHistoryPayload(
+        payload,
+        reclaimAuth,
+        recipe,
+      );
       let externalData: UTxO | undefined;
       if (plan.kind === "External") {
-        const publication = await SDK.buildEventHistoryPublication(
+        const publication = await SDKUsers.buildEventHistoryPublication(
           context,
           payload,
           reclaimAuth,
@@ -343,7 +349,7 @@ export const prepareFamilyHistory = async (
       if (h.emulator.now() < target)
         h.emulator.awaitSlot(Math.ceil((target - h.emulator.now()) / 1000));
       expect(h.emulator.now()).toBeLessThan(validTo);
-      const admission = await SDK.buildEventHistoryAdmission(
+      const admission = await SDKUsers.buildEventHistoryAdmission(
         { ...context, fundingInputs: await funding() },
         {
           payload,
@@ -364,7 +370,7 @@ export const prepareFamilyHistory = async (
         "DepositPayload" in payload
           ? payload.DepositPayload.event.id
           : payload.WithdrawalPayload.event.id;
-      const witness = await SDK.fetchEventHistoryWitness(
+      const witness = await SDKUsers.fetchEventHistoryWitness(
         { utxosAt: (address) => lucid.utxosAt(address) },
         {
           policyId: a.policyId,
@@ -377,7 +383,7 @@ export const prepareFamilyHistory = async (
       expect(witness.kind).toBe("Present");
       if (witness.kind !== "Present")
         throw new Error("Admitted event is missing");
-      const captured = SDK.captureEventHistoryWitness(
+      const captured = SDKUsers.captureEventHistoryWitness(
         witness,
         a.policyId,
         recipe.kind,
@@ -392,7 +398,7 @@ export const prepareFamilyHistory = async (
               original_assets: captured.originalAssets,
             },
           },
-          SDK.FabricatedDepositAuthenticContentOpening,
+          SDKFraudProof.FabricatedDepositAuthenticContentOpening,
         ),
         raw: {
           network: "Custom" as const,

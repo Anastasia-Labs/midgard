@@ -8,7 +8,7 @@
  */
 import { join } from "node:path";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { createTrackedTempDirFactory } from "@al-ft/midgard-test-support/temp-files";
 import {
   Emulator,

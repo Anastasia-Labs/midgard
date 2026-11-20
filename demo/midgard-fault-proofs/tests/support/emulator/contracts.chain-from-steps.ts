@@ -1,4 +1,4 @@
-import { type SpendingValidator as SdkSpendingValidator } from "@al-ft/midgard-sdk";
+import { type SpendingValidator as SdkSpendingValidator } from "@al-ft/midgard-sdk/core";
 
 import { makeSpendingValidator } from "./validators.js";
 

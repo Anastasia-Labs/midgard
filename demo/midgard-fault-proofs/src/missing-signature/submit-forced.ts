@@ -1,6 +1,11 @@
 /** Restartable forced direction: each action reads its current on-chain datum. */
 import {
   forcedLeafMembershipV1,
+  requireInputIndex,
+  requireOwnSpendPurpose,
+  requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk/core";
+import {
   MissingSignatureForcedSignerDatum,
   MissingSignatureForcedSignerSpendRedeemer,
   MissingSignatureForcedStepDatum,
@@ -8,10 +13,7 @@ import {
   MissingSignatureForcedWitnessDatum,
   MissingSignatureForcedWitnessSpendRedeemer,
   MissingSignatureStep01SpendRedeemer,
-  requireInputIndex,
-  requireOwnSpendPurpose,
-  requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

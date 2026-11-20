@@ -1,7 +1,7 @@
 /** One custody transition of a direct purpose thread: the role it spends,
  * the role it pays, the exact next datum, the fields it opens and the
  * redeemer built against Lucid's completed layout. */
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type RedeemerContext, type UTxO } from "@lucid-evolution/lucid";
 
 import { createDirectFieldPlan } from "../direct-script-derivation/field-plan.js";

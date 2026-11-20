@@ -13,7 +13,7 @@ import {
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
 } from "@al-ft/midgard-fault-proofs/workflow/release-finality-policy";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 
 type RetainedClassifierInput = Parameters<
   typeof classifyRetainedReasonFixture

@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { getLinkedListNodeViewFromUTxO } from "@al-ft/midgard-sdk";
+import { getLinkedListNodeViewFromUTxO } from "@al-ft/midgard-sdk/core";
 import { CML, paymentCredentialOf, type UTxO } from "@lucid-evolution/lucid";
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 import { Effect } from "effect";

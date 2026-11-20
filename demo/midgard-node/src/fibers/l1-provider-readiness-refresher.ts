@@ -1,5 +1,5 @@
 import { type SubmitSlotSnapshot } from "@al-ft/midgard-core/ogmios-slot";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { Cause, Effect, Either, Option, Ref, Schedule } from "effect";
 

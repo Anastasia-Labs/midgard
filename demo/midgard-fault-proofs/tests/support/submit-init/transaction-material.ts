@@ -7,7 +7,10 @@ import {
   encodeMidgardTxOutput,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
-import { commitCountedRootProgram, ROOT_DOMAINS } from "@al-ft/midgard-sdk";
+import {
+  commitCountedRootProgram,
+  ROOT_DOMAINS,
+} from "@al-ft/midgard-sdk/core";
 import { CML, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

@@ -1,7 +1,5 @@
-import {
-  type MidgardTxInput,
-  ReferenceInputNoIdxStep02Datum,
-} from "@al-ft/midgard-sdk";
+import { type MidgardTxInput } from "@al-ft/midgard-sdk/core";
+import { ReferenceInputNoIdxStep02Datum } from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 
 import {

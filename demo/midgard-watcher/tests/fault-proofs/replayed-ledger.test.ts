@@ -12,7 +12,8 @@ import {
   FraudProofL1CheckpointChangedError,
   FraudProofL1UnavailableError,
 } from "@al-ft/midgard-fault-proofs/workflow/l1-source";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Effect } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -22,7 +23,7 @@ import { observation } from "./fault-decision-bridge.observation.js";
 
 const availabilityAuthority = () => ({
   deploymentIdentity: "c7".repeat(28),
-  responseGeometry: SDK.availabilityResponseGeometry({
+  responseGeometry: SDKDa.availabilityResponseGeometry({
     chunkByteLength: 4096,
     trancheByteLength: 64 * 1024,
     maxTrancheCount: 1024,
@@ -304,7 +305,7 @@ describe("the production replay keeper's availability binding", () => {
     // The block's header over preimages of no transaction: the header does
     // not commit that section.
     const stray = await wrapDaPayload(
-      SDK.encodeDaPayload({
+      SDKDa.encodeDaPayload({
         ...block.payload,
         block_body: {
           ...block.payload.block_body,
@@ -374,7 +375,7 @@ describe("the production replay keeper's availability binding", () => {
         },
       },
     });
-    const commitment = SDK.buildDaAvailabilityCommitment({
+    const commitment = SDKDa.buildDaAvailabilityCommitment({
       ...availabilityAuthority(),
       headerHash: block.headerHash,
       payload: block.payloadEnvelopeCbor,
@@ -390,7 +391,7 @@ describe("the production replay keeper's availability binding", () => {
       attest: () => {
         node.status = {
           Attested: {
-            commitment_hash: SDK.daAvailabilityCommitmentHash(commitment),
+            commitment_hash: SDKDa.daAvailabilityCommitmentHash(commitment),
           },
         };
       },

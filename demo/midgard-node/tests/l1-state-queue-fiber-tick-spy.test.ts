@@ -15,7 +15,8 @@
  * tip supplies it in the node.
  */
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { SqlClient } from "@effect/sql";
 import {
   credentialToAddress,
@@ -70,7 +71,7 @@ const stateQueue = {
   }),
   policyId: POLICY,
 };
-const fetchConfig: SDK.StateQueueFetchConfig = {
+const fetchConfig: SDKStateQueue.StateQueueFetchConfig = {
   stateQueueAddress: stateQueue.spendingScriptAddress,
   stateQueuePolicyId: POLICY,
 };
@@ -152,14 +153,14 @@ const seedQueue = () => {
     endTime,
     startTime: endTime - 1_000n,
   };
-  const headerHash = SDK.stateQueueHeaderHash(header);
+  const headerHash = SDKStateQueue.stateQueueHeaderHash(header);
   return Effect.as(
     seedLandedStateQueue(
       stateQueue,
       [
         utxo(
           1,
-          SDK.STATE_QUEUE_ROOT_ASSET_NAME,
+          SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME,
           rootDatum(GENESIS, headerHash),
         ),
         utxo(

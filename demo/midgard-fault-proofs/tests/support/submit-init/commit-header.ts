@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKOperators from "@al-ft/midgard-sdk/operators";
 import { Effect } from "effect";
 
 import { requireUtxoWithUnit } from "../emulator/emulator-context.js";
@@ -30,7 +31,7 @@ export const commitInitializedProvedFixtureHeader = async ({
   const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
   const units = setupUnits(contracts, header, headerHash);
   const snapshot = await Effect.runPromise(
-    SDK.fetchOperatorDirectorySnapshotProgram(lucid, contracts),
+    SDKOperators.fetchOperatorDirectorySnapshotProgram(lucid, contracts),
   );
   const get = (address: string, unit: string) =>
     requireUtxoWithUnit(lucid, address, unit, "canonical initialized setup");

@@ -1,6 +1,6 @@
 /** The hop by which a phase semantic resolver verifies its step and awards
  * it (one-step-phase.ts). */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data, type RedeemerContext, type UTxO } from "@lucid-evolution/lucid";
 
 import { constr, continued, integer, stepDatum } from "./one-step-data.js";

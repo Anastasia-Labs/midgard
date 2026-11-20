@@ -9,7 +9,7 @@ import {
 import {
   type MidgardTxInput,
   type NativeTxCompact as NativeTxCompactData,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 
 import { parseHex } from "./json-file.js";
 import {

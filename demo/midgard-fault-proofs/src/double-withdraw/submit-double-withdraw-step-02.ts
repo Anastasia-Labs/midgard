@@ -1,21 +1,23 @@
 import {
-  DoubleWithdrawStep02Datum,
-  DoubleWithdrawStep02SpendRedeemer,
-  type DoubleWithdrawStep02State,
-  FraudProofComputationThreadRedeemer,
-  FraudProofTokenDatum,
-  FraudProofTokenMintRedeemer,
   getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
   HUB_ORACLE_ASSET_NAME,
-  isDoubleWithdrawFault,
   requireInputIndex,
   requireMintRedeemerIndex,
   requireOwnMintPurpose,
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  DoubleWithdrawStep02Datum,
+  DoubleWithdrawStep02SpendRedeemer,
+  type DoubleWithdrawStep02State,
+  FraudProofComputationThreadRedeemer,
+  FraudProofTokenDatum,
+  FraudProofTokenMintRedeemer,
+  isDoubleWithdrawFault,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   credentialToAddress,

@@ -1,6 +1,9 @@
 import "node:crypto";
 import "@al-ft/midgard-core/plutus-data-cbor";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/da";
+import "@al-ft/midgard-sdk/users";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "@lucid-evolution/lucid";
 import "../publish-proof-chunks.js";
 import "./action-changed.js";

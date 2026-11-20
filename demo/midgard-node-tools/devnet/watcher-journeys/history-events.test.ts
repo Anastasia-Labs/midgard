@@ -10,7 +10,8 @@ import {
   buildCanonicalBlockFixture,
 } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import { prepareFabricatedDepositFromCommittedLeaves } from "@al-ft/midgard-fault-proofs/test-support/prepare-fabricated-deposit";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   credentialToAddress,
   Data,
@@ -56,24 +57,24 @@ const fixture = async (external: boolean, rawDatum?: string) => {
       l2_datum: rawDatum === undefined ? null : "fa".repeat(40),
     },
   };
-  const key = await Effect.runPromise(SDK.eventHistoryKey(event.id));
-  const payload: SDK.EventHistoryPayload = { DepositPayload: { event } };
-  const retained: SDK.EventHistoryData = {
+  const key = await Effect.runPromise(SDKUsers.eventHistoryKey(event.id));
+  const payload: SDKUsers.EventHistoryPayload = { DepositPayload: { event } };
+  const retained: SDKUsers.EventHistoryData = {
     event_key: key,
-    event_payload: Data.from(Data.to(payload, SDK.EventHistoryPayload)),
+    event_payload: Data.from(Data.to(payload, SDKUsers.EventHistoryPayload)),
     reclaim_auth: owner.paymentCredential,
   };
   const payloadCbor = canonical(
     rawDatum === undefined
-      ? Data.to(payload, SDK.EventHistoryPayload)
-      : Data.to(payload, SDK.EventHistoryPayload).replace(
+      ? Data.to(payload, SDKUsers.EventHistoryPayload)
+      : Data.to(payload, SDKUsers.EventHistoryPayload).replace(
           Data.to("fa".repeat(40)),
           rawDatum,
         ),
   );
   const retainedCbor = canonical(
     replacePlutusConstrFieldCbor(
-      SDK.encodeEventHistoryData(retained),
+      SDKUsers.encodeEventHistoryData(retained),
       [1],
       payloadCbor,
     ),
@@ -96,7 +97,7 @@ const fixture = async (external: boolean, rawDatum?: string) => {
         protected_until: 0n,
         payload: "RootContent",
       },
-      SDK.EventHistoryNode,
+      SDKUsers.EventHistoryNode,
     ),
   };
   const orderOutput: UTxO = {
@@ -127,7 +128,7 @@ const fixture = async (external: boolean, rawDatum?: string) => {
           },
         },
       },
-      SDK.EventHistoryNode,
+      SDKUsers.EventHistoryNode,
     ),
   };
   if (!external)
@@ -144,7 +145,7 @@ const fixture = async (external: boolean, rawDatum?: string) => {
     datum: retainedCbor,
   };
   const [order] = await Effect.runPromise(
-    SDK.utxosToDepositUTxOs(
+    SDKUsers.utxosToDepositUTxOs(
       [root, orderOutput],
       external ? [retainedDataUtxo] : [],
       deployment,
@@ -285,8 +286,8 @@ it("refuses an out-of-window event and preserves captured original Value through
       captureStagedHistoryEvent({ order: f.order, policyId: f.policyId }),
     ),
   );
-  const opening = Data.from(captured.openingCbor, SDK.EventHistoryOpening);
-  expect(SDK.valueToAssets(opening.original_assets)).toEqual({
+  const opening = Data.from(captured.openingCbor, SDKUsers.EventHistoryOpening);
+  expect(SDKUsers.valueToAssets(opening.original_assets)).toEqual({
     lovelace: 8_000_000n,
   });
 });
@@ -304,8 +305,8 @@ it.each([false, true])(
     expect(payload).toBe(f.order.history.payloadCbor);
     expect(payload).toContain(rawDatum);
     expect(
-      SDK.opensEventHistoryCommitmentCbor(
-        Data.from(captured.commitmentCbor, SDK.EventHistoryCommitment),
+      SDKUsers.opensEventHistoryCommitmentCbor(
+        Data.from(captured.commitmentCbor, SDKUsers.EventHistoryCommitment),
         payload,
         plutusConstrFieldCbor(captured.openingCbor, [1]),
       ),
@@ -350,7 +351,7 @@ it.each([false, true])(
     const f = await fixture(external);
     const marker = "fa".repeat(40);
     const rawDatum = "a302a20102010301000102";
-    const payload: SDK.EventHistoryPayload = {
+    const payload: SDKUsers.EventHistoryPayload = {
       WithdrawalPayload: {
         event: {
           id: f.order.event.id,
@@ -371,7 +372,7 @@ it.each([false, true])(
       },
     };
     const rawPayload = canonical(
-      Data.to(payload, SDK.EventHistoryPayload).replace(
+      Data.to(payload, SDKUsers.EventHistoryPayload).replace(
         Data.to(marker),
         rawDatum,
       ),
@@ -381,21 +382,21 @@ it.each([false, true])(
       [1],
       rawPayload,
     );
-    const node = Data.from(f.orderOutput.datum!, SDK.EventHistoryNode);
+    const node = Data.from(f.orderOutput.datum!, SDKUsers.EventHistoryNode);
     if (node.payload === "RootContent" || !("Order" in node.payload))
       throw new Error("Expected Order");
     node.payload.Order.facts.location = external
       ? { External: { storage_datum_hash: datumToHash(canonical(retained)) } }
       : { Inline: { payload } };
     const datum = external
-      ? Data.to(node, SDK.EventHistoryNode)
+      ? Data.to(node, SDKUsers.EventHistoryNode)
       : replacePlutusConstrFieldCbor(
-          Data.to(node, SDK.EventHistoryNode),
+          Data.to(node, SDKUsers.EventHistoryNode),
           [3, 0, 2, 0],
           rawPayload,
         );
     const [order] = await Effect.runPromise(
-      SDK.utxosToWithdrawalUTxOs(
+      SDKUsers.utxosToWithdrawalUTxOs(
         [f.root, { ...f.orderOutput, datum }],
         external ? [{ ...f.retainedDataUtxo, datum: retained }] : [],
         f.deployment,
@@ -462,9 +463,9 @@ it("holds an event build until its lower bound clears a protected predecessor, b
   const refusal = (until: bigint) =>
     Effect.runPromise(
       Effect.fail(
-        new SDK.UserEventBuildError({
+        new SDKUsers.UserEventBuildError({
           message: "Failed to build authenticated event history transaction",
-          cause: new SDK.EventHistoryPredecessorProtectedError(until),
+          cause: new SDKUsers.EventHistoryPredecessorProtectedError(until),
         }),
       ),
     );

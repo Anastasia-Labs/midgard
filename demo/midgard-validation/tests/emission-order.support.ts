@@ -9,7 +9,7 @@ import {
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import type { MidgardRejectionReasonV1 } from "@al-ft/midgard-core/validation-trace";
-import { EventKey } from "@al-ft/midgard-sdk";
+import { EventKey } from "@al-ft/midgard-sdk/core";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { Cause, Effect, Exit } from "effect";
 import { expect } from "vitest";

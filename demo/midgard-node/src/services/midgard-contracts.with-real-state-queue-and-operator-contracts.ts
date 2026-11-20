@@ -1,4 +1,6 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDK from "@al-ft/midgard-sdk/users";
 import { Network } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -40,10 +42,10 @@ import { loadRealBlueprint } from "./midgard-contracts.load-reference-script-aut
  */
 export const withRealStateQueueAndOperatorContracts = (
   network: Network,
-  baseContracts: SDK.MidgardValidators,
+  baseContracts: SDKCore.MidgardValidators,
   hubOracleOneShotOutRef: HubOracleOneShotOutRef,
   deploymentParameters: RealContractDeploymentParameters,
-): Effect.Effect<SDK.MidgardValidators, Error> =>
+): Effect.Effect<SDKCore.MidgardValidators, Error> =>
   Effect.gen(function* () {
     const normalizedOneShotOutRef = yield* normalizeHubOracleOneShotOutRef(
       hubOracleOneShotOutRef,
@@ -95,7 +97,7 @@ export const withRealStateQueueAndOperatorContracts = (
       realHubOracle.policyId,
       realAvailabilityChallenge.policyId,
     );
-    const withRealHubOracle: SDK.MidgardValidators = {
+    const withRealHubOracle: SDKCore.MidgardValidators = {
       ...baseContracts,
       referenceScriptAuth: deploymentParameters.referenceScriptAuth,
       hubOracle: realHubOracle,
@@ -107,7 +109,7 @@ export const withRealStateQueueAndOperatorContracts = (
 
     const realFraudProofCatalogue =
       yield* buildRealFraudProofCatalogueValidator(network, withRealHubOracle);
-    const withRealFraudProofCatalogue: SDK.MidgardValidators = {
+    const withRealFraudProofCatalogue: SDKCore.MidgardValidators = {
       ...withRealHubOracle,
       fraudProofCatalogue: realFraudProofCatalogue,
     };
@@ -137,21 +139,22 @@ export const withRealStateQueueAndOperatorContracts = (
     // The script-decode validator is not a proof chain: it is carried at the
     // top level, as a deployment manifest restores it.
     const { scriptDecode, ...realFaultProofChains } = realFaultProofContracts;
-    const withRealFraudProof: SDK.MidgardValidators = {
+    const withRealFraudProof: SDKCore.MidgardValidators = {
       ...withRealFraudProofCatalogue,
       computationThread: realComputationThread,
       fraudProof: realFraudProof,
       ...realFraudProofSharedWithdrawals,
       scriptDecode,
       fraudProofContracts: realFaultProofChains,
-      fraudProofs: SDK.fraudProofContractsToFirstSteps(realFaultProofChains),
+      fraudProofs:
+        SDKFraudProof.fraudProofContractsToFirstSteps(realFaultProofChains),
     };
 
     const realRetiredOperators = yield* buildRealRetiredOperatorsValidator(
       network,
       withRealFraudProof,
     );
-    const withRealRetiredOperators: SDK.MidgardValidators = {
+    const withRealRetiredOperators: SDKCore.MidgardValidators = {
       ...withRealFraudProof,
       retiredOperators: realRetiredOperators,
     };
@@ -161,7 +164,7 @@ export const withRealStateQueueAndOperatorContracts = (
         network,
         withRealRetiredOperators,
       );
-    const withRealRegisteredOperators: SDK.MidgardValidators = {
+    const withRealRegisteredOperators: SDKCore.MidgardValidators = {
       ...withRealRetiredOperators,
       registeredOperators: realRegisteredOperators,
     };
@@ -170,7 +173,7 @@ export const withRealStateQueueAndOperatorContracts = (
       network,
       withRealRegisteredOperators,
     );
-    const withRealOperatorSets: SDK.MidgardValidators = {
+    const withRealOperatorSets: SDKCore.MidgardValidators = {
       ...withRealRegisteredOperators,
       activeOperators: realActiveOperators,
     };
@@ -190,7 +193,7 @@ export const withRealStateQueueAndOperatorContracts = (
       catch: (cause) =>
         new Error("Failed to derive authenticated event history", { cause }),
     });
-    const withRealHubOracleAndDeposit: SDK.MidgardValidators = {
+    const withRealHubOracleAndDeposit: SDKCore.MidgardValidators = {
       ...withRealOperatorSets,
       eventHistory,
       deposit: eventHistory.deposit.list,
@@ -201,7 +204,7 @@ export const withRealStateQueueAndOperatorContracts = (
       network,
       withRealHubOracleAndDeposit.hubOracle.policyId,
     );
-    const withRealHubOracleDepositAndTxOrder: SDK.MidgardValidators = {
+    const withRealHubOracleDepositAndTxOrder: SDKCore.MidgardValidators = {
       ...withRealHubOracleAndDeposit,
       txOrder: realTxOrderContracts.txOrder,
       // #579 ruling A. The real certificate has to be propagated, not left as
@@ -221,7 +224,7 @@ export const withRealStateQueueAndOperatorContracts = (
       network,
       withRealUserEvents,
     );
-    const withRealScheduler: SDK.MidgardValidators = {
+    const withRealScheduler: SDKCore.MidgardValidators = {
       ...withRealUserEvents,
       scheduler: realScheduler,
     };
@@ -230,7 +233,7 @@ export const withRealStateQueueAndOperatorContracts = (
       network,
       withRealScheduler,
     );
-    const withRealSettlement: SDK.MidgardValidators = {
+    const withRealSettlement: SDKCore.MidgardValidators = {
       ...withRealScheduler,
       settlement: realSettlement,
     };
@@ -241,7 +244,7 @@ export const withRealStateQueueAndOperatorContracts = (
       deploymentParameters.referenceScriptAuth.policyId,
       deploymentParameters.availabilityChallengeParameters,
     );
-    const withRealDaAttestation: SDK.MidgardValidators = {
+    const withRealDaAttestation: SDKCore.MidgardValidators = {
       ...withRealSettlement,
       daAttestation: realDaAttestation,
     };
@@ -253,7 +256,7 @@ export const withRealStateQueueAndOperatorContracts = (
       deploymentParameters.l1SlotConfig,
     );
 
-    const withRealStateQueue: SDK.MidgardValidators = {
+    const withRealStateQueue: SDKCore.MidgardValidators = {
       ...withRealDaAttestation,
       stateQueue: realStateQueue,
     };
@@ -262,7 +265,7 @@ export const withRealStateQueueAndOperatorContracts = (
       network,
       withRealStateQueue,
     );
-    const withRealPayout: SDK.MidgardValidators = {
+    const withRealPayout: SDKCore.MidgardValidators = {
       ...withRealStateQueue,
       payout: realPayout,
     };

@@ -1,11 +1,13 @@
 import {
-  type NativeScriptDecodingBindState,
-  NativeScriptDecodingStep01SpendRedeemer,
-  NativeScriptDecodingStep02Datum,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  type NativeScriptDecodingBindState,
+  NativeScriptDecodingStep01SpendRedeemer,
+  NativeScriptDecodingStep02Datum,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

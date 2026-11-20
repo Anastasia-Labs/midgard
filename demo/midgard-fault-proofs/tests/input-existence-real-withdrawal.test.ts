@@ -7,7 +7,8 @@
  * commits the same withdrawal while the target touches another seed output,
  * and step 04 refuses it on chain. The seed deposits themselves are derived
  * by the canonical deposit effect but are not admitted on L1. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { Data } from "@lucid-evolution/lucid";
 import * as WithdrawalsDB from "midgard-node/database/withdrawals";
 import { describe, expect, it } from "vitest";
@@ -111,7 +112,7 @@ describe("input existence on a submitted withdrawal", () => {
         priorLedger: [],
         events: chronologySeedDeposits(),
       });
-      let order: SDK.WithdrawalUTxO | undefined;
+      let order: SDKUsers.WithdrawalUTxO | undefined;
       const committedPrior = await submitSetupTx({
         lucid: h.funderLucid,
         contracts: family.contracts,

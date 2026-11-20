@@ -1,9 +1,9 @@
 import { MIDGARD_POSIX_TIME_NONE } from "@al-ft/midgard-core/codec";
+import { type NativeTxBodyCompact } from "@al-ft/midgard-sdk/core";
 import {
   invalidRangeViolationReason,
-  type NativeTxBodyCompact,
   normalizeNativeTxValidityRange,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 

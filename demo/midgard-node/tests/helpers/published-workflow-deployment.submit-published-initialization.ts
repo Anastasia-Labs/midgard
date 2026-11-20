@@ -2,7 +2,7 @@ import { setTimeout as pause } from "node:timers/promises";
 import { inspect } from "node:util";
 
 import { verifyReferenceScriptPublicationAuthority } from "@al-ft/midgard-core/deployment-manifest-identity";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import {
   CML,
   generateEmulatorAccount,

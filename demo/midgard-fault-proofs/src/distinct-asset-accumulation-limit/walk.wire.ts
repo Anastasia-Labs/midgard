@@ -1,6 +1,6 @@
 /** The thread datums and redeemers of the `distinctAssetAccumulationLimit`
  * walk, each built exactly as its validator requires. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import {

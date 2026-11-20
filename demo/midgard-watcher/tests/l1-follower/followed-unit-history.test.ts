@@ -1,6 +1,6 @@
 import type { OutRef } from "@al-ft/midgard-l1-follower";
 import type { SimTx } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { describe, expect, it } from "vitest";
 
 import type { WatcherProjectionDeployment } from "../../src/l1-follower/projection.js";

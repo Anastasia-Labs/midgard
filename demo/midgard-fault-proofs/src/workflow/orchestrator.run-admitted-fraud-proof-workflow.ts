@@ -1,5 +1,5 @@
 import { formatUnknownError } from "@al-ft/midgard-core";
-import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
+import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk/core";
 
 import { WorkflowActionChangedError } from "./action-changed.js";
 import {

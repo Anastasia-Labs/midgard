@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { openAvailabilityOperationJournal } from "@al-ft/midgard-core/availability-operation-journal";
-import type { DaAvailabilityOperationContext } from "@al-ft/midgard-sdk";
+import type { DaAvailabilityOperationContext } from "@al-ft/midgard-sdk/da";
 import {
   CML,
   credentialToAddress,

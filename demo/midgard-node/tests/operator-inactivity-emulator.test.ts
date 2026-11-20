@@ -19,7 +19,12 @@
  * rewinds.
  */
 
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/da";
+import "@al-ft/midgard-sdk/operators";
+import "@al-ft/midgard-sdk/users";
+import "@al-ft/midgard-sdk/deployment";
 import "effect";
 import "vitest";
 import "./helpers/operator-inactivity.js";

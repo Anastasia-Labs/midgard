@@ -7,8 +7,6 @@ import {
 } from "@al-ft/midgard-core";
 import {
   commitCountedRootProgram,
-  committedWithdrawalKeyBytes,
-  committedWithdrawalValueBytes,
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   type MidgardTxInput,
   type OutputReference,
@@ -16,7 +14,11 @@ import {
   ROOT_DOMAINS,
   type WithdrawalInfo,
   type WithdrawalSourceMembershipProof,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  committedWithdrawalKeyBytes,
+  committedWithdrawalValueBytes,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

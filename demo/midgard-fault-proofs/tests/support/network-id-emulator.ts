@@ -7,11 +7,13 @@ import {
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
 import {
-  buildNetworkIdFaultProofContracts,
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
-  NetworkIdFault,
   parseFaultProofBlueprint,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  buildNetworkIdFaultProofContracts,
+  NetworkIdFault,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { type Script, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

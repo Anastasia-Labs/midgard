@@ -1,11 +1,11 @@
 import { encodeCbor } from "@al-ft/midgard-core";
+import { hashHexWithBlake2b } from "@al-ft/midgard-sdk/core";
 import {
   encodeVerdictSubject,
-  hashHexWithBlake2b,
   PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
   PROOF_THREAD_SOURCE_KIND_FORCED,
   type VerdictSubject,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Effect } from "effect";
 
 import { cborDefiniteBytes } from "../cbor-serialise.js";

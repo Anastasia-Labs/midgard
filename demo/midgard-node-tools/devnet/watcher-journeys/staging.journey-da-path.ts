@@ -1,7 +1,8 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import type {
   createPublishedWatcherBlockActor,
   PublishedDaAttestationOutcome,
@@ -131,7 +132,7 @@ export const journeyDaPath = async (
       task.category,
       { actionDepth: JOURNEY_ACTION_DEPTH },
     );
-    const history = SDK.requireEventHistoryContracts(
+    const history = SDKUsers.requireEventHistoryContracts(
       context.deployment.contracts,
     );
     // Refuses here, before any L1 work, when the lead is required and unset.

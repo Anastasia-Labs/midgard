@@ -8,7 +8,8 @@ import {
   journaledProgress,
   WORKFLOW_CONTINUATION_QUIET_BOUND_MS,
 } from "@al-ft/midgard-fault-proofs/workflow/pending-continuation";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   CML,
   coreToUtxo,
@@ -440,7 +441,9 @@ export const verifyJourneyCorrection = async ({
     );
     expect(proofs).toHaveLength(1);
     expect(proofs[0]!.assets[expectedProofUnit]).toBe(1n);
-    expect(Data.from(proofs[0]!.datum!, SDK.FraudProofTokenDatum)).toEqual({
+    expect(
+      Data.from(proofs[0]!.datum!, SDKFraudProof.FraudProofTokenDatum),
+    ).toEqual({
       fraud_prover: paymentCredentialOf(proverAddress).hash,
     });
     expect(`${proofs[0]!.txHash}#${proofs[0]!.outputIndex}`).toBe(

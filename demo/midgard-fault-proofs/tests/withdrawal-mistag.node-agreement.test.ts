@@ -20,7 +20,8 @@ import {
   midgardAddressFromText,
 } from "@al-ft/midgard-core/codec";
 import { replacePlutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { CML, Data, walletFromSeed } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -144,7 +145,11 @@ const CASES: readonly Case[] = [
     lovelace: ADA,
     assets: mixed,
     l2Value: encoded(
-      SDK.assetsToValue({ lovelace: ADA, [`${P}ff`]: 1n, [`${P}0000`]: 2n }),
+      SDKUsers.assetsToValue({
+        lovelace: ADA,
+        [`${P}ff`]: 1n,
+        [`${P}0000`]: 2n,
+      }),
     ),
   },
   {

@@ -16,11 +16,11 @@ import {
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
 import {
-  encodeMidgardTxInputCanonical,
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   type MidgardTxInput,
   Proof,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { encodeMidgardTxInputCanonical } from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type Script, type UTxO } from "@lucid-evolution/lucid";
 
 import type { InputSetUniquenessContracts } from "../../src/input-set-uniqueness/contracts.js";

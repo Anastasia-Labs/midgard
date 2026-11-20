@@ -1,6 +1,6 @@
 import { setTimeout as pause } from "node:timers/promises";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import {
   CML,
   coreToTxOutput,

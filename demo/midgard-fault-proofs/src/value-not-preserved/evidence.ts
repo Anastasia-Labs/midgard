@@ -28,14 +28,16 @@ import { buildMidgardValidationMerkleMembership } from "@al-ft/midgard-core";
 import type { MidgardValue } from "@al-ft/midgard-core/codec";
 import {
   type BoundedBlobFrontierPeak,
-  encodeMidgardTxInputCanonical,
   type FieldCarriage,
+  type MidgardTxInput,
+  Proof,
+} from "@al-ft/midgard-sdk/core";
+import {
+  encodeMidgardTxInputCanonical,
   type FieldOpening,
   fieldOpeningForField,
   MIDGARD_FIELD_INDEX,
-  type MidgardTxInput,
-  Proof,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import { VALUE_NOT_PRESERVED_CATEGORY_LABEL } from "./contracts.js";

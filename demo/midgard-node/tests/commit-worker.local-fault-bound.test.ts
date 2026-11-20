@@ -5,7 +5,7 @@ import {
   midgardAddressFromText,
 } from "@al-ft/midgard-core/codec";
 import { LOCAL_FAULT_RUN_LIMIT } from "@al-ft/midgard-fault-proofs/local-fault-bound";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { HttpServerResponse } from "@effect/platform";
 import { CML, Data, walletFromSeed } from "@lucid-evolution/lucid";
 import { Deferred, Effect, Exit, Logger } from "effect";

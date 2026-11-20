@@ -20,7 +20,9 @@ import {
   encodeMidgardForcedTxCanonical,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { h28, h32 } from "@al-ft/midgard-test-support/hex";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { Data } from "@lucid-evolution/lucid";
@@ -169,14 +171,14 @@ export const forcedTx = (
   };
 };
 
-export const entry = (key: Buffer, value: Buffer): SDK.DaPayloadEntry => [
+export const entry = (key: Buffer, value: Buffer): SDKDa.DaPayloadEntry => [
   key.toString("hex"),
   value.toString("hex"),
 ];
 
 export const sorted = (
-  entries: readonly SDK.DaPayloadEntry[],
-): SDK.DaPayloadEntry[] =>
+  entries: readonly SDKDa.DaPayloadEntry[],
+): SDKDa.DaPayloadEntry[] =>
   [...entries].sort(([left], [right]) =>
     left < right ? -1 : left > right ? 1 : 0,
   );
@@ -248,7 +250,7 @@ export const spendInputItem = (txIdHex: string, outputIndex: number): Buffer =>
     outputIndex,
   });
 
-export const rawLedgerEntry = (byte: number): SDK.DaPayloadEntry => [
+export const rawLedgerEntry = (byte: number): SDKDa.DaPayloadEntry => [
   spendInputItem(h32(byte), 0).toString("hex"),
   LEDGER_OUTPUT_CBOR,
 ];
@@ -274,7 +276,7 @@ export const ledgerTrieValue = (outRef: Buffer, outputCbor: Buffer): Buffer => {
 };
 
 export const utxoRootWithDescriptors = (
-  utxos: readonly SDK.DaPayloadEntry[],
+  utxos: readonly SDKDa.DaPayloadEntry[],
 ): Promise<Awaited<ReturnType<typeof keyValuePhasRootWithCount>>> =>
   keyValuePhasRootWithCount(
     utxos.map(([key, value]) => ({
@@ -296,12 +298,14 @@ export const encodedEntry = <K, V>({
   readonly keySchema: Parameters<typeof Data.Nullable>[0];
   readonly value: V;
   readonly valueSchema: Parameters<typeof Data.Nullable>[0];
-}): SDK.DaPayloadEntry =>
+}): SDKDa.DaPayloadEntry =>
   entry(
     encodeData(key, keySchema),
     valueSchema === SDK.WithdrawalInfoSchema
       ? Buffer.from(
-          SDK.committedWithdrawalValueBytes(value as SDK.WithdrawalInfo),
+          SDKFraudProof.committedWithdrawalValueBytes(
+            value as SDK.WithdrawalInfo,
+          ),
           "hex",
         )
       : encodeData(value, valueSchema),
@@ -310,7 +314,7 @@ export const encodedEntry = <K, V>({
 export const traceEntryWithKey = (
   key: bigint,
   step: SDK.TransitionStep,
-): SDK.DaPayloadEntry =>
+): SDKDa.DaPayloadEntry =>
   encodedEntry({
     key,
     keySchema: Data.Integer() as never,
@@ -318,13 +322,13 @@ export const traceEntryWithKey = (
     valueSchema: SDK.TransitionStepSchema,
   });
 
-export const traceEntry = (step: SDK.TransitionStep): SDK.DaPayloadEntry =>
+export const traceEntry = (step: SDK.TransitionStep): SDKDa.DaPayloadEntry =>
   traceEntryWithKey(step.step_index, step);
 
 export const eventToStepEntry = (
   key: SDK.EventKey,
   value: SDK.EventToStepValue,
-): SDK.DaPayloadEntry =>
+): SDKDa.DaPayloadEntry =>
   encodedEntry({
     key,
     keySchema: SDK.EventKeySchema,

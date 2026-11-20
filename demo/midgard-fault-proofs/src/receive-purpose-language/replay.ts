@@ -7,7 +7,8 @@ import {
   decodeMidgardFieldPreimage,
   decodeMidgardNativeTxFullFromCanonicalCbor,
 } from "@al-ft/midgard-core";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 
 import { directPurposeArtifactFamily } from "../direct-purpose-family/artifact-family.js";
 import {
@@ -35,7 +36,7 @@ export type ReceivePurposeLanguageCoordinate = DirectPurposeSourceCoordinate;
  * ordinal, or `claim` for a recorded claim's verdict. */
 export const receivePurposeLanguageDetectionId = (
   coordinate: ReceivePurposeLanguageCoordinate,
-  observed: SDK.DirectPurposeCoordinate | null,
+  observed: SDKFraudProof.DirectPurposeCoordinate | null,
 ): string =>
   `${RECEIVE_PURPOSE_LANGUAGE_VIOLATION_ID}:${coordinate.sourceKind.toString()}:${coordinate.sourceIndex.toString()}:${observed === null ? "claim" : observed.index.toString()}`;
 

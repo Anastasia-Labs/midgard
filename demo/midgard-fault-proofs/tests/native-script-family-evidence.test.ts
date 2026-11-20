@@ -1,5 +1,7 @@
 import "@al-ft/midgard-core";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/da";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "@al-ft/midgard-validation/ledger-output-descriptor";
 import "vitest";
 import "../src/evidence/canonical-block-evidence.js";
@@ -15,7 +17,8 @@ import {
   encodeMidgardTxOutput,
   hashMidgardVersionedScript,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 import { describe, expect, it } from "vitest";
 
@@ -81,7 +84,7 @@ describe("Q33/Q34 retained-DA evidence", () => {
       ...BLOCK_SUBJECT,
       detectionId,
       headerHash: evidence.headerHash,
-      violationId: SDK.NATIVE_SCRIPT_INVALID_VIOLATION_ID,
+      violationId: SDKFraudProof.NATIVE_SCRIPT_INVALID_VIOLATION_ID,
       position: 0n,
     };
     const artifact = await prepareNativeScriptInvalidArtifact({

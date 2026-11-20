@@ -10,7 +10,8 @@
  * from then on. Evaluator failures are injected at the validation package,
  * per transaction. */
 import { MIDGARD_VALIDATION_CASE_OPEN_WINDOW_MS } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { ScriptEvaluationIndeterminateError } from "@al-ft/midgard-validation/phase-b";
 import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { DirectValidationTraceUnavailable } from "@al-ft/midgard-validation/validation-machine";
@@ -123,7 +124,7 @@ const openWindowEnd = async () => {
     unit,
   );
   const { blockTime } = await Effect.runPromise(
-    SDK.validationDisputeChallengedBlock(
+    SDKDa.validationDisputeChallengedBlock(
       node!,
       h.contracts.stateQueue.policyId,
     ),
@@ -223,7 +224,7 @@ describe("validation-trace dispute runner: an evaluator failure holds, then the 
     ]);
     expect(caseOutput?.address).toBe(chain.case.spendingScriptAddress);
     const material = await failingMaterial(scene);
-    expect(Data.from(caseOutput!.datum!, SDK.Case)).toMatchObject({
+    expect(Data.from(caseOutput!.datum!, SDKDa.Case)).toMatchObject({
       block_header_hash: scene.failing.evidence.headerHash,
       event_key: scene.failing.eventKey,
       challenger_root: material.challengerRoot,

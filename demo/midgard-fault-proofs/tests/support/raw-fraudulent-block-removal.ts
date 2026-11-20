@@ -10,7 +10,8 @@
  * and any extra output. Nothing here consults the builder's own decision of
  * which arm applies. */
 import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   type BuildTxWithRedeemer,
   Data,
@@ -256,7 +257,7 @@ export const submitRawFraudulentBlockRemoval = async (
 
   const slashingApproach = (
     ctx: Parameters<BuildTxWithRedeemer>[0],
-  ): SDK.SlashingApproach => {
+  ): SDKStateQueue.SlashingApproach => {
     switch (removal.approach) {
       case "DescendantOfValidationTraceConviction":
         return "DescendantOfValidationTraceConviction";
@@ -348,8 +349,8 @@ export const submitRawFraudulentBlockRemoval = async (
                   },
                 },
         },
-      } satisfies SDK.StateQueueRedeemer,
-      SDK.StateQueueRedeemer,
+      } satisfies SDKStateQueue.StateQueueRedeemer,
+      SDKStateQueue.StateQueueRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
   const correct = ((ctx) =>
@@ -372,7 +373,7 @@ export const submitRawFraudulentBlockRemoval = async (
     .validTo(Number(validTo))
     .collectFrom(
       [anchor.utxo, removed.utxo],
-      Data.to("LinkedListMutation", SDK.StateQueueSpendRedeemer),
+      Data.to("LinkedListMutation", SDKStateQueue.StateQueueSpendRedeemer),
     )
     .collectFrom([correctionLock.utxo], correct)
     .readFrom(
@@ -409,7 +410,7 @@ export const submitRawFraudulentBlockRemoval = async (
         contracts.stateQueueFraudRemovalWithdrawalScript,
       ),
       0n,
-      SDK.encodeStateQueueYieldRedeemer(),
+      SDKStateQueue.encodeStateQueueYieldRedeemer(),
     );
   if (slash !== undefined) {
     const { component } = slash;

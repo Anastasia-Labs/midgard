@@ -4,13 +4,12 @@ import {
   deriveMidgardNativeTxFaultEvidenceMaterial,
 } from "@al-ft/midgard-core";
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
+import { EMPTY_MERKLE_TREE_ROOT, Proof } from "@al-ft/midgard-sdk/core";
 import {
   acceptedVerdictSubject,
-  EMPTY_MERKLE_TREE_ROOT,
   forcedVerdictSubject,
-  Proof,
   type VerdictSubject,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";

@@ -3,7 +3,8 @@ import {
   encodeMidgardNativeTxCanonical,
   encodeMidgardNativeTxCompact,
 } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type Script, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -141,7 +142,7 @@ export const setupWithdrawnReferenceInputScenario = async ({
       }),
     ),
   ]
-    .map(SDK.encodeMidgardTxInputCanonical)
+    .map(SDKFraudProof.encodeMidgardTxInputCanonical)
     .sort(Buffer.compare);
   const nativeTx = decodingSubjectTransaction({
     referenceInputCbors,
@@ -170,9 +171,12 @@ export const setupWithdrawnReferenceInputScenario = async ({
     SDK.ROOT_DOMAINS.withdrawals,
     [
       {
-        key: Buffer.from(SDK.committedWithdrawalKeyBytes(withdrawal.id), "hex"),
+        key: Buffer.from(
+          SDKFraudProof.committedWithdrawalKeyBytes(withdrawal.id),
+          "hex",
+        ),
         value: Buffer.from(
-          SDK.committedWithdrawalValueBytes(withdrawal.info),
+          SDKFraudProof.committedWithdrawalValueBytes(withdrawal.info),
           "hex",
         ),
       },
@@ -227,7 +231,7 @@ export const setupWithdrawnReferenceInputUncheckedScenario = async ({
   const referenceInputs = [WITHDRAWN_REFERENCE_INPUT_ACCUSED_OUTREF] as const;
   const nativeTx = decodingSubjectTransaction({
     referenceInputCbors: [
-      SDK.encodeMidgardTxInputCanonical(referenceInputs[0]),
+      SDKFraudProof.encodeMidgardTxInputCanonical(referenceInputs[0]),
     ],
     fee: 1_000n,
   });
@@ -253,11 +257,11 @@ export const setupWithdrawnReferenceInputUncheckedScenario = async ({
     info: withdrawalInfo,
   };
   const withdrawalKey = Buffer.from(
-    SDK.committedWithdrawalKeyBytes(withdrawal.id),
+    SDKFraudProof.committedWithdrawalKeyBytes(withdrawal.id),
     "hex",
   );
   const withdrawalValue = Buffer.from(
-    SDK.committedWithdrawalValueBytes(withdrawal.info),
+    SDKFraudProof.committedWithdrawalValueBytes(withdrawal.info),
     "hex",
   );
   const countedWithdrawals = await buildCountedRoot(

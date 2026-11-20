@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   Data,
   type LucidEvolution,
@@ -140,7 +141,7 @@ export const fetchLatestCommittedBlock = (
   contracts: SDK.MidgardValidators,
 ) =>
   Effect.runPromise(
-    SDK.fetchLatestCommittedBlockProgram(
+    SDKStateQueue.fetchLatestCommittedBlockProgram(
       lucid,
       stateQueueFetchConfig(contracts),
     ),

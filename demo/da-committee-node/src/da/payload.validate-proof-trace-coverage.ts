@@ -1,6 +1,7 @@
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Effect } from "effect";
 
 import { hexToBytes, normalizeHex } from "../utils/hex.js";
@@ -27,7 +28,7 @@ import {
 export const decodeDaPayloadStrict = (
   payloadCbor: Uint8Array,
   timing: DaPayloadVerificationTimingOptions = {},
-): SDK.DaPayload => {
+): SDKDa.DaPayload => {
   if (payloadCbor.length > MIDGARD_CONSENSUS_LIMITS.maxDaPayloadBytes) {
     throw new DaPayloadValidationError(
       "consensus_bound",
@@ -37,16 +38,16 @@ export const decodeDaPayloadStrict = (
   const payloadBuffer = Buffer.isBuffer(payloadCbor)
     ? payloadCbor
     : Buffer.from(payloadCbor);
-  let payload: SDK.DaPayload;
+  let payload: SDKDa.DaPayload;
   const decodeStartedAt = readMonotonicNow(timing);
   try {
-    payload = SDK.decodeDaPayload(payloadBuffer);
+    payload = SDKDa.decodeDaPayload(payloadBuffer);
   } catch (cause) {
     throw new DaPayloadValidationError(
-      cause instanceof SDK.DaPayloadNonCanonicalError
+      cause instanceof SDKDa.DaPayloadNonCanonicalError
         ? "non_canonical"
         : "malformed_da",
-      cause instanceof SDK.DaPayloadNonCanonicalError
+      cause instanceof SDKDa.DaPayloadNonCanonicalError
         ? "payload CBOR was not canonical for DaPayloadV1"
         : "failed to decode DaPayloadV1 canonical CBOR",
       { cause },
@@ -57,10 +58,10 @@ export const decodeDaPayloadStrict = (
 
   const validationStartedAt = readMonotonicNow(timing);
   try {
-    if (payload.version !== SDK.DA_PAYLOAD_VERSION) {
+    if (payload.version !== SDKDa.DA_PAYLOAD_VERSION) {
       throw new DaPayloadValidationError(
         "wrong_version",
-        `expected DaPayloadV1 version ${SDK.DA_PAYLOAD_VERSION.toString()}, got ${payload.version.toString()}`,
+        `expected DaPayloadV1 version ${SDKDa.DA_PAYLOAD_VERSION.toString()}, got ${payload.version.toString()}`,
       );
     }
     const body = payload.block_body;
@@ -100,7 +101,7 @@ export const decodeDaPayloadStrict = (
   }
 };
 
-const validateProofTraceCoverage = (payload: SDK.DaPayload): void => {
+const validateProofTraceCoverage = (payload: SDKDa.DaPayload): void => {
   validateTraceCoverage(payload);
   const body = payload.block_body;
   // P1 retains no validation machine states: the section stays in the format
@@ -223,7 +224,7 @@ export const keyValuePhasRootWithValues = async (
 
 export const countedRoot = async (
   domain: SDK.RootDomain,
-  entries: readonly SDK.DaPayloadEntry[],
+  entries: readonly SDKDa.DaPayloadEntry[],
 ): Promise<string> =>
   countedRootWithValues(
     domain,

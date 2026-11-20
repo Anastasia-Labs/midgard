@@ -31,7 +31,9 @@ import {
   type MidgardBoundedItemChunkProof,
   type MidgardNativeScriptScanFrame,
 } from "@al-ft/midgard-core";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
+import { Proof } from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
   MIDGARD_FIELD_INDEX,
   NATIVE_SCRIPT_DECODING_OUTPOINT_SOURCE_REFERENCE,
@@ -39,8 +41,7 @@ import {
   NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_DEPTH_LIMIT,
   NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_MALFORMED,
   NATIVE_SCRIPT_DECODING_REFUSAL_CLASS_NODE_LIMIT,
-  Proof,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
@@ -242,7 +243,7 @@ export const nativeScriptDecodingWindowProofs = ({
 /** Engine-twin frame witness → the `NativeScriptFrame` wire value. */
 export const nativeScriptDecodingFrameData = (
   frame: MidgardNativeScriptScanFrame,
-): SDK.NativeScriptFrame => ({
+): SDKDa.NativeScriptFrame => ({
   tail: Buffer.from(frame.tail).toString("hex"),
   kind: BigInt(frame.kind),
   child_count: BigInt(frame.childCount),
@@ -269,7 +270,7 @@ export const nativeScriptDecodingScanArgsEvidence = ({
   readonly control_cbor: string;
   readonly chunk_proof: SDK.BoundedItemChunkProof | null;
   readonly next_chunk_proof: SDK.BoundedItemChunkProof | null;
-  readonly frames: readonly SDK.NativeScriptFrame[];
+  readonly frames: readonly SDKDa.NativeScriptFrame[];
   readonly step_budget: bigint;
 } => ({
   control_cbor: segment.controlBefore.cborHex,

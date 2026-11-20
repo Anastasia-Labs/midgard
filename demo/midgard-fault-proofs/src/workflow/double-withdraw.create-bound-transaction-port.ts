@@ -1,4 +1,4 @@
-import { DOUBLE_WITHDRAW_VIOLATION_ID } from "@al-ft/midgard-sdk";
+import { DOUBLE_WITHDRAW_VIOLATION_ID } from "@al-ft/midgard-sdk/fraud-proof";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 import type { DoubleWithdrawContracts } from "../double-withdraw/contracts.js";

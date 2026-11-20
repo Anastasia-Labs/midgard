@@ -1,4 +1,4 @@
-import { InputSetUniquenessVerdictSubjectSchema } from "@al-ft/midgard-sdk";
+import { InputSetUniquenessVerdictSubjectSchema } from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";

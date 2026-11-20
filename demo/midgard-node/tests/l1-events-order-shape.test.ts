@@ -11,7 +11,7 @@ import {
   eventsAt,
   eventTrackedSet,
 } from "@al-ft/midgard-l1-follower/events";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/users";
 import { Data } from "@lucid-evolution/lucid";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 

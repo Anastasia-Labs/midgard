@@ -3,7 +3,7 @@
  * its pre-state ledger over the admitted predecessor from the block's one
  * walk the detector advanced, and its honest trace. */
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 
 import {

@@ -1,6 +1,7 @@
 import { computeMidgardForcedTxProofCommitment } from "@al-ft/midgard-core/codec/forced";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -31,13 +32,13 @@ export const buildPayloadFixture = async ({
   transitionTraceEntries = steps.map(traceEntry),
   eventToStep = [],
 }: PayloadFixtureInput): Promise<{
-  readonly payload: SDK.DaPayload;
+  readonly payload: SDKDa.DaPayload;
   readonly payloadEnvelopeCbor: Buffer;
   readonly header: SDK.Header;
   readonly headerHash: string;
 }> => {
   const forcedTransactionPreimages = forcedTransactions.map(
-    ([key, value], index): SDK.DaPayloadEntry => {
+    ([key, value], index): SDKDa.DaPayloadEntry => {
       const forced = Data.from(
         value,
         SDK.ForcedInclusionTxV1,
@@ -74,7 +75,7 @@ export const buildPayloadFixture = async ({
     })),
   ];
   const validationTraces = validationEventKeys.map(
-    (eventKey, index): SDK.DaPayloadEntry =>
+    (eventKey, index): SDKDa.DaPayloadEntry =>
       encodedEntry({
         key: eventKey,
         keySchema: SDK.EventKeySchema,
@@ -174,8 +175,8 @@ export const buildPayloadFixture = async ({
     protocolVersion: 1n,
   };
   const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
-  const payload: SDK.DaPayload = {
-    version: SDK.DA_PAYLOAD_VERSION,
+  const payload: SDKDa.DaPayload = {
+    version: SDKDa.DA_PAYLOAD_VERSION,
     block_body: {
       header_hash: headerHash,
       header,
@@ -194,7 +195,7 @@ export const buildPayloadFixture = async ({
   };
   return {
     payload,
-    payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(payload), {
+    payloadEnvelopeCbor: await wrapDaPayload(SDKDa.encodeDaPayload(payload), {
       mode: "identity",
     }),
     header,

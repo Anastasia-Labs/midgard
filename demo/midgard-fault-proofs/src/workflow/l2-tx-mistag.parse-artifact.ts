@@ -1,6 +1,9 @@
 import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
 import { decodeMidgardNativeTxCompact } from "@al-ft/midgard-core";
-import { commitCountedRootProgram, ROOT_DOMAINS } from "@al-ft/midgard-sdk";
+import {
+  commitCountedRootProgram,
+  ROOT_DOMAINS,
+} from "@al-ft/midgard-sdk/core";
 import { Effect } from "effect";
 
 import {

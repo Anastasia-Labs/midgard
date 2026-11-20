@@ -4,7 +4,8 @@
  * rejection whose reason some network context places at or after the
  * execution phase, is planned through the prover's verdict. A leaf whose
  * bytes the replay cannot open yields no finding. */
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 import { directPurposeArtifactFamily } from "../direct-purpose-family/artifact-family.js";
 import {
@@ -46,7 +47,7 @@ export const executionNativeScriptInvalidDetectionId = (
 
 /** A rejection whose reason some network context places at or after the
  * execution phase; the prover decides admission under the bound context. */
-const executionPhaseRejection = (verdict: SDK.OperatorVerdict): boolean =>
+const executionPhaseRejection = (verdict: SDKCore.OperatorVerdict): boolean =>
   verdict !== "ForcedTxValid" &&
   [true, false].some((body_network_mismatch) =>
     claimedReasonReachesPhase(

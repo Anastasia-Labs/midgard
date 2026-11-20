@@ -1,6 +1,7 @@
 import { decodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
 import { aikenSerialisedPlutusDataCborPreservingMapOrder as canonical } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import { deriveCanonicalOriginalDepositTransitionEffect } from "@al-ft/midgard-validation/transition-effect";
 import { Data, datumToHash, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -23,14 +24,14 @@ const metadata = {
 };
 
 const readFixture = async (external: boolean) => {
-  const deployment: SDK.EventHistoryDeployment = {
+  const deployment: SDKUsers.EventHistoryDeployment = {
     policyId: policy,
     address: "history-reader-fixture",
     retentionAddress: "history-retention-fixture",
     inlineLimitBytes: 512n,
   };
   const auth = { PublicKeyCredential: [owner] as [string] };
-  const payload: SDK.EventHistoryPayload = {
+  const payload: SDKUsers.EventHistoryPayload = {
     DepositPayload: {
       event: {
         id,
@@ -51,7 +52,7 @@ const readFixture = async (external: boolean) => {
       },
     },
   };
-  const plan = SDK.prepareEventHistoryPayload(payload, auth, {
+  const plan = SDKUsers.prepareEventHistoryPayload(payload, auth, {
     inlineLimitBytes: 512n,
     maxPayloadBytes: 5000n,
     maxPayloadNodes: 512n,
@@ -69,10 +70,10 @@ const readFixture = async (external: boolean) => {
         protected_until: 0n,
         payload: "RootContent",
       },
-      SDK.EventHistoryNode,
+      SDKUsers.EventHistoryNode,
     ),
   };
-  const node: SDK.EventHistoryNode = {
+  const node: SDKUsers.EventHistoryNode = {
     position: { Key: [key] },
     next: null,
     protected_until: 0n,
@@ -93,7 +94,7 @@ const readFixture = async (external: boolean) => {
     outputIndex: 1,
     address: deployment.address,
     assets: { lovelace: 7_000_000n, [token]: 2n, [policy + key]: 1n },
-    datum: Data.to(node, SDK.EventHistoryNode),
+    datum: Data.to(node, SDKUsers.EventHistoryNode),
   };
   const retention: UTxO[] =
     plan.kind === "External"
@@ -112,7 +113,7 @@ const readFixture = async (external: boolean) => {
       address === deployment.address ? [root, utxo] : retention,
   };
   const orders = await Effect.runPromise(
-    SDK.fetchDepositUTxOsProgram(provider, deployment),
+    SDKUsers.fetchDepositUTxOsProgram(provider, deployment),
   );
   expect(orders).toHaveLength(1);
   return orders[0]!;
@@ -168,23 +169,28 @@ describe("published deposit history capture", () => {
       await readFixture(true),
       policy,
     );
-    const opening = Data.from(history.openingCbor, SDK.EventHistoryOpening);
+    const opening = Data.from(
+      history.openingCbor,
+      SDKUsers.EventHistoryOpening,
+    );
     const altered = {
       ...opening,
-      original_assets: SDK.assetsToValue({ lovelace: 7_000_000n }),
+      original_assets: SDKUsers.assetsToValue({ lovelace: 7_000_000n }),
     };
     expect(() =>
       readPublishedDepositHistory(
         {
           ...history,
-          openingCbor: canonical(Data.to(altered, SDK.EventHistoryOpening)),
+          openingCbor: canonical(
+            Data.to(altered, SDKUsers.EventHistoryOpening),
+          ),
         },
         metadata,
       ),
     ).toThrow("differs");
     const commitment = Data.from(
       history.commitmentCbor,
-      SDK.EventHistoryCommitment,
+      SDKUsers.EventHistoryCommitment,
     );
     expect(() =>
       readPublishedDepositHistory(
@@ -193,7 +199,7 @@ describe("published deposit history capture", () => {
           commitmentCbor: canonical(
             Data.to(
               { ...commitment, payload_hash: "ff".repeat(32) },
-              SDK.EventHistoryCommitment,
+              SDKUsers.EventHistoryCommitment,
             ),
           ),
         },

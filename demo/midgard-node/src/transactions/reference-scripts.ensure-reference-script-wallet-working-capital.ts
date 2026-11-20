@@ -1,5 +1,6 @@
-import * as SDK from "@al-ft/midgard-sdk";
-import { type ReferenceScriptAuthPolicyRef } from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
+import { type ReferenceScriptAuthPolicyRef } from "@al-ft/midgard-sdk/state-queue";
 import {
   getAddressDetails,
   type LucidEvolution,
@@ -103,7 +104,7 @@ export const ensureReferenceScriptWalletWorkingCapital = (
 ): Effect.Effect<
   void,
   | SDK.StateQueueError
-  | SDK.LucidError
+  | SDKCore.LucidError
   | TxConfirmError
   | TxExpiredError
   | TxSignError
@@ -236,7 +237,7 @@ const toReferenceScriptTarget = ({
 
 /** Every reference script the node runtime needs, in publication order. */
 export const nodeRuntimeReferenceScriptTargets = (
-  contracts: SDK.MidgardValidators,
+  contracts: SDKCore.MidgardValidators,
 ): readonly ReferenceScriptTarget[] =>
   publishedDeployableScripts(contracts).map(toReferenceScriptTarget);
 
@@ -245,7 +246,7 @@ export const nodeRuntimeReferenceScriptTargets = (
  * Which commands need a script is declared by its catalogue entry.
  */
 export const referenceScriptTargetsByCommand = (
-  contracts: SDK.MidgardValidators,
+  contracts: SDKCore.MidgardValidators,
 ): Readonly<
   Record<ReferenceScriptCommandName, readonly ReferenceScriptTarget[]>
 > => {

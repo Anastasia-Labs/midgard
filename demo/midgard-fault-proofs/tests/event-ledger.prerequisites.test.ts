@@ -20,7 +20,7 @@
  * - an output that is not a canonical ledger entry wants its step's field
  *   shape proof, which transaction-output-non-canonical gives.
  */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { makeOutput } from "@al-ft/midgard-validation/tests/validation-fixtures";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";

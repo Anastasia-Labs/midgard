@@ -5,7 +5,7 @@ import {
   assertSecurityGradeEvidence,
   type AuthenticatedStateQueueHeaderObservation,
   CanonicalEvidenceRejection,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import {
   fieldPreimageLengthEvidenceFromVerifiedPayload,

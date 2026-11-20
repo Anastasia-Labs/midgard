@@ -14,7 +14,7 @@ import {
 } from "@al-ft/midgard-fault-proofs/block-replay";
 import type { FactStore, OutRef } from "@al-ft/midgard-l1-follower";
 import { eventsAt } from "@al-ft/midgard-l1-follower/events";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { Effect } from "effect";
 
 import { WithdrawalsDB } from "../src/database/index.js";

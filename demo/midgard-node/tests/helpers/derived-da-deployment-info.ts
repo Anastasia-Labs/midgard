@@ -9,7 +9,7 @@ import {
 import {
   REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
   type ReferenceScriptAuthPolicyDeploymentInfo,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import { memoizeForRun } from "@al-ft/midgard-test-support/run-shared-fixtures";
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
 import { Effect } from "effect";

@@ -1,10 +1,12 @@
 import {
-  type AuthenticatedStateQueueHeaderObservation,
-  CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
   getHeaderFromStateQueueDatum,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
-  utxoToStateQueueUTxO,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  type AuthenticatedStateQueueHeaderObservation,
+  CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
+} from "@al-ft/midgard-sdk/fraud-proof";
+import { utxoToStateQueueUTxO } from "@al-ft/midgard-sdk/state-queue";
 import {
   CML,
   coreToTxOutput,

@@ -9,12 +9,12 @@ import {
   MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
   type ResolvedCarriageReferenceInput,
 } from "@al-ft/midgard-core/codec/native-tx-field-access";
+import { FieldPreimageCertificate } from "@al-ft/midgard-sdk/core";
 import {
   deriveFieldPreimageCertification,
-  FieldPreimageCertificate,
   minimumLovelaceForFieldPreimageCertificate,
   minimumLovelaceForFieldPreimagePublication,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/state-queue";
 import {
   applyDoubleCborEncoding,
   CML,

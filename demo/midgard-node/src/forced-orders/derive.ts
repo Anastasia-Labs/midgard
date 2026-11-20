@@ -30,7 +30,7 @@ import {
   type OutRef,
   type TxSummary,
 } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/users";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect, Either } from "effect";
 

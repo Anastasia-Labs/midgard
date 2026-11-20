@@ -1,5 +1,5 @@
 import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { referenceScriptAuthTokenName } from "@al-ft/midgard-sdk";
+import { referenceScriptAuthTokenName } from "@al-ft/midgard-sdk/state-queue";
 import { type LucidEvolution, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";

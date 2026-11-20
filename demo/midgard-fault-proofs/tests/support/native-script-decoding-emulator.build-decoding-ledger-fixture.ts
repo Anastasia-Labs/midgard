@@ -18,7 +18,8 @@ import {
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core/codec";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation/ledger-output-descriptor";
 
 import type { NativeScriptDecodingLedgerTrieHandle } from "../../src/native-script-decoding/evidence.js";
@@ -223,19 +224,19 @@ export const decodingSubjectTransaction = ({
     },
   });
 
-export const entry = (key: Buffer, value: Buffer): SDK.DaPayloadEntry => [
+export const entry = (key: Buffer, value: Buffer): SDKDa.DaPayloadEntry => [
   key.toString("hex"),
   value.toString("hex"),
 ];
 
 export const sorted = (
-  entries: readonly SDK.DaPayloadEntry[],
-): SDK.DaPayloadEntry[] =>
+  entries: readonly SDKDa.DaPayloadEntry[],
+): SDKDa.DaPayloadEntry[] =>
   [...entries].sort(([left], [right]) =>
     left < right ? -1 : left > right ? 1 : 0,
   );
 
-export const bufferEntries = (entries: readonly SDK.DaPayloadEntry[]) =>
+export const bufferEntries = (entries: readonly SDKDa.DaPayloadEntry[]) =>
   entries.map(([key, value]) => ({
     key: Buffer.from(key, "hex"),
     value: Buffer.from(value, "hex"),

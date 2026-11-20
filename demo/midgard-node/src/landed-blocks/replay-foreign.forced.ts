@@ -7,7 +7,7 @@
  */
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import type { FactStore, View } from "@al-ft/midgard-l1-follower";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/users";
 import { Effect } from "effect";
 
 import type { ForcedOrderConfig } from "../forced-orders/config.js";

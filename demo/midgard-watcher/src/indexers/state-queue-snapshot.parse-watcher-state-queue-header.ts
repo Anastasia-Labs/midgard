@@ -1,4 +1,4 @@
-import { Header } from "@al-ft/midgard-sdk";
+import { Header } from "@al-ft/midgard-sdk/core";
 
 import {
   dataRoundTrip,

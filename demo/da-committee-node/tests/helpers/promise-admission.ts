@@ -1,6 +1,8 @@
 import { type AvailabilityResponseAdmissionPolicy } from "@al-ft/midgard-core";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { vi } from "vitest";
 
@@ -48,7 +50,7 @@ export const promiseAdmissionFixture = async (
   const dir = await tempDir();
   const rebind = async (
     base: Awaited<ReturnType<typeof makePayloadFixture>>,
-    header: SDK.Header,
+    header: SDKCore.Header,
   ) => {
     const headerHash = SDK.stateQueueHeaderHash(header);
     const payload = {
@@ -59,7 +61,7 @@ export const promiseAdmissionFixture = async (
         header_hash: headerHash,
       },
     };
-    const innerPayloadCbor = SDK.encodeDaPayload(payload);
+    const innerPayloadCbor = SDKDa.encodeDaPayload(payload);
     return {
       ...base,
       header,

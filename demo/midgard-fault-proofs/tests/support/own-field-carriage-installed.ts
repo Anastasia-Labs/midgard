@@ -6,7 +6,7 @@
  * parties' outputs with the same datums at those addresses and checks that
  * the application's own transactions read only the carriage it published.
  */
-import { FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX } from "@al-ft/midgard-sdk";
+import { FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX } from "@al-ft/midgard-sdk/core";
 import {
   CML,
   Data,

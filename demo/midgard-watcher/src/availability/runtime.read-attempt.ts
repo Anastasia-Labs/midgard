@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import type * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
   Data,
   Lucid,
@@ -38,10 +39,10 @@ export const createWatcherAvailabilityReadAttempt = (input: {
   identity: VerifiedWatcherDeploymentIdentity;
   l1: WatcherAvailabilityL1 & Readonly<{ provider: Provider }>;
   confirmationDepth: number;
-  deployment: SDK.DaAvailabilityDeployment;
+  deployment: SDKDa.DaAvailabilityDeployment;
   observation: WatcherAuthenticatedStateQueueObservation;
   baseLucid: LucidEvolution;
-  scope: SDK.DaAvailabilityReadScope;
+  scope: SDKDa.DaAvailabilityReadScope;
   assertCurrent: () => void;
   selectWallet: (lucid: LucidEvolution) => void;
 }) => {

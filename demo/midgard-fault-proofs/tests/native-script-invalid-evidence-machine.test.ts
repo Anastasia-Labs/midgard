@@ -3,7 +3,7 @@ import {
   encodeMidgardNativeScript,
   type MidgardNativeScript,
 } from "@al-ft/midgard-core";
-import { missingSignatureVkeyHash } from "@al-ft/midgard-sdk";
+import { missingSignatureVkeyHash } from "@al-ft/midgard-sdk/fraud-proof";
 import { describe, expect, it } from "vitest";
 
 import {

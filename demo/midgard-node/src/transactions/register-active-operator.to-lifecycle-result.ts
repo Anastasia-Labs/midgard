@@ -1,5 +1,5 @@
 import { requireAllowListed } from "@al-ft/midgard-core/deployment-profile";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/state-queue";
 import { Effect } from "effect";
 
 import { type OperatorLifecycleTxHashes } from "./register-active-operator.fetch-hub-oracle-ref-input.js";

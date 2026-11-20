@@ -6,7 +6,7 @@ import {
   readCborBytes,
   readCborUnsigned,
 } from "@al-ft/midgard-core/codec/cbor";
-import type * as SDK from "@al-ft/midgard-sdk";
+import type * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 
 /** Preserves the actual Data span and declared units without copying a large
  * redeemer into the continuation datum. Data validation remains its own rule. */

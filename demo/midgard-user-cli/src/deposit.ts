@@ -4,7 +4,7 @@ import {
   submitDepositProgram,
   userSubmissionIntentHash,
   type UserSubmissionOutcome,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/users";
 
 import { type UserCliDeps } from "./deps.js";
 import { resolveL1Access } from "./l1-view.js";

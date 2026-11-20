@@ -8,7 +8,7 @@ import {
   encodeMidgardTxOutput,
   midgardAddressFromText,
 } from "@al-ft/midgard-core/codec";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { HttpServerResponse } from "@effect/platform";
 import { CML, Data, walletFromSeed } from "@lucid-evolution/lucid";
 import { Deferred, Effect, Exit, Logger } from "effect";

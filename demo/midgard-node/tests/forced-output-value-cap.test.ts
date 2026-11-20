@@ -19,7 +19,8 @@ import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile
 import { screenMidgardForcedTxAdmission } from "@al-ft/midgard-core/consensus-validation";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { hashMidgardValidationRejectionReasonV1 } from "@al-ft/midgard-core/validation-trace";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { replayValidationVerdictEvent } from "@al-ft/midgard-validation/validation-machine";
 import {
@@ -116,7 +117,7 @@ const singleForcedBlockPayload = async ({
   readonly rejectionReason: SDK.RejectionReason | null;
   readonly ledgerMutationSteps: readonly { readonly postRoot: Buffer }[];
   readonly priorRoot: string;
-}): Promise<SDK.DaPayload> => {
+}): Promise<SDKDa.DaPayload> => {
   const orderKey =
     entry[ForcedTransactionsDB.Columns.TX_ORDER_ID].toString("hex");
   const eventKey: SDK.EventKey = {
@@ -339,7 +340,7 @@ describe("forced transaction output Value at the 5,000-byte cap", () => {
         ledgerMutationSteps: result!.ledgerMutationSteps,
         priorRoot,
       });
-      const decoded = decodeDaPayloadStrict(SDK.encodeDaPayload(payload));
+      const decoded = decodeDaPayloadStrict(SDKDa.encodeDaPayload(payload));
       expect(decoded.block_body.forced_transactions).toEqual(
         payload.block_body.forced_transactions,
       );

@@ -9,7 +9,8 @@
  * actuation permit. */
 import { createHash } from "node:crypto";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 
 import { VALIDATION_TRACE_CASE_OPEN } from "../../src/validation-trace-dispute/adapter.js";
@@ -52,7 +53,7 @@ import {
 } from "./validation-trace-dispute-staged-scripts.js";
 
 /** The runs our staging of the step stages, in order. */
-export const runs = SDK.planMidgardCekStaging(
+export const runs = SDKFraudProof.planMidgardCekStaging(
   stagedStep(STAGED_SHA2_SCRIPT, 18n).stagedOperands,
 );
 
@@ -85,7 +86,7 @@ export const fundedStagingScene = ({
 
   /** Our staging address. */
   const stagingAddress = () =>
-    SDK.midgardCekStagingAddress(
+    SDKFraudProof.midgardCekStagingAddress(
       "Custom",
       at.scene.h.proverSigner.paymentKeyHash,
     );
@@ -149,7 +150,7 @@ export const fundedStagingScene = ({
       await at.scene.h.emulator.getUtxos(stagingAddress()),
     /** The deposit our staging of the run `datumCbor` holds. */
     depositOf: (datumCbor: string) =>
-      SDK.midgardCekStagingDeposit({
+      SDKFraudProof.midgardCekStagingDeposit({
         address: stagingAddress(),
         datumCbor,
         coinsPerUtxoByte: BigInt(

@@ -2,7 +2,7 @@ import { replacePlutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cb
 import {
   TransitionTraceProofCommitmentDatum,
   TransitionTraceStepDatum,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import { initialTransitionTraceState } from "./phases.js";

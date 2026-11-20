@@ -4,7 +4,8 @@
  * committee attested (or published) a payload's envelope.
  */
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/da";
 
 /**
  * A payload served as a zstd envelope: the same body under the same header,
@@ -55,7 +56,7 @@ export const commitmentOf = async (copy: DaCopy) =>
 /** `payload`'s node status once the committee attested its envelope. */
 export const attested = async (
   copy: DaCopy,
-): Promise<SDK.DaAvailabilityStateQueueStatus> => ({
+): Promise<SDKCore.DaAvailabilityStateQueueStatus> => ({
   Attested: {
     commitment_hash: SDK.daAvailabilityCommitmentHash(await commitmentOf(copy)),
   },
@@ -64,7 +65,7 @@ export const attested = async (
 /** `payload`'s node status once its availability was published. */
 export const published = async (
   copy: DaCopy,
-): Promise<SDK.DaAvailabilityStateQueueStatus> => ({
+): Promise<SDKCore.DaAvailabilityStateQueueStatus> => ({
   Published: {
     terminal_commitment: SDK.daAvailabilityPublishedTerminalCommitment(
       await commitmentOf(copy),

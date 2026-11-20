@@ -5,12 +5,14 @@ import {
 } from "@al-ft/midgard-fault-proofs/workflow/actuation-permit";
 import type { HeaderDecision } from "@al-ft/midgard-fault-proofs/workflow/header-classifier";
 import {
-  type AuthenticatedStateQueueHeaderObservation,
-  CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   Header,
   StateQueueNode,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  type AuthenticatedStateQueueHeaderObservation,
+  CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import {

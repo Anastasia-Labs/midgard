@@ -17,7 +17,7 @@
  * the case's defense deadline, closes it Convicted with our bond back; every
  * move of ours lands within the transaction limits. */
 import { hashMidgardValidationMachineState } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES } from "@al-ft/midgard-validation/cek-constant";
 import { plutusV3ScriptWitness } from "@al-ft/midgard-validation/tests/validation-fixtures";
 import { credentialToAddress, Data } from "@lucid-evolution/lucid";

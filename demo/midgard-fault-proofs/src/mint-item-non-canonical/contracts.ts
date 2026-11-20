@@ -1,8 +1,8 @@
 import {
-  buildMintItemNonCanonicalChain,
   parseFaultProofBlueprint,
   type SpendingValidator,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { buildMintItemNonCanonicalChain } from "@al-ft/midgard-sdk/fraud-proof";
 import { type Data, type Network, type Script } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

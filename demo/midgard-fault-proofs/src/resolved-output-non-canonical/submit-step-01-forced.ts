@@ -1,18 +1,16 @@
-import {
-  forcedLeafMembershipV1,
-  proofThreadDirectionOfForcedLeaf,
-} from "@al-ft/midgard-sdk";
+import { forcedLeafMembershipV1 } from "@al-ft/midgard-sdk/core";
 import {
   type ForcedInclusionTxV1,
   type Header,
   type OutputReference,
-  PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
   RejectionReason,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
   type RootMembershipProof,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk/fraud-proof";
+import { PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION } from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,

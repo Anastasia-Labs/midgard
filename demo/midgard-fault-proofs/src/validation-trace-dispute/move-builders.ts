@@ -8,7 +8,8 @@
  * wallet's coin selection to pay. */
 import { MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS } from "@al-ft/midgard-core";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
   Constr,
   credentialToAddress,
@@ -42,8 +43,8 @@ export const validationTraceMoveWindow = (lucid: LucidEvolution) => {
 };
 
 export type ValidationTraceGameAction =
-  | Readonly<{ kind: "RevealOperator"; proof: SDK.ValidationTraceProof }>
-  | Readonly<{ kind: "RevealChallenger"; proof: SDK.ValidationTraceProof }>
+  | Readonly<{ kind: "RevealOperator"; proof: SDKDa.ValidationTraceProof }>
+  | Readonly<{ kind: "RevealChallenger"; proof: SDKDa.ValidationTraceProof }>
   | Readonly<{ kind: "EnterResolution" }>
   | Readonly<{ kind: "EnterChallengerTimeout" }>;
 
@@ -94,7 +95,7 @@ export const buildValidationTraceGameMove = ({
                 : { EnterChallengerTimeout: indices },
         ],
       },
-      SDK.ValidationGameSpendRedeemer,
+      SDKDa.ValidationGameSpendRedeemer,
     );
   };
   const tx = lucid
@@ -134,13 +135,13 @@ export const buildValidationTraceOperatorReveal = ({
     references: Pick<ValidationTraceDisputeDeployment["references"], "game">;
   }>;
   readonly thread: UTxO;
-  readonly proof: SDK.ValidationTraceProof;
+  readonly proof: SDKDa.ValidationTraceProof;
   /** What the thread pays for the move. */
   readonly fee: bigint;
   readonly validFrom: number;
   readonly validTo: number;
 }): TxBuilder => {
-  const datum = Data.from(thread.datum!, SDK.CaseThreadDatum);
+  const datum = Data.from(thread.datum!, SDKDa.CaseThreadDatum);
   if (datum.data === null)
     throw new Error("validation-trace reveal: the thread holds no state");
   const next = revealedThread({
@@ -157,7 +158,7 @@ export const buildValidationTraceOperatorReveal = ({
     action: { kind: "RevealOperator", proof },
     successor: {
       address: thread.address,
-      datum: Data.to({ ...datum, data: next }, SDK.CaseThreadDatum),
+      datum: Data.to({ ...datum, data: next }, SDKDa.CaseThreadDatum),
     },
     fee,
     validFrom,
@@ -186,10 +187,10 @@ export const challengerEnteredResolution = ({
   lower,
   upper,
 }: {
-  readonly thread: SDK.CaseThread;
+  readonly thread: SDKDa.CaseThread;
   readonly lower: bigint;
   readonly upper: bigint;
-}): SDK.CaseThread => {
+}): SDKDa.CaseThread => {
   if (thread.turn !== "ReadyForOneStep")
     throw new Error("validation-trace thread is not ReadyForOneStep");
   return {
@@ -219,11 +220,11 @@ export const revealedThread = ({
   upper,
 }: {
   readonly side: ValidationTraceSide;
-  readonly thread: SDK.CaseThread;
-  readonly proof: SDK.ValidationTraceProof;
+  readonly thread: SDKDa.CaseThread;
+  readonly proof: SDKDa.ValidationTraceProof;
   readonly lower: bigint;
   readonly upper: bigint;
-}): SDK.CaseThread => {
+}): SDKDa.CaseThread => {
   const { turn } = thread;
   if (side === "operator") {
     if (typeof turn === "string" || !("AwaitingOperator" in turn))
@@ -312,7 +313,7 @@ export const buildValidationTraceThreadClose = ({
   readonly validTo: number;
 }): Readonly<{ tx: TxBuilder; receiptUnit: string }> => {
   const { chain, references } = deployment;
-  const caseDatum = Data.from(caseUtxo.datum!, SDK.Case);
+  const caseDatum = Data.from(caseUtxo.datum!, SDKDa.Case);
   const receiptUnit =
     chain.award.policyId + validationTraceThreadTokenName(caseId, defenderVkh);
   const threadReference =
@@ -328,7 +329,7 @@ export const buildValidationTraceThreadClose = ({
           defender_vkh: defenderVkh,
         },
       },
-      SDK.CaseRedeemer,
+      SDKDa.CaseRedeemer,
     );
   const caseIndex = (ctx: RedeemerContext) =>
     SDK.requireInputIndex(ctx, caseUtxo, "case");
@@ -340,10 +341,10 @@ export const buildValidationTraceThreadClose = ({
         case_input_index: caseIndex(ctx),
       };
       return via === "timeout"
-        ? Data.to(indices, SDK.ValidationTimeoutSpendRedeemer)
+        ? Data.to(indices, SDKDa.ValidationTimeoutSpendRedeemer)
         : Data.to(
             { CloseAwardedThread: indices },
-            SDK.ValidationAwardSpendRedeemer,
+            SDKDa.ValidationAwardSpendRedeemer,
           );
     })
     .collectFrom([caseUtxo], caseRedeemer)
@@ -351,7 +352,7 @@ export const buildValidationTraceThreadClose = ({
     .mintAssets({ [receiptUnit]: 1n }, (ctx) =>
       Data.to(
         { MintReceipt: { case_input_index: caseIndex(ctx) } },
-        SDK.ReceiptRedeemer,
+        SDKDa.ReceiptRedeemer,
       ),
     )
     .readFrom([
@@ -365,7 +366,7 @@ export const buildValidationTraceThreadClose = ({
         kind: "inline",
         value: Data.to(
           { ...caseDatum, open_threads: caseDatum.open_threads - 1n },
-          SDK.Case,
+          SDKDa.Case,
         ),
       },
       caseUtxo.assets,
@@ -381,7 +382,7 @@ export const buildValidationTraceThreadClose = ({
             outcome,
             bounty_claimant: caseDatum.bounty_claimant,
           },
-          SDK.LostDefenseReceipt,
+          SDKDa.LostDefenseReceipt,
         ),
       },
       { lovelace: RECEIPT_LOVELACE, [receiptUnit]: 1n },

@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import {
   calculateMinLovelaceFromUTxO,
   credentialToAddress,
@@ -27,7 +28,7 @@ const lucidWith = (coinsPerUtxoByte: bigint | undefined) =>
     }),
   }) as unknown as Pick<LucidEvolution, "config">;
 
-const commitment = SDK.buildDaAvailabilityCommitment({
+const commitment = SDKDa.buildDaAvailabilityCommitment({
   deploymentIdentity: "ab".repeat(28),
   headerHash: HEADER_HASH,
   payload: new Uint8Array(4_096).fill(7),
@@ -37,7 +38,7 @@ const commitment = SDK.buildDaAvailabilityCommitment({
 const daParamsDatum = {
   da_threshold: 2n,
   committee_signers_hash: "12".repeat(32),
-} as SDK.DaParamsDatum;
+} as SDKDa.DaParamsDatum;
 
 const rescueBeneficiary = Effect.runSync(
   SDK.addressDataFromBech32(
@@ -59,10 +60,10 @@ const minAtCount = (attestationCount: bigint): bigint =>
         da_threshold: daParamsDatum.da_threshold,
         committee_signers_hash: daParamsDatum.committee_signers_hash,
         rescue_beneficiary: rescueBeneficiary,
-        attested_signers: SDK.EMPTY_ATTESTED_SIGNER_BITMAP,
+        attested_signers: SDKDa.EMPTY_ATTESTED_SIGNER_BITMAP,
         attestation_count: attestationCount,
       } as never,
-      SDK.DaAttestationDatum as never,
+      SDKDa.DaAttestationDatum as never,
     ),
   });
 

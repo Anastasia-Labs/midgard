@@ -1,6 +1,8 @@
 /** Open Q35's committed output field (when needed) and mint the proof token. */
 
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/fraud-proof";
 import "@lucid-evolution/lucid";
 import "../field-opening.js";
 import "../proof-chunk-carriage.js";

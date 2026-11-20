@@ -2,7 +2,8 @@
  * policy-unique tokens: once our pending claim is spent, the case its
  * out-ref names is ours whoever verified it, and the record a close of our
  * case minted is ours whoever closed it. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
 import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
 
 import { selectOwnFraudProofRecord } from "../fraud-proof-record-selection.js";
@@ -14,7 +15,7 @@ import { validationTraceFraudProofUnit } from "./close.js";
 import type { ValidationTraceDisputeDeployment } from "./transactions.js";
 
 /** Whether anyone has defended the case. */
-const isContested = (caseDatum: SDK.Case): boolean =>
+const isContested = (caseDatum: SDKDa.Case): boolean =>
   caseDatum.open_threads > 0n ||
   caseDatum.defender_won ||
   caseDatum.defenders_root !== SDK.EMPTY_MERKLE_TREE_ROOT;
@@ -71,7 +72,7 @@ export const validationTraceCaseReads = ({
       const openerOutRef = outputs[0]!.outRef;
       const caseUnit =
         deployment.chain.case.policyId +
-        SDK.validationCaseId(
+        SDKDa.validationCaseId(
           artifact.headerHash,
           artifact.claim.claimWitness.event_to_step_membership.key,
           parseOwnOutRef(openerOutRef),
@@ -81,7 +82,7 @@ export const validationTraceCaseReads = ({
       return {
         caseUnit,
         outRef: `${found.txHash}#${found.outputIndex.toString()}`,
-        caseDatum: Data.from(found.datum, SDK.Case),
+        caseDatum: Data.from(found.datum, SDKDa.Case),
         openerOutRef,
       };
     }

@@ -1,10 +1,10 @@
 import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
 import { decodeMidgardNativeTxCompact } from "@al-ft/midgard-core";
+import { type MidgardTxInput } from "@al-ft/midgard-sdk/core";
 import {
   encodeMidgardTxOutputCanonical,
-  type MidgardTxInput,
   type MidgardTxOutput,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import { midgardTxOutputFromCanonicalCbor } from "../prepare-input-no-idx.midgard-tx-output-from-canonical-cbor.js";
 import {

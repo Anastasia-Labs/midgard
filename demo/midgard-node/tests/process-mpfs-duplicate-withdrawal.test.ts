@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
@@ -122,7 +123,7 @@ describe("duplicate-outref withdrawals in one block window", () => {
       hex(orders[1]![WithdrawalsDB.Columns.RAW_EVENT_INFO]),
       SDK.WithdrawalInfo,
     ) as SDK.WithdrawalInfo;
-    const payableDuplicate = SDK.committedWithdrawalValueBytes({
+    const payableDuplicate = SDKFraudProof.committedWithdrawalValueBytes({
       ...info,
       validity: "WithdrawalIsValid",
     });

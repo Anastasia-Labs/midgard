@@ -11,7 +11,8 @@ import "node:url";
 import "node:util";
 import "@al-ft/midgard-core/codec";
 import "@al-ft/midgard-core/consensus-profile";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
 import "@al-ft/midgard-validation/wire";
 import "@al-ft/midgard-validation/phase-a";
 import "@effect/sql";
@@ -50,7 +51,7 @@ import { promisify } from "node:util";
 
 import { computeMidgardNativeTxFullHashFromCanonicalCbor } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { runPhaseAValidation } from "@al-ft/midgard-validation/phase-a";
 import type { PhaseAResult, QueuedTx } from "@al-ft/midgard-validation/types";
 import { deserializePhaseACandidate } from "@al-ft/midgard-validation/wire";

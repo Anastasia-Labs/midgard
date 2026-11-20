@@ -8,7 +8,7 @@
  * operator, who lost the thread we closed, by its lost-defense receipt, and
  * stops under its own named state, raising no alarm, hands the session back
  * at once, and moves nothing more. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { credentialToAddress, Data } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 

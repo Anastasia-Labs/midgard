@@ -21,11 +21,13 @@
  * submitters cannot diverge from them.
  */
 import {
-  encodeMidgardAddressWitnessCanonical,
-  MIDGARD_FIELD_INDEX,
   type MidgardAddressWitness,
   type NativeTxWitnessSetCompact,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  encodeMidgardAddressWitnessCanonical,
+  MIDGARD_FIELD_INDEX,
+} from "@al-ft/midgard-sdk/fraud-proof";
 
 import { planFaultProofFieldOpening } from "../field-opening.js";
 import { type FaultProofFieldOpeningPlan } from "../field-opening.plan-fault-proof-field-opening.js";

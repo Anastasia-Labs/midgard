@@ -5,7 +5,7 @@ import {
   FOLLOWER_NODE_UNAVAILABLE,
   WALLET_SEED_PENDING,
 } from "@al-ft/midgard-l1-follower";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { expect, it, vi } from "vitest";
 
 import { availabilityParametersFromConfig } from "../../src/availability/factory.js";

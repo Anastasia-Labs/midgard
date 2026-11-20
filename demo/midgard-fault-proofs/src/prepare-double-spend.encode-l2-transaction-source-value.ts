@@ -15,7 +15,7 @@ import {
   L2TransactionSourceSchema,
   type NativeTxCompact as NativeTxCompactData,
   type OutputReference as OutputReferenceData,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
 import { Data } from "@lucid-evolution/lucid";
 
 import { parseHex, parseJsonText, requireRecord } from "./json-file.js";

@@ -2,7 +2,7 @@ import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   MinAdaStep04DatumSchema,
   MinAdaStep04SpendRedeemerSchema,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import {

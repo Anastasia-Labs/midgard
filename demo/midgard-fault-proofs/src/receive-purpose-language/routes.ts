@@ -3,7 +3,7 @@
  * terminal, or the shared receive route to one receive ordinal and the
  * family lookup, which decides the fact or opens the shared claimed field-8
  * scan. */
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import { Data } from "@lucid-evolution/lucid";
 
 import {

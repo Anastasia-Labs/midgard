@@ -1,4 +1,6 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect, it } from "vitest";
@@ -52,7 +54,7 @@ it("adjudicates authenticated opaque forced bytes with the installed field-lengt
   );
   expect(queue.assets[fixture.fraudulent.stateQueueBlockUnit]).toBe(1n);
   const queueState = await Effect.runPromise(
-    SDK.utxoToStateQueueUTxO(
+    SDKStateQueue.utxoToStateQueueUTxO(
       queue,
       fixture.harness.contracts.stateQueue.policyId,
     ),
@@ -162,7 +164,7 @@ it("adjudicates authenticated opaque forced bytes with the installed field-lengt
   expect(proof.datum).toBe(
     Data.to(
       { fraud_prover: fixture.config.signer.paymentKeyHash },
-      SDK.FraudProofTokenDatum,
+      SDKFraudProof.FraudProofTokenDatum,
     ),
   );
   expect(await at(authentication.nextThreadOutRef)).toBeUndefined();

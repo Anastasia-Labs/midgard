@@ -6,7 +6,8 @@ import {
   type SimOutput,
   simUniverse,
 } from "@al-ft/midgard-l1-follower/testing";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { StateQueueProjectionConfig } from "../../src/l1-state-queue/index.js";
@@ -14,7 +15,7 @@ import type { StateQueueProjectionConfig } from "../../src/l1-state-queue/index.
 export const QUEUE_ADDRESS = simUniverse().trackedAddress;
 export const QUEUE_POLICY = "71".repeat(28);
 export const OTHER_POLICY = "72".repeat(28);
-export const ROOT_ASSET = SDK.STATE_QUEUE_ROOT_ASSET_NAME;
+export const ROOT_ASSET = SDKStateQueue.STATE_QUEUE_ROOT_ASSET_NAME;
 export const NODE_PREFIX = SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX;
 export const GENESIS_HASH = "00".repeat(28);
 

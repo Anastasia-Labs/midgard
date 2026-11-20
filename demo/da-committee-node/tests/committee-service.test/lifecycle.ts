@@ -1,4 +1,4 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { expect, it } from "vitest";
 

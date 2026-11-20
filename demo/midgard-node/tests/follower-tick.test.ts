@@ -15,7 +15,7 @@ import {
   eventProjection,
   eventTrackedSet,
 } from "@al-ft/midgard-l1-follower/events";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 import { SqlClient } from "@effect/sql";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";

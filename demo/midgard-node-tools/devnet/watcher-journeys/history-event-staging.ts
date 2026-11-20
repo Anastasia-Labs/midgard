@@ -1,7 +1,8 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   CML,
   coreToTxOutput,
@@ -46,21 +47,21 @@ export const readJourneyHistoryEvent = async (
   contracts: SDK.MidgardValidators,
   unit: string,
 ): Promise<StagedHistoryEvent> => {
-  const pair = SDK.requireEventHistoryContracts(contracts);
+  const pair = SDKUsers.requireEventHistoryContracts(contracts);
   const policyId = unit.slice(0, 56);
   const orders =
     policyId === pair.deposit.list.policyId
       ? await Effect.runPromise(
-          SDK.fetchDepositUTxOsProgram(
+          SDKUsers.fetchDepositUTxOsProgram(
             lucid,
-            SDK.eventHistoryDeploymentFromContracts(pair.deposit),
+            SDKUsers.eventHistoryDeploymentFromContracts(pair.deposit),
           ),
         )
       : policyId === pair.withdrawal.list.policyId
         ? await Effect.runPromise(
-            SDK.fetchWithdrawalUTxOsProgram(
+            SDKUsers.fetchWithdrawalUTxOsProgram(
               lucid,
-              SDK.eventHistoryDeploymentFromContracts(pair.withdrawal),
+              SDKUsers.eventHistoryDeploymentFromContracts(pair.withdrawal),
             ),
           )
         : undefined;
@@ -90,14 +91,18 @@ const assertRecordedHistoryFacts = (
   const expected = matches[0];
   if (matches.length !== 1 || expected?.datum == null)
     throw new Error("Recorded transaction lacks a unique history Order");
-  const node = Data.from(expected.datum, SDK.EventHistoryNode);
+  const node = Data.from(expected.datum, SDKUsers.EventHistoryNode);
   if (
     node.payload === "RootContent" ||
     !("Order" in node.payload) ||
-    Data.to(node.payload.Order.facts, SDK.EventHistoryFacts) !==
-      Data.to(event.order.facts, SDK.EventHistoryFacts) ||
-    !SDK.assetsEqual(
-      SDK.eventHistoryOriginalAssets(node, expected.assets, event.policyId),
+    Data.to(node.payload.Order.facts, SDKUsers.EventHistoryFacts) !==
+      Data.to(event.order.facts, SDKUsers.EventHistoryFacts) ||
+    !SDKUsers.assetsEqual(
+      SDKUsers.eventHistoryOriginalAssets(
+        node,
+        expected.assets,
+        event.policyId,
+      ),
       event.order.originalAssets,
     )
   )
@@ -279,7 +284,7 @@ const journeyWithdrawalConfig = async (input: {
   deployment: EventDeployment;
   ownerKey: CML.PrivateKey;
   body: SDK.WithdrawalBody;
-}): Promise<SDK.SubmitWithdrawalConfig> => {
+}): Promise<SDKUsers.SubmitWithdrawalConfig> => {
   const { deployment, body } = input;
   const key = input.ownerKey;
   if (key.to_public().hash().to_hex() !== body.l2_owner)
@@ -310,7 +315,7 @@ export const journeyWithdrawalQuote =
   (input: { deployment: EventDeployment; ownerKey: CML.PrivateKey }) =>
   async (body: SDK.WithdrawalBody) => {
     const prepared = await Effect.runPromise(
-      SDK.prepareWithdrawalSubmissionProgram(
+      SDKUsers.prepareWithdrawalSubmissionProgram(
         input.deployment.operatorLucid,
         input.deployment.contracts,
         await journeyWithdrawalConfig({ ...input, body }),
@@ -319,7 +324,7 @@ export const journeyWithdrawalQuote =
     const orderLovelace = prepared.request.assets.lovelace ?? 0n;
     return {
       orderLovelace,
-      targetMinimum: SDK.eventHistoryWithdrawalFunding(
+      targetMinimum: SDKUsers.eventHistoryWithdrawalFunding(
         prepared.request.payloadCbor,
         orderLovelace,
       ).targetMinimum,
@@ -339,7 +344,7 @@ export const journeyWithdrawalEventRequest = (input: {
     identity: SDK.withdrawalBodyBytes(body),
     build: async () => {
       const built = await Effect.runPromise(
-        SDK.buildUnsignedWithdrawalTxWithMetadataProgram(
+        SDKUsers.buildUnsignedWithdrawalTxWithMetadataProgram(
           deployment.operatorLucid,
           deployment.contracts,
           await journeyWithdrawalConfig(input),
@@ -401,7 +406,7 @@ export const journeyDepositEventRequest = (input: {
       if (reference === undefined)
         throw new Error("Missing published deposit minting reference");
       const built = await Effect.runPromise(
-        SDK.buildUnsignedDepositTxWithMetadataProgram(
+        SDKUsers.buildUnsignedDepositTxWithMetadataProgram(
           deployment.operatorLucid,
           deployment.contracts,
           {

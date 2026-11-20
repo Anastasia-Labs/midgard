@@ -8,7 +8,8 @@ import {
   SELECTED_DEPLOYMENT_PROFILE,
 } from "@al-ft/midgard-core/deployment-profile";
 import { releaseRecord } from "@al-ft/midgard-core/deployment-release";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDeployment from "@al-ft/midgard-sdk/deployment";
 import { applyDoubleCborEncoding } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -85,7 +86,7 @@ export const publicDeploymentBlueprintRegistry = (
           : [];
     if (bare.length === 1) SDK.getUnappliedScript(blueprint, bare[0]!.title);
   }
-  SDK.verifyDeploymentScriptBindings(blueprint, scripts);
+  SDKDeployment.verifyDeploymentScriptBindings(blueprint, scripts);
   const deployed = scripts.map((entry) => {
     if (entry.script.type !== "PlutusV3" && entry.script.type !== "Native")
       throw new Error(

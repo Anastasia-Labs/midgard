@@ -30,7 +30,8 @@ import {
   type VerifiedFraudProofReleaseFinalityPolicy,
 } from "@al-ft/midgard-fault-proofs/workflow/release-finality-policy";
 import { L1FollowerProvider } from "@al-ft/midgard-l1-follower/provider";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKUsers from "@al-ft/midgard-sdk/users";
 import {
   CML,
   Data,
@@ -224,7 +225,7 @@ const listAddress = (kind: "deposit" | "withdrawal"): string =>
 
 /** The list's root, re-output with `next` set to `event`'s key. */
 const linkRoot = (root: UTxO, event: UserEventId): string => {
-  const node = Data.from(root.datum!, SDK.EventHistoryNode);
+  const node = Data.from(root.datum!, SDKUsers.EventHistoryNode);
   return syntheticTransaction({
     inputs: [`${root.txHash}#${root.outputIndex.toString()}`],
     outputs: [
@@ -236,7 +237,10 @@ const linkRoot = (root: UTxO, event: UserEventId): string => {
             ? []
             : [[unit.slice(0, 56), unit.slice(56), quantity] as const],
         ),
-        datumCbor: Data.to({ ...node, next: event.key }, SDK.EventHistoryNode),
+        datumCbor: Data.to(
+          { ...node, next: event.key },
+          SDKUsers.EventHistoryNode,
+        ),
       },
     ],
   });
@@ -264,7 +268,7 @@ const listedChain = async () => {
   const root = async (kind: "deposit" | "withdrawal") => {
     const roots = (await lucid.utxosAt(listAddress(kind))).filter(
       (utxo) =>
-        Data.from(utxo.datum!, SDK.EventHistoryNode).position === "Root",
+        Data.from(utxo.datum!, SDKUsers.EventHistoryNode).position === "Root",
     );
     expect(roots).toHaveLength(1);
     return roots[0]!;

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { openAvailabilityOperationJournal } from "@al-ft/midgard-core/availability-operation-journal";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -37,8 +37,8 @@ import { testPromiseCausalPolicy } from "./helpers/promise-causal-policy.js";
  * are wrapped so the interval each one is handed can be read; nothing here
  * needs a deployed protocol.
  */
-vi.mock("@al-ft/midgard-sdk", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@al-ft/midgard-sdk")>();
+vi.mock("@al-ft/midgard-sdk/da", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@al-ft/midgard-sdk/da")>();
   const { Effect } = await import("effect");
   // As Lucid's builder does, the exclusive TTL is the slot of `validTo`
   // (the fixture's 1 s slots from ZERO_TIME, inlined: this factory is hoisted).

@@ -17,7 +17,8 @@ import {
   midgardFieldItemOrderIsValid,
 } from "@al-ft/midgard-core";
 import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/fraud-proof";
 import {
   canonicalCborArgumentHeaderSize,
   canonicalOrderedItemEncodedLength,
@@ -120,7 +121,7 @@ type Chain = Pick<
 export const canonicalDecodeValidators = (
   chain: Chain,
 ): Readonly<
-  Record<ValidationTraceCanonicalDecodeHolder, SDK.SpendingValidator>
+  Record<ValidationTraceCanonicalDecodeHolder, SDKCore.SpendingValidator>
 > => {
   const semantic = (index: number) => {
     const resolver =

@@ -11,15 +11,17 @@ import {
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
 import {
-  acceptedVerdictSubject,
   AddressData,
   addressDataFromBech32,
   ForcedInclusionTxV1Schema,
-  forcedVerdictSubject,
   OutputReference,
   Proof,
   ROOT_DOMAINS,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/core";
+import {
+  acceptedVerdictSubject,
+  forcedVerdictSubject,
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

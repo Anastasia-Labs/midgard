@@ -2,7 +2,7 @@
  * raw field items the caller chooses, so a replay meets an output, mint item
  * or script witness that is not in the shape its walk reads. */
 import { decodeMidgardNativeTxFullFromCanonicalCbor } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../../src/evidence/canonical-block-evidence.js";
 import type { CompleteCanonicalReplay } from "../../src/workflow/complete-replay.js";

@@ -9,7 +9,7 @@
  */
 import { deploymentFamilyStepNames } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
-import { VALIDATION_TRACE_DISPUTE_STEP_COUNT } from "@al-ft/midgard-sdk";
+import { VALIDATION_TRACE_DISPUTE_STEP_COUNT } from "@al-ft/midgard-sdk/core";
 import { publishWorkflowDeployment } from "midgard-node/tests/helpers/published-workflow-deployment.publish-workflow-deployment";
 import { beforeAll, describe, expect, it } from "vitest";
 

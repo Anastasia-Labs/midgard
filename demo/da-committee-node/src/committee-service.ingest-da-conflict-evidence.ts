@@ -10,7 +10,7 @@ import {
   encodeDaConflictEvidenceCbor,
   encodeDaConflictingSignatureHeaderEvidenceCbor,
 } from "@al-ft/midgard-core/da-transport";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/da";
 
 import type {
   CommitteePromiseAdmission,

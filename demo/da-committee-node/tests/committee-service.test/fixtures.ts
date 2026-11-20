@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import type * as SDKCore from "@al-ft/midgard-sdk/core";
+import * as SDK from "@al-ft/midgard-sdk/da";
 import { afterAll } from "vitest";
 
 import { retainedAvailabilityPayload } from "../../src/availability/retained-payload.js";
@@ -79,7 +80,7 @@ export const retainedSignedPayload = async (
   });
 };
 
-export const attestedDaStatus = (): SDK.DaAvailabilityStateQueueStatus => ({
+export const attestedDaStatus = (): SDKCore.DaAvailabilityStateQueueStatus => ({
   Attested: { commitment_hash: "aa".repeat(32) },
 });
 

@@ -4,14 +4,14 @@ import {
   type MidgardValidationMachineState,
   type MidgardValidationTraceProof,
 } from "@al-ft/midgard-core";
+import { requireInputIndex } from "@al-ft/midgard-sdk/core";
 import {
-  requireInputIndex,
   ValidationBoundarySpendRedeemer,
   ValidationGameSpendRedeemer,
   validationMachineStateDataFromCore,
   ValidationResolutionDatum,
   validationTraceProofDataFromCore,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/da";
 import { Data, type Script, type UTxO } from "@lucid-evolution/lucid";
 
 import {

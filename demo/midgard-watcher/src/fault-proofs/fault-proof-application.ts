@@ -1,7 +1,9 @@
 import "node:fs/promises";
 import "node:path";
 import "@al-ft/midgard-fault-proofs";
-import "@al-ft/midgard-sdk";
+import "@al-ft/midgard-sdk/core";
+import "@al-ft/midgard-sdk/state-queue";
+import "@al-ft/midgard-sdk/users";
 import "@lucid-evolution/lucid";
 import "../funding/workflow-funding-profile-overlay.js";
 import "../indexers/authenticated-state-queue-observation.js";

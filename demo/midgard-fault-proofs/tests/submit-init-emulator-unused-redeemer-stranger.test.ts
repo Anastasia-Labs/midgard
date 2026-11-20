@@ -12,7 +12,8 @@
  * thread.
  */
 import { outRefLabel } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import {
   type BuildTxWithRedeemer,
   Data,
@@ -172,7 +173,7 @@ const strangerStep01 = async (s: Scene, thread: UTxO, unit: string) => {
       fraud_prover: harness.proverSigner.paymentKeyHash,
       data: material.sourceBound,
     },
-    SDK.DirectBindEventDatum,
+    SDKFraudProof.DirectBindEventDatum,
   );
   const redeemer = ((ctx) =>
     Data.to(
@@ -198,7 +199,7 @@ const strangerStep01 = async (s: Scene, thread: UTxO, unit: string) => {
           },
         ],
       },
-      SDK.DirectStep01Redeemer,
+      SDKFraudProof.DirectStep01Redeemer,
     )) satisfies BuildTxWithRedeemer;
   const tx = await strangerLucid
     .newTx()
@@ -420,7 +421,9 @@ describe("unused-redeemer steps refuse a party other than the thread's prover", 
       harness.direct.fraudProof.spendingScriptAddress,
       outcome.fraudProofUnit,
     );
-    expect(Data.from(token.datum!, SDK.FraudProofTokenDatum)).toStrictEqual({
+    expect(
+      Data.from(token.datum!, SDKFraudProof.FraudProofTokenDatum),
+    ).toStrictEqual({
       fraud_prover: harness.proverSigner.paymentKeyHash,
     });
   }, 1_200_000);

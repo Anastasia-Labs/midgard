@@ -1,4 +1,5 @@
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKStateQueue from "@al-ft/midgard-sdk/state-queue";
 import {
   Data as LucidData,
   type LucidEvolution,
@@ -20,12 +21,12 @@ import {
 
 export const getOperatorKeyHash = (
   lucid: LucidEvolution,
-): Effect.Effect<string, SDK.StateQueueError> =>
+): Effect.Effect<string, SDKStateQueue.StateQueueError> =>
   Effect.gen(function* () {
     const operatorAddress = yield* Effect.tryPromise({
       try: () => lucid.wallet().address(),
       catch: (cause) =>
-        new SDK.StateQueueError({
+        new SDKStateQueue.StateQueueError({
           message: "Failed to resolve operator wallet address",
           cause,
         }),
@@ -33,7 +34,7 @@ export const getOperatorKeyHash = (
     const paymentCredential = paymentCredentialOf(operatorAddress);
     if (paymentCredential?.type !== "Key") {
       return yield* Effect.fail(
-        new SDK.StateQueueError({
+        new SDKStateQueue.StateQueueError({
           message: "Operator wallet does not have a key payment credential",
           cause: operatorAddress,
         }),
@@ -45,7 +46,7 @@ export const getOperatorKeyHash = (
 const selectActiveOperatorInput = (
   activeOperatorUtxos: readonly UTxO[],
   operatorKeyHash: string,
-): Effect.Effect<UTxO, SDK.StateQueueError> =>
+): Effect.Effect<UTxO, SDKStateQueue.StateQueueError> =>
   Effect.gen(function* () {
     for (const utxo of activeOperatorUtxos) {
       const nodeDatumEither = yield* Effect.either(
@@ -62,7 +63,7 @@ const selectActiveOperatorInput = (
       }
     }
     return yield* Effect.fail(
-      new SDK.StateQueueError({
+      new SDKStateQueue.StateQueueError({
         message:
           "No active-operators node for current operator key hash; cannot build real state_queue commit witness",
         cause: operatorKeyHash,
@@ -80,7 +81,7 @@ export const fetchActiveOperatorUtxos = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
   message: string,
-): Effect.Effect<readonly UTxO[], SDK.StateQueueError> =>
+): Effect.Effect<readonly UTxO[], SDKStateQueue.StateQueueError> =>
   SDK.utxosAtByNFTPolicyId(
     lucid,
     contracts.activeOperators.spendingScriptAddress,
@@ -89,7 +90,7 @@ export const fetchActiveOperatorUtxos = (
     Effect.map((beacons) => beacons.map((beacon) => beacon.utxo)),
     Effect.mapError(
       (cause) =>
-        new SDK.StateQueueError({
+        new SDKStateQueue.StateQueueError({
           message,
           cause,
         }),
@@ -98,11 +99,11 @@ export const fetchActiveOperatorUtxos = (
 
 const requireInlineActiveOperatorDatum = (
   activeOperatorInput: UTxO,
-): Effect.Effect<UTxO & { datum: string }, SDK.StateQueueError> =>
+): Effect.Effect<UTxO & { datum: string }, SDKStateQueue.StateQueueError> =>
   Effect.gen(function* () {
     if (activeOperatorInput.datum == null) {
       return yield* Effect.fail(
-        new SDK.StateQueueError({
+        new SDKStateQueue.StateQueueError({
           message:
             "Active-operators UTxO must include inline datum for real state_queue commit",
           cause: `${activeOperatorInput.txHash}#${activeOperatorInput.outputIndex}`,
@@ -118,7 +119,7 @@ export const fetchFreshActiveOperatorInputForCommit = (
   operatorKeyHash: string,
   /** Out-refs live own intents spend (`NodeWalletView.held`). */
   heldOutRefs: ReadonlySet<string>,
-): Effect.Effect<UTxO & { datum: string }, SDK.StateQueueError> =>
+): Effect.Effect<UTxO & { datum: string }, SDKStateQueue.StateQueueError> =>
   Effect.gen(function* () {
     let lastCandidateLabels: readonly string[] = [];
 
@@ -163,7 +164,7 @@ export const fetchFreshActiveOperatorInputForCommit = (
     }
 
     return yield* Effect.fail(
-      new SDK.StateQueueError({
+      new SDKStateQueue.StateQueueError({
         message:
           "Timed out waiting for refreshed active-operators UTxO after scheduler refresh",
         cause: `operator=${operatorKeyHash},held_outrefs=${[
@@ -175,11 +176,11 @@ export const fetchFreshActiveOperatorInputForCommit = (
 
 export const getSchedulerDatumFromUTxO = (
   schedulerUtxo: UTxO,
-): Effect.Effect<SDK.SchedulerDatum, SDK.StateQueueError> =>
+): Effect.Effect<SDK.SchedulerDatum, SDKStateQueue.StateQueueError> =>
   Effect.gen(function* () {
     if (schedulerUtxo.datum == null) {
       return yield* Effect.fail(
-        new SDK.StateQueueError({
+        new SDKStateQueue.StateQueueError({
           message: "Scheduler UTxO must include inline datum",
           cause: `${schedulerUtxo.txHash}#${schedulerUtxo.outputIndex}`,
         }),
@@ -193,7 +194,7 @@ export const getSchedulerDatumFromUTxO = (
           SDK.SchedulerDatum as never,
         ) as SDK.SchedulerDatum,
       catch: (cause) =>
-        new SDK.StateQueueError({
+        new SDKStateQueue.StateQueueError({
           message: "Failed to decode scheduler datum",
           cause,
         }),
@@ -203,7 +204,7 @@ export const getSchedulerDatumFromUTxO = (
 export const requireExistingSchedulerWitnessUtxo = (
   schedulerUtxos: readonly UTxO[],
   schedulerWitnessUnit: string,
-): Effect.Effect<UTxO, SDK.StateQueueError> =>
+): Effect.Effect<UTxO, SDKStateQueue.StateQueueError> =>
   Effect.gen(function* () {
     const existingWitness = [...schedulerUtxos]
       .filter((utxo) => (utxo.assets[schedulerWitnessUnit] ?? 0n) > 0n)
@@ -213,7 +214,7 @@ export const requireExistingSchedulerWitnessUtxo = (
     }
 
     return yield* Effect.fail(
-      new SDK.StateQueueError({
+      new SDKStateQueue.StateQueueError({
         message:
           "Incomplete protocol deployment: scheduler root UTxO is missing; refusing commit-time scheduler minting",
         cause: `unit=${schedulerWitnessUnit}`,
@@ -226,7 +227,7 @@ export const resolveCurrentOperatorSchedulerWindow = (
   contracts: SDK.MidgardValidators,
 ): Effect.Effect<
   CurrentOperatorSchedulerWindow | undefined,
-  SDK.StateQueueError
+  SDKStateQueue.StateQueueError
 > =>
   Effect.gen(function* () {
     const operatorKeyHash = yield* getOperatorKeyHash(lucid);
@@ -241,7 +242,7 @@ export const resolveCurrentOperatorSchedulerWindow = (
     ).pipe(
       Effect.mapError(
         (cause) =>
-          new SDK.StateQueueError({
+          new SDKStateQueue.StateQueueError({
             message:
               "Failed to fetch scheduler UTxOs for scheduler-aware commit planning",
             cause,
@@ -264,7 +265,7 @@ export const resolveCurrentOperatorSchedulerWindow = (
       !Number.isSafeInteger(endTimeMs)
     ) {
       return yield* Effect.fail(
-        new SDK.StateQueueError({
+        new SDKStateQueue.StateQueueError({
           message:
             "Current scheduler window is outside the safe JavaScript time range",
           cause: `start=${active.startTime.toString()},duration=${SCHEDULER_SHIFT_DURATION_MS.toString()}`,

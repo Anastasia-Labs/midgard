@@ -14,7 +14,9 @@ import {
 } from "@al-ft/midgard-core";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { buildCountedRoot } from "@al-ft/midgard-fault-proofs/transition-trace/phas";
-import * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk/core";
+import * as SDKDa from "@al-ft/midgard-sdk/da";
+import * as SDKFraudProof from "@al-ft/midgard-sdk/fraud-proof";
 import { CML, Data, walletFromSeed } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -83,7 +85,7 @@ export const buildJourneyTransactionSourceFault = async (
   const witnessSet = {
     ...original.witnessSet,
     addrTxWitsPreimageCbor: encodeCbor([
-      SDK.encodeMidgardAddressWitnessCanonical({
+      SDKFraudProof.encodeMidgardAddressWitnessCanonical({
         verification_key: Buffer.from(key.to_public().to_raw_bytes()).toString(
           "hex",
         ),
@@ -133,13 +135,13 @@ export const buildJourneyTransactionSourceFault = async (
   const eventKey: SDK.EventKey = { L2TransactionEventKey: { tx_id: txId } };
   const eventKeyHex = Data.to(eventKey, SDK.EventKey);
   const eventToStep = control.payload.block_body.event_to_step.map(
-    ([, value]): SDK.DaPayloadEntry => [eventKeyHex, value],
+    ([, value]): SDKDa.DaPayloadEntry => [eventKeyHex, value],
   );
   const validationTraces = control.payload.block_body.validation_traces.map(
-    ([, value]): SDK.DaPayloadEntry => [eventKeyHex, value],
+    ([, value]): SDKDa.DaPayloadEntry => [eventKeyHex, value],
   );
   const transitions = control.payload.block_body.transition_trace.map(
-    ([key, value]): SDK.DaPayloadEntry => [
+    ([key, value]): SDKDa.DaPayloadEntry => [
       key,
       Data.to(
         { ...Data.from(value, SDK.TransitionStep), event_key: eventKey },
@@ -149,7 +151,7 @@ export const buildJourneyTransactionSourceFault = async (
   );
   const counted = (
     domain: SDK.RootDomain,
-    entries: readonly SDK.DaPayloadEntry[],
+    entries: readonly SDKDa.DaPayloadEntry[],
   ) =>
     buildCountedRoot(
       domain,
@@ -169,7 +171,7 @@ export const buildJourneyTransactionSourceFault = async (
     ).root,
   };
   const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
-  const payload: SDK.DaPayload = {
+  const payload: SDKDa.DaPayload = {
     ...control.payload,
     block_body: {
       ...control.payload.block_body,
@@ -187,7 +189,7 @@ export const buildJourneyTransactionSourceFault = async (
     header,
     headerHash,
     payload,
-    payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(payload), {
+    payloadEnvelopeCbor: await wrapDaPayload(SDKDa.encodeDaPayload(payload), {
       mode: "identity",
     }),
     control,

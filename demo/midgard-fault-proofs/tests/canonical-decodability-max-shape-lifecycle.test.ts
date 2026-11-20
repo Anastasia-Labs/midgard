@@ -17,7 +17,7 @@ import {
   MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL,
   MIDGARD_ENVELOPE_VERDICT_MISSING_ITEM_HEADER,
   midgardEnvelopeVerdict,
-} from "@al-ft/midgard-sdk";
+} from "@al-ft/midgard-sdk/fraud-proof";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
