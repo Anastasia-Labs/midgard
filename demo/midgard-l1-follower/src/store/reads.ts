@@ -245,6 +245,55 @@ export const outputIn = async (
   return row === undefined ? null : storedOutputFromRow(dialect, row);
 };
 
+/**
+ * Outrefs per statement of `outputsIn`: 1,024 bind parameters and an OR
+ * tree about 512 deep, under SQLite's expression depth limit (1,000) and
+ * far under its parameter limit (32,766) and Postgres's (65,535).
+ */
+export const OUTPUTS_IN_CHUNK = 512;
+
+/**
+ * `chunk` with its last outref repeated up to a power of two, so a
+ * statement's text is one of ten and the SQLite backend's cache of
+ * prepared statements stays small. A repeat matches the same row once.
+ */
+const paddedChunk = (chunk: readonly OutRef[]): readonly OutRef[] => {
+  const last = chunk.at(-1);
+  if (last === undefined) return chunk;
+  const size = 2 ** Math.ceil(Math.log2(chunk.length));
+  return [...chunk, ...Array.from({ length: size - chunk.length }, () => last)];
+};
+
+/**
+ * `outputIn` for each of `outRefs`, in order: the stored row, live or spent,
+ * or null. Each statement looks up at most {@link OUTPUTS_IN_CHUNK} outrefs
+ * by the primary key; all of them run in `tx`, so one read transaction
+ * answers from one snapshot.
+ */
+export const outputsIn = async (
+  tx: SqlTx,
+  dialect: Dialect,
+  outRefs: readonly OutRef[],
+): Promise<(StoredOutput | null)[]> => {
+  const key = (outRef: OutRef) =>
+    `${outRef.txHash.toString("hex")}#${outRef.index}`;
+  const stored = new Map<string, StoredOutput>();
+  for (let start = 0; start < outRefs.length; start += OUTPUTS_IN_CHUNK) {
+    const { where, params } = filterSql({
+      by: "outref",
+      outRefs: paddedChunk(outRefs.slice(start, start + OUTPUTS_IN_CHUNK)),
+    });
+    for (const row of await tx.query(
+      `SELECT ${STORED_OUTPUT_SELECT} FROM ${STORED_OUTPUT_FROM} WHERE ${where}`,
+      params,
+    )) {
+      const output = storedOutputFromRow(dialect, row);
+      stored.set(key(output.outRef), output);
+    }
+  }
+  return outRefs.map((outRef) => stored.get(key(outRef)) ?? null);
+};
+
 export type Spender =
   | Readonly<{ kind: "unspent" }>
   | Readonly<{ kind: "spent"; txHash: Buffer; slot: number }>

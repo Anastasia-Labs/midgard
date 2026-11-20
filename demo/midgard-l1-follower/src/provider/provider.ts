@@ -105,13 +105,11 @@ export class L1FollowerProvider extends LedgerProvider {
         }),
       ).values(),
     ];
-    const stored = await this.#read(async (tx) => {
-      const rows: (StoredOutput | null)[] = [];
-      // One connection per transaction: the reads run one after another.
-      for (const outRef of wanted)
-        rows.push(await reads.outputIn(tx, this.#store.dialect, outRef));
-      return rows;
-    }, options);
+    // One read transaction: every stored row at one snapshot.
+    const stored = await this.#read(
+      (tx) => reads.outputsIn(tx, this.#store.dialect, wanted),
+      options,
+    );
     const found = new Map<string, UTxO>();
     const missing: OutRef[] = [];
     stored.forEach((row, index) => {
