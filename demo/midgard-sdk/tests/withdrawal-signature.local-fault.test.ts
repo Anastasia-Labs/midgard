@@ -49,12 +49,13 @@ vi.mock("@noble/hashes/blake2.js", async (importOriginal) => {
     await importOriginal<typeof import("@noble/hashes/blake2.js")>();
   return {
     ...actual,
-    blake2b: (...args: Parameters<typeof actual.blake2b>) => {
+    // Keeps the hasher's own members (`create`), which other hashing uses.
+    blake2b: Object.assign((...args: Parameters<typeof actual.blake2b>) => {
       // Only the signed message's hash: the owner's key hash is 28 bytes.
       if (injected.hash !== undefined && args[1]?.dkLen === 32)
         throw injected.hash;
       return actual.blake2b(...args);
-    },
+    }, actual.blake2b),
   };
 });
 
