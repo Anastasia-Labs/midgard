@@ -1536,6 +1536,10 @@
       "why": "Stamps the gitignored dist/ after a build; nothing it writes is committed."
     },
     {
+      "path": "demo/midgard-sdk/scripts/write-cjs-declarations.mjs",
+      "why": "Writes the CommonJS type declarations into the gitignored dist/ after a build; nothing it writes is committed."
+    },
+    {
       "path": "demo/midgard-node-tools/devnet/phase4-process/scripts/write-acceptance-env.sh",
       "why": "Writes secrets/acceptance.env under the devnet run directory (MIDGARD_PHASE4_RUN_DIR); nothing it writes is committed."
     },
