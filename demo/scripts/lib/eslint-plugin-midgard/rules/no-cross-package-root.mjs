@@ -19,14 +19,13 @@
 // A name with no cohesive subpath yet gets one added to the `exports` map.
 // The baselined sites are imports whose names a test stubs on the root (the
 // stub replaces only the root's binding), the evaluation-order preambles of
-// modules that load one of them, the settlement worker's route to the
-// fault-proofs root that `settlement-worker-module-graph.test.ts` asserts, a
-// dynamic import inside a test's mock body, files at their module-size cap,
-// a module whose compiled dist a test loads by URL together with that test
-// (the workspace bundle serves both one instance only through the root), and
-// for the SDK (whose subpaths are its layers) a test whose root mock adds a
-// property the SDK does not export, a namespace import used as a value or a
-// bare type, and JavaScript scripts outside a TypeScript program.
+// modules that load one of them, a dynamic import inside a test's mock body,
+// files at their module-size cap, a module whose compiled dist a test loads
+// by URL together with that test (the workspace bundle serves both one
+// instance only through the root), and for the SDK (whose subpaths are its
+// layers) a test whose root mock adds a property the SDK does not export, a
+// namespace import used as a value or a bare type, and JavaScript scripts
+// outside a TypeScript program.
 
 import { defineRule } from "../baseline.mjs";
 

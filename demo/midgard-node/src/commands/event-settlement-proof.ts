@@ -8,8 +8,8 @@ import * as ForcedTransactionsDB from "../database/forcedTransactions.js";
 import { DatabaseError } from "../database/utils/common.js";
 import * as WithdrawalsDB from "../database/withdrawals.js";
 // Through the mpf barrel on purpose: tests/settlement-worker-module-graph.test.ts
-// checks the settlement worker's graph on the path that reaches the
-// fault-proofs root barrel.
+// checks that the settlement worker's graph, on this path through
+// mpf/event-window.*, stays off the fault-proofs root barrel.
 import { keyValuePhasProof, MpfError } from "../mpf/index.js";
 import { Database } from "../services/index.js";
 import { Lucid } from "../services/lucid.js";

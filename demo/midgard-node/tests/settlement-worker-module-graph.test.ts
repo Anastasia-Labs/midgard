@@ -6,6 +6,12 @@
  * settlement worker reached it through
  * commands/event-settlement-proof.ts -> mpf/event-window.* -> the barrel.
  *
+ * The worker now imports fault-proofs only by subpath, so it loads the
+ * fault-proofs modules it uses (the forced-rejection verdict among them) and
+ * not the barrel: that keeps its heap, and the tests an edit to fault-proofs
+ * selects, narrow. The barrel itself must still not load the compiler, for its
+ * other importers.
+ *
  * esbuild's metafile lists every file a bundle parses, including the ones
  * `export *` pulls in and tree-shaking later drops, so it is the whole static
  * module graph each entry loads.
@@ -19,6 +25,10 @@ const packageRoot = join(import.meta.dirname, "..");
 const faultProofsBarrel = join(
   packageRoot,
   "../midgard-fault-proofs/src/index.ts",
+);
+const forcedRejectionReason = join(
+  packageRoot,
+  "../midgard-fault-proofs/src/workflow/forced-rejection-reason.ts",
 );
 
 const moduleGraph = async (entry: string) => {
@@ -49,13 +59,16 @@ describe("runtime module graphs do not load the TypeScript compiler", () => {
     expect(typescriptCompiler(graph)).toEqual([]);
   }, 60_000);
 
-  it("the settlement worker, which reaches that barrel", async () => {
-    const graph = await moduleGraph(
-      join(packageRoot, "src/workers/settlement.ts"),
-    );
+  it("the settlement worker, which imports fault-proofs by subpath only", async () => {
+    const worker = join(packageRoot, "src/workers/settlement.ts");
+    const graph = await moduleGraph(worker);
     // The source condition stands in for the fault-proofs dist the shipped
-    // worker imports; both are built from this barrel.
-    expect(graph).toContain(faultProofsBarrel);
+    // worker imports; both are built from these sources. The graph is the
+    // worker's own: it holds the entry and the fault-proofs module the
+    // worker's forced-transaction verdicts come from.
+    expect(graph).toContain(worker);
+    expect(graph).toContain(forcedRejectionReason);
+    expect(graph).not.toContain(faultProofsBarrel);
     expect(typescriptCompiler(graph)).toEqual([]);
   }, 60_000);
 });

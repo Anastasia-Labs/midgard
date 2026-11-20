@@ -928,12 +928,8 @@
       "reason": "Kept on the root because midgard-node/tests/commit-da-frame-step-down-persistence.test.ts, midgard-node/tests/commit-stage-eviction.test.ts, midgard-node/tests/foreign-block-import.local-fault-sites.test.ts, midgard-node/tests/foreign-block-import.phase-a-throw.test.ts stub runPhaseAValidation, runPhaseBValidationWithPatch on the root entry, and the stub reaches this module only through the root import. Narrowing waits on retargeting the stub (the narrowing change edited no test).",
       "sites": ["} from \"@al-ft/midgard-validation\";"]
     },
-    "midgard-node/src/mpf/event-window.forced-verdict-for-rejection.ts": {
-      "reason": "The settlement worker's only route to the fault-proofs root: midgard-node/tests/settlement-worker-module-graph.test.ts asserts the worker's bundle contains that root barrel, and node tests stub ForcedRejectionStopped and forcedVerdictForRejection on the root. Narrowing waits on that test's premise and on retargeting the stubs (the narrowing change edited no test).",
-      "sites": ["} from \"@al-ft/midgard-fault-proofs\";"]
-    },
     "midgard-node/src/mpf/event-window.ts": {
-      "reason": "Evaluation-order preamble: midgard-node/src/mpf/event-window.forced-verdict-for-rejection.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
+      "reason": "Evaluation-order preamble: midgard-node/src/mpf/event-window.classify-forced-transactions.ts still imports the root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when that module is narrowed.",
       "sites": ["import \"@al-ft/midgard-validation\";"]
     },
     "midgard-node/src/mpf/process.evaluate-normal-block-candidates.ts": {
