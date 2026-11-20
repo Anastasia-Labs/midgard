@@ -16,11 +16,10 @@ a violation and dropping its entry land in one change: from `demo/`, run
 `node scripts/lib/eslint-plugin-midgard/prune-baseline.mjs`, which removes
 every stale site and adds none (`--check` only reports).
 
-- Fix a new violation rather than baselining it. An entry is added by hand,
-  with a reason that says why the site is correct or who must decide it; the
-  plugin's test refuses an entry with no reason, for an unknown rule, or for a
-  file that does not exist.
-  [script: demo/scripts/lib/eslint-plugin-midgard.test.mjs]
+- Fix a new violation rather than baselining it. An entry is added by hand, with
+  a reason that says why the site is correct or who must decide it; the plugin's
+  test refuses an entry with no reason, for an unknown rule, or for a file that
+  does not exist. [script: demo/scripts/lib/eslint-plugin-midgard.test.mjs]
 - A new rule must ship fixtures under
   `demo/scripts/lib/eslint-plugin-midgard/fixtures/` with `// ruleid:` and
   `// ok:` cases; the test fails a rule without them, and fails when the
@@ -51,10 +50,9 @@ every stale site and adds none (`--check` only reports).
 - **Never apply parameters outside the blueprint shape guard.**
   `applyParamsToScript` and `apply_params_to_script` are called only in
   `demo/midgard-sdk/src/fraud-proof/contracts/blueprint.ts`; everything else
-  goes through `applyBlueprintParams` (#609). Renaming either on import or in
-  a destructuring is flagged too. Blind spot: a call through a namespace
-  re-export or a computed name passes.
-  [eslint: midgard/apply-params-through-blueprint]
+  goes through `applyBlueprintParams` (#609). Renaming either on import or in a
+  destructuring is flagged too. Blind spot: a call through a namespace re-export
+  or a computed name passes. [eslint: midgard/apply-params-through-blueprint]
 - **An exact fee must not leave a change output.** `setMinFee` plus Lucid's
   change output overpays by about 3k lovelace and breaks every on-chain
   `fee == penalty`. A `setMinFee` passes only when a completion in the same
@@ -118,3 +116,5 @@ every stale site and adds none (`--check` only reports).
   and blind spots: the rule file's header. [eslint: midgard/no-own-package-barrel]
 - **Import another package's subpath, not its root entry.** Scope and blind
   spots: the rule file's header. [eslint: midgard/no-cross-package-root]
+- **One SDK layer exports each name, the owner of its module: stub it there or
+  on the root.** [script: demo/midgard-sdk/tests/layers.module-graph.test.ts]

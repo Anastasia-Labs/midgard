@@ -9,7 +9,12 @@
  * starts to load a higher layer's module, its entry's re-export or a private
  * helper behind it, moves that module's owner and fails the pin. The root
  * re-exports exactly the layer entries, lowest first, so `@al-ft/midgard-sdk`
- * keeps every name and a name two layers export resolves to the lower one.
+ * keeps every name.
+ *
+ * A name, value or type, is exported by one layer only: the one that owns the
+ * module declaring it. A test runner mocks a module specifier, so a stub on
+ * one layer would not reach code that reads the same name through another;
+ * with one exporter there is one specifier to mock (or the root).
  *
  * The graph follows static imports and re-exports and every `import()`: one
  * whose specifier is not a string literal fails here. Type-only imports and
@@ -295,6 +300,128 @@ const pinnedOwner = new Map(
 const ownerOf = (file: string): string | undefined =>
   pinnedOwner.get(file) ?? layerOf(file);
 
+const exportCache = new Map<string, Map<string, string>>();
+
+/**
+ * Each name `file` exports, value or type, with the declaration it resolves
+ * to: `<module>#<name>`, the module package-relative or a package specifier.
+ * A local export shadows an `export *`, as in TypeScript.
+ */
+const exportsOf = (file: string): Map<string, string> => {
+  const cached = exportCache.get(file);
+  if (cached !== undefined) return cached;
+  const names = new Map<string, string>();
+  exportCache.set(file, names);
+  const source = ts.createSourceFile(
+    file,
+    readFileSync(file, "utf8"),
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  const from = (specifier: string, name: string): string => {
+    if (!specifier.startsWith(".")) return `${specifier}#${name}`;
+    const origin = exportsOf(resolveLocal(file, specifier)).get(name);
+    if (origin === undefined) {
+      throw new Error(`${file}: ${specifier} exports no ${name}`);
+    }
+    return origin;
+  };
+  const imported = new Map<string, readonly [string, string]>();
+  const stars: string[] = [];
+  for (const statement of source.statements) {
+    if (
+      ts.isImportDeclaration(statement) &&
+      ts.isStringLiteral(statement.moduleSpecifier) &&
+      statement.importClause?.namedBindings !== undefined &&
+      ts.isNamedImports(statement.importClause.namedBindings)
+    ) {
+      for (const element of statement.importClause.namedBindings.elements) {
+        imported.set(element.name.text, [
+          statement.moduleSpecifier.text,
+          (element.propertyName ?? element.name).text,
+        ]);
+      }
+    } else if (ts.isExportDeclaration(statement)) {
+      const specifier =
+        statement.moduleSpecifier !== undefined &&
+        ts.isStringLiteral(statement.moduleSpecifier)
+          ? statement.moduleSpecifier.text
+          : undefined;
+      const clause = statement.exportClause;
+      if (clause === undefined && specifier !== undefined) {
+        stars.push(specifier);
+      } else if (clause !== undefined && ts.isNamedExports(clause)) {
+        for (const element of clause.elements) {
+          const name = (element.propertyName ?? element.name).text;
+          const via = specifier === undefined ? imported.get(name) : undefined;
+          names.set(
+            element.name.text,
+            specifier !== undefined
+              ? from(specifier, name)
+              : via !== undefined
+                ? from(...via)
+                : `${relative(packageRoot, file)}#${name}`,
+          );
+        }
+      }
+    } else if (
+      ts.canHaveModifiers(statement) &&
+      ts
+        .getModifiers(statement)
+        ?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)
+    ) {
+      const declared = ts.isVariableStatement(statement)
+        ? statement.declarationList.declarations.map(
+            (declaration) => declaration.name,
+          )
+        : [(statement as ts.DeclarationStatement).name];
+      for (const name of declared) {
+        if (name === undefined || !ts.isIdentifier(name)) {
+          throw new Error(`${file}: unreadable export ${statement.getText()}`);
+        }
+        names.set(name.text, `${relative(packageRoot, file)}#${name.text}`);
+      }
+    }
+  }
+  for (const specifier of stars) {
+    if (!specifier.startsWith(".")) {
+      throw new Error(
+        `${file}: cannot list the names of export * from ${specifier}`,
+      );
+    }
+    for (const [name, origin] of exportsOf(resolveLocal(file, specifier))) {
+      if (!names.has(name)) names.set(name, origin);
+    }
+  }
+  return names;
+};
+
+/** Each name two layers export, with what to change. */
+const sharedNames = (): string[] => {
+  const exporters = new Map<string, { origin: string; layers: string[] }>();
+  for (const [subpath] of LAYERS) {
+    for (const [name, origin] of exportsOf(declaredEntry(subpath))) {
+      const entry = exporters.get(name) ?? { origin, layers: [] };
+      entry.layers.push(subpath);
+      exporters.set(name, entry);
+    }
+  }
+  return [...exporters]
+    .filter(([, { layers }]) => layers.length > 1)
+    .map(([name, { origin, layers }]) => {
+      const declaring = origin.slice(0, origin.lastIndexOf("#"));
+      const owner = declaring.startsWith("src/")
+        ? (ownerOf(resolve(packageRoot, declaring)) ?? NONE)
+        : "another package";
+      return (
+        `${name}: exported by ${layers.join(" and ")}; it is declared in ` +
+        `${declaring}, owned by ${owner}. Keep the export in the owning layer ` +
+        `and drop the re-export that brings it into the others`
+      );
+    })
+    .sort();
+};
+
 describe("SDK layer subpaths", () => {
   it("root re-exports exactly the layer entries, lowest first", () => {
     expect(runtimeImports(declaredEntry("."))).toEqual(
@@ -310,6 +437,10 @@ describe("SDK layer subpaths", () => {
 
   it("every module keeps the layer that owns it", () => {
     expect(pinEdits()).toEqual([]);
+  });
+
+  it("no name, value or type, is exported by two layers", () => {
+    expect(sharedNames()).toEqual([]);
   });
 
   it.each(LAYERS)("%s loads only the layers below it", (subpath, below) => {

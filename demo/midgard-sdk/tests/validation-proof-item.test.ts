@@ -6,9 +6,9 @@ import { describe, expect, it } from "vitest";
 import {
   deriveValidationProofItemPublication,
   minimumLovelaceForValidationProofItemPublication,
-  ValidationProofItemDatum,
   type ValidationTraceDisputeFaultProofContracts,
 } from "../src/fraud-proof/index.js";
+import { ValidationProofItemDatum } from "../src/fraud-proof/validation-auxiliary-witness.js";
 
 /**
  * #597. The publication's unit is the field's whole §5.1 preimage, not one item

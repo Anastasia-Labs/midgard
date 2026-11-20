@@ -5,10 +5,10 @@
  * only the layers below it, and this root re-exports all of them.
  *
  * The layers are listed lowest first, one per comment so the export sort
- * keeps that order: `core` also carries the fault-proof contract-identity
- * modules that `/fraud-proof` re-exports, and a test that stubs one of those
- * names on `core` must see its stub through this root as well, which the
- * test runner's `export *` gives only to the first layer listing the name.
+ * keeps that order. Each name is exported by one layer only, the one owning
+ * its module (`core` carries the fault-proof contract-identity modules, for
+ * example), so a test stubs a name on that layer and sees the stub through
+ * this root as well.
  */
 // Layer 0.
 export * from "./layers/core.js";

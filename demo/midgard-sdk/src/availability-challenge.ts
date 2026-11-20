@@ -133,8 +133,3 @@ export {
   planDaAvailabilityPublicationsFromChallengeRecord,
   reconstructDaAvailabilityPayload,
 } from "./availability-challenge.reconstruct-da-availability-payload.js";
-export {
-  DaAvailabilityStateQueueStatus,
-  daAvailabilityStateQueueStatusPermitsMerge,
-  DaAvailabilityStateQueueStatusSchema,
-} from "./da-availability-state.js";

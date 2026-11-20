@@ -16,29 +16,11 @@ import {
   FaultProofStepCancelSchema,
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
-  MidgardTxInput,
-  MidgardTxInputList,
-  MidgardTxInputListSchema,
   MidgardTxInputSchema,
-  NativeTxBodyCompact,
-  NativeTxBodyCompactSchema,
-  NativeTxCompact,
-  NativeTxCompactSchema,
   NativeTxInclusionArgs,
   NativeTxInclusionArgsSchema,
   NativeTxInclusionCarriageSchema,
 } from "./native.js";
-
-export {
-  MidgardTxInput,
-  MidgardTxInputList,
-  MidgardTxInputListSchema,
-  MidgardTxInputSchema,
-  NativeTxBodyCompact,
-  NativeTxBodyCompactSchema,
-  NativeTxCompact,
-  NativeTxCompactSchema,
-};
 
 export const DoubleSpendTxInclusionArgsSchema = NativeTxInclusionArgsSchema;
 export type DoubleSpendTxInclusionArgs = NativeTxInclusionArgs;

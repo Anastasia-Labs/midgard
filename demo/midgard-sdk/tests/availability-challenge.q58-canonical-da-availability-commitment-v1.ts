@@ -28,8 +28,6 @@ import {
   daAvailabilityPublishedTerminalCommitment,
   daAvailabilityResponseDeadline,
   daAvailabilityResponseWindowMs,
-  DaAvailabilityStateQueueStatus,
-  daAvailabilityStateQueueStatusPermitsMerge,
   daAvailabilityTerminalAccumulatorStart,
   daAvailabilityTrancheAssetName,
   deriveDaAvailabilityTrancheLayout,
@@ -54,7 +52,9 @@ import {
   reconstructDaAvailabilityPayload,
   verifyDaAvailabilityPayloadCommitment,
 } from "../src/availability-challenge.js";
+import { DaAvailabilityStateQueueStatus } from "../src/da-availability-state.js";
 import { daAvailabilityStateQueueStatusIdentity } from "../src/da-availability-state.js";
+import { daAvailabilityStateQueueStatusPermitsMerge } from "../src/da-availability-state.js";
 import {
   build,
   CANDIDATE_GEOMETRY,
