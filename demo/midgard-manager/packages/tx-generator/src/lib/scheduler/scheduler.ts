@@ -1,11 +1,12 @@
-import { mkdir, writeFile } from 'node:fs/promises';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-import { Network, UTxO } from '@lucid-evolution/lucid';
+import { CML, UTxO, walletFromSeed } from '@lucid-evolution/lucid';
 import pLimit from 'p-limit';
 
+import { formatError, parseUnknownKeytoBech32PrivateKey } from '../../utils/common.js';
 import { MidgardNodeClient } from '../client/node-client.js';
 import {
   generateMultiOutputTransactions,
@@ -18,16 +19,18 @@ import {
   validateGeneratorConfig,
 } from '../types.js';
 
-// Get the directory path for ES modules
+/**
+ * ESM-compatible location helpers used to resolve output paths relative to the
+ * package root.
+ */
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 /**
- * Generator State Manager
- * Encapsulates all state for the transaction generator
+ * Singleton state container for the long-running transaction generator.
  */
 class TxGeneratorState {
-  private static instance: TxGeneratorState;
+  private static readonly instance = new TxGeneratorState();
 
   private _shouldStop = false;
   private _currentPromise: Promise<void> | null = null;
@@ -40,33 +43,51 @@ class TxGeneratorState {
 
   private constructor() {}
 
+  /**
+   * Returns the shared generator-state instance.
+   */
   static getInstance(): TxGeneratorState {
-    if (!TxGeneratorState.instance) {
-      TxGeneratorState.instance = new TxGeneratorState();
-    }
     return TxGeneratorState.instance;
   }
 
+  /**
+   * Returns the cancellation flag observed by the generator loop.
+   */
   get shouldStop(): boolean {
     return this._shouldStop;
   }
 
+  /**
+   * Updates the cancellation flag observed by the generator loop.
+   */
   set shouldStop(value: boolean) {
     this._shouldStop = value;
   }
 
+  /**
+   * Returns the promise for the active generator run, if one exists.
+   */
   get currentPromise(): Promise<void> | null {
     return this._currentPromise;
   }
 
+  /**
+   * Records the promise for the active generator run.
+   */
   set currentPromise(value: Promise<void> | null) {
     this._currentPromise = value;
   }
 
+  /**
+   * Returns the mutable runtime counters exposed by the status command.
+   */
   get stats() {
     return this._stats;
   }
 
+  /**
+   * Resets runtime counters at generator startup.
+   */
   resetStats() {
     this._stats = {
       transactionsGenerated: 0,
@@ -76,16 +97,24 @@ class TxGeneratorState {
     };
   }
 
+  /**
+   * Reports whether the generator loop is currently active.
+   */
   isRunning(): boolean {
     return !this._shouldStop && this._currentPromise !== null;
   }
 }
 
-// Get the shared instance
+/**
+ * Shared generator-state singleton used across CLI commands.
+ */
 const state = TxGeneratorState.getInstance();
 
 /**
- * Starts a transaction generator with the given configuration
+ * Starts the transaction generator using the supplied configuration override.
+ *
+ * The scheduler validates configuration, derives a canonical wallet key, then
+ * repeatedly generates and optionally submits transaction batches until stopped.
  */
 export const startGenerator = async (
   config: Partial<TransactionGeneratorConfig> = {}
@@ -102,10 +131,14 @@ export const startGenerator = async (
   const fullConfig: TransactionGeneratorConfig = {
     ...DEFAULT_CONFIG,
     ...config,
+    initialUTxO: config.initialUTxO ?? DEFAULT_CONFIG.initialUTxO,
   };
 
   // Validate the configuration
   validateGeneratorConfig(fullConfig);
+  const canonicalWalletPrivateKey = parseUnknownKeytoBech32PrivateKey(
+    fullConfig.walletSeedOrPrivateKey
+  );
 
   // Set up node client with the new configuration structure
   const nodeClient = new MidgardNodeClient({
@@ -117,14 +150,14 @@ export const startGenerator = async (
 
   // Create a limiter for concurrent transaction generation
   const concurrencyLimiter = pLimit(fullConfig.concurrency);
-
   // Reset stats
   state.resetStats();
 
   // Create output directory if needed
-  if (fullConfig.outputDir) {
-    const projectRoot = join(__dirname, '../../../..');
-    const outputPath = join(projectRoot, fullConfig.outputDir);
+  const projectRoot = join(__dirname, '../../../..');
+  const outputPath = fullConfig.outputDir ? join(projectRoot, fullConfig.outputDir) : undefined;
+
+  if (outputPath) {
     await mkdir(outputPath, { recursive: true });
   }
 
@@ -143,6 +176,9 @@ export const startGenerator = async (
   }
   console.log();
 
+  /**
+   * Clones a base UTxO into unique pseudo-inputs for offline generation mode.
+   */
   const generateUniqueUTxOs = (baseUTxO: UTxO, count: number) =>
     Array.from({ length: count }, () => ({
       ...baseUTxO,
@@ -150,108 +186,168 @@ export const startGenerator = async (
       outputIndex: Math.floor(Math.random() * 1001), // Random outputIndex 0 -> 1000
     }));
 
-  // Define the transaction generation function
+  /**
+   * Resolves the wallet address that should own the generated transactions.
+   */
+  const resolveWalletAddress = async (): Promise<string> => {
+    if (fullConfig.initialUTxO.address.length > 0) {
+      return fullConfig.initialUTxO.address;
+    }
+
+    const rawWalletKey = fullConfig.walletSeedOrPrivateKey.trim();
+    if (rawWalletKey.includes(' ')) {
+      return walletFromSeed(rawWalletKey, { network: fullConfig.network }).address;
+    }
+
+    const networkId = fullConfig.network === 'Mainnet' ? 1 : 0;
+    return CML.EnterpriseAddress.new(
+      networkId,
+      CML.Credential.new_pub_key(
+        CML.PrivateKey.from_bech32(canonicalWalletPrivateKey).to_public().hash()
+      )
+    )
+      .to_address()
+      .to_bech32();
+  };
+
+  const writeGeneratedTransactions = async (
+    txs: readonly unknown[],
+    useOneToOne: boolean,
+    timestamp: string,
+    reason: 'Node unavailable' | 'Failed submission'
+  ): Promise<void> => {
+    if (!outputPath) {
+      return;
+    }
+
+    const filename = `${useOneToOne ? 'one-to-one' : 'multi-output'}-${timestamp}.json`;
+    const filepath = join(outputPath, filename);
+    await writeFile(filepath, JSON.stringify(txs, null, 2));
+    console.log(`${reason} - transactions written to ${filepath}`);
+  };
+
+  /**
+   * Generates, optionally submits, and records one batch of transactions for
+   * the current scheduler configuration.
+   */
   const generateTransactions = async () => {
     try {
-      const uniqueUTxOs = generateUniqueUTxOs(fullConfig.initialUTxO, fullConfig.batchSize);
+      const nodeAvailable = await nodeClient.isAvailable();
+      let taskUTxOs: UTxO[] = [];
+      let forceOneToOne = false;
 
-      const tasks = Array(fullConfig.batchSize)
-        .fill(null)
-        .map(async (_, index) => {
-          // ← Add index parameter
-          return concurrencyLimiter(async () => {
-            const taskUTxO = uniqueUTxOs[index];
-            const useOneToOne =
-              fullConfig.transactionType === 'one-to-one' ||
-              (fullConfig.transactionType === 'mixed' &&
-                Math.random() * 100 < (fullConfig.oneToOneRatio ?? 70));
+      if (nodeAvailable) {
+        const walletAddress = await resolveWalletAddress();
+        const spendableUtxos = (await nodeClient.getSpendableUtxos(walletAddress)).filter(
+          (utxo) => {
+            const lovelace = utxo.assets?.lovelace;
+            const lovelaceAmount =
+              typeof lovelace === 'bigint'
+                ? lovelace
+                : BigInt(typeof lovelace === 'string' ? lovelace : 0);
+            return lovelaceAmount >= TRANSACTION_CONSTANTS.MIN_LOVELACE_OUTPUT;
+          }
+        );
+        if (spendableUtxos.length === 0) {
+          console.warn(
+            `No spendable UTxOs found for ${walletAddress}. Waiting for funds in mempool_ledger...`
+          );
+          return;
+        }
 
-            const txs = useOneToOne
-              ? await generateOneToOneTransactions({
-                  network: fullConfig.network,
-                  initialUTxO: taskUTxO,
-                  txsCount: 1,
-                  walletSeedOrPrivateKey: fullConfig.walletSeedOrPrivateKey,
-                  nodeClient,
-                })
-              : await generateMultiOutputTransactions({
-                  network: fullConfig.network,
-                  initialUTxO: taskUTxO,
-                  utxosCount: TRANSACTION_CONSTANTS.OUTPUTS_PER_DISTRIBUTION,
-                  finalUtxosCount: 1,
-                  walletSeedOrPrivateKey: fullConfig.walletSeedOrPrivateKey,
-                  nodeClient,
-                });
+        taskUTxOs = spendableUtxos.slice(0, fullConfig.batchSize);
+        forceOneToOne = true;
+        if (fullConfig.transactionType !== 'one-to-one') {
+          console.log(
+            'Node-connected mode uses one-to-one spends to ensure generated txs match live ledger UTxOs.'
+          );
+        }
+      } else {
+        taskUTxOs = generateUniqueUTxOs(fullConfig.initialUTxO, fullConfig.batchSize);
+      }
 
-            if (!txs || !Array.isArray(txs)) {
-              throw new Error('Failed to generate transactions');
-            }
+      const tasks = taskUTxOs.map((taskUTxO) =>
+        concurrencyLimiter(async () => {
+          const useOneToOne =
+            forceOneToOne ||
+            fullConfig.transactionType === 'one-to-one' ||
+            (fullConfig.transactionType === 'mixed' &&
+              Math.random() * 100 < (fullConfig.oneToOneRatio ?? 70));
 
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-            const nodeAvailable = await nodeClient.isAvailable();
+          const txs = useOneToOne
+            ? await generateOneToOneTransactions({
+                network: fullConfig.network,
+                initialUTxO: taskUTxO,
+                txsCount: 1,
+                walletSeedOrPrivateKey: canonicalWalletPrivateKey,
+                nodeClient,
+              })
+            : await generateMultiOutputTransactions({
+                network: fullConfig.network,
+                initialUTxO: taskUTxO,
+                utxosCount: TRANSACTION_CONSTANTS.OUTPUTS_PER_DISTRIBUTION,
+                finalUtxosCount: 1,
+                walletSeedOrPrivateKey: canonicalWalletPrivateKey,
+                nodeClient,
+              });
 
-            if (!nodeAvailable && fullConfig.outputDir) {
-              const projectRoot = join(__dirname, '../../../..');
-              const filename = `${useOneToOne ? 'one-to-one' : 'multi-output'}-${timestamp}.json`;
-              const filepath = join(projectRoot, fullConfig.outputDir, filename);
-              await writeFile(filepath, JSON.stringify(txs, null, 2));
-              console.log(`Node unavailable - transactions written to ${filepath}`);
-              state.stats.transactionsGenerated += txs.length;
-            } else {
-              try {
-                const submissionStart = Date.now();
-                for (const tx of txs) {
-                  const result = await nodeClient.submitTransaction(tx.cborHex);
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
 
-                  // Handle node unavailability gracefully
-                  if (result && result.status === 'NODE_UNAVAILABLE') {
-                    if (fullConfig.outputDir) {
-                      const projectRoot = join(__dirname, '../../../..');
-                      const filename = `${useOneToOne ? 'one-to-one' : 'multi-output'}-${timestamp}.json`;
-                      const filepath = join(projectRoot, fullConfig.outputDir, filename);
-                      await writeFile(filepath, JSON.stringify(txs, null, 2));
-                      console.log(`Node unavailable - transactions written to ${filepath}`);
-                    }
-                    state.stats.transactionsGenerated += txs.length;
-                    break; // Exit the loop since node is unavailable
-                  }
-                }
-                const submissionEnd = Date.now();
-
-                state.stats.transactionsGenerated += txs.length;
-                state.stats.transactionsSubmitted += txs.length;
-                console.log(
-                  `Submitted ${txs.length} transactions in ${submissionEnd - submissionStart}ms`
-                );
-              } catch (submitError) {
-                console.error('Failed to submit transactions:', submitError);
-
-                if (fullConfig.outputDir) {
-                  const projectRoot = join(__dirname, '../../../..');
-                  const filename = `${useOneToOne ? 'one-to-one' : 'multi-output'}-${timestamp}.json`;
-                  const filepath = join(projectRoot, fullConfig.outputDir, filename);
-                  await writeFile(filepath, JSON.stringify(txs, null, 2));
-                  console.log(`Failed submission - transactions written to ${filepath}`);
-                }
-
-                state.stats.transactionsGenerated += txs.length;
-              }
-            }
-
+          if (!nodeAvailable) {
+            await writeGeneratedTransactions(txs, useOneToOne, timestamp, 'Node unavailable');
+            state.stats.transactionsGenerated += txs.length;
             return txs;
-          });
-        });
+          }
+
+          try {
+            const submissionStart = Date.now();
+            let submittedCount = 0;
+            for (const tx of txs) {
+              const result = (await nodeClient.submitTransaction(tx.cborHex)) as {
+                status?: string;
+                error?: string;
+              };
+
+              if (result && result.status === 'NODE_UNAVAILABLE') {
+                await writeGeneratedTransactions(txs, useOneToOne, timestamp, 'Node unavailable');
+                state.stats.transactionsGenerated += txs.length;
+                return txs;
+              }
+              if (result && result.status === 'ERROR') {
+                throw new Error(result.error ?? 'submit failed');
+              }
+              submittedCount++;
+            }
+            const submissionEnd = Date.now();
+
+            state.stats.transactionsGenerated += txs.length;
+            state.stats.transactionsSubmitted += submittedCount;
+            console.log(
+              `Submitted ${submittedCount}/${txs.length} transactions in ${submissionEnd - submissionStart}ms`
+            );
+          } catch (submitError) {
+            console.error('Failed to submit transactions:', submitError);
+
+            await writeGeneratedTransactions(txs, useOneToOne, timestamp, 'Failed submission');
+            state.stats.transactionsGenerated += txs.length;
+          }
+
+          return txs;
+        })
+      );
 
       await Promise.all(tasks);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = formatError(error);
       state.stats.lastError = errorMessage;
       console.error('Error in transaction generation loop:', errorMessage);
       throw error;
     }
   };
 
-  // Create a function to run the generator loop
+  /**
+   * Runs the generator loop until a stop request is observed.
+   */
   const runGenerator = async () => {
     // Generate at least one batch
     await generateTransactions();
@@ -278,7 +374,7 @@ export const startGenerator = async (
 
   // Start the generator
   state.currentPromise = runGenerator().catch((error) => {
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage = formatError(error);
     state.stats.lastError = errorMessage;
     console.error('Generator failed:', errorMessage);
     state.currentPromise = null;
@@ -286,7 +382,7 @@ export const startGenerator = async (
 };
 
 /**
- * Stops the currently running transaction generator
+ * Requests the currently running generator loop to stop.
  */
 export const stopGenerator = (): Promise<void> => {
   state.shouldStop = true;
@@ -294,7 +390,7 @@ export const stopGenerator = (): Promise<void> => {
 };
 
 /**
- * Gets the current status of the transaction generator
+ * Returns a snapshot of the generator's current runtime status.
  */
 export const getGeneratorStatus = (): {
   running: boolean;

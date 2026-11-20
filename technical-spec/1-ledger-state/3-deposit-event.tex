@@ -20,6 +20,7 @@ A deposit event in a Midgard block acknowledges that a user has created an L1 ut
     \T{DepositInfo} &\coloneq \left\{
         \begin{array}{ll}
             \T{l2\_address} : & \T{Address} \\
+            \T{l2\_network\_id} : & \T{Int} \\
             \T{l2\_datum} : & \T{Option(Data)} \\
         \end{array} \right\}
 \end{align*}
@@ -28,7 +29,7 @@ The deposit ID corresponds to one of the inputs spent by the user in the L1 tran
 This identifier is needed to find the L1 deposit utxo, ensure that deposit events are unique, and detect when an operator has fabricated a deposit event without the corresponding deposit utxo existing in the L1 ledger.
 
 Suppose a deposit event is permitted by Midgard's ledger rules to be included in a block.
-In that case, its effect is to add a new L2 utxo to the block's utxo set containing the value from the L1 deposit utxo at the address (\code{l2\_address}) and with the inline datum (\code{l2\_datum}) specified by the user.
+In that case, its effect is to add a new L2 utxo to the block's utxo set containing the value from the L1 deposit utxo, except the deposit authentication NFT, at the address (\code{l2\_address}) on the committed native Midgard network (\code{l2\_network\_id}) and with the inline datum (\code{l2\_datum}) specified by the user.
 The L2 output reference of this new utxo is as follows: 
 \begin{equation*}
     \T{l2\_outref(deposit\_id)} \coloneq \left\{
@@ -38,6 +39,10 @@ The L2 output reference of this new utxo is as follows:
     \end{array} \right\}
 \end{equation*}
 In other words, the L2 ledger treats the new utxo as if it was created by a notional transaction with \code{TxId} equal to the hash of the deposit ID.
+
+Deposits are applied after withdrawals, forced transactions, and normal L2 transactions in the block transition trace.
+Therefore an L2 transaction in the same block cannot spend the output created by a deposit in that block.
+Such a spend is valid only in a later block after the deposit output is part of the previous committed UTxO root, unless the protocol deliberately changes the phase order.
 
 If the block containing the deposit event is confirmed, the corresponding L1 deposit utxo may be absorbed into the Midgard reserve.
 \Cref{h:deposit} describes the lifecycle of a deposit in further detail.

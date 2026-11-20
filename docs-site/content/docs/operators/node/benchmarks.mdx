@@ -1,0 +1,37 @@
+---
+title: "Benchmarks & Stress Testing"
+description: "Running the node's benchmark, stress, and end-to-end throughput commands."
+---
+
+The node ships benchmark and stress tooling for measuring throughput and exercising the
+full pipeline. The `package.json` `bench:*` and `stress:*` scripts and the `scripts/`
+directory drive these, alongside dedicated CLI commands.
+
+<Callout type="warn" title="What a benchmark run does not prove">
+These runs measure local throughput against a local L1 backend, with demo parameters and
+no adversarial load. They do not establish production capacity, and they say nothing
+about behavior under restart, rollback, or provider disagreement. Record the test
+conditions and the date alongside any number you quote. See
+[Project Status](/docs/getting-started/status) for what remains unproven.
+</Callout>
+
+## Commands & scripts
+
+- `e2e-start-service` · `e2e-run-step` · `e2e-finalize-summary`, run and summarize
+  end-to-end scenarios.
+- `e2e-stress-l2-throughput`: stress-test L2 transaction throughput.
+- `stress-wallets:prepare`: prepare wallets for stress runs.
+- `audit-blocks-immutable`: audit that committed block history is immutable.
+
+For large-scale load generation, pair the node with the
+[Midgard Manager](/docs/operators/manager) transaction generator.
+
+The `e2e-*` commands here are the building blocks of the full
+[End-to-End Testing Flow](/docs/operators/node/e2e-testing-flow), which drives a
+complete deposit / L2 / DA / merge acceptance run.
+
+## Related
+
+- [End-to-End Testing Flow](/docs/operators/node/e2e-testing-flow)
+- [CLI Reference](/docs/operators/node/cli-reference)
+- [Database &amp; State](/docs/operators/node/database)

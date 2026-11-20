@@ -1,159 +1,298 @@
-import { Effect } from "effect";
 import {
+  credentialToAddress,
+  Data,
   LucidEvolution,
-  TxBuilder,
   makeReturn,
-  TxSignBuilder,
+  scriptHashToCredential,
+  toUnit,
+  TxBuilder,
+  UTxO,
 } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+
 import {
-  AuthenticatedValidator,
+  ACTIVE_OPERATORS_ROOT_ASSET_NAME,
+  ActiveOperatorMintRedeemer,
+} from "@/active-operators.js";
+import {
   Bech32DeserializationError,
-  LucidError,
   MidgardValidators,
   UnspecifiedNetworkError,
 } from "@/common.js";
-import { incompleteHubOracleInitTxProgram } from "@/hub-oracle.js";
-import { incompleteSchedulerInitTxProgram } from "@/scheduler.js";
-import { incompleteFraudProofCatalogueInitTxProgram } from "@/fraud-proof/catalogue.js";
-import { incompleteInitStateQueueTxProgram } from "@/state-queue.js";
-import { incompleteActiveOperatorInitTxProgram } from "@/active-operators.js";
-import { incompleteRegisteredOperatorInitTxProgram } from "@/registered-operators.js";
-import { incompleteRetiredOperatorInitTxProgram } from "@/retired-operators.js";
+import {
+  DaParamsDatum,
+  type DaParamsDatum as DaParamsDatumType,
+  daParamsUnit,
+} from "@/da-attestation.js";
+import {
+  FRAUD_PROOF_CATALOGUE_ASSET_NAME,
+  FraudProofCatalogueDatum,
+  FraudProofCatalogueMintRedeemer,
+} from "@/fraud-proof/catalogue.js";
+import {
+  HUB_ORACLE_ASSET_NAME,
+  HubOracleDatum,
+  makeHubOracleDatum,
+} from "@/hub-oracle.js";
+import {
+  EMPTY_MERKLE_TREE_ROOT,
+  GENESIS_HEADER_HASH,
+  GENESIS_PROTOCOL_VERSION,
+} from "@/ledger-constants.js";
+import { castConfirmedStateToData, ConfirmedState } from "@/ledger-state.js";
+import { encodeLinkedListNodeView, LinkedListNodeView } from "@/linked-list.js";
+import {
+  REGISTERED_OPERATORS_ROOT_ASSET_NAME,
+  RegisteredOperatorMintRedeemer,
+} from "@/registered-operators.js";
+import {
+  RETIRED_OPERATORS_ROOT_ASSET_NAME,
+  RetiredOperatorMintRedeemer,
+} from "@/retired-operators.js";
+import {
+  INITIAL_SCHEDULER_DATUM,
+  SCHEDULER_ASSET_NAME,
+  SchedulerDatum,
+  SchedulerMintRedeemer,
+} from "@/scheduler.js";
+import {
+  STATE_QUEUE_ROOT_ASSET_NAME,
+  StateQueueRedeemer,
+} from "@/state-queue.js";
 
-export const VALIDITY_RANGE_BUFFER = 5 * 60 * 1000;
+export type AtomicProtocolInitReferenceScripts = {
+  readonly hubOracleMinting: UTxO;
+  readonly daParamsGovernorMinting: UTxO;
+  readonly schedulerMinting: UTxO;
+  readonly stateQueueMinting: UTxO;
+  readonly registeredOperatorsMinting: UTxO;
+  readonly activeOperatorsMinting: UTxO;
+  readonly retiredOperatorsMinting: UTxO;
+  readonly fraudProofCatalogueMinting: UTxO;
+};
 
 export type InitializationParams = {
   midgardValidators: MidgardValidators;
   fraudProofCatalogueMerkleRoot: string;
+  daParams: DaParamsDatumType;
+  oneShotNonceUTxO: UTxO;
+  validityRange: {
+    readonly validFrom: bigint;
+    readonly validTo: bigint;
+  };
+  referenceScripts?: AtomicProtocolInitReferenceScripts;
 };
 
-export const getInitializedValidatorsFromMidgardValidators = (
-  validators: MidgardValidators,
-): AuthenticatedValidator[] => [
-  validators.hubOracle,
-  validators.stateQueue,
-  validators.scheduler,
-  validators.registeredOperators,
-  validators.activeOperators,
-  validators.retiredOperators,
-  validators.fraudProofCatalogue,
-];
+const encodeLinkedListRootDatum = (
+  rootData: LinkedListNodeView["data"],
+): string =>
+  encodeLinkedListNodeView({
+    key: "Empty",
+    next: "Empty",
+    data: rootData,
+  });
 
+// Atomic initialization appends protocol root outputs in a fixed order before
+// wallet change, and each Init validator independently verifies its output.
+const encodeInitOutputRedeemer = <T>(outputIndex: bigint, schema: T): string =>
+  Data.to({ Init: { output_index: outputIndex } } as never, schema as never);
+
+/**
+ * Builds the unsigned transaction builder for initializing all Midgard contracts.
+ *
+ * @param lucid - The `LucidEvolution` API object.
+ * @param initParams - Parameters for initializing all Midgard contracts.
+ * @returns A promise that resolves to a `TxBuilder` instance.
+ */
 export const incompleteInitializationTxProgram = (
   lucid: LucidEvolution,
   params: InitializationParams,
 ): Effect.Effect<
   TxBuilder,
-  LucidError | Bech32DeserializationError | UnspecifiedNetworkError
+  Bech32DeserializationError | UnspecifiedNetworkError
 > =>
   Effect.gen(function* () {
-    const utxos = yield* Effect.tryPromise({
-      try: () => lucid.wallet().getUtxos(),
-      catch: (e) =>
-        new LucidError({
-          message: "Failed to fetch UTxOs to use as nonce for initialization",
-          cause: e,
-        }),
-    });
-
-    if (utxos.length === 0) {
+    const network = lucid.config().network;
+    if (network === undefined) {
       return yield* Effect.fail(
-        new LucidError({
-          message: "No UTxOs available for nonce of initialization",
-          cause: "Wallet has no UTxOs",
+        new UnspecifiedNetworkError({
+          message: "Failed to build atomic protocol initialization",
+          cause: "lucid.config().network is undefined",
         }),
       );
     }
 
-    const nonceUtxo = utxos[0];
-    const genesisTime = BigInt(Date.now() + VALIDITY_RANGE_BUFFER);
-    let tx = lucid
+    const { midgardValidators } = params;
+    const hubOracleDatum = yield* makeHubOracleDatum(midgardValidators);
+    const encodedHubOracleDatum = Data.to(hubOracleDatum, HubOracleDatum);
+    const stateQueueGenesisTime = params.validityRange.validTo - 1n;
+    const genesisConfirmedState: ConfirmedState = {
+      headerHash: GENESIS_HEADER_HASH,
+      prevHeaderHash: GENESIS_HEADER_HASH,
+      utxoRoot: EMPTY_MERKLE_TREE_ROOT,
+      startTime: stateQueueGenesisTime,
+      endTime: stateQueueGenesisTime,
+      protocolVersion: GENESIS_PROTOCOL_VERSION,
+    };
+
+    const hubOracleUnit = toUnit(
+      midgardValidators.hubOracle.policyId,
+      HUB_ORACLE_ASSET_NAME,
+    );
+    const schedulerUnit = toUnit(
+      midgardValidators.scheduler.policyId,
+      SCHEDULER_ASSET_NAME,
+    );
+    const stateQueueUnit = toUnit(
+      midgardValidators.stateQueue.policyId,
+      STATE_QUEUE_ROOT_ASSET_NAME,
+    );
+    const registeredOperatorsUnit = toUnit(
+      midgardValidators.registeredOperators.policyId,
+      REGISTERED_OPERATORS_ROOT_ASSET_NAME,
+    );
+    const activeOperatorsUnit = toUnit(
+      midgardValidators.activeOperators.policyId,
+      ACTIVE_OPERATORS_ROOT_ASSET_NAME,
+    );
+    const retiredOperatorsUnit = toUnit(
+      midgardValidators.retiredOperators.policyId,
+      RETIRED_OPERATORS_ROOT_ASSET_NAME,
+    );
+    const fraudProofCatalogueUnit = toUnit(
+      midgardValidators.fraudProofCatalogue.policyId,
+      FRAUD_PROOF_CATALOGUE_ASSET_NAME,
+    );
+    const daParamsGovernorUnit = daParamsUnit(
+      midgardValidators.daParamsGovernor,
+    );
+
+    const hubOracleAssets = { [hubOracleUnit]: 1n };
+    const schedulerAssets = { [schedulerUnit]: 1n };
+    const stateQueueAssets = { [stateQueueUnit]: 1n };
+    const registeredOperatorsAssets = { [registeredOperatorsUnit]: 1n };
+    const activeOperatorsAssets = { [activeOperatorsUnit]: 1n };
+    const retiredOperatorsAssets = { [retiredOperatorsUnit]: 1n };
+    const fraudProofCatalogueAssets = { [fraudProofCatalogueUnit]: 1n };
+    const daParamsGovernorAssets = { [daParamsGovernorUnit]: 1n };
+
+    const tx = lucid
       .newTx()
-      .collectFrom([nonceUtxo])
-      .validTo(Number(genesisTime));
+      .validFrom(Number(params.validityRange.validFrom))
+      .validTo(Number(params.validityRange.validTo))
+      .collectFrom([params.oneShotNonceUTxO])
+      .mintAssets(daParamsGovernorAssets, Data.void())
+      .pay.ToContract(
+        midgardValidators.daParamsGovernor.spendingScriptAddress,
+        {
+          kind: "inline",
+          value: Data.to(params.daParams, DaParamsDatum),
+        },
+        daParamsGovernorAssets,
+      )
+      .mintAssets(hubOracleAssets, Data.void())
+      .pay.ToAddressWithData(
+        credentialToAddress(
+          network,
+          scriptHashToCredential(midgardValidators.hubOracle.policyId),
+        ),
+        { kind: "inline", value: encodedHubOracleDatum },
+        hubOracleAssets,
+      )
+      .mintAssets(schedulerAssets, Data.to("Init", SchedulerMintRedeemer))
+      .pay.ToContract(
+        midgardValidators.scheduler.spendingScriptAddress,
+        {
+          kind: "inline",
+          value: Data.to(INITIAL_SCHEDULER_DATUM, SchedulerDatum),
+        },
+        schedulerAssets,
+      )
+      .mintAssets(
+        stateQueueAssets,
+        encodeInitOutputRedeemer(3n, StateQueueRedeemer),
+      )
+      .pay.ToContract(
+        midgardValidators.stateQueue.spendingScriptAddress,
+        {
+          kind: "inline",
+          value: encodeLinkedListRootDatum(
+            castConfirmedStateToData(
+              genesisConfirmedState,
+            ) as LinkedListNodeView["data"],
+          ),
+        },
+        stateQueueAssets,
+      )
+      .mintAssets(
+        registeredOperatorsAssets,
+        encodeInitOutputRedeemer(4n, RegisteredOperatorMintRedeemer),
+      )
+      .pay.ToContract(
+        midgardValidators.registeredOperators.spendingScriptAddress,
+        { kind: "inline", value: encodeLinkedListRootDatum("") },
+        registeredOperatorsAssets,
+      )
+      .mintAssets(
+        activeOperatorsAssets,
+        encodeInitOutputRedeemer(5n, ActiveOperatorMintRedeemer),
+      )
+      .pay.ToContract(
+        midgardValidators.activeOperators.spendingScriptAddress,
+        { kind: "inline", value: encodeLinkedListRootDatum("") },
+        activeOperatorsAssets,
+      )
+      .mintAssets(
+        retiredOperatorsAssets,
+        encodeInitOutputRedeemer(6n, RetiredOperatorMintRedeemer),
+      )
+      .pay.ToContract(
+        midgardValidators.retiredOperators.spendingScriptAddress,
+        { kind: "inline", value: encodeLinkedListRootDatum("") },
+        retiredOperatorsAssets,
+      )
+      .mintAssets(
+        fraudProofCatalogueAssets,
+        Data.to("Init", FraudProofCatalogueMintRedeemer),
+      )
+      .pay.ToAddressWithData(
+        midgardValidators.fraudProofCatalogue.spendingScriptAddress,
+        {
+          kind: "inline",
+          value: Data.to(
+            params.fraudProofCatalogueMerkleRoot,
+            FraudProofCatalogueDatum,
+          ),
+        },
+        fraudProofCatalogueAssets,
+      );
 
-    const hubOracleTx = yield* incompleteHubOracleInitTxProgram(lucid, {
-      hubOracleValidator: params.midgardValidators.hubOracle,
-      validators: params.midgardValidators,
-    });
+    if (params.referenceScripts !== undefined) {
+      return tx.readFrom([
+        params.referenceScripts.daParamsGovernorMinting,
+        params.referenceScripts.hubOracleMinting,
+        params.referenceScripts.schedulerMinting,
+        params.referenceScripts.stateQueueMinting,
+        params.referenceScripts.registeredOperatorsMinting,
+        params.referenceScripts.activeOperatorsMinting,
+        params.referenceScripts.retiredOperatorsMinting,
+        params.referenceScripts.fraudProofCatalogueMinting,
+      ]);
+    }
 
-    const stateQueueTx: TxBuilder = yield* incompleteInitStateQueueTxProgram(
-      lucid,
-      {
-        validator: params.midgardValidators.stateQueue,
-        genesisTime: genesisTime,
-      },
-    );
-
-    const registeredOperatorsTx: TxBuilder =
-      yield* incompleteRegisteredOperatorInitTxProgram(lucid, {
-        validator: params.midgardValidators.registeredOperators,
-      });
-
-    const activeOperatorsTx: TxBuilder =
-      yield* incompleteActiveOperatorInitTxProgram(lucid, {
-        validator: params.midgardValidators.activeOperators,
-      });
-
-    const retiredOperatorsTx = yield* incompleteRetiredOperatorInitTxProgram(
-      lucid,
-      {
-        validator: params.midgardValidators.retiredOperators,
-      },
-    );
-
-    const schedulerTx = incompleteSchedulerInitTxProgram(lucid, {
-      validator: params.midgardValidators.scheduler,
-    });
-
-    const fraudProofCatalogueTx: TxBuilder =
-      yield* incompleteFraudProofCatalogueInitTxProgram(lucid, {
-        validator: params.midgardValidators.fraudProofCatalogue,
-        mptRootHash: params.fraudProofCatalogueMerkleRoot,
-      });
-
-    return tx
-      .compose(hubOracleTx)
-      .compose(stateQueueTx)
-      .compose(registeredOperatorsTx)
-      .compose(activeOperatorsTx)
-      .compose(retiredOperatorsTx)
-      .compose(schedulerTx)
-      .compose(fraudProofCatalogueTx);
+    return tx.attach
+      .Script(midgardValidators.daParamsGovernor.mintingScript)
+      .attach.Script(midgardValidators.hubOracle.mintingScript)
+      .attach.Script(midgardValidators.scheduler.mintingScript)
+      .attach.Script(midgardValidators.stateQueue.mintingScript)
+      .attach.Script(midgardValidators.registeredOperators.mintingScript)
+      .attach.Script(midgardValidators.activeOperators.mintingScript)
+      .attach.Script(midgardValidators.retiredOperators.mintingScript)
+      .attach.Script(midgardValidators.fraudProofCatalogue.mintingScript);
   });
 
-export const unsignedInitializationTxProgram = (
-  lucid: LucidEvolution,
-  initParams: InitializationParams,
-): Effect.Effect<
-  TxSignBuilder,
-  LucidError | Bech32DeserializationError | UnspecifiedNetworkError
-> =>
-  Effect.gen(function* () {
-    const commitTx = yield* incompleteInitializationTxProgram(
-      lucid,
-      initParams,
-    );
-    const completedTx: TxSignBuilder = yield* Effect.tryPromise({
-      try: () => commitTx.complete({ localUPLCEval: true }),
-      catch: (e) =>
-        new LucidError({
-          message: `Failed to build the init transaction: ${e}`,
-          cause: e,
-        }),
-    });
-    return completedTx;
-  });
-
-/**
- * Builds completed tx for initializing all Midgard contracts.
- *
- * @param lucid - The `LucidEvolution` API object.
- * @param initParams - Parameters for initializing all Midgard contracts.
- * @returns A promise that resolves to a `TxSignBuilder` instance.
- */
 export const unsignedInitializationTx = (
   lucid: LucidEvolution,
   initParams: InitializationParams,
-): Promise<TxSignBuilder> =>
-  makeReturn(unsignedInitializationTxProgram(lucid, initParams)).unsafeRun();
+): Promise<TxBuilder> =>
+  makeReturn(incompleteInitializationTxProgram(lucid, initParams)).unsafeRun();

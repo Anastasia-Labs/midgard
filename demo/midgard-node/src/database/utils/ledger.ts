@@ -1,12 +1,21 @@
-import { Database } from "@/services/database.js";
 import { SqlClient } from "@effect/sql";
-import { Effect } from "effect";
 import { Address } from "@lucid-evolution/lucid";
-import {
-  sqlErrorToDatabaseError,
-  DatabaseError,
-} from "@/database/utils/common.js";
+import { Effect } from "effect";
 
+import {
+  DatabaseError,
+  logDatabaseError,
+  sqlErrorToDatabaseError,
+} from "@/database/utils/common.js";
+import { Database } from "@/services/database.js";
+
+/**
+ * Table adapter for ledger-style UTxO sets.
+ *
+ * The same shape is reused for confirmed, latest, and mempool-derived ledgers,
+ * so the functions here operate on a caller-provided table name while enforcing
+ * one row per outref.
+ */
 export enum Columns {
   TX_ID = "tx_id",
   OUTREF = "outref",
@@ -33,6 +42,9 @@ export type MinimalEntry = {
   [Columns.OUTPUT]: Buffer;
 };
 
+/**
+ * Creates the ledger table and its address lookup index if they are missing.
+ */
 export const createTable = (
   tableName: string,
 ): Effect.Effect<void, DatabaseError, Database> =>
@@ -58,6 +70,9 @@ export const createTable = (
     sqlErrorToDatabaseError(tableName, "Failed to create the table"),
   );
 
+/**
+ * Inserts one ledger entry, ignoring duplicates keyed by outref.
+ */
 export const insertEntry = (
   tableName: string,
   entry: Entry,
@@ -65,16 +80,19 @@ export const insertEntry = (
   Effect.gen(function* () {
     yield* Effect.logDebug(`${tableName} db: attempt to insert Ledger UTxO`);
     const sql = yield* SqlClient.SqlClient;
-    // No need to handle conflicts.
-    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(entry)}`;
+    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(entry)}
+      ON CONFLICT (${sql(Columns.OUTREF)}) DO NOTHING`;
   }).pipe(
     Effect.withLogSpan(`insertEntry ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(`${tableName} db: insertEntry: ${JSON.stringify(e)}`),
+      logDatabaseError(tableName, "insertEntry", e),
     ),
     sqlErrorToDatabaseError(tableName, "Failed to insert the given UTxO"),
   );
 
+/**
+ * Bulk-inserts ledger entries and skips rows that already exist.
+ */
 export const insertEntries = (
   tableName: string,
   entries: Entry[],
@@ -86,15 +104,19 @@ export const insertEntries = (
       yield* Effect.logDebug("No entries provided, skipping insertion.");
       return;
     }
-    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(entries)}`;
+    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(entries)}
+      ON CONFLICT (${sql(Columns.OUTREF)}) DO NOTHING`;
   }).pipe(
     Effect.withLogSpan(`insertEntries ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(`${tableName} db: insertEntries: ${JSON.stringify(e)}`),
+      logDatabaseError(tableName, "insertEntries", e),
     ),
     sqlErrorToDatabaseError(tableName, "Failed to insert given UTxOs"),
   );
 
+/**
+ * Returns every ledger entry currently stored in the table.
+ */
 export const retrieveAllEntries = (
   tableName: string,
 ): Effect.Effect<readonly EntryWithTimeStamp[], DatabaseError, Database> =>
@@ -104,14 +126,15 @@ export const retrieveAllEntries = (
     return yield* sql<EntryWithTimeStamp>`SELECT * FROM ${sql(tableName)}`;
   }).pipe(
     Effect.withLogSpan(`retrieveEntries ${tableName}`),
-    Effect.tapErrorTag("SqlError", (double) =>
-      Effect.logError(
-        `${tableName} db: retrieveEntries: ${JSON.stringify(double)}`,
-      ),
+    Effect.tapErrorTag("SqlError", (e) =>
+      logDatabaseError(tableName, "retrieveEntries", e),
     ),
     sqlErrorToDatabaseError(tableName, "Failed to retrieve the whole ledger"),
   );
 
+/**
+ * Looks up all ledger entries controlled by a specific Cardano address.
+ */
 export const retrieveEntriesWithAddress = (
   tableName: string,
   address: Address,
@@ -125,9 +148,7 @@ export const retrieveEntriesWithAddress = (
   }).pipe(
     Effect.withLogSpan(`retrieveEntriesWithAddress ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(
-        `${tableName} db: retrieveEntriesWithAddress: ${JSON.stringify(e)}`,
-      ),
+      logDatabaseError(tableName, "retrieveEntriesWithAddress", e),
     ),
     sqlErrorToDatabaseError(
       tableName,
@@ -135,6 +156,38 @@ export const retrieveEntriesWithAddress = (
     ),
   );
 
+/**
+ * Looks up ledger entries identified by their raw TxOutRef CBOR bytes.
+ */
+export const retrieveEntriesByOutRefs = (
+  tableName: string,
+  outrefs: readonly Buffer[],
+): Effect.Effect<readonly EntryWithTimeStamp[], DatabaseError, Database> =>
+  Effect.gen(function* () {
+    yield* Effect.logDebug(
+      `${tableName} db: attempt to retrieve Ledger UTxOs by outref`,
+    );
+    if (outrefs.length === 0) {
+      return [];
+    }
+    const sql = yield* SqlClient.SqlClient;
+    return yield* sql<EntryWithTimeStamp>`SELECT * FROM ${sql(
+      tableName,
+    )} WHERE ${sql(Columns.OUTREF)} IN ${sql.in(outrefs)}`;
+  }).pipe(
+    Effect.withLogSpan(`retrieveEntriesByOutRefs ${tableName}`),
+    Effect.tapErrorTag("SqlError", (e) =>
+      logDatabaseError(tableName, "retrieveEntriesByOutRefs", e),
+    ),
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to retrieve UTxOs for the given outrefs",
+    ),
+  );
+
+/**
+ * Deletes the rows identified by the provided outrefs.
+ */
 export const delEntries = (
   tableName: string,
   outrefs: Buffer[],

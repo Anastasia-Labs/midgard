@@ -1,0 +1,12 @@
+{
+  "title": "Getting Started",
+  "pages": [
+    "what-is-midgard",
+    "repository-map",
+    "local-dev",
+    "l1-backend",
+    "run-local-stack",
+    "first-transaction",
+    "status"
+  ]
+}

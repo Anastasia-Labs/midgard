@@ -1,0 +1,24 @@
+---
+title: "Considerations"
+description: "Protocol invariants, protocol parameters, and protocol security considerations."
+---
+
+Appendix C collects the cross-cutting **considerations** that constrain the whole
+protocol.
+
+## What the appendix covers
+
+- **Protocol invariants**: properties that must hold at all times across state
+  transitions.
+- **Protocol parameters**: the tunable values (bonds, windows, thresholds, fees)
+  that configure a deployment.
+- **Protocol security**: the threat model and the arguments for why the optimistic
+  design is safe under it.
+
+## In the codebase
+
+The invariants scripts may rely on when inspecting the transaction/script context
+are documented in [ScriptContext Invariants](/docs/onchain/script-context-invariants).
+Protocol parameters are surfaced in `midgard-sdk` (`protocol-parameters`) and
+consumed by the node. Current production-readiness against these considerations is
+tracked in [Project Status](/docs/getting-started/status).

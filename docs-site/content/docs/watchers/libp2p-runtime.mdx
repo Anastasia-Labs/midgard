@@ -1,0 +1,45 @@
+---
+title: "libp2p Runtime"
+description: "How the DA committee node runtime wires together libp2p transport, attestation/payload exchange, signing, and on-chain reconciliation."
+---
+
+The DA committee node (`demo/da-committee-node`) is a libp2p-based service. Its
+entry point `src/index.ts` wires together several subsystems:
+
+- **libp2p transport** (`src/da/libp2p/`), a gossipsub-based network for exchanging
+  attestations, payloads, and proofs between committee peers. Uses
+  `@libp2p/gossipsub`, `@chainsafe/libp2p-noise`, and yamux.
+- **Watcher API server** (`src/api/`), the node's HTTP surface.
+- **Peer coordination** (`src/peer/`), a signature coordinator/poller that collects
+  peer signatures.
+- **Signer & committee validation** (`src/signer.ts`), the DA signer and committee
+  validation logic.
+- **On-chain coordination** (`src/coordinator/`, `src/l1/`), an on-chain
+  coordinator plus a submitter reconciler that reconciles committee state with L1.
+- **Store** (`src/store/`), the watcher's persistent store (uses `pg`).
+
+<Mermaid chart={`flowchart TD
+  P["libp2p gossipsub peers"] --> DA["da/libp2p"]
+  DA --> COORD["peer signature coordinator"]
+  COORD --> SIG["DA signer + committee validation"]
+  SIG --> L1["on-chain coordinator + submitter reconciler"]
+  DA --> STORE["watcher store (pg)"]
+  API["watcher API server"] --> STORE`} />
+
+## Required configuration
+
+The runtime reads its deployment and network identity from the environment:
+
+- `MIDGARD_DEPLOYMENT_MANIFEST_PATH`: path to the deployment manifest JSON
+  (schema `midgard-deployment-manifest-v2`) that pins the deployment the watcher
+  serves.
+- `MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH`: path to the contract deployment info
+  produced at protocol init.
+- `DA_LIBP2P_PRIVATE_KEY_SOURCE`: the node's libp2p identity key, given as a
+  `seed:`, `hex:`, or `file:` source. Required in libp2p DA mode.
+
+## Related
+
+- [DA Committee Node Architecture](/docs/watchers/da-committee-node)
+- [DA Transport Migration](/docs/watchers/da-transport-migration)
+- On-chain: [`da-attestation`](/docs/onchain/da-validators)

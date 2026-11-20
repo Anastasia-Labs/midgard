@@ -1,0 +1,29 @@
+---
+title: "SDK Boundaries"
+description: "Implemented boundaries between Midgard SDK transaction builders and operator-node orchestration."
+---
+
+Each transaction family has a pinned **boundary** between the `midgard-sdk`
+transaction builders and the [operator node](/docs/operators/node/overview)
+runtime: which side owns witness assembly, input selection, nonce preparation,
+and completion.
+
+<Callout type="info" title="Status">
+  The implementation plans were completed and retired. The production source and
+  tests are now authoritative; this page preserves the resulting ownership map.
+</Callout>
+
+## Implemented boundaries
+
+| Family                          | SDK source of truth                                                                            | Node responsibility                                                            |
+| ------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Scheduler bootstrap and refresh | `demo/midgard-sdk/src/scheduler.ts`, `scheduler-refresh.ts`                                    | Select live inputs, provide runtime witnesses, submit and confirm.             |
+| DA attestation                  | `demo/midgard-sdk/src/da-attestation.ts`                                                       | Resolve committee/runtime state and drive the attestation lifecycle.           |
+| Operator registration           | `demo/midgard-sdk/src/operator-lifecycle.ts`, `active-operators.ts`, `registered-operators.ts` | Supply funding inputs and operator credentials.                                |
+| Reference-script publication    | `demo/midgard-sdk/src/reference-scripts.ts`                                                    | Plan batches, select deployment identity and funding, then submit and confirm. |
+| PHAS membership registration    | `demo/midgard-sdk/src/phas-membership.ts`                                                      | Resolve the configured script, inspect registration state, submit and confirm. |
+| Hub-oracle nonce preparation    | `demo/midgard-sdk/src/hub-oracle.ts`                                                           | Select and persist the one-shot out-ref used by deployment.                    |
+
+The SDK owns deterministic transaction construction. The node owns environment
+configuration, live input discovery, wallet selection, retries, submission,
+confirmation, and durable operational state.

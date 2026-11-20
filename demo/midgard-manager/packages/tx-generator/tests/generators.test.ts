@@ -25,11 +25,7 @@ vi.mock('../src/lib/generators/one-to-one.js', () => {
 
       // Submit transactions if node client is provided
       if (config.nodeClient) {
-        try {
-          await config.nodeClient.submitTransaction('mock_cbor', 'test');
-        } catch (error) {
-          throw error;
-        }
+        await config.nodeClient.submitTransaction('mock_cbor', 'test');
       }
 
       // Return mock transactions

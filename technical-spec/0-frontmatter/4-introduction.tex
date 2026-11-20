@@ -14,7 +14,7 @@ This whitepaper describes the architecture and technical design of the Midgard p
 Optimistic rollups process blocks of transactions off-chain and commit those blocks' headers onchain to the L1 ledger.
 Each block is committed by a Midgard operator who guarantees the block's validity.
 The block then waits in a queue for at least a fixed duration to be merged into the confirmed state of the optimistic rollup on L1.
-The operator must collateralize their guarantee with a bond deposit and publish the full contents of the block on the publicly accessible data availability (DA) layer.
+The design requires the operator to collateralize its claim with a bond deposit and make the full block contents permissionlessly retrievable through the data availability (DA) layer for at least the challenge and recovery horizon.
 
 While a committed block is queued, anyone can inspect its contents on the data availability layer and ascertain whether it is valid.
 If someone detects that the block is invalid, they can submit a fraud proof to prevent it from being merged into the confirmed state, slash the operator's bond, and receive a portion of the forfeited bond as a reward.
@@ -26,9 +26,8 @@ Thus, an optimistic rollup can process a large number of transactions offchain w
     \item The data availability layer is accessible by anyone who wishes to inspect the rollup blocks at any time that they wish to do so.
 \end{itemize}
 
-Whenever the latter three security parameter values are calibrated to provide a high probability of invalid blocks being detected and disqualified, the bond requirement is a strong deterrent against operators attempting fraud.
-An operator cannot dismiss the forfeited bond as merely a ``cost of doing business'' paid to obtain potentially larger revenues from fraud.
-Whenever an invalid block is disqualified, it does \emph{not} affect the confirmed state, so there are no revenues from that fraud to offset the operator's forfeited bond.
+The economic deterrent holds only when invalid data remains obtainable, at least one independent watcher detects the violation, an onchain proof path covers it and completes before maturity, and the expected loss exceeds the maximum extractable benefit.
+A disqualified block does not affect the confirmed state, but that fact alone does not establish sufficient deterrence; bond and reward values must account for detection probability, proof and capital costs, correlated failures, and the value at risk.
 
 The main design goal of Midgard is to streamline the processes by which blocks are committed/merged, fraud is detected, and fraud proofs are verified onchain.
 Advancing this goal allows the security parameters to be calibrated to achieve a better balance between security, transaction throughput, confirmation time, and community participation in committing blocks and detecting fraud.
@@ -39,9 +38,9 @@ Advancing this goal allows the security parameters to be calibrated to achieve a
 By processing transactions off-chain and only validating them on-chain when fraud proofs challenge them, Midgard significantly increases throughput and reduces costs for Cardano transactions.
 Its rollup blocks use sparse Merkle trees and compact state representations to enhance the protocol's efficiency further, enabling it to handle a large volume of transactions without overburdening the L1.
 
-The deterministic nature of Cardano transactions allows Midgard fraud proofs to pinpoint the specific site of a transaction that violated Midgard's ledger rules, without having to look at any other parts of that transaction, any other unrelated transactions within the block, or any other blocks.
-This keeps fraud proofs and their onchain validation procedures small and efficient, which reduces the time and cost needed to submit fraud proofs when invalid blocks are detected, which makes it feasible for a wider group of people to police Midgard's blocks.
-In this way, Midgard significantly reduces fraud proof size relative to optimistic rollups used in Ethereum and other account-based blockchain ecosystems, where a much larger part of the global blockchain state needs to be inspected when constructing and verifying a fraud proof.
+Deterministic transaction encoding, typed roots, and authenticated state witnesses allow many violations to be localized to a bounded claim and Merkle path.
+Some violation families still depend on transaction-wide material, neighbouring transition steps, prior committed state, or authenticated L1 events; each proof procedure must state its complete witness and binding requirements.
+The intended result is bounded onchain verification rather than re-execution of a complete block, but proof size and cost are deployment claims that require budget and end-to-end evidence for every enabled family.
 
 \subsection*{Censorship resistance and fallback mechanisms}
 
@@ -55,12 +54,12 @@ This ensures that if operators continue committing blocks to Midgard's state que
 
 Midgard L2 transaction requests are typically submitted to operators via a publicly accessible API, and they can be ignored by operators.
 However, any user can escalate his L2 transaction request by posting a transaction order on L1.
-Similar to Midgard deposits and withdrawals, an L1 transaction order is assigned an inclusion time that guarantees its inclusion in a subsequent valid block.
+Similar to Midgard deposits and withdrawals, an L1 transaction order is assigned an inclusion time that makes omission from a covering block provable while valid block production continues.
 
 If Midgard operators stop committing blocks at all to the state queue, then the inclusion times on their own cannot guarantee that deposits, withdrawals, and L2 transactions will be processed in a timely manner.
 However, for this extreme case, Midgard's consensus protocol includes the escape hatch mechanism, which temporarily lowers the bond requirement for new operators.
-This makes it easier for honest actors to become Midgard operators and start committing blocks to the state queue.
-This ensures that user funds cannot be stranded on Midgard even if its current operators entirely stop committing blocks.
+The target escape-hatch design makes it easier for honest actors to become Midgard operators and restart block production.
+It is not a direct user force-exit and does not, on its own, guarantee timely recovery: production safety requires deployed validators and transactions, an economically viable replacement operator, available data and keys, and a tested recovery runbook.
 
 \subsection*{Feedback and contributions welcome!}
 \label{h:feedback-and-contributions-welcome}

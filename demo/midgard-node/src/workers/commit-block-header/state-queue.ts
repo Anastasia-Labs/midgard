@@ -1,0 +1,169 @@
+import * as SDK from "@al-ft/midgard-sdk";
+import { toUnit } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+
+// The sibling SDK is built in its own TypeScript program, so its exported
+// `Effect` values can carry a distinct branded generator identity during DTS
+// emit. Normalize SDK helpers once at the worker boundary.
+export const localizeSdkEffect = <A, E, R = never>(
+  effect: unknown,
+): Effect.Effect<A, E, R> => effect as Effect.Effect<A, E, R>;
+
+export const getConfirmedStateFromStateQueueDatumLocal = (
+  nodeDatum: SDK.LinkedListNodeView,
+): Effect.Effect<
+  { readonly data: SDK.ConfirmedState; readonly link: unknown },
+  SDK.DataCoercionError
+> => localizeSdkEffect(SDK.getConfirmedStateFromStateQueueDatum(nodeDatum));
+
+export const getHeaderFromStateQueueDatumLocal = (
+  nodeDatum: SDK.LinkedListNodeView,
+): Effect.Effect<SDK.Header, SDK.DataCoercionError> =>
+  localizeSdkEffect(SDK.getHeaderFromStateQueueDatum(nodeDatum));
+
+export const hashBlockHeaderLocal = (
+  header: SDK.Header,
+): Effect.Effect<string, SDK.HashingError> =>
+  localizeSdkEffect(SDK.hashBlockHeader(header));
+
+export const updateLatestBlocksDatumAndGetTheNewHeaderLocal = (
+  lucid: Parameters<
+    typeof SDK.updateLatestBlocksDatumAndGetTheNewHeaderProgram
+  >[0],
+  latestBlocksDatum: SDK.LinkedListNodeView,
+  newUTxOsRoot: string,
+  transactionsRoot: string,
+  depositsRoot: string,
+  withdrawalsRoot: string,
+  transitionCommitments: SDK.HeaderTransitionCommitments,
+  endTime: bigint,
+): Effect.Effect<
+  { readonly nodeDatum: SDK.LinkedListNodeView; readonly header: SDK.Header },
+  | SDK.DataCoercionError
+  | SDK.HeaderTransitionCommitmentsError
+  | SDK.LucidError
+  | SDK.HashingError
+> =>
+  localizeSdkEffect(
+    SDK.updateLatestBlocksDatumAndGetTheNewHeaderProgram(
+      lucid,
+      latestBlocksDatum,
+      newUTxOsRoot,
+      transactionsRoot,
+      depositsRoot,
+      withdrawalsRoot,
+      transitionCommitments,
+      endTime,
+    ),
+  );
+
+export const getLatestBlockDatumEndTime = (
+  latestBlocksDatum: SDK.LinkedListNodeView,
+): Effect.Effect<Date, SDK.DataCoercionError> =>
+  latestBlocksDatum.key === "Empty"
+    ? getConfirmedStateFromStateQueueDatumLocal(latestBlocksDatum).pipe(
+        Effect.map(
+          ({ data: confirmedState }) =>
+            new Date(Number(confirmedState.endTime)),
+        ),
+      )
+    : getHeaderFromStateQueueDatumLocal(latestBlocksDatum).pipe(
+        Effect.map((latestHeader) => new Date(Number(latestHeader.endTime))),
+      );
+
+export const stateQueueOutRef = (block: SDK.StateQueueUTxO): string =>
+  `${block.utxo.txHash}#${block.utxo.outputIndex.toString()}`;
+
+export const stateQueueBaseHeaderHash = (
+  block: SDK.StateQueueUTxO,
+): Effect.Effect<string, SDK.DataCoercionError | SDK.HashingError, never> =>
+  Effect.gen(function* () {
+    if (block.datum.key === "Empty") {
+      const { data } = yield* getConfirmedStateFromStateQueueDatumLocal(
+        block.datum,
+      );
+      return data.headerHash;
+    }
+    const header = yield* getHeaderFromStateQueueDatumLocal(block.datum);
+    return yield* hashBlockHeaderLocal(header);
+  });
+
+export const fetchLatestCommittedBlockLocal = (
+  lucid: Parameters<typeof SDK.fetchLatestCommittedBlockProgram>[0],
+  fetchConfig: SDK.StateQueueFetchConfig,
+): Effect.Effect<SDK.StateQueueUTxO, SDK.StateQueueError | SDK.LucidError> =>
+  localizeSdkEffect(SDK.fetchLatestCommittedBlockProgram(lucid, fetchConfig));
+
+/**
+ * Revalidates a known state-queue tail through its unique NFT instead of
+ * scanning every UTxO at the state-queue address. Appending or merging can
+ * recreate the same logical node at a new out-ref, so a replacement is still
+ * decoded and checked as a tail rather than being rejected solely by out-ref.
+ */
+export const fetchExpectedStateQueueTailLocal = (
+  lucid: Parameters<typeof SDK.fetchLatestCommittedBlockProgram>[0],
+  fetchConfig: SDK.StateQueueFetchConfig,
+  expectedTail: SDK.StateQueueUTxO,
+): Effect.Effect<SDK.StateQueueUTxO, SDK.StateQueueError | SDK.LucidError> =>
+  Effect.gen(function* () {
+    const expectedUnit = toUnit(
+      fetchConfig.stateQueuePolicyId,
+      expectedTail.assetName,
+    );
+    const candidates = yield* Effect.tryPromise({
+      try: () =>
+        lucid.utxosAtWithUnit(fetchConfig.stateQueueAddress, expectedUnit),
+      catch: (cause) =>
+        new SDK.LucidError({
+          message: `Failed to fetch expected state-queue tail unit at: ${fetchConfig.stateQueueAddress}`,
+          cause,
+        }),
+    });
+    if (candidates.length === 0) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            "Commit base is stale; aborting block build before creating a pending journal",
+          cause: `expected_unit=${expectedUnit},matches=0`,
+        }),
+      );
+    }
+    if (candidates.length !== 1) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message: "Expected state-queue tail unit is not unique",
+          cause: `unit=${expectedUnit},matches=${candidates.length.toString()}`,
+        }),
+      );
+    }
+
+    const candidate = candidates[0];
+    if (
+      candidate.txHash === expectedTail.utxo.txHash &&
+      candidate.outputIndex === expectedTail.utxo.outputIndex
+    ) {
+      return expectedTail;
+    }
+
+    const replacement = yield* localizeSdkEffect<SDK.StateQueueUTxO, unknown>(
+      SDK.utxoToStateQueueUTxO(candidate, fetchConfig.stateQueuePolicyId),
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new SDK.StateQueueError({
+            message: "Failed to authenticate replacement state-queue tail",
+            cause,
+          }),
+      ),
+    );
+    if (replacement.datum.next !== "Empty") {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            "Commit base is stale; aborting block build before creating a pending journal",
+          cause: `unit=${expectedUnit},outref=${stateQueueOutRef(replacement)}`,
+        }),
+      );
+    }
+    return replacement;
+  });

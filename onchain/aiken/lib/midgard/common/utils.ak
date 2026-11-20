@@ -7,15 +7,14 @@ use aiken/crypto.{
 }
 use aiken/interval.{Finite, Interval, NegativeInfinity, PositiveInfinity}
 use aiken_design_patterns/merkelized_validator
-use aiken_design_patterns/stake_validator
 use aiken_design_patterns/validity_range_normalization as vrn
 use cardano/address.{Address, Script}
 use cardano/assets.{AssetName, PolicyId, Value, tokens}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Redeemer, ScriptPurpose, Spend,
+  Withdraw,
 }
 use env
-use midgard/common/constants.{max_validity_range_length, posix_time_none}
 use midgard/common/types.{H28, H32, MerkleRoot, PosixTime, Proof, ValuePairs}
 
 /// Check whether the interval starts on or after the point.
@@ -41,7 +40,7 @@ pub fn get_inclusive_bounds_of_a_short_validity_range(
 ) -> (PosixTime, PosixTime) {
   when vrn.normalize_time_range(interval) is {
     vrn.ClosedRange { lower, upper } -> {
-      expect upper - lower <= max_validity_range_length
+      expect upper - lower <= env.max_validity_range_length
       (lower, upper)
     }
     _ -> fail @"Validity range was expected to be a closed range"
@@ -85,10 +84,6 @@ pub fn safe_list_head(elems: List<a>) -> a {
 pub fn safe_list_init(elems: List<a>) {
   expect Some(elems_except_last) = list.init(elems)
   elems_except_last
-}
-
-pub fn is_posix_time_none(time: PosixTime) {
-  time == posix_time_none
 }
 
 /// Returns the quantity of all tokens with the policyId
@@ -389,7 +384,7 @@ pub fn get_authentic_output_datum_at_address_with_nft_at(
 ///
 /// > [!NOTE]
 /// > This does NOT check the output's value contains the same amount of ADA
-/// > as the input, since change in data can fluctuate the min required ADA.
+/// > as the input's, since change in data can fluctuate the min required ADA.
 ///
 /// Useful for contracts with singular authentic UTxOs (which their data is the
 /// only thing that matters), at endpoints for updating their datums.
@@ -425,14 +420,22 @@ pub fn authenticate_input_output_and_get_output_datum_data(
   output_datum_data
 }
 
-// Verify a 32-byte hash (Blake2b-256)
-pub fn verify_hash_32(data: Data, data_hash: H32<Data>) -> Bool {
-  blake2b_256(cbor.serialise(data)) == data_hash
+pub fn serialise_and_hash_28(data: Data) -> H28<Data> {
+  data |> cbor.serialise |> blake2b_224
+}
+
+pub fn serialise_and_hash_32(data: Data) -> H32<Data> {
+  data |> cbor.serialise |> blake2b_256
 }
 
 // Verify a 28-byte hash (Blake2b-224)
 pub fn verify_hash_28(data: Data, data_hash: H28<Data>) -> Bool {
-  blake2b_224(cbor.serialise(data)) == data_hash
+  serialise_and_hash_28(data) == data_hash
+}
+
+// Verify a 32-byte hash (Blake2b-256)
+pub fn verify_hash_32(data: Data, data_hash: H32<Data>) -> Bool {
+  serialise_and_hash_32(data) == data_hash
 }
 
 /// Given a value, an NFT, and a `ValuePairs` (structured identical to `Value`,
@@ -561,24 +564,49 @@ pub fn get_spending_redeemer_data_at(
   redeemers |> get_redeemer_at(Spend(input_outref), redeemer_index)
 }
 
+/// Similar to [`get_spending_redeemer_data_at`](#get_spending_redeemer_data_at),
+/// but also returns the inline datum's data.
+pub fn get_inline_datum_and_spending_redeemer_data_at(
+  script_address: Address,
+  input_index: Int,
+  redeemer_index: Int,
+  inputs: List<Input>,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+) -> (Data, Data) {
+  expect Some(Input {
+    output_reference: input_outref,
+    output: Output {
+      address: input_address,
+      datum: InlineDatum(datum_data),
+      ..
+    },
+  }) = inputs |> list.at(input_index)
+  //
+  expect input_address.payment_credential == script_address.payment_credential
+  //
+  (
+    datum_data,
+    redeemers |> get_redeemer_at(Spend(input_outref), redeemer_index),
+  )
+}
+
 /// Merkelized validator abstraction for `phas` function from Plutarch.
 ///
 /// > [!WARNING]
 /// > This function can only be used **once within a given transaction**.
 pub fn plutarch_phas(
-  merkle_root: MerkleRoot,
-  key: Data,
-  value: Data,
+  merkle_root: MerkleRoot<key, value>,
+  key: Data<key>,
+  value: Data<value>,
   membership_proof: Proof,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   withdraw_redeemer_index: Int,
 ) -> Bool {
-  let phas_validator_redeemer <-
-    stake_validator.validate_withdraw(
-      env.plutarch_phas_validator_hash,
-      redeemers,
-      withdraw_redeemer_index,
-    )
+  expect _withdraw_redeemer_index = withdraw_redeemer_index
+  let phas_validator_redeemer =
+    get_unique_withdraw_redeemer(redeemers, env.plutarch_phas_validator_hash)
+  let key_bytes = cbor.serialise(key)
+  let value_bytes = cbor.serialise(value)
   expect [
     redeemer_root_data, redeemer_key_data, redeemer_value_data,
     redeemer_proof_data,
@@ -589,12 +617,39 @@ pub fn plutarch_phas(
 
   let proof_data: Data = membership_proof
 
-  and {
-    redeemer_root_data == merkle_root_data,
-    redeemer_key_data == key,
-    redeemer_value_data == value,
-    redeemer_proof_data == proof_data,
-  }
+  expect redeemer_root_data == merkle_root_data
+  expect redeemer_key_data == builtin.b_data(key_bytes)
+  expect redeemer_value_data == builtin.b_data(value_bytes)
+  expect redeemer_proof_data == proof_data
+
+  True
+}
+
+pub fn plutarch_phas_raw(
+  merkle_root: ByteArray,
+  key_bytes: ByteArray,
+  value_bytes: ByteArray,
+  membership_proof: Proof,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+  withdraw_redeemer_index: Int,
+) -> Bool {
+  expect _withdraw_redeemer_index = withdraw_redeemer_index
+  let phas_validator_redeemer =
+    get_unique_withdraw_redeemer(redeemers, env.plutarch_phas_validator_hash)
+  expect [
+    redeemer_root_data, redeemer_key_data, redeemer_value_data,
+    redeemer_proof_data,
+    ..
+  ] = builtin.un_list_data(phas_validator_redeemer)
+
+  let proof_data: Data = membership_proof
+
+  expect redeemer_root_data == builtin.b_data(merkle_root)
+  expect redeemer_key_data == builtin.b_data(key_bytes)
+  expect redeemer_value_data == builtin.b_data(value_bytes)
+  expect redeemer_proof_data == proof_data
+
+  True
 }
 
 /// Merkelized validator abstraction for `pexcludes` function from Plutarch.
@@ -602,18 +657,19 @@ pub fn plutarch_phas(
 /// > [!WARNING]
 /// > This function can only be used **once within a given transaction**.
 pub fn plutarch_pexcludes(
-  merkle_root: MerkleRoot,
-  key: Data,
+  merkle_root: MerkleRoot<key, value>,
+  key: Data<key>,
   non_membership_proof: Proof,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   withdraw_redeemer_index: Int,
 ) -> Bool {
-  let pexcludes_validator_redeemer <-
-    stake_validator.validate_withdraw(
-      env.plutarch_pexcludes_validator_hash,
+  expect _withdraw_redeemer_index = withdraw_redeemer_index
+  let pexcludes_validator_redeemer =
+    get_unique_withdraw_redeemer(
       redeemers,
-      withdraw_redeemer_index,
+      env.plutarch_pexcludes_validator_hash,
     )
+  let key_bytes = cbor.serialise(key)
   expect [redeemer_root_data,
     redeemer_key_data,
     redeemer_proof_data, ..] =
@@ -623,21 +679,71 @@ pub fn plutarch_pexcludes(
 
   let proof_data: Data = non_membership_proof
 
-  and {
-    redeemer_root_data == merkle_root_data,
-    redeemer_key_data == key,
-    redeemer_proof_data == proof_data,
-  }
+  expect redeemer_root_data == merkle_root_data
+  expect redeemer_key_data == builtin.b_data(key_bytes)
+  expect redeemer_proof_data == proof_data
+
+  True
+}
+
+/// Raw variant of `plutarch_pexcludes` that takes the merkle root and key as
+/// pre-computed bytes rather than typed values. Use this when the trie key
+/// encoding must match an external producer (e.g. the node keys its ledger MPF
+/// by `CML.TransactionInput` CBOR, which does not equal `cbor.serialise` of an
+/// aiken `OutputReference`).
+pub fn plutarch_pexcludes_raw(
+  merkle_root: ByteArray,
+  key_bytes: ByteArray,
+  non_membership_proof: Proof,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+  withdraw_redeemer_index: Int,
+) -> Bool {
+  expect _withdraw_redeemer_index = withdraw_redeemer_index
+  let pexcludes_validator_redeemer =
+    get_unique_withdraw_redeemer(
+      redeemers,
+      env.plutarch_pexcludes_validator_hash,
+    )
+  expect [redeemer_root_data,
+    redeemer_key_data,
+    redeemer_proof_data, ..] =
+    builtin.un_list_data(pexcludes_validator_redeemer)
+
+  let proof_data: Data = non_membership_proof
+
+  expect redeemer_root_data == builtin.b_data(merkle_root)
+  expect redeemer_key_data == builtin.b_data(key_bytes)
+  expect redeemer_proof_data == proof_data
+
+  True
+}
+
+fn get_unique_withdraw_redeemer(
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+  withdraw_script_hash: ScriptHash,
+) -> Redeemer {
+  expect [Pair(_, redeemer)] =
+    redeemers
+      |> list.filter(
+          fn(redeemer_pair) {
+            when redeemer_pair.1st is {
+              Withdraw(Script(script_hash)) ->
+                script_hash == withdraw_script_hash
+              _ -> False
+            }
+          },
+        )
+  redeemer
 }
 
 pub fn plutarch_pdelete(
-  merkle_root_before_delete: MerkleRoot,
-  key: Data,
-  value: Data,
+  merkle_root_before_delete: MerkleRoot<key, value>,
+  key: Data<key>,
+  value: Data<value>,
   membership_proof: Proof,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   withdraw_redeemer_index: Int,
-) -> MerkleRoot {
+) -> MerkleRoot<key, value> {
   let proof_data: Data = membership_proof
   let function_input: List<Data> =
     [builtin.b_data(merkle_root_before_delete), key, value, proof_data]

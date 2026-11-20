@@ -1,26 +1,39 @@
-import { Effect, Schedule } from "effect";
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  AlwaysSucceedsContract,
-  Lucid,
-  Database,
-  NodeConfig,
-} from "@/services/index.js";
-import { Columns as LedgerColumns } from "@/database/utils/ledger.js";
-import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
 import { TxSubmitError, UTxO, utxoToCore } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+
+import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
 import { DatabaseError } from "@/database/utils/common.js";
+import { Columns as LedgerColumns } from "@/database/utils/ledger.js";
 import {
-  handleSignSubmitNoConfirmation,
+  Database,
+  Globals,
+  Lucid,
+  MidgardContracts,
+  NodeConfig,
+  publishMempoolLedgerDelta,
+} from "@/services/index.js";
+import {
+  buildUnsignedDepositTxProgram,
+  type SubmitDepositError,
+} from "@/transactions/submit-deposit.js";
+import {
+  handleSignSubmit,
+  TxConfirmError,
   TxSignError,
 } from "@/transactions/utils.js";
 
+/**
+ * Seeds the local mempool ledger with configured genesis UTxOs on non-mainnet
+ * networks.
+ */
 const insertGenesisUtxos: Effect.Effect<
   void,
   DatabaseError,
-  NodeConfig | Database
+  NodeConfig | Database | Globals
 > = Effect.gen(function* () {
   const config = yield* NodeConfig;
+  const globals = yield* Globals;
 
   if (config.NETWORK === "Mainnet") {
     yield* Effect.logInfo(`🟣 On mainnet—No genesis UTxOs will be inserted.`);
@@ -42,6 +55,11 @@ const insertGenesisUtxos: Effect.Effect<
   );
 
   yield* MempoolLedgerDB.insert(ledgerEntries);
+  yield* publishMempoolLedgerDelta(
+    globals,
+    { full: true, upserts: [], deletes: [] },
+    config.VALIDATION_LEDGER_DELTA_LOG_MAX,
+  );
 
   yield* Effect.logInfo(
     `🟣 Successfully inserted ${ledgerEntries.length} genesis UTxOs. Funded addresses are:
@@ -54,19 +72,25 @@ ${Array.from(new Set(config.GENESIS_UTXOS.map((u) => u.address))).join("\n")}`,
   Effect.andThen(Effect.succeed(Effect.void)),
 );
 
+/**
+ * Submits an initial deposit transaction for the configured genesis wallet
+ * funds when genesis UTxOs are present.
+ */
 const submitGenesisDeposits: Effect.Effect<
   void,
-  | SDK.Bech32DeserializationError
-  | SDK.DepositError
-  | SDK.HashingError
   | SDK.LucidError
+  | SDK.HashingError
+  | SDK.HubOracleError
+  | SDK.Bech32DeserializationError
+  | SubmitDepositError
   | TxSubmitError
+  | TxConfirmError
   | TxSignError,
-  AlwaysSucceedsContract | Lucid | NodeConfig
+  MidgardContracts | Lucid | NodeConfig
 > = Effect.gen(function* () {
   yield* Effect.logInfo(`🟣 Building genesis deposit tx...`);
 
-  const { deposit: depositAuthValidator } = yield* AlwaysSucceedsContract;
+  const contracts = yield* MidgardContracts;
   const config = yield* NodeConfig;
   const lucid = yield* Lucid;
 
@@ -74,39 +98,26 @@ const submitGenesisDeposits: Effect.Effect<
     return;
   }
 
-  const l2Address = yield* SDK.midgardAddressFromBech32(
-    config.GENESIS_UTXOS[0].address,
-  );
-
-  // Hard-coded 10 ADA deposit.
-  const depositParams: SDK.DepositParams = {
-    depositScriptAddress: depositAuthValidator.spendingScriptAddress,
-    mintingPolicy: depositAuthValidator.mintingScript,
-    policyId: depositAuthValidator.policyId,
-    depositAmount: 10_000_000n,
-    depositInfo: {
-      l2Address: l2Address,
-      l2Datum: null,
-    },
-  };
-
   yield* lucid.switchToOperatorsMainWallet;
 
-  const signedTx = yield* SDK.unsignedDepositTxProgram(
-    lucid.api,
-    depositParams,
-  );
-  yield* handleSignSubmitNoConfirmation(lucid.api, signedTx);
+  // Hard-coded 10 ADA deposit.
+  const signedTx = yield* buildUnsignedDepositTxProgram(lucid.api, contracts, {
+    l2Address: config.GENESIS_UTXOS[0].address,
+    l2Datum: null,
+    lovelace: 10_000_000n,
+    additionalAssets: {},
+  });
+  yield* handleSignSubmit(lucid.api, signedTx);
 }).pipe(Effect.tapError(Effect.logInfo));
 
+/**
+ * Full genesis workflow: seed local ledger state and submit initial deposits in
+ * parallel.
+ */
 export const program: Effect.Effect<
   void,
   never,
-  AlwaysSucceedsContract | Database | Lucid | NodeConfig
-> = Effect.all(
-  [
-    insertGenesisUtxos,
-    submitGenesisDeposits.pipe(Effect.retry(Schedule.fixed("5000 millis"))),
-  ],
-  { concurrency: "unbounded" },
-).pipe(Effect.catchAllCause(Effect.logInfo));
+  MidgardContracts | Database | Lucid | NodeConfig | Globals
+> = Effect.all([insertGenesisUtxos, submitGenesisDeposits], {
+  concurrency: "unbounded",
+}).pipe(Effect.catchAllCause(Effect.logInfo));

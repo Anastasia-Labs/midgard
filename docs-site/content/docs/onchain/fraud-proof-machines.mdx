@@ -1,0 +1,51 @@
+---
+title: "Fraud-Proof Machines"
+description: "On-chain fraud-proof state machines: the catalogue, the computation thread, the proof token, and the per-category step validators."
+---
+
+Midgard's optimistic security is enforced by a family of on-chain validators that
+adjudicate challenges against invalid blocks. They implement the
+[Proof Protocol](/docs/spec/proof-protocol).
+
+## Core validators
+
+- **`computation-thread`**: the single-threaded state machine that steps a proof
+  through verification across multiple transactions. Its token is minted when a
+  challenge opens and burned when the proof succeeds.
+- **`fraud-proof`**: mints the permanent fraud-proof token on the final step, once the
+  computation thread has succeeded. The token records a concluded proof; it does not
+  authorize a challenge.
+- **`fraud-proof-catalogue`**: the catalogue enumerating the invalidity categories
+  a block may be challenged for.
+
+## Per-category step machines
+
+Under `onchain/aiken/validators/fraud-proofs/`, each invalidity category is a
+multi-step machine (`step-0N.ak`). The categories present in the source are:
+
+`double-spend` · `input-no-idx` · `invalid-range` · `invalid-signature` ·
+`min-fee` · `missing-native-script-tx` · `missing-signature` · `no-input` ·
+`no-reference-input` · `withdrawn-reference-input` · `zero-input` ·
+plus a `transition-trace` proof.
+
+<Callout type="warn" title="Source files are not deployed coverage">
+Only five categories are currently registered by the catalogue, eight compiled
+families retain legacy block/root binding that cannot target current native-v1
+counted-root blocks, and the minimum-fee proof contains a stubbed check. Treat the
+[fault-proof audit](/docs/fault-proofs/overview), not this source-directory list,
+as the coverage statement.
+</Callout>
+
+<Mermaid chart={`flowchart LR
+  I["init"] --> S1["step-01"]
+  S1 --> S2["step-02"]
+  S2 --> S3["step-03..0N"]
+  S3 --> V{"verdict"}
+  V -->|fraud proven| R["remove fraudulent block"]
+  V -->|challenge fails| C["challenge closed"]`} />
+
+## Related
+
+- Off-chain driver: [Fault-Proof tooling](/docs/fault-proofs/overview)
+- Detection: [Watchers](/docs/watchers/concept)
+- Merkle proofs: [Merkle Proofs (Plutarch)](/docs/onchain/merkle-plutarch)

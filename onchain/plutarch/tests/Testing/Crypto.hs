@@ -21,6 +21,8 @@ import Plutarch.Core.Utils
 import Plutarch.Prelude
 import PlutusCore.Crypto.Hash qualified as Hash
 
+-- | Collects the tests defined in this module.
+-- | Groups builtin-crypto regression tests used by the Plutarch suite.
 tests :: TestTree
 tests =
   testGroup

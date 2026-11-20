@@ -1,0 +1,18 @@
+{
+  "title": "Protocol Specification",
+  "pages": [
+    "building",
+    "ledger-state",
+    "user-event-protocol",
+    "consensus-protocol",
+    "proof-protocol",
+    "ledger-rules",
+    "offchain-data-architecture",
+    "phase-two-validation",
+    "l1-transactions",
+    "data-structures",
+    "considerations",
+    "formal-models",
+    "offchain-haskell"
+  ]
+}

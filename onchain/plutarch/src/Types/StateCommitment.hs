@@ -28,7 +28,6 @@ import Plutarch.MerkleTree.PatriciaForestry (
 import Plutarch.Prelude
 import PlutusLedgerApi.V3 (
   BuiltinByteString,
-  BuiltinData,
   CurrencySymbol,
   FromData,
   Lovelace,
@@ -47,6 +46,7 @@ import PlutusLedgerApi.V3 (
   Value,
  )
 import PlutusTx qualified
+import PlutusTx.AssocMap qualified as Map
 
 data Block = Block
   { txRoot :: MerklePatriciaForestry
@@ -115,18 +115,20 @@ deriving via
   instance
     PLiftable PStateCommitment
 
-data MidgardScriptInfo
+data MidgardScriptPurpose
   = MintingScript CurrencySymbol
   | SpendingScript ScriptHash TxOutRef
   | ObservingScript ScriptHash
-  deriving stock (Generic)
+  | ReceivingScript ScriptHash
+  deriving stock (Generic, Show)
 
-PlutusTx.unstableMakeIsData ''MidgardScriptInfo
+PlutusTx.unstableMakeIsData ''MidgardScriptPurpose
 
-data PMidgardScriptInfo (s :: S)
+data PMidgardScriptPurpose (s :: S)
   = PMintingScript (Term s (PAsData Value.PCurrencySymbol))
   | PSpendingScript (Term s (PAsData PScriptHash)) (Term s (PAsData PTxOutRef))
   | PObservingScript (Term s (PAsData PScriptHash))
+  | PReceivingScript (Term s (PAsData PScriptHash))
   deriving stock (Generic)
   deriving anyclass
     ( SOP.Generic
@@ -134,12 +136,14 @@ data PMidgardScriptInfo (s :: S)
     , PEq
     , PShow
     )
-  deriving (PlutusType) via (DeriveAsDataStruct PMidgardScriptInfo)
+  deriving (PlutusType) via (DeriveAsDataStruct PMidgardScriptPurpose)
 
 deriving via
-  DeriveDataPLiftable PMidgardScriptInfo MidgardScriptInfo
+  DeriveDataPLiftable PMidgardScriptPurpose MidgardScriptPurpose
   instance
-    PLiftable PMidgardScriptInfo
+    PLiftable PMidgardScriptPurpose
+
+type MidgardRedeemers = Map.Map MidgardScriptPurpose Redeemer
 
 data MidgardTxInfo = MidgardTxInfo
   { mtxInfoInputs :: [TxInInfo]
@@ -150,8 +154,7 @@ data MidgardTxInfo = MidgardTxInfo
   , mtxInfoObservers :: [ScriptHash]
   , mtxInfoSignatories :: [PubKeyHash]
   , mtxInfoMint :: MintValue
-  , mtxInfoScriptIntegrityHash :: BuiltinData
-  , mtxInfoAuxDataHash :: BuiltinData
+  , mtxInfoRedeemers :: MidgardRedeemers
   , mtxInfoId :: TxId
   }
   deriving stock (Generic, Show)
@@ -172,8 +175,7 @@ data PMidgardTxInfo (s :: S)
   , pmidguardTxInfo'signatories :: Term s (PAsData (PBuiltinList (PAsData PPubKeyHash)))
   , -- value minted by the transaction
     pmidguardTxInfo'mint :: Term s (PAsData (Value.PValue 'AssocMap.Sorted 'Value.NoGuarantees))
-  , pmidguardTxInfo'scriptIntegrityHash :: Term s PData
-  , pmidguardTxInfo'auxDataHash :: Term s PData
+  , pmidguardTxInfo'redeemers :: Term s (PAsData (AssocMap.PMap 'AssocMap.Sorted PMidgardScriptPurpose PRedeemer))
   , pmidguardTxInfo'id :: Term s (PAsData PTxId)
   }
   deriving stock (Generic)
@@ -194,7 +196,7 @@ data PMidgardContext (s :: S)
   = PMidgardContext
   { pmidguardContext'txInfo :: Term s PMidgardTxInfo
   , pmidguardContext'redeemer :: Term s PRedeemer
-  , pmidguardContext'scriptInfo :: Term s PMidgardScriptInfo
+  , pmidguardContext'scriptPurpose :: Term s PMidgardScriptPurpose
   }
   deriving stock (Generic)
   deriving anyclass
@@ -256,6 +258,8 @@ represented by the transaction root. It uses the provided proof to perform the v
 @param proof The Merkle proof for the transaction
 @return True if the transaction hash is present, False otherwise
 -}
+-- | Checks whether the transaction hash is present in the given state commitment.
+-- | Checks whether a transaction hash is present in the supplied transaction-root proof.
 phasTransactionHash :: Term s (PAsData PMerklePatriciaForestry :--> PByteString :--> PByteString :--> PProof :--> PBool)
 phasTransactionHash = phoistAcyclic $ plam $ \txroot txHash txInfoHash proof ->
   phas # pfromData txroot # txHash # txInfoHash # proof
@@ -268,7 +272,9 @@ and compares it with the provided hash.
 @param hash The hash to compare against
 @param transaction The MidgardTxInfo to hash and compare
 @return True if the hashes match, False otherwise
+-- | Checks whether the supplied hash matches the serialized Midgard transaction info.
 -}
+-- | Checks whether a Midgard transaction info value hashes to the supplied transaction hash.
 ptxHashMatches :: Term s (PByteString :--> PAsData PMidgardTxInfo :--> PBool)
 ptxHashMatches = phoistAcyclic $ plam $ \hash transaction ->
   hash #== pblake2b_256 # (pserialiseData # pforgetData transaction)

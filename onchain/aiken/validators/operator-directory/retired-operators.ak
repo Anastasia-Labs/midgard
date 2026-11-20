@@ -1,20 +1,19 @@
 use aiken/collection/list
 use aiken/crypto.{VerificationKeyHash}
+use aiken/interval
 use aiken_design_patterns/linked_list
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Redeemer, Transaction}
 use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/operator_directory.{
-  deinit, init, remove_operator_for_bad_settlement,
-  remove_operator_for_bad_state,
-  validate_operator_transfer_and_get_inserted_data,
+  deinit, init, slash_fraudulent_operator_and_get_info,
+  validate_transferred_operator_insertion,
 }
 use midgard/operator_directory/active_operators
 use midgard/operator_directory/retired_operators.{
-  Deinit, Init, MintRedeemer, NodeData, RecoverOperatorBond,
-  RemoveOperatorBadSettlement, RemoveOperatorBadState, RetireOperator,
-  finalize_linked_list, root_asset_name,
+  Deinit, Init, MintRedeemer, NodeData, RecoverOperatorBond, RetireOperator,
+  SlashOperator, finalize_linked_list, root_asset_name,
 }
 
 validator spend(retired_operators_mint_script_hash: PolicyId) {
@@ -46,19 +45,12 @@ validator mint(hub_oracle_script_hash: PolicyId) {
           output_index,
           self,
         )
-      Deinit { input_index } ->
-        deinit(
-          hub_oracle_script_hash,
-          own_policy_id,
-          root_asset_name,
-          input_index,
-          self,
-        )
+      Deinit ->
+        deinit(hub_oracle_script_hash, own_policy_id, root_asset_name, self)
       RetireOperator {
         new_retired_operator_key,
         bond_unlock_time,
         hub_oracle_ref_input_index,
-        retired_operator_anchor_element_input_index,
         retired_operator_anchor_element_output_index,
         retired_operator_inserted_node_output_index,
         active_operators_redeemer_index,
@@ -76,19 +68,23 @@ validator mint(hub_oracle_script_hash: PolicyId) {
 
         // 2. Generic validations for operator transfer must pass.
         {
-          let inserted_node_data <-
-            validate_operator_transfer_and_get_inserted_data(
+          let
+            inserted_node_data,
+            _m_retired_operator_anchor_key,
+            _inserted_retired_operator_link,
+          <-
+            validate_transferred_operator_insertion(
               new_retired_operator_key,
               hub_datum.active_operators,
               active_operators_redeemer_index,
-              fn(active_operators_redeemer_data) -> VerificationKeyHash {
+              fn(active_operators_redeemer_data) -> (VerificationKeyHash, Bool) {
                 expect active_operators.RetireOperator {
                   active_operator_key,
+                  penalize_for_inactivity,
                   ..
                 } = active_operators_redeemer_data
-                active_operator_key
+                (active_operator_key, penalize_for_inactivity)
               },
-              retired_operator_anchor_element_input_index,
               retired_operator_anchor_element_output_index,
               retired_operator_inserted_node_output_index,
               inputs,
@@ -111,8 +107,7 @@ validator mint(hub_oracle_script_hash: PolicyId) {
       }
       RecoverOperatorBond {
         retired_operator_key,
-        retired_operator_anchor_element_input_index,
-        retired_operator_removed_node_input_index,
+        retired_operator_anchor_element_input_outref,
         retired_operator_anchor_element_output_index,
       } -> {
         let Transaction {
@@ -128,16 +123,8 @@ validator mint(hub_oracle_script_hash: PolicyId) {
         //    destination of the ADA bond is approved.
         expect retired_operator_key |> utils.has_signed(extra_signatories)
 
-        // TODO: Is ensuring inclusivity of significance here?
-        let valid_from =
-          utils.get_inclusive_lower_bound_of_interval(validity_range)
-
-        // 2. Specified inputs and output for removal of the retired operator's
-        //    node from the linked list must exist at their indices.
-        expect Some(retired_operator_anchor_element_input) =
-          inputs |> list.at(retired_operator_anchor_element_input_index)
-        expect Some(retired_operator_removed_node_input) =
-          inputs |> list.at(retired_operator_removed_node_input_index)
+        // 2. Specified output for removal of the retired operator's node from
+        //    the linked list must exist at its index.
         expect Some(retired_operator_anchor_element_output) =
           outputs |> list.at(retired_operator_anchor_element_output_index)
 
@@ -145,19 +132,21 @@ validator mint(hub_oracle_script_hash: PolicyId) {
         //    must be valid.
         {
           let
+            _anchor_input,
             anchor_lovelace_change,
             _m_anchor_key,
             _anchor_data,
+            _retired_operator_removed_node_input,
             _retired_operator_lovelace,
             retired_operator_node_key,
             retired_operator_node_data,
             _retired_operator_node_link,
           <-
             linked_list.remove(
-              retired_operator_anchor_element_input,
-              retired_operator_removed_node_input,
-              retired_operator_anchor_element_output,
-              mint,
+              anchor_input_outref: retired_operator_anchor_element_input_outref,
+              continued_anchor_element_output: retired_operator_anchor_element_output,
+              inputs: inputs,
+              tx_mint: mint,
             )
 
           // 4. ADA of the removing node's anchor element must be preserved.
@@ -169,54 +158,40 @@ validator mint(hub_oracle_script_hash: PolicyId) {
           // 6. The retirement of the operator must be mature. In other words,
           //    lower bound of the transaction must be later than retired
           //    operator's commitment time.
-          expect NodeData{bond_unlock_time: Some(bond_unlock_time)} =
-            retired_operator_node_data
-          expect valid_from >= bond_unlock_time
+          expect NodeData { bond_unlock_time } = retired_operator_node_data
+          when bond_unlock_time is {
+            None -> True
+            Some(bond_unlock_time) -> {
+              expect
+                validity_range |> interval.is_entirely_after(bond_unlock_time)
+
+              // Done.
+              True
+            }
+          }
+        }
+          |> finalize_linked_list(own_policy_id)
+      }
+      SlashOperator { slashing_arguments } ->
+        {
+          let
+            _slashed_operator_from_redeemer,
+            _m_anchor_key,
+            _slashed_operator_node_link,
+            _hub_datum,
+            _inputs,
+            _reference_inputs,
+            _redeemers,
+          <-
+            slash_fraudulent_operator_and_get_info(
+              hub_oracle_script_hash,
+              slashing_arguments,
+              self,
+            )
 
           // Done.
           True
         }
-          |> finalize_linked_list(own_policy_id)
-      }
-      RemoveOperatorBadState {
-        slashed_retired_operator_key,
-        hub_oracle_ref_input_index,
-        retired_operator_anchor_element_input_index,
-        retired_operator_slashed_node_input_index,
-        retired_operator_anchor_element_output_index,
-        state_queue_redeemer_index,
-      } ->
-        remove_operator_for_bad_state(
-          hub_oracle_script_hash,
-          slashed_retired_operator_key,
-          hub_oracle_ref_input_index,
-          retired_operator_anchor_element_input_index,
-          retired_operator_slashed_node_input_index,
-          retired_operator_anchor_element_output_index,
-          state_queue_redeemer_index,
-          self,
-        )
-          |> finalize_linked_list(own_policy_id)
-      RemoveOperatorBadSettlement {
-        slashed_retired_operator_key,
-        hub_oracle_ref_input_index,
-        retired_operator_anchor_element_input_index,
-        retired_operator_slashed_node_input_index,
-        retired_operator_anchor_element_output_index,
-        settlement_input_index,
-        settlement_redeemer_index,
-      } ->
-        remove_operator_for_bad_settlement(
-          hub_oracle_script_hash,
-          slashed_retired_operator_key,
-          hub_oracle_ref_input_index,
-          retired_operator_anchor_element_input_index,
-          retired_operator_slashed_node_input_index,
-          retired_operator_anchor_element_output_index,
-          settlement_input_index,
-          settlement_redeemer_index,
-          self,
-        )
           |> finalize_linked_list(own_policy_id)
     }
   }

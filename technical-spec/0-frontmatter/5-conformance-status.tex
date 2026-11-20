@@ -1,0 +1,20 @@
+\documentclass[../midgard.tex]{subfiles}
+\graphicspath{{\subfix{../images/}}}
+\begin{document}
+
+\section*{Specification status and conformance}
+\label{h:specification-status}
+\addcontentsline{toc}{chapter}{Specification status and conformance}
+
+This document is a draft normative design target for Midgard protocol semantics.
+It is not, by itself, evidence that every described contract, proof family, offchain service, economic parameter, or recovery path is implemented, deployed, or production-ready.
+
+Conformance claims must identify a repository revision, generated validator blueprint and deployment fingerprint, protocol version and enabled feature set, and the tests or durable acceptance artifacts that support the claim.
+The current implementation and public-testnet readiness are tracked in \code{public\_testnet\_readiness.md}; the current fraud-proof coverage and binding audit is tracked in \code{docs/fault-proofs/}.
+Where those artifacts report a gap, the corresponding text in this document remains a design requirement rather than a current security guarantee.
+
+Unless a section explicitly says otherwise, the capitalized terms MUST, MUST NOT, REQUIRED, SHOULD, SHOULD NOT, and MAY are to be interpreted as described in BCP~14 (RFC~2119 and RFC~8174).
+
+Known launch-critical work includes complete and correctly bound proof coverage for every enabled ledger transition, permissionless DA retrieval and retention with an enforceable unavailable-data remedy, production challenge timing and economics, Cardano finality and rollback policy, and an implemented liveness path when block production stops.
+
+\end{document}

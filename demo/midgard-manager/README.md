@@ -2,6 +2,12 @@
 
 Tools for managing Midgard MVP L2 node and generating test transactions.
 
+Status: Legacy development/demo tooling outside the primary `demo/` workspace.
+It is not a production operator interface or the canonical throughput benchmark.
+For capacity work use the node stress tooling and repository throughput phase
+plans; for current node commands use `midgard-node --help` and the documentation
+site.
+
 ## Structure
 
 - **CLI** (`packages/cli`): Command-line interface for Midgard nodes

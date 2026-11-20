@@ -1,0 +1,9 @@
+dist/
+node_modules/
+db/
+run/
+*.log
+.env
+.env.*
+watcher.json
+*.tmp

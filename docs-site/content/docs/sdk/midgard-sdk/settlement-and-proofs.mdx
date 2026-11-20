@@ -1,0 +1,28 @@
+---
+title: "Settlement & Proofs"
+description: "Building settlement, transition-trace, and fraud-proof transactions, with their datum and redeemer types."
+---
+
+These modules cover settling confirmed state and the operator side of the
+[proof protocol](/docs/spec/proof-protocol).
+
+## `settlement`
+
+Settlement-claim transactions for confirmed state. Key exported types include
+`SettlementDatum`, `ResolutionClaim`, `EventType`, and `SettlementSpendRedeemer`. The
+node drives this via `resolve-event-settlement-proof`.
+
+## `transition-trace`
+
+Builds the transition-trace used to prove how state evolved between blocks, which the
+[phase-two validation](/docs/spec/phase-two-validation) fraud proofs reference.
+
+## `fraud-proof` / `fraud-proofs`
+
+The fraud-proof transaction builders, including the per-category flows that mirror the
+on-chain [fraud-proof machines](/docs/onchain/fraud-proof-machines).
+
+## Related
+
+- Manual driver: [Fault-Proof tooling](/docs/fault-proofs/overview)
+- On-chain: [Fraud-Proof Machines](/docs/onchain/fraud-proof-machines)

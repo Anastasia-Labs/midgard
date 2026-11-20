@@ -1,31 +1,37 @@
 import { confirm, number, select } from '@inquirer/prompts';
 import { generateEmulatorAccountFromPrivateKey } from '@lucid-evolution/lucid';
-import { getGeneratorStatus, startGenerator, stopGenerator } from '@midgard-manager/tx-generator';
+import { startGenerator, stopGenerator } from '@midgard-manager/tx-generator';
 import chalk from 'chalk';
 import { Effect } from 'effect';
 import ora from 'ora-classic';
 
 import { saveConfig } from '../../../config/index.js';
 import { getWallet, listWallets } from '../../../config/wallets.js';
-import { MidgardError } from '../../../utils/errors.js';
+import { formatError, MidgardError } from '../../../utils/errors.js';
+import { getTransactionTypeDescription } from '../../../utils/tx-generator.js';
 import type { Action } from '../types.js';
 
 /**
- * Helper function to get a description for each transaction type
+ * Interactive actions that configure and start the transaction generator.
+ *
+ * These flows expose the generator's higher-level knobs in operator language so
+ * maintainers can reason about traffic shape, submission rate, and wallet
+ * selection without having to inspect the generator package directly.
  */
-function getTypeDescription(type: string): string {
-  switch (type) {
-    case 'one-to-one':
-      return 'Simple single-output transactions';
-    case 'multi-output':
-      return 'Complex multi-recipient transactions';
-    case 'mixed':
-      return 'Combination of simple and complex transactions';
-    default:
-      return 'Unknown transaction type';
-  }
-}
 
+/**
+ * Maps the generator's transaction-type discriminator to operator-facing help
+ * text used in summaries and menus.
+ */
+
+/**
+ * Interactive action that walks the user through a full generator
+ * configuration flow and starts the generator immediately.
+ *
+ * The action mirrors the saved config shape where practical, but it also
+ * creates a disposable signing wallet and initial UTxO so a fresh local test
+ * session can be started from the menu without additional setup.
+ */
 export const configureTxGenerator: Action = {
   name: 'Configure Transaction Generator',
   description: 'Configure and start transaction generator',
@@ -37,6 +43,10 @@ export const configureTxGenerator: Action = {
       const abortController = new AbortController();
 
       // Listen for the parent abort signal to propagate it
+      /**
+       * Aborts the active prompt chain when the enclosing interactive session
+       * is interrupted.
+       */
       const parentAbortHandler = () => {
         abortController.abort();
         throw new Error('AbortPromptError');
@@ -46,6 +56,7 @@ export const configureTxGenerator: Action = {
       process.once('SIGINT', parentAbortHandler);
 
       try {
+        // Add parameter definition guide at the top
         console.log(chalk.bold.green('\n📝 Transaction Generator Configuration\n'));
         console.log(
           chalk.dim(
@@ -53,7 +64,6 @@ export const configureTxGenerator: Action = {
           )
         );
 
-        // Add parameter definition guide at the top
         console.log(chalk.bold('\n📋 Parameter Definitions:\n'));
 
         const parameterDefinitions = [
@@ -229,7 +239,6 @@ export const configureTxGenerator: Action = {
           });
         }
 
-        // Generate test wallet
         console.log(chalk.bold('\n▶ Wallet Setup'));
         console.log(chalk.dim('Generating a test wallet for transaction signing...'));
 
@@ -258,7 +267,11 @@ export const configureTxGenerator: Action = {
 
           const summaryTable = [
             ['Setting', 'Value', 'Description'],
-            ['Type', txConfig.transactionType, getTypeDescription(txConfig.transactionType)],
+            [
+              'Type',
+              txConfig.transactionType,
+              getTransactionTypeDescription(txConfig.transactionType),
+            ],
             txConfig.transactionType === 'mixed'
               ? [
                   'Ratio',
@@ -303,7 +316,8 @@ export const configureTxGenerator: Action = {
           spinner.start();
 
           try {
-            // Start the generator
+            // Start the generator with the interactive selections and the
+            // disposable wallet context we just created.
             await startGenerator({
               transactionType: txConfig.transactionType,
               oneToOneRatio: txConfig.oneToOneRatio,
@@ -342,11 +356,11 @@ export const configureTxGenerator: Action = {
             };
           } catch (error) {
             spinner.fail('Failed to start transaction generator');
-            throw new Error(`Failed to start transaction generator: ${error}`);
+            throw new Error(`Failed to start transaction generator: ${formatError(error)}`);
           }
         } catch (error) {
           spinner.fail('Failed to generate test wallet');
-          throw new Error(`Failed to generate test wallet: ${error}`);
+          throw new Error(`Failed to generate test wallet: ${formatError(error)}`);
         }
       } finally {
         // Clean up our SIGINT handler
@@ -359,11 +373,21 @@ export const configureTxGenerator: Action = {
           message: 'Operation cancelled',
         };
       }
-      throw MidgardError.transaction(`Failed to configure transaction generator: ${error}`);
+      throw MidgardError.transaction(
+        `Failed to configure transaction generator: ${formatError(error)}`
+      );
     }
   },
 };
 
+/**
+ * Interactive action that toggles generator execution using either the saved
+ * configuration or the full configuration flow above.
+ *
+ * This is the operational entrypoint used most often after the generator has
+ * already been configured once, so the quick-start branch keeps the previously
+ * persisted settings visible before the operator commits to starting traffic.
+ */
 export const toggleTxGenerator: Action = {
   name: 'Toggle Transaction Generator',
   description: 'Turn transaction generator on or off',
@@ -375,6 +399,10 @@ export const toggleTxGenerator: Action = {
       const abortController = new AbortController();
 
       // Listen for the parent abort signal to propagate it
+      /**
+       * Aborts the active prompt chain when the enclosing interactive session
+       * is interrupted.
+       */
       const parentAbortHandler = () => {
         abortController.abort();
         throw new Error('AbortPromptError');
@@ -384,11 +412,8 @@ export const toggleTxGenerator: Action = {
       process.once('SIGINT', parentAbortHandler);
 
       try {
-        // Check current status
-        const currentStatus = getGeneratorStatus();
-
-        // Display current status with more detail
         if (context.config.generator.enabled) {
+          // Display current status with more detail
           console.log(chalk.green.bold('✓ Transaction generator is currently ENABLED'));
           console.log(chalk.dim('The generator is running with the following configuration:'));
           console.log(chalk.dim(`• Batch Size: ${context.config.generator.batchSize}`));
@@ -479,8 +504,8 @@ export const toggleTxGenerator: Action = {
             return configureTxGenerator.execute(context);
           }
 
-          // Quick start with current saved configuration
-          // First, check if we have wallets
+          // Quick start reuses the persisted runtime knobs, but still requires
+          // an explicit wallet choice so signing intent stays visible.
           const wallets = await listWallets();
           if (wallets.length === 0) {
             console.log(chalk.red('❌ No wallets configured. Please add a wallet first.'));
@@ -556,7 +581,8 @@ export const toggleTxGenerator: Action = {
           const spinner = ora('Starting transaction generator...').start();
 
           try {
-            // Start the generator with saved configuration but mixed type
+            // Quick start intentionally locks in the default mixed workload so
+            // repeated local test runs behave consistently.
             await startGenerator({
               transactionType: 'mixed',
               oneToOneRatio: 70,
@@ -586,7 +612,7 @@ export const toggleTxGenerator: Action = {
             };
           } catch (error) {
             spinner.fail('Failed to start transaction generator');
-            throw new Error(`Failed to start transaction generator: ${error}`);
+            throw new Error(`Failed to start transaction generator: ${formatError(error)}`);
           }
         }
       } finally {
@@ -603,7 +629,7 @@ export const toggleTxGenerator: Action = {
         abortError.name = 'AbortPromptError';
         throw abortError;
       }
-      throw MidgardError.config(`Failed to toggle transaction generator: ${error}`);
+      throw MidgardError.config(`Failed to toggle transaction generator: ${formatError(error)}`);
     }
   },
 };

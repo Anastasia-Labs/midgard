@@ -10,13 +10,24 @@ import { fileURLToPath } from 'url';
 import { getWallet } from '../config/wallets.js';
 import { listWallets } from '../config/wallets.js';
 import { displayStatus } from '../utils/display.js';
+import { formatError } from '../utils/errors.js';
+import { getTransactionTypeDescription } from '../utils/tx-generator.js';
 
-// Transaction types supported by the generator
+/**
+ * Transaction-generator commands for the manager CLI.
+ *
+ * This module provides the non-interactive operational surface for starting,
+ * stopping, and inspecting the background generator.
+ */
+
+/**
+ * Transaction types accepted by the generator package and surfaced by the CLI.
+ */
 const transactionTypes = ['one-to-one', 'multi-output', 'mixed'];
 
 /**
- * Command to generate transactions
- * Usage: midgard-manager generate-tx [options]
+ * CLI command that starts the transaction generator using explicit flags or an
+ * interactive configuration flow.
  */
 export const generateTxCommand = Command.make(
   'generate-tx',
@@ -73,18 +84,19 @@ export const generateTxCommand = Command.make(
   }) => {
     return pipe(
       Effect.tryPromise(async () => {
-        try {
-          // Config setup
-          const config = {
-            transactionType: type as 'one-to-one' | 'multi-output' | 'mixed',
-            oneToOneRatio,
-            batchSize,
-            interval,
-            concurrency,
-            nodeEndpoint,
-            wallet,
-          };
+        // Config setup
+        const config = {
+          transactionType: type as 'one-to-one' | 'multi-output' | 'mixed',
+          oneToOneRatio,
+          batchSize,
+          interval,
+          concurrency,
+          nodeEndpoint,
+          wallet,
+        };
+        let startSpinner: ReturnType<typeof ora> | undefined;
 
+        try {
           // If interactive mode is requested, prompt for all options
           if (interactive) {
             try {
@@ -98,10 +110,10 @@ export const generateTxCommand = Command.make(
                 return;
               }
 
-              // Interactive configuration
               const spinner = ora('Preparing interactive setup...').start();
               spinner.succeed('Interactive setup ready');
 
+              // Interactive configuration
               console.log(chalk.blue.bold('\n📝 Transaction Generator Configuration\n'));
               console.log(
                 chalk.dim(
@@ -257,7 +269,11 @@ export const generateTxCommand = Command.make(
 
               const summaryTable = [
                 ['Setting', 'Value', 'Description'],
-                ['Type', config.transactionType, getTypeDescription(config.transactionType)],
+                [
+                  'Type',
+                  config.transactionType,
+                  getTransactionTypeDescription(config.transactionType),
+                ],
                 config.transactionType === 'mixed'
                   ? [
                       'Ratio',
@@ -299,13 +315,7 @@ export const generateTxCommand = Command.make(
 
               console.log(chalk.green('\nStarting transaction generator...'));
             } catch (error) {
-              console.error(
-                chalk.red(
-                  `Error setting up interactive mode: ${
-                    error instanceof Error ? error.message : String(error)
-                  }`
-                )
-              );
+              console.error(chalk.red(`Error setting up interactive mode: ${formatError(error)}`));
               return;
             }
           } else {
@@ -324,9 +334,9 @@ export const generateTxCommand = Command.make(
             return;
           }
 
-          // Start the generator with wallet configuration
-          const spinner = ora('Starting transaction generator...').start();
+          startSpinner = ora('Starting transaction generator...').start();
 
+          // Start the generator with wallet configuration
           await startGenerator({
             transactionType: config.transactionType,
             oneToOneRatio: config.oneToOneRatio,
@@ -334,11 +344,10 @@ export const generateTxCommand = Command.make(
             interval: config.interval,
             concurrency: config.concurrency,
             nodeEndpoint: config.nodeEndpoint,
-            walletPrivateKey: walletConfig.privateKey,
-            walletAddress: walletConfig.address || '', // Pass the wallet address
+            walletSeedOrPrivateKey: walletConfig.privateKey,
           });
 
-          spinner.succeed('Transaction generator started successfully');
+          startSpinner.succeed('Transaction generator started successfully');
 
           // Show configuration in a nice format
           console.log(chalk.bold('\n✓ Transaction generator is running with configuration:'));
@@ -374,10 +383,8 @@ export const generateTxCommand = Command.make(
             process.exit(0);
           });
         } catch (error) {
-          spinner.fail('Failed to start transaction generator');
-          console.error(
-            chalk.red(`Error: ${error instanceof Error ? error.message : String(error)}`)
-          );
+          startSpinner?.fail('Failed to start transaction generator');
+          console.error(chalk.red(`Error: ${formatError(error)}`));
 
           if (error instanceof Error && error.message.includes('connection')) {
             console.log(chalk.yellow('\nTroubleshooting:'));
@@ -392,8 +399,7 @@ export const generateTxCommand = Command.make(
 ).pipe(Command.withDescription('Generate and submit transactions to the Midgard node'));
 
 /**
- * Command to stop the transaction generator
- * Usage: midgard-manager stop-tx
+ * CLI command that stops a running transaction generator instance.
  */
 export const stopTxCommand = Command.make('stop-tx', {}, () => {
   return pipe(
@@ -405,17 +411,15 @@ export const stopTxCommand = Command.make('stop-tx', {}, () => {
         spinner.succeed('Transaction generator stopped');
       } catch (error) {
         spinner.fail('Failed to stop transaction generator');
-        console.error(
-          chalk.red(`Error: ${error instanceof Error ? error.message : String(error)}`)
-        );
+        console.error(chalk.red(`Error: ${formatError(error)}`));
       }
     })
   );
 }).pipe(Command.withDescription('Stop the running transaction generator'));
 
 /**
- * Command to get the status of the transaction generator
- * Usage: midgard-manager tx-status
+ * CLI command that reconstructs enough persisted configuration to display the
+ * generator's current status in a consistent format.
  */
 export const txStatusCommand = Command.make('tx-status', {}, () => {
   return pipe(
@@ -429,11 +433,11 @@ export const txStatusCommand = Command.make('tx-status', {}, () => {
         const MONOREPO_ROOT = join(__dirname, '../../../../../..');
         const PROJECT_ROOT = join(MONOREPO_ROOT, 'demo/midgard-manager');
 
-        // Load configurations from project's config directory
         const CONFIG_DIR = join(PROJECT_ROOT, 'config');
         const settingsPath = join(CONFIG_DIR, 'settings.json');
         const nodeConfigPath = join(CONFIG_DIR, 'node.json');
 
+        // Load configurations from project's config directory
         // Load node config
         let nodeConfig = { endpoint: 'http://localhost:3000' };
         try {
@@ -448,15 +452,10 @@ export const txStatusCommand = Command.make('tx-status', {}, () => {
           }
         } catch (error) {
           console.warn(
-            chalk.green.dim(
-              `Warning: Could not load node config: ${
-                error instanceof Error ? error.message : String(error)
-              }`
-            )
+            chalk.green.dim(`Warning: Could not load node config: ${formatError(error)}`)
           );
         }
 
-        // Load generator config from settings.json
         let generatorConfig = {
           enabled: true,
           maxConcurrent: 10,
@@ -464,6 +463,7 @@ export const txStatusCommand = Command.make('tx-status', {}, () => {
           intervalMs: 1000,
         };
         try {
+          // Load generator config from settings.json
           const configExists = await fs
             .access(settingsPath)
             .then(() => true)
@@ -478,11 +478,7 @@ export const txStatusCommand = Command.make('tx-status', {}, () => {
           }
         } catch (error) {
           console.warn(
-            chalk.green.dim(
-              `Warning: Could not load generator config: ${
-                error instanceof Error ? error.message : String(error)
-              }`
-            )
+            chalk.green.dim(`Warning: Could not load generator config: ${formatError(error)}`)
           );
         }
 
@@ -506,26 +502,8 @@ export const txStatusCommand = Command.make('tx-status', {}, () => {
         console.log(chalk.dim('• Refresh status: midgard-manager tx-status'));
       } catch (error) {
         spinner.fail('Failed to retrieve status');
-        console.error(
-          chalk.red(`Error: ${error instanceof Error ? error.message : String(error)}`)
-        );
+        console.error(chalk.red(`Error: ${formatError(error)}`));
       }
     })
   );
 }).pipe(Command.withDescription('Show the status of the transaction generator'));
-
-/**
- * Helper function to get a description for each transaction type
- */
-function getTypeDescription(type: string): string {
-  switch (type) {
-    case 'one-to-one':
-      return 'Simple single-output transactions';
-    case 'multi-output':
-      return 'Complex multi-recipient transactions';
-    case 'mixed':
-      return 'Combination of simple and complex transactions';
-    default:
-      return 'Unknown transaction type';
-  }
-}

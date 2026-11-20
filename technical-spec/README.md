@@ -1,5 +1,25 @@
 # Midgard Technical specification
 
+This directory contains the written protocol specification, shared LaTeX
+styling, and rendered diagrams for Midgard. The numbered chapter directories
+match the order in which content is assembled into `midgard.pdf`.
+
+The specification is the normative **design target**, not evidence that every
+described feature is implemented or production-ready. Read its conformance
+notice together with `public_testnet_readiness.md`, the proof-coverage audit in
+`docs/fault-proofs/`, and the repository
+[documentation policy](../docs/DOCUMENTATION_POLICY.md).
+
+## Directory overview
+
+- `0-frontmatter`: cover page, abstract, table of contents, and introduction.
+- `1-ledger-state` through `7-phase-two-validation`: main protocol chapters.
+- `A-general-data-structures` and `C-considerations`: appendices and supporting
+  material.
+- `images/`: diagrams, transaction figures, and rendered assets used by the
+  spec.
+- `midgard.sty` and related `.sty` files: shared LaTeX macros and formatting.
+
 ## Contributor guidelines
 
 This LaTeX project adopts the following conventions in all `.tex` files:
@@ -67,7 +87,7 @@ In addition to the nix dependencies above, this requires two VS Code extensions:
 
 Build steps:
 
-1. Open VS Code in the technical-specs directory:
+1. Open VS Code in the `technical-spec` directory:
     ```bash
     code technical-spec
     ```
@@ -92,8 +112,8 @@ Most Emacs distributions comes with built-in support to build the LaTeX project.
 
 Build steps:
 
-1. Open the midgard.tex file with emacs:
+1. Open the `midgard.tex` file with Emacs:
     ```bash
-    emacs technical-spec/midgard.pdf
+    emacs technical-spec/midgard.tex
     ```
 2. Invoke the `tex-compile` command (usually `M-x tex-compile`)

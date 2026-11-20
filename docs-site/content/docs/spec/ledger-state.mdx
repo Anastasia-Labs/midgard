@@ -1,0 +1,45 @@
+---
+title: "Ledger State"
+description: "What Midgard's L2 ledger contains and how its state is committed to L1 and confirmed."
+---
+
+Chapter 1 of the specification defines the data that makes up Midgard's Layer 2
+ledger and how it evolves as blocks are produced.
+
+## Blocks
+
+- **Block** and **block header**: the unit an operator commits to L1. The header is
+  the compact commitment that lands on-chain; the body is the batched L2 activity it
+  represents.
+- **Transition trace commitments**: commitments that capture how state transitions
+  between blocks, used later by fraud proofs to challenge an invalid transition.
+
+## Transactions and the UTxO set
+
+- **UTxO set**: the L2 unspent-output set that transactions consume and produce,
+  following Cardano's EUTxO model at the rollup layer.
+- **Transaction**: the Midgard native transaction. The chapter details the
+  **Cardano transaction types** Midgard reuses and the **deviations** from them that
+  are specific to the L2.
+
+## User events
+
+The ledger ingests three L1 user events plus L2 requests:
+
+- **Deposit event**: funds entering L2 from L1.
+- **Withdrawal event**: funds leaving L2 for L1.
+- **Transaction Order event**: the ordered sequencing of transactions into blocks.
+- **Transaction requests vs. transaction orders**: the chapter distinguishes a
+  user's request from its ordered, block-sequenced form.
+
+## Confirmed state
+
+**Confirmed state** is the portion of the ledger that has settled and is safe to
+rely on, as opposed to state still inside the challenge window.
+
+## In the codebase
+
+The native transaction and ledger representations are implemented by
+[`midgard-core`](/docs/sdk/midgard-core/native-tx-codec) (the native transaction v1
+codec) and checked by the [validation engine](/docs/validation/overview). Committed blocks
+are enforced on L1 by the [`state-queue` validator](/docs/onchain/consensus-validators).

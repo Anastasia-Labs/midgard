@@ -6,6 +6,9 @@ import { Command } from 'commander';
 
 import { getGeneratorStatus, startGenerator, stopGenerator } from '../lib/scheduler/scheduler.js';
 
+/**
+ * Parsed CLI options for the standalone tx-generator binary.
+ */
 interface GeneratorOptions {
   endpoint: string;
   type: 'one-to-one' | 'multi-output' | 'mixed';
@@ -19,15 +22,23 @@ interface GeneratorOptions {
   outputDir?: string;
 }
 
+/**
+ * Top-level command definition for the standalone tx-generator binary.
+ */
 const program = new Command();
 
-// Setup CLI metadata
+/**
+ * CLI metadata and top-level description.
+ */
 program
   .name('midgard-tx-generator')
   .description('Transaction generator for Midgard L2')
   .version('0.1.0');
 
-// Start command
+/**
+ * `start` command: begins a generator loop using either a provided wallet key
+ * or a generated emulator wallet.
+ */
 program
   .command('start')
   .description('Start the transaction generator')
@@ -85,10 +96,9 @@ program
       console.log(chalk.gray(`Interval: ${options.interval} seconds`));
       console.log(chalk.gray(`Concurrency: ${options.concurrency}\n`));
 
-      await startGenerator({
+      const startConfig = {
         nodeEndpoint: options.endpoint,
         network: options.network as Network,
-        initialUTxO,
         walletSeedOrPrivateKey,
         transactionType: options.type,
         oneToOneRatio: parseInt(options.ratio),
@@ -96,7 +106,12 @@ program
         interval: parseInt(options.interval),
         concurrency: parseInt(options.concurrency),
         outputDir: options.outputDir,
-      });
+      };
+      if (initialUTxO) {
+        Object.assign(startConfig, { initialUTxO });
+      }
+
+      await startGenerator(startConfig);
 
       console.log(chalk.green('\nGenerator started successfully!'));
       console.log(chalk.gray('Press Ctrl+C to stop'));
@@ -112,7 +127,9 @@ program
     }
   });
 
-// Status command
+/**
+ * `status` command: prints the current in-process generator status.
+ */
 program
   .command('status')
   .description('Get the current status of the transaction generator')
@@ -122,5 +139,7 @@ program
     console.log(chalk.gray(JSON.stringify(status, null, 2)));
   });
 
-// Parse command line arguments
+/**
+ * Parses CLI arguments and dispatches to the selected command.
+ */
 program.parse();

@@ -1,0 +1,173 @@
+---
+title: "Phase B, Script & Ledger Evaluation"
+description: "How Phase B validates transactions against the ledger: dependency ordering, local script evaluation, and value preservation."
+---
+
+Phase B is the **dependency-aware, stateful** stage of the pipeline,
+implemented in `src/phase-b.ts`. It takes the `PhaseAValidatedTx` candidates
+that survived [Phase A](/docs/validation/phase-a), reasons about how they
+consume and produce UTxOs, and validates each against an evolving ledger state, including local script execution.
+
+## Entry point
+
+```ts
+export const runPhaseBValidationWithPatch = (
+  phaseACandidates: readonly PhaseAValidatedTx[],
+  preStateEntries: PreState,
+  config: PhaseBConfig,
+): Effect.Effect<PhaseBResultWithPatch>
+```
+
+`PreState` is either a list of `LedgerEntry` rows or an already-built
+`UTxOState` (`Map<string, Buffer>` from out-ref hex to output CBOR). The result
+extends `PhaseBResult` (`accepted` / `rejected`) with a `statePatch`:
+
+```ts
+type UTxOStatePatch = {
+  readonly deletedOutRefs: readonly string[];
+  readonly upsertedOutRefs: readonly (readonly [string, Buffer])[];
+};
+```
+
+`applyUTxOStatePatch(state, patch)` mutates a `UTxOState` in place: it deletes
+spent out-refs and upserts produced ones, so the caller can advance ledger state
+after a validated batch.
+
+`PhaseBConfig` controls slot context and execution:
+
+```ts
+type PhaseBConfig = {
+  readonly nowCardanoSlotNo: bigint;
+  readonly bucketConcurrency: number;
+  readonly enforceScriptBudget?: boolean;
+};
+```
+
+## Dependency ordering
+
+Phase B does not validate candidates in arrival order. It builds a dependency
+graph and processes it so that a transaction spending another's output is
+evaluated after its producer.
+
+<Mermaid chart={`flowchart TD
+  N[buildNodes: candidates to CandidateNodes] --> C[findCycleNodes]
+  C -->|cycle members| RC[reject E_DEPENDENCY_CYCLE]
+  C --> IND[compute indegree from pending parents]
+  IND --> RQ[readyQueue: indegree 0]
+  RQ --> BK[buildConflictBuckets]
+  BK --> EV[validateCandidateAgainstState per bucket]
+  EV -->|accepted| PATCH[update spentByAccepted + statePatch]
+  EV -->|rejected| CAS[cascadeRejectDescendants]
+  PATCH --> RQ
+`} />
+
+- **`buildNodes`** wraps each candidate as a `CandidateNode` with its spent and
+  reference out-ref sets and its parent/child links.
+- **`findCycleNodes`** identifies transactions that are part of a dependency
+  cycle; each is rejected with `E_DEPENDENCY_CYCLE`.
+- Remaining nodes are processed by a Kahn-style topological sweep using
+  `indegree` over still-`pending` parents. Nodes with indegree 0 enter the
+  `readyQueue`.
+- **`buildConflictBuckets`** groups the ready set so that transactions which
+  conflict (e.g. contend for the same input) are separated, allowing the rest to
+  be validated concurrently at `config.bucketConcurrency`.
+- When a candidate is rejected, **`cascadeRejectDescendants`** rejects its
+  dependents with `E_DEPENDS_ON_REJECTED_TX`.
+
+## Per-candidate validation
+
+`validateCandidateAgainstState` runs the stateful checks against the current
+state view (base state plus the accumulating patch):
+
+| Check | Reject code |
+| --- | --- |
+| Validity interval vs. `nowCardanoSlotNo` | `E_VALIDITY_INTERVAL_MISMATCH` |
+| Double-spend against already-accepted spends | `E_DOUBLE_SPEND` |
+| Input resolves in current state | `E_INPUT_NOT_FOUND` |
+| Missing witness / observer authorization | `E_MISSING_REQUIRED_WITNESS` |
+| Reference input or output decode failure | `E_INVALID_OUTPUT` |
+| Script execution failure | `E_NATIVE_SCRIPT_INVALID` / `E_PLUTUS_SCRIPT_INVALID` |
+| Value not preserved | `E_VALUE_NOT_PRESERVED` |
+
+On acceptance, the candidate's spent out-refs are added to `spentByAccepted` and
+recorded as deletions in the state patch, and its produced outputs are upserted, so a later dependent transaction in the same batch can resolve them.
+
+## Local script evaluation
+
+Non-native scripts are executed locally rather than deferred to the L1 ledger.
+The relevant modules:
+
+### `local-script-eval.ts`
+
+`evaluateScriptWithHarmonic` runs Untyped Plutus Core with the Harmonic Labs
+toolchain (`@harmoniclabs/uplc`, `@harmoniclabs/plutus-machine`,
+`@harmoniclabs/plutus-data`):
+
+```ts
+export const evaluateScriptWithHarmonic = (
+  scriptBytes: Uint8Array,
+  scriptContext: Constr<unknown>,
+): LocalScriptEvalResult
+```
+
+It parses the CBOR script body, applies the script to the script-context data,
+and evaluates via `Machine.eval`. A `CEKConst` result is `"accepted"` and
+reports the CPU/memory `budget` spent; anything else, or a thrown error, is
+`"script_invalid"` with a `detail` string.
+
+### `script-source.ts`
+
+Resolves where a script comes from. A `ScriptSource` records its `origin`
+(`"inline"` or `"reference"`), a `LocalScriptVersion`
+(`"NativeCardano" | "PlutusV3" | "MidgardV1"`), the script bytes, and its hash.
+`resolveScriptSource(scriptHash, sources)` looks up a source by hash, this is
+how reference scripts on resolved outputs are matched to the hash a redeemer
+points at.
+
+### `script-context.ts`
+
+Builds the Plutus data passed to a script. Two shapes are produced depending on
+the script version:
+
+- **`buildPlutusV3ScriptContext`**: a Cardano Plutus V3 `ScriptContext`
+  (`txInfo`, `redeemer`, `scriptInfo`) using Cardano-encoded addresses.
+- **`buildMidgardV1ScriptContext`**: Midgard's own context shape, using
+  Midgard-encoded addresses and the Midgard script-purpose encoding (including
+  the `receive` purpose that Cardano contexts do not have).
+
+`ScriptContextView` is the intermediate structure the builders read from. It contains
+resolved inputs, reference inputs, outputs, fee, validity bounds, observers,
+signatories, the mint value, and the redeemers with their purposes.
+
+<Callout type="info">
+Because scripts evaluate against a context built from the *resolved* inputs,
+Phase B must first resolve every spend and reference input to a concrete output
+in the current state. That is why script evaluation is a Phase B concern and not
+possible in stateless Phase A.
+</Callout>
+
+### Budget enforcement
+
+`runLocalScriptEvaluation` is called with `config.enforceScriptBudget !== false`,
+so budget enforcement is on by default and can be disabled by setting
+`enforceScriptBudget: false` in `PhaseBConfig`.
+
+## Value preservation
+
+After scripts pass, `validateCandidateAgainstState` checks the ledger value
+equation with `valuePreservationDelta`:
+
+```
+inputs − fee + mint − outputs = 0
+```
+
+If the resulting delta is non-zero (`isZeroValueDelta` is false), the
+transaction is rejected `E_VALUE_NOT_PRESERVED` with a human-readable
+`describeValueDelta` detail. See
+[Value Accounting](/docs/validation/value-accounting) for the arithmetic.
+
+<Callout type="warn">
+Phase B validates L2 ledger semantics off-chain. The authoritative settlement
+guarantees, and how a mismatch becomes a fraud proof, are defined in
+[Phase Two Validation](/docs/spec/phase-two-validation) of the specification.
+</Callout>

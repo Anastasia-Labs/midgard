@@ -2,12 +2,15 @@ use aiken/crypto.{ScriptHash}
 use aiken_design_patterns/singular_utxo_indexer
 use cardano/assets.{PolicyId}
 use cardano/transaction.{Input, Mint, Output, OutputReference, Transaction}
-use midgard/common/utils.{plutarch_phas}
+use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/ledger_state
 use midgard/settlement
+use midgard/transition_trace
 use midgard/user_events
-use midgard/user_events/tx_order.{Datum, SpendRedeemer}
+use midgard/user_events/tx_order.{
+  Datum, SpendRedeemer, forced_inclusion_key_value,
+}
 
 validator spend(hub_oracle: ScriptHash) {
   spend(
@@ -35,7 +38,7 @@ validator spend(hub_oracle: ScriptHash) {
       ..
     } = hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
 
-    let settlement.Datum { transactions_root, .. } =
+    let settlement.Datum { forced_transactions_root, .. } =
       settlement.get_datum(
         reference_inputs,
         settlement_policy_id,
@@ -45,6 +48,7 @@ validator spend(hub_oracle: ScriptHash) {
     expect Some(tx_order_datum) = datum
     let user_events.OptimisticDatum {
       event: tx_order_event,
+      inclusion_time: _inclusion_time,
       refund_address,
       refund_datum,
       ..
@@ -70,8 +74,8 @@ validator spend(hub_oracle: ScriptHash) {
         own_out_ref,
         inputs,
         outputs,
-        // Double satisfaction prevented by the requirement for unregistration of
-        // the witness staking script.
+        // Double satisfaction prevented by the requirement for unregistration
+        // of the witness staking script.
         True,
       )
 
@@ -92,37 +96,36 @@ validator spend(hub_oracle: ScriptHash) {
     // 4. Assert refund datum is attached to the output.
     expect output_datum == refund_datum
 
-    // 5. Output value must be the same as the input value, without the tx
-    //    order NFT.
+    // 5. Output value must be the same as the input value, without the tx order
+    //    NFT.
     expect
       output_value == (
         own_value
           |> assets.add(tx_order_policy_id, burn_asset_name, -1)
       )
 
-    // 6. For tx order UTxOs to be collectible, they must be stored in
-    //    the tree with the validity provided via the redeemer.
-    let Pair(tx_order_event_id, tx_order_event_tx) =
-      ledger_state.unsafe_event_to_key_value_pair(tx_order_event)
-    //
-    expect tx_order_tx: ledger_state.MidgardTxCompact = tx_order_event_tx
-    //
-    let overridden_tx_order_tx: Data =
-      ledger_state.MidgardTxCompact {
-        ..tx_order_tx,
-        validity: validity_override,
-      }
+    // 6. For tx order UTxOs to be collectible, they must be stored in the tree
+    //    with the validity provided via the redeemer.
+    let
+      tx_order_id,
+      forced_inclusion_tx,
+    <-
+      forced_inclusion_key_value(
+        tx_order_event_data: tx_order_event,
+        validity_override: validity_override,
+      )
 
-    // 7. The referenced settlement UTxO's tx_order tree must contain the
-    //    subject tx_order event.
+    // 7. The referenced settlement UTxO's forced transaction tree must contain
+    //    the subject tx-order event keyed by its L1 order identity.
     expect
-      plutarch_phas(
-        transactions_root,
-        tx_order_event_id,
-        overridden_tx_order_tx,
-        membership_proof,
-        redeemers,
-        inclusion_proof_script_withdraw_redeemer_index,
+      settlement.valid_counted_membership(
+        expected_domain: transition_trace.ForcedTransactionsRootDomain,
+        expected_root: forced_transactions_root,
+        witness: membership_proof,
+        key: tx_order_id,
+        value: forced_inclusion_tx,
+        redeemers: redeemers,
+        inclusion_proof_script_withdraw_redeemer_index: inclusion_proof_script_withdraw_redeemer_index,
       )
 
     // Done.
@@ -171,10 +174,8 @@ validator mint(hub_oracle: ScriptHash) {
 
     // 3. Tx order must be marked as valid. Only operators can inject invalid tx
     //    orders in the tree.
-    expect ledger_state.MidgardTxCompact {
-      validity: ledger_state.TxIsValid,
-      ..
-    } = midgard_tx_data
+    expect midgard_tx: ledger_state.MidgardTxCompact = midgard_tx_data
+    expect midgard_tx.validity == ledger_state.TxIsValid
 
     // Done.
     True

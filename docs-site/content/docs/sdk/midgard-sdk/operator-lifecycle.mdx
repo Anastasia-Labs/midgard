@@ -1,0 +1,28 @@
+---
+title: "Operator Lifecycle"
+description: "Building the transactions that register, activate, and retire operators, and the builder functions that produce them."
+---
+
+These modules build the transactions that move an operator through the
+[operator directory](/docs/onchain/operator-directory), the on-chain linked list of
+operators. The lifecycle moves an operator **registered → active → retired**,
+inserting and removing it from the corresponding linked lists while preserving their
+ordering.
+
+## Builders
+
+`operator-lifecycle.ts` exports the transaction builders directly, including:
+
+- `buildRegisterOperatorTx`: register a new operator (into the registered list).
+- `buildActivateOperatorTx`: promote a registered operator into the active set.
+- `buildDeregisterRegisteredOperatorTx`: remove a registered operator.
+
+plus datum helpers such as `encodeRegisteredOperatorDatumValue`. The
+`active-operators`, `registered-operators`, and `retired-operators` modules cover the
+per-list operations.
+
+## Related
+
+- On-chain: [Operator Directory](/docs/onchain/operator-directory)
+- Node commands: `register-active-operator`, `activate-operator`, see the
+  [CLI reference](/docs/operators/node/cli-reference)

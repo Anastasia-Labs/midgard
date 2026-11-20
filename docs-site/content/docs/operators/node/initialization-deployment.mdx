@@ -1,0 +1,112 @@
+---
+title: "Initialization & Deployment"
+description: "Standing up a fresh Midgard deployment: the one-time initialization flow and the deployment record every operator and watcher must agree on."
+---
+
+A fresh Midgard deployment is stood up once, in order, and the result is an on-chain
+identity that every operator and watcher must agree on. This page covers that flow.
+
+<Callout type="error" title="This flow writes to Cardano L1">
+`init` initializes **protocol state on Layer 1**, not local node state. Local database
+state is handled separately by [`db:migrate`](/docs/operators/node/database). Once
+`init` has succeeded, the deployment exists on chain and cannot be re-run over itself.
+Never pair a wiped local database with an existing on-chain deployment. See
+[Compatibility &amp; State-Reset Rules](/docs/operators/node/compatibility-rules).
+</Callout>
+
+## Prerequisites
+
+- A compiled Aiken blueprint (`onchain/aiken/plutus.json`), built with
+  `aiken build --env testnet` for demo, preprod, and e2e deployments. See
+  [Local Development](/docs/getting-started/local-dev).
+- A reachable [L1 backend](/docs/getting-started/l1-backend) and a funded operator
+  wallet.
+- Applied database migrations (`db:migrate`).
+- `RUN_GENESIS_ON_STARTUP=false`, so protocol initialization is explicit rather than
+  implicit at startup.
+
+## The flow
+
+<Steps>
+
+<Step>
+### Reserve a hub-oracle nonce
+
+`prepare-hub-oracle-one-shot-nonce` creates a fresh, marked operator-wallet UTxO for
+the `HUB_ORACLE_ONE_SHOT_*` configuration. This UTxO is consumed exactly once and
+becomes the deployment's identity.
+
+Options: `--amount-lovelace <lovelace>`, `--run-state <path>`, `--dry-run`,
+`--fresh-redeploy`.
+
+Use a fresh, funded UTxO. Reusing a spent one-shot out-ref is the most common cause of
+a failed deployment.
+</Step>
+
+<Step>
+### Publish reference scripts
+
+`reference-scripts-complete` reconciles node-runtime reference-script publication
+(`--manifest <path>`, `--scope <scope>`, `--repair`, `--json`). The command is a
+reconciler, so it is safe to re-run: it publishes what is missing rather than
+republishing everything.
+
+`reference-script-wallet-status` and `sweep-reference-script-wallet` manage the wallet
+that funds publication.
+</Step>
+
+<Step>
+### Initialize protocol state
+
+`init` initializes the hub oracle, the state queue, the registered, active, and retired
+operator lists, and the scheduler roots on L1.
+
+```sh
+node dist/index.js init \
+  --contract-deployment-info-output deploymentInfo/contract-deployment-info.json
+```
+
+`init` refuses to run over invalid or partially initialized on-chain topology. A refusal
+is a signal to reconcile, not to redeploy.
+</Step>
+
+<Step>
+### Record the deployment
+
+`export-contract-deployment-info` writes the contract deployment info JSON for the
+configured validator bundle. `deployment-manifest` reconciles the manifest after a
+confirmed initialization (`--json`). `deployment-status` prints the live deployment
+status for the configured contracts.
+
+The manifest is how operators and watchers confirm they are talking about the same
+deployment. A watcher that cannot match its manifest to L1 must fail closed.
+</Step>
+
+</Steps>
+
+## After initialization
+
+Register and activate an operator (`register-active-operator`, `activate-operator`),
+then start the node with `listen`. See the
+[end-to-end testing flow](/docs/operators/node/e2e-testing-flow) for the full
+acceptance sequence, including the DA committee node and the first merge.
+
+## When something fails
+
+| Symptom | Safe next action |
+| --- | --- |
+| `init` refuses over existing topology | Attach to the existing deployment. Do not redeploy. Run `deployment-status` to see what exists. |
+| One-shot out-ref already spent | Stop. Start a fresh deployment with a new nonce and a matching local state reset, or resume the existing one. |
+| Reference scripts partially published | Re-run `reference-scripts-complete`, optionally with `--repair`. |
+| Manifest disagrees with L1 | Do not start the node. Reconcile the manifest first. |
+
+The deployment and init logic lives in `src/commands/`; the transaction builders live in
+`src/transactions/`.
+
+## Related
+
+- [Compatibility &amp; State-Reset Rules](/docs/operators/node/compatibility-rules)
+- [CLI Reference](/docs/operators/node/cli-reference)
+- [End-to-End Testing Flow](/docs/operators/node/e2e-testing-flow)
+- Reference scripts on the SDK side:
+  [Protocol Primitives](/docs/sdk/midgard-sdk/protocol-primitives)

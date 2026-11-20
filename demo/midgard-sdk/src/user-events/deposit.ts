@@ -1,352 +1,259 @@
 import {
-  Address,
-  CML,
-  LucidEvolution,
-  toUnit,
-  TxBuilder,
+  type Assets,
   Data,
+  LucidEvolution,
   PolicyId,
-  UTxO,
-  Script,
   TxSignBuilder,
-  fromHex,
+  UTxO,
 } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+
 import {
-  DataCoercionError,
-  GenericErrorFields,
+  addressDataFromBech32,
+  Bech32DeserializationError,
   HashingError,
   LucidError,
-  UnauthenticUtxoError,
   makeReturn,
-  getStateToken,
-  hashHexWithBlake2b256,
-  OutputReference,
-  OutputReferenceSchema,
-  POSIXTime,
-  POSIXTimeSchema,
-  MidgardAddressSchema,
+  MidgardValidators,
 } from "@/common.js";
-import { Data as EffectData, Effect } from "effect";
-import { getProtocolParameters } from "@/protocol-parameters.js";
+import { POSIXTimeSchema } from "@/common.js";
+import { HubOracleError } from "@/hub-oracle.js";
+import { authenticateUTxOs, AuthenticUTxO } from "@/internals.js";
+import { DepositEventSchema } from "@/ledger-state.js";
+import { RawRootMembershipProofSchema } from "@/transition-trace.js";
 
-export type DepositParams = {
-  depositScriptAddress: string;
-  mintingPolicy: Script;
-  policyId: string;
-  depositAmount: bigint;
-  depositInfo: DepositInfo;
-};
-
-export const DepositInfoSchema = Data.Object({
-  l2Address: MidgardAddressSchema,
-  l2Datum: Data.Nullable(Data.Bytes()),
-});
-export type DepositInfo = Data.Static<typeof DepositInfoSchema>;
-export const DepositInfo = DepositInfoSchema as unknown as DepositInfo;
-
-export const DepositEventSchema = Data.Object({
-  id: OutputReferenceSchema,
-  info: DepositInfoSchema,
-});
-export type DepositEvent = Data.Static<typeof DepositEventSchema>;
-export const DepositEvent = DepositEventSchema as unknown as DepositEvent;
+import {
+  buildCompletedUserEventMintTxProgram,
+  encodeUserEventWitnessMintOrBurnRedeemer,
+  fetchUserEventUTxOsProgram,
+  outputReferenceToPlutusDataCbor,
+  prepareUserEventMintContext,
+  UserEventBuildError,
+  userEventCborFieldsFromInlineDatum,
+  UserEventExtraFields,
+  UserEventFetchConfig,
+} from "./internals.js";
 
 export const DepositDatumSchema = Data.Object({
   event: DepositEventSchema,
-  inclusionTime: POSIXTimeSchema,
+  inclusion_time: POSIXTimeSchema,
+  witness: Data.Bytes({ minLength: 28, maxLength: 28 }),
 });
 export type DepositDatum = Data.Static<typeof DepositDatumSchema>;
 export const DepositDatum = DepositDatumSchema as unknown as DepositDatum;
+export const DepositSpendRedeemerSchema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  hub_ref_input_index: Data.Integer(),
+  settlement_ref_input_index: Data.Integer(),
+  mint_redeemer_index: Data.Integer(),
+  membership_proof: RawRootMembershipProofSchema,
+  inclusion_proof_script_withdraw_redeemer_index: Data.Integer(),
+});
+export type DepositSpendRedeemer = Data.Static<
+  typeof DepositSpendRedeemerSchema
+>;
+export const DepositSpendRedeemer =
+  DepositSpendRedeemerSchema as unknown as DepositSpendRedeemer;
 
-export type DepositUTxO = {
-  utxo: UTxO;
-  datum: DepositDatum;
-  assetName: string;
-  idCbor: Buffer;
-  infoCbor: Buffer;
-  inclusionTime: Date;
-};
+export type DepositUTxO = AuthenticUTxO<DepositDatum, UserEventExtraFields>;
 
-export const DepositMintRedeemerSchema = Data.Enum([
-  Data.Object({
-    AuthenticateEvent: Data.Object({
-      nonceInputIndex: Data.Integer(),
-      eventOutputIndex: Data.Integer(),
-      hubRefInputIndex: Data.Integer(),
-      witnessRegistrationRedeemerIndex: Data.Integer(),
-    }),
-  }),
-  Data.Object({
-    BurnEventNFT: Data.Object({
-      nonceAssetName: Data.Bytes(),
-      witnessUnregistrationRedeemerIndex: Data.Integer(),
-    }),
-  }),
-]);
-export type DepositMintRedeemer = Data.Static<typeof DepositMintRedeemerSchema>;
-export const DepositMintRedeemer =
-  DepositMintRedeemerSchema as unknown as DepositMintRedeemer;
-
-export type DepositFetchConfig = {
-  depositAddress: Address;
-  depositPolicyId: PolicyId;
-  inclusionTimeUpperBound?: POSIXTime;
-  inclusionTimeLowerBound?: POSIXTime;
-};
-
-export const getDepositDatumFromUTxO = (
-  nodeUTxO: UTxO,
-): Effect.Effect<DepositDatum, DataCoercionError> => {
-  const datumCBOR = nodeUTxO.datum;
-  if (datumCBOR) {
-    try {
-      const depositDatum = Data.from(datumCBOR, DepositDatum);
-      return Effect.succeed(depositDatum);
-    } catch (e) {
-      return Effect.fail(
-        new DataCoercionError({
-          message: `Could not coerce UTxO's datum to a deposit datum`,
-          cause: e,
-        }),
-      );
-    }
-  } else {
-    return Effect.fail(
-      new DataCoercionError({
-        message: `Deposit datum coercion failed`,
-        cause: `No datum found`,
-      }),
-    );
-  }
-};
-
-/**
- * Validates correctness of datum, and having a single NFT.
- */
-export const utxoToDepositUTxO = (
-  utxo: UTxO,
-  nftPolicy: string,
-): Effect.Effect<DepositUTxO, DataCoercionError | UnauthenticUtxoError> =>
-  Effect.gen(function* () {
-    const datum = yield* getDepositDatumFromUTxO(utxo);
-    const [sym, assetName] = yield* getStateToken(utxo.assets);
-    if (sym !== nftPolicy) {
-      yield* Effect.fail(
-        new UnauthenticUtxoError({
-          message: "Failed to convert UTxO to `DepositUTxO`",
-          cause: "UTxO's NFT policy ID is not the same as the deposit's",
-        }),
-      );
-    }
-    return {
-      utxo,
-      datum,
-      assetName,
-      idCbor: Buffer.from(fromHex(Data.to(datum.event.id, OutputReference))),
-      infoCbor: Buffer.from(fromHex(Data.to(datum.event.info, DepositInfo))),
-      inclusionTime: new Date(Number(datum.inclusionTime)),
-    };
-  });
+const midgardNativeNetworkId = (
+  network: NonNullable<ReturnType<LucidEvolution["config"]>["network"]>,
+): bigint => (network === "Mainnet" ? 1n : 0n);
 
 /**
  * Silently drops invalid UTxOs.
  */
 export const utxosToDepositUTxOs = (
   utxos: UTxO[],
-  nftPolicy: string,
-): Effect.Effect<DepositUTxO[]> => {
-  const effects = utxos.map((u) => utxoToDepositUTxO(u, nftPolicy));
-  return Effect.allSuccesses(effects);
-};
-
-// TODO: Might be good to define an `EventUTxO` type.
-const isEventUTxOInclusionTimeInBounds = (
-  eventUTxO: { datum: { inclusionTime: bigint } },
-  inclusionTimeLowerBound?: POSIXTime,
-  inclusionTimeUpperBound?: POSIXTime,
-): boolean => {
-  const eventDatum = eventUTxO.datum;
-
-  const biggerThanLower =
-    inclusionTimeLowerBound === undefined ||
-    inclusionTimeLowerBound <= eventDatum.inclusionTime;
-  const smallerThanUpper =
-    inclusionTimeUpperBound === undefined ||
-    eventDatum.inclusionTime < inclusionTimeUpperBound;
-
-  return biggerThanLower && smallerThanUpper;
-};
+  nftPolicy: PolicyId,
+): Effect.Effect<DepositUTxO[]> =>
+  authenticateUTxOs<DepositDatum, UserEventExtraFields>(
+    utxos,
+    nftPolicy,
+    DepositDatum,
+    (datum, utxo) => ({
+      ...userEventCborFieldsFromInlineDatum(utxo),
+      inclusionTime: new Date(Number(datum.inclusion_time)),
+    }),
+  );
 
 export const fetchDepositUTxOsProgram = (
   lucid: LucidEvolution,
-  config: DepositFetchConfig,
+  config: UserEventFetchConfig,
 ): Effect.Effect<DepositUTxO[], LucidError> =>
-  Effect.gen(function* () {
-    const allUTxOs = yield* Effect.tryPromise({
-      try: () => lucid.utxosAt(config.depositAddress),
-      catch: (e) => {
-        return new LucidError({
-          message: `Failed to fetch deposit UTxOs at: ${config.depositAddress}`,
-          cause: e,
-        });
-      },
-    });
-    const depositUTxOs = yield* utxosToDepositUTxOs(
-      allUTxOs,
-      config.depositPolicyId,
-    );
-
-    const validDepositUTxOs = depositUTxOs.filter((utxo) =>
-      isEventUTxOInclusionTimeInBounds(
-        utxo,
-        config.inclusionTimeLowerBound,
-        config.inclusionTimeUpperBound,
-      ),
-    );
-    return validDepositUTxOs;
-  });
+  fetchUserEventUTxOsProgram(lucid, config, (utxos: UTxO[]) =>
+    utxosToDepositUTxOs(utxos, config.eventPolicyId),
+  );
 
 export const fetchDepositUTxOs = (
   lucid: LucidEvolution,
-  config: DepositFetchConfig,
+  config: UserEventFetchConfig,
 ) => makeReturn(fetchDepositUTxOsProgram(lucid, config));
 
-/**
- * Deposit
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteDepositTxProgram = (
-  lucid: LucidEvolution,
-  params: DepositParams,
-): Effect.Effect<TxBuilder, HashingError | LucidError> =>
-  Effect.gen(function* () {
-    const utxos: UTxO[] = yield* Effect.tryPromise({
-      try: () => lucid.wallet().getUtxos(),
-      catch: (err) =>
-        new LucidError({
-          message: "Failed to fetch wallet UTxOs",
-          cause: err,
-        }),
-    });
+export type SubmitDepositReferenceScripts = {
+  readonly depositMinting: UTxO;
+};
 
-    if (utxos.length === 0) {
-      yield* new LucidError({
-        message: "Failed to build the deposit transaction",
-        cause: "No UTxOs found in wallet",
-      });
+export type SubmitDepositConfig = {
+  readonly l2Address: string;
+  readonly l2Datum: string | null;
+  readonly lovelace: bigint;
+  readonly additionalAssets: Readonly<Assets>;
+  readonly referenceScripts?: SubmitDepositReferenceScripts;
+};
+
+export type DepositBuildMetadata = {
+  readonly depositAddress: string;
+  readonly depositEventId: string;
+  readonly depositAssetName: string;
+  readonly depositAuthUnit: string;
+  readonly nonceInput: Pick<UTxO, "txHash" | "outputIndex">;
+  readonly validTo: number;
+  readonly inclusionTime: number;
+};
+
+export const buildUnsignedDepositTxWithMetadataProgram = (
+  lucid: LucidEvolution,
+  contracts: MidgardValidators,
+  config: SubmitDepositConfig,
+): Effect.Effect<
+  {
+    readonly tx: TxSignBuilder;
+    readonly metadata: DepositBuildMetadata;
+  },
+  | HubOracleError
+  | LucidError
+  | Bech32DeserializationError
+  | HashingError
+  | UserEventBuildError
+> =>
+  Effect.gen(function* () {
+    const context = yield* prepareUserEventMintContext({
+      lucid,
+      contracts,
+      label: "deposit",
+      eventPolicyId: contracts.deposit.policyId,
+      hubOraclePolicyField: "deposit",
+      hubOracleAddressField: "deposit_addr",
+    });
+    const {
+      eventUnit: depositUnit,
+      hubOracleRefInput,
+      inclusionTime,
+      network,
+      nonceInput,
+      nonceAssetName,
+      validTo,
+      witnessScript,
+      witnessScriptHash,
+    } = context;
+    const depositEventId = outputReferenceToPlutusDataCbor(nonceInput);
+    if ((config.additionalAssets[depositUnit] ?? 0n) !== 0n) {
+      return yield* Effect.fail(
+        new UserEventBuildError({
+          message:
+            "Additional asset list must not include the deposit authentication NFT unit",
+          cause: depositUnit,
+        }),
+      );
     }
 
-    const inputUtxo = utxos[0];
-    const transactionInput = CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(inputUtxo.txHash),
-      BigInt(inputUtxo.outputIndex),
-    );
-
-    const assetName = yield* hashHexWithBlake2b256(
-      transactionInput.to_cbor_hex(),
-    );
-
-    const depositNFT = toUnit(params.policyId, assetName);
-
-    // Convert non-hex strings to hex string, since the address type doesn't enforce that
-    const depositInfo = {
-      l2Address: params.depositInfo.l2Address,
-      l2Datum: params.depositInfo.l2Datum,
-    };
-
-    const currTime = Date.now();
-    const network = lucid.config().network ?? "Mainnet";
-    const waitTime = getProtocolParameters(network).event_wait_duration;
-    const inclusionTime = currTime + waitTime;
+    const l2AddressData = yield* addressDataFromBech32(config.l2Address);
+    const l2DatumData =
+      config.l2Datum === null ? null : Data.from(config.l2Datum);
 
     const depositDatum: DepositDatum = {
       event: {
         id: {
-          txHash: { hash: inputUtxo.txHash },
-          outputIndex: BigInt(inputUtxo.outputIndex),
+          transactionId: nonceInput.txHash,
+          outputIndex: BigInt(nonceInput.outputIndex),
         },
-        info: depositInfo,
+        info: {
+          l2_address: l2AddressData,
+          l2_network_id: midgardNativeNetworkId(network),
+          l2_datum: l2DatumData,
+        },
       },
-      inclusionTime: BigInt(inclusionTime),
+      inclusion_time: BigInt(inclusionTime),
+      witness: witnessScriptHash,
     };
     const depositDatumCBOR = Data.to(depositDatum, DepositDatum);
+    const outputAssets: Assets = {
+      ...config.additionalAssets,
+      lovelace: config.lovelace,
+      [depositUnit]: 1n,
+    };
+    const referenceInputs =
+      config.referenceScripts === undefined
+        ? [hubOracleRefInput]
+        : [hubOracleRefInput, config.referenceScripts.depositMinting];
+    const witnessRegistrationRedeemer =
+      encodeUserEventWitnessMintOrBurnRedeemer(contracts.deposit.policyId);
 
-    const mintRedeemer: DepositMintRedeemer = {
-      AuthenticateEvent: {
-        nonceInputIndex: 0n,
-        eventOutputIndex: 0n,
-        hubRefInputIndex: 0n,
-        witnessRegistrationRedeemerIndex: 0n,
+    const tx = yield* buildCompletedUserEventMintTxProgram({
+      lucid,
+      network,
+      nonceInput,
+      eventUnit: depositUnit,
+      eventAddress: contracts.deposit.spendingScriptAddress,
+      eventDatumCbor: depositDatumCBOR,
+      outputAssets,
+      validTo,
+      mintingPolicy: contracts.deposit.mintingScript,
+      attachMintingPolicy: config.referenceScripts === undefined,
+      referenceInputs,
+      hubOracleRefInput,
+      witnessScript,
+      witnessRegistrationRedeemer,
+      label: "deposit",
+    });
+
+    return {
+      tx,
+      metadata: {
+        depositAddress: contracts.deposit.spendingScriptAddress,
+        depositEventId,
+        depositAssetName: nonceAssetName,
+        depositAuthUnit: depositUnit,
+        nonceInput,
+        validTo,
+        inclusionTime,
       },
     };
-    const mintRedeemerCBOR = Data.to(mintRedeemer, DepositMintRedeemer);
-
-    // TODO: Currently there are no considerations for fees and/or min ADA.
-    const tx = lucid
-      .newTx()
-      .collectFrom([inputUtxo])
-      .mintAssets(
-        {
-          [depositNFT]: 1n,
-        },
-        mintRedeemerCBOR,
-      )
-      .pay.ToAddressWithData(
-        params.depositScriptAddress,
-        {
-          kind: "inline",
-          value: depositDatumCBOR,
-        },
-        { lovelace: params.depositAmount, [depositNFT]: 1n },
-      )
-      .validTo(inclusionTime)
-      .attach.MintingPolicy(params.mintingPolicy);
-    return tx;
-  }).pipe(
-    Effect.catchAllDefect((defect) => {
-      return Effect.fail(
-        new LucidError({
-          message: "Caught defect from depositTxBuilder",
-          cause: defect,
-        }),
-      );
-    }),
-  );
+  });
 
 export const unsignedDepositTxProgram = (
   lucid: LucidEvolution,
-  depositParams: DepositParams,
-): Effect.Effect<TxSignBuilder, HashingError | LucidError | DepositError> =>
-  Effect.gen(function* () {
-    const commitTx = yield* incompleteDepositTxProgram(lucid, depositParams);
-    const completedTx: TxSignBuilder = yield* Effect.tryPromise({
-      try: () => commitTx.complete({ localUPLCEval: false }),
-      catch: (e) =>
-        new DepositError({
-          message: `Failed to build the transaction: ${e}`,
-          cause: e,
-        }),
-    });
-    return completedTx;
-  });
+  contracts: MidgardValidators,
+  config: SubmitDepositConfig,
+): Effect.Effect<
+  TxSignBuilder,
+  | HubOracleError
+  | LucidError
+  | Bech32DeserializationError
+  | HashingError
+  | UserEventBuildError
+> =>
+  buildUnsignedDepositTxWithMetadataProgram(lucid, contracts, config).pipe(
+    Effect.map(({ tx }) => tx),
+  );
+
+export const buildUnsignedDepositTxProgram = unsignedDepositTxProgram;
 
 /**
- * Builds completed tx for submitting deposits using the provided
+ * Builds a completed tx for submitting deposits using the provided
  * `LucidEvolution` instance and a deposit config.
  *
  * @param lucid - The `LucidEvolution` API object.
- * @param depositParams - Parameters required for commiting deposits.
+ * @param contracts - Midgard validator configuration.
+ * @param config - Parameters required for committing deposits.
  * @returns A promise that resolves to a `TxSignBuilder` instance.
  */
 export const unsignedDepositTx = (
   lucid: LucidEvolution,
-  depositParams: DepositParams,
+  contracts: MidgardValidators,
+  config: SubmitDepositConfig,
 ): Promise<TxSignBuilder> =>
-  makeReturn(unsignedDepositTxProgram(lucid, depositParams)).unsafeRun();
-
-export class DepositError extends EffectData.TaggedError(
-  "DepositError",
-)<GenericErrorFields> {}
+  makeReturn(unsignedDepositTxProgram(lucid, contracts, config)).unsafeRun();

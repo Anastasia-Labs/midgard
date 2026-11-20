@@ -224,7 +224,7 @@ Fraud proof construction:
 \begin{enumerate}
   \item Let $t$ be the transaction alleged to violate the ledger rule. 
   \item A membership proof must be provided that shows that the transaction is included in the ledger
-  \item A DA layer proof must be presented that certifies that $length(spend\_inputs(t)) = 0$
+  \item The transaction inputs list must be empty
 \end{enumerate}
 
 \subsection{Rule: Minimum fee}
@@ -329,7 +329,7 @@ Formal specification:
 
 Fraud proof construction:
 \begin{enumerate}
-  \item Let $t_1$ be the transaction alleged to violate the ledger rule. 
+  \item Let $t_1$ be the transaction alleged to violate the ledger rule.
   \item A membership proof must be provided that shows that $t_1$ is included in the block.
   \item Verify that $i \in spend\_inputs(t_1)$.
   \item Verify that $i$ matches $t_2$ on transaction hash. 
@@ -430,13 +430,16 @@ Fraud proof construction:
 
 \subsection{Rule: Native scripts are available}
 \label{rule:native-scripts-are-available}
-All native scripts are provided.
+All native scripts required by spent inputs are provided.
 Formal specification:
 \begin{empheq}[box=\ledgerRuleBox]{equation*}
 \begin{split}
-  &\forall t \in Ledger,\; \forall u \in output(t):\\
+  &\forall t \in Ledger,\; \forall (r, u) \in utxos:\\
     &\quad
-      addr(u) \in Addr^{native}_{v2} \implies \bigl(
+      \bigl(
+      r \in spend\_inputs(t) \;\land\;
+      addr(u) \in Addr^{native}_{v2}
+      \bigr) \implies \bigl(
         \exists (h, s) \in script\_tx\_wits(t),\; script\_hash(addr(u)) = h 
       \bigr)
 \end{split}
@@ -444,30 +447,66 @@ Formal specification:
 
 This ledger rule is violated if any of the following violations occur:
 \begin{itemize-multi}
-  \item \hyperref[violation:MISSING-NATIVE-SCRIPT]{MISSING-NATIVE-SCRIPT}
+  \item \hyperref[violation:MISSING-NATIVE-SCRIPT-TX]{MISSING-NATIVE-SCRIPT-TX}
+  \item \hyperref[violation:MISSING-NATIVE-SCRIPT-UTXO]{MISSING-NATIVE-SCRIPT-UTXO}
 \end{itemize-multi}
 
-\subsubsection{MISSING-NATIVE-SCRIPT violation}
-\label{violation:MISSING-NATIVE-SCRIPT}
-A required script, corresponding to $h$ is missing.
+\subsubsection{MISSING-NATIVE-SCRIPT-TX violation}
+\label{violation:MISSING-NATIVE-SCRIPT-TX}
+A transaction $t_1$ spends a utxo $u$, produced in the block by transaction $t_2$ at a native script address, without providing the required script as a witness.
 Formal specification:
 \begin{equation*}
 \begin{split}
-  &\exists t \in txs,\; \exists u \in output(t):\\
+  &\exists t_1, t_2 \in txs,\; \exists i \in spend\_inputs(t_1),\; \exists u \in outputs(t_2):\\
+    &\quad tx\_hash(i) = tx\_hash(t_2) \;\land\\
+    &\quad u = elem\_at(outputs(t_2), i.index) \;\land\\
     &\quad addr(u) \in Addr^{native}_{v2} \;\land\\
     &\quad \bigl(
-        \nexists (h, s) \in script\_tx\_wits(t),\; script\_hash(addr(u)) = h
+        \nexists (h, s) \in script\_tx\_wits(t_1),\; script\_hash(addr(u)) = h
       \bigr)
 \end{split}
 \end{equation*}
 
 Fraud proof construction:
 \begin{enumerate}
-  \item Let $t$ be the transaction alleged to violate the ledger rule. 
-  \item A membership proof must be provided that shows that the transaction $t$ is included in the ledger.
-  \item A membership proof must be generated that proves that $u$ is in $outputs(t)$.
-  \item A DA layer proof must be shown that certifies that there is no $(h, s)$ curresponding to \break
-        $script\_hash(addr(u)) = h$ in $script\_tx\_wits(t)$.
+  \item Let $t_1$ be the transaction alleged to violate the ledger rule.
+  \item A membership proof must be provided that shows that $t_1$ is included in the block.
+  \item Let $t_2$ be another transaction in the block.
+  \item A membership proof must be provided that shows that $t_2$ is included in the block.
+  \item Verify that $i \in spend\_inputs(t_1)$.
+  \item Verify that $i$ matches $t_2$ on transaction hash.
+  \item Let $u$ be the $t_2$ output indexed by $i$.
+  \item Verify that the payment credential of $u$ is a native script hash.
+  \item A DA layer proof must be shown that certifies that there is no $(h, s)$ corresponding to \break
+        $script\_hash(addr(u)) = h$ in $script\_tx\_wits(t_1)$.
+\end{enumerate}
+
+\subsubsection{MISSING-NATIVE-SCRIPT-UTXO violation}
+\label{violation:MISSING-NATIVE-SCRIPT-UTXO}
+A transaction $t_1$ spends a utxo $u$ from the previous block's utxo set at a native script address without providing the required script as a witness.
+Formal specification:
+\begin{equation*}
+\begin{split}
+  &\exists t_1 \in txs,\; \exists i \in spend\_inputs(t_1),\; \exists (j, u) \in utxos_{pre}:\\
+    &\quad i = j \;\land\\
+    &\quad addr(u) \in Addr^{native}_{v2} \;\land\\
+    &\quad \bigl(
+        \nexists (h, s) \in script\_tx\_wits(t_1),\; script\_hash(addr(u)) = h
+      \bigr)
+\end{split}
+\end{equation*}
+
+Fraud proof construction:
+\begin{enumerate}
+  \item Let $t_1$ be the transaction alleged to violate the ledger rule.
+  \item A membership proof must be provided that shows that $t_1$ is included in the block.
+  \item Verify that $i \in spend\_inputs(t_1)$.
+  \item Let $u$ be a utxo and $j$ be an output reference.
+  \item A membership proof must be generated that proves that $(j, u)$ is in $utxos_{pre} = prev\_utxos(b)$ for the same block.
+  \item Verify that $i = j$.
+  \item Verify that the payment credential of $u$ is a native script hash.
+  \item A DA layer proof must be shown that certifies that there is no $(h, s)$ corresponding to \break
+        $script\_hash(addr(u)) = h$ in $script\_tx\_wits(t_1)$.
 \end{enumerate}
 
 \subsection{Rule: Native scripts validated}
@@ -803,7 +842,7 @@ This ledger rule is violated if any of the following violations occur:
 
 \subsubsection{NO-REFERENCE-INPUT violation}
 \label{violation:NO-REFERENCE-INPUT}
-A transaction $t$ attempted to spend the UTxO $i$ that does not exist or was spent in a previous block.
+A transaction $t$ attempted to reference the UTxO $i$ that does not exist or was spent in a previous block.
 Formal specification:
 \begin{equation*}
 \begin{split}
@@ -842,6 +881,26 @@ Fraud proof construction:
   \item A membership proof must be presented for input $i$ such that $i \in reference\_inputs(t)$
   \item A membership proof must be created for $t_1$ such that $tx\_hash(t_1) = tx\_hash(i)$
   \item A DA layer proof must be presented that certifies that $length(outputs(t_1)) < index(i)$
+\end{enumerate}
+
+\subsubsection{WITHDRAWN-REFERENCE-INPUT violation}
+\label{violation:WITHDRAWN-REFERENCE-INPUT}
+A transaction $t$ attempted to reference the UTxO $i$, which was spent in a withdraw transaction.
+Formal specification:
+\begin{equation*}
+\begin{split}
+  &\exists t \in txs,\; \exists i \in reference\_inputs(t),\; \exists w \in wtxs:\\
+    &\quad i = l2\_outref(w)
+\end{split}
+\end{equation*}
+
+Fraud proof construction:
+\begin{enumerate}
+  \item Let $t$ be the transaction alleged to violate the ledger rule. 
+  \item A membership proof must be provided for $t$ that shows that the transaction is included in the block ($t \in txs$)
+  \item A membership proof must be generated for input $i$ such that $i \in reference\_inputs(t)$
+  \item A membership proof must be created to show that $w$ is in $wtxs$, which also spends input $i$
+  \item A non-membership proof must also be generated that shows that no transactions in the block match the input's tx hash.
 \end{enumerate}
 
 % TODO: maybe also include $inputs \cap reference\_inputs = \varnothing$

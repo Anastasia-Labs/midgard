@@ -1,0 +1,3 @@
+[submodule "technical-spec/Lean4Midgard"]
+	path = technical-spec/Lean4Midgard
+	url = https://github.com/input-output-hk/rnd-midgard.git

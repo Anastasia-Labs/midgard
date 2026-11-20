@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 
 /**
- * Interface for a transaction log entry
+ * Structured representation of one tx-generator log event.
  */
 export interface TransactionLogEntry {
   txId: string;
@@ -12,25 +12,24 @@ export interface TransactionLogEntry {
 }
 
 /**
- * In-memory transaction log storage
- * This allows us to keep track of recent transactions and their status
+ * In-memory log sink for recently submitted or failed transactions.
  */
 class TransactionLogger {
-  private static instance: TransactionLogger;
+  private static readonly instance = new TransactionLogger();
   private logs: TransactionLogEntry[] = [];
   private maxLogEntries = 100; // Limit the number of entries to prevent memory bloat
 
   private constructor() {}
 
+  /**
+   * Returns the shared transaction logger instance.
+   */
   static getInstance(): TransactionLogger {
-    if (!TransactionLogger.instance) {
-      TransactionLogger.instance = new TransactionLogger();
-    }
     return TransactionLogger.instance;
   }
 
   /**
-   * Add a transaction to the log
+   * Adds a transaction event to the in-memory log and echoes it to stdout.
    */
   addLog(entry: Omit<TransactionLogEntry, 'timestamp'>): TransactionLogEntry {
     const logEntry: TransactionLogEntry = {
@@ -53,7 +52,7 @@ class TransactionLogger {
   }
 
   /**
-   * Display a formatted log entry in the console
+   * Renders a single transaction log entry using the shared console format.
    */
   private displayLogEntry(entry: TransactionLogEntry): void {
     const timestamp = entry.timestamp.toISOString().replace('T', ' ').substring(0, 19);
@@ -85,25 +84,27 @@ class TransactionLogger {
   }
 
   /**
-   * Get the recent transaction logs
+   * Returns a copy of the most recent transaction logs.
    */
   getLogs(): TransactionLogEntry[] {
     return [...this.logs];
   }
 
   /**
-   * Clear all logs
+   * Clears the in-memory transaction log buffer.
    */
   clearLogs(): void {
     this.logs = [];
   }
 }
 
-// Expose the singleton instance
+/**
+ * Shared logger instance used by tx submission paths.
+ */
 export const txLogger = TransactionLogger.getInstance();
 
 /**
- * Log a submitted transaction
+ * Records a successful transaction submission.
  */
 export const logSubmittedTransaction = (txId: string, type: string, details?: string): void => {
   txLogger.addLog({
@@ -115,7 +116,7 @@ export const logSubmittedTransaction = (txId: string, type: string, details?: st
 };
 
 /**
- * Log a failed transaction
+ * Records a failed transaction submission.
  */
 export const logFailedTransaction = (txId: string, type: string, details?: string): void => {
   txLogger.addLog({

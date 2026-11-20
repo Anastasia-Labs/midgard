@@ -1,4 +1,3 @@
-use aiken/builtin
 use aiken/collection/list
 use aiken/crypto.{ScriptHash, VerificationKeyHash}
 use aiken/primitive/bytearray
@@ -12,16 +11,26 @@ use cardano/transaction.{
 use midgard/common/types.{Proof}
 use midgard/common/utils.{
   get_redeemer_at, get_single_asset_from_value_apart_from_ada, has_signed,
-  plutarch_phas, verify_hash_32,
+  plutarch_phas, plutarch_phas_raw, verify_hash_32,
 }
 use midgard/computation_thread as ct
 use midgard/fraud_proof
 use midgard/fraud_proof_catalogue
+use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_compact_cbor}
+use midgard/fraud_proofs/native_tx/types.{VerifiedMidgardNativeTxCompact} as native_tx_types
 use midgard/hub_oracle as hub
 use midgard/ledger_state.{
   Header, MidgardTxBodyCompact, MidgardTxCompact, MidgardTxId,
+  MidgardTxWitnessSetCompact,
 }
 use midgard/state_queue
+use midgard/transition_trace
+
+pub type TxFieldPreimage {
+  TxBodyProvided(MidgardTxBodyCompact)
+  TxWitsProvided(MidgardTxWitnessSetCompact)
+  TxBodyAndWitsProvided(MidgardTxBodyCompact, MidgardTxWitnessSetCompact)
+}
 
 pub type TxInclusionArgs {
   input_index: Int,
@@ -30,11 +39,31 @@ pub type TxInclusionArgs {
   state_queue_node_ref_input_index: Int,
   tx_id: MidgardTxId,
   tx: MidgardTxCompact,
-  tx_body: MidgardTxBodyCompact,
+  tx_field_preimage: TxFieldPreimage,
   tx_membership_proof: Proof,
   inclusion_proof_script_withdraw_redeemer_index: Int,
 }
 
+pub type NativeTxInclusionArgs {
+  input_index: Int,
+  output_index: Int,
+  hub_ref_input_index: Int,
+  state_queue_node_ref_input_index: Int,
+  native_tx_id: ByteArray,
+  native_tx_compact_cbor: ByteArray,
+  // Raw transactions MPF root the prover supplies. It is authenticated against
+  // the header's counted `transactions_root` before being used for the
+  // membership check (see `verify_native_tx_in_state_queue_node`).
+  transactions_phas_root: ByteArray,
+  tx_membership_proof: Proof,
+  inclusion_proof_script_withdraw_redeemer_index: Int,
+}
+
+/// > [!NOTE]
+/// > This function uses `plutarch_phas` under the hood, which is a helper that
+/// > cannot be used more than once within a given transaction. So if a
+/// > validator utilizes this function, it should not use `plutarch_phas`
+/// > alongside it.
 pub fn pass_tx_to_next_step(
   computation_thread_token_policy_id: PolicyId,
   hub_oracle: ScriptHash,
@@ -52,7 +81,7 @@ pub fn pass_tx_to_next_step(
     Header,
     MidgardTxId,
     MidgardTxCompact,
-    MidgardTxBodyCompact,
+    TxFieldPreimage,
   ) ->
     Bool,
 ) -> Bool {
@@ -63,7 +92,7 @@ pub fn pass_tx_to_next_step(
     state_queue_node_ref_input_index,
     tx_id,
     tx,
-    tx_body,
+    tx_field_preimage,
     tx_membership_proof,
     inclusion_proof_script_withdraw_redeemer_index,
   } = tx_inclusion_args
@@ -91,13 +120,16 @@ pub fn pass_tx_to_next_step(
       outputs,
     )
 
-  // 2. The provided transaction must be valid, and must be included in
-  //    the specified state queue node.
-  let header =
-    verify_tx_in_state_queue_node_and_get_header(
+  // 2. The provided transaction must be valid, and must be included in the
+  //    specified state queue node.
+  let
+    _verified_tx_id,
+    header,
+  <-
+    verify_tx_in_state_queue_node(
       tx_id,
       tx,
-      tx_body,
+      tx_field_preimage,
       tx_membership_proof,
       computation_thread_token_asset_name,
       hub_oracle,
@@ -120,10 +152,102 @@ pub fn pass_tx_to_next_step(
       header,
       tx_id,
       tx,
-      tx_body,
+      tx_field_preimage,
     )
 
   // Done.
+  True
+}
+
+/// Native v1 transaction inclusion helper for fault proofs whose evidence is
+/// committed by the node's native transaction root rather than PlutusData
+/// `MidgardTxCompact` values.
+pub fn pass_native_tx_to_next_step(
+  computation_thread_token_policy_id: PolicyId,
+  hub_oracle: ScriptHash,
+  datum: Option<ct.StepDatum<input_state>>,
+  tx_inclusion_args: NativeTxInclusionArgs,
+  own_out_ref: OutputReference,
+  l1_tx: Transaction,
+  validation: fn(
+    ScriptHash,
+    AssetName,
+    VerificationKeyHash,
+    Option<input_state>,
+    ScriptHash,
+    Data<output_state>,
+    Header,
+    ByteArray,
+    VerifiedMidgardNativeTxCompact,
+  ) ->
+    Bool,
+) -> Bool {
+  let NativeTxInclusionArgs {
+    input_index,
+    output_index,
+    hub_ref_input_index,
+    state_queue_node_ref_input_index,
+    native_tx_id,
+    native_tx_compact_cbor,
+    transactions_phas_root,
+    tx_membership_proof,
+    inclusion_proof_script_withdraw_redeemer_index,
+  } = tx_inclusion_args
+
+  let Transaction { inputs, outputs, reference_inputs, redeemers, .. } = l1_tx
+
+  expect Some(step_datum) = datum
+
+  let
+    own_script_hash,
+    computation_thread_token_asset_name,
+    fraud_prover,
+    m_input_state_data,
+    output_script_hash,
+    output_state_data,
+  <-
+    continue(
+      computation_thread_token_policy_id,
+      step_datum,
+      input_index,
+      output_index,
+      own_out_ref,
+      inputs,
+      outputs,
+    )
+
+  let
+    _verified_tx_id,
+    header,
+    native_tx_view,
+  <-
+    verify_native_tx_in_state_queue_node(
+      native_tx_id,
+      native_tx_compact_cbor,
+      transactions_phas_root,
+      tx_membership_proof,
+      computation_thread_token_asset_name,
+      hub_oracle,
+      hub_ref_input_index,
+      state_queue_node_ref_input_index,
+      inclusion_proof_script_withdraw_redeemer_index,
+      reference_inputs,
+      redeemers,
+    )
+
+  expect
+    validation(
+      own_script_hash,
+      computation_thread_token_asset_name,
+      fraud_prover,
+      m_input_state_data,
+      output_script_hash,
+      output_state_data,
+      header,
+      native_tx_id,
+      native_tx_view,
+    )
+
   True
 }
 
@@ -326,7 +450,7 @@ pub fn finalize(
       1,
     )
 
-  // 4. Fraud prover must be presreved, with no additional `data`.
+  // 4. Fraud prover must be preserved, with no additional `data`.
   let expected_output_datum_data: Data = fraud_proof.Datum { fraud_prover }
   expect output_datum_data == expected_output_datum_data
 
@@ -357,34 +481,57 @@ pub fn finalize(
   )
 }
 
-pub fn verify_tx_and_its_body(
+pub fn verify_tx_and_its_provided_field_preimage(
   tx_id: MidgardTxId,
   tx: MidgardTxCompact,
-  tx_body: MidgardTxBodyCompact,
+  tx_field_preimage: TxFieldPreimage,
 ) -> Bool {
-  let tx_data: Data = tx
+  let tx_body_data: Data = tx.body
   and {
-    verify_hash_32(data: tx_data, data_hash: tx_id),
-    verify_hash_32(data: tx_body, data_hash: tx.body),
+    verify_hash_32(data: tx_body_data, data_hash: tx_id),
+    when tx_field_preimage is {
+      TxBodyProvided(tx_body) -> and {
+          tx_body == tx.body,
+          verify_hash_32(data: tx_body, data_hash: tx_id),
+        }
+      TxWitsProvided(tx_wits) ->
+        verify_hash_32(data: tx_wits, data_hash: tx.wits)
+      TxBodyAndWitsProvided(tx_body, tx_wits) -> {
+        let MidgardTxCompact { body, wits, .. } = tx
+        and {
+          tx_body == body,
+          verify_hash_32(data: tx_body, data_hash: tx_id),
+          verify_hash_32(data: tx_wits, data_hash: wits),
+        }
+      }
+    },
   }
 }
 
-pub fn verify_tx_in_state_queue_node_and_get_header(
+pub fn verify_tx_body(
+  tx_body_compact_preimage: MidgardTxBodyCompact,
+  tx_body_hash: MidgardTxId,
+) -> Bool {
+  verify_hash_32(tx_body_compact_preimage, tx_body_hash)
+}
+
+pub fn verify_tx_in_state_queue_node(
   tx_id: MidgardTxId,
   tx: MidgardTxCompact,
-  tx_body: MidgardTxBodyCompact,
+  tx_field_preimage: TxFieldPreimage,
   tx_membership_proof: Proof,
   computation_thread_token_asset_name: AssetName,
-  hub_oracle: PolicyId,
+  hub_oracle: ScriptHash,
   hub_ref_input_index: Int,
   state_queue_node_ref_input_index: Int,
   inclusion_proof_script_withdraw_redeemer_index: Int,
   reference_inputs: List<Input>,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
-) -> Header {
-  // 1. Verify authenticity of the provided tx and its body against its ID, and
-  //    body hash.
-  expect verify_tx_and_its_body(tx_id, tx, tx_body)
+  return: fn(MidgardTxId, Header) -> result,
+) -> result {
+  // 1. Verify authenticity of the provided tx and its field preimage against
+  //    its ID, and the field's hash.
+  expect verify_tx_and_its_provided_field_preimage(tx_id, tx, tx_field_preimage)
 
   // 2. Hub oracle must be provided as a reference input.
   let hub.Datum { state_queue: state_queue_policy, .. } =
@@ -411,19 +558,79 @@ pub fn verify_tx_in_state_queue_node_and_get_header(
 
   // 4. Specified transaction must be proven to be included in the referenced
   //    state queue node.
-  let tx_data: Data = tx
   expect
     plutarch_phas(
       merkle_root: state_queue_datum.transactions_root,
-      key: builtin.b_data(tx_id),
-      value: tx_data,
+      key: tx_id,
+      value: tx,
       membership_proof: tx_membership_proof,
       redeemers: redeemers,
       withdraw_redeemer_index: inclusion_proof_script_withdraw_redeemer_index,
     )
 
-  // Done. Return the block header.
-  state_queue_datum
+  // Done. Return tx ID and block header.
+  return(tx_id, state_queue_datum)
+}
+
+pub fn verify_native_tx_in_state_queue_node(
+  native_tx_id: ByteArray,
+  native_tx_compact_cbor: ByteArray,
+  transactions_phas_root: ByteArray,
+  tx_membership_proof: Proof,
+  computation_thread_token_asset_name: AssetName,
+  hub_oracle: ScriptHash,
+  hub_ref_input_index: Int,
+  state_queue_node_ref_input_index: Int,
+  inclusion_proof_script_withdraw_redeemer_index: Int,
+  reference_inputs: List<Input>,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+  return: fn(ByteArray, Header, VerifiedMidgardNativeTxCompact) -> result,
+) -> result {
+  let native_tx_view =
+    verify_native_tx_compact_cbor(native_tx_id, native_tx_compact_cbor)
+
+  let hub.Datum { state_queue: state_queue_policy, .. } =
+    hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
+
+  let
+    state_queue_datum,
+    state_queue_node_key,
+  <-
+    state_queue.get_block_datum(
+      reference_inputs,
+      state_queue_policy,
+      state_queue_node_ref_input_index,
+    )
+
+  expect
+    state_queue_node_key == bytearray.drop(
+      computation_thread_token_asset_name,
+      fraud_proof_catalogue.id_byte_count,
+    )
+
+  // Authenticate the prover-supplied raw phas root against the header's counted
+  // `transactions_root`: only the genuine raw root re-hashes to the committed
+  // value under this block's `l2_transaction_count`. After this check the raw
+  // root is as trustworthy as the header commitment.
+  expect
+    transition_trace.commit_counted_root(
+      transition_trace.TransactionsRootDomain,
+      transactions_phas_root,
+      state_queue_datum.l2_transaction_count,
+    ) == state_queue_datum.transactions_root
+
+  // MPF membership check runs against the authenticated raw root.
+  expect
+    plutarch_phas_raw(
+      merkle_root: transactions_phas_root,
+      key_bytes: native_tx_id,
+      value_bytes: native_tx_compact_cbor,
+      membership_proof: tx_membership_proof,
+      redeemers: redeemers,
+      withdraw_redeemer_index: inclusion_proof_script_withdraw_redeemer_index,
+    )
+
+  return(native_tx_id, state_queue_datum, native_tx_view)
 }
 
 pub fn validate_output_to_fraud_prover(
@@ -436,7 +643,7 @@ pub fn validate_output_to_fraud_prover(
   }
 }
 
-// Internal Helpers
+// ## Internal Helpers
 
 /// Validates authenticity of the input at `input_index` (i.e. that it comes
 /// from a script, and that it carries only a computation thread token), and

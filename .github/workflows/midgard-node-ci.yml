@@ -1,0 +1,135 @@
+name: Midgard Node CI
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "demo/midgard-node/**"
+      - "demo/lucid-midgard/**"
+      - "demo/midgard-sdk/**"
+      - "demo/midgard-fault-proofs/**"
+      - "demo/midgard-core/**"
+      - "demo/da-committee-node/**"
+      - "demo/midgard-validation/**"
+      - "onchain/aiken/**"
+      - "demo/pnpm-lock.yaml"
+      - "demo/pnpm-workspace.yaml"
+      - "demo/package.json"
+      - "demo/.nvmrc"
+      - "demo/patches/**"
+      - "scripts/ci/**"
+      - ".github/workflows/midgard-node-ci.yml"
+  pull_request:
+    paths:
+      - "demo/midgard-node/**"
+      - "demo/lucid-midgard/**"
+      - "demo/midgard-sdk/**"
+      - "demo/midgard-fault-proofs/**"
+      - "demo/midgard-core/**"
+      - "demo/da-committee-node/**"
+      - "demo/midgard-validation/**"
+      - "onchain/aiken/**"
+      - "demo/pnpm-lock.yaml"
+      - "demo/pnpm-workspace.yaml"
+      - "demo/package.json"
+      - "demo/.nvmrc"
+      - "demo/patches/**"
+      - "scripts/ci/**"
+      - ".github/workflows/midgard-node-ci.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: midgard
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d midgard"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      L1_PROVIDER: Kupmios
+      L1_BLOCKFROST_API_URL: https://blockfrost.invalid
+      L1_BLOCKFROST_KEY: test-key
+      L1_OGMIOS_KEY: http://127.0.0.1:1337
+      L1_KUPO_KEY: http://127.0.0.1:1442
+      L1_OPERATOR_SEED_PHRASE: "panther fly crawl express smile lend company blue slogan dawn wall tip angle tomorrow battle myth category vanish misery ocean include salon wood rail"
+      L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: "second salad helmet humble left noise inform person swamp surround twice animal fitness sing laundry saddle stove guess cabin rural kidney reject oil fee"
+      NETWORK: Preprod
+      RUN_GENESIS_ON_STARTUP: "false"
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: midgard
+      TESTNET_GENESIS_WALLET_SEED_PHRASE_A: "panther fly crawl express smile lend company blue slogan dawn wall tip angle tomorrow battle myth category vanish misery ocean include salon wood rail"
+      TESTNET_GENESIS_WALLET_SEED_PHRASE_B: "second salad helmet humble left noise inform person swamp surround twice animal fitness sing laundry saddle stove guess cabin rural kidney reject oil fee"
+      TESTNET_GENESIS_WALLET_SEED_PHRASE_C: "cactus chalk grit reopen true slight whale sand law sibling silver fringe cement twist process bracket history leopard churn federal coral three hockey fossil"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aiken-lang/setup-aiken@v1.0.3
+        with:
+          version: v1.1.21
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: demo/.nvmrc
+          cache: pnpm
+          cache-dependency-path: demo/pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm --dir demo install --frozen-lockfile
+      - name: Build testnet Aiken blueprint
+        working-directory: onchain/aiken
+        run: aiken build --env testnet
+      - name: Build lucid-midgard
+        run: pnpm --dir demo/lucid-midgard run build
+      - name: Build and test Midgard core DA transport
+        run: pnpm --dir demo/midgard-core run build && pnpm --dir demo/midgard-core test
+      - name: Build, typecheck, and test Midgard validation
+        run: pnpm --dir demo/midgard-validation run build && pnpm --dir demo/midgard-validation run typecheck && pnpm --dir demo/midgard-validation test
+      - name: Build, typecheck, and test Midgard SDK
+        run: pnpm --dir demo/midgard-sdk run build && pnpm --dir demo/midgard-sdk run typecheck && pnpm --dir demo/midgard-sdk test
+      - name: Build, typecheck, and test fault-proof tooling
+        run: pnpm --dir demo/midgard-fault-proofs run build && pnpm --dir demo/midgard-fault-proofs run typecheck && pnpm --dir demo/midgard-fault-proofs test
+      - name: Verify DA committee transport and admission
+        run: pnpm --dir demo/da-committee-node run guard:no-http-da-transport && pnpm --dir demo/da-committee-node run typecheck && pnpm --dir demo/da-committee-node test
+      - name: Typecheck lucid-midgard
+        run: pnpm --dir demo/lucid-midgard run typecheck
+      - name: Test lucid-midgard
+        run: pnpm --dir demo/lucid-midgard test
+      - name: Install native MPF Rust toolchain
+        run: rustup toolchain install 1.91.0 --profile minimal --component rustfmt
+      - name: Check and build native MPF owner
+        env:
+          RUSTUP_TOOLCHAIN: 1.91.0
+        run: |
+          pnpm --dir demo/midgard-node run native:mpf-owner:check
+          pnpm --dir demo/midgard-node run native:mpf-owner:build
+      - name: Typecheck Midgard node
+        run: pnpm --dir demo/midgard-node run typecheck
+      - name: Build Midgard node and migrate isolated CI database
+        run: pnpm --dir demo/midgard-node run db:migrate
+      - name: Test Midgard node
+        run: pnpm --dir demo/midgard-node test
+      - name: Verify offline throughput gates
+        run: |
+          pnpm --dir demo/midgard-node run test:mpf:architecture-g-corpus
+          pnpm --dir demo/midgard-node run test:mpf:architecture-g-gate-config
+          pnpm --dir demo/midgard-node run test:mpf:architecture-g-soak
+          pnpm --dir demo/midgard-node run test:mpf:architecture-g-closure
+          pnpm --dir demo/midgard-node run test:phase5:distribution-verifier
+          node --test demo/midgard-node/scripts/throughput-load-watchdog.test.mjs demo/midgard-node/devnet/phase4-process/tests/assets.test.mjs demo/midgard-node/devnet/phase4-process/tests/custom-chain-config.test.mjs
+      - name: Verify Phase 5 real multi-process DA path
+        env:
+          MIDGARD_RUN_DA_PHASE5_JOINED_E2E: "1"
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: pnpm --dir demo/midgard-node run test:da-phase5-e2e

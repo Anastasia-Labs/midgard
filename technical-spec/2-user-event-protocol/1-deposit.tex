@@ -10,7 +10,7 @@ A user deposits funds into Midgard by submitting an L1 transaction that performs
     \item Spend an input \code{l1\_nonce}, which uniquely identifies this deposit transaction.
     \item Register a staking script credential to witness the deposit.
       The script is parametrized by \code{l2\_id} (which is Blake2b256 hash of \code{l1\_nonce}), and the credential's purpose is to disprove the existence of the deposit whenever the credential is \emph{not} registered.\footnote{Cardano's ledger lacks a more direct method to disprove the existence of a utxo to a Plutus script.}
-    \item Total count of tokens in the deposit must not exceed \code{max\_transfer\_token\_count}, a Midgard protocol pararmeter.
+    \item Total count of tokens in the deposit must not exceed \code{max\_tokens\_allowed\_in\_deposits}, a Midgard protocol parameter.
     \item Mint a deposit auth token to verify the following datum:
         \begin{equation*}
         \T{DepositDatum} \coloneq \left\{

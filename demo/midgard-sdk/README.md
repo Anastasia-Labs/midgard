@@ -1,6 +1,12 @@
 # Midgard Off-Chain SDK
 
-Midgard Typescript library for building operator and watcher transactions.
+Status: Internal/workspace package under active development. The package name is
+not evidence of a public registry release; the instructions below use a local
+tarball intentionally.
+
+Midgard TypeScript library for building operator and watcher transactions. Each
+transaction family has a reference page in the
+[documentation site](../../docs-site/content/docs/sdk/midgard-sdk).
 
 ## How to use
 
@@ -29,7 +35,7 @@ pnpm repack
 ```json
 {
   "dependencies": {
-    "@al-ft/midgard-sdk": "file:~/path/to/midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz"
+    "@al-ft/midgard-sdk": "file:./path/to/al-ft-midgard-sdk-0.1.0.tgz"
   }
 }
 ```
@@ -49,7 +55,7 @@ projects that use `effect` as well.
 
 The convention is the same as Lucid Evolution, i.e. functions that return
 `Effect` blueprints are postfixed with `Program` (e.g.
-`incompleteInitTxProgram`).
+`incompleteInitializationTxProgram`).
 
 Note that this SDK is under ongoing development and these conventions may not
 hold for every single function yet.

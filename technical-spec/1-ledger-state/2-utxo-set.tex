@@ -37,7 +37,7 @@ Within the context of a Midgard block, the utxo set that we are interested in co
 This is the utxo set that we transform into an MPT and place into the block body's \code{utxo} field.
 
 
-\notebox{Midgard requires all L2 datums to be inline.}
+\notebox{Midgard L2 outputs may have no datum or an inline datum. Datum hashes are not supported for L2 outputs.}
 \todo
 
 \notebox{Midgard uses a different network ID for L2 utxos' addresses.}

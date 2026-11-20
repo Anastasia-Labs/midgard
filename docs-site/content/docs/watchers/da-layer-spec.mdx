@@ -1,0 +1,28 @@
+---
+title: "DA Layer & Archive Node (Spec)"
+description: "The protocol-level data-availability layer and archive node design."
+---
+
+At the protocol level, data availability is specified in Chapter 6 of the
+specification,
+[Off-Chain Data Architecture](/docs/spec/offchain-data-architecture)
+(`technical-spec/6-offchain-data-architecture/`).
+
+## What the spec covers
+
+- **DA layer**: how block payloads are published, replicated, and attested by the
+  committee so that anyone can reconstruct L2 state. This is what makes the
+  optimistic model work: a fraud proof is only possible when the data behind a block
+  is retrievable.
+- **Archive node**: long-term storage and retrieval of historical block data.
+
+The [DA committee node](/docs/watchers/da-committee-node) is the current repository
+implementation of the committee-retained DA path, and the
+[`da-attestation` validator](/docs/onchain/da-validators) is its on-chain control plane.
+The Leios and Mithril paths described in the chapter are design direction, not
+implemented here.
+
+## Related
+
+- [Off-Chain Data Architecture (spec)](/docs/spec/offchain-data-architecture)
+- [Ledger Rules, DA rules](/docs/spec/ledger-rules)

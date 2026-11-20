@@ -1,0 +1,49 @@
+---
+title: "Database & State"
+description: "The node's PostgreSQL views, LevelDB Merkle Patricia Forestry state, and database migration commands."
+---
+
+<Callout type="error" title="Read the state-reset rules first">
+Local database state and on-chain protocol state are one system. Wiping the database
+under a live deployment produces an unauditable split-brain. See
+[Compatibility &amp; State-Reset Rules](/docs/operators/node/compatibility-rules) before
+deleting a volume or a database.
+</Callout>
+
+The Midgard node keeps its state across two stores:
+
+- **PostgreSQL**: relational state exposed through views including the **mempool**,
+  the **latest-ledger** view, and **immutable block history**. Application code
+  (`src/database/`) reads and writes through these.
+- **LevelDB**: holds the **Merkle Patricia Forestry** state used to produce the
+  commitments the protocol verifies on-chain.
+
+Both are **durable**, not caches. The immutable history and the MPF roots cannot be
+rebuilt from L1 alone, because L1 stores only the compact commitments. Treat neither as
+disposable.
+
+## Migrations
+
+Schema is managed through the `db:*` commands. Migrations are **explicit**: the node
+does not migrate itself on startup, and refuses to serve when the schema does not match.
+
+| Command | Effect |
+|---------|---------|
+| `db:migrate` | Applies pending schema migrations. Run before `listen`. |
+| `db:status` | Reports which migrations have been applied and which are pending. Read-only. |
+| `db:verify` | Checks that the live schema matches what the migrations describe. Read-only. |
+| `db:checksum` | Computes a checksum over durable state, for comparing two nodes or two points in time. |
+| `db:backfill-da-payloads` | Reconstructs missing DA payload rows from finalized block journals. |
+
+<Callout type="info" title="Ordering">
+Run `db:migrate`, confirm with `db:status` and `db:verify`, then start `listen`. See
+the [CLI Reference](/docs/operators/node/cli-reference).
+</Callout>
+
+## Related
+
+- [Compatibility &amp; State-Reset Rules](/docs/operators/node/compatibility-rules)
+- [Background Fibers](/docs/operators/node/background-fibers), the workers that
+  populate these stores.
+- [Benchmarks &amp; Stress Testing](/docs/operators/node/benchmarks), which documents
+  `audit-blocks-immutable`.

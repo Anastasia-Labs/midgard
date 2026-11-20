@@ -1,14 +1,22 @@
+import { decodeMidgardTxOutput } from '@al-ft/lucid-midgard';
+import { CML, UTxO } from '@lucid-evolution/lucid';
 import { Effect } from 'effect';
 
+import { formatError } from '../../utils/common.js';
 import { logFailedTransaction, logSubmittedTransaction } from '../../utils/logging.js';
 import { MidgardNodeConfig, TRANSACTION_CONSTANTS } from '../types.js';
 
-// Simple error types for better error handling
+/**
+ * Normalized error variants returned by node-client read paths.
+ */
 export type SubmitTxError =
   | { _tag: 'NetworkError'; error: string }
   | { _tag: 'ValidationError'; error: string }
   | { _tag: 'UnknownError'; error: string };
 
+/**
+ * Thin HTTP client for Midgard node endpoints used by the tx generator.
+ */
 export class MidgardNodeClient {
   private readonly baseUrl: string;
   private readonly retryAttempts: number;
@@ -18,54 +26,68 @@ export class MidgardNodeClient {
   constructor(config: MidgardNodeConfig) {
     this.baseUrl = config.baseUrl;
     this.retryAttempts = config.retryAttempts ?? TRANSACTION_CONSTANTS.NODE_DEFAULTS.RETRY_ATTEMPTS;
+    if (!Number.isSafeInteger(this.retryAttempts) || this.retryAttempts < 1) {
+      throw new Error('Node retry attempts must be a positive integer');
+    }
     this.retryDelay = config.retryDelay ?? TRANSACTION_CONSTANTS.NODE_DEFAULTS.RETRY_DELAY;
     this.enableLogs = config.enableLogs ?? true;
   }
 
   /**
-   * Check node availability by making a dummy request
+   * Decodes one raw UTxO payload returned by the node into Lucid's core UTxO
+   * shape.
    */
-  async isAvailable(
-    timeoutMs: number = TRANSACTION_CONSTANTS.NODE_DEFAULTS.AVAILABILITY_TIMEOUT
-  ): Promise<boolean> {
+  private decodeNodeUtxo(raw: { outref: string; outputCbor: string }): UTxO | undefined {
     try {
-      // Create an AbortController to allow for timeouts
-      const controller = new AbortController();
-      const signal = controller.signal;
-
-      // Set a timeout if provided
-      let timeoutId: NodeJS.Timeout | undefined;
-      if (timeoutMs) {
-        timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      const outRefBytes = Buffer.from(raw.outref, 'hex');
+      const outputBytes = Buffer.from(raw.outputCbor, 'hex');
+      const input = CML.TransactionInput.from_cbor_bytes(outRefBytes);
+      const outputIndex = Number(input.index());
+      if (!Number.isSafeInteger(outputIndex)) {
+        return undefined;
       }
-
-      try {
-        // Try to fetch a dummy transaction status - if the node is up, it will return 404
-        // If the node is down, it will throw a connection error
-        const response = await fetch(`${this.baseUrl}/tx?tx_hash=${'0'.repeat(64)}`, { signal });
-
-        // Clear timeout
-        if (timeoutId) clearTimeout(timeoutId);
-
-        return response.status === 404;
-      } catch (error) {
-        // Clear timeout to prevent memory leaks
-        if (timeoutId) clearTimeout(timeoutId);
-
-        // Check if this was a timeout abort or a different error
-        if (error instanceof DOMException && error.name === 'AbortError') {
-          return false;
-        }
-
-        throw error; // Re-throw other errors to be caught by the outer try/catch
-      }
-    } catch (error) {
-      return false;
+      const output = decodeMidgardTxOutput(outputBytes).txOutput;
+      return {
+        txHash: input.transaction_id().to_hex(),
+        outputIndex,
+        address: output.address,
+        assets: output.assets,
+        ...(output.datum == null ? {} : { datum: output.datum.cbor }),
+      };
+    } catch {
+      return undefined;
     }
   }
 
   /**
-   * Submit a transaction to the node with retries
+   * Checks whether the node endpoint is reachable within the provided timeout.
+   *
+   * Any HTTP response counts as "available" because bootstrap state may change
+   * the exact status code even when the node is healthy.
+   */
+  async isAvailable(
+    timeoutMs: number = TRANSACTION_CONSTANTS.NODE_DEFAULTS.AVAILABILITY_TIMEOUT
+  ): Promise<boolean> {
+    const controller = new AbortController();
+    const timeoutId = timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : undefined;
+
+    try {
+      const response = await fetch(`${this.baseUrl}/tx?tx_hash=${'0'.repeat(64)}`, {
+        signal: controller.signal,
+      });
+      // Any HTTP response means the node is reachable; status code semantics
+      // can vary depending on DB/bootstrap state.
+      return response.status >= 100;
+    } catch {
+      return false;
+    } finally {
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
+    }
+  }
+
+  /**
+   * Submits a transaction to the node and falls back to a structured status
+   * result when the node is unavailable.
    */
   submitTransaction(cborHex: string, txType: string = 'Transaction') {
     return Effect.tryPromise((signal: AbortSignal) =>
@@ -79,63 +101,57 @@ export class MidgardNodeClient {
           };
         }
 
-        let attempts = 0;
-        // while (attempts < this.retryAttempts) {
-        try {
-          const response = await fetch(
-            `${this.baseUrl}/submit?tx_cbor=${encodeURIComponent(cborHex)}`,
-            {
+        for (let attempt = 1; ; attempt++) {
+          try {
+            const response = await fetch(`${this.baseUrl}/submit`, {
               method: 'POST',
               headers: {
-                'Content-Type': 'text/plain',
+                'Content-Type': 'application/json',
               },
+              body: JSON.stringify({ tx_cbor: cborHex }),
               signal,
+            });
+
+            if (!response.ok) {
+              const error = await response
+                .json()
+                .catch(() => ({ error: `Unexpected status: ${response.status}` }));
+              throw new Error(
+                error.error || error.message || `Unexpected status: ${response.status}`
+              );
             }
-          );
 
-          if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.message || `Unexpected status: ${response.status}`);
-          }
-
-          const result = await response.json();
-
-          // Log the successful transaction submission
-          if (this.enableLogs && result && result.txId) {
-            logSubmittedTransaction(result.txId, txType);
-          }
-
-          // For successful submissions, return the raw result
-          return result;
-        } catch (error) {
-          attempts++;
-          if (attempts === this.retryAttempts) {
-            // Log the failed transaction if we've exhausted all attempts
-            if (this.enableLogs) {
-              const errorMsg = error instanceof Error ? error.message : String(error);
-              logFailedTransaction('unknown', txType, errorMsg);
+            const result = await response.json();
+            // Log the successful transaction submission
+            if (this.enableLogs && result && result.txId) {
+              logSubmittedTransaction(result.txId, txType);
             }
-            throw error; // Let the Effect.catchAll handle it
+            // For successful submissions, return the raw result
+            return result;
+          } catch (error) {
+            if (attempt >= this.retryAttempts) {
+              // Log the failed transaction if we've exhausted all attempts
+              if (this.enableLogs) {
+                logFailedTransaction('unknown', txType, formatError(error));
+              }
+              throw error; // Let the Effect.catchAll handle it
+            }
+            await new Promise((resolve) => setTimeout(resolve, this.retryDelay));
           }
-          await new Promise((resolve) => setTimeout(resolve, this.retryDelay));
         }
-        // }
-
-        throw new Error('All retry attempts failed');
       })()
     ).pipe(
       // Handle errors by converting them to our status format
       Effect.catchAll((error) =>
         Effect.succeed(
-          error instanceof TypeError ||
-            (error instanceof Error && error.message === 'Node is not available')
+          error instanceof TypeError
             ? {
                 status: 'NODE_UNAVAILABLE',
                 message: 'Node is not available - transaction will be stored locally',
               }
             : {
                 status: 'ERROR',
-                error: error instanceof Error ? error.message : String(error),
+                error: formatError(error),
               }
         )
       ),
@@ -144,7 +160,7 @@ export class MidgardNodeClient {
   }
 
   /**
-   * Get transaction status from the node
+   * Retrieves the node's status for a previously submitted transaction.
    */
   getTransactionStatus(txHash: string) {
     return Effect.tryPromise({
@@ -163,8 +179,30 @@ export class MidgardNodeClient {
         if (error instanceof Error) {
           return { _tag: 'ValidationError', error: error.message };
         }
-        return { _tag: 'UnknownError', error: String(error) };
+        return { _tag: 'UnknownError', error: formatError(error) };
       },
     });
+  }
+
+  /**
+   * Retrieve spendable UTxOs from the node for a specific address.
+   * Invalid/non-Cardano entries are ignored.
+   */
+  async getSpendableUtxos(address: string): Promise<UTxO[]> {
+    const response = await fetch(`${this.baseUrl}/utxos?address=${encodeURIComponent(address)}`);
+    if (!response.ok) {
+      return [];
+    }
+
+    const data = (await response.json()) as {
+      utxos?: Array<{ outref: string; outputCbor: string }>;
+    };
+    if (!Array.isArray(data.utxos)) {
+      return [];
+    }
+
+    return data.utxos
+      .map((raw) => this.decodeNodeUtxo(raw))
+      .filter((utxo): utxo is UTxO => utxo !== undefined);
   }
 }

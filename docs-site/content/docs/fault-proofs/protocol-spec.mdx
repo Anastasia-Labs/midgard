@@ -1,0 +1,37 @@
+---
+title: "Fraud-Proof Protocol (Spec)"
+description: "The protocol-level fraud-proof design, catalogue, tokens, and the computation-thread state machine."
+---
+
+The fault-proof tooling is the off-chain driver for the protocol defined in
+Chapters 4 and 7 of the specification:
+[Proof Protocol](/docs/spec/proof-protocol) and
+[Phase-Two Validation](/docs/spec/phase-two-validation).
+
+## The model
+
+- **Fraud-proof catalogue**: the enumerated categories of invalidity a block can be
+  challenged for (double-spend, invalid-range, missing/invalid signatures, min-fee,
+  no-input / zero-input, reference-input issues, and more).
+- **Computation thread**: a single-threaded state machine that steps a proof to a
+  verdict across multiple transactions, so verification cost is bounded per
+  transaction. Its token is minted when the challenge opens and burned when the proof
+  concludes.
+- **Fraud-proof tokens**: minted on the final step, once the computation thread has
+  succeeded. A `fraud_proof` token is the permanent record of a concluded proof, not
+  authorization to begin one.
+
+<Mermaid chart={`sequenceDiagram
+  participant W as Watcher
+  participant L1 as L1 validators
+  W->>L1: submit-init (mint computation-thread token)
+  loop each step
+    W->>L1: submit-step-0N (advance computation thread)
+  end
+  L1-->>W: final step mints fraud_proof token, burns thread
+  W->>L1: remove-fraudulent-block`} />
+
+## Related
+
+- On-chain: [Fraud-Proof Machines](/docs/onchain/fraud-proof-machines)
+- Detection: [Watchers](/docs/watchers/concept)

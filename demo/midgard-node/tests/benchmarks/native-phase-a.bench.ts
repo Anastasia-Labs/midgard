@@ -1,0 +1,227 @@
+import fs from "node:fs";
+import path from "node:path";
+
+import {
+  cardanoTxBytesToMidgardNativeTxCanonicalCbor,
+  computeMidgardNativeTxId,
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  deriveMidgardNativeTxCompact,
+  encodeMidgardNativeTxCanonical,
+} from "@al-ft/midgard-core/codec";
+import { QueuedTx, runPhaseAValidation } from "@al-ft/midgard-validation";
+import { Effect } from "effect";
+import { describe, expect, it } from "vitest";
+
+import {
+  benchmarkOperation,
+  buildBenchmarkMeta,
+  type OperationStats,
+  printOperationTable,
+  writeBenchmarkJson,
+} from "./benchmark-utils.js";
+
+type TxFixture = {
+  readonly cborHex: string;
+  readonly txId: string;
+};
+
+type Report = {
+  meta: {
+    generatedAtIso: string;
+    benchmarkVersion: string;
+    hostname: string;
+    cpuModel: string;
+    cpuCount: number;
+    platform: string;
+    nodeVersion: string;
+    gitCommit: string;
+    txCount: number;
+    nativeAccepted: number;
+    nativeRejected: number;
+  };
+  config: {
+    quickMode: boolean;
+    warmupRuns: number;
+    measuredRuns: number;
+    nativeExpectedNetworkId: string;
+    concurrency: number;
+  };
+  operations: OperationStats[];
+};
+
+type PhaseAVerdicts = {
+  accepted: number;
+  rejected: number;
+  verdictByArrival: readonly string[];
+};
+
+const BENCHMARK_VERSION = "1.0.0";
+const QUICK_MODE = process.env.BENCH_QUICK === "1";
+const WARMUP_RUNS = QUICK_MODE ? 1 : 2;
+const MEASURED_RUNS = QUICK_MODE ? 5 : 15;
+const TX_LIMIT = QUICK_MODE ? 300 : 1500;
+const CONCURRENCY = Number.parseInt(
+  process.env.BENCH_PHASE_A_CONCURRENCY ?? "32",
+  10,
+);
+const EXPECTED_NETWORK_ID = BigInt(process.env.BENCH_NETWORK_ID ?? "0");
+
+const fixturePath = path.resolve(__dirname, "../txs/txs_0.json");
+const outputPath = path.resolve(
+  __dirname,
+  "./output/native-phase-a-benchmark.json",
+);
+const EMPTY_CBOR_LIST = Buffer.from([0x80]);
+
+const runPhaseAOnce = async (
+  queuedTxs: readonly QueuedTx[],
+  expectedNetworkId: bigint,
+): Promise<PhaseAVerdicts> => {
+  const result = await Effect.runPromise(
+    runPhaseAValidation(queuedTxs, {
+      expectedNetworkId,
+      minFeeA: 0n,
+      minFeeB: 0n,
+      concurrency: CONCURRENCY,
+      strictnessProfile: "phase1_midgard",
+    }),
+  );
+  const acceptedById = new Set(
+    result.accepted.map((tx) => tx.ledgerTx.txId.toString("hex")),
+  );
+  const rejectedCodeById = new Map(
+    result.rejected.map((tx) => [tx.txId.toString("hex"), tx.code]),
+  );
+  const verdictByArrival = queuedTxs.map((queuedTx) => {
+    const txIdHex = queuedTx.txId.toString("hex");
+    if (acceptedById.has(txIdHex)) {
+      return "accepted";
+    }
+    const rejectCode = rejectedCodeById.get(txIdHex);
+    return rejectCode === undefined ? "missing" : `rejected:${rejectCode}`;
+  });
+  return {
+    accepted: result.accepted.length,
+    rejected: result.rejected.length,
+    verdictByArrival,
+  };
+};
+
+const verdictsMatch = (
+  left: readonly string[],
+  right: readonly string[],
+): boolean =>
+  left.length === right.length && left.every((value, i) => value === right[i]);
+
+const benchmarkOptions = {
+  warmupRuns: WARMUP_RUNS,
+  measuredRuns: MEASURED_RUNS,
+} as const;
+
+describe("native tx phase-A benchmark", () => {
+  it("measures phase-A throughput for native payloads", async () => {
+    const fixtures = JSON.parse(
+      fs.readFileSync(fixturePath, "utf8"),
+    ) as readonly TxFixture[];
+    const txBytes = fixtures
+      .slice(0, TX_LIMIT)
+      .map((tx) => Buffer.from(tx.cborHex, "hex"));
+
+    const nativeCanonicalCbors = txBytes.map((bytes) =>
+      cardanoTxBytesToMidgardNativeTxCanonicalCbor(bytes),
+    );
+    const normalizedNative = nativeCanonicalCbors.map((bytes) => {
+      const converted = decodeMidgardNativeTxFullFromCanonicalCbor(bytes);
+      const normalized = {
+        version: converted.version,
+        validity: "TxIsValid" as const,
+        body: {
+          ...converted.body,
+          requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
+        },
+        witnessSet: {
+          ...converted.witnessSet,
+          addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+          scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+          redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+        },
+      };
+      return {
+        ...normalized,
+        compact: deriveMidgardNativeTxCompact(
+          normalized.body,
+          normalized.witnessSet,
+          "TxIsValid",
+        ),
+      };
+    });
+    const nativeExpectedNetworkId = EXPECTED_NETWORK_ID;
+    const nativeQueued: QueuedTx[] = normalizedNative.map((tx, i) => ({
+      txId: computeMidgardNativeTxId(tx),
+      txCbor: encodeMidgardNativeTxCanonical(tx),
+      arrivalSeq: BigInt(i),
+      createdAt: new Date(0),
+    }));
+
+    const baselineNative = await runPhaseAOnce(
+      nativeQueued,
+      nativeExpectedNetworkId,
+    );
+    if (
+      baselineNative.rejected !== 0 ||
+      baselineNative.accepted !== nativeQueued.length
+    ) {
+      throw new Error(
+        `Native benchmark baseline must fully validate: accepted=${baselineNative.accepted}, rejected=${baselineNative.rejected}`,
+      );
+    }
+
+    const operations: OperationStats[] = [
+      await benchmarkOperation(
+        "phase_a_native",
+        async () => {
+          const result = await runPhaseAOnce(
+            nativeQueued,
+            nativeExpectedNetworkId,
+          );
+          if (
+            result.accepted !== baselineNative.accepted ||
+            result.rejected !== baselineNative.rejected ||
+            !verdictsMatch(
+              result.verdictByArrival,
+              baselineNative.verdictByArrival,
+            )
+          ) {
+            throw new Error(`Native phase-A verdicts changed across runs.`);
+          }
+        },
+        nativeQueued.length,
+        benchmarkOptions,
+      ),
+    ];
+
+    const report: Report = {
+      meta: {
+        ...buildBenchmarkMeta(BENCHMARK_VERSION),
+        txCount: txBytes.length,
+        nativeAccepted: baselineNative.accepted,
+        nativeRejected: baselineNative.rejected,
+      },
+      config: {
+        quickMode: QUICK_MODE,
+        warmupRuns: WARMUP_RUNS,
+        measuredRuns: MEASURED_RUNS,
+        nativeExpectedNetworkId: nativeExpectedNetworkId.toString(),
+        concurrency: CONCURRENCY,
+      },
+      operations,
+    };
+
+    writeBenchmarkJson(outputPath, report);
+
+    console.log(`\nNative phase-A benchmark written to ${outputPath}`);
+    printOperationTable(operations);
+
+    expect(operations.length).toBe(1);
+  });
+});

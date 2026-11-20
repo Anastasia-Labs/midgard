@@ -1,0 +1,15 @@
+{
+  "title": "On-Chain Validators",
+  "pages": [
+    "overview",
+    "conventions",
+    "script-context-invariants",
+    "consensus-validators",
+    "operator-directory",
+    "user-events",
+    "da-validators",
+    "fraud-proof-machines",
+    "phas-membership",
+    "merkle-plutarch"
+  ]
+}

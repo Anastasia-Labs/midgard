@@ -1,0 +1,30 @@
+diff --git a/index.js b/index.js
+index 1d86c9d..c1a9b0f 100644
+--- a/index.js
++++ b/index.js
+@@ -275,7 +275,7 @@ function toHex (n) {
+
+ var Proto = Blake2b
+
+-module.exports = function createHash (outlen, key, salt, personal, noAssert) {
++function createHash (outlen, key, salt, personal, noAssert) {
+   if (noAssert !== true) {
+     assert(outlen >= BYTES_MIN, 'outlen must be at least ' + BYTES_MIN + ', was given ' + outlen)
+     assert(outlen <= BYTES_MAX, 'outlen must be at most ' + BYTES_MAX + ', was given ' + outlen)
+@@ -297,6 +297,8 @@ module.exports = function createHash (outlen, key, salt, personal, noAssert) {
+   return new Proto(outlen, key, salt, personal)
+ }
+
++module.exports = createHash
++
+ module.exports.ready = function (cb) {
+   b2wasm.ready(function () { // ignore errors
+     cb()
+@@ -318,6 +320,6 @@ var PERSONALBYTES = module.exports.PERSONALBYTES = 16
+ b2wasm.ready(function (err) {
+   if (!err) {
+     module.exports.WASM_LOADED = true
+-    module.exports = b2wasm
++    Proto = b2wasm
+   }
+ })

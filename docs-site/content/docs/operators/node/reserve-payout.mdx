@@ -1,0 +1,43 @@
+---
+title: "Reserve & Payout"
+description: "Operating the protocol reserve and running withdrawal payouts."
+---
+
+The reserve holds protocol funds. A payout moves funds out of the reserve to settle a
+valid withdrawal on L1. These operator commands drive the flow that the
+[`reserve` and `payout` validators](/docs/onchain/consensus-validators) enforce on-chain.
+
+Reserve payout matters when a user has submitted a withdrawal order, the order has been
+classified valid, and the funds must now leave the L2 reserve. It is the last step of a
+withdrawal, and the only one that moves real value on L1.
+
+<Callout type="error" title="A concluded payout cannot be reversed">
+`conclude-payout` settles on L1. There is no undo. Confirm the withdrawal order, the
+payout's target, and the reserve balance before concluding. Per
+[Project Status](/docs/getting-started/status), node-level invalid-withdrawal refund
+submission and public operator runbooks remain blockers, so treat these flows as
+operator-supervised rather than routine.
+</Callout>
+
+## Commands
+
+Run them in order. Each one requires the previous to have been confirmed on L1.
+
+| Command | Effect |
+| --- | --- |
+| `reserve-utxos` | Reads the reserve UTxOs. Read-only, safe to run at any time. |
+| `initialize-payout` | Creates the payout UTxO for a classified-valid withdrawal. Nothing has moved yet. |
+| `add-reserve-funds-to-payout` | Spends reserve funds into the payout. Value leaves the reserve here. |
+| `conclude-payout` | Settles the payout on L1 and completes the withdrawal. Irreversible. |
+| `payout-status` | Reports where a payout is in the sequence above. Read-only. |
+
+<Mermaid chart={`flowchart LR
+  R["reserve"] --> I["initialize-payout"]
+  I --> A["add-reserve-funds-to-payout"]
+  A --> C["conclude-payout"]
+  C --> W["withdrawal settled"]`} />
+
+## Related
+
+- SDK builders: [`midgard-sdk` reserve &amp; payout](/docs/sdk/midgard-sdk/reserve-and-payout)
+- [CLI Reference](/docs/operators/node/cli-reference)

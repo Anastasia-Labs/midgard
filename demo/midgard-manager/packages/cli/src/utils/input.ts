@@ -1,6 +1,8 @@
 /**
- * Waits for user to press any key
- * @returns A promise that resolves when any key is pressed
+ * Waits for one raw keypress before resuming normal stdin handling.
+ *
+ * `Ctrl+C` is treated as an immediate process exit so the prompt behaves like a
+ * normal terminal application instead of trapping the interrupt.
  */
 export function waitForKeypress(): Promise<void> {
   return new Promise((resolve) => {

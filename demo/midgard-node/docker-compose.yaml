@@ -9,10 +9,10 @@ x-logging:
 services:
   midgard-node:
     build:
-      context: .
+      context: ..
       additional_contexts:
-        - sdk=../midgard-sdk
-      dockerfile: ./Dockerfile
+        - onchain=../../onchain/aiken
+      dockerfile: midgard-node/Dockerfile
     env_file:
       - .env
     labels:
@@ -26,14 +26,51 @@ services:
     ports:
       - "3000:3000" # api server
       - "9464:9464" # prometheus exporter
+      - "39002:39002" # DA libp2p producer
       # - "4318:4318" # opentelemetry
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./db:/app/db
+      - ./deploymentInfo:/app/deploymentInfo
+    mem_limit: "8g"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3000/readyz').then((response)=>process.exit(response.ok?0:1)).catch(()=>process.exit(1))
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 30s
     depends_on:
       postgres:
         condition: service_healthy
+      midgard-node-migrate:
+        condition: service_completed_successfully
     logging: *default-logging
     restart: always
+    networks:
+      midgard_net:
+
+  midgard-node-migrate:
+    build:
+      context: ..
+      additional_contexts:
+        - onchain=../../onchain/aiken
+      dockerfile: midgard-node/Dockerfile
+    env_file:
+      - .env
+    command:
+      - node
+      - ./dist/index.js
+      - db:migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    logging: *default-logging
     networks:
       midgard_net:
   
@@ -189,10 +226,12 @@ services:
 
   midgard-node-tests:
     build:
-      context: .
+      context: ..
       additional_contexts:
-        - sdk=../midgard-sdk
-      dockerfile: ./Dockerfile
+        - onchain=../../onchain/aiken
+      dockerfile: midgard-node/Dockerfile
+    env_file:
+      - .env
     command: ["sh", "-c", "yes | pnpm test"]
     profiles:
       - test

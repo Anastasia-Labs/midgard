@@ -67,6 +67,8 @@ nonMembershipStakeValidator = plam $ \ctx -> P.do
     ]
 
 -- Test whether an element is absent in the trie with a specific value.
+-- | Checks whether the provided Merkle proof excludes the queried key.
+-- | Checks that the provided trie proof excludes the requested key.
 pexcludes :: Term s (PMerklePatriciaForestry :--> PByteString :--> PProof :--> PBool)
 pexcludes = phoistAcyclic $ plam $ \self key proof ->
   pmatch self $ \(PMerklePatriciaForestry root) ->

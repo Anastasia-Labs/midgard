@@ -2,8 +2,9 @@ use aiken/crypto.{VerificationKeyHash}
 use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}
+use cardano/transaction.{OutputReference}
 use midgard/common/types.{PosixTime}
-use midgard/operator_directory
+use midgard/operator_directory.{SlashingArguments}
 
 /// TODO: Refer to state queue's library module.
 pub const root_asset_name: AssetName = "MIDGARD_ACTIVE_OPERATORS"
@@ -21,6 +22,7 @@ pub const node_asset_name_prefix_length: Int =
 
 pub type NodeData {
   bond_unlock_time: Option<PosixTime>,
+  inactivity_strikes: Int,
 }
 
 pub type Datum =
@@ -29,64 +31,73 @@ pub type Datum =
 pub type SpendRedeemer {
   ListStateTransition
   UpdateBondHoldNewState {
+    active_operator: VerificationKeyHash,
     active_node_input_index: Int,
     active_node_output_index: Int,
     hub_oracle_ref_input_index: Int,
-    state_queue_input_index: Int,
     state_queue_redeemer_index: Int,
   }
   UpdateBondHoldNewSettlement {
+    active_operator: VerificationKeyHash,
     active_node_input_index: Int,
     active_node_output_index: Int,
     hub_oracle_ref_input_index: Int,
     settlement_input_index: Int,
     settlement_redeemer_index: Int,
-    new_bond_unlock_time: PosixTime,
+    resolution_time: PosixTime,
+  }
+  StrikeForInactivity {
+    active_node_input_index: Int,
+    active_node_output_index: Int,
+    operator: VerificationKeyHash,
+    active_node_link: linked_list.Link,
+    scheduler_input_index: Int,
+    scheduler_redeemer_index: Int,
+    hub_oracle_ref_input_index: Int,
+  }
+}
+
+pub type OperatorRemovalSchedulerSync {
+  ShowOperatorIsInactive { scheduler_ref_input_index: Int }
+  ShowSchedulerIsAdvancing {
+    scheduler_input_index: Int,
+    scheduler_redeemer_index: Int,
+    removing_operators_anchor_element_key: Option<linked_list.NodeKey>,
+    removing_operator_is_the_last_member: Bool,
   }
 }
 
 pub type MintRedeemer {
   Init { output_index: Int }
-  Deinit { input_index: Int }
+  Deinit
   ActivateOperator {
     new_active_operator_key: VerificationKeyHash,
-    active_operator_anchor_element_input_index: Int,
     active_operator_anchor_element_output_index: Int,
     active_operator_inserted_node_output_index: Int,
     registered_operators_redeemer_index: Int,
-  }
-  RemoveOperatorBadState {
-    slashed_active_operator_key: VerificationKeyHash,
-    hub_oracle_ref_input_index: Int,
-    active_operator_anchor_element_input_index: Int,
-    active_operator_slashed_node_input_index: Int,
-    active_operator_anchor_element_output_index: Int,
-    state_queue_redeemer_index: Int,
-  }
-  RemoveOperatorBadSettlement {
-    slashed_active_operator_key: VerificationKeyHash,
-    hub_oracle_ref_input_index: Int,
-    active_operator_anchor_element_input_index: Int,
-    active_operator_slashed_node_input_index: Int,
-    active_operator_anchor_element_output_index: Int,
-    settlement_input_index: Int,
-    settlement_redeemer_index: Int,
+    active_operators_set_was_empty: Bool,
   }
   RetireOperator {
     active_operator_key: VerificationKeyHash,
-    active_operator_anchor_element_input_index: Int,
-    active_operator_removed_node_input_index: Int,
+    hub_oracle_ref_input_index: Int,
+    active_operator_anchor_element_input_outref: OutputReference,
     active_operator_anchor_element_output_index: Int,
     retired_operators_redeemer_index: Int,
+    penalize_for_inactivity: Bool,
+    operator_removal_scheduler_sync: OperatorRemovalSchedulerSync,
+  }
+  SlashOperator {
+    slashing_arguments: SlashingArguments,
+    operator_removal_scheduler_sync: OperatorRemovalSchedulerSync,
   }
 }
 
 pub fn finalize_linked_list(
-  eval: linked_list.Eval,
+  eval: linked_list.ElementEval<Bool>,
   nft_policy_id: PolicyId,
 ) -> Bool {
   eval
-    |> linked_list.run_eval_with(
+    |> linked_list.run_element_with(
         nft_policy_id,
         root_asset_name,
         node_asset_name_prefix,

@@ -16,15 +16,18 @@
 
 use aiken/builtin
 use aiken/collection/dict.{Dict}
-use aiken/crypto.{ScriptHash, Signature, VerificationKey, VerificationKeyHash}
-use cardano/address.{Address}
-use cardano/assets.{Lovelace, Value}
-use cardano/transaction.{
-  Datum as CardanoDatum, Output, OutputReference, Redeemer, ScriptPurpose,
-  ValidityRange,
+use aiken/crypto.{
+  ScriptHash, Signature, VerificationKey, VerificationKeyHash, blake2b_224,
 }
-use midgard/common/constants.{empty_merkle_tree_root}
+use aiken/primitive/bytearray
+use cardano/address.{Address, Credential}
+use cardano/assets.{Lovelace}
+use cardano/transaction.{
+  Datum as CardanoDatum, OutputReference, Redeemer, ScriptPurpose, ValidityRange,
+}
+use env
 use midgard/common/types.{H28, H32, MerkleRoot, PosixTime, ValuePairs}
+use midgard/common/utils
 
 // # Ledger state types
 
@@ -43,14 +46,29 @@ pub type Block {
 pub type HeaderHash =
   H28<Header>
 
+pub type MidgardLedger =
+  Dict<OutputReference, MidgardOutput>
+
+pub type MidgardLedgerRoot =
+  MerkleRoot<OutputReference, MidgardOutput>
+
 /// Midgard block header.
 /// Compact representation.
 pub type Header {
-  prev_utxos_root: MerkleRoot,
-  utxos_root: MerkleRoot,
-  transactions_root: MerkleRoot,
-  deposits_root: MerkleRoot,
-  withdrawals_root: MerkleRoot,
+  prev_utxos_root: MidgardLedgerRoot,
+  utxos_root: MidgardLedgerRoot,
+  withdrawals_root: WithdrawalsRoot,
+  forced_transactions_root: ForcedTransactionsRoot,
+  transactions_root: MidgardTxsRoot,
+  deposits_root: DepositsRoot,
+  transition_trace_root: TransitionTraceRoot,
+  event_to_step_root: EventToStepRoot,
+  withdrawal_count: Int,
+  forced_transaction_count: Int,
+  l2_transaction_count: Int,
+  deposit_count: Int,
+  total_event_count: Int,
+  transition_step_count: Int,
   start_time: PosixTime,
   end_time: PosixTime,
   prev_header_hash: HeaderHash,
@@ -62,10 +80,13 @@ pub type Header {
 /// Full representation.
 /// This type is not used in onchain code.
 pub type BlockBody {
-  utxos: Dict<OutputReference, Output>,
-  transactions: Dict<MidgardTxId, MidgardTxCompact>,
-  deposits: Dict<DepositId, DepositEvent>,
-  withdrawals: Dict<WithdrawalId, WithdrawalEvent>,
+  utxos: MidgardLedger,
+  withdrawals: Withdrawals,
+  forced_transactions: ForcedTransactions,
+  transactions: MidgardTxs,
+  deposits: Deposits,
+  transition_trace: TransitionTrace,
+  event_to_step: EventToStep,
 }
 
 // ## Confirmed state
@@ -75,7 +96,7 @@ pub type BlockBody {
 pub type ConfirmedState {
   header_hash: HeaderHash,
   prev_header_hash: HeaderHash,
-  utxo_root: MerkleRoot,
+  utxo_root: MidgardLedgerRoot,
   start_time: PosixTime,
   end_time: PosixTime,
   protocol_version: Int,
@@ -84,7 +105,7 @@ pub type ConfirmedState {
 pub const genesis_header_hash: HeaderHash =
   #"00000000000000000000000000000000000000000000000000000000"
 
-pub const genesis_utxo_root: MerkleRoot = empty_merkle_tree_root
+pub const genesis_utxo_root: MidgardLedgerRoot = env.empty_merkle_tree_root
 
 pub const genesis_protocol_version: Int = 0
 
@@ -104,11 +125,18 @@ pub fn unsafe_event_to_key_value_pair(
 
 // ### Deposit event
 
+pub type Deposits =
+  Dict<DepositId, DepositInfo>
+
+pub type DepositsRoot =
+  MerkleRoot<DepositId, DepositInfo>
+
 pub type DepositId =
   OutputReference
 
 pub type DepositInfo {
   l2_address: Address,
+  l2_network_id: Int,
   l2_datum: Option<Data>,
 }
 
@@ -119,13 +147,19 @@ pub type DepositEvent {
 
 // ### Withdrawal event
 
+pub type Withdrawals =
+  Dict<WithdrawalId, WithdrawalInfo>
+
+pub type WithdrawalsRoot =
+  MerkleRoot<WithdrawalId, WithdrawalInfo>
+
 pub type WithdrawalId =
   OutputReference
 
 pub type WithdrawalBody {
   l2_outref: OutputReference,
   l2_owner: VerificationKeyHash,
-  l2_value: ValuePairs,
+  l2_value: MidgardValue,
   l1_address: Address,
   l1_datum: CardanoDatum,
 }
@@ -141,6 +175,7 @@ pub type WithdrawalValidity {
   IncorrectWithdrawalValue
   IncorrectWithdrawalSignature
   TooManyTokensInWithdrawal
+  UnpayableWithdrawalValue
 }
 
 pub type WithdrawalInfo {
@@ -164,17 +199,46 @@ pub type TxOrderEvent {
   tx: MidgardTxCompact,
 }
 
+pub type ForcedTransactions =
+  Dict<TxOrderId, ForcedInclusionTx>
+
+pub type ForcedTransactionsRoot =
+  MerkleRoot<TxOrderId, ForcedInclusionTx>
+
 // ## Transaction
 
+/// > [!NOTE]
+/// > This is the hash of the compact transaction body. The transaction root
+/// > maps this id to MidgardTxCompact, which carries the compact body inline.
 pub type MidgardTxId =
-  H32<MidgardTxCompact>
+  H32<MidgardTxBodyCompact>
+
+pub type MidgardTxWitsHash =
+  H32<MidgardTxWitnessSetCompact>
 
 /// Midgard transaction.
+pub type MidgardTx {
+  body: MidgardTxBody,
+  wits: MidgardTxWitnessSet,
+  validity: MidgardTxValidity,
+}
+
+pub type MidgardTxs =
+  Dict<MidgardTxId, MidgardTxCompact>
+
+pub type MidgardTxsRoot =
+  MerkleRoot<MidgardTxId, MidgardTxCompact>
+
 /// Compact representation.
 pub type MidgardTxCompact {
-  body: H32<MidgardTxBodyCompact>,
-  wits: H32<MidgardTxWitnessSetCompact>,
+  body: MidgardTxBodyCompact,
+  wits: MidgardTxWitsHash,
   validity: MidgardTxValidity,
+}
+
+pub type MidgardTxCompactWithoutValidity {
+  body: MidgardTxBodyCompact,
+  wits: MidgardTxWitsHash,
 }
 
 // TODO
@@ -187,26 +251,123 @@ pub type MidgardTxValidity {
   UnbalancedTx
 }
 
+pub type ForcedInclusionTx {
+  tx_compact: MidgardTxCompactWithoutValidity,
+  operator_validity: MidgardTxValidity,
+}
+
+pub type TransitionPhase {
+  Withdrawal
+  ForcedTransaction
+  L2Transaction
+  Deposit
+}
+
+pub type EventKey {
+  WithdrawalEventKey { withdrawal_id: WithdrawalId }
+  ForcedTransactionEventKey { tx_order_id: TxOrderId }
+  L2TransactionEventKey { tx_id: MidgardTxId }
+  DepositEventKey { deposit_id: DepositId }
+}
+
+pub type EventToStepValue {
+  step_index: Int,
+  phase: TransitionPhase,
+}
+
+pub type EventToStep =
+  Dict<EventKey, EventToStepValue>
+
+pub type EventToStepRoot =
+  MerkleRoot<EventKey, EventToStepValue>
+
+pub type TransitionStep {
+  schema_version: Int,
+  step_index: Int,
+  event_key: EventKey,
+  phase: TransitionPhase,
+  pre_utxos_root: MidgardLedgerRoot,
+  post_utxos_root: MidgardLedgerRoot,
+}
+
+pub type TransitionTrace =
+  Dict<Int, TransitionStep>
+
+pub type TransitionTraceRoot =
+  MerkleRoot<Int, TransitionStep>
+
 // ### Transaction body
 
-/// Datatype to allow inputs of a Midgard tx to be in custom order.
-pub type MidgardInputId {
-  input_index: Int,
-  transaction_id: MidgardTxId,
-  output_index: Int,
+/// TODO
+pub type MidgardAddress =
+  Credential
+
+/// TODO
+pub type MidgardValue =
+  ValuePairs
+
+pub type MidgardValueHash =
+  H32<MidgardValue>
+
+/// TODO
+pub type MidgardOutput {
+  address: MidgardAddress,
+  value: MidgardValue,
+  datum: Option<Data>,
+  reference_script: Option<ScriptHash>,
+}
+
+pub type MidgardInputs =
+  List<OutputReference>
+
+pub type MidgardInputsHash =
+  H32<MidgardInputs>
+
+pub type MidgardOutputs =
+  List<MidgardOutput>
+
+pub type MidgardOutputsHash =
+  H32<MidgardOutputs>
+
+pub type Observers =
+  List<ScriptHash>
+
+pub type ObserversHash =
+  H32<Observers>
+
+pub type Signers =
+  List<VerificationKeyHash>
+
+pub type SignersHash =
+  H32<Signers>
+
+/// Midgard transaction body.
+/// Full representation.
+pub type MidgardTxBody {
+  spend_inputs: MidgardInputs,
+  reference_inputs: MidgardInputs,
+  outputs: MidgardOutputs,
+  fee: Lovelace,
+  validity_interval: ValidityRange,
+  required_observers: Observers,
+  required_signer_hashes: Signers,
+  mint: MidgardValue,
+  script_integrity_hash: H32<Data>,
+  auxiliary_data_hash: H32<Data>,
+  network_id: MidgardNetworkId,
 }
 
 /// Midgard transaction body.
 /// Compact representation.
 pub type MidgardTxBodyCompact {
-  spend_inputs: H32<List<OutputReference>>,
-  reference_inputs: H32<List<OutputReference>>,
-  outputs: H32<List<Output>>,
+  spend_inputs: MidgardInputsHash,
+  reference_inputs: MidgardInputsHash,
+  outputs: MidgardOutputsHash,
   fee: Lovelace,
   validity_interval: ValidityRange,
-  required_observers: H32<List<ScriptHash>>,
-  required_signer_hashes: H32<List<VerificationKeyHash>>,
-  mint: H32<Value>,
+  required_observers: ObserversHash,
+  required_signer_hashes: SignersHash,
+  mint: MidgardValueHash,
   script_integrity_hash: H32<Data>,
   auxiliary_data_hash: H32<Data>,
   network_id: MidgardNetworkId,
@@ -222,12 +383,94 @@ pub type MidgardNetworkId {
 
 // ### Transaction witnesses
 
+pub type AddressWits =
+  Pairs<VerificationKey, Signature>
+
+pub type AddressWitsHash =
+  H32<AddressWits>
+
+pub type MidgardScriptWits =
+  Pairs<ScriptHash, MidgardScript>
+
+pub type MidgardScriptWitsHash =
+  H32<MidgardScriptWits>
+
+pub type Redeemers =
+  Pairs<ScriptPurpose, Redeemer>
+
+pub type RedeemersHash =
+  H32<Redeemers>
+
+/// Midgard transaction witnesses.
+/// Full representation.
+pub type MidgardTxWitnessSet {
+  addr_tx_wits: AddressWits,
+  script_tx_wits: MidgardScriptWits,
+  redeemer_tx_wits: Redeemers,
+}
+
 /// Midgard transaction witnesses.
 /// Compact representation.
 pub type MidgardTxWitnessSetCompact {
-  addr_tx_wits: H32<Dict<VerificationKeyHash, (VerificationKey, Signature)>>,
-  script_tx_wits: H32<Dict<ScriptHash, MidgardScript>>,
-  redeemer_tx_wits: H32<Pairs<ScriptPurpose, Redeemer>>,
+  addr_tx_wits: AddressWitsHash,
+  script_tx_wits: MidgardScriptWitsHash,
+  redeemer_tx_wits: RedeemersHash,
+}
+
+pub fn midgard_tx_body_to_compact(body: MidgardTxBody) -> MidgardTxBodyCompact {
+  let MidgardTxBody {
+    spend_inputs,
+    reference_inputs,
+    outputs,
+    fee,
+    validity_interval,
+    required_observers,
+    required_signer_hashes,
+    mint,
+    script_integrity_hash,
+    auxiliary_data_hash,
+    network_id,
+  } = body
+  MidgardTxBodyCompact {
+    spend_inputs: spend_inputs |> utils.serialise_and_hash_32,
+    reference_inputs: reference_inputs |> utils.serialise_and_hash_32,
+    outputs: outputs |> utils.serialise_and_hash_32,
+    fee,
+    validity_interval,
+    required_observers: required_observers |> utils.serialise_and_hash_32,
+    required_signer_hashes: required_signer_hashes
+      |> utils.serialise_and_hash_32,
+    mint: mint |> utils.serialise_and_hash_32,
+    script_integrity_hash,
+    auxiliary_data_hash,
+    network_id,
+  }
+}
+
+pub fn midgard_tx_wits_to_compact(
+  wits: MidgardTxWitnessSet,
+) -> MidgardTxWitnessSetCompact {
+  let MidgardTxWitnessSet { addr_tx_wits, script_tx_wits, redeemer_tx_wits } =
+    wits
+  MidgardTxWitnessSetCompact {
+    addr_tx_wits: addr_tx_wits |> utils.serialise_and_hash_32,
+    script_tx_wits: script_tx_wits |> utils.serialise_and_hash_32,
+    redeemer_tx_wits: redeemer_tx_wits |> utils.serialise_and_hash_32,
+  }
+}
+
+pub fn midgard_tx_to_compact(tx: MidgardTx) -> MidgardTxCompact {
+  let MidgardTx { body, wits, validity } = tx
+  let body_compact = body |> midgard_tx_body_to_compact
+  MidgardTxCompact {
+    body: body_compact,
+    wits: wits |> midgard_tx_wits_to_compact |> utils.serialise_and_hash_32,
+    validity,
+  }
+}
+
+pub fn midgard_full_tx_to_id(tx: MidgardTx) -> MidgardTxId {
+  tx.body |> midgard_tx_body_to_compact |> utils.serialise_and_hash_32
 }
 
 /// Midgard script -- either timelock (native) or Plutus (V3).
@@ -235,4 +478,22 @@ pub type MidgardTxWitnessSetCompact {
 pub type MidgardScript {
   Timelock { script: ByteArray }
   Plutus { script: ByteArray }
+}
+
+/// TODO: This assumes the script stored under `Plutus` constructor of
+///       `MidgardScript` is the single CBOR encoding of the Flat encoded
+///       program bytes. Also uses a hardcoded Plutus version 3.
+///
+///       `Timelock` scripts are simply passed to the hash function.
+pub fn hash_midgard_script(midgard_script: MidgardScript) -> ScriptHash {
+  when midgard_script is {
+    Timelock { script } ->
+      builtin.integer_to_bytearray(True, 1, 0)
+        |> bytearray.concat(script)
+        |> blake2b_224
+    Plutus { script } ->
+      builtin.integer_to_bytearray(True, 1, env.plutus_version)
+        |> bytearray.concat(script)
+        |> blake2b_224
+  }
 }

@@ -1,0 +1,107 @@
+---
+title: "Native transaction codec"
+description: "Encoding and decoding Midgard native transactions: the canonical and compact forms and the codec modules that implement them."
+---
+
+The `codec/` module owns the **Midgard native transaction v1** encoding. It is a
+deterministic, canonical CBOR codec: every value has exactly one valid byte
+representation, and encode/decode round-trips are asserted so the on-chain and
+off-chain sides agree bit-for-bit. The barrel export (`@al-ft/midgard-core/codec`)
+re-exports every module below.
+
+## Canonical vs compact transactions
+
+A Midgard native transaction exists in two coupled forms, both defined in
+`codec/native.ts`:
+
+- **Canonical** (`MidgardNativeTxCanonical`), carries the full CBOR preimages of
+  each body/witness field (`spendInputsPreimageCbor`, `outputsPreimageCbor`,
+  `mintPreimageCbor`, and so on).
+- **Compact** (`MidgardNativeTxCompact`), replaces those preimages with their
+  32-byte hashes (`spendInputsHash`, `outputsHash`, `mintHash`, …). This is the
+  form committed on L1.
+
+`MidgardNativeTxFull` is the canonical transaction paired with its derived
+compact form. The module exports derivations such as
+`deriveMidgardNativeTxBodyCompact` and `deriveMidgardNativeTxWitnessSetCompact`
+to go from canonical fields to their hashed compact counterparts, along with
+`toMidgardNativeTxCanonical` and the network/version/validity constants
+(`MIDGARD_NATIVE_TX_VERSION`, `MIDGARD_NATIVE_NETWORK_ID_NONE`,
+`MIDGARD_POSIX_TIME_NONE`, `EMPTY_NULL_ROOT`).
+
+<Callout type="info">
+The compact form is why L1 only ever stores fixed-size hashes of a transaction's
+inputs, outputs, and mint while still being able to verify the full transaction
+against its preimages.
+</Callout>
+
+## Codec modules
+
+| Module | Import subpath | Role |
+|---|---|---|
+| `cbor.ts` | `codec/cbor` | Low-level canonical CBOR: strict reader/writer (no indefinite lengths, no duplicate map keys), byte comparison, and `assertCanonicalCborRoundTrip` |
+| `errors.ts` | `codec/errors` | `MidgardTxCodecError` and the stable `MidgardTxCodecErrorCodes` |
+| `hash.ts` | `codec/hash` | Canonical Blake2b-256 32-byte hashing (`Hash32`, `computeHash32`, `ensureHash32`) |
+| `address.ts` | `codec/address` | Midgard address encode/decode and credential model |
+| `value.ts` | `codec/value` | Multi-asset value (`MidgardValue`: lovelace + policy/asset maps) |
+| `datum.ts` | `codec/datum` | Inline datums and Plutus data CBOR |
+| `output.ts` | `codec/output` | Transaction outputs (`MidgardTxOutput`) |
+| `native-script.ts` | `codec/native-script` | Native (timelock/multisig) scripts |
+| `versioned-script.ts` | `codec/versioned-script` | Versioned script references by language |
+| `script-language-views.ts` | `codec/script-language-views` | Canonical cost-model / language views |
+| `native.ts` | `codec/native` | Assembles the full native tx codec surface |
+
+Several internal helpers back `native.ts` but are not separate subpath exports:
+`native-body.ts`, `native-witness.ts`, `native-validation.ts`,
+`native-constants.ts`, `native-consistency.ts`, and
+`native-cardano-conversion.ts` (Cardano ↔ Midgard native conversion).
+
+## CBOR strictness
+
+`codec/cbor.ts` decodes with strict options, `allowIndefinite: false`,
+`allowUndefined: false`, `rejectDuplicateMapKeys: true`, and map decoding into
+`Map`, and provides `compareBytes` / `compareCborKeyBytes` for canonical map-key
+ordering. This strictness is what makes the codec canonical: any non-canonical
+input is rejected rather than silently normalized.
+
+## Errors
+
+Every decode/encode failure carries a stable, machine-readable code so the
+validation pipeline can record a precise rejection reason instead of collapsing
+everything into a generic parse error.
+
+```ts
+import {
+  MidgardTxCodecError,
+  MidgardTxCodecErrorCodes,
+} from "@al-ft/midgard-core/codec/errors";
+```
+
+The codes are: `E_CBOR_DECODE`, `E_CBOR_ENCODE`, `E_INVALID_MAP_KEY`,
+`E_INVALID_FIELD_TYPE`, `E_MISSING_REQUIRED_FIELD`, `E_DISALLOWED_FIELD`,
+`E_HASH_MISMATCH`, `E_SCHEMA_MISMATCH`, `E_UNSUPPORTED_COMPACT_TO_CARDANO`, and
+`E_CONVERSION_UNSUPPORTED_FEATURE`. `MidgardTxCodecError` exposes both `code` and
+an optional low-level `detail`.
+
+## Addresses
+
+`codec/address.ts` encodes Midgard addresses. Midgard reuses the otherwise
+reserved Shelley network-nibble bit (`MIDGARD_PROTECTED_ADDRESS_HEADER_MASK =
+0x08`) to flag **protected outputs** while preserving the Cardano Shelley
+address family. A `DecodedMidgardAddress` carries `protected`, `networkId`,
+`paymentCredential`, and an optional `stakeCredential`; each credential is a
+`PubKey` or `Script` hash.
+
+## Native scripts
+
+`codec/native-script.ts` models the Cardano native-script tree, `sig`, `all`, `any`, `atLeast`, `after`, `before`, as `MidgardNativeScript`, and
+decodes each script alongside its canonical CBOR (`DecodedMidgardNativeScript`).
+A `MidgardNativeScriptVerifierInput` (validity interval bounds plus the set of
+witness signers) drives satisfaction checks.
+
+## Versioned scripts and language views
+
+`codec/versioned-script.ts` tags script references by language, `NativeCardano`, `PlutusV3`, and `MidgardV1`, with matching script-hash
+prefixes. `codec/script-language-views.ts` defines the canonical cost-model views
+used for script-integrity hashing, including the `PlutusV3` and `MidgardV1`
+language tags and a frozen canonical `PlutusV3` cost-model view.

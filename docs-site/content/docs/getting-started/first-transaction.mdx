@@ -1,0 +1,98 @@
+---
+title: "Tutorial: Your First Transaction"
+description: "A guided path to your first Midgard L2 transfer: deposit funds from L1, build and sign a native transaction with lucid-midgard, submit it, and watch it commit."
+---
+
+One guided happy path from an empty L2 account to a committed Midgard transfer.
+It assumes the [local stack tutorial](/docs/getting-started/run-local-stack) is
+running and its node is reachable on `http://127.0.0.1:3000`.
+
+<Steps>
+
+<Step>
+### Fund your L2 account with a deposit
+
+Funds enter Midgard through an L1 deposit. From `demo/midgard-node`, run
+`submit-deposit` with your wallet, then, once the deposit's inclusion time is
+due, project it into the L2 ledger:
+
+```sh
+node dist/index.js submit-deposit   # locks funds at the L1 deposit validator
+node dist/index.js project-deposits-once
+```
+
+Projection is where the depositor is credited on L2. If the deposit does not
+appear, its inclusion time is usually not due yet; see
+[Deposits &amp; Withdrawals](/docs/operators/node/deposits-withdrawals) for the
+timing rules and flags.
+</Step>
+
+<Step>
+### Connect to the node and select your wallet
+
+`lucid-midgard` builds Midgard-native transactions, not Cardano transactions.
+Create a provider against the node, attach `LucidMidgard`, and select the wallet
+that made the deposit:
+
+```ts
+import { LucidMidgard, MidgardNodeProvider } from "@al-ft/lucid-midgard";
+
+const provider = await MidgardNodeProvider.create({
+  endpoint: "http://127.0.0.1:3000",
+});
+
+const midgard = await LucidMidgard.new(provider, {
+  network: "Preprod",
+  networkId: 0,
+});
+
+midgard.selectWallet.fromSeed(seedPhrase);
+```
+
+The [Quickstart](/docs/sdk/lucid-midgard/quickstart) explains each of these
+calls, including the other wallet adapters.
+</Step>
+
+<Step>
+### Build, sign, and submit the transfer
+
+```ts
+const tx = await midgard
+  .newTx()
+  .pay.ToAddress(destination, { lovelace: 2_000_000n })
+  .complete();
+
+const signed = await tx.sign.withWallet().complete();
+const submitted = await signed.submit();
+await submitted.awaitStatus({ until: "accepted" });
+```
+
+`submit()` returns durable admission, not final validity: the transaction is
+queued, then validated and accepted into a block.
+</Step>
+
+<Step>
+### Watch it commit
+
+An accepted transaction is committed to L1 when the operator commits the block
+containing it. Poll the node until the status reaches `committed`:
+
+```sh
+curl "http://127.0.0.1:3000/tx-status?tx_hash=<your-tx-hash>"
+```
+
+When it reads `committed`, your transfer is part of a block whose header is on
+Cardano. See
+[Submission &amp; Observability](/docs/sdk/lucid-midgard/submission-observability)
+for the full status lifecycle.
+</Step>
+
+</Steps>
+
+<Callout type="info" title="What you just exercised">
+This is the same path the protocol's acceptance run drives: deposit, projection,
+admission, validation, block commitment. The
+[validation engine](/docs/validation/overview) decided your transaction's
+admission, and the [operator's background fibers](/docs/operators/node/background-fibers)
+committed it.
+</Callout>

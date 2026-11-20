@@ -1,48 +1,44 @@
-import { getGeneratorStatus } from '@midgard-manager/tx-generator';
-import { MidgardNodeClient } from '@midgard-manager/tx-generator';
+import { getGeneratorStatus, MidgardNodeClient } from '@midgard-manager/tx-generator';
 import chalk from 'chalk';
 
-import type { MidgardConfig } from '../types/config.js';
+import type { MidgardConfig } from '../config/schema.js';
 import { displayLogo } from './logo.js';
 
+type StatusConfig = Pick<MidgardConfig, 'node' | 'generator'>;
+
 /**
- * Clears the terminal screen and displays a header
- * @param title Optional title to display in the header
+ * Re-renders the CLI header from a clean terminal state.
+ *
+ * The interactive manager treats every major screen as a fresh frame, so this
+ * helper clears prior output before drawing the shared logo/header chrome.
  */
 export function displayHeader(title?: string) {
   // Clear the terminal screen
   process.stdout.write('\x1Bc');
-
   // Display the Midgard logo with the title if provided
   displayLogo({
-    variant: 'small',
     headerText: title,
   });
 }
 
 /**
- * Displays status information in a minimalist, left-aligned format
+ * Prints a compact status panel for the Midgard node and tx generator.
+ *
+ * The node availability probe intentionally uses a short timeout to keep the
+ * TUI responsive even when the configured endpoint is down or slow.
  */
-export async function displayStatus(config: MidgardConfig) {
+export async function displayStatus(config: StatusConfig) {
   // Get the actual running status of the transaction generator
   const generatorStatus = getGeneratorStatus();
   const isRunning = generatorStatus.running;
-
-  // Check if the node is available with a very short timeout
   const nodeClient = new MidgardNodeClient({
     baseUrl: config.node.endpoint,
   });
-
+  // Check if the node is available with a very short timeout
   // Check node availability with shorter timeout
-  let nodeConnected = false;
-  try {
-    // Use a quick timeout of 500ms for better UI responsiveness
-    const timeoutMs = 500;
-    nodeConnected = await nodeClient.isAvailable(timeoutMs);
-  } catch (error) {
-    // On errors, assume disconnected
-    nodeConnected = false;
-  }
+  // Use a quick timeout of 500ms for better UI responsiveness
+  // On errors, assume disconnected
+  const nodeConnected = await nodeClient.isAvailable(500);
 
   // Minimalist left-aligned border style
   console.log('\n┌─ NODE');
@@ -70,8 +66,8 @@ export async function displayStatus(config: MidgardConfig) {
     );
     console.log(`│  Interval: ${config.generator.intervalMs}ms`);
 
-    // Only show statistics if running
     if (isRunning) {
+      // Only show statistics if running
       console.log('│');
       console.log(`│  ${chalk.dim('Transactions')}`);
       console.log(`│  Generated: ${generatorStatus.transactionsGenerated}`);
@@ -88,7 +84,7 @@ export async function displayStatus(config: MidgardConfig) {
 }
 
 /**
- * Displays keyboard navigation hints in a minimalist format
+ * Displays the keyboard controls expected by the interactive menu.
  */
 export function displayKeyboardHints() {
   console.log('┌─ CONTROLS');
@@ -101,7 +97,7 @@ export function displayKeyboardHints() {
 }
 
 /**
- * Displays a success message with simple styling
+ * Displays a success message using the shared CLI success style.
  */
 export function displaySuccess(message: string) {
   console.log(`\n${chalk.green('✓')} ${chalk.bold(message)}`);
@@ -109,7 +105,7 @@ export function displaySuccess(message: string) {
 }
 
 /**
- * Displays an error message with stable styling
+ * Displays an error block and, when possible, a lightweight recovery hint.
  */
 export function displayError(message: string | Error, details?: unknown) {
   const errorMessage = typeof message === 'string' ? message : message.message;
@@ -135,7 +131,7 @@ export function displayError(message: string | Error, details?: unknown) {
 }
 
 /**
- * Displays a "Press Enter to continue" message
+ * Prompts the user to acknowledge a screen before returning to the menu flow.
  */
 export function displayContinuePrompt() {
   console.log(`\nPress ${chalk.bold('Enter')} to continue...`);

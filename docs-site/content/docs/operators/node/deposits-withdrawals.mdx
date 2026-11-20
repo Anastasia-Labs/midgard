@@ -1,0 +1,90 @@
+---
+title: "Deposits & Withdrawals"
+description: "The operator flows for moving funds between L1 and the Midgard L2 ledger."
+---
+
+Deposits and withdrawals are the bridge between Cardano L1 and the Midgard L2
+ledger, implementing the [User-Event Protocol](/docs/spec/user-event-protocol).
+
+<Mermaid chart={`
+flowchart LR
+  U([User]) -->|deposit/build| L1[L1 Deposit Validator]
+  L1 -->|confirmed| P[Projection]
+  P -->|absorb| R[(L2 Reserve)]
+  R -->|withdrawal| W[Withdrawal Order]
+  W -->|payout| U
+`} />
+
+## Actors
+
+<ActorCard actor="user" name="Depositor">
+Locks funds at the L1 deposit validator and later redeems them via a withdrawal
+order. The node holds no signing key: it builds the unsigned deposit and the
+depositor signs externally.
+</ActorCard>
+
+<ActorCard actor="operator">
+Projects confirmed L1 deposits into the L2 ledger and processes withdrawal
+payouts from the reserve.
+</ActorCard>
+
+## Deposits
+
+<InvariantBox>
+A deposit is only absorbed into the L2 reserve **after** it is confirmed on L1.
+Projecting an unconfirmed deposit would let an operator credit funds that can
+still be rolled back.
+</InvariantBox>
+
+| Command | Effect |
+| --- | --- |
+| `submit-deposit` | Builds and submits the L1 deposit transaction. Funds move to the deposit validator. |
+| `project-deposits-once` | Projects deposits whose inclusion time is due into the mempool ledger. This is where the depositor is credited on L2. |
+| `deposit-projected` | Reports whether a deposit has been projected. Read-only. |
+| `absorb-confirmed-deposit-to-reserve` | Moves a confirmed deposit's funds into the protocol reserve. |
+| `reconcile-deposit-submission` | Repairs local state after an interrupted deposit submission, by re-reading L1. |
+
+A deposit is not credited when it is submitted. It is credited when it is projected, and
+that happens only once its inclusion time is due. `deposits_utxos.inclusion_time` is the
+field to inspect when a deposit appears stuck.
+
+## Withdrawals
+
+<RiskCallout level="high" title="Irreversible payout">
+Reserve payouts settle on L1 and cannot be reversed. Verify the withdrawal order
+and reserve balance before submitting a payout.
+</RiskCallout>
+
+| Command | Effect |
+| --- | --- |
+| `submit-withdrawal` | Builds and submits the L1 withdrawal order. Starts the withdrawal, does not pay it out. |
+| `fetch-withdrawals-once` | Reads pending L1 withdrawal orders and records them locally, so they can be classified. |
+| `withdrawal-status` | Reports the order's classification and payout progress. Read-only. |
+
+A withdrawal order is classified before it is paid. An order can be found invalid, for
+example `NonExistentWithdrawalUtxo` or `IncorrectWithdrawalOwner`. Payment happens
+separately, through [reserve and payout](/docs/operators/node/reserve-payout).
+
+The deposit and withdrawal fetching above is also run continuously by the
+[background fibers](/docs/operators/node/background-fibers). These commands are the
+one-shot equivalents.
+
+## HTTP endpoints
+
+Maturity: <StatePill state="demo" />
+
+The node exposes deposit construction and status over HTTP. Withdrawal submission
+and status are CLI and background operations, not HTTP routes. See the
+[CLI Reference](/docs/operators/node/cli-reference). Full route graph:
+[Server HTTP API](/docs/operators/node/server-http-api).
+
+<EndpointTable rows={[
+  { method: 'POST', path: '/deposit/build', auth: 'public', description: 'Build an unsigned L1 deposit transaction from a caller-supplied wallet view; returns CBOR for external signing.' },
+  { method: 'GET', path: '/deposit-status', auth: 'public', description: 'Return one serialized deposit row by event id or L1 tx hash.' },
+]} />
+
+## Related
+
+- On-chain: [user-event validators](/docs/onchain/user-events)
+- SDK builders: [`midgard-sdk` user events](/docs/sdk/midgard-sdk/user-events)
+- [CLI Reference](/docs/operators/node/cli-reference)
