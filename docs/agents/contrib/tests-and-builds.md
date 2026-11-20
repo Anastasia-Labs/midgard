@@ -149,8 +149,10 @@ cache in `test-cache-key.mjs` and the store in `test-cache-store.mjs`):
   nothing. In effect the key of each file is its forward closure in that graph.
 - A run records only when it vouches for itself as a whole: Vitest exited 0,
   its report says it succeeded, and no repository file in the snapshot was
-  changed or even written (by modification or change time) while it ran, so an
-  edit undone before the end of a run still stops it. A run with any failure
+  changed or even written while it ran (its inode, size, modification or change
+  time differ from when the snapshot read it, never compared against a clock
+  reading, which WSL2 steps back), so an edit undone before the end of a run
+  still stops it. A run with any failure
   records nothing, passes beside the failure included: Vitest reports an
   unhandled error or rejection outside every test with exit 1 but
   `success: true`, and it cannot be pinned on a file. A file is recorded only

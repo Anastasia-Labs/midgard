@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import {
+import fs, {
   cpSync,
   existsSync,
   mkdirSync,
@@ -11,8 +11,10 @@ import {
   rmSync,
   statSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, relative, resolve } from "node:path";
 import test from "node:test";
@@ -788,6 +790,73 @@ test("a file written back unchanged while a run ran keeps the run from recording
     /written while it ran \(demo\/example\/src\/two\.ts\)/u,
   );
   assert.equal((await ran()).receipt.cache.recorded, 3);
+});
+
+// The wall clock stepped back `ms` from here on, as WSL2 steps it: every
+// later change to `path` carries a change time `ms` earlier than it was
+// made. A change time cannot be set, so `lstat` reports it shifted.
+const clockSteppedBack = (t, path, ms) => {
+  const real = fs.lstatSync;
+  fs.lstatSync = (target, ...rest) => {
+    const stats = real(target, ...rest);
+    if (resolve(String(target)) !== path) return stats;
+    const shifted = Object.assign(
+      Object.create(Object.getPrototypeOf(stats)),
+      stats,
+    );
+    if (typeof stats.ctimeNs === "bigint") {
+      shifted.ctimeNs = stats.ctimeNs - BigInt(ms) * 1_000_000n;
+      shifted.ctimeMs = stats.ctimeMs - BigInt(ms);
+    } else shifted.ctimeMs = stats.ctimeMs - ms;
+    return shifted;
+  };
+  syncBuiltinESMExports();
+  t.after(() => {
+    fs.lstatSync = real;
+    syncBuiltinESMExports();
+  });
+};
+
+test("a file edited and undone while a run ran keeps it from recording, though the clock stepped back first", async (t) => {
+  const { root, cache, ran, write } = threeFiles(t);
+  await ran();
+  write("src/two.ts", "export const two = 22;\n");
+  const one = resolve(root, "demo/example/src/one.ts");
+  const original = readFileSync(one);
+  // After the snapshot read every file: a mutation check's edit and undo,
+  // made after the clock stepped back to before the run started.
+  const probe = async (...args) => {
+    const graph = await fakeProbe([])(...args);
+    clockSteppedBack(t, one, 10_000);
+    writeFileSync(one, "export const one = 11;\n");
+    writeFileSync(one, original);
+    const earlier = new Date(Date.now() - 10_000);
+    utimesSync(one, earlier, earlier);
+    return graph;
+  };
+  const second = await ran({ cache: { directory: cache, probe } });
+  assert.equal(second.receipt.status, "passed", second.receipt.reason);
+  assert.deepEqual(second.ran, ["tests/b.test.ts"]);
+  assert.equal(second.receipt.cache.recorded, 0);
+  assert.match(
+    second.receipt.cache.notRecorded,
+    /written while it ran \(demo\/example\/src\/one\.ts\)/u,
+  );
+});
+
+test("a file whose times are later than the run's start but untouched while it ran does not keep it from recording", async (t) => {
+  const { root, ran } = threeFiles(t);
+  const later = new Date(Date.now() + 60_000);
+  for (const path of ["src/one.ts", "tests/fixtures/table.json"])
+    utimesSync(resolve(root, "demo/example", path), later, later);
+  const first = await ran();
+  assert.equal(first.receipt.status, "passed", first.receipt.reason);
+  assert.equal(
+    first.receipt.cache.recorded,
+    3,
+    first.receipt.cache.notRecorded,
+  );
+  assert.deepEqual((await ran()).ran, []);
 });
 
 test("a changed data file outside every package reruns everything", async (t) => {

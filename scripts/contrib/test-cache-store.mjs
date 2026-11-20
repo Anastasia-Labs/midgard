@@ -75,14 +75,35 @@ export const byPath = ([left], [right]) =>
 
 // --- repository snapshots ---------------------------------------------------
 
+/** A file's metadata as `touchedSince` compares it, or undefined if absent. */
+const fileStamp = (absolute) => {
+  let stats;
+  try {
+    stats = lstatSync(absolute, { bigint: true });
+  } catch {
+    return undefined;
+  }
+  return stampOf(stats);
+};
+const stampOf = ({ ino, size, mtimeNs, ctimeNs }) =>
+  `${ino}:${size}:${mtimeNs}:${ctimeNs}`;
+
 /**
  * The digest of every repository file (tracked, or untracked and not
  * ignored), plus `extra` digests by repository path (ignored files inside
  * source directories, which builds and suites can read). `id` names the
- * whole.
+ * whole. Given `stamps` (a Map), it also stores there each file's metadata
+ * by repository path (see `touchedSince`), read before its content (an
+ * `extra` file's is read before this call: a change since then and left in
+ * place changes the digest at the end, one undone changes the times).
  */
-export const repositorySnapshot = (root, extra = {}) => {
+export const repositorySnapshot = (root, extra = {}, stamps = undefined) => {
   const files = { ...extra };
+  if (stamps)
+    for (const path of Object.keys(extra)) {
+      const stamp = fileStamp(resolve(root, path));
+      if (stamp) stamps.set(path, stamp);
+    }
   const listed = execFileSync(
     "git",
     ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
@@ -93,13 +114,15 @@ export const repositorySnapshot = (root, extra = {}) => {
     const absolute = resolve(root, path);
     let stats;
     try {
-      stats = lstatSync(absolute);
+      stats = lstatSync(absolute, { bigint: true });
     } catch {
       continue; // deleted from the work tree, still in the index
     }
     if (stats.isSymbolicLink())
       files[path] = `symlink:${readlinkSync(absolute)}`;
     else if (stats.isFile()) files[path] = sha256(readFileSync(absolute));
+    else continue;
+    stamps?.set(path, stampOf(stats));
   }
   const sorted = Object.fromEntries(Object.entries(files).sort(byPath));
   return { id: sha256(JSON.stringify(sorted)), files: sorted };
@@ -112,34 +135,24 @@ export const changedSince = (before, after) =>
     .sort();
 
 /**
- * Now, by the file system's clock: a file written in `directory`. File times
- * come from a coarser clock than `Date.now()`, so a file written just after
- * a `Date.now()` can carry an earlier time; against this one it cannot.
+ * The snapshot's files whose metadata is not what `stamps` holds (filled by
+ * `repositorySnapshot` when it read them): removed, never stamped, or with
+ * another inode, size, or modification or change time at nanosecond
+ * precision. An edit undone before the end of a run (a mutation check)
+ * leaves the same digest, but not the same times.
+ *
+ * Each file is compared with its own earlier metadata, never ordered against
+ * a clock reading taken at the start: the wall clock can be stepped back
+ * while a run runs (WSL2 steps it by about half a second every half minute),
+ * so a file written before such a reading can carry a later time, and one
+ * written after it an earlier one. This assumes any change to a file moves
+ * its change or modification time, at nanosecond precision, away from a
+ * value that was read (true of ext4 with multigrain timestamps, and APFS).
  */
-export const fileClock = (directory) => {
-  mkdirSync(directory, { recursive: true });
-  const marker = resolve(directory, `clock-${randomUUID()}`);
-  writeFileSync(marker, "");
-  const { mtimeMs } = statSync(marker);
-  rmSync(marker, { force: true });
-  return mtimeMs;
-};
-
-/**
- * The snapshot's files whose content or metadata changed at or after
- * `sinceMs` (a `fileClock` reading): an edit undone before the end of a run
- * (a mutation check) leaves the same digest, but not the same modification
- * and change times. A file written in the clock's own tick counts as
- * touched.
- */
-export const touchedSince = (root, snapshot, sinceMs) =>
+export const touchedSince = (root, snapshot, stamps) =>
   Object.keys(snapshot.files).filter((path) => {
-    try {
-      const stats = lstatSync(resolve(root, path));
-      return stats.mtimeMs >= sinceMs || stats.ctimeMs >= sinceMs;
-    } catch {
-      return true; // removed meanwhile
-    }
+    const stamp = stamps.get(path);
+    return !stamp || fileStamp(resolve(root, path)) !== stamp;
   });
 
 const snapshotPath = (directory, id) =>

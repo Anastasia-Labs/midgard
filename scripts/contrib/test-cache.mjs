@@ -12,7 +12,6 @@ import {
 import {
   cacheDirectory,
   changedSince,
-  fileClock,
   filePassed,
   findReusable,
   forgetFiles,
@@ -124,11 +123,12 @@ export const planCachedRun = async ({
   directory = cacheDirectory(),
 }) => {
   const started = performance.now();
-  // Before the snapshot reads anything: a file touched after this was not
-  // necessarily what the snapshot saw, nor what the run ran.
-  const startedMs = fileClock(runDirectory ?? directory);
   pruneCache(directory);
-  const snapshot = repositorySnapshot(root, before.files);
+  // Each file's metadata, read before the snapshot reads it: a file touched
+  // after this was not necessarily what the snapshot saw, nor what the run
+  // ran.
+  const stamps = new Map();
+  const snapshot = repositorySnapshot(root, before.files, stamps);
   const identity = runIdentity({
     root,
     pkg,
@@ -189,7 +189,7 @@ export const planCachedRun = async ({
       runKey: identity.sha256,
       identity,
       snapshot,
-      startedMs,
+      stamps,
       uncacheable,
       unrecordable,
       graph: graphs.info,
@@ -263,7 +263,7 @@ export const recordCachedRun = ({
   else if (report.success !== true) why = "its report says the run failed";
   else {
     const now = repositorySnapshot(root, after.files);
-    const touched = touchedSince(root, context.snapshot, context.startedMs);
+    const touched = touchedSince(root, context.snapshot, context.stamps);
     if (now.id !== context.snapshot.id)
       why = `${changedSince(context.snapshot, now).length} repository file(s) changed while it ran`;
     else if (touched.length)
