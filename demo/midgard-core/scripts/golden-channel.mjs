@@ -2,8 +2,8 @@
  * The plumbing shared by every **cross-language golden channel** generator in
  * this package.
  *
- * A channel is one generator, one JSON fixture recomputed by a vitest suite,
- * and one Aiken module recomputed by the Aiken producers under the fork runner.
+ * A channel is one generator, one Aiken module recomputed by the Aiken
+ * producers under the fork runner, and for some a JSON fixture of the vectors.
  * Three of them exist today — the shared field-access surface (#568), the
  * per-field item fan-out (#569) and the §8.6/§8.8 carriage wire surface (#574,
  * which lives in `@al-ft/midgard-sdk` because its producer is `Data.to` against
@@ -227,3 +227,33 @@ export const goldenChannelEmitter =
     writeFileSync(target, expected, "utf8");
     console.log(`wrote ${relativePath}`);
   };
+
+/**
+ * A JSON fixture as text with one vector per line: each top-level entry on
+ * its own line, and an array or object under it spread one element or entry
+ * per line, each written compactly. A diff then shows which vectors changed
+ * instead of thousands of indented lines.
+ */
+export const vectorsJson = (fixture) => {
+  const line = (value) => JSON.stringify(value);
+  const spread = (value, indent) => {
+    const inner = `${indent}  `;
+    if (Array.isArray(value)) {
+      return value.length === 0
+        ? "[]"
+        : `[\n${value.map((element) => `${inner}${line(element)}`).join(",\n")}\n${indent}]`;
+    }
+    if (value !== null && typeof value === "object") {
+      const entries = Object.entries(value);
+      return entries.length === 0
+        ? "{}"
+        : `{\n${entries.map(([key, entry]) => `${inner}${line(key)}: ${line(entry)}`).join(",\n")}\n${indent}}`;
+    }
+    return line(value);
+  };
+  if (Array.isArray(fixture)) return `${spread(fixture, "")}\n`;
+  const entries = Object.entries(fixture).map(
+    ([key, value]) => `  ${line(key)}: ${spread(value, "  ")}`,
+  );
+  return `{\n${entries.join(",\n")}\n}\n`;
+};

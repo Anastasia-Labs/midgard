@@ -34,6 +34,7 @@ import { fileURLToPath } from "node:url";
 import {
   goldenChannelEmitter,
   parseGoldenChannelArguments,
+  vectorsJson,
 } from "@al-ft/midgard-core/scripts/golden-channel.mjs";
 
 import {
@@ -449,13 +450,9 @@ try {
 
 writeOrCheck(
   fixturePath,
-  `${JSON.stringify(
-    {
-      channel: "cek-builtin-cardano-v1",
-      producer: "aiken uplc eval (pinned fork)",
-      cases,
-    },
-    null,
-    1,
-  )}\n`,
+  vectorsJson({
+    channel: "cek-builtin-cardano-v1",
+    producer: "aiken uplc eval (pinned fork)",
+    cases,
+  }),
 );

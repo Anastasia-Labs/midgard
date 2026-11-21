@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { blake2b } from "@noble/hashes/blake2.js";
 import { Constr, Data } from "@lucid-evolution/lucid";
+import { vectorsJson } from "@al-ft/midgard-core/scripts/golden-channel.mjs";
 
 import { encodeValidationAuxiliaryWitnessCbor } from "../dist/index.js";
 import { canonicalValidationAuxiliaryWitnesses } from "../tests/fixtures/validation-auxiliary-witness-canonical.ts";
@@ -58,22 +59,18 @@ const corpusBlake2b256 = Buffer.from(
 const corpusSha256 = createHash("sha256").update(corpusBytes).digest("hex");
 const arities = constructors.map(({ arity }) => arity);
 
-const json = `${JSON.stringify(
-  {
-    schema: "midgard-validation-auxiliary-witness-v1",
-    version: 1,
-    constructors: constructors.map(({ tag, arity, cbor }) => ({
-      tag,
-      arity,
-      cbor,
-    })),
-    corpusCbor,
-    corpusBlake2b256,
-    corpusSha256,
-  },
-  null,
-  2,
-)}\n`;
+const json = vectorsJson({
+  schema: "midgard-validation-auxiliary-witness-v1",
+  version: 1,
+  constructors: constructors.map(({ tag, arity, cbor }) => ({
+    tag,
+    arity,
+    cbor,
+  })),
+  corpusCbor,
+  corpusBlake2b256,
+  corpusSha256,
+});
 
 const cases = arities.map((arity, tag) => `    ${tag} -> ${arity}`).join("\n");
 const arityLines = [];

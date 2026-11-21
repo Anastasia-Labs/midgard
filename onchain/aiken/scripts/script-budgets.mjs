@@ -39,6 +39,7 @@ import { fileURLToPath } from "node:url";
 
 import { readShardUnion } from "./complete-test-shards.mjs";
 import { focusedCheck } from "./run-focused-check.mjs";
+import { vectorsJson } from "../../../demo/midgard-core/scripts/golden-channel.mjs";
 import { SCRIPT_BUDGET_BASIS } from "../../../demo/midgard-core/src/script-budgets.ts";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
@@ -458,8 +459,8 @@ const printVerdicts = (verdicts) => {
 
 const loadTable = () => JSON.parse(readFileSync(TABLE_PATH, "utf8"));
 
-const writeTable = (table) =>
-  writeFileSync(TABLE_PATH, `${JSON.stringify(table, null, 2)}\n`);
+// One budget per line, so a raise or a tighten diffs as the budgets it moved.
+const writeTable = (table) => writeFileSync(TABLE_PATH, vectorsJson(table));
 
 const run = (args) => {
   const [command, ...rest] = args;

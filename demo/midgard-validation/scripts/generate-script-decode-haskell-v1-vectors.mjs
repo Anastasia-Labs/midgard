@@ -26,6 +26,7 @@ import { fileURLToPath } from "node:url";
 import {
   goldenChannelEmitter,
   parseGoldenChannelArguments,
+  vectorsJson,
 } from "@al-ft/midgard-core/scripts/golden-channel.mjs";
 
 import { scriptDecodeStepScripts } from "../tests/fixtures/script-decode-step-v1.vectors.mjs";
@@ -236,4 +237,4 @@ const vectors = rows.map(({ label, flipBit, script }, index) => {
   };
 });
 
-writeOrCheck(vectorsPath, `${JSON.stringify({ rows: vectors }, null, 2)}\n`);
+writeOrCheck(vectorsPath, vectorsJson({ rows: vectors }));

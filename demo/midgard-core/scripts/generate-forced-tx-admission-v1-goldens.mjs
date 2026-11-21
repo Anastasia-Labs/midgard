@@ -39,6 +39,7 @@ import {
   goldenChannelEmitter,
   hex,
   parseGoldenChannelArguments,
+  vectorsJson,
 } from "./golden-channel.mjs";
 import {
   ADDRESS_WITNESSES,
@@ -218,7 +219,7 @@ const golden = {
     networkId: row.networkId.toString(),
   })),
 };
-writeOrCheck(generatedJsonPath, `${JSON.stringify(golden, null, 2)}\n`);
+writeOrCheck(generatedJsonPath, vectorsJson(golden));
 
 const refusalIndex = (expected) =>
   expected === null ? -1 : MIDGARD_FORCED_TX_ADMISSION_CHECKS.indexOf(expected);

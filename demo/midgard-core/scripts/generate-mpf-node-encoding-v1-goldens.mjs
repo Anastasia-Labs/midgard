@@ -42,6 +42,7 @@ import {
   goldenChannelEmitter,
   hex,
   parseGoldenChannelArguments,
+  vectorsJson,
 } from "./golden-channel.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
@@ -268,7 +269,7 @@ const golden = {
   update,
 };
 
-writeOrCheck(generatedJsonPath, `${JSON.stringify(golden, null, 2)}\n`);
+writeOrCheck(generatedJsonPath, vectorsJson(golden));
 
 // ## Aiken module
 

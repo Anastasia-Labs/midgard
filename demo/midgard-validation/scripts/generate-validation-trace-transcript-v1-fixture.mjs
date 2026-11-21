@@ -29,6 +29,7 @@ import { fileURLToPath } from "node:url";
 import {
   goldenChannelEmitter,
   parseGoldenChannelArguments,
+  vectorsJson,
 } from "@al-ft/midgard-core/scripts/golden-channel.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
@@ -80,4 +81,4 @@ try {
   rmSync(vectorDirectory, { force: true, recursive: true });
 }
 
-writeOrCheck(join(packageRoot, FIXTURE), transcript);
+writeOrCheck(join(packageRoot, FIXTURE), vectorsJson(JSON.parse(transcript)));

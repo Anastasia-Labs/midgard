@@ -28,6 +28,7 @@ import {
   goldenChannelEmitter,
   hex,
   parseGoldenChannelArguments,
+  vectorsJson,
 } from "./golden-channel.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
@@ -178,4 +179,4 @@ const vectors = {
   extra: EXTRA.map(([name, fields]) => vectorOf(arms, name, fields)),
 };
 
-writeOrCheck(vectorsPath, `${JSON.stringify(vectors, null, 2)}\n`);
+writeOrCheck(vectorsPath, vectorsJson(vectors));

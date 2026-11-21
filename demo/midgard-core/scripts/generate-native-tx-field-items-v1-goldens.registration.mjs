@@ -6,7 +6,7 @@ import {
   writeOrCheck,
 } from "./generate-native-tx-field-items-v1-goldens.build-straddle.mjs";
 import { renderAiken } from "./generate-native-tx-field-items-v1-goldens.render-aiken.mjs";
-import { formatAikenSource } from "./golden-channel.mjs";
+import { formatAikenSource, vectorsJson } from "./golden-channel.mjs";
 
 // ---------------------------------------------------------------------------
 // Emission
@@ -14,7 +14,7 @@ import { formatAikenSource } from "./golden-channel.mjs";
 
 const golden = buildGolden();
 
-writeOrCheck(generatedJsonPath, `${JSON.stringify(golden, null, 2)}\n`);
+writeOrCheck(generatedJsonPath, vectorsJson(golden));
 
 writeOrCheck(
   generatedAikenPath,

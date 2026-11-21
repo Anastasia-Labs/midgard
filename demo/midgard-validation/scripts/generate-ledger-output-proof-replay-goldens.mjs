@@ -63,6 +63,7 @@ import {
   goldenChannelEmitter,
   parseGoldenChannelArguments,
   rebindAikenConstants,
+  vectorsJson,
 } from "@al-ft/midgard-core/scripts/golden-channel.mjs";
 
 import {
@@ -176,7 +177,7 @@ const refusalConstants = (vector) => ({
   [`${vector.id}_refused_control_hash`]: bytes(vector.refusedControlHash),
 });
 
-writeOrCheck(generatedJsonPath, `${JSON.stringify(golden, null, 2)}\n`);
+writeOrCheck(generatedJsonPath, vectorsJson(golden));
 const aikenPath = join(repositoryRoot, aikenModule);
 writeOrCheck(
   aikenPath,
