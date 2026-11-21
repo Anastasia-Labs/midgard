@@ -51,7 +51,10 @@ export interface LedgerStore {
    * leaves out. Every root in `roots` must be retained already
    * (`LedgerNotRetained` otherwise). Roots persisted after `retain` has begun
    * are kept. A ledger value whose root is dropped stops being readable.
-   * Calls run one at a time, in order.
+   * Calls run one at a time, in order. A sweep that does not finish (its
+   * process dies, or a storage call fails) is finished, from the retained set
+   * it began with plus the roots persisted since, before the next `persist`
+   * or `retain` of any store over the same storage.
    */
   retain(roots: ReadonlySet<string>): Promise<void>;
 }
@@ -114,6 +117,8 @@ export const createLedgerStore = (storage: LedgerStorage): LedgerStore => {
   /** Serialises retains. */
   const retainQueue = exclusive();
   let sweep: SweepMarks | undefined;
+  /** Settles once no sweep the storage records as unfinished remains. */
+  let recovery: Promise<void> | undefined;
 
   const retained = async (root: string): Promise<boolean> =>
     root === EMPTY_LEDGER_ROOT || (await storage.isRetained(root));
@@ -195,11 +200,11 @@ export const createLedgerStore = (storage: LedgerStorage): LedgerStore => {
 
   const sweepTo = async (roots: ReadonlySet<NodeHash>) => {
     const marks: SweepMarks = { nodes: new Set(), outputs: new Set() };
-    await writeLock(async () => {
-      await storage.beginSweep(roots);
-      sweep = marks;
-    });
     try {
+      await writeLock(async () => {
+        await storage.beginSweep(roots);
+        sweep = marks;
+      });
       await mark(roots, marks);
       await deleteUnmarked(
         (after, limit) => storage.sweepNodes(after, limit),
@@ -211,12 +216,32 @@ export const createLedgerStore = (storage: LedgerStorage): LedgerStore => {
         marks.outputs,
         (dead) => storage.deleteSwept({ nodes: [], outputs: dead }),
       );
-    } finally {
-      await writeLock(async () => {
-        sweep = undefined;
-        await storage.endSweep();
-      });
+    } catch (error) {
+      // The storage still records the sweep as running, and `sweep` stays
+      // set, so a persist in the meantime walks under every held node the
+      // sweep has not marked. The next persist or retain finishes it.
+      recovery = undefined;
+      throw error;
     }
+    await writeLock(async () => {
+      sweep = undefined;
+      await storage.endSweep();
+    });
+  };
+
+  /** Finishes a sweep the storage records as unfinished. Runs in the retain
+   * queue. */
+  const finishUnfinishedSweep = async () => {
+    const roots = await storage.unfinishedSweep();
+    if (roots !== undefined) await sweepTo(roots);
+  };
+
+  const recovered = (): Promise<void> => {
+    recovery ??= retainQueue(finishUnfinishedSweep).catch((error: unknown) => {
+      recovery = undefined;
+      throw error;
+    });
+    return recovery;
   };
 
   return {
@@ -256,11 +281,14 @@ export const createLedgerStore = (storage: LedgerStorage): LedgerStore => {
       if (!(ledger instanceof LedgerValue) || ledger.owner !== owner)
         throw new Error("persist: the ledger does not belong to this store");
       if (ledger.root === EMPTY_LEDGER_ROOT) return;
+      // A held node is complete below it only once no sweep is unfinished.
+      await recovered();
       await writeLock(() => persistLocked(ledger));
     },
 
     retain: (roots) =>
       retainQueue(async () => {
+        await finishUnfinishedSweep();
         const kept = new Set<NodeHash>();
         for (const root of roots) {
           if (!(await retained(root))) throw new LedgerNotRetained(root);

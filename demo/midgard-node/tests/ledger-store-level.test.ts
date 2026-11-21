@@ -13,6 +13,7 @@ import {
 import {
   describeLedgerStoreConformance,
   event,
+  type OpenedLedgerStorage,
   testLedgerEntries,
   testOutputOf,
   testOutRef,
@@ -68,10 +69,21 @@ const levelStorage = (level: Level<string, MpfStoredValue>) =>
     readOutputs: async (outRefs) => outRefs.map(testOutputOf),
   });
 
-describeLedgerStoreConformance("leveldb", async () => {
-  const level = await openLevel(await freshPath());
-  return { storage: levelStorage(level), close: () => level.close() };
-});
+const openedAt = async (path: string): Promise<OpenedLedgerStorage> => {
+  const level = await openLevel(path);
+  return {
+    storage: levelStorage(level),
+    close: () => level.close(),
+    reopen: async () => {
+      await level.close();
+      return await openedAt(path);
+    },
+  };
+};
+
+describeLedgerStoreConformance("leveldb", async () =>
+  openedAt(await freshPath()),
+);
 
 describe("leveldb ledger storage beside the node's MPF readers", () => {
   const base = testLedgerEntries(0, 50);

@@ -60,10 +60,13 @@ export type LedgerStorageCounts = {
  * One adapter's records. A single `LedgerStore` is the only writer of an
  * adapter while it is open, and it never runs two sweeps at once.
  *
- * Sweep protocol: `beginSweep` replaces the retained set and starts a sweep
- * epoch. Records written or kept after it are never offered by `sweepNodes`
- * / `sweepOutputs`, and `deleteSwept` skips them even when offered before.
- * `endSweep` closes the epoch.
+ * Sweep protocol: `beginSweep` replaces the retained set, records that a
+ * sweep is running, and starts a sweep epoch. Records written or kept after
+ * it are never offered by `sweepNodes` / `sweepOutputs`, and `deleteSwept`
+ * skips them even when offered before. `endSweep` closes the epoch and clears
+ * the record. A sweep deletes in key order, not parents before children, so
+ * until it ends a held node may have lost a descendant: the store finishes an
+ * unfinished sweep (`unfinishedSweep`) before it relies on held nodes again.
  */
 export interface LedgerStorage {
   readNodes(hashes: readonly NodeHash[]): Promise<(StoredNode | undefined)[]>;
@@ -71,7 +74,10 @@ export interface LedgerStorage {
   isRetained(root: NodeHash): Promise<boolean>;
   /** Writes one block atomically. */
   writeBlock(block: LedgerBlockWrite): Promise<void>;
-  /** Replaces the retained set with `retained` and starts a sweep epoch. */
+  /**
+   * Replaces the retained set with `retained` and records that a sweep is
+   * running, in one atomic write, then starts a sweep epoch.
+   */
   beginSweep(retained: ReadonlySet<NodeHash>): Promise<void>;
   /** Up to `limit` node hashes stored before `beginSweep`, ascending, after
    * `after`. */
@@ -87,7 +93,13 @@ export interface LedgerStorage {
     readonly nodes: readonly NodeHash[];
     readonly outputs: readonly OutRefHex[];
   }): Promise<void>;
+  /** Closes the sweep epoch and clears the record that a sweep is running. */
   endSweep(): Promise<void>;
+  /**
+   * The retained set, when a sweep began and never ended (its process died,
+   * or its store failed mid-sweep); otherwise `undefined`.
+   */
+  unfinishedSweep(): Promise<ReadonlySet<NodeHash> | undefined>;
   /** Record counts, for tests and measurements. */
   counts(): Promise<LedgerStorageCounts>;
 }

@@ -39,6 +39,8 @@ export const createMemoryLedgerStorage = (): LedgerStorage => {
   const outputs = new Map<OutRefHex, Stamped<Buffer>>();
   const roots = new Set<NodeHash>();
   let writeEpoch = 1;
+  /** Whether a sweep began and has not ended. */
+  let sweepRunning = false;
   let sweep:
     | {
         readonly epoch: number;
@@ -80,6 +82,7 @@ export const createMemoryLedgerStorage = (): LedgerStorage => {
       writeEpoch += 1;
       roots.clear();
       for (const root of retained) roots.add(root);
+      sweepRunning = true;
       sweep = {
         epoch,
         nodes: stampedBefore(nodes, epoch),
@@ -96,7 +99,9 @@ export const createMemoryLedgerStorage = (): LedgerStorage => {
     },
     endSweep: async () => {
       sweep = undefined;
+      sweepRunning = false;
     },
+    unfinishedSweep: async () => (sweepRunning ? new Set(roots) : undefined),
     counts: async () => ({
       nodes: nodes.size,
       outputs: outputs.size,

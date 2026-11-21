@@ -111,6 +111,16 @@ export const openSqliteLedgerStorage = (path: string): SqliteLedgerStorage => {
       "INSERT OR IGNORE INTO ledger_roots (root) VALUES (?)",
     ),
     clearRoots: database.prepare("DELETE FROM ledger_roots"),
+    roots: database.prepare("SELECT root FROM ledger_roots"),
+    sweepRunning: database.prepare(
+      "SELECT 1 AS held FROM ledger_meta WHERE key = 'sweep_running'",
+    ),
+    beginSweep: database.prepare(
+      "INSERT OR IGNORE INTO ledger_meta (key, value) VALUES ('sweep_running', 1)",
+    ),
+    endSweep: database.prepare(
+      "DELETE FROM ledger_meta WHERE key = 'sweep_running'",
+    ),
     sweepNodes: database.prepare(
       `SELECT hash AS key FROM ledger_nodes WHERE epoch <= ? AND hash > ?
        ORDER BY hash LIMIT ?`,
@@ -199,6 +209,7 @@ export const openSqliteLedgerStorage = (path: string): SqliteLedgerStorage => {
         statement.setEpoch.run(epoch + 1);
         statement.clearRoots.run();
         for (const root of retained) statement.putRoot.run(bytes(root));
+        statement.beginSweep.run();
       });
       sweepEpoch = epoch;
     },
@@ -217,8 +228,17 @@ export const openSqliteLedgerStorage = (path: string): SqliteLedgerStorage => {
       });
     },
     endSweep: async () => {
+      statement.endSweep.run();
       sweepEpoch = undefined;
     },
+    unfinishedSweep: async () =>
+      statement.sweepRunning.get() === undefined
+        ? undefined
+        : new Set(
+            (statement.roots.all() as { root: Uint8Array }[]).map(({ root }) =>
+              hex(root),
+            ),
+          ),
     counts: async () => ({
       nodes: count(statement.countNodes),
       outputs: count(statement.countOutputs),
