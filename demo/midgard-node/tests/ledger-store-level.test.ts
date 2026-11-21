@@ -81,9 +81,10 @@ const openedAt = async (path: string): Promise<OpenedLedgerStorage> => {
   };
 };
 
-describeLedgerStoreConformance("leveldb", async () =>
-  openedAt(await freshPath()),
-);
+const openFresh = async () => openedAt(await freshPath());
+
+// Outputs live outside this adapter, so its counts are compared with its own.
+describeLedgerStoreConformance("leveldb", openFresh, openFresh);
 
 describe("leveldb ledger storage beside the node's MPF readers", () => {
   const base = testLedgerEntries(0, 50);

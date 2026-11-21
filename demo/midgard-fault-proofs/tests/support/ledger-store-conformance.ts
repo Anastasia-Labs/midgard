@@ -16,6 +16,7 @@ import {
 } from "../../src/ledger-at.js";
 import {
   createLedgerStore,
+  createMemoryLedgerStorage,
   EMPTY_LEDGER_ROOT,
   type Ledger,
   type LedgerMutation,
@@ -187,10 +188,24 @@ const unknownRoot = "ab".repeat(32);
 
 const BASE = [...testLedgerEntries(0, 40), testLedgerEntry(UNDECODABLE_ENTRY)];
 
-/** Registers the conformance cases for one adapter. */
+/** Fresh memory storage, which is never reopened. */
+const openMemory: OpenLedgerStorage = async () => ({
+  storage: createMemoryLedgerStorage(),
+  close: async () => undefined,
+  reopen: async () => {
+    throw new Error("memory comparison storage is never reopened");
+  },
+});
+
+/**
+ * Registers the conformance cases for one adapter. `reference` opens the
+ * storage the random run builds its comparison stores on: memory, unless the
+ * adapter's `counts()` differs from memory's for the same records.
+ */
 export const describeLedgerStoreConformance = (
   adapter: string,
   open: OpenLedgerStorage,
+  reference: OpenLedgerStorage = openMemory,
 ): void => {
   const withStore = async (
     run: (store: LedgerStore, storage: LedgerStorage) => Promise<void>,
@@ -349,6 +364,6 @@ export const describeLedgerStoreConformance = (
     });
   });
   describeLedgerStoreRetainConformance(adapter, open);
-  describeLedgerStoreRandomConformance(adapter, open);
+  describeLedgerStoreRandomConformance(adapter, open, reference);
   describeLedgerStoreCrashConformance(adapter, open);
 };

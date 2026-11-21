@@ -51,14 +51,14 @@ const outRefsOf = (keys: Iterable<number>) =>
   [...keys].map((n) => testOutRef(n).toString("hex")).sort();
 
 /**
- * The counts of a fresh store holding only the ledgers of `model`, admitted
- * under the roots the model already knows.
+ * The counts of a fresh store over `reference` holding only the ledgers of
+ * `model`, admitted under the roots the model already knows.
  */
 const countsOfOnly = async (
-  open: OpenLedgerStorage,
+  reference: OpenLedgerStorage,
   model: ReadonlyMap<string, ReadonlySet<number>>,
 ): Promise<LedgerStorageCounts> => {
-  const opened = await open();
+  const opened = await reference();
   try {
     const store = createLedgerStore(opened.storage);
     for (const [root, keys] of model)
@@ -74,10 +74,15 @@ const countsOfOnly = async (
   }
 };
 
-/** Registers the random-run case for one adapter. */
+/**
+ * Registers the random-run case for one adapter. The model's counts come from
+ * fresh stores over `reference`, whose `counts()` must equal the adapter's
+ * for the same records.
+ */
 export const describeLedgerStoreRandomConformance = (
   adapter: string,
   open: OpenLedgerStorage,
+  reference: OpenLedgerStorage,
 ): void => {
   describe(`ledger store random run: ${adapter}`, () => {
     it(`matches a model of the retained ledgers over ${STEPS} seeded steps`, async () => {
@@ -183,7 +188,7 @@ export const describeLedgerStoreRandomConformance = (
           const retained = [...model.keys()].sort().join();
           let expected = freshCounts.get(retained);
           if (expected === undefined) {
-            expected = await countsOfOnly(open, model);
+            expected = await countsOfOnly(reference, model);
             freshCounts.set(retained, expected);
           }
           expect(await storage.counts()).toEqual(expected);
