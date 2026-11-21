@@ -2,9 +2,7 @@
 
 Check an edited instruction file against each smell. Every instance below was
 verified in the tree on 2026-09-25; some may be fixed by the time you read
-this, so re-check before quoting one. Several are already listed for repair in
-task W2.8 of the
-[hardening plan](../../../../docs/exec-plans/agent-contribution-hardening.md).
+this, so re-check before quoting one.
 
 ## Lint leakage
 

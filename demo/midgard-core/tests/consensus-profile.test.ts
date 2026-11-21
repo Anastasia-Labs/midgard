@@ -87,9 +87,8 @@ describe("canonical V1 consensus profile", () => {
   //            "direct" route sourced the validator from a reference input and
   //            embedded no script witness at all (13,998 on the counted-shape
   //            basis it modelled before #597).
-  //   13,282 - the single-transaction semantic-proof frontier recorded in
-  //            `docs/exec-plans/evidence/necessity/`, the same by-reference
-  //            basis measured on a complete signed transaction.
+  //   13,282 - the single-transaction semantic-proof frontier, the same
+  //            by-reference basis measured on a complete signed transaction.
   //
   // Since the #617 reference-script wiring (#597 ruling a; commits dce643b0 +
   // 0a074421, landing on the branch as cherry-picks) the deployed direct

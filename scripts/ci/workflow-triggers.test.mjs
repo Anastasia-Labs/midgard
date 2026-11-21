@@ -52,7 +52,7 @@ const scenarios = {
   "docs-only pull request": {
     event: "pull_request",
     branch: "main",
-    files: ["docs/exec-plans/agent-contribution-hardening.md"],
+    files: ["docs/exec-plans/GOAL_SPEC.md"],
     runs: [
       "docs-site-ci:build",
       "repo-tools-ci:repo-tools",

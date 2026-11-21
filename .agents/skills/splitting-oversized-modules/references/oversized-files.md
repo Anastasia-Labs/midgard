@@ -2,9 +2,7 @@
 
 Historical inventory measured 2026-09-25 at `94b70237e`. The 2026-09-28
 follow-up splits these modules, the enlarged database and committee suites, and
-the generated CEK suite in `codex/agent-preflight`. Read
-[the contribution work record](../../../../docs/exec-plans/agent-contribution-parallel-work.md)
-for current locations, proof and integration limits. Re-measure before choosing
+the generated CEK suite in `codex/agent-preflight`. Re-measure before choosing
 new work:
 
 ```bash

@@ -1,8 +1,6 @@
 # Midgard Runtime Structure
 
-Status: Current high-level orientation. The Excalidraw files beside this page
-are design/transaction diagrams and may describe target flows; verify them
-against the technical specification, Aiken validators, and current builders.
+Status: Current high-level orientation.
 
 Last reviewed: 2026-09-07
 

@@ -8,10 +8,6 @@
 - [`docs/research/l2-tx-ingress-throughput.md`](../research/l2-tx-ingress-throughput.md):
   how Base, OP Mainnet and Arbitrum take transactions, with primary-source
   citations.
-- [`docs/exec-plans/l2-throughput-beyond-ingress.md`](l2-throughput-beyond-ingress.md):
-  the limits behind durable admission (block production) and the read
-  surfaces. Block production caps the node at about 140 TPS today, whatever
-  ingress does.
 
 ## Scope and goal
 

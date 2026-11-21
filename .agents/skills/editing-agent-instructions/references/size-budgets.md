@@ -2,9 +2,7 @@
 
 Sizes measured with `wc -l -c` on 2026-09-25. Budgets are proposals: only the
 two skill limits marked `[script]` are enforced today. A per-file budget check
-is part of task W2.3 of the
-[hardening plan](../../../../docs/exec-plans/agent-contribution-hardening.md),
-which is in flight; until it lands, every other budget here is `[review]`.
+has not been built; until it is, every other budget here is `[review]`.
 
 The cost of a line depends on when it loads. Always-loaded files are paid for
 by every session, so their budgets are the tightest.

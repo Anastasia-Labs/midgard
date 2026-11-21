@@ -59,9 +59,7 @@ git grep -n -F -e '<package>/src/<old-path-without-.ts>' -e '<old-basename>'
   depth changes when it moves; `verify-pure-move.mjs` reports it as changed,
   correctly. Name each such edit in the commit message.
 - **CI path filters and docs** that name the file (`bfebc4f92` updated
-  `.github/workflows/docs-site-ci.yml`), and evidence under
-  `docs/exec-plans/evidence/`. [docs/agents/naming-and-versioning.md](../../../../docs/agents/naming-and-versioning.md)
-  says to preserve pinned evidence paths, so re-point rather than delete.
+  `.github/workflows/docs-site-ci.yml`).
 
 ## Keeping the old surface
 

@@ -21,9 +21,7 @@ that verdict. Keep the existing L1 order key and transaction-ID derivation.
 
 The canonical encoding, domain-separated commitment and source-kind rules are
 specified in [the transaction specification](../../spec/midgard-tx.md).
-The [Task 1 handoff](../../exec-plans/forced-inclusion-verdict/01-protocol-design.md)
-retains the integration inventory and acceptance matrix; this ADR owns the
-rationale. The coordinated Task 2 change updates the component and technical
+The coordinated Task 2 change updates the component and technical
 specifications alongside implementation. This decision supersedes the former
 forced-source bit-equality requirement without changing normal admission.
 
