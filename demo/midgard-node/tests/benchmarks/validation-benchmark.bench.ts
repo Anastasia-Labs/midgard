@@ -149,7 +149,7 @@ const assertOrThrow = (condition: boolean, message: string) => {
 const loadInitialLedgerFixture = (): InitialLedgerStateFixture => {
   assertOrThrow(
     fs.existsSync(INITIAL_LEDGER_FIXTURE_PATH),
-    `Initial ledger fixture not found at ${INITIAL_LEDGER_FIXTURE_PATH}. Run: pnpm run bench:fixtures:generate`,
+    `Initial ledger fixture not found at ${INITIAL_LEDGER_FIXTURE_PATH}; it is not committed. Run: pnpm --dir demo/midgard-node run bench:fixtures:generate`,
   );
   return JSON.parse(
     fs.readFileSync(INITIAL_LEDGER_FIXTURE_PATH, "utf8"),
@@ -159,7 +159,7 @@ const loadInitialLedgerFixture = (): InitialLedgerStateFixture => {
 const loadTxSequenceFixture = (): GeneratedTxSequenceFixture => {
   assertOrThrow(
     fs.existsSync(TX_SEQUENCE_FIXTURE_PATH),
-    `Tx sequence fixture not found at ${TX_SEQUENCE_FIXTURE_PATH}. Run: pnpm run bench:fixtures:generate`,
+    `Tx sequence fixture not found at ${TX_SEQUENCE_FIXTURE_PATH}; it is not committed. Run: pnpm --dir demo/midgard-node run bench:fixtures:generate`,
   );
   return JSON.parse(
     fs.readFileSync(TX_SEQUENCE_FIXTURE_PATH, "utf8"),

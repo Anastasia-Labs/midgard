@@ -1163,26 +1163,6 @@
       }
     },
     {
-      "id": "resolver-proof-fit-sweep-v1",
-      "kind": "golden",
-      "summary": "Resolver proof-fit sweep fixture. Frozen: it has no generator; its emulator worker was removed on 2026-09-09 and the wrapper script that could only fail was deleted on 2026-10-08.",
-      "generators": [],
-      "producers": ["demo/midgard-fault-proofs"],
-      "inputs": [],
-      "outputs": [
-        "demo/midgard-validation/tests/fixtures/resolver-proof-fit-sweep-v1.generated.json"
-      ],
-      "sync": {
-        "manual": "Frozen. No generator exists; write one under demo/midgard-fault-proofs/scripts before regenerating."
-      },
-      "check": {
-        "none": "No generator exists, so nothing can show the fixture is current."
-      },
-      "ci": {
-        "none": "No workflow step runs this generator."
-      }
-    },
-    {
       "id": "transition-trace-abi",
       "kind": "golden",
       "summary": "Transition-trace ABI JSON golden (emitted by the SDK encoder through a vitest emit mode) plus the Aiken golden that decodes it. It also rebinds the ValidationTraceDescriptorV1 fixture's bytes into lib/midgard/validation-trace-v1.test.ak, which decodes them field by field.",
@@ -1499,32 +1479,17 @@
         "step": "Build, typecheck, and test Midgard validation",
         "via": "demo/midgard-validation/tests/fuzz/cek-step-fuzz.test.ts"
       }
-    },
-    {
-      "id": "bench-validation-fixtures",
-      "kind": "fixture",
-      "summary": "Benchmark ledger and transaction-sequence fixtures for the node validation benchmarks.",
-      "generators": [
-        "demo/midgard-node/tests/benchmarks/scripts/generate-validation-fixtures.mjs"
-      ],
-      "packageScripts": ["demo/midgard-node:bench:fixtures:generate"],
-      "inputs": [],
-      "outputs": [
-        "demo/midgard-node/tests/benchmarks/fixtures/initial-ledger-state.json",
-        "demo/midgard-node/tests/benchmarks/fixtures/tx-sequence.json"
-      ],
-      "sync": {
-        "run": "pnpm --dir demo/midgard-node run bench:fixtures:generate"
-      },
-      "check": {
-        "none": "The generator has no --check mode."
-      },
-      "ci": {
-        "none": "No workflow step runs the generator."
-      }
     }
   ],
   "ignored": [
+    {
+      "path": "demo/midgard-node/tests/benchmarks/scripts/generate-validation-fixtures.mjs",
+      "why": "Writes the validation benchmark's ledger and transaction-sequence fixtures, which are gitignored; nothing it writes is committed."
+    },
+    {
+      "packageScript": "demo/midgard-node:bench:fixtures:generate",
+      "why": "Runs generate-validation-fixtures.mjs; nothing it writes is committed."
+    },
     {
       "path": "demo/midgard-core/scripts/write-dist-source-digest.mjs",
       "why": "Stamps the gitignored dist/ after a build; nothing it writes is committed."

@@ -87,18 +87,8 @@ ceiling in `demo/midgard-core/src/script-budgets.json`, judged
 records its reason; a reading that drops needs no edit. Likewise a publication
 reserve below a measured maximum is not automatically arbitrary.
 
-See [TQ-12](test-quality/tq-12-derive-not-photograph.md).
-
-### 2.1 The unfit snapshot
-
-`demo/midgard-validation/tests/resolver-proof-fit-sweep.test.ts` checked the exact
-unfit set against `resolver-proof-fit-sweep-v1.unfit-pin.json`, detecting both
-new and closed gaps, as well as identity and prose changes. f69a0ddb2 deleted
-the test without a replacement, so the pin has no consumer and nothing guards
-the unfit set today. <!-- doc-links:historical --> The row-consistency
-checks beside it do not independently prevent growth of the unfit set. Preserve
-that regression guard while separating stable identities from explanatory prose
-if warranted. See [TQ-13](test-quality/tq-13-snapshot-artifacts.md).
+See [TQ-12](test-quality/tq-12-derive-not-photograph.md) and
+[TQ-13](test-quality/tq-13-snapshot-artifacts.md).
 
 ## 3. Assertions over production source text
 

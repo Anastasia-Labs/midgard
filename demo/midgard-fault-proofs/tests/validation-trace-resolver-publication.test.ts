@@ -1,17 +1,13 @@
 /**
  * Publication fit for **every** validation-trace semantic resolver.
  *
- * The resolver proof-fit sweep
- * (`resolver-proof-fit-sweep-generate.test.ts`) measures a resolver only when
- * an existing fixture drives a genuine one-step dispute all the way to it, so
- * all but two of the semantic resolvers it covered are honestly recorded
- * there as `unfit[]` rows with an "no harness-reachable fixture" reason. That
- * is the right answer for *lifecycle* fit — nothing can attest a step nobody
- * can build — but it left **publication** fit unmeasured for those as well,
- * and publication fit does not need a fixture: a reference script publishes
- * the same way whatever the dispute around it looks like.
+ * Lifecycle fit can be measured only for a resolver an existing fixture
+ * drives a genuine one-step dispute all the way to, and most semantic
+ * resolvers have no such fixture. Publication fit does not need one: a
+ * reference script publishes the same way whatever the dispute around it
+ * looks like.
  *
- * That gap is how two resolvers grew past the reliable publication target
+ * Leaving publication fit unmeasured is how two resolvers grew past the reliable publication target
  * without any test noticing. This file closes it permanently: it publishes all
  * 83 applied semantic resolvers as reference scripts through the same helper
  * every other publication-fit suite uses, asserts the real 512-byte reserve on

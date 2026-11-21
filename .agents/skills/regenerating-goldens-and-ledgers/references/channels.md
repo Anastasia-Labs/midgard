@@ -122,12 +122,6 @@ Notes a reader needs:
   suites with `MIDGARD_WRITE_AIKEN_VECTOR` set, so their `:check` is heavy
   (minutes, not seconds).
 
-## Frozen
-
-| Channel                       | Output                                                                              | Why                                                                                                                                                                                                                               |
-| ----------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `resolver-proof-fit-sweep-v1` | `demo/midgard-validation/tests/fixtures/resolver-proof-fit-sweep-v1.generated.json` | It has no generator: its vitest worker was removed on 2026-09-09, and the wrapper script, which could only fail, was deleted on 2026-10-08. The fixture cannot be regenerated or checked until a generator exists again [review]. |
-
 ## Documentation and configuration
 
 | Channel                         | Outputs                                                                                                  | Check (CI)                                                                                                                                                                             | Stale when                                                                                                                           |
@@ -180,20 +174,16 @@ report is stale when the TypeScript step builder, the on-chain machine
 | ------------------------ | ---------------------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `cek-step-fuzz-coverage` | `demo/midgard-validation/tests/fuzz/cek-step-fuzz.coverage.json` | `node scripts/contrib.mjs artifacts sync --channel cek-step-fuzz-coverage` | `node scripts/contrib.mjs artifacts check --channel cek-step-fuzz-coverage` runs the step-fuzz suite without the flag, which compares the fixed seed set's per-builtin coverage with the report [ci: Midgard Node CI/Build, typecheck, and test Midgard validation] |
 
-## Unchecked
-
-| Channel                     | Output                                                                                | Sync                                                       | Why unchecked                                                          |
-| --------------------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `bench-validation-fixtures` | `demo/midgard-node/tests/benchmarks/fixtures/{initial-ledger-state,tx-sequence}.json` | `pnpm --dir demo/midgard-node run bench:fixtures:generate` | The generator has no `--check` mode, and no workflow runs it [review]. |
-
 ## Deliberately not channels
 
 Listed under `ignored` in `channels.json`, each with its reason: the dist source
 digest stamp (`demo/midgard-core/scripts/write-dist-source-digest.mjs`, writes
 into the gitignored `dist/`), the devnet acceptance env writer
 (`demo/midgard-node-tools/devnet/phase4-process/scripts/write-acceptance-env.sh`,
-writes under the run directory), and `midgard-node-tools stress-corpus-generate`
-(writes a run artifact). The benchmark report scripts in
+writes under the run directory), `midgard-node-tools stress-corpus-generate`
+(writes a run artifact) and the validation benchmark's fixture generator
+(`demo/midgard-node/tests/benchmarks/scripts/generate-validation-fixtures.mjs`,
+`bench:fixtures:generate`, whose two outputs are gitignored). The benchmark report scripts in
 `onchain/aiken/scripts/` write to `benchmarks/output/`, which
 `onchain/aiken/.gitignore` ignores, so discovery never sees them.
 

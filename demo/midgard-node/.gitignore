@@ -10,6 +10,8 @@ dist
 test-mpt-db*/
 /db/
 tests/benchmarks/output/
+tests/benchmarks/fixtures/initial-ledger-state.json
+tests/benchmarks/fixtures/tx-sequence.json
 logs/
 .stress-wallets/
 tmp-*

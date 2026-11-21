@@ -81,10 +81,9 @@ the source change that caused it.
   `generated-deployment-profiles.ts`
   [ci: Midgard Node CI/Check native V1 field-access golden vectors] and the
   sibling check steps listed in [references/channels.md](references/channels.md).
-  Blind spot: channels whose check no CI step runs (`script-decode-haskell-v1`,
-  which needs a built Haskell probe) or that have no check at all (the frozen
-  `resolver-proof-fit-sweep-v1`, `bench-validation-fixtures`) accept a hand
-  edit silently; only a reader catches those.
+  Blind spot: a channel whose check no CI step runs (`script-decode-haskell-v1`,
+  which needs a built Haskell probe) accepts a hand edit silently; only a
+  reader catches it.
 - **Commit the source change and the regenerated output together** [review].
   CI catches a split commit only for channels whose check it runs, and only on
   the pull request's final state.
