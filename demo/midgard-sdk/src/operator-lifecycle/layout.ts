@@ -84,14 +84,6 @@ export const nodeKeyEquals = (
 ): boolean => node.key !== "Empty" && node.key.Key.key === keyHash;
 
 /**
- * Returns whether a node points to the provided key hash via its `next` link.
- */
-export const linkPointsTo = (
-  node: SDK.LinkedListNodeView,
-  keyHash: string,
-): boolean => node.next !== "Empty" && node.next.Key.key === keyHash;
-
-/**
  * Returns whether a node is the correct ordered "not member" witness for the
  * provided key hash.
  */

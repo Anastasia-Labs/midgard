@@ -22,7 +22,6 @@ import { Data } from "@lucid-evolution/lucid";
 import { L2TransactionSource } from "../ledger-state.js";
 import {
   FaultProofStepCancel,
-  FaultProofStepCancelSchema,
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
   NativeTxInclusionArgs,
@@ -250,12 +249,9 @@ export const DaHashPreimageStep02SpendRedeemer =
     DaHashPreimageStep02SpendRedeemerSchema,
   );
 
-/** Step-01 args are the shared source-leaf inclusion args. */
-export const DaHashPreimageTxInclusionArgsSchema = NativeTxInclusionArgsSchema;
 export type DaHashPreimageTxInclusionArgs = NativeTxInclusionArgs;
 export const DaHashPreimageTxInclusionArgs = NativeTxInclusionArgs;
 
-export const DaHashPreimageStepCancelSchema = FaultProofStepCancelSchema;
 export type DaHashPreimageStepCancel = FaultProofStepCancel;
 export const DaHashPreimageStepCancel = FaultProofStepCancel;
 

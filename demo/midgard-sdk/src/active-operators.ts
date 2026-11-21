@@ -1,14 +1,8 @@
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
-import {
-  Data,
-  fromText,
-  LucidEvolution,
-  TxBuilder,
-} from "@lucid-evolution/lucid";
+import { Data, fromText, LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
-  AuthenticatedValidator,
   LucidError,
   OutputReferenceSchema,
   POSIXTimeSchema,
@@ -16,7 +10,6 @@ import {
 import { authenticateUTxOs, AuthenticUTxO } from "./internals.js";
 import {
   ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX,
-  incompleteInitLinkedListTxProgram,
   LinkedListDatum,
   linkedListDatumToNodeView,
 } from "./linked-list.js";
@@ -179,11 +172,6 @@ export const castActiveOperatorDatumToData = (
   datum: ActiveOperatorDatum,
 ): unknown => Data.castTo(datum, ActiveOperatorDatum);
 
-export type ActiveOperatorInitParams = {
-  validator: AuthenticatedValidator;
-  lovelace?: bigint;
-};
-
 export type ActiveOperatorUTxO = AuthenticUTxO<ActiveOperatorDatum>;
 
 export type FetchActiveOperatorParams = {
@@ -245,26 +233,3 @@ export const requireActiveOperatorUTxO = (
       )
     : Effect.succeed(match);
 };
-
-/**
- * Init
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteActiveOperatorInitTxProgram = (
-  lucid: LucidEvolution,
-  params: ActiveOperatorInitParams,
-): Effect.Effect<TxBuilder, never> =>
-  incompleteInitLinkedListTxProgram(lucid, {
-    validator: params.validator,
-    rootAssetName: ACTIVE_OPERATORS_ROOT_ASSET_NAME,
-    data: "",
-    redeemer: (outputIndex) =>
-      Data.to(
-        { Init: { output_index: outputIndex } },
-        ActiveOperatorMintRedeemer,
-      ),
-    lovelace: params.lovelace,
-  });

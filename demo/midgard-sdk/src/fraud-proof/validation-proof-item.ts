@@ -1,11 +1,4 @@
-import {
-  CML,
-  Data,
-  type LucidEvolution,
-  type ProtocolParameters,
-  type TxSignBuilder,
-} from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { CML, Data } from "@lucid-evolution/lucid";
 
 import type { ValidationTraceDisputeFaultProofContracts } from "./contracts/index.js";
 import {
@@ -26,19 +19,6 @@ export type ValidationProofItemPublication = {
 };
 
 const MIN_ADA_STABILIZATION_LIMIT = 8;
-
-const resolveProtocolParameters = async (
-  lucid: LucidEvolution,
-): Promise<ProtocolParameters> => {
-  const config = lucid.config();
-  if (config.protocolParameters !== undefined) {
-    return config.protocolParameters;
-  }
-  if (config.provider === undefined) {
-    throw new Error("Lucid provider is not configured.");
-  }
-  return await config.provider.getProtocolParameters();
-};
 
 export const minimumLovelaceForValidationProofItemPublication = ({
   contracts,
@@ -125,33 +105,3 @@ export const deriveValidationProofItemPublication = ({
     datumCbor: Data.to(datum, ValidationProofItemDatum),
   };
 };
-
-export const buildUnsignedValidationProofItemPublicationProgram = (
-  lucid: LucidEvolution,
-  contracts: ValidationTraceDisputeFaultProofContracts,
-  publication: ValidationProofItemPublication,
-): Effect.Effect<TxSignBuilder, Error> =>
-  Effect.tryPromise({
-    try: async () => {
-      const protocolParameters = await resolveProtocolParameters(lucid);
-      const lovelace = minimumLovelaceForValidationProofItemPublication({
-        contracts,
-        publication,
-        coinsPerUtxoByte: protocolParameters.coinsPerUtxoByte,
-      });
-      return await lucid
-        .newTx()
-        .pay.ToAddressWithData(
-          contracts.validationTraceDispute.proofItem.spendingScriptAddress,
-          { kind: "inline", value: publication.datumCbor },
-          { lovelace },
-        )
-        .complete({ localUPLCEval: true });
-    },
-    catch: (cause) =>
-      new Error(
-        `Failed to publish a complete validation proof item: ${
-          cause instanceof Error ? cause.message : String(cause)
-        }`,
-      ),
-  });

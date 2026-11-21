@@ -9,10 +9,7 @@
  * operand by the indices of its runs. The operand's root is the flat chunk
  * tree root that `commitMidgardCekBlob` gives its bytes.
  */
-import {
-  commitMidgardCekBlob,
-  hashMidgardCekBlobChunk,
-} from "./cek-proof.encode-midgard-cek-continuation-frame.js";
+import { commitMidgardCekBlob } from "./cek-proof.encode-midgard-cek-continuation-frame.js";
 import { type Bytes } from "./cek-proof.encode-midgard-cek-term-node.js";
 import { type Hash32 } from "./codec/hash.js";
 
@@ -205,7 +202,3 @@ export const midgardCekFlatRootOfPieces = (pieces: readonly Bytes[]): Hash32 =>
 /** The flat chunk tree root of `bytes`. */
 export const midgardCekFlatRoot = (bytes: Bytes): Hash32 =>
   commitMidgardCekBlob(bytes).root;
-
-/** The root of one chunk of at most 4,095 bytes. */
-export const midgardCekStagedChunkRoot = (chunk: Bytes): Hash32 =>
-  hashMidgardCekBlobChunk(chunk);

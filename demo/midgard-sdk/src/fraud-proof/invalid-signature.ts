@@ -21,12 +21,10 @@ import { H32Schema } from "../common.js";
 import { FieldOpeningSchema } from "./field-opening.js";
 import {
   FaultProofStepCancel,
-  FaultProofStepCancelSchema,
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
   type MidgardAddressWitness as MidgardAddressWitnessData,
   NativeTxInclusionCarriage,
-  NativeTxInclusionCarriageSchema,
   type NativeTxWitnessSetCompact as NativeTxWitnessSetCompactData,
 } from "./native.js";
 import {
@@ -42,13 +40,6 @@ import {
 
 /** Catalogue violation identifier adjudicated by this family. */
 export const INVALID_SIGNATURE_VIOLATION_ID = "invalid-signature" as const;
-
-/**
- * Canonical address-witness field index of a native V1 transaction witness set.
- * The commitment is `bounded_collection_v1.from_items(7, ...)`, so a preimage
- * built for any other field can never open it.
- */
-export const INVALID_SIGNATURE_ADDR_TX_WITS_FIELD_INDEX = 7;
 
 // ## Canonical encoders (twins of the on-chain component encoders)
 
@@ -233,13 +224,10 @@ export const nativeTxHasInvalidSignatureViolation = ({
 
 // ## Shared step aliases
 
-export const InvalidSignatureTxInclusionArgsSchema =
-  NativeTxInclusionCarriageSchema;
 export type InvalidSignatureTxInclusionArgs = NativeTxInclusionCarriage;
 export const InvalidSignatureTxInclusionArgs =
   NativeTxInclusionCarriage as unknown as InvalidSignatureTxInclusionArgs;
 
-export const InvalidSignatureStepCancelSchema = FaultProofStepCancelSchema;
 export type InvalidSignatureStepCancel = FaultProofStepCancel;
 export const InvalidSignatureStepCancel =
   FaultProofStepCancel as unknown as InvalidSignatureStepCancel;

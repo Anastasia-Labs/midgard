@@ -187,23 +187,6 @@ export const DoubleWithdrawStep02SpendRedeemer =
 
 // ## Step resolver
 
-export const DOUBLE_WITHDRAW_STEP_NAMES = ["step_01", "step_02"] as const;
-export type DoubleWithdrawStepName =
-  (typeof DOUBLE_WITHDRAW_STEP_NAMES)[number];
-
-/**
- * Explicit, exhaustive step-datum resolver. There is no fallback branch:
- * adding a step without adding its schema fails to compile.
- */
-export const doubleWithdrawStepDatumSchema = (step: DoubleWithdrawStepName) => {
-  switch (step) {
-    case "step_01":
-      return DoubleWithdrawStep01DatumSchema;
-    case "step_02":
-      return DoubleWithdrawStep02DatumSchema;
-  }
-};
-
 // ## Handoffs
 
 /**

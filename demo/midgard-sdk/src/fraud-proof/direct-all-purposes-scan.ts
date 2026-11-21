@@ -20,8 +20,6 @@ import {
   faultProofStepRedeemerSchema,
 } from "./native.js";
 
-/** Source language tags, as `script_proof_v1.language_tag` names them. */
-export const ALL_PURPOSES_NATIVE_LANGUAGE_TAG = 0n;
 export const ALL_PURPOSES_PLUTUS_V3_LANGUAGE_TAG = 3n;
 export const ALL_PURPOSES_MIDGARD_V1_LANGUAGE_TAG = 128n;
 
@@ -134,10 +132,6 @@ export const DirectAllPurposesReceiveArgsSchema = Data.Object({
   checkpoint_bytes: Data.Bytes(),
   witnesses: Data.Array(Data.Nullable(DirectAllPurposesExecutionWitnessSchema)),
 });
-
-export type DirectAllPurposesGrammarAction = Data.Static<
-  typeof DirectAllPurposesGrammarActionSchema
->;
 
 export const DirectAllPurposesDatumSchema = faultProofStepDatumSchema(
   DirectAllPurposesStateSchema,

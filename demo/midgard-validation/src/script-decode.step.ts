@@ -72,7 +72,6 @@ export type {
 } from "./script-decode.step-types.js";
 
 export const SCRIPT_DECODE_LANGUAGE_PLUTUS_V3 = 3;
-export const SCRIPT_DECODE_LANGUAGE_MIDGARD_V1 = 128;
 export const SCRIPT_DECODE_PHASE2_NONE = 0;
 
 /** The script hash a run is opened for: `blake2b_224(language ‖ bytes)`. */

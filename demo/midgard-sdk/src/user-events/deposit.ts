@@ -15,7 +15,6 @@ import {
   HashingError,
   InvalidUtxoError,
   LucidError,
-  makeReturn,
   MidgardValidators,
 } from "../common.js";
 import { POSIXTimeSchema } from "../common.js";
@@ -126,11 +125,6 @@ export const fetchDepositUTxOsProgram = (
   config: EventHistoryFetchConfig,
 ): Effect.Effect<DepositUTxO[], LucidError> =>
   fetchHistoryEventsProgram(lucid, config, toDepositUTxO);
-
-export const fetchDepositUTxOs = (
-  lucid: { utxosAt(address: string): Promise<UTxO[]> },
-  config: EventHistoryFetchConfig,
-) => makeReturn(fetchDepositUTxOsProgram(lucid, config));
 
 export type SubmitDepositReferenceScripts = {
   readonly depositMinting: UTxO;
@@ -300,19 +294,3 @@ export const unsignedDepositTxProgram = (
   buildUnsignedDepositTxWithMetadataProgram(lucid, contracts, config).pipe(
     Effect.map(({ tx }) => tx),
   );
-
-/**
- * Builds a completed tx for submitting deposits using the provided
- * `LucidEvolution` instance and a deposit config.
- *
- * @param lucid - The `LucidEvolution` API object.
- * @param contracts - Midgard validator configuration.
- * @param config - Parameters required for committing deposits.
- * @returns A promise that resolves to a `TxSignBuilder` instance.
- */
-export const unsignedDepositTx = (
-  lucid: LucidEvolution,
-  contracts: MidgardValidators,
-  config: SubmitDepositConfig,
-): Promise<TxSignBuilder> =>
-  makeReturn(unsignedDepositTxProgram(lucid, contracts, config)).unsafeRun();

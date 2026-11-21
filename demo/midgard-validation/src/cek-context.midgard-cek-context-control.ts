@@ -46,14 +46,6 @@ const hash32 = (bytes: Uint8Array): Buffer =>
 
 export const bytes = (value: Uint8Array): Buffer => Buffer.from(value);
 
-export const requiredHash32 = (field: string, value: Uint8Array): Buffer => {
-  const exact = bytes(value);
-  if (exact.length !== 32) {
-    throw new Error(`${field} must be exactly 32 bytes`);
-  }
-  return exact;
-};
-
 export const requiredScriptHash = (value: Uint8Array): Buffer => {
   const exact = bytes(value);
   if (exact.length !== 28) {

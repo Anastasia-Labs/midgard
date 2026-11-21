@@ -173,15 +173,3 @@ export const invalidRangeViolationReason = ({
     ? "starts-after-block-slot"
     : null;
 };
-
-export const nativeTxBodyHasInvalidRangeViolation = ({
-  blockSlot,
-  txBody,
-}: {
-  readonly blockSlot: bigint;
-  readonly txBody: NativeTxBodyCompactData;
-}): boolean =>
-  invalidRangeViolationReason({
-    blockSlot,
-    normalizedRange: normalizeNativeTxValidityRange(txBody),
-  }) !== null;

@@ -97,9 +97,6 @@ export const MIDGARD_SUPPORTED_SCRIPT_LANGUAGES = Object.freeze([
   }),
 ] as const satisfies readonly SupportedScriptLanguageTag[]);
 
-export const isScriptLanguageTag = (tag: number): tag is ScriptLanguageTag =>
-  SCRIPT_LANGUAGE_NAMES_BY_TAG.has(tag as ScriptLanguageTag);
-
 export const scriptLanguageNameToTag = (
   language: ScriptLanguageName,
 ): ScriptLanguageTag => ScriptLanguageTags[language];

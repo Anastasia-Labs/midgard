@@ -31,7 +31,6 @@ export const MinAdaFault = asDataType<MinAdaFault>(MinAdaFaultSchema);
 export const MinAdaForcedSourcePayloadSchema =
   ProofThreadForcedSourcePayloadSchema;
 
-export const MinAdaStep01DatumSchema = faultProofStepDatumSchema(Data.Any());
 export const MinAdaStep01ArgsSchema = Data.Object({
   forced_source: Data.Nullable(
     Data.Object({

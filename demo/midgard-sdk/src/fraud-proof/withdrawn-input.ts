@@ -11,15 +11,11 @@ import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema } from "../common.js";
-import { type WithdrawalInfo, WithdrawalInfoSchema } from "../ledger-state.js";
-import {
-  type RootMembershipProof,
-  WithdrawalSourceMembershipProofSchema,
-} from "../transition-trace.js";
+import { type WithdrawalInfo } from "../ledger-state.js";
+import { WithdrawalSourceMembershipProofSchema } from "../transition-trace.js";
 import { FieldOpeningSchema } from "./field-opening.js";
 import {
   FaultProofStepCancel,
-  FaultProofStepCancelSchema,
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
   type MidgardTxInput,
@@ -30,7 +26,6 @@ import {
 
 export const WITHDRAWN_INPUT_VIOLATION_ID = "withdrawn-input" as const;
 
-export const WithdrawnInputStepCancelSchema = FaultProofStepCancelSchema;
 export type WithdrawnInputStepCancel = FaultProofStepCancel;
 export const WithdrawnInputStepCancel =
   FaultProofStepCancel as unknown as WithdrawnInputStepCancel;
@@ -153,11 +148,6 @@ export const WithdrawnInputStep03SpendRedeemer =
     WithdrawnInputStep03SpendRedeemerSchema,
   );
 
-export type WithdrawnInputWithdrawalMembership = RootMembershipProof<
-  Data.Static<typeof WithdrawalSourceMembershipProofSchema>["key"],
-  WithdrawalInfo
->;
-
 export const withdrawnInputStep03State = ({
   input,
   withdrawalsRoot,
@@ -183,6 +173,3 @@ export const isWithdrawnInputViolation = ({
   withdrawal.validity === "WithdrawalIsValid" &&
   withdrawal.body.l2_outref.transactionId === input.tx_id &&
   withdrawal.body.l2_outref.outputIndex === input.output_index;
-
-/** Exported only to make the schema dependency explicit to generated d.ts. */
-export const WithdrawnInputWithdrawalInfoSchema = WithdrawalInfoSchema;

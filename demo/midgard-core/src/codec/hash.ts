@@ -7,7 +7,6 @@ export { midgardBlake2b, midgardBlake2bReady } from "./blake2b.js";
  * Canonical 32-byte hash used by the Midgard tx codec.
  */
 export type Hash32 = Buffer;
-export type Hash28 = Buffer;
 
 export const HASH32_LENGTH = 32;
 export const HASH28_LENGTH = 28;

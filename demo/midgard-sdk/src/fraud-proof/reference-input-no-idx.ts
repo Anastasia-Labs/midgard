@@ -54,7 +54,6 @@ import {
 } from "./input-no-idx.js";
 import {
   FaultProofStepCancel,
-  FaultProofStepCancelSchema,
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
   type MidgardTxInput as MidgardTxInputData,
@@ -65,12 +64,6 @@ import {
 /** Catalogue violation identifier adjudicated by this family. */
 export const REFERENCE_INPUT_NO_IDX_VIOLATION_ID =
   "reference-input-no-idx" as const;
-
-/** Canonical reference-inputs field index of a native V1 transaction body. */
-export const REFERENCE_INPUT_NO_IDX_REFERENCE_INPUTS_FIELD_INDEX = 1;
-
-/** Canonical outputs field index of a native V1 transaction body. */
-export const REFERENCE_INPUT_NO_IDX_OUTPUTS_FIELD_INDEX = 2;
 
 // ## Rule
 
@@ -125,7 +118,6 @@ export type ReferenceInputNoIdxTxInclusionArgs = NativeTxInclusionCarriage;
 export const ReferenceInputNoIdxTxInclusionArgs =
   NativeTxInclusionCarriage as unknown as ReferenceInputNoIdxTxInclusionArgs;
 
-export const ReferenceInputNoIdxStepCancelSchema = FaultProofStepCancelSchema;
 export type ReferenceInputNoIdxStepCancel = FaultProofStepCancel;
 export const ReferenceInputNoIdxStepCancel =
   FaultProofStepCancel as unknown as ReferenceInputNoIdxStepCancel;

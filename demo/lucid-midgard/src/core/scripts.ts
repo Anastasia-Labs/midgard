@@ -71,10 +71,6 @@ export type SpendInputIntent = OutRef & {
   readonly redeemer?: Redeemer;
 };
 
-export type ReferenceInputIntent = OutRef & {
-  readonly script?: ScriptSource;
-};
-
 export type MintIntent = {
   readonly policyId: string;
   readonly assets: Readonly<Record<AssetUnit, bigint>>;

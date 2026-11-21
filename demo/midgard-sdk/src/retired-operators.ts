@@ -1,25 +1,15 @@
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
-import {
-  Data,
-  fromText,
-  LucidEvolution,
-  TxBuilder,
-} from "@lucid-evolution/lucid";
+import { Data, fromText, LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { SlashingArgumentsSchema } from "./active-operators.js";
 import {
-  AuthenticatedValidator,
   LucidError,
   OutputReferenceSchema,
   POSIXTimeSchema,
 } from "./common.js";
 import { authenticateUTxOs, AuthenticUTxO } from "./internals.js";
-import {
-  incompleteInitLinkedListTxProgram,
-  LinkedListDatum,
-  linkedListDatumToNodeView,
-} from "./linked-list.js";
+import { LinkedListDatum, linkedListDatumToNodeView } from "./linked-list.js";
 
 export const RETIRED_OPERATORS_ROOT_ASSET_NAME = fromText(
   "MIDGARD_RETIRED_OPERATORS",
@@ -74,11 +64,6 @@ export type RetiredOperatorMintRedeemer = Data.Static<
 export const RetiredOperatorMintRedeemer =
   asDataType<RetiredOperatorMintRedeemer>(RetiredOperatorMintRedeemerSchema);
 
-export type RetiredOperatorInitParams = {
-  validator: AuthenticatedValidator;
-  lovelace?: bigint;
-};
-
 export type RetiredOperatorUTxO = AuthenticUTxO<RetiredOperatorDatum>;
 
 export type FetchRetiredOperatorParams = {
@@ -123,27 +108,4 @@ export const fetchRetiredOperatorUTxOs = (
         })),
       ),
     );
-  });
-
-/**
- * Init
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteRetiredOperatorInitTxProgram = (
-  lucid: LucidEvolution,
-  params: RetiredOperatorInitParams,
-): Effect.Effect<TxBuilder> =>
-  incompleteInitLinkedListTxProgram(lucid, {
-    validator: params.validator,
-    rootAssetName: RETIRED_OPERATORS_ROOT_ASSET_NAME,
-    data: "",
-    redeemer: (outputIndex) =>
-      Data.to(
-        { Init: { output_index: outputIndex } },
-        RetiredOperatorMintRedeemer,
-      ),
-    lovelace: params.lovelace,
   });

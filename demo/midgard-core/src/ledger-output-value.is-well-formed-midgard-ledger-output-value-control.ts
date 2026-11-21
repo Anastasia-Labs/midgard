@@ -268,12 +268,3 @@ export const advanced = (
   control: MidgardLedgerOutputValueControl,
 ): MidgardLedgerOutputValueControl | null =>
   isWellFormedMidgardLedgerOutputValueControl(control) ? control : null;
-
-export const sequencesEqual = (
-  left: MidgardCekDataSequenceSummary,
-  right: MidgardCekDataSequenceSummary,
-): boolean =>
-  left.length === right.length &&
-  left.payloadCborLength === right.payloadCborLength &&
-  left.memory === right.memory &&
-  Buffer.from(left.root).equals(Buffer.from(right.root));

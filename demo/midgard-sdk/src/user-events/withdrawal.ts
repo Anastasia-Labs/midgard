@@ -15,7 +15,6 @@ import {
   HashingError,
   InvalidUtxoError,
   LucidError,
-  makeReturn,
   MidgardValidators,
   POSIXTimeSchema,
 } from "../common.js";
@@ -151,11 +150,6 @@ export const fetchWithdrawalUTxOsProgram = (
   config: EventHistoryFetchConfig,
 ): Effect.Effect<WithdrawalUTxO[], LucidError> =>
   fetchHistoryEventsProgram(lucid, config, toWithdrawalUTxO);
-
-export const fetchWithdrawalUTxOs = (
-  lucid: { utxosAt(address: string): Promise<UTxO[]> },
-  config: EventHistoryFetchConfig,
-) => makeReturn(fetchWithdrawalUTxOsProgram(lucid, config));
 
 export type SubmitWithdrawalReferenceScripts = {
   readonly withdrawalMinting: UTxO;
@@ -334,19 +328,3 @@ export const unsignedWithdrawalTxProgram = (
   buildUnsignedWithdrawalTxWithMetadataProgram(lucid, contracts, config).pipe(
     Effect.map(({ tx }) => tx),
   );
-
-/**
- * Builds completed tx for submitting withdrawal order using the provided
- * `LucidEvolution` instance and a withdrawal order config.
- *
- * @param lucid - The `LucidEvolution` API object.
- * @param contracts - Midgard validator configuration.
- * @param config - Parameters required for committing withdrawal orders.
- * @returns A promise that resolves to a `TxSignBuilder` instance.
- */
-export const unsignedWithdrawalTx = (
-  lucid: LucidEvolution,
-  contracts: MidgardValidators,
-  config: SubmitWithdrawalConfig,
-): Promise<TxSignBuilder> =>
-  makeReturn(unsignedWithdrawalTxProgram(lucid, contracts, config)).unsafeRun();

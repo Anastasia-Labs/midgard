@@ -25,7 +25,6 @@ import { WithdrawalSourceMembershipProofSchema } from "../transition-trace.js";
 import { FieldOpeningSchema } from "./field-opening.js";
 import {
   FaultProofStepCancel,
-  FaultProofStepCancelSchema,
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
   MidgardTxInputSchema,
@@ -59,8 +58,6 @@ export const withdrawnReferenceInputThreadTokenAssetName = (
   return `${categoryId}${challengedHeaderHash}`;
 };
 
-export const WithdrawnReferenceInputStepCancelSchema =
-  FaultProofStepCancelSchema;
 export type WithdrawnReferenceInputStepCancel = FaultProofStepCancel;
 export const WithdrawnReferenceInputStepCancel =
   FaultProofStepCancel as unknown as WithdrawnReferenceInputStepCancel;

@@ -16,13 +16,6 @@ export const WITNESS_SCRIPT_DECODING_CATEGORY =
   "witnessScriptDecoding" as const;
 export const WITNESS_SCRIPT_DECODING_PROPOSED_ID = "00000022" as const;
 
-export const WITNESS_SCRIPT_DECODING_RESULT_PENDING = -1n;
-export const WITNESS_SCRIPT_DECODING_RESULT_NO_FAULT = -2n;
-export const WITNESS_SCRIPT_DECODING_RESULT_HEADER_MALFORMED = 0n;
-export const WITNESS_SCRIPT_DECODING_RESULT_NATIVE_MALFORMED = 1n;
-export const WITNESS_SCRIPT_DECODING_RESULT_NODE_LIMIT = 2n;
-export const WITNESS_SCRIPT_DECODING_RESULT_DEPTH_LIMIT = 3n;
-
 export const WitnessScriptDecodingVerdictSubjectSchema = VerdictSubjectSchema;
 
 export const WitnessScriptDecodingBoundSchema = Data.Object({
@@ -54,9 +47,6 @@ export const WitnessScriptDecodingStep01ArgsSchema = Data.Object({
   source: WitnessScriptDecodingStep01SourceSchema,
   script_index: Data.Integer(),
 });
-export const WitnessScriptDecodingStep01DatumSchema = faultProofStepDatumSchema(
-  Data.Any(),
-);
 export const WitnessScriptDecodingStep01RedeemerSchema =
   faultProofStepRedeemerSchema(WitnessScriptDecodingStep01ArgsSchema);
 

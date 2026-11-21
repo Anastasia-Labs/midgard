@@ -23,7 +23,6 @@ import {
   GenericErrorFields,
   isHexString,
   LucidError,
-  makeReturn,
   MidgardValidators,
   MintingValidator,
   ScriptHashSchema,
@@ -363,8 +362,3 @@ export const fetchHubOracleUTxOProgram = (
         }),
     },
   );
-
-export const fetchHubOracleUTxO = (
-  lucid: LucidEvolution,
-  config: HubOracleConfig,
-) => makeReturn(fetchHubOracleUTxOProgram(lucid, config)).unsafeRun();

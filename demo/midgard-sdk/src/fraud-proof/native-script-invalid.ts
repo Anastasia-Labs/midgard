@@ -26,9 +26,6 @@ export const NATIVE_SCRIPT_INVALID_VIOLATION_ID =
 export const nativeScriptItemCommitment = (item: Uint8Array): string =>
   Buffer.from(blake2b(item, { dkLen: 32 })).toString("hex");
 
-export const NativeScriptInvalidStep01DatumSchema = faultProofStepDatumSchema(
-  Data.Any(),
-);
 export const NativeScriptInvalidVerdictSubjectSchema = VerdictSubjectSchema;
 export const NativeScriptInvalidStep01SourceSchema =
   ProofThreadSubjectSourceSchema;
@@ -243,11 +240,3 @@ export const NativeScriptInvalidStep05ArgsSchema = Data.Enum([
 ]);
 export const NativeScriptInvalidStep05SpendRedeemerSchema =
   faultProofStepRedeemerSchema(NativeScriptInvalidStep05ArgsSchema);
-
-export const NATIVE_SCRIPT_INVALID_STEP_NAMES = [
-  "step_01",
-  "step_02",
-  "step_03",
-  "step_04",
-  "step_05",
-] as const;

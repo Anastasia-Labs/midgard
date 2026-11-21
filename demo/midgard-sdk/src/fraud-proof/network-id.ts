@@ -30,7 +30,6 @@ export const NetworkIdFaultSchema = Data.Enum([
 export type NetworkIdFault = Data.Static<typeof NetworkIdFaultSchema>;
 export const NetworkIdFault = asDataType<NetworkIdFault>(NetworkIdFaultSchema);
 
-export const NetworkIdStep01DatumSchema = faultProofStepDatumSchema(Data.Any());
 /**
  * Datum locked at the forced door between step 01 and step 02. The shared
  * `continue` helper admits only a populated successor state, so step 01 hands

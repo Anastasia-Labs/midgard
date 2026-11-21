@@ -1,14 +1,7 @@
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
-import {
-  Data,
-  fromText,
-  LucidEvolution,
-  TxBuilder,
-} from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { Data, fromText } from "@lucid-evolution/lucid";
 
-import { AuthenticatedValidator, OutputReferenceSchema } from "./common.js";
-import { incompleteInitLinkedListTxProgram } from "./linked-list.js";
+import { OutputReferenceSchema } from "./common.js";
 
 export const REGISTERED_OPERATORS_ROOT_ASSET_NAME = fromText(
   "MIDGARD_REGISTERED_OPERATORS",
@@ -95,31 +88,3 @@ export const RegisteredOperatorMintRedeemer =
   asDataType<RegisteredOperatorMintRedeemer>(
     RegisteredOperatorMintRedeemerSchema,
   );
-
-export type RegisteredOperatorInitParams = {
-  validator: AuthenticatedValidator;
-  lovelace?: bigint;
-};
-
-/**
- * Init
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteRegisteredOperatorInitTxProgram = (
-  lucid: LucidEvolution,
-  params: RegisteredOperatorInitParams,
-): Effect.Effect<TxBuilder, never> =>
-  incompleteInitLinkedListTxProgram(lucid, {
-    validator: params.validator,
-    rootAssetName: REGISTERED_OPERATORS_ROOT_ASSET_NAME,
-    data: "",
-    redeemer: (outputIndex) =>
-      Data.to(
-        { Init: { output_index: outputIndex } },
-        RegisteredOperatorMintRedeemer,
-      ),
-    lovelace: params.lovelace,
-  });

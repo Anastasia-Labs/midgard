@@ -3,7 +3,6 @@ import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 import { HeaderSchema } from "../ledger-state.js";
-import type { RejectionReason as RejectionReasonType } from "../rejection-reason.js";
 import { ForcedLeafMembershipV1Schema } from "../transition-trace.js";
 import { CommittedFieldClaimSchema } from "./canonical-decodability.js";
 import {
@@ -21,7 +20,6 @@ import {
 
 export const FIELD_PREIMAGE_LENGTH_MISMATCH_CATEGORY =
   "fieldPreimageLengthMismatch" as const;
-export const FIELD_PREIMAGE_LENGTH_MISMATCH_PROPOSED_ID = "00000020" as const;
 export const MIDGARD_FIELD_PREIMAGE_COUNT = 9;
 export const MIDGARD_MAX_FIELD_PREIMAGE_BYTES = 32_768;
 
@@ -103,18 +101,6 @@ export const prepareFieldPreimageLengthEvidence = ({
     fieldPreimage: Buffer.from(fieldPreimage).toString("hex"),
     faultHolds,
   });
-};
-
-export const fieldPreimageLengthReason = (
-  fieldIndex: number,
-): RejectionReasonType => {
-  coordinate(fieldIndex, "fieldIndex");
-  if (fieldIndex >= MIDGARD_FIELD_PREIMAGE_COUNT) {
-    throw new Error("fieldIndex is outside the nine-field V1 subject space");
-  }
-  return {
-    FieldPreimageLengthMismatch: { field_index: BigInt(fieldIndex) },
-  };
 };
 
 export const requireFieldPreimageLengthSubject = (

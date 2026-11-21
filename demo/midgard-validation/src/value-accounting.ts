@@ -72,11 +72,6 @@ const addDeltaInto = (
   return delta.lovelace * multiplier;
 };
 
-export const zeroMidgardValue = (): MidgardValue => ({
-  lovelace: 0n,
-  assets: new Map(),
-});
-
 export const sumMidgardValues = (
   values: readonly MidgardValue[],
 ): MidgardValue => {

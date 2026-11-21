@@ -115,9 +115,6 @@ export type RejectSubject =
       readonly refusalClass: bigint;
     };
 
-/** The arm tags a {@link RejectSubject} can carry. */
-export type RejectSubjectArm = RejectSubject["arm"];
-
 /**
  * Position of an out-ref (as its canonical CBOR hex) in the transaction's
  * spend or reference input field. Validation reaches inputs through their

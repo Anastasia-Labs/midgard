@@ -18,37 +18,19 @@ import {
 } from "./input-existence.js";
 import {
   FaultProofStepCancel,
-  FaultProofStepCancelSchema,
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
   NativeTxInclusionArgs,
-  NativeTxInclusionArgsSchema,
 } from "./native.js";
 import {
   ProofThreadForcedSourcePayloadSchema,
   ProofThreadSubjectSourceSchema,
 } from "./proof-thread-source.js";
-import { VerdictSubjectSchema } from "./proof-thread-substrate.js";
 
-/**
- * Non-existent-input (a.k.a. `no_input`) fault proof — proves a Midgard block
- * includes a native L2 transaction that spends an input which never existed in
- * the block's prev ledger, and whose producing transaction is not in the block
- * either.
- *
- * This is the native transaction-root inclusion path (the same one double-spend
- * uses): the bad transaction is committed by the block's `transactions_root`
- * rather than as PlutusData. Schemas reuse the shared `native.js` helpers so the
- * step datum/redeemer envelope matches every other fault-proof family.
- */
-
-export const NonExistentInputTxInclusionArgsSchema =
-  NativeTxInclusionArgsSchema;
 export type NonExistentInputTxInclusionArgs = NativeTxInclusionArgs;
 export const NonExistentInputTxInclusionArgs =
   NativeTxInclusionArgs as unknown as NonExistentInputTxInclusionArgs;
 
-export const NonExistentInputStepCancelSchema = FaultProofStepCancelSchema;
 export type NonExistentInputStepCancel = FaultProofStepCancel;
 export const NonExistentInputStepCancel =
   FaultProofStepCancel as unknown as NonExistentInputStepCancel;
@@ -59,7 +41,6 @@ export const NonExistentInputStepCancel =
 // is read with the generic computation-thread step datum. Spending it requires
 // only the native-tx inclusion redeemer; the produced UTxO carries step-02.
 
-export const NonExistentInputVerdictSubjectSchema = VerdictSubjectSchema;
 export const NonExistentInputStep01SourceSchema =
   ProofThreadSubjectSourceSchema;
 export const NonExistentInputForcedSourcePayloadSchema =

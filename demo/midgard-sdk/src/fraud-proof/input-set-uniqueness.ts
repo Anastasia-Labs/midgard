@@ -147,9 +147,6 @@ export const InputSetUniquenessBoundDuplicateInputSchema = Data.Object({
   second_field_index: Data.Integer(),
   second_item_index: Data.Integer(),
 });
-export type InputSetUniquenessBoundDuplicateInput = Data.Static<
-  typeof InputSetUniquenessBoundDuplicateInputSchema
->;
 
 export const InputSetUniquenessStep03StateSchema = Data.Object({
   bound: InputSetUniquenessBoundDuplicateInputSchema,
@@ -169,9 +166,6 @@ export const InputSetUniquenessStep03ArgsSchema = Data.Object({
 });
 export const InputSetUniquenessStep03SpendRedeemerSchema =
   faultProofStepRedeemerSchema(InputSetUniquenessStep03ArgsSchema);
-export type InputSetUniquenessStep03SpendRedeemer = Data.Static<
-  typeof InputSetUniquenessStep03SpendRedeemerSchema
->;
 
 export const InputSetUniquenessUniqueScanStateSchema = Data.Object({
   bound: InputSetUniquenessBoundDuplicateInputSchema,
@@ -182,9 +176,6 @@ export const InputSetUniquenessUniqueScanStateSchema = Data.Object({
   next_expected_script_hash: Data.Bytes({ minLength: 28, maxLength: 28 }),
   checkpoint_hash: H32Schema,
 });
-export type InputSetUniquenessUniqueScanState = Data.Static<
-  typeof InputSetUniquenessUniqueScanStateSchema
->;
 export const InputSetUniquenessStep04DatumSchema = faultProofStepDatumSchema(
   InputSetUniquenessUniqueScanStateSchema,
 );
@@ -206,6 +197,3 @@ export const InputSetUniquenessStep04ArgsSchema = Data.Enum([
 ]);
 export const InputSetUniquenessStep04SpendRedeemerSchema =
   faultProofStepRedeemerSchema(InputSetUniquenessStep04ArgsSchema);
-export type InputSetUniquenessStep04SpendRedeemer = Data.Static<
-  typeof InputSetUniquenessStep04SpendRedeemerSchema
->;

@@ -246,34 +246,6 @@ export const deriveCanonicalOriginalDepositTransitionEffect = (input: {
   return canonicalDepositTransitionEffect({ outRefCbor, outputCbor });
 };
 
-/** Legacy ingestion projection; migrate callers to authenticated original funds. */
-export const deriveCanonicalDepositTransitionEffect = (
-  input: Omit<
-    Parameters<typeof deriveCanonicalOriginalDepositTransitionEffect>[0],
-    "originalAssets"
-  > & {
-    readonly l1Assets: Readonly<Record<string, bigint>>;
-    readonly depositPolicyId: string;
-    readonly depositAssetNameHex: string;
-  },
-): CanonicalTransitionEffect => {
-  const unit = input.depositPolicyId + input.depositAssetNameHex;
-  if (input.l1Assets[unit] !== 1n)
-    throw new Error("deposit authentication NFT quantity must equal one");
-  const originalAssets = { ...input.l1Assets };
-  delete originalAssets[unit];
-  if (originalAssets.lovelace === undefined && originalAssets[""] === undefined)
-    throw new Error("deposit is missing a valid lovelace quantity");
-  if (originalAssets[""] !== undefined) {
-    originalAssets.lovelace ??= originalAssets[""];
-    delete originalAssets[""];
-  }
-  return deriveCanonicalOriginalDepositTransitionEffect({
-    ...input,
-    originalAssets,
-  });
-};
-
 export const canonicalCommittedWithdrawalTransitionEffect = (input: {
   readonly committedValid: boolean;
   readonly outRefCbor: Uint8Array;

@@ -53,9 +53,6 @@ export const DistinctAssetPendingInputsSchema = Data.Object({
   first_ordinal: Data.Integer(),
   pending: Data.Array(Data.Bytes()),
 });
-export type DistinctAssetPendingInputs = Data.Static<
-  typeof DistinctAssetPendingInputsSchema
->;
 
 export const DistinctAssetRankSchema = Data.Object({
   bound: DirectScriptBoundSchema,
@@ -63,7 +60,6 @@ export const DistinctAssetRankSchema = Data.Object({
   input_item: Data.Bytes(),
   asset_index: Data.Integer(),
 });
-export type DistinctAssetRank = Data.Static<typeof DistinctAssetRankSchema>;
 
 /** `first_fault_v1.ValueFaultPositionV1`. */
 export const DistinctAssetCrossingSchema = Data.Enum([

@@ -51,11 +51,9 @@ import {
 } from "./canonical-decodability.js";
 import {
   FaultProofStepCancel,
-  FaultProofStepCancelSchema,
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
   NativeTxInclusionArgs,
-  NativeTxInclusionArgsSchema,
   NativeTxInclusionCarriageSchema,
 } from "./native.js";
 
@@ -451,12 +449,9 @@ export const CommittedFieldShapeStep02SpendRedeemer =
     CommittedFieldShapeStep02SpendRedeemerSchema,
   );
 
-export const CommittedFieldShapeTxInclusionArgsSchema =
-  NativeTxInclusionArgsSchema;
 export type CommittedFieldShapeTxInclusionArgs = NativeTxInclusionArgs;
 export const CommittedFieldShapeTxInclusionArgs = NativeTxInclusionArgs;
 
-export const CommittedFieldShapeStepCancelSchema = FaultProofStepCancelSchema;
 export type CommittedFieldShapeStepCancel = FaultProofStepCancel;
 export const CommittedFieldShapeStepCancel = FaultProofStepCancel;
 

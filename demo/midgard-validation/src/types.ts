@@ -298,13 +298,3 @@ export type MidgardCommittedScriptRun = Omit<
   MidgardCekVerdictRequest,
   "contextCbor"
 >;
-
-/**
- * Serializable subset of queued-transaction metadata used at process
- * boundaries.
- */
-export type QueuedTxPayload = {
-  readonly txId: Buffer;
-  readonly txCbor: Buffer;
-  readonly createdAtMillis: number;
-};

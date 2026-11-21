@@ -18,38 +18,19 @@ import {
 } from "./input-existence.js";
 import {
   FaultProofStepCancel,
-  FaultProofStepCancelSchema,
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
   NativeTxInclusionCarriage,
-  NativeTxInclusionCarriageSchema,
 } from "./native.js";
 import {
   ProofThreadForcedSourcePayloadSchema,
   ProofThreadSubjectSourceSchema,
 } from "./proof-thread-source.js";
-import { VerdictSubjectSchema } from "./proof-thread-substrate.js";
 
-/**
- * No-reference-input fault proof — proves a Midgard block includes a native L2
- * transaction that references an input which never existed in the block's prev
- * ledger, and whose producing transaction is not in the block either.
- *
- * This mirrors the non-existent-input (`no_input`) family but operates on the
- * transaction's reference inputs rather than its spend inputs. It uses the same
- * native transaction-root inclusion path: the bad transaction is committed by
- * the block's `transactions_root` rather than as PlutusData, and schemas reuse
- * the shared `native.js` helpers so the step datum/redeemer envelope matches
- * every other fault-proof family.
- */
-
-export const NoReferenceInputTxInclusionArgsSchema =
-  NativeTxInclusionCarriageSchema;
 export type NoReferenceInputTxInclusionArgs = NativeTxInclusionCarriage;
 export const NoReferenceInputTxInclusionArgs =
   NativeTxInclusionCarriage as unknown as NoReferenceInputTxInclusionArgs;
 
-export const NoReferenceInputStepCancelSchema = FaultProofStepCancelSchema;
 export type NoReferenceInputStepCancel = FaultProofStepCancel;
 export const NoReferenceInputStepCancel =
   FaultProofStepCancel as unknown as NoReferenceInputStepCancel;
@@ -60,7 +41,6 @@ export const NoReferenceInputStepCancel =
 // is read with the generic computation-thread step datum. Spending it requires
 // only the native-tx inclusion redeemer; the produced UTxO carries step-02.
 
-export const NoReferenceInputVerdictSubjectSchema = VerdictSubjectSchema;
 export const NoReferenceInputStep01SourceSchema =
   ProofThreadSubjectSourceSchema;
 export const NoReferenceInputForcedSourcePayloadSchema =

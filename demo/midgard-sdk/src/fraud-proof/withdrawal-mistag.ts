@@ -7,12 +7,9 @@
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
 import { Data } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
 
 import {
   H32Schema,
-  hashHexWithBlake2b,
-  type HashingError,
   MerkleRootSchema,
   OutputReferenceSchema,
   ProofSchema,
@@ -355,16 +352,6 @@ export const withdrawalBodyBytes = (body: WithdrawalBody): string =>
   aikenSerialisedPlutusDataCborPreservingMapOrder(
     Data.to(body, WithdrawalBody),
   );
-
-export const withdrawalMistagInfoCommitment = (
-  info: WithdrawalInfo,
-): Effect.Effect<string, HashingError> =>
-  hashHexWithBlake2b(withdrawalInfoBytes(info), 32);
-
-export const withdrawalMistagBodyCommitment = (
-  body: WithdrawalBody,
-): Effect.Effect<string, HashingError> =>
-  hashHexWithBlake2b(withdrawalBodyBytes(body), 32);
 
 export const withdrawalMistagLovelace = (body: WithdrawalBody): bigint =>
   body.l2_value.get("")?.get("") ?? 0n;

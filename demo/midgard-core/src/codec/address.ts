@@ -265,12 +265,6 @@ export const decodeMidgardAddressText = (text: string): DecodedMidgardAddress =>
 export const isProtectedMidgardAddress = (address: Uint8Array): boolean =>
   decodeMidgardAddressBytes(address).protected;
 
-export const unprotectMidgardAddress = (address: Uint8Array): Buffer => {
-  const bytes = encodeMidgardAddressBytes(address);
-  bytes[0] &= ~MIDGARD_PROTECTED_ADDRESS_HEADER_MASK;
-  return bytes;
-};
-
 export const protectMidgardAddress = (address: Uint8Array): Buffer => {
   const bytes = encodeMidgardAddressBytes(address);
   bytes[0] |= MIDGARD_PROTECTED_ADDRESS_HEADER_MASK;
