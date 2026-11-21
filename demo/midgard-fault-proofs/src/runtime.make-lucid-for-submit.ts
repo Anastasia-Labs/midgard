@@ -1,9 +1,8 @@
 /**
  * The fault-proofs prover CLI's submit provider: a Lucid over Blockfrost or
  * Kupmios (owner ruling: the prover CLI keeps both). It is the one module
- * of the package that constructs an external L1 provider, so the role
- * boundary check (`midgard-node/tests/l1-role-boundary.test.ts`) exempts it
- * alone. Only the prover CLI's submit commands call it.
+ * of the package that constructs an external L1 provider. Only the prover
+ * CLI's submit commands call it.
  */
 import {
   Blockfrost,

@@ -6,9 +6,7 @@
 // a test built that way proves nothing about it. Production must evaluate
 // locally too (docs/agents/transaction-finalization.md).
 //
-// This generalizes the source scan that used to live in
-// midgard-fault-proofs/src/proof-fit/limit-escape-scan.ts and covered that
-// package only. It inspects option writes, not text: a property, a shorthand
+// The rule inspects option writes, not text: a property, a shorthand
 // property, a destructured binding (a default there does not constrain what a
 // caller passes) and an assignment all count, and only the literal `true`
 // passes. Writes between `MIDGARD_UNPUBLISHABLE_DIAGNOSTIC_BEGIN` and

@@ -38,6 +38,16 @@ const harmonicLabsPackages = {
     "@harmoniclabs packages are not dependencies of this workspace. Use the owned UPLC values and Flat encoder in @al-ft/midgard-validation/uplc, the iterative Plutus Data codecs (@al-ft/midgard-core/plutus-data-lucid-iterative, midgard-validation plutus-data-iterative.*), or the pinned @lucid-evolution/uplc wasm.",
 };
 
+// No runtime module loads the TypeScript compiler. A worker runs under a
+// fixed heap (the settlement worker once reached a source scanner that
+// imported it through the fault-proofs root barrel), so everything its graph
+// loads at startup is paid for out of that heap.
+const typescriptCompiler = {
+  group: ["typescript", "typescript/*"],
+  message:
+    "Runtime source must not import the TypeScript compiler: every process that reaches this module would load it at startup. Keep compiler-based tooling in tests or scripts.",
+};
+
 export default tseslint.config(
   {
     ignores: [
@@ -202,6 +212,21 @@ export default tseslint.config(
     },
   },
   {
+    files: ["*/src/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            workspacePackageBoundary,
+            harmonicLabsPackages,
+            typescriptCompiler,
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ["midgard-sdk/src/**/*.ts"],
     rules: {
       "no-restricted-imports": [
@@ -210,10 +235,83 @@ export default tseslint.config(
           patterns: [
             workspacePackageBoundary,
             harmonicLabsPackages,
+            typescriptCompiler,
             {
               group: ["@/*"],
               message:
                 "midgard-sdk src is resolved from source by every consumer through the midgard-source exports condition. The @/ alias exists only in this package's tsconfig/vitest config, so src must use relative specifiers.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // The `@al-ft/midgard-sdk/blueprint-abi` subpath is self-contained, so a
+    // consumer of the blueprint reader never loads the SDK root or its
+    // transaction builders: it imports its own modules and the two Plutus
+    // Data decoders `parseExactAikenDataCbor` runs, nothing else.
+    files: ["midgard-sdk/src/blueprint-abi/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              regex:
+                "^(?!\\./|@al-ft/midgard-core/plutus-data-cbor$|@lucid-evolution/lucid$)",
+              message:
+                "The blueprint-abi subpath imports only its own modules, @al-ft/midgard-core/plutus-data-cbor and @lucid-evolution/lucid, so its consumers never load the rest of the SDK.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // The trace producers see the transaction and the walk, never the replay
+    // verdict. The driver alone compares a producer's outcome with replay, so
+    // a producer that imports replay or its verdict types could steer its own
+    // stops.
+    files: [
+      "midgard-validation/src/validation-machine/trace-builder-prepare*.ts",
+      "midgard-validation/src/validation-machine/trace-builder-complete*.ts",
+      "midgard-validation/src/validation-machine/native-script-scan*.ts",
+      "midgard-validation/src/validation-machine/*-producer.ts",
+      "midgard-validation/src/validation-machine/*-producer.*.ts",
+      "midgard-validation/src/validation-machine/*-producers.ts",
+      "midgard-validation/src/validation-machine/*-producers.*.ts",
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            workspacePackageBoundary,
+            harmonicLabsPackages,
+            typescriptCompiler,
+            {
+              group: [
+                "**/phase-a.js",
+                "**/phase-b.js",
+                "**/trace-replay.js",
+                "**/trace-builder-stop.js",
+              ],
+              message:
+                "A trace producer must not import replay or its verdict: only the driver compares a producer's outcome with replay.",
+            },
+            {
+              regex: ".",
+              importNames: [
+                "RejectedTx",
+                "RejectCode",
+                "RejectCodes",
+                "ValidationMachineReplayInput",
+                "ValidationReplay",
+                "ValidationTraceStopped",
+              ],
+              message:
+                "A trace producer must not name replay's verdict types: only the driver compares a producer's outcome with replay.",
             },
           ],
         },
@@ -285,6 +383,7 @@ export default tseslint.config(
           patterns: [
             workspacePackageBoundary,
             harmonicLabsPackages,
+            typescriptCompiler,
             {
               group: [
                 "midgard-node",
@@ -318,6 +417,7 @@ export default tseslint.config(
           patterns: [
             workspacePackageBoundary,
             harmonicLabsPackages,
+            typescriptCompiler,
             {
               group: [
                 "midgard-node",
@@ -347,6 +447,7 @@ export default tseslint.config(
           patterns: [
             workspacePackageBoundary,
             harmonicLabsPackages,
+            typescriptCompiler,
             {
               group: ["@/*"],
               message:

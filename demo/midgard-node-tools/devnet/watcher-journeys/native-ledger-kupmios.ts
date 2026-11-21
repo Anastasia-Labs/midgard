@@ -1,7 +1,7 @@
 /**
  * A Kupmios provider whose reward-account state comes from the local node's
  * ledger, for the devnet journeys. Role processes read L1 through the
- * follower and never import this module (the role boundary test pins it).
+ * follower and never import this module.
  */
 import {
   type NativeLedgerAuthority,

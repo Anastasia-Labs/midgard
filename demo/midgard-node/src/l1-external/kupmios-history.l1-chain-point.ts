@@ -8,8 +8,8 @@ import { type OutRefLike } from "@al-ft/midgard-core/out-ref";
  * authority and the native acceptance lineage and payout collection). Chain
  * points, URL normalisation, timed JSON fetches, and the narrowed fetch and
  * WebSocket surfaces a test can stand up. Tools only: a role process reads
- * L1 only through its follower, and the role boundary test keeps this
- * directory out of every role's module graph.
+ * L1 only through its follower, so this directory stays out of every role's
+ * module graph.
  */
 
 /** A point on the chain, spelled the way both Ogmios and Kupo spell it. */

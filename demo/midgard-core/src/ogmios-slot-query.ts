@@ -2,7 +2,7 @@
  * The local Ogmios slot evidence (tools only): a submit-slot snapshot from
  * `/health` and `queryNetwork/tip`, and the Shelley genesis epoch from
  * `queryNetwork/genesisConfiguration`. Role processes read L1 through the
- * follower and never import this module (the role boundary test pins it).
+ * follower and never import this module.
  */
 import {
   DEFAULT_OGMIOS_HEALTH_MAX_AGE_MS,

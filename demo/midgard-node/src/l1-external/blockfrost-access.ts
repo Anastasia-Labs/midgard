@@ -2,7 +2,7 @@
  * The Blockfrost adapter of the L1-access port (`../l1-access.ts`; option
  * E): tools only (remote developers and SDK users with no local node). Role
  * processes never load this module: it is reached only by a dynamic import
- * from the tool adapter layer, and the role boundary test pins that.
+ * from the tool adapter layer.
  *
  * - Reads, submit and confirmation: provider-native.
  * - Tip (the clock), view point and synchronized view point: the latest

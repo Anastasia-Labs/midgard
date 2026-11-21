@@ -124,10 +124,6 @@ is stated next to it.
    refuses any emulator submission over those limits, and a publication over
    the 15,872-byte target, so a family's emulator tests are its fit proof.
    [ci: Midgard Node CI/Test fault-proof tooling]
-   The test "finds no positive limit escape across the fault-proof TypeScript
-   surface" (`tests/wave0-shared-substrate.test.ts:130`) scans only
-   `demo/midgard-fault-proofs`; a negative diagnostic needs the
-   `MIDGARD_UNPUBLISHABLE_DIAGNOSTIC_BEGIN/END` markers.
 
 ## Steps
 

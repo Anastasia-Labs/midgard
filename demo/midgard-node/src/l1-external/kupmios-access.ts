@@ -2,8 +2,7 @@
  * The Kupmios adapter of the L1-access port (`../l1-access.ts`; option E):
  * tools only (the prover CLI's history reads, remote developers, the journey
  * harness). Role processes never load this module: it is reached only by a
- * dynamic import from the tool adapter layer, and the role boundary test
- * pins that.
+ * dynamic import from the tool adapter layer.
  *
  * - Reads, submit and confirmation: provider-native (Kupo and Ogmios).
  * - Tip (the clock): the Ogmios `queryNetwork/tip` slot.
