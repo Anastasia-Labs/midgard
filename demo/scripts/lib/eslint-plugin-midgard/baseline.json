@@ -886,12 +886,6 @@
         "import * as SDK from \"@al-ft/midgard-sdk\";"
       ]
     },
-    "midgard-node/scripts/mpf-architecture-g-commit-candidate-gate.capture-source-identity.mjs": {
-      "reason": "A JavaScript script outside the consumer package's TypeScript program, which the layer codemod rewrites; it keeps the root until it is narrowed by hand.",
-      "sites": [
-        "import { EMPTY_MERKLE_TREE_ROOT } from \"@al-ft/midgard-sdk\";"
-      ]
-    },
     "midgard-node/src/commands/reconcile.ts": {
       "reason": "Evaluation-order preamble: midgard-node/src/fibers/merge.ts, midgard-node/src/workers/commit-block-header.ts still import the SDK root (a baselined site of this rule), so the root keeps loading first here; the preamble goes when those modules are narrowed.",
       "sites": ["import \"@al-ft/midgard-sdk\";"]
