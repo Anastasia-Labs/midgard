@@ -269,7 +269,6 @@
     "src/fraud-proof/canonical-decodability.walk-midgard-envelope-items.ts",
     "src/fraud-proof/cek-context.ts",
     "src/fraud-proof/cek-core.ts",
-    "src/fraud-proof/cek-selection.ts",
     "src/fraud-proof/committed-field-shape.advance-committed-field-shape-walk.ts",
     "src/fraud-proof/committed-field-shape.ts",
     "src/fraud-proof/computation-threads.ts",

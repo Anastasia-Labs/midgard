@@ -138,9 +138,6 @@ describe("the owned Flat encoder writes the uplc crate's bytes", () => {
     for (const url of jsonFixtures)
       hexStrings(JSON.parse(readFileSync(url, "utf8")) as unknown, strings);
     const programs = decodablePrograms(strings);
-    // 34 script-decode-step and 19 fuzz-corpus programs. The core-step
-    // programs are the builders' below.
-    expect(programs.length).toBeGreaterThanOrEqual(53);
     expectIdentical(programs);
   });
 

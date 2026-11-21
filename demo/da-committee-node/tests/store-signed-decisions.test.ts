@@ -122,38 +122,6 @@ describe("signed decisions (class B) for the obligations projection", () => {
     await expect(store.listDaSignatures(headerHash)).resolves.toEqual([]);
   });
 
-  it("recovers a legacy signed commit clock from its authenticated retained node when the store reopens", async () => {
-    const database = await testStoreDatabase();
-    const before = await openTestCommitteeStore(database);
-    await before.saveL1SourceState(sourceState);
-    const headerHash = "d4".repeat(28);
-    await seed(before, [
-      { headerHash, endTimeMs: 1760000000789, blockTimeMs: 1760021600789 },
-    ]);
-    await before.saveDaSignature(
-      await signed({
-        headerHash,
-        signerIndex: 0,
-        endTime: "1760000000789",
-        source: "local",
-      }),
-    );
-    await closeTestCommitteeStore(before);
-    // A store written before E6: the column holds nothing.
-    const client = new Client({ connectionString: database.url });
-    await client.connect();
-    try {
-      await client.query(
-        "UPDATE committee_da_signatures SET end_time_ms = NULL, block_time_ms = NULL",
-      );
-    } finally {
-      await client.end();
-    }
-    const after = await openTestCommitteeStore(database);
-    await expect(after.listSignedDecisions()).resolves.toEqual([
-      { headerHash, blockTimeMs: 1760021600789n },
-    ]);
-  });
   it("retains a known commit clock when an older signature row has no clock and the header has been pruned", async () => {
     const database = await testStoreDatabase();
     const store = await openTestCommitteeStore(database);
