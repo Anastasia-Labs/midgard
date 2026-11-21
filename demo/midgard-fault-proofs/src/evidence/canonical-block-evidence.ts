@@ -1,11 +1,9 @@
 /**
  * Canonical evidence-source API — transport and block-evidence layer (`Q03`).
  *
- * `GOAL_SPEC.md` §9.2 acceptance:
- *
- * > Builders consume verified `DaPayloadV1`/proof bundles and authenticated L1
- * > observations, not operator-private REST/DB/files except labelled
- * > diagnostics.
+ * Builders consume verified `DaPayloadV1`/proof bundles and authenticated L1
+ * observations, not operator-private REST/DB/files except labelled
+ * diagnostics.
  *
  * Every function here produces evidence from exactly two security inputs:
  *

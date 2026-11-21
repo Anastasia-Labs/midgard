@@ -34,7 +34,7 @@ For a normal blueprint without traces, use (from `onchain/aiken`):
 Run large Midgard vectors one compiler process at a time, and run every check
 through one of two guards. Each fails closed when it collects zero tests, and
 each prints the largest unit-test memory and CPU units with their share of the
-GOAL_SPEC §3.3 basis (a reading, not a gate; a test is not a transaction):
+[execution basis](../../../docs/spec/protocol-decisions.md#execution-basis) (a reading, not a gate; a test is not a transaction):
 
 - **Exact tests in one module:** pass every unique name to one invocation
   rather than recompiling the tree for each. It fails unless exactly that many

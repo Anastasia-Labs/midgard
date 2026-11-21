@@ -333,7 +333,7 @@ test signatures_accepts_an_empty_required_signer_and_witness_set() {
   }
 }
 
-// NEGATIVE CONTROL -- mutation (GOAL_SPEC §3 invariant 9) for the sentinel fix.
+// NEGATIVE CONTROL -- mutation for the sentinel fix.
 // `result == 0` at a completed stage MEANS "this native script evaluated false
 // -> reject" (`rejected_successor_is_exact` is invoked on it), and `result == 1`
 // means "evaluated true". Neither is a legal stage-0 value: nothing has been

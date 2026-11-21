@@ -1,9 +1,10 @@
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 
 /**
- * C52 "Proof-transaction count cap" (GOAL_SPEC.md §8.3, line 901):
+ * Proof-transaction count cap
+ * (`docs/spec/protocol-decisions.md#proof-transaction-count-cap`):
  * no fault proof may require more than the sanctioned proof-transaction
- * sanity cap of §3.3-reserved proof transactions.
+ * sanity cap of reserved proof transactions.
  *
  * Owner ruling (2026-08-18): the earlier "aggregate script-execution floor"
  * framing — a bounded proof-transaction count derived as the smallest N
@@ -18,17 +19,18 @@ import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile"
  * The per-transaction reserve arithmetic is unchanged from the retired
  * framing. The target snapshot's per-transaction execution ceiling is
  * `MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxMemoryUnits` /
- * `...CpuUnits` (16,500,000 memory / 10,000,000,000 CPU — the §3.1.10
- * merged Cardano-mainnet-vs-target-network capability floor; see
+ * `...CpuUnits` (16,500,000 memory / 10,000,000,000 CPU — the
+ * merged Cardano-mainnet-vs-target-network capability floor,
+ * `docs/spec/protocol-decisions.md#capability-floor`; see
  * capability-parity.ts's `maxTxExecutionMemoryUnits`, pinned to
- * `"16500000"` in capability-parity.test.ts:49). §3.3 "Execution fit"
- * requires every individual proof transaction to stay at or below the
+ * `"16500000"` in capability-parity.test.ts:49). The execution-fit threshold
+ * (`docs/spec/protocol-decisions.md#margin-thresholds`) requires every individual proof transaction to stay at or below the
  * deployment's measured protocol limits with at least a 20% reserve
  * (docs/consensus-profile-v1.md §10), so one proof transaction
  * can carry at most 80% of the target snapshot's ceiling.
  *
  * The cap check inverts the retired floor's direction: for each fault
- * proof, the number of §3.3-reserved proof transactions it requires —
+ * proof, the number of reserved proof transactions it requires —
  * the ceiling of its measured execution cost over the per-transaction
  * usable budget, taken per axis, worst axis governing — must stay at or
  * below `PROOF_TRANSACTION_COUNT_CAP`. This asserts no shipped proof is
@@ -46,7 +48,7 @@ const targetSnapshotCpuUnits = BigInt(
   MIDGARD_CONSENSUS_LIMITS.minSupportedL1MaxTxCpuUnits,
 );
 
-// §3.3 execution fit: at or below the deployment's measured protocol limits
+// Execution fit: at or below the deployment's measured protocol limits
 // with at least a 20% reserve, i.e. at most 80% of the limit is usable by any
 // one proof transaction. Expressed as an exact integer ratio (4/5) so the
 // derivation below never depends on floating-point rounding.
@@ -57,7 +59,7 @@ const EXECUTION_RESERVE_USABLE_DENOMINATOR = 5n;
 const ceilDiv = (numerator: bigint, denominator: bigint): bigint =>
   (numerator + denominator - 1n) / denominator;
 
-/** The most execution units one §3.3-reserved proof transaction may use. */
+/** The most execution units one reserved proof transaction may use. */
 export const PER_PROOF_TRANSACTION_USABLE_MEMORY_UNITS =
   (targetSnapshotMemoryUnits * EXECUTION_RESERVE_USABLE_NUMERATOR) /
   EXECUTION_RESERVE_USABLE_DENOMINATOR;
@@ -67,7 +69,7 @@ export const PER_PROOF_TRANSACTION_USABLE_CPU_UNITS =
 
 /**
  * The proof-transaction count sanity cap: no fault proof may require more
- * than this many §3.3-reserved proof transactions to carry its complete
+ * than this many reserved proof transactions to carry its complete
  * measured execution cost.
  *
  * Unlike the retired bounded count, this is an owner-asserted constant
@@ -97,7 +99,7 @@ export type ProofTransactionCountCapCheck = Readonly<{
 }>;
 
 /**
- * The number of §3.3-reserved proof transactions a fault proof with the
+ * The number of reserved proof transactions a fault proof with the
  * given measured execution cost requires: the ceiling of its cost over the
  * per-transaction usable budget, computed per axis, with the worst axis
  * governing. A zero-cost input requires zero proof transactions — the

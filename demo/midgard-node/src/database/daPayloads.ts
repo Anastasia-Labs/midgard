@@ -313,7 +313,7 @@ export const finalityHeldPayload = (
       OR ${latestMergedHeader(sql, headerColumn, finalThroughHeight)})`;
 
 /**
- * Retention prune (GOAL_SPEC 9.4 / Q54), the SQL form of the core
+ * Retention prune (`docs/spec/protocol-decisions.md#retention`), the SQL form of the core
  * `daRetentionPruneDecision`.
  *
  * Both challengeability and promised history age, or a removal, permit

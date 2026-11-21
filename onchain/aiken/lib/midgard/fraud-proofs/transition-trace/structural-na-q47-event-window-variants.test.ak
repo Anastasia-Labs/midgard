@@ -1,4 +1,6 @@
-//// ## Q47 structural-N/A executable disposition (GOAL_SPEC.md §9.1)
+//// ## Q47 structural-N/A executable disposition
+////
+//// See `docs/spec/protocol-decisions.md#structural-na`.
 ////
 //// Q47 (omitted / out-of-window deposit, withdrawal and forced-event
 //// variants) is structurally N/A as a standalone proof family: the six
@@ -464,7 +466,7 @@ fn out_of_window_forced_is_valid(inclusion_time: Int) -> Bool {
   )
 }
 
-// ## Q47 selectors (GOAL_SPEC.md §9.1 structural-N/A disposition)
+// ## Q47 structural-N/A selectors
 
 /// Variant 2 of 6 — omitted due **withdrawal**. Published at the inclusive
 /// `end_time` boundary, so the order is due, and the empty counted

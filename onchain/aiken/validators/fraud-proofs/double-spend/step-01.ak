@@ -101,7 +101,7 @@ validator main(
   }
 }
 
-// ## Family selectors (GOAL_SPEC.md §9.1 output 4)
+// ## Family selectors (`docs/spec/protocol-decisions.md#family-outputs`, output 4)
 //
 // Step-01 binds the first of the two conflicting transactions to a committed
 // block: only a transaction genuinely held by the header's counted

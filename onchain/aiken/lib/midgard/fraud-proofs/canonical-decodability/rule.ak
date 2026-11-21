@@ -17,7 +17,7 @@
 ////
 //// ### Why the check needs no decoder
 ////
-//// The same shape as `da-hash-preimage`'s (GOAL_SPEC.md Q44), one level down.
+//// The same shape as `da-hash-preimage`'s, one level down.
 //// There, the leaf is framed at fixed widths so the body preimage is a slice
 //// and the id is a hash of it; here, the preimage is authenticated by §4's flat
 //// hash directly — the prover supplies bytes, the door hashes them against the

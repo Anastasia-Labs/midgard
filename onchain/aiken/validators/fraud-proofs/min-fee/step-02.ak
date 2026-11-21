@@ -222,7 +222,7 @@ validator main(
   }
 }
 
-// ## Family selectors (GOAL_SPEC.md §9.1 output 4)
+// ## Family selectors (`docs/spec/protocol-decisions.md#family-outputs`, output 4)
 
 /// The canonical full-transaction size of the fixture's committed
 /// transaction — what the header's `min_fee_a` multiplies.

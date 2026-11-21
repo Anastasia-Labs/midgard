@@ -45,7 +45,7 @@ validator main(
   }
 }
 
-// ## Family selectors (GOAL_SPEC.md §9.1 output 4)
+// ## Family selectors (`docs/spec/protocol-decisions.md#family-outputs`, output 4)
 //
 // Step-02 opens the disputed transaction's field-0 preimage through the one
 // door and selects the input the prover claims does not exist. Because the

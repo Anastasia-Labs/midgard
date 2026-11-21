@@ -1,5 +1,5 @@
 /**
- * Q47 structural-N/A executable twins (GOAL_SPEC.md §9.1).
+ * Q47 structural-N/A executable twins (`docs/spec/protocol-decisions.md#structural-na`).
  *
  * Q47 (omitted / out-of-window deposit, withdrawal and forced-event variants)
  * has no standalone proof family: all six violation variants are constructors

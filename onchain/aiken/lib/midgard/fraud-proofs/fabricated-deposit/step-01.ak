@@ -1,5 +1,4 @@
 //// ## `fabricated-deposit` step-01 — committed deposit-source membership
-//// (`GOAL_SPEC.md` §9.1 / Q39)
 ////
 //// ### The rule this family adjudicates
 ////

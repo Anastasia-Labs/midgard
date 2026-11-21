@@ -17,7 +17,7 @@ additional implementation plan. The proposal covers the deposit/withdrawal
 portion of NIFP-03; forced-order evidence lifetime remains separate. Neither
 document supplies implementation or deployment acceptance evidence.
 
-[GOAL_SPEC Q39–Q42 and Q47](../exec-plans/GOAL_SPEC.md#L948-L956) require fabricated
+The fabricated-deposit, fabricated-withdrawal and event-window families require fabricated
 deposit/withdrawal fidelity, duplicate-event proofs that survive NFT consumption,
 and omitted/out-of-window variants. These are requirements, not evidence that all
 identities or all historical evidence lifetimes are covered.

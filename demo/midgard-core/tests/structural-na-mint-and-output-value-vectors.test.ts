@@ -7,8 +7,9 @@ import {
 } from "../src/codec/index.js";
 
 /**
- * TypeScript twin vectors for the GOAL_SPEC §9.3 structural-N/A closures of
- * rows Q24 (`ada-minted`) and Q25 (`negative-output-value`).
+ * TypeScript twin vectors for the structural-N/A closures
+ * (`docs/spec/protocol-decisions.md#structural-na`) of Q24 (`ada-minted`) and Q25
+ * (`negative-output-value`).
  *
  * Every hex string below is byte-identical to the constant of the same name in
  * the Aiken modules

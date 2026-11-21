@@ -26,7 +26,7 @@ const DEEP_FOLD_OVER_EIGHT_NODES = scriptBudget(
  * ceiling, so a prediction built from them can only over-price.
  */
 export const NATIVE_SCRIPT_DECODING_PLAN_COSTS = {
-  /** GOAL_SPEC §3.3 basis the whole family is priced against. */
+  /** Execution basis the whole family is priced against. */
   basisMemoryUnits: SCRIPT_BUDGET_BASIS.mem,
   basisCpuUnits: SCRIPT_BUDGET_BASIS.cpu,
   /**

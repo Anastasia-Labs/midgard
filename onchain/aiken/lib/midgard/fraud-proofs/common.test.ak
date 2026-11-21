@@ -1,5 +1,4 @@
-//// Shared computation-thread state-machine safety selectors (GOAL_SPEC.md
-//// Q01). These drive the shared `continue` / `finalize` / `cancel` /
+//// Shared computation-thread state-machine safety selectors. These drive the shared `continue` / `finalize` / `cancel` /
 //// `pass_native_tx_to_next_step` machinery directly with the native-V1 block
 //// fixture, proving lifecycle, token-coupling, reference-input-discipline,
 //// and valid-block-rejection properties independently of any single family.

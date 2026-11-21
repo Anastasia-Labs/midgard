@@ -48,7 +48,7 @@ export type RetentionWindow = {
 
 const deriveRetentionWindow = (): RetentionWindow => {
   const maturityMs = MIDGARD_CONSENSUS_LIMITS.blockMaturityMs;
-  // GOAL_SPEC 3.3 clause 3: every correction path opens by half maturity
+  // Maturity fit: every correction path opens by half maturity
   // (an execution-dispute case then completes before maturity), so half
   // maturity bounds how long past maturity proof data is still needed.
   const worstCaseProofTimeBoundMs = maturityMs / 2;
@@ -206,7 +206,8 @@ export const assertRetentionDaysCoverWindow = (
 };
 
 /**
- * Enforcement of GOAL_SPEC 3.3 clause 3: an observed or configured worst-case
+ * Enforcement of the maturity-fit threshold
+ * (`docs/spec/protocol-decisions.md#margin-thresholds`): an observed or configured worst-case
  * correction path must fit inside the half-maturity bound.
  */
 export const assertWorstCaseProofTimeWithinBound = (

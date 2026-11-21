@@ -31,8 +31,8 @@ replacing the counted bounded-collection Merkle commitments
 Disputes recover per-item access by authenticating a field's full preimage
 once against its flat hash and then walking or slicing it, with preimages
 reaching dispute transactions through a three-tier publication-carriage
-ladder. The reversion executes now, inside the active Goal program, with a
-GOAL_SPEC amendment binding the new spec document at scheme altitude
+ladder. The reversion executes now, inside the active Goal program, with the
+program specification amended to bind the new spec document at scheme altitude
 (delivery target August 28 — owner override, 2026-08-07, of the earlier
 ~mid-September target from #553).
 
@@ -104,13 +104,12 @@ cascade, and one re-measurement campaign.
 - `docs/spec/midgard-tx.md` becomes the implementation-normative format
   authority (the first document of the `docs/spec/` layer; authority rule in
   `docs/spec/README.md`).
-- `GOAL_SPEC.md` is amended at scheme altitude to bind that document by
-  reference. Superseded counted-scheme evidence is not a current acceptance
+- Superseded counted-scheme evidence is not a current acceptance
   surface; useful rationale belongs in ADRs and obsolete records are removed.
 - Necessity-artifact dispositions (dissolve / re-derive / stand) are recorded
   on [#560](https://github.com/Anastasia-Labs/midgard/issues/560); the
   consolidated re-measurement list rides the #563 phase plan at the single
-  declared execution-budget basis of `GOAL_SPEC.md` §3.3.
+  declared [execution basis](../../spec/protocol-decisions.md#execution-basis).
 - The datum canonicity predicate re-pins to `serialiseData`'s image,
   restoring L1 parity ([#564](https://github.com/Anastasia-Labs/midgard/issues/564)).
 

@@ -111,7 +111,7 @@ validator main(
   }
 }
 
-// ## Family selectors (GOAL_SPEC.md §9.1 output 4)
+// ## Family selectors (`docs/spec/protocol-decisions.md#family-outputs`, output 4)
 
 /// A transaction that spends nothing — the `zero-input` violation.
 fn zero_input_bad_tx() -> MidgardTransaction {

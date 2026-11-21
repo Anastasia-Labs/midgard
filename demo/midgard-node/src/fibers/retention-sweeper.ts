@@ -55,7 +55,7 @@ import {
 } from "./retention-sweeper.history-producer.js";
 
 /**
- * Executable deadline signal (GOAL_SPEC 9.4 / Q54): milliseconds remaining
+ * Executable deadline signal (`docs/spec/protocol-decisions.md#retention`): milliseconds remaining
  * before the oldest still-challengeable retained DA payload reaches its
  * challengeability deadline. Zero or below means retained evidence is at or
  * past the enforced horizon.

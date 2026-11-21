@@ -631,7 +631,7 @@ describe("fault-proof emulator integration", () => {
     expect(outRefLabel(retainedFraudProof)).toBe(outRefLabel(fraudProofUtxo));
     expect(retainedFraudProof.assets[step04Result.fraudProofUnit]).toBe(1n);
 
-    // Q10 double-spend proof fit (GOAL_SPEC.md 3.3). Every transaction of the
+    // Q10 double-spend proof fit. Every transaction of the
     // complete correction path is measured, not just the largest one. Note the
     // removal here prunes a successor first, so "remove" is the last submitted
     // transaction of that multi-transaction removal.

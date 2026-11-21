@@ -37,8 +37,8 @@ export type CertifiedCommittedField = Readonly<{
 /**
  * Ledger fit against the real L1 envelope and per-transaction execution
  * limits, as the field-preimage-length maximum lifecycle asserts it. The line
- * logged per stage also reports the margin to GOAL_SPEC 3.3's 20% execution
- * reserve, which a maximum-shape step may consume.
+ * logged per stage also reports the margin to the 20% execution reserve
+ * (`docs/spec/protocol-decisions.md#margin-thresholds`), which a maximum-shape step may consume.
  */
 export const expectStageFit = (
   label: string,

@@ -3,13 +3,13 @@ import { expect } from "vitest";
 import { type CompleteSignedTransactionMeasurement } from "./measurement.js";
 
 /**
- * GOAL_SPEC.md 3.3 proof-fit thresholds, shared by every emulator suite that
+ * Proof-fit thresholds (`docs/spec/protocol-decisions.md#margin-thresholds`), shared by every emulator suite that
  * measures a complete correction path.
  *
  * 1. Byte fit: `l1ByteMargin` is computed against the real
  *    `PROTOCOL_PARAMETERS_DEFAULT.maxTxSize` (16,384), not the emulator's
- *    relaxed 65,536 ceiling, so a non-negative margin is exactly the 3.3
- *    item-1 check.
+ *    relaxed 65,536 ceiling, so a non-negative margin is exactly the
+ *    byte-fit check.
  * 2. Execution fit: memory and CPU are at or below the deployment's measured
  *    limits with at least a 20% reserve. A path that fits the raw limit but
  *    not the reserve is a FAILING result, not a smaller margin.
@@ -27,12 +27,12 @@ export const expectProofFit = ({
   readonly maxTxExMem: bigint;
   readonly maxTxExSteps: bigint;
 }): void => {
-  // 3.3 item 1 - byte fit against the real L1 envelope.
+  // Byte fit against the real L1 envelope.
   expect(
     measurement.l1ByteMargin,
     `${stage} exceeds the 16,384-byte L1 envelope`,
   ).toBeGreaterThanOrEqual(0);
-  // 3.3 item 2 - execution fit with a 20% reserve.
+  // Execution fit with a 20% reserve.
   const memoryCeiling =
     (maxTxExMem * (100n - EXECUTION_RESERVE_FRACTION)) / 100n;
   const stepCeiling =

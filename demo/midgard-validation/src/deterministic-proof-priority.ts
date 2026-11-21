@@ -1,10 +1,11 @@
 /**
- * C52 "Proof-transaction count cap" (GOAL_SPEC.md §8.3, line 901) needs a
+ * The proof-transaction count cap
+ * (`docs/spec/protocol-decisions.md#proof-transaction-count-cap`) needs a
  * deterministic way to order candidate proof transactions whenever more
  * candidates exist than a caller's bounded slot budget (any bound at or
  * below `proof-transaction-count-cap.ts`'s
- * `PROOF_TRANSACTION_COUNT_CAP_V1`). GOAL_SPEC.md §3.1.6 requires proof
- * selection to be deterministic; this module is that total order.
+ * `PROOF_TRANSACTION_COUNT_CAP_V1`). Proof selection is deterministic
+ * (`docs/spec/protocol-decisions.md#proof-selection`); this module is that total order.
  *
  * A candidate is described only by what the cap arithmetic and canonical
  * identity need: its measured execution units and its canonical proof

@@ -9,10 +9,9 @@
 //// `scripts/script-budgets.mjs`. The native-script scan planner derives its
 //// per-node costs from those ceilings.
 ////
-//// **The verdict, at the frozen basis.** `GOAL_SPEC_EXECUTION_BASIS_V1` is
+//// **The verdict, at the frozen basis.** The execution basis is
 //// 13,200,000 memory units / 8,000,000,000 cpu units
-//// (`SCRIPT_BUDGET_BASIS` in midgard-core; GOAL_SPEC §3.3 retires the
-//// 11,200,000 figure earlier benches used). Against it:
+//// (`SCRIPT_BUDGET_BASIS` in midgard-core). Against it:
 ////
 //// * the deep worst case -- 16,341 bytes, 5,447 nodes, the largest payload the
 ////   arm can ever see -- costs about 1.08 billion memory units, **81.6x over**

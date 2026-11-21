@@ -1,4 +1,4 @@
-//// ## `da-hash-preimage` — total source-leaf rule (GOAL_SPEC.md Q44)
+//// ## `da-hash-preimage` — total source-leaf rule
 ////
 //// A `transactions_root` leaf is `(key, Data(L2TransactionSourceV1))`.
 //// The value must be the exact canonical record, its embedded `tx_id` must

@@ -83,12 +83,7 @@ what this repository's best merged PRs already use (#466, #468; read with
   as an unrelated config or lockfile edit that rode along. `[review]`
 - **GitHub checks are evidence too.** Cite the workflow, its result and the
   commit it ran on; a PR with no checks attached says so. `[review]`
-- **Base branch.** For the Goal program, `docs/exec-plans/GOAL_SPEC.md` §4.4
-  says the base is exactly `tx-validation` and there is one long-lived Goal
-  PR for the program's lifetime (lines 591–597; release checklist line 1426),
-  and the owner has confirmed `tx-validation` for it. That is the Goal
-  program's rule, not a rule for every PR. Outside it, no document fixes the
-  base: open PRs as of 2026-09-25 target `tx-validation`, stacked `fp/*`
+- **Base branch.** No document fixes the base: open PRs as of 2026-09-25 target `tx-validation`, stacked `fp/*`
   branches and a feature branch. Ask whoever requested the PR. `[review]`
 - **Opening, editing, commenting on or merging a PR** happens only when you
   were asked to. Pushing is covered by committing-safely rule 10. `[review]`

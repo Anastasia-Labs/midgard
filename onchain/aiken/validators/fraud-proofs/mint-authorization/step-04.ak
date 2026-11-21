@@ -238,7 +238,7 @@ validator main(
   }
 }
 
-// ## Family selectors (GOAL_SPEC.md §9.1 output 4)
+// ## Family selectors (`docs/spec/protocol-decisions.md#family-outputs`, output 4)
 
 /// A 28-byte policy id matching no fixture descriptor's reference-script
 /// hash (the descriptors that carry one carry `tf.h28_y`).

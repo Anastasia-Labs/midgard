@@ -96,7 +96,7 @@ validator main(
   }
 }
 
-// ## Family selectors (GOAL_SPEC.md §9.1 output 4)
+// ## Family selectors (`docs/spec/protocol-decisions.md#family-outputs`, output 4)
 
 const accused_policy_id: ByteArray =
   #"42424242424242424242424242424242424242424242424242424242"

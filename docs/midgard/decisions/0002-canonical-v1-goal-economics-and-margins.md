@@ -5,18 +5,18 @@
   §2.4a (claim registry removed; concurrent fraud proofs permitted).
 - **Owner/approver:** repository owner (Philip DiSarro).
 - **Consumers:** Q53, Q54, Q61, Q63, W04, W12, W31, C74, C80, W46 (production
-  hardware floor, §5.2) (`GOAL_SPEC.md` §3.3, §7), and the pooled DA committee
+  hardware floor, §5.2), and the pooled DA committee
   bond (§2.6; `config/deployments/*.yaml` `da_bond` and the three `timing.da_*`
   pool keys, issues #685–#693). No task may invent a value this record owns.
 
 ## 1. Fixed protocol constants (recorded, not chosen)
 
-| Constant                                              | Value                                                                | Source                                                  |
-| ----------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------- |
-| Canonical V1 block maturity                           | 604,800,000 ms (7 days)                                              | `docs/consensus-profile-v1.md` (exact V1 maturity)      |
-| Execution-dispute case duration D_case, public timing | 210,480,000 ms (58.5 h); minimum maturity 2 D_case + 1               | `onchain/aiken/lib/midgard/validation-dispute-v1.ak`    |
-| Execution reserve                                     | ≥ 20% below measured protocol limits                                 | `docs/consensus-profile-v1.md` §10; `GOAL_SPEC.md` §3.3 |
-| Maturity fit                                          | correction path opens by ½ maturity (302,400,000 ms); case ends by M | `GOAL_SPEC.md` §3.3                                     |
+| Constant                                              | Value                                                                | Source                                                                |
+| ----------------------------------------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Canonical V1 block maturity                           | 604,800,000 ms (7 days)                                              | `docs/consensus-profile-v1.md` (exact V1 maturity)                    |
+| Execution-dispute case duration D_case, public timing | 210,480,000 ms (58.5 h); minimum maturity 2 D_case + 1               | `onchain/aiken/lib/midgard/validation-dispute-v1.ak`                  |
+| Execution reserve                                     | ≥ 20% below measured protocol limits                                 | `docs/consensus-profile-v1.md` §10; `docs/spec/protocol-decisions.md` |
+| Maturity fit                                          | correction path opens by ½ maturity (302,400,000 ms); case ends by M | `docs/spec/protocol-decisions.md`                                     |
 
 An execution-dispute case opens by half maturity (84 h) and its game lasts at
 most D_case (58.5 h), so a profile that installs the dispute needs maturity of
@@ -360,7 +360,7 @@ This floor is owner-set and ACCEPTED. W46 operational documentation and
 `docs/public_testnet_readiness.md` must carry it verbatim; C86 bounded-stress
 results refine the non-node role sizing but cannot lower the node floor.
 
-## 6. Acceptance-window check (`GOAL_SPEC.md` §7 F04)
+## 6. Acceptance-window check
 
 The drills run on the bounded testing profile, where every DA deadline is
 short: a 10-minute attestation timeout, 12- and 14-minute response windows, a

@@ -218,7 +218,7 @@ validator main(
   }
 }
 
-// ## Family selectors (GOAL_SPEC.md §9.1 output 4)
+// ## Family selectors (`docs/spec/protocol-decisions.md#family-outputs`, output 4)
 //
 // Step-02 is where the thread stops trusting the prover about the claim: the
 // header must be the NFT's, the event must be the header's, and — for forced

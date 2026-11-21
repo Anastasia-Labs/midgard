@@ -208,7 +208,7 @@ test normalize_native_validity_range_detects_unbounded_interval() {
   ) == vrn.Always
 }
 
-// ## Family selectors (GOAL_SPEC.md §9.1 output 4)
+// ## Family selectors (`docs/spec/protocol-decisions.md#family-outputs`, output 4)
 //
 // The three controls above are range-normalization unit cases. The two
 // selectors below are the family's positive and valid-block-negative pair: the

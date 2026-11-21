@@ -21,9 +21,8 @@ required hard-fit or reliability-margin claim.
 `demo/midgard-fault-proofs/src/proof-fit/van-rossem.ts` already exports hard
 limits, and the suite's submit guard enforces them on every emulator
 submission. Check the current
-profile and GOAL_SPEC §3.3 before choosing the reliability margin. Do not
-invent an existing `GOAL_SPEC_EXECUTION_BASIS_V1` export or replace distinct
-normative limits with a single unexplained number.
+profile and the [margin thresholds](../spec/protocol-decisions.md#margin-thresholds) before choosing the reliability margin. Do not
+replace distinct normative limits with a single unexplained number.
 
 ## Proposed work
 

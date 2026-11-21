@@ -1118,7 +1118,7 @@ test authenticate_once_one_open_every_read() {
 /// field is re-authenticated for every one of them.
 ///
 /// **What the gap is made of.** §10.7 has this measurement re-taken whenever
-/// the grammar moves, and the margin over the GOAL_SPEC §3.3 basis is 0.57%, so the
+/// the grammar moves, and the margin over the execution basis is 0.57%, so the
 /// attribution has to be right or the next re-take will mis-model it. The gap
 /// against `authenticate_once_one_open_every_read` is 4.49 M memory units
 /// (13.27 M against 8.78 M), and it is **not** 63 extra hash checks alone: it

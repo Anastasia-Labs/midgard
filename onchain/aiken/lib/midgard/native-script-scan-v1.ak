@@ -1119,8 +1119,8 @@ pub fn payload_structure_is_canonical_at_bounds_v1(
 ///
 /// *Cause.* A3 gates wave item 9 on an R3-style ExUnits precondition measured
 /// before any on-chain commitment. That precondition FAILED. Against the frozen
-/// `GOAL_SPEC_EXECUTION_BASIS_V1` of 13,200,000 memory units
-/// (`SCRIPT_BUDGET_BASIS` in midgard-core, GOAL_SPEC §3.3):
+/// execution basis of 13,200,000 memory units
+/// (`SCRIPT_BUDGET_BASIS` in midgard-core):
 ///
 /// - the largest payload this arm can ever see -- 16,341 bytes, 5,447 nodes,
 ///   the deep shape -- costs about 1.08 billion memory units, **81.6x over**

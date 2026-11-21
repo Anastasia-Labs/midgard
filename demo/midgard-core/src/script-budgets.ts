@@ -28,8 +28,8 @@ export type ScriptExecutionUnits = {
 
 /**
  * The execution basis every protocol cost is held to: 20% under the supported
- * L1 per-transaction limits (`MIDGARD_CONSENSUS_LIMITS`), the GOAL_SPEC §3.3
- * reliability reserve.
+ * L1 per-transaction limits (`MIDGARD_CONSENSUS_LIMITS`), the reliability
+ * reserve of `docs/spec/protocol-decisions.md#execution-basis`.
  */
 export const SCRIPT_BUDGET_BASIS: ScriptExecutionUnits = Object.freeze({
   mem: 13_200_000,

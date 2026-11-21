@@ -130,7 +130,7 @@ validator main(
   }
 }
 
-// ## Family selectors (GOAL_SPEC.md §9.1 output 4)
+// ## Family selectors (`docs/spec/protocol-decisions.md#family-outputs`, output 4)
 //
 // Step-01 binds the verdict subject. The normal arm's leaf-is-acceptance
 // predicate is the wrongful-acceptance family's entry: an operator who never

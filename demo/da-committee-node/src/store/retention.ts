@@ -17,7 +17,8 @@ import type { CommitteeStore, DaPayloadRetentionRecord } from "../store.js";
 import { retentionBlockTimeMs } from "./retention.block-time.js";
 
 /**
- * Retention enforcement for the committee node store (GOAL_SPEC 9.4 / Q54).
+ * Retention enforcement for the committee node store
+ * (`docs/spec/protocol-decisions.md#retention`).
  *
  * Releasing a payload cannot be undone, so it is decided only on what is
  * final (deeper than k, plan §9): a terminal record counts only when its

@@ -2219,8 +2219,7 @@ test execution_attestation_settlement_rejects_copied_hash_count_and_output_mutat
 // trapped on every input survived. These fixtures build a *legitimate* stage-1
 // pending redeemer-item witness with the machine's own canonical encoder
 // (`vm_witness.encode_script_sources_redeemer_item_witness`) and
-// pair the positive with the two encoding controls GOAL_SPEC §3 invariant 9
-// requires: a Plutus `serialiseData` re-encoding of the very same control, and
+// pair the positive with two encoding controls: a Plutus `serialiseData` re-encoding of the very same control, and
 // a mutated successor commitment.
 // ---------------------------------------------------------------------------
 

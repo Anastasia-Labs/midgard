@@ -913,8 +913,8 @@ fn finalize_with_value_rule(
 /// well-formed canonical native-V1 transaction and **without** requiring the
 /// leaf key to be that value's transaction id.
 ///
-/// This is the evidence primitive of the `da-hash-preimage` family
-/// (`GOAL_SPEC.md` Q44): the very fault it proves is a committed leaf whose
+/// This is the evidence primitive of the `da-hash-preimage` family: the
+/// very fault it proves is a committed leaf whose
 /// key is not the hash-preimage commitment of its value, so the codec check
 /// performed by [`verify_native_tx_in_state_queue_node`](#verify_native_tx_in_state_queue_node)
 /// must not be a precondition here. Everything else — hub identity,

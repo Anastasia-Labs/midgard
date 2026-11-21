@@ -1,4 +1,4 @@
-//// ## Fabricated Deposit Fraud Proof — step-01 (`GOAL_SPEC.md` §9.1 / Q39)
+//// ## Fabricated Deposit Fraud Proof — step-01
 ////
 //// Authenticates the challenged block header out of the state-queue node the
 //// computation thread names, and proves that the header's counted
@@ -134,7 +134,7 @@ validator main(
   }
 }
 
-// ## Family selectors (GOAL_SPEC.md §9.1 output 4)
+// ## Family selectors (`docs/spec/protocol-decisions.md#family-outputs`, output 4)
 //
 // Every selector drives the real `main.spend` handler above on a genuine block
 // fixture built by `native_binding_fixture_v1`, extended with a real

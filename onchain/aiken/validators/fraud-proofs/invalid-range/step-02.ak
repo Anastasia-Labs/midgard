@@ -92,7 +92,7 @@ validator main(
   }
 }
 
-// ## Family selectors (GOAL_SPEC.md §9.1 output 4)
+// ## Family selectors (`docs/spec/protocol-decisions.md#family-outputs`, output 4)
 
 fn run_finalize(state: State) -> Bool {
   let asset_name = fixture.ct_token_asset_name(

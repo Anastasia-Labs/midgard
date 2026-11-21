@@ -1,9 +1,9 @@
 /**
  * `Q03` — canonical evidence-source admission rules (SDK layer).
  *
- * GOAL_SPEC.md §9.2: "Builders consume verified `DaPayloadV1`/proof bundles and
- * authenticated L1 observations, not operator-private REST/DB/files except
- * labelled diagnostics."
+ * Builders consume verified `DaPayloadV1`/proof bundles and authenticated L1
+ * observations, not operator-private REST/DB/files except labelled
+ * diagnostics.
  */
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";

@@ -111,7 +111,7 @@ validator main(
   }
 }
 
-// ## Family selectors (GOAL_SPEC.md §9.1 output 4)
+// ## Family selectors (`docs/spec/protocol-decisions.md#family-outputs`, output 4)
 //
 // Step-04 closes the family: the second transaction's authenticated field-0
 // preimage must contain the very input carried from step-03. This is where a

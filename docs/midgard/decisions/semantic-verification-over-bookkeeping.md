@@ -39,9 +39,8 @@ retention instructions alone do not justify keeping an archive.
 
 Do not rebuild a task database by parsing Markdown, count an optimistic status
 row as coverage, or update a digest as a substitute for remeasurement. The
-[documentation policy](../../DOCUMENTATION_POLICY.md) defines evidence handling;
-[GOAL_SPEC](../../exec-plans/GOAL_SPEC.md) preserves the unfinished acceptance
-contract. The live Header ABI gate is
+[documentation policy](../../DOCUMENTATION_POLICY.md) defines evidence handling.
+The live Header ABI gate is
 [verify-canonical-v1-header-v1-abi.mjs](../../../demo/scripts/verify-canonical-v1-header-v1-abi.mjs).
 
 Original owner directions and their historical inventories are recoverable at

@@ -43,7 +43,7 @@ any current submission guard. New action begin and ready-to-submit still check
 the current count, and the actual signed-body guard checks the current count,
 collateral percentage, value and conservation.
 
-Source: `demo/midgard-fault-proofs/src/workflow/funding-reservation-permit.create-workflow-funding-reservation-permit.ts:307`,
+Source: `demo/midgard-fault-proofs/src/workflow/funding-reservation-permit.create-workflow-funding-reservation-permit.ts:307` (since deleted),
 `funding-reservation-permit.reconcile-workflow-funding-submission-handoff.ts:244`,
 `funding-reservation-permit.read-workflow-funding-recovery.ts:232`,
 `funding-reservation-permit.apply-transition.ts:48`,
@@ -52,15 +52,15 @@ Source: `demo/midgard-fault-proofs/src/workflow/funding-reservation-permit.creat
 `funding-reservation-permit.assert-runtime-transaction-bound.ts:253` in the same
 directory. The production orchestrator observes/reconciles and confirms at
 `orchestrator.run-admitted-fraud-proof-workflow.ts:551`; rebroadcast calls the
-current submission guard at `:469`.
+current submission guard at `:469`. <!-- doc-links:historical -->
 
-Regression: `tests/funding-parameter-update.test.ts` prepares an exact signed
+Regression: `tests/funding-parameter-update.test.ts` (since deleted) prepares an exact signed
 two-collateral intent, reopens under cap one, recovers identical signed bytes,
 refuses rebroadcast, confirms the durable transition and refuses a fresh build
 without usable current funding. Independently observed: 7 collected and passed,
 exit 0; the final expanded file independently passed 12/12, including
 nonparameter authority-substitution controls for the capacity policy. This is a
-permit/lifecycle regression, not an L1 inclusion experiment.
+permit/lifecycle regression, not an L1 inclusion experiment. <!-- doc-links:historical -->
 
 ### F2 — CLOSED
 
@@ -71,11 +71,11 @@ planner; the planner reads current collateral value requirements and the current
 input cap. A separate authenticated maximum-capacity snapshot allows later
 recovery of leases selected under a past higher cap.
 
-Source: `demo/midgard-watcher/src/funding/prover-funding-authority.create-watcher-prover-funding-authority-factory.ts:283`,
+Source: `demo/midgard-watcher/src/funding/prover-funding-authority.create-watcher-prover-funding-authority-factory.ts:283` (since deleted),
 `:305`, `:316`; `prover-funding-authority.create-watcher-prover-funding-authority.ts:304`;
 `prover-funding-reservation.plan-watcher-prover-funding-reservation.ts:146`;
 `prover-funding-parameter-history.ts:52` and `:97`; and the fault-proof permit's
-recovery capacity at `funding-reservation-permit.create-workflow-funding-reservation-permit.ts:307`.
+recovery capacity at `funding-reservation-permit.create-workflow-funding-reservation-permit.ts:307`. <!-- doc-links:historical -->
 
 Regression: `tests/funding/prover-funding-calculation-reuse.test.ts:314` checks
 the current 3-billion-lovelace slash-collateral bound and proves that idle

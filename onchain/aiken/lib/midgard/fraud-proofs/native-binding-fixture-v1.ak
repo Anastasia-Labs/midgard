@@ -1,5 +1,6 @@
 //// Test-fixture support for the native-V1 counted-root binding selectors of
-//// the fault-proof step validators (GOAL_SPEC.md Q00).
+//// the fault-proof step validators (`docs/spec/protocol-decisions.md#family-outputs`,
+//// output 3).
 ////
 //// This module is referenced by tests embedded in the
 //// `validators/fraud-proofs/**` step modules, and — for its §8 tier-3 carriage
@@ -290,7 +291,7 @@ pub fn native_block_fixture_with_withdrawals_v1(
 ///
 /// The key is deliberately **not** required to be the value's canonical
 /// native-V1 transaction id: this is the committed shape the
-/// `da-hash-preimage` family adjudicates (GOAL_SPEC.md Q44). `tx_id` and
+/// `da-hash-preimage` family adjudicates. `tx_id` and
 /// `source_cbor` on the returned fixture carries the committed value, so
 /// `native_inclusion_args_v1` produces the matching prover arguments.
 pub fn committed_leaf_block_fixture_v1(

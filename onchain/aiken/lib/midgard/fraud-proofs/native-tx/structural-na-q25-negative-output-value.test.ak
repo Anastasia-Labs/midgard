@@ -1,5 +1,5 @@
-//// Executable structural-N/A closure for GOAL_SPEC §9.3 row Q25
-//// (`negative-output-value`).
+//// Executable structural-N/A closure for `negative-output-value`
+//// (`docs/spec/protocol-decisions.md#structural-na`).
 ////
 //// The claim under test: in canonical V1 an output value cannot carry a
 //// negative lovelace amount, nor an asset quantity that is zero or negative.

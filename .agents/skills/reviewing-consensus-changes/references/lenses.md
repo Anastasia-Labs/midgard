@@ -279,7 +279,7 @@ Ask:
 
 Every flat-reversion measurement is judged against 13,200,000 memory units:
 the 20% reserve off Cardano's 16,500,000 `maxTxExUnits` memory cap
-([GOAL_SPEC §3.3](../../../../docs/exec-plans/GOAL_SPEC.md)). The script
+([execution basis](../../../../docs/spec/protocol-decisions.md#execution-basis)). The script
 budgets in `demo/midgard-core/src/script-budgets.json` hold measured units for
 the budgeted tests to ceilings at or under this basis
 `[ci: aiken-ci.yml/Hold every script budget to its ceiling]`, judged by

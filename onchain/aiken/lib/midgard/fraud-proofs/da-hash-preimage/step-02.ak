@@ -1,4 +1,4 @@
-//// `da-hash-preimage` step-02 schema (GOAL_SPEC.md Q44).
+//// `da-hash-preimage` step-02 schema.
 ////
 //// Step 02 finalizes the proof by adjudicating the evidence triple step 01
 //// committed into the computation thread.

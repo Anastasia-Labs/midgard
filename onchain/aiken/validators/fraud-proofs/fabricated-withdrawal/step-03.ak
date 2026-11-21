@@ -1,4 +1,4 @@
-//// ## Fabricated Withdrawal Fraud Proof — step-03 (`GOAL_SPEC.md` §9.1 / Q40)
+//// ## Fabricated Withdrawal Fraud Proof — step-03
 ////
 //// Classifies the fault. Step-02's verdict about L1 is authenticated, and this
 //// step turns it into one of the two named `FabricatedWithdrawal` faults — or
@@ -126,7 +126,7 @@ validator main(
   }
 }
 
-// ## Family selectors (GOAL_SPEC.md §9.1 output 4)
+// ## Family selectors (`docs/spec/protocol-decisions.md#family-outputs`, output 4)
 //
 // Each selector drives the real `main.spend` handler on the exact thread state
 // step-02's positive selector produces, so the family's handoff bytes stay

@@ -1,8 +1,8 @@
 /**
  * Every node-runtime reference script fits a real L1 publication transaction.
  *
- * This is GOAL_SPEC §8.1 row CG1: "every parameterized hub/control validator
- * fits a real 16,384-byte publication transaction".
+ * Every parameterized hub/control validator fits a real 16,384-byte
+ * publication transaction.
  *
  *   - the roster is re-derived from `nodeRuntimeReferenceScriptTargets`, never
  *     hardcoded, so a validator added to or removed from the node's runtime

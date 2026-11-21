@@ -208,7 +208,7 @@ const fabricatedSourceOriginCovered = (
  * `event_to_step`. Any such finding makes the block
  * removable, and selection orders on the same axis, so the chosen proof is
  * never later than the unopened event and no earlier fault the replay did
- * not reach can hide behind it (GOAL_SPEC §6). The order comes only from each
+ * not reach can hide behind it (`docs/spec/protocol-decisions.md#proof-selection`). The order comes only from each
  * finding's declared subject events, never from its position or violation id,
  * and an advisory finding without a classification rule never discharges.
  */

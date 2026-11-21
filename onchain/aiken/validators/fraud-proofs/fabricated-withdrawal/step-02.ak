@@ -126,7 +126,7 @@ validator main(
   }
 }
 
-// ## Family selectors (GOAL_SPEC.md §9.1 output 4)
+// ## Family selectors (`docs/spec/protocol-decisions.md#family-outputs`, output 4)
 //
 // Both L1 witnesses are exercised against the exact thread state step-01's own
 // positive selector produces (`step_02.fixture_state_v1`), so the handoff bytes

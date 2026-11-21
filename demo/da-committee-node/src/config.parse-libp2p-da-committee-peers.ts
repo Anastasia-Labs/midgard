@@ -63,7 +63,7 @@ export class DaRetentionWindowConfigError extends Error {
 
 /**
  * Fail-closed startup binding of the committee's configured retention window
- * (GOAL_SPEC 9.4 / Q54). The runtime manifest's `da_transport.retention_days`
+ * (`docs/spec/protocol-decisions.md#retention`). The runtime manifest's `da_transport.retention_days`
  * must both clear the canonical floor and exactly equal the verified deployment
  * manifest's `da.transportProfile.retentionDays`.
  */

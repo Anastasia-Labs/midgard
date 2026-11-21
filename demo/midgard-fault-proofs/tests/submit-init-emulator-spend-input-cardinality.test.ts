@@ -1,5 +1,6 @@
 /**
- * The second adversarial axis of GOAL_SPEC.md 9.1 output 5: spend-input
+ * The second adversarial axis of family output 5
+ * (`docs/spec/protocol-decisions.md#family-outputs`): spend-input
  * preimage cardinality, measured end to end for Q10 and Q11 (issue #549,
  * finding Q1X-F6).
  *

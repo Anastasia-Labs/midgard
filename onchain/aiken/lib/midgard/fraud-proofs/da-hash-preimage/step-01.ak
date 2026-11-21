@@ -1,4 +1,4 @@
-//// `da-hash-preimage` step-01 schema (GOAL_SPEC.md Q44).
+//// `da-hash-preimage` step-01 schema.
 ////
 //// Step 01 binds one raw committed `transactions_root` leaf to the block
 //// header and forwards the exact evidence triple step 02 adjudicates

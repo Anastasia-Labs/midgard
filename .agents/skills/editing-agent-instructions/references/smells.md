@@ -20,10 +20,10 @@ tagged `[eslint: no-restricted-imports]` (the rule that carries the pattern).
 
 Always-loaded text that most sessions do not need.
 
-Instance: [CLAUDE.md](../../../../CLAUDE.md) sends Goal-program work to
-`docs/exec-plans/GOAL_SPEC.md`, 1,436 lines, whose §4.1 opens "Read this file
-completely" (`GOAL_SPEC.md:548`). The pointer is cheap; the read it triggers
-is not. A digest that routes to the needed sections belongs in between.
+Instance: `CLAUDE.md` once sent program work to a 1,436-line plan, since
+deleted, whose first instruction was "Read this file completely". The pointer
+was cheap; the read it triggered was not. Point at the section a task needs,
+or drop the pointer when no task needs the document.
 
 ## Skill leakage
 

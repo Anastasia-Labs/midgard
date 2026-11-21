@@ -140,7 +140,7 @@ export const subjectOf = ({
 /**
  * A point on the one total event order of a block: the `step_index` of the
  * event's step in the authenticated transition trace, the order the replay
- * applies events in (GOAL_SPEC §6: the earliest invalid transition is the
+ * applies events in (the earliest invalid transition is the
  * earliest trace step). Within a phase that is the operator's application
  * order, which need not be the committed list order: a transaction that
  * spends a same-block output steps after the transaction producing it. A

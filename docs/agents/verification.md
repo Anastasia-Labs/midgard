@@ -25,8 +25,6 @@ Deployment checks remain manual; preparation lanes are selected by preflight. [r
 | Validator parameters, deployment profiles                                | `pnpm --dir demo deployment:check preprod-testing`; `node --test demo/scripts/deployment-profiles.test.mjs`; the emulator scenarios in both polarities (`docs/agents/contracts.md`) |
 | L1 transaction builders, wallet or input selection, validity, submission | `pnpm --dir demo run test:tx-prep:sdk`; `pnpm --dir demo run test:tx-prep:node`; `pnpm --dir demo run test:tx-prep:emulator`                                                        |
 
-`docs/exec-plans/GOAL_SPEC.md` §13 governs the wider Goal completion checks.
-
 ## Merge checklist
 
 1. Fetch the intended target, preserve foreign work, and run preflight against

@@ -934,7 +934,7 @@ fn carriage_of(opening: FieldOpeningV1) -> FieldCarriageV1 {
 /// erratum E2.** For a variable-width field this is O(N) by construction, so a
 /// family that folds one is buying a cost that grows with the disputed
 /// transaction — measured for a direct whole-field walk over field 6 (script
-/// witnesses) at ~2.7× the GOAL_SPEC §3.3 memory basis at C20.6's 224-witness
+/// witnesses) at ~2.7× the execution-basis memory at C20.6's 224-witness
 /// envelope, fitting to roughly 81. And
 /// `field_item_count` is only *authenticated* for a variable-width field under
 /// carriage tiers 1–2: under tier 3 it aborts rather than hand back the §5.1

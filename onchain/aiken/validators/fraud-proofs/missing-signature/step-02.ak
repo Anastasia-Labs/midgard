@@ -104,7 +104,7 @@ validator main(
   }
 }
 
-// ## Family selectors (GOAL_SPEC.md §9.1 output 4)
+// ## Family selectors (`docs/spec/protocol-decisions.md#family-outputs`, output 4)
 //
 // Step-02 opens field 4 of the disputed transaction through the one door and
 // selects the required signer whose signature step-04 proves absent.

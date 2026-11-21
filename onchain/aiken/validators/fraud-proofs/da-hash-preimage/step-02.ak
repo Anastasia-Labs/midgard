@@ -1,4 +1,4 @@
-//// ## DA Hash/Preimage Fraud Proof — step 02 (GOAL_SPEC.md Q44)
+//// ## DA Hash/Preimage Fraud Proof — step 02
 ////
 //// Finalizes exactly the non-normal verdict step 01 derived from the
 //// authenticated raw `transactions_root` leaf.

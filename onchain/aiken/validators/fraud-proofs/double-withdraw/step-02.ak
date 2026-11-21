@@ -130,7 +130,7 @@ validator main(
   }
 }
 
-// ## Family selectors (GOAL_SPEC.md §9.1 output 4)
+// ## Family selectors (`docs/spec/protocol-decisions.md#family-outputs`, output 4)
 //
 // Each selector drives the real `main.spend` handler on the exact thread state
 // step-01's positive selector produces, so the finalized conviction is

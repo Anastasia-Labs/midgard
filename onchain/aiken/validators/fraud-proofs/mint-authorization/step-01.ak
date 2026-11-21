@@ -98,7 +98,7 @@ validator main(
   }
 }
 
-// ## Family selectors (GOAL_SPEC.md §9.1 output 4)
+// ## Family selectors (`docs/spec/protocol-decisions.md#family-outputs`, output 4)
 
 fn run_step_01(tx: MidgardTransaction) -> Bool {
   let block = fixture.native_block_fixture_v1(tx)

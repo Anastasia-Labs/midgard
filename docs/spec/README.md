@@ -22,12 +22,6 @@ specification added here inherits it.
   `technical-spec/` remains the protocol-level design target; divergences
   from a component spec are fixed as errata on `technical-spec/`'s own
   cadence and are never grounds to reopen a component spec.
-- `GOAL_SPEC.md` binds its acceptance criteria to these documents **by
-  reference at scheme altitude**: scheme names live in `GOAL_SPEC.md`,
-  primitives live here — "primitives" meaning exactly the concrete detail
-  enumerated above. Primitive-level corrections to a component spec are
-  errata to that document and do not reopen `GOAL_SPEC.md` acceptance
-  criteria.
 - `docs/midgard/decisions/` records rationale (_why_); the component specs
   here carry the definition (_what_). A decision record must not restate
   format detail, and a component spec must not carry decision rationale
@@ -41,3 +35,6 @@ specification added here inherits it.
 - `midgard-tx.md` — the MidgardTx compact-transaction type, canonical
   encoding, the nine flat blake2b-256 field commitments, the enveloped
   preimage grammar, and the three-tier field-preimage carriage convention.
+- `protocol-decisions.md` — canonical V1 protocol decisions, the exact margin
+  thresholds and execution basis, and what every fault-proof family consists
+  of.

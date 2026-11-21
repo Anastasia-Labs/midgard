@@ -1,4 +1,4 @@
-//// ## `network-id` — normative rule (GOAL_SPEC.md Q35)
+//// ## `network-id` — normative rule
 ////
 //// **Violation `transaction-network`.** An accepted native-V1 transaction
 //// explicitly carries a transaction-body network id other than the network

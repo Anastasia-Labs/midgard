@@ -19,7 +19,8 @@
 // test, and on a missing report.
 //
 // Each passing selector's line also carries `exUnits`: its largest unit-test
-// memory and CPU readings, each as a share of the GOAL_SPEC §3.3 basis.
+// memory and CPU readings, each as a share of the execution basis
+// (`docs/spec/protocol-decisions.md#execution-basis`).
 //
 // Complete CI coverage uses a fresh source-derived module plan and raw reports:
 //   --plan-shards <count> [--seed <uint32>] --output <plan.json>
@@ -102,7 +103,7 @@ const listFailures = (report) => {
 const share = (units, basis) => `${((100 * units) / basis).toFixed(1)}%`;
 
 // The largest execution units a report's unit tests measured, against the
-// GOAL_SPEC §3.3 basis. `aiken check` prints units per test and compares them
+// execution basis. `aiken check` prints units per test and compares them
 // to nothing; a test is not a transaction, so this is a reading, not a gate.
 // Property tests report no units and are not counted.
 export const exUnitsSummary = (report) => {

@@ -194,7 +194,7 @@ export type TxOrderCarriagePlan = {
  * Chooses, per non-empty field, whether the order carries its preimage inline or
  * references a predeployed publication (#594 AC6).
  *
- * The rule is simplest-fitting-first (GOAL_SPEC §3.2) under one aggregate
+ * The rule is simplest-fitting-first under one aggregate
  * reserve, taken in **descending preimage size**: the largest field is offered
  * the reserve first, so a small field never spends budget the large one then
  * cannot have and get itself published for nothing. Fields above `K` are tier 3

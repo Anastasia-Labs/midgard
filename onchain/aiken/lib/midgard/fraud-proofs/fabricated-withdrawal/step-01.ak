@@ -1,5 +1,4 @@
 //// ## `fabricated-withdrawal` step-01 — committed withdrawal-source membership
-//// (`GOAL_SPEC.md` §9.1 / Q40)
 ////
 //// ### The rule this family adjudicates
 ////

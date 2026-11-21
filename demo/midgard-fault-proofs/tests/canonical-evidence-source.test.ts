@@ -1,9 +1,9 @@
 /**
  * `Q03` — canonical evidence-source API.
  *
- * Acceptance (GOAL_SPEC.md §9.2): "Builders consume verified `DaPayloadV1`/proof
- * bundles and authenticated L1 observations, not operator-private REST/DB/files
- * except labelled diagnostics."
+ * Builders consume verified `DaPayloadV1`/proof bundles and authenticated L1
+ * observations, not operator-private REST/DB/files except labelled
+ * diagnostics.
  *
  * Positive coverage proves builders reach proof material from DA + L1 only.
  * Negative coverage proves every other input path is refused: prohibited trust

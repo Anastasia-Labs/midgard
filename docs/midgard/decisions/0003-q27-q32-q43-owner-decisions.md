@@ -4,8 +4,8 @@
   this queue now.
 - **Scope:** canonical V1 only. This record decides proof-family shape; it
   does not mark Q27, Q32, or Q43 complete, and does not itself establish release acceptance.
-- **Normative basis:** `GOAL_SPEC.md` §3.1(4), §8.3 C42/C43/C49, and §9.3
-  Q27/Q32/Q43; `docs/consensus-profile-v1.md` §3 and §8.
+- **Normative basis:** [fees and min-Ada](../../spec/protocol-decisions.md#fees-and-min-ada);
+  `docs/consensus-profile-v1.md` §3 and §8.
 
 ## Q27 — `min-ada`: required family, not structural N/A
 

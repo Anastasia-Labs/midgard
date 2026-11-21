@@ -45,10 +45,3 @@ plain `grep -r` find them (plan task W2.8).
 No file exceeds its proposed budget. The e2e acceptance runbook, once 1,002
 lines, now enforces 400 lines per reference in its own validator
 `[script: .agents/skills/midgard-e2e-acceptance/scripts/validate-runbook.mjs]`.
-
-## Out of scope
-
-`docs/exec-plans/GOAL_SPEC.md` (1,436 lines) is a specification, not an
-instruction file, and gets no budget here. What needs budgeting is the
-instruction that sends agents to read it whole; see the context-bloat instance
-in [smells.md](smells.md).

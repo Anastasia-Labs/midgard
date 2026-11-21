@@ -43,15 +43,15 @@ Trace:
 1. An ordinary wallet with no single sufficiently large pure-ADA coin gets two
    collateral leases under the old cap of three; the production selector permits
    this at
-   `demo/midgard-watcher/src/funding/prover-funding-reservation.plan-watcher-prover-funding-reservation.ts:48`.
+   `demo/midgard-watcher/src/funding/prover-funding-reservation.plan-watcher-prover-funding-reservation.ts:48` (since deleted). <!-- doc-links:historical -->
 2. A proof step is signed, its exact intent and leases remain durable, and the
    transaction confirms before an L1 update reduces the cap to one. A process
    interruption can leave its confirmation unrecorded locally. This is the
    already supported recovery starting state used by the funding fixture.
 3. On resume, the factory reconstructs the original policy and calculation,
    while passing the current policy to the permit, at
-   `demo/midgard-watcher/src/funding/prover-funding-authority.create-watcher-prover-funding-authority-factory.ts:240`
-   and `:278`.
+   `demo/midgard-watcher/src/funding/prover-funding-authority.create-watcher-prover-funding-authority-factory.ts:240` (since deleted)
+   and `:278`. <!-- doc-links:historical -->
 4. Permit creation takes `maximumCollateralInputs` from the current policy at
    `funding-reservation-permit.create-workflow-funding-reservation-permit.ts:253`
    and unconditionally calls the snapshot bound check at `:294`. The check
@@ -72,17 +72,17 @@ a past confirmation and also blocks reconciliation-only authority.
 Lens: 12, replacement/recovery paths keep the recovery guards without making
 the recovery itself unreachable; 7, both polarities across a parameter update.
 
-Evidence: The new test `tests/funding-parameter-update.test.ts` explicitly
+Evidence: The new test `tests/funding-parameter-update.test.ts` (since deleted) explicitly
 asserts unconditional rejection of a two-collateral snapshot after the cap
 becomes one. That test passed in the run below. It does not exercise signed
 intent reconciliation. The complete caller chain above was read; no emulator
 scenario for this exact ordering was run. Severity is major because the proven
-outcome is recovery liveness loss; no false slash was established.
+outcome is recovery liveness loss; no false slash was established. <!-- doc-links:historical -->
 
 ### [F2] PLAUSIBLE — major
 
-Where: `demo/midgard-watcher/src/funding/prover-funding-authority.create-watcher-prover-funding-authority-factory.ts:240`, `:261`;
-`demo/midgard-watcher/src/funding/prover-funding-authority.create-watcher-prover-funding-authority.ts:302`.
+Where: `demo/midgard-watcher/src/funding/prover-funding-authority.create-watcher-prover-funding-authority-factory.ts:240` (since deleted), `:261`;
+`demo/midgard-watcher/src/funding/prover-funding-authority.create-watcher-prover-funding-authority.ts:302` (since deleted). <!-- doc-links:historical -->
 
 Defect: After an existing workflow reconciles its old signed attempt, a live
 increase in required collateral can leave its future steps permanently using
@@ -93,15 +93,15 @@ collateral percentage rise -> the factory intentionally recovers the old
 parameter snapshot and computes `calculation` from `reservationPolicy` at
 `:261` -> that same historical calculation is passed to the authority at
 `:284` -> next-action selection exposes the old collateral leases at
-`demo/midgard-fault-proofs/src/workflow/funding-reservation-permit.begin-workflow-funding-reservation-action.ts:110`
+`demo/midgard-fault-proofs/src/workflow/funding-reservation-permit.begin-workflow-funding-reservation-action.ts:110` (since deleted)
 -> a current transaction needs more collateral than their total -> the current
 policy's percentage/value checks refuse it at
-`demo/midgard-fault-proofs/src/workflow/funding-reservation-permit.assert-runtime-transaction-bound.ts:256`.
+`demo/midgard-fault-proofs/src/workflow/funding-reservation-permit.assert-runtime-transaction-bound.ts:256` (since deleted).
 Even when idle input refresh becomes reachable, it plans from
 `input.calculation` at `prover-funding-authority.create-watcher-prover-funding-authority.ts:304`;
 the selector chooses the smallest coin meeting the old requirement at
 `prover-funding-reservation.plan-watcher-prover-funding-reservation.ts:38`.
-Wallet top-ups alone therefore need not cure the shortage.
+Wallet top-ups alone therefore need not cure the shortage. <!-- doc-links:historical -->
 
 Reach: Existing workflows and historical snapshots are expressly admitted by
 this change. The old policy/basis identity must remain fixed for signed intent

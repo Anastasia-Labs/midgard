@@ -5,8 +5,7 @@
   blake2b-256 field commitments, the uniform enveloped preimage grammar, and
   the three-tier field-preimage carriage convention.
 - **Authority:** per `docs/spec/README.md`, this document wins over
-  `technical-spec/` on concrete detail; `GOAL_SPEC.md` binds it by reference
-  at scheme altitude. Rationale lives in
+  `technical-spec/` on concrete detail. Rationale lives in
   `docs/midgard/decisions/0004-compact-tx-flat-field-hash-reversion.md`;
   decision trail: wayfinder map
   [#552](https://github.com/Anastasia-Labs/midgard/issues/552).
@@ -485,8 +484,8 @@ native-script CBOR under the structure-scan bounds
 not — no descriptor exists for such an output, and no transaction carrying
 one is admissible into `transactions_root` as valid. (Ruled on #633.
 Delivery: decision 0005 R5 item 9 dropped out of the #617 wave under A3's
-ExUnits precondition — the measured one-shot cost is ~82x the GOAL_SPEC
-§3.3 basis at the reachable worst case — so the shipped one-shot decoder
+ExUnits precondition — the measured one-shot cost is ~82x the
+[execution basis](protocol-decisions.md#execution-basis) at the reachable worst case — so the shipped one-shot decoder
 does not yet enforce this clause; enforcement rides the #633 re-ruling and
 the next regeneration. The staged machine (`ledger_output_proof_v1` →
 `native_script_scan_v1`) and the off-chain codec enforce it today.)
@@ -584,7 +583,7 @@ families, watcher, builders — observes:
 ## 8. Field-preimage carriage (three tiers)
 
 How preimage bytes reach a consuming (dispute) transaction. The tiering is
-mandated simplest-fitting-first (GOAL_SPEC §3.2): the tier-1 direct and
+mandated simplest-fitting-first ([complete items first](protocol-decisions.md#complete-items-first)): the tier-1 direct and
 tier-2 single-reference paths stay enabled wherever they fit, and the tier-3
 fallback never becomes mandatory complexity for ordinary proofs. Certification
 exists only where flat hashing does not otherwise authenticate a partial
@@ -621,7 +620,8 @@ complete-item submission uses pre-sign projection and the reference route when
 its direct route does not fit. A fixture's measured direct frontier is not an
 additional universal protocol constant.
 
-Execution-fit is judged against GOAL_SPEC §3.3's declared basis of 13,200,000
+Execution-fit is judged against the declared
+[execution basis](protocol-decisions.md#execution-basis) of 13,200,000
 memory units and 8,000,000,000 CPU units. Publication uses the 16,384-byte L1
 transaction floor with a 512-byte reliability reserve. Current implementation
 and cost-model inputs are linked in §8.10.
@@ -1400,7 +1400,7 @@ later read would do.
 
 **Budgeted folds.** A step visits at most `budget` items and returns the
 position it stopped at. That is the whole of interruptibility: a step takes as
-many items as its transaction can afford at the GOAL_SPEC §3.3 budget basis,
+many items as its transaction can afford at the [execution basis](protocol-decisions.md#execution-basis),
 commits the returned checkpoint, and the next step resumes from it. `budget` is
 a count of items and MUST be non-negative: the recursion stops at zero, so a
 negative budget is not "no items" but "no limit".
@@ -1871,7 +1871,8 @@ for §10.4's reason: the recursion stops at zero, so a negative budget would mea
 Use the `budget_*` controls in
 [`native-tx-script-pushdown-v1.test.ak`](../../onchain/aiken/lib/midgard/native-tx-script-pushdown-v1.test.ak)
 (and, for cases A and B, those of the deleted `native-tx-intra-item-v1.test.ak`)
-to measure these mechanisms under the pinned compiler and GOAL_SPEC §3.3 basis.
+to measure these mechanisms under the pinned compiler and the
+[execution basis](protocol-decisions.md#execution-basis).
 
 - Value-bookmark comparisons must separate the initial structural pass from
   subsequent lookups. Materialising a complete output checks more than the
@@ -2538,7 +2539,7 @@ Four properties of this definition are normative rather than incidental:
 
 #### Adjudication
 
-Two steps, on the `da-hash-preimage` pattern (GOAL_SPEC.md Q44) and for its
+Two steps, on the `da-hash-preimage` pattern and for its
 reason: the first binds committed evidence and derives, the second holds the
 derivation against the rule.
 
@@ -2633,7 +2634,7 @@ judged by
 [`script-budgets.mjs`](../../onchain/aiken/scripts/script-budgets.mjs).
 It holds the controlled byte-cost and item-cost rows, the boundary-pair
 measurements and the worst single batch, on the thread's first transaction
-and on a resumed one, at or under ceilings within GOAL_SPEC §3.3. Read current
+and on a resumed one, at or under ceilings within the [execution basis](protocol-decisions.md#execution-basis). Read current
 values from a fresh report rather than from a duplicate prose table.
 
 The envelope walk's item count is the limiting term, and `B` bounds it per
@@ -2983,7 +2984,7 @@ The envelope guard reuses §12.7's batched item walk; shape checks add constant
 work. Both families therefore need independent boundary measurements despite
 sharing the dominant traversal. The baseline holds the worst single batch on
 the thread's first transaction and on a resumed one, at or under ceilings
-within GOAL_SPEC §3.3. Read current values from a fresh report rather than
+within the [execution basis](protocol-decisions.md#execution-basis). Read current values from a fresh report rather than
 from a duplicate prose table.
 
 The walk's item count is the limiting term, and `B` bounds it per

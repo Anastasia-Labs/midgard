@@ -348,7 +348,7 @@ describe("fault-proof emulator integration", () => {
     expect(outRefLabel(retainedFraudProof)).toBe(outRefLabel(fraudProofUtxo));
     expect(retainedFraudProof.assets[step02Result.fraudProofUnit]).toBe(1n);
 
-    // invalid-range proof fit (GOAL_SPEC.md 3.3). Every transaction of the complete
+    // invalid-range proof fit. Every transaction of the complete
     // correction path is measured, not just the largest one.
     expect(Object.keys(proofFit)).toEqual([
       "init",
@@ -664,7 +664,7 @@ describe("fault-proof emulator integration", () => {
     expect(outRefLabel(retainedFraudProof)).toBe(outRefLabel(fraudProofUtxo));
     expect(retainedFraudProof.assets[step02Result.fraudProofUnit]).toBe(1n);
 
-    // Q14 zero-input proof fit (GOAL_SPEC.md 3.3). Every transaction of the
+    // Q14 zero-input proof fit. Every transaction of the
     // complete correction path is measured, not just the largest one.
     expect(Object.keys(proofFit)).toEqual([
       "init",
@@ -1020,7 +1020,7 @@ describe("fault-proof emulator integration", () => {
     );
     expect(retainedFraudProof.assets[step04Result.fraudProofUnit]).toBe(1n);
 
-    // non-existent-input proof fit (GOAL_SPEC.md 3.3). Every transaction of the complete
+    // non-existent-input proof fit. Every transaction of the complete
     // correction path is measured, not just the largest one.
     expect(Object.keys(proofFit)).toEqual([
       "init",

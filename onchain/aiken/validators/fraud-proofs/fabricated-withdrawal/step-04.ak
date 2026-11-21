@@ -1,4 +1,4 @@
-//// ## Fabricated Withdrawal Fraud Proof — step-04 (`GOAL_SPEC.md` §9.1 / Q40)
+//// ## Fabricated Withdrawal Fraud Proof — step-04
 ////
 //// Finalizes the thread into a permanent fraud-proof token, and is therefore the
 //// last place the family can refuse. It re-checks the two things a permanent
@@ -110,7 +110,7 @@ validator main(
   }
 }
 
-// ## Family selectors (GOAL_SPEC.md §9.1 output 4)
+// ## Family selectors (`docs/spec/protocol-decisions.md#family-outputs`, output 4)
 //
 // Each selector drives the real `main.spend` handler on the exact thread state
 // step-03's positive selector produces, so the finalized conviction is measured

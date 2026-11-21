@@ -1,7 +1,8 @@
 /**
  * Labelled diagnostic evidence (`Q03`).
  *
- * `GOAL_SPEC.md` §9.2 permits operator-private REST/DB/file inputs only as
+ * Family output 7 (`docs/spec/protocol-decisions.md#family-outputs`) permits
+ * operator-private REST/DB/file inputs only as
  * "labelled diagnostics". This module is the single place where such inputs may
  * enter the fault-proof tooling, and every record it produces carries
  * `grade: "diagnostic"` plus a mandatory label, so

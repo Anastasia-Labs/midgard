@@ -107,7 +107,7 @@ export const membershipProofShape = async ({
 };
 
 // ---------------------------------------------------------------------------
-// Adversarial MPF membership-proof depth (GOAL_SPEC.md 9.1 output 5, axis 1)
+// Adversarial MPF membership-proof depth (family output 5, axis 1)
 // ---------------------------------------------------------------------------
 //
 // Every family's step-01 redeemer carries `tx_membership_proof`, and that proof

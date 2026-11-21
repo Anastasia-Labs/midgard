@@ -18,7 +18,7 @@ import { ContractDeploymentIdentity } from "../services/midgard-contracts.make-m
 import { parseNonNegativeIntegerOption } from "./cli-options.js";
 
 /**
- * Executable retention deadline alert (GOAL_SPEC 9.4 / Q54).
+ * Executable retention deadline alert (`docs/spec/protocol-decisions.md#retention`).
  *
  * `evaluateRetentionCheck` is a pure evaluator, in the shape of
  * `evaluateReadiness`: no IO, no clock, no database. Callers supply the

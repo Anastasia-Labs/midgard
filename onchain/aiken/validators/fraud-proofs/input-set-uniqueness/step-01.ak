@@ -135,7 +135,7 @@ validator main(
   }
 }
 
-// ## Family selectors (GOAL_SPEC.md §9.1 output 4)
+// ## Family selectors (`docs/spec/protocol-decisions.md#family-outputs`, output 4)
 
 const dup_outref_tx_id =
   #"1111111111111111111111111111111111111111111111111111111111111111"

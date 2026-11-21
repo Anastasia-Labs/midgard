@@ -81,7 +81,7 @@ validator main(
   }
 }
 
-// ## Family selectors (GOAL_SPEC.md §9.1 output 4)
+// ## Family selectors (`docs/spec/protocol-decisions.md#family-outputs`, output 4)
 //
 // Step-02 binds the second conflicting transaction to a committed block and
 // enforces the distinctness requirement that makes the family sound: the two

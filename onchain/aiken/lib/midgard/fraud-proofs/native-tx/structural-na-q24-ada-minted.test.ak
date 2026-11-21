@@ -1,5 +1,5 @@
-//// Executable structural-N/A closure for GOAL_SPEC §9.3 row Q24
-//// (`ada-minted`).
+//// Executable structural-N/A closure for `ada-minted`
+//// (`docs/spec/protocol-decisions.md#structural-na`).
 ////
 //// The claim under test: in canonical V1 there is no CBOR encoding of a mint
 //// entry that names ADA/lovelace. Every mint policy key must decode to a

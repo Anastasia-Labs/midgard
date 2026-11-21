@@ -42,7 +42,7 @@ validator main(
   }
 }
 
-// ## Family selectors (GOAL_SPEC.md §9.1 output 4)
+// ## Family selectors (`docs/spec/protocol-decisions.md#family-outputs`, output 4)
 
 fn run_step_01(claimed: fixture.NativeBlockFixtureV1) -> Bool {
   let expected_output_state: Data = types.SourceStateV1 {

@@ -1,11 +1,9 @@
 /**
- * Canonical evidence-source API (Goal task `Q03`).
+ * Canonical evidence-source API.
  *
- * `GOAL_SPEC.md` §9.2 acceptance:
- *
- * > Builders consume verified `DaPayloadV1`/proof bundles and authenticated L1
- * > observations, not operator-private REST/DB/files except labelled
- * > diagnostics.
+ * Builders consume verified `DaPayloadV1`/proof bundles and authenticated L1
+ * observations, not operator-private REST/DB/files except labelled
+ * diagnostics.
  *
  * This module owns the trust vocabulary and the fail-closed admission rules.
  * It deliberately holds no transport: transports live in

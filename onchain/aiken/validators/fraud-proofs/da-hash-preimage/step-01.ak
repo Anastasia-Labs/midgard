@@ -1,4 +1,4 @@
-//// ## DA Hash/Preimage Fraud Proof — step 01 (GOAL_SPEC.md Q44)
+//// ## DA Hash/Preimage Fraud Proof — step 01
 ////
 //// Binds one raw `(key, value)` leaf of the fraudulent block's committed
 //// `transactions_root` and forwards the total verdict step 02 adjudicates.

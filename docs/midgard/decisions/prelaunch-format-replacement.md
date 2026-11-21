@@ -41,7 +41,7 @@ Operational rollback, finalization recovery, provider failover, leases, and
 idempotent replay remain necessary. They are recovery mechanisms, not obsolete
 format compatibility. The Cardano capability floor remains governed by
 [decision 0001](0001-cardano-l1-transaction-capability-floor.md); activation
-still requires [proof and deployment acceptance](../../exec-plans/GOAL_SPEC.md).
+still requires proof and deployment acceptance.
 
 The delivered consolidation and format inventory are recoverable from Git at
 `81a511e15:docs/exec-plans/canonical-v1-consolidation.md` and

@@ -107,7 +107,7 @@ validator main(
   }
 }
 
-// ## Family selectors (GOAL_SPEC.md §9.1 output 4)
+// ## Family selectors (`docs/spec/protocol-decisions.md#family-outputs`, output 4)
 //
 // Step-04 admits only closed verdicts: a pending class, an out-of-domain
 // class, or a direction-B state whose provenance or marker is wrong all die

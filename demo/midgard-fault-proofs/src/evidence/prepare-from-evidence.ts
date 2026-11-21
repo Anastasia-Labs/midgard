@@ -1,7 +1,8 @@
 /**
  * Canonical-evidence proof builders (`Q03`).
  *
- * These are the builder entry points `GOAL_SPEC.md` §9.2 asks for: they take
+ * These are the builder entry points of family output 7
+ * (`docs/spec/protocol-decisions.md#family-outputs`): they take
  * verified `DaPayloadV1` evidence bound to an authenticated L1 observation and
  * nothing else. Each one is fail-closed twice:
  *

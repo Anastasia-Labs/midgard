@@ -33,7 +33,7 @@
  * ExUnits discipline (§5.3): every plan carries a prediction derived from
  * the family's script budgets (`@al-ft/midgard-core` `script-budgets.json`,
  * each a measured ceiling), and the planner throws on any plan predicted over
- * the 13.2M-mem/8B-cpu GOAL_SPEC §3.3 basis. Scan predictions price every
+ * the 13.2M-mem/8B-cpu execution basis. Scan predictions price every
  * primitive step at the deep per-NODE fold slope, which over-prices roughly 2–3× (a deep
  * node spends 2–3 primitive steps to earn one node's slope): the prediction
  * is a conservative ceiling, so "refuse to submit" can only fire early,

@@ -119,7 +119,7 @@ validator main(
   }
 }
 
-// ## Family selectors (GOAL_SPEC.md §9.1 output 4)
+// ## Family selectors (`docs/spec/protocol-decisions.md#family-outputs`, output 4)
 //
 // Step-02 opens the disputed transaction's field-1 preimage through the one
 // door and selects the reference input the prover claims was withdrawn. The

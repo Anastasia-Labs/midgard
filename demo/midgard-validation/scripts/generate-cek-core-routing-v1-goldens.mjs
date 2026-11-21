@@ -193,7 +193,7 @@ const tuple = (values) => `(${values.join(", ")})`;
 const name = (value) => (value < 0 ? `minus_${-value}` : String(value));
 
 /** The tags of each test of group 7's routed rows: two keep a test's six
- * spends of the roots within the GOAL_SPEC §3.3 basis. */
+ * spends of the roots within the execution basis. */
 const FAILURE_TAGS_A_TEST = 2;
 
 const ROUTES = { material: "Material", staged: "Staged", loop: "Loop" };

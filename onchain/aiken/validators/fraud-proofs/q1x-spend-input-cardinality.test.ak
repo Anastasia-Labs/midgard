@@ -26,7 +26,7 @@
 ////
 //// The readings are held to ceilings in
 //// `demo/midgard-core/src/script-budgets.json` and judged by
-//// `scripts/script-budgets.mjs` at the GOAL_SPEC §3.3 declared basis of
+//// `scripts/script-budgets.mjs` at the declared execution basis of
 //// 13,200,000 memory units. Aiken cannot assert its own
 //// execution units, so the pin has to live one level up; this module's job is
 //// to be a *stable and honest subject* for it.

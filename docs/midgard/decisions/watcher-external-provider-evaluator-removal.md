@@ -67,8 +67,6 @@ later: no production path ran them.
   classification.
 - Any future need for these must build on the local-node observation model. It
   must not revive the external-provider evaluator model.
-- `docs/exec-plans/GOAL_SPEC.md` still lists W14 to W17 as deliverables, and
-  W26 as depending on them. Amending the specification is a separate decision.
 - The W25 result's W26/W29 contract text names a verifier that no longer
   exists. Changing it changes the durable format and the result digests.
   Before launch this is an in-place replacement under

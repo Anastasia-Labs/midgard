@@ -1,5 +1,5 @@
 /**
- * Canonical V1 retention window (GOAL_SPEC 9.4 / Q54).
+ * Canonical V1 retention window (`docs/spec/protocol-decisions.md#retention`).
  *
  * Retained DA and proof evidence must survive the full challenge surface of a
  * block: block maturity plus the worst-case correction (proof) time, plus an
@@ -9,7 +9,7 @@
  *
  * Authoritative economics: docs/midgard/decisions/0002-canonical-v1-goal-
  * economics-and-margins.md (maturity 604_800_000 ms; worst-case proof-time
- * bound = half maturity = 302_400_000 ms per 3.3 clause 3; RETENTION_DAYS 15).
+ * bound = half maturity = 302_400_000 ms per the maturity-fit threshold; RETENTION_DAYS 15).
  *
  * Enforcement is always against the half-maturity BOUND. The execution
  * dispute's maturity floor (`measuredValidationDisputeScheduleMs`, 2 D_case + 1
