@@ -1,4 +1,3 @@
-use aiken/builtin
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use cardano/address.{Script}
@@ -28,12 +27,6 @@ pub type Action {
 
 pub type SpendRedeemer =
   ct.StepRedeemer<Action>
-
-pub fn selection_language(auxiliary: Data) -> Int {
-  expect Pair(11, [_, language_data, ..]) = builtin.un_constr_data(auxiliary)
-  expect language: Int = language_data
-  language
-}
 
 /// A rewarding invocation discharges exactly one matching thread spend.
 pub fn unique_dispatch(

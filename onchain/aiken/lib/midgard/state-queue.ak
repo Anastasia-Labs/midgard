@@ -697,22 +697,6 @@ pub fn require_completed_fraud_witness(
   }
 }
 
-pub fn get_prev_header_hash_of_node_v1(
-  reference_inputs: List<Input>,
-  state_queue_policy: ByteArray,
-  state_queue_node_ref_input_index: Int,
-  expected_state_queue_node_header_hash: HeaderHash,
-) -> HeaderHash {
-  let header, retrieved_state_queue_node_header_hash <- get_block_datum_v1(
-    reference_inputs,
-    state_queue_policy,
-    state_queue_node_ref_input_index,
-  )
-  expect
-    retrieved_state_queue_node_header_hash == expected_state_queue_node_header_hash
-  header.prev_header_hash
-}
-
 pub fn finalize_linked_list(
   eval: linked_list.ElementEval<Bool>,
   state_queue_policy: PolicyId,

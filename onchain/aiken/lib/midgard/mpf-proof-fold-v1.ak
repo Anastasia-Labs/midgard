@@ -96,15 +96,6 @@ pub fn descriptor_is_well_formed_v1(descriptor: ProofDescriptorV1) -> Bool {
   }
 }
 
-pub fn encode_proof_descriptor_v1(descriptor: ProofDescriptorV1) -> ByteArray {
-  expect descriptor_is_well_formed_v1(descriptor)
-  encode_definite_array_header(4)
-    |> bytearray.concat(cbor.serialise(descriptor.version))
-    |> bytearray.concat(cbor.serialise(descriptor.frame_count))
-    |> bytearray.concat(cbor.serialise(descriptor.terminal_cursor))
-    |> bytearray.concat(validation_merkle_v1.encode_frontier(descriptor.peaks))
-}
-
 // The terminal frame is the deepest one, and the only one whose neighbour the
 // including and excluding roots read differently (see
 // `mpf_proof_v1.terminal_leaf_neighbor_is_canonical` and

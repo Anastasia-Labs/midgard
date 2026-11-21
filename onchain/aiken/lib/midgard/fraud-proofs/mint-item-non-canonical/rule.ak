@@ -223,10 +223,6 @@ fn scanned_contradiction_v1(state: MintScanStateV1) -> Bool {
   )
 }
 
-pub fn encode_bound_item_v1(bound: BoundItemV1) -> ByteArray {
-  cbor.serialise(bound)
-}
-
 pub fn encode_scan_state_v1(state: MintScanStateV1) -> ByteArray {
   cbor.serialise(state)
 }

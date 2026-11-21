@@ -152,10 +152,6 @@ pub fn terminal_contradiction_v1(state: DecisionStateV1) -> Bool {
   substrate.terminal_contradiction_v1(state.subject, state.violation)
 }
 
-pub fn encode_bound_observer_v1(value: BoundObserverV1) -> ByteArray {
-  cbor.serialise(value)
-}
-
 pub fn encode_scan_state_v1(value: ScanStateV1) -> ByteArray {
   cbor.serialise(value)
 }

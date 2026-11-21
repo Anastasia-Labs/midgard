@@ -13,7 +13,6 @@
 //// the composite summaries are rebuilt exactly.
 
 use aiken/builtin
-use aiken/primitive/bytearray
 use midgard/blake2b_224_trace_v1 as blake
 use midgard/bounded_item_v1 as bounded
 use midgard/cek_data_traverse_v1 as traverse
@@ -339,14 +338,4 @@ pub fn scan_facts_are_pinned(
     ),
     descriptor.cardano_spend_datum == spend_datum,
   }
-}
-
-/// The number of bytes of `item_commitment` the raw frame guarantees; kept
-/// here so a reader can see that role 0 re-states the descriptor scalars the
-/// carriers already pinned rather than trusting them.
-pub const item_commitment_length: Int = 32
-
-/// Guard against a silently shrinking commitment field.
-pub fn item_commitment_is_sized(control: raw.Frame) -> Bool {
-  bytearray.length(raw.bytes(control, item_item_commitment)) == item_commitment_length
 }

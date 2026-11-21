@@ -60,17 +60,6 @@ pub fn is_canonical_plutus_data_v1(cbor_bytes: ByteArray) -> Bool {
   }
 }
 
-/// The offset just past the one canonical `Data` item starting at `offset`, or
-/// `None` if the bytes there are not canonical.
-///
-/// The interior-access primitive of spec §11.2: navigating to a datum's `k`-th
-/// child means skipping its earlier siblings, and skipping a sibling is exactly
-/// this. Exposed rather than re-derived so that the acceptor and the predicate
-/// keep one grammar and one verdict (§6.1).
-pub fn canonical_data_end_at_v1(bytes: ByteArray, offset: Int) -> Option<Int> {
-  scan_data(bytes, offset)
-}
-
 fn byte_at(bytes: ByteArray, offset: Int) -> Option<Int> {
   if or {
     offset < 0,

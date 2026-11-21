@@ -347,10 +347,6 @@ pub fn terminal_contradiction_v1(state: DecisionStateV1) -> Bool {
   substrate.terminal_contradiction_v1(state.subject, state.crossing)
 }
 
-pub fn encode_bound_policy_v1(value: BoundPolicyV1) -> ByteArray {
-  cbor.serialise(value)
-}
-
 pub fn encode_fold_state_v1(value: FoldStateV1) -> ByteArray {
   cbor.serialise(value)
 }

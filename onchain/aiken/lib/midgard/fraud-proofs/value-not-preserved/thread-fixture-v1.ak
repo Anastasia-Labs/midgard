@@ -49,10 +49,6 @@ pub fn claimed_token_v1() -> ClaimedAssetV1 {
   TokenAsset { policy_id: claimed_policy_id, asset_name: claimed_asset_name }
 }
 
-pub fn decoy_token_v1() -> ClaimedAssetV1 {
-  TokenAsset { policy_id: decoy_policy_id, asset_name: decoy_asset_name }
-}
-
 pub fn claimed_unit_v1() -> ByteArray {
   claimed_policy_id |> builtin.append_bytearray(claimed_asset_name)
 }
@@ -184,24 +180,6 @@ pub fn token_balanced_tx_v1() -> native_types.MidgardTransaction {
   )
 }
 
-/// Balanced in the claimed unit (40 in, 40 out) but inflated in the decoy
-/// unit (7 in, 9 out): the wrong-asset-claim scenario, in which a claim
-/// naming the *claimed* unit folds to zero and must refuse even though the
-/// transaction really is fraudulent in another unit.
-pub fn decoy_inflated_tx_v1() -> native_types.MidgardTransaction {
-  challenged_tx_v1(
-    [
-      output_at_sample_address(
-        9_000_000,
-        [Pair(claimed_unit_v1(), 40), Pair(decoy_unit_v1(), 9)],
-      ),
-    ],
-    empty_mint_v1(),
-    1_000_000,
-    native_types.TxIsValid,
-  )
-}
-
 /// Mints 25 of the claimed unit and pays all 25 out (sources hold none):
 /// `delta = 0 + 25 − 25 = 0`. The minted-and-fully-paid-out corner — the
 /// mint fold is what keeps this balanced transaction unconvictable.
@@ -220,17 +198,6 @@ pub fn minted_paid_out_tx_v1() -> native_types.MidgardTransaction {
 pub fn ada_inflated_tx_v1() -> native_types.MidgardTransaction {
   challenged_tx_v1(
     [output_at_sample_address(9_500_000, [])],
-    empty_mint_v1(),
-    1_000_000,
-    native_types.TxIsValid,
-  )
-}
-
-/// Pays out 9 ADA plus a 1 ADA fee against 10 ADA sourced: `delta = 0`,
-/// balanced.
-pub fn ada_balanced_tx_v1() -> native_types.MidgardTransaction {
-  challenged_tx_v1(
-    [output_at_sample_address(9_000_000, [])],
     empty_mint_v1(),
     1_000_000,
     native_types.TxIsValid,

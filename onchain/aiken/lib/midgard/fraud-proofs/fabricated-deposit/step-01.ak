@@ -61,7 +61,7 @@ use aiken/primitive/bytearray
 use cardano/address
 use cardano/assets.{AssetName}
 use cardano/transaction.{
-  InlineDatum, Input, NoDatum, Output, OutputReference, Transaction, placeholder,
+  Input, NoDatum, Output, OutputReference, Transaction, placeholder,
 }
 use midgard/common/types.{H32}
 use midgard/common/utils
@@ -452,25 +452,6 @@ pub fn unspent_output_reference_input_v1(out_ref: OutputReference) -> Input {
       ),
       value: assets.from_lovelace(9_000_000),
       datum: NoDatum,
-      reference_script: None,
-    },
-  }
-}
-
-/// A reference input at `out_ref` carrying an inline datum, used where a witness
-/// must name a live output that is not a bare wallet output.
-pub fn datum_carrying_reference_input_v1(
-  out_ref: OutputReference,
-  datum_data: Data,
-) -> Input {
-  Input {
-    output_reference: out_ref,
-    output: Output {
-      address: address.from_verification_key(
-        #"4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e",
-      ),
-      value: assets.from_lovelace(9_000_000),
-      datum: InlineDatum(datum_data),
       reference_script: None,
     },
   }

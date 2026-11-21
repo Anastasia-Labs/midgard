@@ -1016,42 +1016,6 @@ pub fn verify_data_list_link_v1(
   }
 }
 
-pub fn verify_data_pair_link_v1(
-  node: DataPairNodeV1,
-  key: DataNodeV1,
-  value: DataNodeV1,
-  tail: Option<DataPairNodeV1>,
-) -> Bool {
-  let tail_root = when tail is {
-    None -> empty_data_pair_root_v1()
-    Some(exact) -> hash_data_pair_node_v1(exact)
-  }
-  let tail_length = when tail is {
-    None -> 0
-    Some(exact) -> exact.length
-  }
-  let tail_payload = when tail is {
-    None -> 0
-    Some(exact) -> exact.payload_cbor_length
-  }
-  let tail_memory = when tail is {
-    None -> 0
-    Some(exact) -> exact.memory
-  }
-  and {
-    node.key == hash_data_node_v1(key),
-    node.key_cbor_length == data_node_cbor_length_v1(key),
-    node.key_memory == data_node_memory_v1(key),
-    node.value == hash_data_node_v1(value),
-    node.value_cbor_length == data_node_cbor_length_v1(value),
-    node.value_memory == data_node_memory_v1(value),
-    node.tail == tail_root,
-    node.length == tail_length + 1,
-    node.payload_cbor_length == node.key_cbor_length + node.value_cbor_length + tail_payload,
-    node.memory == node.key_memory + node.value_memory + tail_memory,
-  }
-}
-
 const word_modulus = 18446744073709551616
 
 fn magnitude_words(magnitude: Int) -> Int {
@@ -1387,8 +1351,4 @@ pub fn semantic_data_summary_v1(data: Data) -> DataSummaryV1 {
     cbor_length,
     memory: data_node_memory_v1(node),
   }
-}
-
-pub fn hash_semantic_data_v1(data: Data) -> ByteArray {
-  semantic_data_summary_v1(data).root
 }

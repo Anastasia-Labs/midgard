@@ -203,37 +203,6 @@ pub type RejectionReasonV1 {
   PlutusScriptUndecodable { item_kind: Int, item_index: Int, class: Int }
 }
 
-/// True when `reason` is an execution-scoped arm (35–38, 40, 41) whose purpose
-/// coordinate is exactly `(purpose_kind, purpose_index)`. Execution families
-/// use it to tie a bound rejection to the purpose leaf they open.
-pub fn names_execution_purpose(
-  reason: RejectionReasonV1,
-  purpose_kind: Int,
-  purpose_index: Int,
-) -> Bool {
-  let coordinate_matches = fn(reason_kind: Int, reason_index: Int) {
-    and {
-      reason_kind == purpose_kind,
-      reason_index == purpose_index,
-    }
-  }
-  when reason is {
-    ExecutionNativeScriptMalformed { purpose_kind: k, purpose_index: i } ->
-      coordinate_matches(k, i)
-    ExecutionNativeScriptNodeLimit { purpose_kind: k, purpose_index: i } ->
-      coordinate_matches(k, i)
-    ExecutionNativeScriptDepthLimit { purpose_kind: k, purpose_index: i } ->
-      coordinate_matches(k, i)
-    ExecutionNativeScriptFalse { purpose_kind: k, purpose_index: i } ->
-      coordinate_matches(k, i)
-    ReceivePurposePlutusV3Forbidden { purpose_kind: k, purpose_index: i } ->
-      coordinate_matches(k, i)
-    PlutusExecutionFailed { purpose_kind: k, purpose_index: i } ->
-      coordinate_matches(k, i)
-    _ -> False
-  }
-}
-
 /// The `DuplicateInput` reason for a duplicate pair the InputSets scan found.
 /// `first` is the earlier-scanned position and `second` the later one; the
 /// caller fixes that order, and this only maps the pair onto the arm.

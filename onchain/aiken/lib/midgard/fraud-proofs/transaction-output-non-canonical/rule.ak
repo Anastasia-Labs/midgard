@@ -338,10 +338,6 @@ pub fn terminal_contradiction_v1(state: OutputScanStateV1) -> Bool {
   }
 }
 
-pub fn encode_bound_output_v1(bound: BoundOutputV1) -> ByteArray {
-  cbor.serialise(bound)
-}
-
 pub fn encode_scan_state_v1(state: OutputScanStateV1) -> ByteArray {
   cbor.serialise(state)
 }

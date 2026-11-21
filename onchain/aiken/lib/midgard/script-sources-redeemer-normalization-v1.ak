@@ -761,17 +761,6 @@ pub fn traversal_normalized_state_is_bound_v1(
   }
 }
 
-pub fn traversal_normalizer_route_is_exact_v1(
-  state: PreparedScriptSourcesRedeemerEnvelopeV1,
-  observed_input_script_hash: ScriptHash,
-  observed_output_script_hash: ScriptHash,
-) -> Bool {
-  and {
-    observed_input_script_hash == state.traversal_normalizer_script_hash,
-    observed_output_script_hash == state.outer_normalizer_script_hash,
-  }
-}
-
 pub fn outer_normalizer_route_is_exact_v1(
   state: TraversalNormalizedScriptSourcesRedeemerActionV1,
   observed_input_script_hash: ScriptHash,

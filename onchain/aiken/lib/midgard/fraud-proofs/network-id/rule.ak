@@ -21,16 +21,6 @@ use aiken/collection/list
 /// field. This is not an address network id.
 pub const native_network_id_none: Int = 255
 
-/// The only network ids accepted as the deployment parameter. Observed output
-/// addresses deliberately remain decodable for foreign network nibbles so a
-/// committed mismatch can be convicted instead of becoming unprovable.
-pub fn is_supported_network_id_v1(network_id: Int) -> Bool {
-  or {
-    network_id == 0,
-    network_id == 1,
-  }
-}
-
 /// Decisive `transaction-network` predicate. Absence is allowed by Cardano;
 /// an explicit foreign id is not.
 pub fn is_transaction_network_violation_v1(

@@ -25,7 +25,6 @@ use midgard/fraud_proofs/native_tx/types.{
 use midgard/ledger_output_commitment_v1
 use midgard/ledger_output_proof_v1
 use midgard/ledger_state.{ForcedTxProofSourceV1, NativeTxProofSourceV1}
-use midgard/mpf_proof_fold_v1
 use midgard/native_tx_field_access_v1
 use midgard/rejection_reason_v1.{RejectionReasonV1}
 use midgard/script_proof_v1
@@ -169,15 +168,6 @@ pub fn maximum_mint_preimage_cbor() -> ByteArray {
 /// Flat program (the blueprint's `always succeeds` 1.1.0 program).
 pub fn v1_plutus_script() -> ByteArray {
   #"5001010023259800b452689b2b20025735"
-}
-
-pub fn empty_mpf_proof_descriptor() -> mpf_proof_fold_v1.ProofDescriptorV1 {
-  mpf_proof_fold_v1.ProofDescriptorV1 {
-    version: 1,
-    frame_count: 0,
-    terminal_cursor: 0,
-    peaks: [],
-  }
 }
 
 pub fn empty_v1_transaction() -> MidgardTransaction {

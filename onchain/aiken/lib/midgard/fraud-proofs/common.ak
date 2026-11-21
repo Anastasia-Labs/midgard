@@ -140,20 +140,6 @@ pub fn verify_membership_carried(
   }
 }
 
-/// The raw transactions MPF root a carriage names, whichever arm it is.
-///
-/// Safe for a step to thread forward only *after* the carriage has been
-/// verified, because that is where the root is authenticated against the
-/// challenged header's counted `transactions_root`.
-pub fn carriage_transactions_phas_root(
-  carriage: NativeTxInclusionCarriage,
-) -> ByteArray {
-  when carriage is {
-    RedeemerCarriedInclusion(args) -> args.transactions_phas_root
-    PublishedChunkInclusion(args) -> args.transactions_phas_root
-  }
-}
-
 /// Verifies the absence of `key_bytes` under an already-authenticated
 /// `merkle_root`, by whichever route the prover chose.
 pub fn verify_non_membership_carried(
@@ -1110,16 +1096,6 @@ pub fn verify_native_tx_in_state_queue_node_with(
     )
 
   return(native_tx_id, state_queue_datum, native_tx_view)
-}
-
-pub fn validate_output_to_fraud_prover(
-  output_to_fraud_prover: Output,
-  prover_hash: ByteArray,
-) -> Bool {
-  when output_to_fraud_prover.address.payment_credential is {
-    VerificationKey(hash) -> hash == prover_hash
-    _ -> False
-  }
 }
 
 // ## Internal Helpers

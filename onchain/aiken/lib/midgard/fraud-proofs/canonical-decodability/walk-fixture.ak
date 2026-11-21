@@ -163,11 +163,6 @@ pub fn one_byte_run(count: Int) -> ByteArray {
   fixture.repeated_bytes_v1(#"40", count)
 }
 
-/// `count` two-byte-head items (`58 18` and 24 payload bytes).
-pub fn two_byte_items(count: Int) -> ByteArray {
-  fixture.repeated_bytes_v1(two_byte_item(), count)
-}
-
 pub fn two_byte_item() -> ByteArray {
   bytearray.concat(#"5818", builtin.replicate_byte(24, 0))
 }

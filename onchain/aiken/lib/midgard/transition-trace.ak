@@ -268,32 +268,6 @@ pub fn verify_adjacent_trace_proof(
   }
 }
 
-pub fn verify_event_to_step_proof(
-  witness: EventToStepProof,
-  expected_root: ledger_state.EventToStepRoot,
-  expected_count: Int,
-) -> Bool {
-  when witness is {
-    EventToStepMembership { membership } ->
-      verify_root_membership_with_bytes(
-        membership,
-        EventToStepRootDomain,
-        expected_root,
-        expected_count,
-        cbor.serialise(membership.key),
-        cbor.serialise(membership.value),
-      )
-    EventToStepNonMembership { non_membership } ->
-      verify_root_non_membership_with_key_bytes(
-        non_membership,
-        EventToStepRootDomain,
-        expected_root,
-        expected_count,
-        cbor.serialise(non_membership.key),
-      )
-  }
-}
-
 test canonical_fork_exclusion() {
   let v = prefix_fixture.fork()
   verify_root_non_membership_raw(v.after, 2, v.key, v.proof)

@@ -246,15 +246,6 @@ fn expect_asset_unit(unit: ByteArray) -> ByteArray {
   unit
 }
 
-pub fn asset_unit_from_policy_asset(
-  policy_id: ByteArray,
-  asset_name: ByteArray,
-) -> ByteArray {
-  expect _policy_id = expect_h28(policy_id)
-  expect _asset_name = expect_asset_name(asset_name)
-  policy_id |> bytearray.concat(asset_name)
-}
-
 fn asset_unit_from_decoded_policy_asset(
   policy_id: ByteArray,
   asset_name: ByteArray,

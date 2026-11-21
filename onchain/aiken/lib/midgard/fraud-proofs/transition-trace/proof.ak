@@ -1561,42 +1561,6 @@ pub fn validate_forced_fault_proof(
   }
 }
 
-pub fn validate_deposit_fault_proof(
-  proof: TransitionFaultProof,
-  computation_thread_token_asset_name: AssetName,
-  hub_datum: hub.Datum,
-  evidence: L1EventEvidence,
-) -> Bool {
-  and {
-    validate_transition_fault_proof_envelope(
-      proof,
-      computation_thread_token_asset_name,
-    ),
-    when proof.fault is {
-      InvalidOneStepTransition { witness } ->
-        when witness is {
-          ValidDepositTransition {
-            trace_proof,
-            event_to_step,
-            source_membership,
-            projected_utxo,
-          } ->
-            validate_valid_deposit_transition(
-              proof.header,
-              hub_datum,
-              evidence,
-              trace_proof,
-              event_to_step,
-              source_membership,
-              projected_utxo,
-            )
-          _ -> False
-        }
-      _ -> False
-    },
-  }
-}
-
 pub fn validate_l1_event_fault_proof(
   proof: TransitionFaultProof,
   computation_thread_token_asset_name: AssetName,

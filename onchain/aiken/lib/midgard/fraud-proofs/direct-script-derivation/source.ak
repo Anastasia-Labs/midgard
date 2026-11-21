@@ -5,13 +5,12 @@
 use aiken/cbor
 use aiken/merkle_patricia_forestry.{Proof}
 use aiken/primitive/bytearray
-use cardano/assets.{PolicyId}
-use cardano/transaction.{Input, OutputReference}
+use cardano/transaction.{OutputReference}
 use midgard/bounded_item_v1
 use midgard/fraud_proofs/direct_script_derivation/cursor
 use midgard/fraud_proofs/direct_script_derivation/types.{PurposeV1}
 use midgard/fraud_proofs/field_opening_v1.{
-  FieldOpeningV1, reference_inputs_field_index, script_witnesses_field_index,
+  reference_inputs_field_index, script_witnesses_field_index,
   spend_inputs_field_index,
 }
 use midgard/fraud_proofs/native_tx/components.{
@@ -97,50 +96,6 @@ fn select_v1(
   }
 }
 
-pub fn advance_witnesses_v1(
-  state: StateV1,
-  field_opening: FieldOpeningV1,
-  checkpoint_bytes: ByteArray,
-  budget: Int,
-  reference_inputs: List<Input>,
-  certificate_policy_id: PolicyId,
-) -> Pair<StateV1, ByteArray> {
-  expect and {
-      !state.complete,
-      state.cursor.field_index == script_witnesses_field_index,
-      budget > 0,
-    }
-  let Pair(view, position) = cursor.resume_v1(
-    state.cursor,
-    field_opening,
-    checkpoint_bytes,
-    reference_inputs,
-    certificate_policy_id,
-  )
-  let Pair(selected, advanced) = walk.walk_fold(
-    view,
-    position,
-    budget,
-    state.selected,
-    fn(selected, index, item) {
-      select_v1(
-        selected,
-        state.purpose.script_hash,
-        Some(witness_source_v1(index, item)),
-      )
-    },
-  )
-  Pair(
-    StateV1 {
-      ..state,
-      cursor: cursor.after_v1(state.cursor, advanced),
-      selected,
-      complete: walk.walk_is_complete(advanced),
-    },
-    walk.encode_field_walk_checkpoint(advanced),
-  )
-}
-
 pub fn resolved_source_v1(
   event_pre_root: ByteArray,
   field_index: Int,
@@ -211,43 +166,4 @@ fn fold_resolved_v1(
       )
     }
   }
-}
-
-pub fn advance_resolved_v1(
-  state: StateV1,
-  field_opening: FieldOpeningV1,
-  checkpoint_bytes: ByteArray,
-  witnesses: List<ResolvedWitnessV1>,
-  reference_inputs: List<Input>,
-  certificate_policy_id: PolicyId,
-) -> Pair<StateV1, ByteArray> {
-  expect !state.complete
-  expect witnesses != []
-  expect or {
-      state.cursor.field_index == spend_inputs_field_index,
-      state.cursor.field_index == reference_inputs_field_index,
-    }
-  let Pair(view, position) = cursor.resume_v1(
-    state.cursor,
-    field_opening,
-    checkpoint_bytes,
-    reference_inputs,
-    certificate_policy_id,
-  )
-  let Pair(selected, advanced) = fold_resolved_v1(
-    state,
-    view,
-    position,
-    state.selected,
-    witnesses,
-  )
-  Pair(
-    StateV1 {
-      ..state,
-      cursor: cursor.after_v1(state.cursor, advanced),
-      selected,
-      complete: walk.walk_is_complete(advanced),
-    },
-    walk.encode_field_walk_checkpoint(advanced),
-  )
 }

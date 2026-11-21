@@ -627,32 +627,6 @@ pub fn machine_field_item_length(item: MachineFieldItemV1) -> Int {
   item.item_length
 }
 
-/// The number of preimage bytes before the **next** item's §5.1 wrapper.
-///
-/// The walk position a phase carries forward (§10.2). Derived, not supplied:
-/// `item_offset` is where this item's payload starts and `item_length` is how
-/// long that payload is, so the sum is the first byte past this item — which,
-/// §5.1 items being concatenated with nothing between them, is exactly where the
-/// next item's wrapper begins. This item's own wrapper sits *before*
-/// `item_offset` and its width (one, two or three bytes) does not enter the
-/// arithmetic.
-pub fn machine_field_next_item_offset(item: MachineFieldItemV1) -> Int {
-  item.item_offset + item.item_length
-}
-
-/// Whether `bytes` is the item's payload. Used where a step is handed candidate
-/// bytes from somewhere other than the carriage — a published proof item — and
-/// the door's job is to say whether they are the committed ones.
-pub fn machine_field_item_bytes_match(
-  item: MachineFieldItemV1,
-  bytes: ByteArray,
-) -> Bool {
-  and {
-    bytearray.length(bytes) == item.item_length,
-    machine_field_item_bytes(item) == bytes,
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Fixed-stride door (§5.3)
 // ---------------------------------------------------------------------------

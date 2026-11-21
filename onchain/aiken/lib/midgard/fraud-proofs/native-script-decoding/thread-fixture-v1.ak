@@ -409,12 +409,6 @@ pub fn subject_spend_field_items_v1(
   tx.body.inputs |> list.map(encode_midgard_tx_input)
 }
 
-pub fn subject_reference_field_items_v1(
-  tx: native_types.MidgardTransaction,
-) -> List<ByteArray> {
-  tx.body.reference_inputs |> list.map(encode_midgard_tx_input)
-}
-
 // ## L1 step transactions
 
 /// A mid-step L1 transaction whose thread output stays at the OWN step

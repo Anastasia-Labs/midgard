@@ -568,18 +568,6 @@ pub fn mul_limbs_v1(left: List<Int>, right: List<Int>) -> List<Int> {
   }
 }
 
-/// The product of two integers. A zero product is non-negative.
-pub fn multiply_signed_v1(
-  left: SignedLimbsV1,
-  right: SignedLimbsV1,
-) -> SignedLimbsV1 {
-  let magnitude = mul_limbs_v1(left.magnitude, right.magnitude)
-  SignedLimbsV1 {
-    negative: magnitude != [] && left.negative != right.negative,
-    magnitude,
-  }
-}
-
 /// The canonical CBOR of an integer given by sign and magnitude limbs. A
 /// negative integer's CBOR argument is its magnitude minus one.
 pub fn integer_cbor_from_magnitude_v1(integer: SignedLimbsV1) -> ByteArray {
