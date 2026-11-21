@@ -1,7 +1,19 @@
-import { createMemoryLedgerStorage } from "../src/ledger-store/index.js";
-import { describeLedgerStoreConformance } from "./support/ledger-store-conformance.js";
+import {
+  createMemoryLedgerStorage,
+  type LedgerStorage,
+} from "../src/ledger-store/index.js";
+import {
+  describeLedgerStoreConformance,
+  type OpenedLedgerStorage,
+} from "./support/ledger-store-conformance.js";
 
-describeLedgerStoreConformance("memory", async () => ({
-  storage: createMemoryLedgerStorage(),
+const openedOver = (storage: LedgerStorage): OpenedLedgerStorage => ({
+  storage,
   close: async () => undefined,
-}));
+  // A new storage object over the same records.
+  reopen: async () => openedOver({ ...storage }),
+});
+
+describeLedgerStoreConformance("memory", async () =>
+  openedOver(createMemoryLedgerStorage()),
+);

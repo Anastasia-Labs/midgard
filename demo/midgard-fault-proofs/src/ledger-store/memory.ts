@@ -102,7 +102,8 @@ export const createMemoryLedgerStorage = (): LedgerStorage => {
       removeSwept(nodes, records.nodes);
       removeSwept(outputs, records.outputs);
     },
-    endSweep: async () => {
+    endSweep: async (dropped) => {
+      for (const root of dropped) roots.delete(root);
       sweep = undefined;
       sweepRunning = false;
     },

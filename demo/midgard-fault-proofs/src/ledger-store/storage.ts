@@ -71,7 +71,8 @@ export type LedgerStorageCounts = {
  * Sweep protocol: `beginSweep` replaces the retained set, records that a
  * sweep is running, and starts a sweep epoch. Records written or kept after
  * it are never offered by `sweepNodes` / `sweepOutputs`, and `deleteSwept`
- * skips them even when offered before. `endSweep` closes the epoch and clears
+ * skips them even when offered before. `endSweep` removes the roots the
+ * sweep found incomplete from the retained set, closes the epoch and clears
  * the record. A sweep deletes in key order, not parents before children, so
  * until it ends a held node may have lost a descendant: the store finishes an
  * unfinished sweep (`unfinishedSweep`) before it relies on held nodes again.
@@ -102,8 +103,11 @@ export interface LedgerStorage {
     readonly nodes: readonly NodeHash[];
     readonly outputs: readonly OutRefHex[];
   }): Promise<void>;
-  /** Closes the sweep epoch and clears the record that a sweep is running. */
-  endSweep(): Promise<void>;
+  /**
+   * Removes `dropped` from the retained set and clears the record that a
+   * sweep is running, in one atomic write, then closes the sweep epoch.
+   */
+  endSweep(dropped: ReadonlySet<NodeHash>): Promise<void>;
   /**
    * The retained set, when a sweep began and never ended (its process died,
    * or its store failed mid-sweep); otherwise `undefined`.

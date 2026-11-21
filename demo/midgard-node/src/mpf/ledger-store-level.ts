@@ -119,8 +119,14 @@ export const createLevelLedgerStorage = (input: {
       if (dead.length > 0)
         await level.batch(dead.map((key) => ({ type: "del" as const, key })));
     },
-    endSweep: async () => {
-      await level.del(SWEEP_RUNNING_KEY);
+    endSweep: async (dropped) => {
+      await level.batch([
+        ...[...dropped].map((root) => ({
+          type: "del" as const,
+          key: RETAINED_ROOT_PREFIX + root,
+        })),
+        { type: "del" as const, key: SWEEP_RUNNING_KEY },
+      ]);
       writtenDuringSweep = undefined;
     },
     unfinishedSweep: async () =>

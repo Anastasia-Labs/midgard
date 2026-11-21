@@ -6,14 +6,16 @@
 import { midgardBlake2b } from "@al-ft/midgard-core/codec/hash";
 import { describe, expect, it } from "vitest";
 
-import { ledgerEntriesRoot } from "../../src/ledger-at.js";
+import { ledgerEntriesRoot, type LedgerEntry } from "../../src/ledger-at.js";
 import {
   createLedgerStore,
   type Ledger,
   LedgerNotRetained,
   LedgerOutputMissing,
+  type LedgerStorage,
   type LedgerStore,
   recordWitness,
+  type StoredNode,
 } from "../../src/ledger-store/index.js";
 import {
   appliedEntries,
@@ -24,7 +26,11 @@ import {
   testOutRef,
   UNDECODABLE_ENTRY,
 } from "./ledger-store-conformance.js";
-import { gatedStorage } from "./ledger-store-sweep-faults.js";
+import {
+  gatedStorage,
+  holedStorage,
+  interruptedStorage,
+} from "./ledger-store-sweep-faults.js";
 
 /** The entry numbers of the base ledger. */
 const baseNumbers = () => [
@@ -126,12 +132,196 @@ const outcome = (persisting: Promise<void>): Promise<unknown> =>
     (error: unknown) => error,
   );
 
+/**
+ * New entries `z1` and `z2` that end up alone under a new branch, whose
+ * parent is a branch of the base ledger at depth one or more with at least
+ * two other children; and an entry `w` under another root nibble.
+ */
+const holePair = (numbers: readonly number[]) => {
+  const paths = numbers.map(pathOf);
+  const seen: [number, string][] = [];
+  for (let n = 5_000; n < 500_000; n += 1) {
+    const path = pathOf(n);
+    for (const [m, other] of seen) {
+      const shared = path.slice(0, sharedNibbles(path, other));
+      const depth = Math.max(...paths.map((p) => sharedNibbles(p, shared)));
+      if (depth < 1 || depth >= shared.length) continue;
+      const siblings = new Set(
+        paths
+          .filter((p) => sharedNibbles(p, shared) === depth)
+          .map((p) => p[depth]),
+      );
+      if (siblings.size < 2) continue;
+      let w = n + 1;
+      while (pathOf(w)[0] === path[0]) w += 1;
+      return { z1: m, z2: n, w };
+    }
+    seen.push([n, path]);
+  }
+  throw new Error("no pair of entries shares a new branch");
+};
+
+/** Every node `root` reaches, by hash, with its parent's hash. */
+const reachable = async (storage: LedgerStorage, root: string) => {
+  const nodes = new Map<string, { node: StoredNode; parent?: string }>();
+  const pending: [string, string | undefined][] = [[root, undefined]];
+  while (pending.length > 0) {
+    const [hash, parent] = pending.pop()!;
+    const [node] = await storage.readNodes([hash]);
+    if (node === undefined) throw new Error(`node ${hash} is not held`);
+    nodes.set(hash, parent === undefined ? { node } : { node, parent });
+    if (node.__kind === "Branch")
+      for (const child of node.children)
+        if (child !== null) pending.push([child, hash]);
+  }
+  return nodes;
+};
+
+/**
+ * Persisted ledgers: `sound` (the base), `holed` (the base with `z1` and
+ * `z2`), and `sharing` (`holed` with `w`). `hole` is the branch holding `z1`
+ * and `z2`, which `holed` and `sharing` reach through a shared parent that
+ * `sound` does not reach; that parent's other children `sound` reaches.
+ */
+const holedScene = async (store: LedgerStore, storage: LedgerStorage) => {
+  const entries = base();
+  const sound = await store.admit(entries, await ledgerEntriesRoot(entries));
+  await store.persist(sound);
+  const { z1, z2, w } = holePair(baseNumbers());
+  const holed = await sound.apply(event([], [z1, z2]));
+  await store.persist(holed);
+  const sharing = await holed.apply(event([], [w]));
+  await store.persist(sharing);
+  const [soundNodes, holedNodes, sharingNodes] = await Promise.all(
+    [sound, holed, sharing].map(({ root }) => reachable(storage, root)),
+  );
+  const keys = new Set([z1, z2].map((n) => testOutRef(n).toString("hex")));
+  const isLeafOf = (hash: string | null) => {
+    const node = hash === null ? undefined : holedNodes.get(hash)?.node;
+    return node?.__kind === "Leaf" && keys.has(node.key);
+  };
+  const [hole, { parent }] = [...holedNodes].find(
+    ([, { node }]) =>
+      node.__kind === "Branch" &&
+      node.children.filter((child) => child !== null).length === 2 &&
+      node.children.filter(isLeafOf).length === 2,
+  )!;
+  expect(parent).toBeDefined();
+  expect(parent).not.toBe(holed.root);
+  expect(sharingNodes.has(parent!)).toBe(true);
+  expect(soundNodes.has(parent!)).toBe(false);
+  const shared = holedNodes.get(parent!)!.node;
+  expect(
+    shared.__kind === "Branch" &&
+      shared.children.some((child) => child !== null && soundNodes.has(child)),
+  ).toBe(true);
+  return { entries, sound, holed, sharing, hole };
+};
+
+/** The value a promise resolves to, or the name of what it rejects with. */
+const settled = <T>(promise: Promise<T>) =>
+  promise.then(
+    (value) => ({ value }),
+    (error: unknown) => ({
+      error: error instanceof Error ? error.name : String(error),
+    }),
+  );
+
 /** Registers the sweep cases for one adapter. */
 export const describeLedgerStoreSweepConformance = (
   adapter: string,
   open: OpenLedgerStorage,
 ): void => {
+  /** Record counts of a fresh store holding only `ledgers`. */
+  const countsOfOnly = async (ledgers: readonly (readonly LedgerEntry[])[]) => {
+    const opened = await open();
+    try {
+      const store = createLedgerStore(opened.storage);
+      for (const entries of ledgers)
+        await store.persist(
+          await store.admit(entries, await ledgerEntriesRoot(entries)),
+        );
+      return await opened.storage.counts();
+    } finally {
+      await opened.close();
+    }
+  };
+
   describe(`ledger store sweeps: ${adapter}`, () => {
+    it.each([
+      ["the holed root", ["holed", "sharing", "sound"]],
+      ["the root sharing its path", ["sharing", "holed", "sound"]],
+    ] as const)(
+      "drops each retained root that reaches a missing node and completes the sweep, %s marked first",
+      async (_first, order) => {
+        const opened = await open();
+        try {
+          const faulty = holedStorage(opened.storage);
+          const store = createLedgerStore(faulty.storage);
+          const scene = await holedScene(store, opened.storage);
+          const { entries, sound, holed, sharing } = scene;
+          const mutations = event([0], [700]);
+          const next = await sound.apply(mutations);
+          faulty.holeAt(scene.hole);
+          const roots = order.map((name) => scene[name].root);
+          const swept = await settled(store.retain(new Set(roots)));
+          const persisted = await settled(store.persist(next));
+          const again = await settled(
+            store.retain(new Set([sound.root, next.root])),
+          );
+          expect({ swept, persisted, again }).toEqual({
+            swept: {
+              value: { notRetained: new Set([holed.root, sharing.root]) },
+            },
+            persisted: { value: undefined },
+            again: { value: { notRetained: new Set() } },
+          });
+          for (const dropped of [holed, sharing])
+            await expect(store.at(dropped.root)).rejects.toBeInstanceOf(
+              LedgerNotRetained,
+            );
+          await expectLedgerMatches(await store.at(sound.root), entries);
+          const nextEntries = appliedEntries(entries, mutations);
+          await expectLedgerMatches(await store.at(next.root), nextEntries);
+          expect(await opened.storage.counts()).toEqual(
+            await countsOfOnly([entries, nextEntries]),
+          );
+        } finally {
+          await opened.close();
+        }
+      },
+    );
+
+    it("finishes a sweep that died before deleting anything before a new store persists", async () => {
+      let opened = await open();
+      try {
+        const first = createLedgerStore(
+          interruptedStorage(opened.storage, "nothing"),
+        );
+        const entries = base();
+        const a = await first.admit(entries, await ledgerEntriesRoot(entries));
+        await first.persist(a);
+        const dropped = await a.apply(event([0], [600, 601]));
+        await first.persist(dropped);
+        await expect(first.retain(new Set([a.root]))).rejects.toThrow(
+          "the process died mid-sweep",
+        );
+        opened = await opened.reopen();
+        const store = createLedgerStore(opened.storage);
+        const mutations = event([1], [602]);
+        await store.persist(await (await store.at(a.root)).apply(mutations));
+        // The finished sweep deleted the dropped ledger's records.
+        expect(await opened.storage.counts()).toEqual(
+          await countsOfOnly([entries, appliedEntries(entries, mutations)]),
+        );
+        await expect(store.at(dropped.root)).rejects.toBeInstanceOf(
+          LedgerNotRetained,
+        );
+      } finally {
+        await opened.close();
+      }
+    });
+
     it("never retains a ledger whose moved leaf's output a finished sweep deleted", async () => {
       const opened = await open();
       try {

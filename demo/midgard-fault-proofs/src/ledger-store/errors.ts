@@ -1,6 +1,6 @@
 /** Typed refusals of the ledger store. */
 
-/** `at` or `retain` named a root the store does not retain. */
+/** `at` named a root the store does not retain. */
 export class LedgerNotRetained extends Error {
   constructor(readonly root: string) {
     super(`ledger root ${root} is not retained`);

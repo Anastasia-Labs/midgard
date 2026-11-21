@@ -51,22 +51,36 @@ export interface LedgerStore {
   /**
    * Makes `roots` the retained set and deletes every node and output not
    * reachable from it, including a root persisted earlier that `roots`
-   * leaves out. Every root in `roots` must be retained already
-   * (`LedgerNotRetained` otherwise). Roots persisted after `retain` has begun
-   * are kept. A ledger value whose root is dropped stops being readable.
+   * leaves out. Roots persisted after `retain` has begun are kept. A ledger
+   * value whose root is dropped stops being readable.
+   *
+   * The sweep marks root by root. A root whose walk meets a node that is not
+   * held is dropped from the retained set, atomically with the end of the
+   * sweep, and the sweep completes. Marking reads nodes only: a missing
+   * output is not detected.
+   *
+   * Resolves to `notRetained`: every root of `roots` that is not retained
+   * when the sweep ends, whether never persisted, dropped earlier, or dropped
+   * by this sweep for a missing node. The empty ledger's root is never
+   * listed. A non-empty set calls for an alert.
+   *
    * Calls run one at a time, in order. A sweep that does not finish (its
    * process dies, or a storage call fails) is finished, from the retained set
    * it began with plus the roots persisted since, before the next `persist`
-   * or `retain` of any store over the same storage.
+   * or `retain` of this store, or before the first of the next store over
+   * the same records.
    */
-  retain(roots: ReadonlySet<string>): Promise<void>;
+  retain(
+    roots: ReadonlySet<string>,
+  ): Promise<{ readonly notRetained: ReadonlySet<string> }>;
 }
 
-/** Marks of the running sweep: everything reachable from its retained set,
- * once marking completes. */
+/** The running sweep's marks: everything reachable from the roots whose walk
+ * has completed, and the roots persisted while it runs. */
 type SweepMarks = {
   readonly nodes: Set<NodeHash>;
   readonly outputs: Set<OutRefHex>;
+  readonly persisted: Set<NodeHash>;
 };
 
 const READ_BATCH = 1024;
@@ -112,7 +126,17 @@ async function* allEntries(
   yield* entries;
 }
 
+/** Every storage object a store has been created over. */
+const ownedStorages = new WeakSet<LedgerStorage>();
+
+/**
+ * The store over `storage`. One store per storage object: a second
+ * `createLedgerStore` over the same object throws.
+ */
 export const createLedgerStore = (storage: LedgerStorage): LedgerStore => {
+  if (ownedStorages.has(storage))
+    throw new Error("createLedgerStore: a store already owns this storage");
+  ownedStorages.add(storage);
   const owner = {};
   const source = toLedgerSource(storage);
   /** Serialises persists against the sweep's epoch switch and deletions. */
@@ -169,22 +193,41 @@ export const createLedgerStore = (storage: LedgerStorage): LedgerStore => {
       keptNodes,
       keptOutputs,
     });
+    marks?.persisted.add(ledger.root);
   };
 
-  const mark = async (roots: ReadonlySet<NodeHash>, marks: SweepMarks) => {
-    const pending = [...roots];
+  /**
+   * Marks everything `root` reaches, or nothing when its walk meets a node
+   * that is not held; answers whether the walk completed. The walk's marks
+   * join `marks` only once it completes, so a persist never relies on a node
+   * under a hole, and a later root that reaches the same hole meets it on its
+   * own walk. Reads nodes only: a missing output is not detected.
+   */
+  const markRoot = async (
+    root: NodeHash,
+    marks: SweepMarks,
+  ): Promise<boolean> => {
+    const nodes = new Set<NodeHash>();
+    const outputs: OutRefHex[] = [];
+    const pending = [root];
     while (pending.length > 0) {
-      const batch = takeUnseen(pending.splice(0, READ_BATCH), marks.nodes);
-      const nodes = await storage.readNodes(batch);
-      for (const [index, hash] of batch.entries()) {
-        const node = nodes[index];
-        if (node === undefined) throw new LedgerNodeMissing(hash);
-        if (node.__kind === "Leaf") marks.outputs.add(node.key);
-        else
+      const batch = takeUnseen(
+        pending.splice(0, READ_BATCH).filter((hash) => !marks.nodes.has(hash)),
+        nodes,
+      );
+      for (const node of await storage.readNodes(batch)) {
+        if (node === undefined) return false;
+        if (node.__kind === "Leaf") {
+          if (!marks.outputs.has(node.key)) outputs.push(node.key);
+        } else
           for (const child of children(node))
-            if (!marks.nodes.has(child)) pending.push(child);
+            if (!marks.nodes.has(child) && !nodes.has(child))
+              pending.push(child);
       }
     }
+    for (const hash of nodes) marks.nodes.add(hash);
+    for (const outRef of outputs) marks.outputs.add(outRef);
+    return true;
   };
 
   const deleteUnmarked = async (
@@ -203,13 +246,19 @@ export const createLedgerStore = (storage: LedgerStorage): LedgerStore => {
   };
 
   const sweepTo = async (roots: ReadonlySet<NodeHash>) => {
-    const marks: SweepMarks = { nodes: new Set(), outputs: new Set() };
+    const marks: SweepMarks = {
+      nodes: new Set(),
+      outputs: new Set(),
+      persisted: new Set(),
+    };
+    const incomplete: NodeHash[] = [];
     try {
       await writeLock(async () => {
         await storage.beginSweep(roots);
         sweep = marks;
       });
-      await mark(roots, marks);
+      for (const root of roots)
+        if (!(await markRoot(root, marks))) incomplete.push(root);
       await deleteUnmarked(
         (after, limit) => storage.sweepNodes(after, limit),
         marks.nodes,
@@ -229,7 +278,10 @@ export const createLedgerStore = (storage: LedgerStorage): LedgerStore => {
     }
     await writeLock(async () => {
       sweep = undefined;
-      await storage.endSweep();
+      // A root persisted since the sweep began is complete and stays.
+      await storage.endSweep(
+        new Set(incomplete.filter((root) => !marks.persisted.has(root))),
+      );
     });
   };
 
@@ -294,11 +346,14 @@ export const createLedgerStore = (storage: LedgerStorage): LedgerStore => {
       retainQueue(async () => {
         await finishUnfinishedSweep();
         const kept = new Set<NodeHash>();
-        for (const root of roots) {
-          if (!(await retained(root))) throw new LedgerNotRetained(root);
-          if (root !== EMPTY_LEDGER_ROOT) kept.add(root);
-        }
+        for (const root of roots)
+          if (root !== EMPTY_LEDGER_ROOT && (await storage.isRetained(root)))
+            kept.add(root);
         await sweepTo(kept);
+        const notRetained = new Set<string>();
+        for (const root of roots)
+          if (!(await retained(root))) notRetained.add(root);
+        return { notRetained };
       }),
   };
 };

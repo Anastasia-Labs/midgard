@@ -115,6 +115,7 @@ export const openSqliteLedgerStorage = (path: string): SqliteLedgerStorage => {
       "INSERT OR IGNORE INTO ledger_roots (root) VALUES (?)",
     ),
     clearRoots: database.prepare("DELETE FROM ledger_roots"),
+    deleteRoot: database.prepare("DELETE FROM ledger_roots WHERE root = ?"),
     roots: database.prepare("SELECT root FROM ledger_roots"),
     sweepRunning: database.prepare(
       "SELECT 1 AS held FROM ledger_meta WHERE key = 'sweep_running'",
@@ -233,8 +234,11 @@ export const openSqliteLedgerStorage = (path: string): SqliteLedgerStorage => {
           statement.deleteOutput.run(bytes(outRef), epoch);
       });
     },
-    endSweep: async () => {
-      statement.endSweep.run();
+    endSweep: async (dropped) => {
+      transaction(() => {
+        for (const root of dropped) statement.deleteRoot.run(bytes(root));
+        statement.endSweep.run();
+      });
       sweepEpoch = undefined;
     },
     unfinishedSweep: async () =>
