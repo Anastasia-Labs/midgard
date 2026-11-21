@@ -53,7 +53,7 @@ describeLedgerStoreConformance("sqlite", async () =>
 describe("sqlite ledger storage across reopen", () => {
   const base = testLedgerEntries(0, 30);
 
-  it("serves persisted ledgers, and sweeps them, after the database is reopened", async () => {
+  it("serves persisted ledgers, and keeps their counts, across a reopen", async () => {
     const path = await freshPath();
     const first = openSqliteLedgerStorage(path);
     const store = createLedgerStore(first);
@@ -61,8 +61,6 @@ describe("sqlite ledger storage across reopen", () => {
     await store.persist(a);
     const b = await a.apply(event([0, 1], [100, 101]));
     await store.persist(b);
-    await store.retain(new Set([a.root, b.root]));
-    // Written in the epoch after that sweep.
     const c = await b.apply(event([2], [102]));
     await store.persist(c);
     const unpersisted = await c.apply(event([3], [103]));
@@ -81,8 +79,8 @@ describe("sqlite ledger storage across reopen", () => {
       await expect(reopened.at(unpersisted.root)).rejects.toBeInstanceOf(
         LedgerNotRetained,
       );
-      // The write epoch survives the reopen, so this sweep reaches records
-      // written after the earlier one.
+      // The counts written before the reopen decide what this retain
+      // deletes.
       await reopened.retain(new Set([a.root]));
       await expectLedgerMatches(await reopened.at(a.root), base);
       for (const dropped of [b, c])
@@ -112,7 +110,7 @@ describe("sqlite ledger storage across reopen", () => {
     openSqliteLedgerStorage(path).close();
   });
 
-  it("writes a block all or nothing", async () => {
+  it("applies a change all or nothing", async () => {
     const path = await freshPath();
     const storage = openSqliteLedgerStorage(path);
     try {
@@ -121,18 +119,31 @@ describe("sqlite ledger storage across reopen", () => {
       await store.persist(a);
       const before = await storage.counts();
       await expect(
-        storage.writeBlock({
-          root: "cd".repeat(32),
-          nodes: new Map([
+        storage.write({
+          putNodes: new Map([
             [
               "ef".repeat(32),
-              { __kind: "Leaf", prefix: "", key: "00", value: "00" },
+              {
+                node: { __kind: "Leaf", prefix: "", key: "00", value: "00" },
+                refs: 1,
+              },
             ],
           ]),
-          // Not bindable: the write fails after the node row went in.
-          outputs: new Map([["00", Symbol("unbindable") as unknown as Buffer]]),
-          keptNodes: [],
-          keptOutputs: [],
+          nodeRefs: new Map([[a.root, 2]]),
+          deleteNodes: [],
+          // Not bindable: the write fails after the node rows changed.
+          putOutputs: new Map([
+            [
+              "00",
+              { output: Symbol("unbindable") as unknown as Buffer, refs: 1 },
+            ],
+          ]),
+          outputRefs: new Map(),
+          deleteOutputs: [],
+          addRoots: ["cd".repeat(32)],
+          removeRoots: [],
+          queueDead: [],
+          unqueueDead: [],
         }),
       ).rejects.toThrow();
       expect(await storage.counts()).toEqual(before);

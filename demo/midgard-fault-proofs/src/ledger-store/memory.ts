@@ -1,5 +1,4 @@
 /** The in-memory storage adapter, for tests and short-lived ledgers. */
-import { LedgerNodeMissing, LedgerOutputMissing } from "./errors.js";
 import type {
   LedgerStorage,
   NodeHash,
@@ -7,111 +6,68 @@ import type {
   StoredNode,
 } from "./storage.js";
 
-type Stamped<T> = { readonly value: T; epoch: number };
+type Counted<T> = { readonly value: T; refs: number };
 
-/** Keys of `records` stamped at or before `epoch`, ascending. */
-const stampedBefore = <T>(
-  records: ReadonlyMap<string, Stamped<T>>,
-  epoch: number,
-): string[] =>
-  [...records]
-    .filter(([, record]) => record.epoch <= epoch)
-    .map(([key]) => key)
-    .sort();
-
-/** The page of `sorted` after `after`. */
-const pageAfter = (
-  sorted: readonly string[],
-  after: string | undefined,
-  limit: number,
-): string[] => {
-  let low = 0;
-  let high = sorted.length;
-  while (after !== undefined && low < high) {
-    const middle = (low + high) >>> 1;
-    if (sorted[middle]! <= after) low = middle + 1;
-    else high = middle;
-  }
-  return sorted.slice(low, low + limit);
+const sumOfRefs = (records: ReadonlyMap<string, Counted<unknown>>) => {
+  let total = 0;
+  for (const { refs } of records.values()) total += refs;
+  return total;
 };
 
 export const createMemoryLedgerStorage = (): LedgerStorage => {
-  const nodes = new Map<NodeHash, Stamped<StoredNode>>();
-  const outputs = new Map<OutRefHex, Stamped<Buffer>>();
+  const nodes = new Map<NodeHash, Counted<StoredNode>>();
+  const outputs = new Map<OutRefHex, Counted<Buffer>>();
   const roots = new Set<NodeHash>();
-  let writeEpoch = 1;
-  /** Whether a sweep began and has not ended. */
-  let sweepRunning = false;
-  let sweep:
-    | {
-        readonly epoch: number;
-        readonly nodes: readonly NodeHash[];
-        readonly outputs: readonly OutRefHex[];
-      }
-    | undefined;
+  const dead = new Set<NodeHash>();
 
-  const stamp = <T>(records: Map<string, Stamped<T>>, key: string) => {
-    const record = records.get(key);
-    if (record !== undefined) record.epoch = writeEpoch;
-  };
-  const removeSwept = <T>(
-    records: Map<string, Stamped<T>>,
-    keys: readonly string[],
+  const setRefs = <T>(
+    records: Map<string, Counted<T>>,
+    refs: ReadonlyMap<string, number>,
   ) => {
-    if (sweep === undefined) throw new Error("no sweep is running");
-    for (const key of keys)
-      if ((records.get(key)?.epoch ?? Infinity) <= sweep.epoch)
-        records.delete(key);
+    for (const [key, count] of refs) {
+      const record = records.get(key);
+      if (record !== undefined) record.refs = count;
+    }
   };
 
   return {
     readNodes: async (hashes) => hashes.map((hash) => nodes.get(hash)?.value),
     readOutputs: async (outRefs) =>
       outRefs.map((outRef) => outputs.get(outRef)?.value),
+    nodeRefs: async (hashes) => hashes.map((hash) => nodes.get(hash)?.refs),
+    outputRefs: async (outRefs) =>
+      outRefs.map((outRef) => outputs.get(outRef)?.refs),
     isRetained: async (root) => roots.has(root),
-    writeBlock: async (block) => {
-      const node = block.keptNodes.find((hash) => !nodes.has(hash));
-      if (node !== undefined) throw new LedgerNodeMissing(node);
-      const output = block.keptOutputs.find((outRef) => !outputs.has(outRef));
-      if (output !== undefined) throw new LedgerOutputMissing(output);
-      for (const [hash, node] of block.nodes)
-        nodes.set(hash, { value: node, epoch: writeEpoch });
-      for (const [outRef, output] of block.outputs)
-        outputs.set(outRef, { value: Buffer.from(output), epoch: writeEpoch });
-      for (const hash of block.keptNodes) stamp(nodes, hash);
-      for (const outRef of block.keptOutputs) stamp(outputs, outRef);
-      roots.add(block.root);
+    retainedRoots: async () => [...roots],
+    deadNodes: async (limit) => {
+      const page: NodeHash[] = [];
+      for (const hash of dead) {
+        if (page.length >= limit) break;
+        page.push(hash);
+      }
+      return page;
     },
-    beginSweep: async (retained) => {
-      const epoch = writeEpoch;
-      writeEpoch += 1;
-      roots.clear();
-      for (const root of retained) roots.add(root);
-      sweepRunning = true;
-      sweep = {
-        epoch,
-        nodes: stampedBefore(nodes, epoch),
-        outputs: stampedBefore(outputs, epoch),
-      };
+    write: async (change) => {
+      for (const [hash, { node, refs }] of change.putNodes)
+        nodes.set(hash, { value: node, refs });
+      setRefs(nodes, change.nodeRefs);
+      for (const hash of change.deleteNodes) nodes.delete(hash);
+      for (const [outRef, { output, refs }] of change.putOutputs)
+        outputs.set(outRef, { value: Buffer.from(output), refs });
+      setRefs(outputs, change.outputRefs);
+      for (const outRef of change.deleteOutputs) outputs.delete(outRef);
+      for (const root of change.addRoots) roots.add(root);
+      for (const root of change.removeRoots) roots.delete(root);
+      for (const hash of change.queueDead) dead.add(hash);
+      for (const hash of change.unqueueDead) dead.delete(hash);
     },
-    sweepNodes: async (after, limit) =>
-      pageAfter(sweep?.nodes ?? [], after, limit),
-    sweepOutputs: async (after, limit) =>
-      pageAfter(sweep?.outputs ?? [], after, limit),
-    deleteSwept: async (records) => {
-      removeSwept(nodes, records.nodes);
-      removeSwept(outputs, records.outputs);
-    },
-    endSweep: async (dropped) => {
-      for (const root of dropped) roots.delete(root);
-      sweep = undefined;
-      sweepRunning = false;
-    },
-    unfinishedSweep: async () => (sweepRunning ? new Set(roots) : undefined),
     counts: async () => ({
       nodes: nodes.size,
       outputs: outputs.size,
       roots: roots.size,
+      nodeRefs: sumOfRefs(nodes),
+      outputRefs: sumOfRefs(outputs),
+      dead: dead.size,
     }),
   };
 };
