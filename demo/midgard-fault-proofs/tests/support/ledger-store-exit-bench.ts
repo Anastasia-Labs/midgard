@@ -7,10 +7,12 @@
  *   each on a ledger read back from the store by its root. It reports the
  *   edit (`apply`) and `persist` times, the bytes each event writes, and the
  *   database's growth on disk.
- * - `sweep`: the first full sweep, retaining every event root (all but the
- *   snapshot's).
- * - `steady`: one more block persisted, the oldest retained root dropped, and
- *   the sweep that follows.
+ * - `window`: `WINDOW_EVENTS` further events, each applied and persisted,
+ *   then a `retain` of the newest `events` roots, which drops the oldest
+ *   retained root (the first also drops the snapshot's). It reports the
+ *   `persist` and `retain` times.
+ * - `drop`: one `retain` of the newest root alone, dropping every other. It
+ *   reports its time and peak memory.
  *
  * Each phase prints one JSON line and writes it to `<directory>/<phase>.json`.
  *
@@ -40,9 +42,12 @@ export type ExitBenchStorage = {
   readonly close: () => Promise<void>;
 };
 
-export type ExitBenchPhase = "build" | "sweep" | "steady";
+export type ExitBenchPhase = "build" | "window" | "drop";
 
-const PHASES: readonly ExitBenchPhase[] = ["build", "sweep", "steady"];
+const PHASES: readonly ExitBenchPhase[] = ["build", "window", "drop"];
+
+/** Events the `window` phase adds, at most. */
+const WINDOW_EVENTS = 1_000;
 
 const sizeFromEnv = (name: string, fallback: number): number => {
   const raw = process.env[name];
@@ -72,9 +77,10 @@ export const exitBenchInputFromEnv = () => {
 };
 
 type State = {
-  readonly roots: string[];
-  readonly live: number[];
-  readonly next: number;
+  /** The retained roots, oldest first. */
+  roots: string[];
+  live: number[];
+  next: number;
 };
 
 const percentile = (sorted: readonly number[], fraction: number) =>
@@ -161,31 +167,55 @@ const nextEvent = (
 };
 
 /**
- * Counts what each `writeBlock` hands the adapter: node bytes (the hash key and
- * the node JSON) and output bytes (out-ref and output), apart, since an
- * adapter that keeps no outputs writes only the first.
+ * Counts what each `write` hands the adapter: new node bytes (the hash key
+ * and the node JSON) and new output bytes (out-ref and output), apart, since
+ * an adapter that keeps no outputs writes only the first; and the reference
+ * counts it updates on held records.
  */
 const counting = (storage: LedgerStorage) => {
   const nodeBytes: number[] = [];
   const outputBytes: number[] = [];
+  const refUpdates: number[] = [];
   return {
     nodeBytes,
     outputBytes,
+    refUpdates,
     storage: {
       ...storage,
-      writeBlock: async (block) => {
+      write: async (change) => {
         let nodes = 0;
-        for (const node of block.nodes.values())
+        for (const { node } of change.putNodes.values())
           nodes += 32 + Buffer.byteLength(JSON.stringify(node));
         let outputs = 0;
-        for (const [outRef, output] of block.outputs)
+        for (const [outRef, { output }] of change.putOutputs)
           outputs += outRef.length / 2 + output.length;
         nodeBytes.push(nodes);
         outputBytes.push(outputs);
-        await storage.writeBlock(block);
+        refUpdates.push(change.nodeRefs.size + change.outputRefs.size);
+        await storage.write(change);
       },
     } satisfies LedgerStorage,
   };
+};
+
+/** Applies the next event to the newest retained root and persists it;
+ * answers the edit and persist times. */
+const buildEvent = async (
+  store: ReturnType<typeof createLedgerStore>,
+  state: { roots: string[]; live: number[]; next: number },
+  pick: (bound: number) => number,
+) => {
+  const ledger = await store.at(state.roots.at(-1)!);
+  const step = nextEvent(state.live, state.next, pick);
+  state.next = step.next;
+  const editStarted = performance.now();
+  const edited = await ledger.apply(step.mutations);
+  const edit = performance.now() - editStarted;
+  const persistStarted = performance.now();
+  await store.persist(edited);
+  const persist = performance.now() - persistStarted;
+  state.roots.push(edited.root);
+  return { edit, persist };
 };
 
 export const runLedgerStoreExitBench = async (input: {
@@ -213,27 +243,23 @@ export const runLedgerStoreExitBench = async (input: {
       });
       const snapshotNodeBytes = counted.nodeBytes.pop()!;
       const snapshotOutputBytes = counted.outputBytes.pop()!;
+      counted.refUpdates.pop();
       const diskAfterSnapshot = await opened.bytesOnDisk();
       const pick = picker(0x1ed9e7);
-      const live = base.map((_, index) => index);
-      let next = input.entries;
-      const roots = [admitted.result];
+      const state = {
+        roots: [admitted.result],
+        live: base.map((_, index) => index),
+        next: input.entries,
+      };
       const edits: number[] = [];
       const persists: number[] = [];
       for (let event = 0; event < input.events; event += 1) {
-        const ledger = await store.at(roots.at(-1)!);
-        const step = nextEvent(live, next, pick);
-        next = step.next;
-        const editStarted = performance.now();
-        const edited = await ledger.apply(step.mutations);
-        edits.push(performance.now() - editStarted);
-        const persistStarted = performance.now();
-        await store.persist(edited);
-        persists.push(performance.now() - persistStarted);
-        roots.push(edited.root);
+        const { edit, persist } = await buildEvent(store, state, pick);
+        edits.push(edit);
+        persists.push(persist);
       }
       const diskAfter = await opened.bytesOnDisk();
-      await writeFile(statePath, JSON.stringify({ roots, live, next }));
+      await writeFile(statePath, JSON.stringify(state));
       report = {
         snapshot: {
           entries: input.entries,
@@ -248,37 +274,68 @@ export const runLedgerStoreExitBench = async (input: {
         persistMilliseconds: summary(persists),
         nodeBytesWrittenPerEvent: summary(counted.nodeBytes),
         outputBytesWrittenPerEvent: summary(counted.outputBytes),
+        refUpdatesPerEvent: summary(counted.refUpdates),
         diskBytesPerEvent: (diskAfter - diskAfterSnapshot) / input.events,
+        counts: await opened.storage.counts(),
+      };
+    } else if (input.phase === "window") {
+      const state = JSON.parse(await readFile(statePath, "utf8")) as State;
+      const store = createLedgerStore(opened.storage);
+      const diskBefore = await opened.bytesOnDisk();
+      const width = state.roots.length - 1;
+      const pick = picker(0x57ead);
+      const edits: number[] = [];
+      const persists: number[] = [];
+      const retains: number[] = [];
+      const run = await sampled(async () => {
+        for (
+          let event = 0;
+          event < Math.min(WINDOW_EVENTS, input.events);
+          event += 1
+        ) {
+          const { edit, persist } = await buildEvent(store, state, pick);
+          edits.push(edit);
+          persists.push(persist);
+          state.roots.splice(0, state.roots.length - width);
+          const window = new Set(state.roots);
+          const retainStarted = performance.now();
+          const { notRetained } = await store.retain(window);
+          retains.push(performance.now() - retainStarted);
+          if (notRetained.size > 0)
+            throw new Error(`window lost ${notRetained.size} roots`);
+        }
+      });
+      await writeFile(statePath, JSON.stringify(state));
+      report = {
+        events: edits.length,
+        retainedRoots: width,
+        editMilliseconds: summary(edits),
+        persistMilliseconds: summary(persists),
+        retainMilliseconds: summary(retains),
+        peakRssMiB: run.peakRssMiB,
+        diskBytesPerEvent:
+          ((await opened.bytesOnDisk()) - diskBefore) / edits.length,
         counts: await opened.storage.counts(),
       };
     } else {
       const state = JSON.parse(await readFile(statePath, "utf8")) as State;
       const store = createLedgerStore(opened.storage);
       const before = await opened.storage.counts();
-      let roots = state.roots.slice(1);
-      let { next } = state;
-      if (input.phase === "steady") {
-        const ledger = await store.at(roots.at(-1)!);
-        const step = nextEvent(state.live, next, picker(0x57ead));
-        next = step.next;
-        const edited = await ledger.apply(step.mutations);
-        await store.persist(edited);
-        roots = [...roots.slice(1), edited.root];
-      }
-      const swept = await sampled(() => store.retain(new Set(roots)));
-      await writeFile(
-        statePath,
-        JSON.stringify({ roots: ["", ...roots], live: state.live, next }),
-      );
+      const newest = state.roots.at(-1)!;
+      const dropped = await sampled(() => store.retain(new Set([newest])));
+      if (dropped.result.notRetained.size > 0)
+        throw new Error("the drop lost the newest root");
+      await writeFile(statePath, JSON.stringify({ ...state, roots: [newest] }));
       report = {
-        retainedRoots: roots.length,
-        milliseconds: Math.round(swept.milliseconds),
-        baselineRssMiB: swept.baselineRssMiB,
-        baselineHeapMiB: swept.baselineHeapMiB,
-        peakRssMiB: swept.peakRssMiB,
-        peakHeapMiB: swept.peakHeapMiB,
+        droppedRoots: state.roots.length - 1,
+        milliseconds: Math.round(dropped.milliseconds),
+        baselineRssMiB: dropped.baselineRssMiB,
+        baselineHeapMiB: dropped.baselineHeapMiB,
+        peakRssMiB: dropped.peakRssMiB,
+        peakHeapMiB: dropped.peakHeapMiB,
         countsBefore: before,
         countsAfter: await opened.storage.counts(),
+        diskBytes: await opened.bytesOnDisk(),
       };
     }
   } finally {
