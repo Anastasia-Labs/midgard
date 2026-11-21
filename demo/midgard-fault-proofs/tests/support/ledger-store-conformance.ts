@@ -28,10 +28,20 @@ import {
   keyValuePhasResolutionProofs,
   keyValuePhasRootWithCount,
 } from "../../src/transition-trace/phas.js";
+import {
+  gatedStorage,
+  interruptedStorage,
+} from "./ledger-store-sweep-faults.js";
 
 export type OpenedLedgerStorage = {
   readonly storage: LedgerStorage;
   readonly close: () => Promise<void>;
+  /**
+   * Closes these records and opens them again, as a restarted process would.
+   * An adapter that keeps nothing past its process leaves it out, and its
+   * storage is reused as it is.
+   */
+  readonly reopen?: () => Promise<OpenedLedgerStorage>;
 };
 
 export type OpenLedgerStorage = () => Promise<OpenedLedgerStorage>;
@@ -157,34 +167,6 @@ export const event = (
 ];
 
 const unknownRoot = "ab".repeat(32);
-
-/**
- * A storage whose first `sweepNodes` page is held back until `release`: the
- * sweep has listed its candidates but deleted none of them yet.
- */
-const gatedStorage = (storage: LedgerStorage) => {
-  let reached!: () => void;
-  let release!: () => void;
-  const atGate = new Promise<void>((resolve) => (reached = resolve));
-  const opened = new Promise<void>((resolve) => (release = resolve));
-  let first = true;
-  return {
-    atGate,
-    release: () => release(),
-    storage: {
-      ...storage,
-      sweepNodes: async (after: string | undefined, limit: number) => {
-        const page = await storage.sweepNodes(after, limit);
-        if (first) {
-          first = false;
-          reached();
-          await opened;
-        }
-        return page;
-      },
-    } satisfies LedgerStorage,
-  };
-};
 
 const BASE = [...testLedgerEntries(0, 40), testLedgerEntry(UNDECODABLE_ENTRY)];
 
@@ -387,6 +369,48 @@ export const describeLedgerStoreConformance = (
         await expectLedgerMatches(await store.at(EMPTY_LEDGER_ROOT), []);
       });
     });
+
+    it.each([
+      ["leaves", "a new store"],
+      ["nothing", "a new store"],
+      ["leaves", "the same store"],
+    ] as const)(
+      "finishes a sweep that died after deleting %s before %s persists again",
+      async (deletes, next) => {
+        let opened = await open();
+        try {
+          const first = createLedgerStore(
+            interruptedStorage(opened.storage, deletes),
+          );
+          const a = await first.admit(BASE, await ledgerEntriesRoot(BASE));
+          await first.persist(a);
+          const mutations = event([0], [600, 601]);
+          const dropped = await a.apply(mutations);
+          await first.persist(dropped);
+          await expect(first.retain(new Set([a.root]))).rejects.toThrow(
+            "the process died mid-sweep",
+          );
+          let store = first;
+          if (next === "a new store") {
+            if (opened.reopen !== undefined) opened = await opened.reopen();
+            store = createLedgerStore(opened.storage);
+          }
+          // Re-creating the dropped ledger makes its nodes recur.
+          const again = await (await store.at(a.root)).apply(mutations);
+          expect(again.root).toBe(dropped.root);
+          await store.persist(again);
+          const entries = appliedEntries(BASE, mutations);
+          await expectLedgerMatches(await store.at(again.root), entries);
+          await expectLedgerMatches(await store.at(a.root), BASE);
+          await store.retain(new Set([a.root, again.root]));
+          expect(await opened.storage.counts()).toEqual(
+            await countsOfOnly([BASE, entries]),
+          );
+        } finally {
+          await opened.close();
+        }
+      },
+    );
 
     it("keeps a root persisted while a sweep runs, with the dropped nodes it reuses", async () => {
       const opened = await open();

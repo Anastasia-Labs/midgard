@@ -15,6 +15,7 @@ import {
   describeLedgerStoreConformance,
   event,
   expectLedgerMatches,
+  type OpenedLedgerStorage,
   testLedgerEntries,
 } from "./support/ledger-store-conformance.js";
 
@@ -33,10 +34,21 @@ afterEach(async () => {
   );
 });
 
-describeLedgerStoreConformance("sqlite", async () => {
-  const storage = openSqliteLedgerStorage(await freshPath());
-  return { storage, close: async () => storage.close() };
-});
+const openedAt = (path: string): OpenedLedgerStorage => {
+  const storage = openSqliteLedgerStorage(path);
+  return {
+    storage,
+    close: async () => storage.close(),
+    reopen: async () => {
+      storage.close();
+      return openedAt(path);
+    },
+  };
+};
+
+describeLedgerStoreConformance("sqlite", async () =>
+  openedAt(await freshPath()),
+);
 
 describe("sqlite ledger storage across reopen", () => {
   const base = testLedgerEntries(0, 30);

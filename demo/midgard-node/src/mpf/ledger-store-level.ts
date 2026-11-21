@@ -4,8 +4,9 @@
  * shape the native owner and `MidgardMpf` already read and write, so a node
  * written by either is readable by the other.
  *
- * Retained roots are `__retained__/<root hex>` keys. The adapter never writes
- * or deletes the `__root__` marker, and a sweep considers only node keys.
+ * Retained roots are `__retained__/<root hex>` keys, and `__sweeping__` is
+ * present from `beginSweep` to `endSweep`. The adapter never writes or deletes
+ * the `__root__` marker, and a sweep considers only node keys.
  *
  * Outputs are not kept here: `readOutputs` is injected, and output writes and
  * the output sweep are no-ops.
@@ -30,6 +31,8 @@ import type { MpfStoredValue } from "./types.js";
 export const RETAINED_ROOT_PREFIX = "__retained__/";
 /** The first key after every `__retained__/` key. */
 const RETAINED_ROOT_END = "__retained__0";
+/** Present while a sweep runs; it outlives a process that dies mid-sweep. */
+export const SWEEP_RUNNING_KEY = "__sweeping__";
 
 const NODE_KEY = /^[0-9a-f]{64}$/;
 
@@ -90,6 +93,7 @@ export const createLevelLedgerStorage = (input: {
           key: RETAINED_ROOT_PREFIX + root,
           value: root,
         })),
+        { type: "put" as const, key: SWEEP_RUNNING_KEY, value: "1" },
       ]);
       writtenDuringSweep = new Set();
     },
@@ -115,8 +119,17 @@ export const createLevelLedgerStorage = (input: {
         await level.batch(dead.map((key) => ({ type: "del" as const, key })));
     },
     endSweep: async () => {
+      await level.del(SWEEP_RUNNING_KEY);
       writtenDuringSweep = undefined;
     },
+    unfinishedSweep: async () =>
+      (await level.get(SWEEP_RUNNING_KEY)) === undefined
+        ? undefined
+        : new Set(
+            (await retainedKeys()).map((key) =>
+              key.slice(RETAINED_ROOT_PREFIX.length),
+            ),
+          ),
     counts: async () => {
       let nodes = 0;
       for await (const key of level.keys()) if (NODE_KEY.test(key)) nodes += 1;
