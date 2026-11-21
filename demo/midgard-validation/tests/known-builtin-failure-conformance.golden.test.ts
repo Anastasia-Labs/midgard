@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-
 import { describe, expect, it } from "vitest";
 
 import { midgardCekKnownBuiltinFailure } from "../src/cek-builtin.known-failure.js";
@@ -10,25 +7,12 @@ import * as corpus from "./fixtures/known-builtin-failure-conformance.cases.mjs"
  * The TypeScript half of the known builtin failure conformance channel.
  *
  * The off-chain twin `midgardCekKnownBuiltinFailure` must match the on-chain
- * rule `known_builtin_failure_v1`. The rows are rebuilt here by running the
- * twin from `src/` over the corpus and compared with the checked-in fixture;
- * the generated Aiken module
+ * rule `known_builtin_failure_v1`. The rows are built here by running the
+ * twin from `src/` over the corpus; the generated Aiken module
  * (`onchain/aiken/lib/midgard/known-builtin-failure-conformance-golden.test.ak`)
- * holds the on-chain predicate to the same verdicts. Regenerate both with
+ * holds the on-chain predicate to the same verdicts. Regenerate it with
  * `pnpm run fixtures:known-builtin-failure-conformance:sync`.
  */
-
-const golden = JSON.parse(
-  readFileSync(
-    fileURLToPath(
-      new URL(
-        "./fixtures/known-builtin-failure-conformance.generated.json",
-        import.meta.url,
-      ),
-    ),
-    "utf8",
-  ),
-) as { readonly rows: readonly corpus.KnownBuiltinFailureConformanceRow[] };
 
 const rows = corpus.buildKnownBuiltinFailureConformanceRows(
   midgardCekKnownBuiltinFailure,
@@ -142,10 +126,6 @@ describe("known builtin failure conformance vectors", () => {
       "encodeConformanceArgument",
       "knownBuiltinFailureConformanceCases",
     ]);
-  });
-
-  it("match what the twin in src/ decides today", () => {
-    expect(rows).toEqual(golden.rows);
   });
 
   it("give every tag of the known set every verdict", () => {

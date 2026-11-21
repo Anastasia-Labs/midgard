@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-
 import { midgardBlake2b } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
@@ -16,24 +13,11 @@ import * as vectors from "./fixtures/script-decode-step-v1.vectors.mjs";
  * The TypeScript half of the script-decode step golden channel.
  *
  * The walks are rebuilt here through `src/` from the same definitions the
- * generator drives through `dist/`, and compared with the checked-in fixture.
- * The generated Aiken module
+ * generator drives through `dist/`. The generated Aiken module
  * (`onchain/aiken/lib/midgard/script-decode-v1-golden.test.ak`) replays every
  * walk with `step_with_frames_v1` and checks the same run-datum hashes.
- * Regenerate both with `pnpm run fixtures:script-decode-step-v1:sync`.
+ * Regenerate it with `pnpm run fixtures:script-decode-step-v1:sync`.
  */
-
-const golden = JSON.parse(
-  readFileSync(
-    fileURLToPath(
-      new URL(
-        "./fixtures/script-decode-step-v1.generated.json",
-        import.meta.url,
-      ),
-    ),
-    "utf8",
-  ),
-) as { readonly rows: readonly vectors.ScriptDecodeStepRowV1[] };
 
 const rows = vectors.buildScriptDecodeStepRows({
   planWalk: planScriptDecodeWalk,
@@ -50,10 +34,6 @@ describe("script-decode step golden vectors", () => {
       "buildScriptDecodeStepRows",
       "scriptDecodeStepScripts",
     ]);
-  });
-
-  it("match what src/ walks today", () => {
-    expect(rows).toEqual(golden.rows);
   });
 
   it("give each blueprint validator the script hash the blueprint gave it", () => {

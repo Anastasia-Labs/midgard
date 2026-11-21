@@ -10,9 +10,7 @@
  *
  *   * `tests/fixtures/validation-initial-state-v1.vectors.mjs` holds the
  *     structured inputs, driven through `dist/` here and through `src/` by the
- *     vitest suite;
- *   * `tests/fixtures/validation-initial-state-v1.generated.json` is the
- *     fixture that suite recomputes; and
+ *     vitest suite; and
  *   * `onchain/aiken/lib/midgard/validation-initial-state-v1-golden.test.ak`
  *     asserts the Aiken derivation, the context CBOR, the event-key
  *     serialisation and the source authentication on the same values, each
@@ -39,10 +37,6 @@ import { deriveValidationInitialStateVectorsV1 } from "../tests/fixtures/validat
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptDirectory, "..");
 const repositoryRoot = resolve(packageRoot, "../..");
-const generatedJsonPath = join(
-  packageRoot,
-  "tests/fixtures/validation-initial-state-v1.generated.json",
-);
 const aikenFileName = "validation-initial-state-v1-golden.test.ak";
 const generatedAikenPath = join(
   repositoryRoot,
@@ -68,8 +62,6 @@ if (
     "validation-initial-state-v1: max_redeemers_field no longer fills field 8",
   );
 }
-
-writeOrCheck(generatedJsonPath, `${JSON.stringify(golden, null, 2)}\n`);
 
 // ## Aiken module
 

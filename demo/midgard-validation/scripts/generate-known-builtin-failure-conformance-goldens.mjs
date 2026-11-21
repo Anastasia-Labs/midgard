@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Emits the known builtin failure conformance vectors: a JSON fixture and the
- * Aiken module
+ * Emits the known builtin failure conformance vectors as the Aiken module
  * `onchain/aiken/lib/midgard/known-builtin-failure-conformance-golden.test.ak`.
  *
  * Each row is a case of `tests/fixtures/known-builtin-failure-conformance.cases.mjs`
@@ -12,8 +11,7 @@
  * `cek_builtin_v1.known_builtin_failure_v1` to every verdict: one test per
  * tag holds the known and not-known cases, and each refused case is a test
  * that must fail. `tests/known-builtin-failure-conformance.golden.test.ts`
- * runs the twin from `src/` over the same cases and compares with the
- * checked-in fixture.
+ * runs the twin from `src/` over the same cases.
  *
  * usage: node scripts/generate-known-builtin-failure-conformance-goldens.mjs [--check]
  * (run `pnpm run build` first; it reads `dist`).
@@ -35,10 +33,6 @@ import { buildKnownBuiltinFailureConformanceRows } from "../tests/fixtures/known
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptDirectory, "..");
 const repositoryRoot = resolve(packageRoot, "../..");
-const generatedJsonPath = join(
-  packageRoot,
-  "tests/fixtures/known-builtin-failure-conformance.generated.json",
-);
 const generatedAikenPath = join(
   repositoryRoot,
   "onchain/aiken/lib/midgard/known-builtin-failure-conformance-golden.test.ak",
@@ -188,7 +182,6 @@ const renderAiken = () => {
   return `${lines.join("\n")}\n`;
 };
 
-writeOrCheck(generatedJsonPath, `${JSON.stringify({ rows }, null, 2)}\n`);
 writeOrCheck(
   generatedAikenPath,
   formatAikenSource({

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 /**
- * Emits the script-decode step golden vectors: a JSON fixture and the Aiken
- * module `onchain/aiken/lib/midgard/script-decode-v1-golden.test.ak`.
+ * Emits the script-decode step golden vectors as the Aiken module
+ * `onchain/aiken/lib/midgard/script-decode-v1-golden.test.ak`.
  *
  * Each row is a script walked by the TypeScript port of the step machine
  * (`planScriptDecodeWalk`), Walk by Walk: how many frames each Walk reveals,
@@ -10,8 +10,7 @@
  * every walk with `midgard/script_decode_v1.step_with_frames_v1` and checks
  * each hash. The rows are built by
  * `tests/fixtures/script-decode-step-v1.vectors.mjs` through the built `dist/`
- * here, and through `src/` by `tests/script-decode-step-v1.golden.test.ts`,
- * which compares them with the checked-in fixture.
+ * here, and through `src/` by `tests/script-decode-step-v1.golden.test.ts`.
  *
  * usage: node scripts/generate-script-decode-step-v1-goldens.mjs [--check]
  */
@@ -38,10 +37,6 @@ import { buildScriptDecodeStepRows } from "../tests/fixtures/script-decode-step-
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptDirectory, "..");
 const repositoryRoot = resolve(packageRoot, "../..");
-const generatedJsonPath = join(
-  packageRoot,
-  "tests/fixtures/script-decode-step-v1.generated.json",
-);
 const generatedAikenPath = join(
   repositoryRoot,
   "onchain/aiken/lib/midgard/script-decode-v1-golden.test.ak",
@@ -157,7 +152,6 @@ const renderAiken = () => {
   return `${lines.join("\n")}\n`;
 };
 
-writeOrCheck(generatedJsonPath, `${JSON.stringify({ rows }, null, 2)}\n`);
 writeOrCheck(
   generatedAikenPath,
   formatAikenSource({

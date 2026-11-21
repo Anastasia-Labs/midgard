@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-
 import { describe, expect, it } from "vitest";
 
 import * as codec from "../src/index.js";
@@ -12,24 +10,16 @@ import {
 } from "../src/index.js";
 import {
   deriveValidationInitialStateVectorsV1,
-  type ValidationInitialStateGoldenV1,
   validationSourceOf,
 } from "./fixtures/validation-initial-state-v1.vectors.mjs";
 
 /**
- * The checked-in golden. The Aiken module generated beside it asserts
- * `validation_claim_v1.derive_initial_state` on the same values, so this
- * suite recomputing it through `src/` is the TypeScript half of the channel.
+ * The vectors, derived through `src/`. The generated Aiken module
+ * (`onchain/aiken/lib/midgard/validation-initial-state-v1-golden.test.ak`)
+ * asserts `validation_claim_v1.derive_initial_state` on the same values
+ * derived through `dist/`, so this suite is the TypeScript half of the channel.
  */
-const golden = JSON.parse(
-  readFileSync(
-    new URL(
-      "./fixtures/validation-initial-state-v1.generated.json",
-      import.meta.url,
-    ),
-    "utf8",
-  ),
-) as ValidationInitialStateGoldenV1;
+const golden = deriveValidationInitialStateVectorsV1(codec);
 
 const bytes = (hex: string): Buffer => Buffer.from(hex, "hex");
 
@@ -51,10 +41,6 @@ const vectorOf = (label: string) =>
   golden.vectors.find((entry) => entry.label === label)!;
 
 describe("validation-initial-state-v1 golden", () => {
-  it("recomputes every vector through the source twin", () => {
-    expect(deriveValidationInitialStateVectorsV1(codec)).toEqual(golden);
-  });
-
   it("covers four transactions under two headers, one forced and one at the field-8 bound", () => {
     expect(golden.vectors).toHaveLength(8);
     expect(

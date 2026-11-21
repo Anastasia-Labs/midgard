@@ -8,7 +8,7 @@
     {
       "id": "native-tx-field-access-v1",
       "kind": "golden",
-      "summary": "Field-access surface: JSON fixture plus a whole generated Aiken module, from the midgard-core TypeScript twin.",
+      "summary": "Field-access surface: a whole generated Aiken module, from the midgard-core TypeScript twin.",
       "generators": [
         "demo/midgard-core/scripts/generate-native-tx-field-access-v1-goldens.mjs",
         "demo/midgard-core/scripts/generate-native-tx-field-access-v1-goldens.build-golden.mjs",
@@ -19,9 +19,11 @@
         "demo/midgard-core:fixtures:native-tx-field-access-v1:check"
       ],
       "producers": ["demo/midgard-core"],
-      "inputs": ["@golden-channel"],
+      "inputs": [
+        "@golden-channel",
+        "demo/midgard-core/tests/fixtures/native-tx-field-access-v1.vectors.mjs"
+      ],
       "outputs": [
-        "demo/midgard-core/tests/fixtures/native-tx-field-access-v1.generated.json",
         "onchain/aiken/lib/midgard/native-tx-field-access-v1-golden.test.ak"
       ],
       "aikenImportsOfOutputs": true,
@@ -103,7 +105,7 @@
     {
       "id": "validation-initial-state-v1",
       "kind": "golden",
-      "summary": "State 0 of a validation trace derived from the header context, event key, source triple and pre-state root, from the TypeScript twin: JSON fixture plus a whole generated Aiken module asserting validation_claim_v1.derive_initial_state. The multi_redeemer vectors carry script bytes and are provisional.",
+      "summary": "State 0 of a validation trace derived from the header context, event key, source triple and pre-state root, from the TypeScript twin: a whole generated Aiken module asserting validation_claim_v1.derive_initial_state. The multi_redeemer vectors carry script bytes and are provisional.",
       "generators": [
         "demo/midgard-core/scripts/generate-validation-initial-state-v1-goldens.mjs"
       ],
@@ -118,7 +120,6 @@
         "demo/midgard-core/tests/fixtures/native-tx-field-items-v1.vectors.mjs"
       ],
       "outputs": [
-        "demo/midgard-core/tests/fixtures/validation-initial-state-v1.generated.json",
         "onchain/aiken/lib/midgard/validation-initial-state-v1-golden.test.ak"
       ],
       "sync": {
@@ -582,7 +583,7 @@
     {
       "id": "cek-staged-arm-v1",
       "kind": "golden",
-      "summary": "Staged builtin steps (arm 31, semantics groups 7 and 8) built by the TypeScript twin: JSON fixture of witness hashes and verdicts plus a whole generated Aiken module spending each step through the staged bytes or integer semantics validator.",
+      "summary": "Staged builtin steps (arm 31, semantics groups 7 and 8) built by the TypeScript twin: a whole generated Aiken module requiring each witness hash and spending each step through the staged bytes or integer semantics validator.",
       "generators": [
         "demo/midgard-validation/scripts/generate-cek-staged-arm-v1-goldens.mjs"
       ],
@@ -599,7 +600,6 @@
         "demo/midgard-validation/tests/fixtures/cek-staged-arm-v1.integer-rows.mjs"
       ],
       "outputs": [
-        "demo/midgard-validation/tests/fixtures/cek-staged-arm-v1.generated.json",
         "onchain/aiken/validators/fraud-proofs/validation-trace/cek-core-staged-golden.test.ak"
       ],
       "aikenImportsOfOutputs": true,
@@ -617,7 +617,7 @@
     {
       "id": "cek-serialise-loop-v1",
       "kind": "golden",
-      "summary": "Serialise loop hops (serialiseData, arm 31, semantics group 10) planned by the TypeScript twin: JSON fixture of hop counts, shapes and modelled ex-units plus a whole generated Aiken module spending each hop through the loop validator with the TypeScript next state, each with a control row.",
+      "summary": "Serialise loop hops (serialiseData, arm 31, semantics group 10) planned by the TypeScript twin: a whole generated Aiken module spending each hop through the loop validator with the TypeScript next state, each with a control row.",
       "generators": [
         "demo/midgard-validation/scripts/generate-cek-serialise-loop-v1-goldens.mjs"
       ],
@@ -631,7 +631,6 @@
         "demo/midgard-validation/tests/fixtures/cek-serialise-loop-v1.vectors.mjs"
       ],
       "outputs": [
-        "demo/midgard-validation/tests/fixtures/cek-serialise-loop-v1.generated.json",
         "onchain/aiken/validators/fraud-proofs/validation-trace/cek-core-semantic-serialise-loop-golden.test.ak"
       ],
       "aikenImportsOfOutputs": true,
@@ -649,7 +648,7 @@
     {
       "id": "cek-write-bits-loop-v1",
       "kind": "golden",
-      "summary": "writeBits loop hops (writeBits, arms 31 and 36, semantics index 12) planned by the TypeScript twin over witnesses from proof-mode runs of the TypeScript executor: JSON fixture of hop counts, shapes and modelled ex-units plus a whole generated Aiken module spending each hop through the loop validator with the TypeScript next state, each with a control row.",
+      "summary": "writeBits loop hops (writeBits, arms 31 and 36, semantics index 12) planned by the TypeScript twin over witnesses from proof-mode runs of the TypeScript executor: a whole generated Aiken module spending each hop through the loop validator with the TypeScript next state, each with a control row.",
       "generators": [
         "demo/midgard-validation/scripts/generate-cek-write-bits-loop-v1-goldens.mjs"
       ],
@@ -663,7 +662,6 @@
         "demo/midgard-validation/tests/fixtures/cek-write-bits-loop-v1.vectors.mjs"
       ],
       "outputs": [
-        "demo/midgard-validation/tests/fixtures/cek-write-bits-loop-v1.generated.json",
         "onchain/aiken/validators/fraud-proofs/validation-trace/cek-core-staged-write-bits-loop-golden.test.ak"
       ],
       "aikenImportsOfOutputs": true,
@@ -681,7 +679,7 @@
     {
       "id": "cek-core-routing-v1",
       "kind": "golden",
-      "summary": "CEK core routing (the core group a step's mode and arm witness select, the semantics group of a builtin tag, and the hop group 7's roots hand a builtin failure on to by its tag and the size of its first argument) given by the TypeScript twins cekCoreGroup and cekCoreFailureRoute (midgard-sdk) and midgardCekSemanticGroup: JSON fixture of routed and refused rows plus a whole generated Aiken module holding cek_semantic_chain.core_group, semantic_group and the cek_core_semantic_failure_roots validator to each row.",
+      "summary": "CEK core routing (the core group a step's mode and arm witness select, the semantics group of a builtin tag, and the hop group 7's roots hand a builtin failure on to by its tag and the size of its first argument) given by the TypeScript twins cekCoreGroup and cekCoreFailureRoute (midgard-sdk) and midgardCekSemanticGroup: a whole generated Aiken module holding cek_semantic_chain.core_group, semantic_group and the cek_core_semantic_failure_roots validator to each row.",
       "generators": [
         "demo/midgard-validation/scripts/generate-cek-core-routing-v1-goldens.mjs"
       ],
@@ -695,7 +693,6 @@
         "demo/midgard-validation/tests/fixtures/cek-core-routing-v1.vectors.mjs"
       ],
       "outputs": [
-        "demo/midgard-validation/tests/fixtures/cek-core-routing-v1.generated.json",
         "onchain/aiken/validators/fraud-proofs/validation-trace/cek-core-routing-golden.test.ak"
       ],
       "aikenImportsOfOutputs": true,
@@ -713,7 +710,7 @@
     {
       "id": "plutus-data-cbor-decoding-v1",
       "kind": "golden",
-      "summary": "Plutus Data CBOR decoding, Data entry and envelope entry: JSON fixture plus a generated Aiken module holding midgard/cbor_deserialise to the TypeScript decoder.",
+      "summary": "Plutus Data CBOR decoding, Data entry and envelope entry: a generated Aiken module holding midgard/cbor_deserialise to the TypeScript decoder.",
       "generators": [
         "demo/midgard-validation/scripts/generate-plutus-data-cbor-decoding-v1-goldens.mjs"
       ],
@@ -727,7 +724,6 @@
         "demo/midgard-validation/tests/fixtures/plutus-data-cbor-decoding-v1.vectors.mjs"
       ],
       "outputs": [
-        "demo/midgard-validation/tests/fixtures/plutus-data-cbor-decoding-v1.generated.json",
         "onchain/aiken/lib/midgard/cbor-deserialise-v1-golden.test.ak"
       ],
       "aikenImportsOfOutputs": true,
@@ -745,7 +741,7 @@
     {
       "id": "script-decode-step-v1",
       "kind": "golden",
-      "summary": "Script-decode step machine, Walk by Walk: JSON fixture plus a generated Aiken module replaying each walk with midgard/script_decode_v1 and checking every run-datum hash against the TypeScript port.",
+      "summary": "Script-decode step machine, Walk by Walk: a generated Aiken module replaying each walk with midgard/script_decode_v1 and checking every run-datum hash against the TypeScript port.",
       "generators": [
         "demo/midgard-validation/scripts/generate-script-decode-step-v1-goldens.mjs"
       ],
@@ -759,7 +755,6 @@
         "demo/midgard-validation/tests/fixtures/script-decode-step-v1.vectors.mjs"
       ],
       "outputs": [
-        "demo/midgard-validation/tests/fixtures/script-decode-step-v1.generated.json",
         "onchain/aiken/lib/midgard/script-decode-v1-golden.test.ak"
       ],
       "aikenImportsOfOutputs": true,
@@ -958,7 +953,7 @@
     {
       "id": "known-builtin-failure-conformance",
       "kind": "golden",
-      "summary": "Known builtin failure conformance: a corpus of builtin applications and the verdict the TypeScript twin midgardCekKnownBuiltinFailure gives each (known, not known, refused), as a JSON fixture plus a generated Aiken module holding midgard/cek_builtin_v1.known_builtin_failure_v1 to every verdict.",
+      "summary": "Known builtin failure conformance: a corpus of builtin applications and the verdict the TypeScript twin midgardCekKnownBuiltinFailure gives each (known, not known, refused), as a generated Aiken module holding midgard/cek_builtin_v1.known_builtin_failure_v1 to every verdict.",
       "generators": [
         "demo/midgard-validation/scripts/generate-known-builtin-failure-conformance-goldens.mjs"
       ],
@@ -974,7 +969,6 @@
         "demo/midgard-validation/tests/fixtures/known-builtin-failure-conformance.crypto-cases.mjs"
       ],
       "outputs": [
-        "demo/midgard-validation/tests/fixtures/known-builtin-failure-conformance.generated.json",
         "onchain/aiken/lib/midgard/known-builtin-failure-conformance-golden.test.ak"
       ],
       "aikenImportsOfOutputs": true,

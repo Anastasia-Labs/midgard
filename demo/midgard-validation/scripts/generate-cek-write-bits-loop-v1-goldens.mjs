@@ -4,20 +4,16 @@
  * Produces the cross-language golden rows for the **writeBits loop**
  * (writeBits, tag 80, semantics index 12): the hops the TypeScript planner
  * gives each step of `tests/fixtures/cek-write-bits-loop-v1.vectors.mjs`,
- * run through the TypeScript twin, written to two places:
- *
- *   * `tests/fixtures/cek-write-bits-loop-v1.generated.json` — each step's
- *     hop count per plan and each rendered hop's end, shape and modelled
- *     ex-units; and
- *   * `onchain/aiken/validators/fraud-proofs/validation-trace/cek-core-staged-write-bits-loop-golden.test.ak`
- *     — where each rendered hop is spent through the loop validator with the
- *     redeemer and the state the TypeScript twin gives it: the validator must
- *     accept the hop, so its own next state must equal the TypeScript state
- *     (and the last hop must end the loop), and each step's witness, taken
- *     from a proof-mode run of the TypeScript executor, must be the one the
- *     Aiken fixture builds from its parts. Every hop row has a control row
- *     that builds the same transaction without spending it, so a row's units
- *     less its control's are the hop's own.
+ * run through the TypeScript twin, written to
+ * `onchain/aiken/validators/fraud-proofs/validation-trace/cek-core-staged-write-bits-loop-golden.test.ak`,
+ * where each rendered hop is spent through the loop validator with the
+ * redeemer and the state the TypeScript twin gives it: the validator must
+ * accept the hop, so its own next state must equal the TypeScript state (and
+ * the last hop must end the loop), and each step's witness, taken from a
+ * proof-mode run of the TypeScript executor, must be the one the Aiken fixture
+ * builds from its parts. Every hop row has a control row that builds the same
+ * transaction without spending it, so a row's units less its control's are
+ * the hop's own.
  *
  * A plan the TypeScript twin rejects stops the generator.
  *
@@ -53,10 +49,6 @@ import { steps } from "../tests/fixtures/cek-write-bits-loop-v1.vectors.mjs";
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptDirectory, "..");
 const repositoryRoot = resolve(packageRoot, "../..");
-const generatedJsonPath = join(
-  packageRoot,
-  "tests/fixtures/cek-write-bits-loop-v1.generated.json",
-);
 const aikenFileName = "cek-core-staged-write-bits-loop-golden.test.ak";
 const generatedAikenPath = join(
   repositoryRoot,
@@ -137,7 +129,6 @@ const steps_ = steps.map((step) => {
     const hops = planOf(loop, limit);
     return {
       plan,
-      count: hops.length,
       charge: hops.at(-1).charge,
       rows: rendered(hops.length).map((index) => ({
         index,
@@ -306,38 +297,6 @@ const source = [
   ]),
 ].join("\n\n");
 
-writeOrCheck(
-  generatedJsonPath,
-  `${JSON.stringify(
-    {
-      generator:
-        "demo/midgard-validation/scripts/generate-cek-write-bits-loop-v1-goldens.mjs",
-      aikenModule: `onchain/aiken/validators/fraud-proofs/validation-trace/${aikenFileName}`,
-      steps: steps_.map(({ step, loop, plans }) => ({
-        name: step.name,
-        inputBytes: step.length,
-        indices: step.indices.length,
-        failure: loop.failure,
-        plans: plans.map(({ plan, count, rows }) => ({
-          plan,
-          hops: count,
-          rows: rows.map(({ index, planned }) => ({
-            name: rowName(step, plan, index),
-            from: planned.from?.cursor ?? 0,
-            end: planned.end,
-            shape: planned.shape,
-            model: {
-              memory: Number(planned.cost.memory),
-              cpu: Number(planned.cost.cpu),
-            },
-          })),
-        })),
-      })),
-    },
-    null,
-    2,
-  )}\n`,
-);
 writeOrCheck(
   generatedAikenPath,
   formatAikenSource({

@@ -7,19 +7,12 @@
  * deterministic chunk split and §8.6's certificate asset name.
  *
  * Every value is computed by the TypeScript twin
- * (`demo/midgard-core/src/codec/native-tx-field-access.ts`) and written to
- * two places:
- *
- *   * `demo/midgard-core/tests/fixtures/native-tx-field-access-v1.generated.json`
- *     — recomputed by `tests/native-tx-field-access-goldens.test.ts`, so a
- *     drifting twin fails on the TypeScript side; and
- *   * `onchain/aiken/lib/midgard/native-tx-field-access-v1-golden.test.ak`
- *     — recomputed by the Aiken producers under the fork runner, so a
- *     divergence between the two encoders fails on the Aiken side.
- *
- * That pair is the channel: one generator, one JSON fixture, one Aiken golden
- * module. The per-field item encodings of §5.3 fan out over the same three
- * artifacts (issue #569); nothing here is per-field.
+ * (`demo/midgard-core/src/codec/native-tx-field-access.ts`) from the inputs in
+ * `tests/fixtures/native-tx-field-access-v1.vectors.mjs` and written to
+ * `onchain/aiken/lib/midgard/native-tx-field-access-v1-golden.test.ak`, where
+ * the Aiken producers recompute it under the fork runner, so a divergence
+ * between the two encoders fails on the Aiken side. Nothing here is per-field;
+ * the per-field item encodings of §5.3 are the sibling channel (issue #569).
  *
  * Vectors are regenerated, never hand-edited. Run with `--check` to assert the
  * checked-in artifacts are exactly what the twin produces today. That contract
@@ -32,7 +25,5 @@
 
 import "node:path";
 import "node:url";
-import "./golden-channel.mjs";
-import "../dist/codec/native-tx-field-access.js";
 import "./generate-native-tx-field-access-v1-goldens.build-golden.mjs";
 import "./generate-native-tx-field-access-v1-goldens.render-aiken.mjs";

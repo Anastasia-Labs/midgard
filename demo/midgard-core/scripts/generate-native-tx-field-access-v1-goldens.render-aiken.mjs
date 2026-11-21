@@ -1,7 +1,6 @@
 import {
   buildGolden,
   generatedAikenPath,
-  generatedJsonPath,
   headerLengthForCount,
   repositoryRoot,
   section,
@@ -281,8 +280,6 @@ const renderAiken = (golden) => {
 // ---------------------------------------------------------------------------
 
 const golden = buildGolden();
-
-writeOrCheck(generatedJsonPath, `${JSON.stringify(golden, null, 2)}\n`);
 
 writeOrCheck(
   generatedAikenPath,

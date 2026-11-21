@@ -11,13 +11,10 @@
  * (`cek_core_semantic_failure_roots`).
  *
  * The rows are `tests/fixtures/cek-core-routing-v1.vectors.mjs`'s over the
- * built twins. It writes:
- *
- *   * `tests/fixtures/cek-core-routing-v1.generated.json`, which
- *     `tests/cek-core-routing-v1.golden.test.ts` checks the twins against;
- *   * `onchain/aiken/validators/fraud-proofs/validation-trace/cek-core-routing-golden.test.ak`,
- *     in which each routed row must route to the same group or hop and each
- *     refused row must fail.
+ * built twins. It writes
+ * `onchain/aiken/validators/fraud-proofs/validation-trace/cek-core-routing-golden.test.ak`,
+ * in which each routed row must route to the same group or hop and each
+ * refused row must fail.
  *
  * The plumbing — the `--check` contract, the `aiken fmt` trip, the emission —
  * is the shared `@al-ft/midgard-core/scripts/golden-channel.mjs`. `--check`
@@ -42,10 +39,6 @@ import { routingRows } from "../tests/fixtures/cek-core-routing-v1.vectors.mjs";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = resolve(packageRoot, "../..");
-const generatedJsonPath = join(
-  packageRoot,
-  "tests/fixtures/cek-core-routing-v1.generated.json",
-);
 const aikenModule =
   "onchain/aiken/validators/fraud-proofs/validation-trace/cek-core-routing-golden.test.ak";
 const generatedAikenPath = join(repositoryRoot, aikenModule);
@@ -294,18 +287,6 @@ const renderAiken = () => {
  */
 const stripTrailingWhitespace = (source) => source.replace(/[ \t]+$/gmu, "");
 
-writeOrCheck(
-  generatedJsonPath,
-  `${JSON.stringify(
-    {
-      generator:
-        "demo/midgard-validation/scripts/generate-cek-core-routing-v1-goldens.mjs",
-      ...rows,
-    },
-    null,
-    2,
-  )}\n`,
-);
 writeOrCheck(
   generatedAikenPath,
   stripTrailingWhitespace(

@@ -4,20 +4,15 @@
  * Produces the cross-language golden rows for the **staged builtin arms**
  * (arm 31, semantics groups 7, 8 and 9): every row of
  * `tests/fixtures/cek-staged-arm-v1.vectors.mjs` built by the TypeScript twin
- * and judged by `verifyMidgardCekStagedBuiltin`, then written to two places:
- *
- *   * `tests/fixtures/cek-staged-arm-v1.generated.json` — the hash of each
- *     row's witness and its verdict, recomputed by
- *     `tests/cek-staged-arm-goldens.test.ts`, which drives the same rows
- *     through `src/`; and
- *   * `onchain/aiken/validators/fraud-proofs/validation-trace/cek-core-staged-golden.test.ak`
- *     — where each row's step is rebuilt (its staging outputs and inline
- *     sources from the same byte constructions, its witness values as the
- *     TypeScript twin carries them), its witness is required to hash to the
- *     TypeScript witness, and the staged bytes, integer or product semantics
- *     validator must accept exactly the rows the TypeScript verifier accepts
- *     (a product row's loop runs as a first hop over one column and a hop
- *     over the rest).
+ * and judged by `verifyMidgardCekStagedBuiltin`, then written to
+ * `onchain/aiken/validators/fraud-proofs/validation-trace/cek-core-staged-golden.test.ak`,
+ * where each row's step is rebuilt (its staging outputs and inline sources
+ * from the same byte constructions, its witness values as the TypeScript twin
+ * carries them), its witness is required to hash to the TypeScript witness,
+ * and the staged bytes, integer or product semantics validator must accept
+ * exactly the rows the TypeScript verifier accepts (a product row's loop runs
+ * as a first hop over one column and a hop over the rest).
+ * `tests/cek-staged-arm-goldens.test.ts` drives the same rows through `src/`.
  *
  * A row whose verdict differs from the verdict the row declares stops the
  * generator: the rows are what both verifiers must reach, not a record of
@@ -46,10 +41,6 @@ import {
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptDirectory, "..");
 const repositoryRoot = resolve(packageRoot, "../..");
-const generatedJsonPath = join(
-  packageRoot,
-  "tests/fixtures/cek-staged-arm-v1.generated.json",
-);
 const aikenFileName = "cek-core-staged-golden.test.ak";
 const generatedAikenPath = join(
   repositoryRoot,
@@ -295,24 +286,6 @@ fn spend_staged_product(step: StagedStepV1, columns: Int) -> Bool {
 
 const source = [PREAMBLE, ...built.map(rowSource)].join("\n\n");
 
-writeOrCheck(
-  generatedJsonPath,
-  `${JSON.stringify(
-    {
-      generator:
-        "demo/midgard-validation/scripts/generate-cek-staged-arm-v1-goldens.mjs",
-      aikenModule: `onchain/aiken/validators/fraud-proofs/validation-trace/${aikenFileName}`,
-      rows: built.map(({ row, witnessHash, verdict }) => ({
-        name: row.name,
-        tag: row.tag,
-        accepts: verdict,
-        witnessHash,
-      })),
-    },
-    null,
-    2,
-  )}\n`,
-);
 writeOrCheck(
   generatedAikenPath,
   formatAikenSource({

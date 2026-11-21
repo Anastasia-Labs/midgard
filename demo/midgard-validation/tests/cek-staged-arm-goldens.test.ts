@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-
 import { describe, expect, it } from "vitest";
 
 import * as api from "../src/index.js";
@@ -11,37 +8,15 @@ import {
 
 /**
  * The TypeScript half of the `cek-staged-arm-v1` golden channel: every row is
- * rebuilt from `src/` and judged by the TypeScript staged verifier, which
- * must reach the verdict the row declares, and its witness must hash to the
- * value the generated Aiken module requires of the Aiken-built step. The
- * Aiken half (`cek-core-staged-golden.test.ak`) spends each step through the
- * staged bytes, integer or product semantics validator and must reach the
- * same verdict. Regenerate both with `pnpm run fixtures:cek-staged-arm-v1:sync`.
+ * built from `src/` and judged by the TypeScript staged verifier, which must
+ * reach the verdict the row declares. The Aiken half
+ * (`cek-core-staged-golden.test.ak`) requires each Aiken-built step's witness
+ * to hash to the TypeScript witness, spends the step through the staged bytes,
+ * integer or product semantics validator and must reach the same verdict.
+ * Regenerate it with `pnpm run fixtures:cek-staged-arm-v1:sync`.
  */
 
-type GoldenRow = {
-  readonly name: string;
-  readonly tag: number;
-  readonly accepts: boolean;
-  readonly witnessHash: string;
-};
-
-const golden = JSON.parse(
-  readFileSync(
-    fileURLToPath(
-      new URL("./fixtures/cek-staged-arm-v1.generated.json", import.meta.url),
-    ),
-    "utf8",
-  ),
-) as { readonly rows: readonly GoldenRow[] };
-
 describe("cek-staged-arm-v1 golden rows", () => {
-  it("covers every row, in order", () => {
-    expect(golden.rows.map((row) => row.name)).toEqual(
-      CEK_STAGED_ARM_ROWS.map((row) => row.name),
-    );
-  });
-
   it("covers correct, wrong-result and past-the-bound rows of every group", () => {
     const groups = new Set(
       CEK_STAGED_ARM_ROWS.map(
@@ -59,12 +34,10 @@ describe("cek-staged-arm-v1 golden rows", () => {
     ]);
   });
 
-  it.each(
-    CEK_STAGED_ARM_ROWS.map((row, index) => [row.name, row, index] as const),
-  )("%s", (_name, row, index) => {
-    const built = buildCekStagedArmRow(row, api);
-    expect(built.verdict).toBe(row.accepts);
-    expect(built.witnessHash).toBe(golden.rows[index]!.witnessHash);
-    expect(golden.rows[index]!.accepts).toBe(row.accepts);
-  });
+  it.each(CEK_STAGED_ARM_ROWS.map((row) => [row.name, row] as const))(
+    "%s",
+    (_name, row) => {
+      expect(buildCekStagedArmRow(row, api).verdict).toBe(row.accepts);
+    },
+  );
 });

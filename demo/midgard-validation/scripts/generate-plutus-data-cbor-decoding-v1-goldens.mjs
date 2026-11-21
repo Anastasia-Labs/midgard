@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 /**
- * Emits the Plutus Data CBOR decoding golden vectors: a JSON fixture and the
- * Aiken module `onchain/aiken/lib/midgard/cbor-deserialise-v1-golden.test.ak`.
+ * Emits the Plutus Data CBOR decoding golden vectors as the Aiken module
+ * `onchain/aiken/lib/midgard/cbor-deserialise-v1-golden.test.ak`.
  *
  * Each row is an input and what the TypeScript decoder's two entries return
  * for it (`plutusDataFromCborIterative`, the Data entry, and
@@ -12,8 +12,7 @@
  * same names to every row, in both variants. The rows are built by
  * `tests/fixtures/plutus-data-cbor-decoding-v1.vectors.mjs` through the built
  * `dist/` here, and through `src/` by
- * `tests/plutus-data-cbor-decoding-v1.golden.test.ts`, which compares them
- * with the checked-in fixture.
+ * `tests/plutus-data-cbor-decoding-v1.golden.test.ts`.
  *
  * usage: node scripts/generate-plutus-data-cbor-decoding-v1-goldens.mjs [--check]
  */
@@ -40,10 +39,6 @@ import { buildPlutusDataCborDecodingRows } from "../tests/fixtures/plutus-data-c
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptDirectory, "..");
 const repositoryRoot = resolve(packageRoot, "../..");
-const generatedJsonPath = join(
-  packageRoot,
-  "tests/fixtures/plutus-data-cbor-decoding-v1.generated.json",
-);
 const generatedAikenPath = join(
   repositoryRoot,
   "onchain/aiken/lib/midgard/cbor-deserialise-v1-golden.test.ak",
@@ -197,7 +192,6 @@ const renderAiken = () => {
   return `${lines.join("\n")}\n`;
 };
 
-writeOrCheck(generatedJsonPath, `${JSON.stringify({ rows }, null, 2)}\n`);
 writeOrCheck(
   generatedAikenPath,
   formatAikenSource({
