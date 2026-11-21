@@ -7,7 +7,7 @@
  *     pnpm --dir demo --filter midgard-node exec vitest run \
  *     --config vitest.bench.config.ts tests/ledger-store-level-exit.bench.ts
  *
- * then the same with `sweep`, then `steady`. Outputs come from the test
+ * then the same with `window`, then `drop`. Outputs come from the test
  * reader, as the adapter keeps none. The size on disk is the sum of the
  * database directory's files, read after the batch that wrote them resolved.
  */

@@ -7,7 +7,7 @@
  *     pnpm --dir demo --filter @al-ft/midgard-fault-proofs run bench \
  *     bench/ledger-store-exit.bench.test.ts
  *
- * then the same with `sweep`, then `steady`. The database's size on disk is
+ * then the same with `window`, then `drop`. The database's size on disk is
  * read after a WAL checkpoint, so it counts what reached the database file.
  */
 import { stat } from "node:fs/promises";
